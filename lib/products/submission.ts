@@ -25,8 +25,13 @@ export interface ProductSubmissionInput {
   dimensions: string | null;
   careInstructions: string | null;
   safetyInformation: string | null;
+  returnConditions: string | null;
   returnEligible: boolean;
   warranty: string | null;
+  madeToOrder: boolean;
+  preparationDays: number;
+  manufacturedAt: number | null;
+  expiresAt: number | null;
   licenceReference: string | null;
 }
 
@@ -54,6 +59,13 @@ function parseMoney(value: string): number | null | 'invalid' {
   return Number.isSafeInteger(result) ? result : 'invalid';
 }
 
+function parseDate(value: string): number | null | 'invalid' {
+  if (!value) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'invalid';
+  const result = Date.parse(`${value}T00:00:00+05:45`);
+  return Number.isFinite(result) ? result : 'invalid';
+}
+
 export function parseProductSubmission(formData: FormData): {
   input?: ProductSubmissionInput;
   errors: readonly string[];
@@ -63,6 +75,9 @@ export function parseProductSubmission(formData: FormData): {
   const compareAtPricePaisa = parseMoney(textField(formData, 'compareAtPrice'));
   const inventoryText = textField(formData, 'inventoryQuantity');
   const inventoryQuantity = Number(inventoryText);
+  const preparationDays = Number(textField(formData, 'preparationDays'));
+  const manufacturedAt = parseDate(textField(formData, 'manufacturedAt'));
+  const expiresAt = parseDate(textField(formData, 'expiresAt'));
   const occasionIds = [
     ...new Set(
       formData
@@ -90,8 +105,13 @@ export function parseProductSubmission(formData: FormData): {
     dimensions: textField(formData, 'dimensions') || null,
     careInstructions: textField(formData, 'careInstructions') || null,
     safetyInformation: textField(formData, 'safetyInformation') || null,
+    returnConditions: textField(formData, 'returnConditions') || null,
     returnEligible: textField(formData, 'returnEligible') === 'yes',
     warranty: textField(formData, 'warranty') || null,
+    madeToOrder: textField(formData, 'madeToOrder') === 'yes',
+    preparationDays,
+    manufacturedAt: typeof manufacturedAt === 'number' ? manufacturedAt : null,
+    expiresAt: typeof expiresAt === 'number' ? expiresAt : null,
     licenceReference: textField(formData, 'licenceReference') || null,
   };
 
@@ -108,7 +128,9 @@ export function parseProductSubmission(formData: FormData): {
   }
 
   if (!/^[A-Z0-9][A-Z0-9._-]{2,39}$/.test(input.sku)) {
-    errors.push('SKU must be 3–40 letters, numbers, dots, dashes, or underscores.');
+    errors.push(
+      'SKU must be 3–40 letters, numbers, dots, dashes, or underscores.',
+    );
   }
   if (pricePaisa === null || pricePaisa === 'invalid' || pricePaisa < 100) {
     errors.push('Enter a valid price of at least NPR 1.00.');
@@ -128,6 +150,30 @@ export function parseProductSubmission(formData: FormData): {
     inventoryQuantity > 1_000_000
   ) {
     errors.push('Inventory must be a whole number from 0 to 1,000,000.');
+  }
+  if (
+    !Number.isInteger(preparationDays) ||
+    preparationDays < 0 ||
+    preparationDays > 180
+  ) {
+    errors.push('Preparation time must be a whole number from 0 to 180 days.');
+  }
+  if (manufacturedAt === 'invalid' || expiresAt === 'invalid') {
+    errors.push('Enter valid manufacture and expiry dates.');
+  } else if (
+    typeof manufacturedAt === 'number' &&
+    typeof expiresAt === 'number' &&
+    expiresAt <= manufacturedAt
+  ) {
+    errors.push('Expiry date must be after the manufacture date.');
+  }
+  if (
+    input.returnEligible &&
+    (!input.returnConditions || input.returnConditions.length < 10)
+  ) {
+    errors.push(
+      'Describe the return conditions for a return-eligible product.',
+    );
   }
   if (occasionIds.length === 0) {
     errors.push('Select at least one gift occasion.');
@@ -149,33 +195,36 @@ export function parseProductSubmission(formData: FormData): {
     ['dimensions', 'Dimensions', 500],
     ['careInstructions', 'Care instructions', 1500],
     ['safetyInformation', 'Safety information', 1500],
+    ['returnConditions', 'Return conditions', 1500],
     ['warranty', 'Warranty', 500],
     ['licenceReference', 'Licence reference', 160],
   ];
   for (const [field, label, maximum] of limits) {
     const value = input[field];
     if (typeof value === 'string' && value.length > maximum) {
-      errors.push(`${label} must be ${maximum.toLocaleString('en-US')} characters or fewer.`);
+      errors.push(
+        `${label} must be ${maximum.toLocaleString('en-US')} characters or fewer.`,
+      );
     }
   }
 
   return errors.length > 0 ? { errors } : { input, errors };
 }
 
-const acceptedImageTypes = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-]);
+const acceptedImageTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 export function validateProductImage(file: File): string | null {
   if (file.size === 0) return 'The selected image is empty.';
-  if (file.size > maximumProductImageBytes) return 'Each image must be 5 MB or smaller.';
-  if (!acceptedImageTypes.has(file.type)) return 'Images must be JPG, PNG, or WebP.';
+  if (file.size > maximumProductImageBytes)
+    return 'Each image must be 5 MB or smaller.';
+  if (!acceptedImageTypes.has(file.type))
+    return 'Images must be JPG, PNG, or WebP.';
   return null;
 }
 
-export async function validateProductImageContent(file: File): Promise<string | null> {
+export async function validateProductImageContent(
+  file: File,
+): Promise<string | null> {
   const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
   const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
   const isPng =
@@ -204,12 +253,13 @@ export async function validateProductImageContent(file: File): Promise<string | 
 }
 
 export function createProductSlug(name: string): string {
-  const base = name
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 70) || 'handmade-product';
+  const base =
+    name
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 70) || 'handmade-product';
   return `${base}-${crypto.randomUUID().replaceAll('-', '').slice(0, 8)}`;
 }

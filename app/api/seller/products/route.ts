@@ -8,6 +8,7 @@ import {
   isActiveCategory,
 } from '@/lib/db/repositories/products';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import {
   createProductSlug,
   maximumProductSubmissionBytes,
@@ -40,6 +41,14 @@ export async function POST(request: Request): Promise<Response> {
   let bucket: R2Bucket | null = null;
   try {
     const seller = await requireSellerApi();
+    const bindings = env as unknown as { DB?: D1Database; MEDIA?: R2Bucket };
+    const database = requireDatabase(bindings);
+    const rateLimit = await consumeRequestRateLimit(database, request, {
+      scope: `seller-product-submission:${seller.sellerId}`,
+      limit: 20,
+      windowMs: 60 * 60_000,
+    });
+    if (!rateLimit.allowed) return rateLimitJson(rateLimit);
     let formData: FormData;
     try {
       formData = await request.formData();
@@ -68,8 +77,6 @@ export async function POST(request: Request): Promise<Response> {
       return json({ error: imageErrors[0], errors: imageErrors }, 400);
     }
 
-    const bindings = env as unknown as { DB?: D1Database; MEDIA?: R2Bucket };
-    const database = requireDatabase(bindings);
     if (!(await isActiveCategory(database, parsed.input.categoryId))) {
       return json({ error: 'Select an active product category.' }, 400);
     }
@@ -122,7 +129,9 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error) {
     if (bucket && uploadedKeys.length > 0) {
       const cleanupBucket = bucket;
-      await Promise.allSettled(uploadedKeys.map((key) => cleanupBucket.delete(key)));
+      await Promise.allSettled(
+        uploadedKeys.map((key) => cleanupBucket.delete(key)),
+      );
     }
     if (error instanceof SellerAuthorizationError) {
       return json({ error: error.message }, error.status);

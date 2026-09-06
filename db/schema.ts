@@ -266,10 +266,15 @@ export const products = sqliteTable(
     dimensions: text('dimensions'),
     careInstructions: text('care_instructions'),
     safetyInformation: text('safety_information'),
+    returnConditions: text('return_conditions'),
     returnEligible: integer('return_eligible', { mode: 'boolean' })
       .notNull()
       .default(true),
     warranty: text('warranty'),
+    madeToOrder: integer('made_to_order', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    preparationDays: integer('preparation_days').notNull().default(2),
     manufacturedAt: timestamp('manufactured_at'),
     expiresAt: timestamp('expires_at'),
     licenceReference: text('licence_reference'),
@@ -715,6 +720,62 @@ export const orderItems = sqliteTable(
       'order_items_commission_valid',
       sql`${table.commissionBps} >= 0 AND ${table.commissionBps} <= 10000`,
     ),
+  ],
+);
+
+export const orderPolicyAcceptances = sqliteTable(
+  'order_policy_acceptances',
+  {
+    id: id(),
+    orderId: text('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'restrict' }),
+    policyVersion: text('policy_version').notNull(),
+    termsSnapshotJson: text('terms_snapshot_json').notNull(),
+    acceptanceMethod: text('acceptance_method', {
+      enum: ['affirmative_checkbox'],
+    }).notNull(),
+    actorUserId: text('actor_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    requestId: text('request_id').notNull(),
+    acceptedAt: timestamp('accepted_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_order_policy_acceptances_order_unique').on(table.orderId),
+    uniqueIndex('idx_order_policy_acceptances_request_unique').on(
+      table.requestId,
+    ),
+  ],
+);
+
+export const orderDocuments = sqliteTable(
+  'order_documents',
+  {
+    id: id(),
+    orderId: text('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'restrict' }),
+    kind: text('kind', {
+      enum: ['order_statement', 'payment_receipt'],
+    }).notNull(),
+    documentNumber: text('document_number').notNull(),
+    snapshotJson: text('snapshot_json').notNull(),
+    status: text('status', { enum: ['issued', 'void'] })
+      .notNull()
+      .default('issued'),
+    requestId: text('request_id').notNull(),
+    issuedAt: timestamp('issued_at').notNull(),
+    voidedAt: timestamp('voided_at'),
+  },
+  (table) => [
+    uniqueIndex('idx_order_documents_number_unique').on(table.documentNumber),
+    uniqueIndex('idx_order_documents_request_unique').on(table.requestId),
+    uniqueIndex('idx_order_documents_order_kind_unique').on(
+      table.orderId,
+      table.kind,
+    ),
+    index('idx_order_documents_order_issued').on(table.orderId, table.issuedAt),
   ],
 );
 
@@ -1535,6 +1596,17 @@ export const notificationMessages = sqliteTable(
       table.createdAt,
     ),
   ],
+);
+
+export const requestRateLimits = sqliteTable(
+  'request_rate_limits',
+  {
+    key: text('key').primaryKey(),
+    requestCount: integer('request_count').notNull().default(0),
+    windowStartedAt: timestamp('window_started_at').notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
+  },
+  (table) => [index('idx_request_rate_limits_expiry').on(table.expiresAt)],
 );
 
 export const shippingJobs = sqliteTable(

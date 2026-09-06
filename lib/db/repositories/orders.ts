@@ -49,6 +49,49 @@ interface CheckoutCartItem {
   returnEligible: number;
 }
 
+export interface OrderDocumentSnapshot {
+  documentTitle: string;
+  taxDocument: false;
+  orderNumber: string;
+  issuedAt: number;
+  currency: 'NPR';
+  paymentMethod: 'Cash on delivery';
+  paymentStatus: 'pending' | 'paid';
+  items: readonly {
+    productName: string;
+    sellerName: string;
+    sku: string;
+    unitPricePaisa: number;
+    quantity: number;
+    lineTotalPaisa: number;
+  }[];
+  itemSubtotalPaisa: number;
+  deliveryChargePaisa: number;
+  buyerPlatformFeePaisa: number;
+  taxTotalPaisa: number;
+  grandTotalPaisa: number;
+}
+
+function checkoutTermsSnapshot(): Record<string, unknown> {
+  const policy = phaseOneMarketplacePolicy;
+  return {
+    policyVersion: policy.version,
+    effectiveFrom: policy.effectiveFrom,
+    language: 'English',
+    payment: 'Cash on delivery; no online payment is collected.',
+    cancellation: {
+      freeBeforePacking: policy.value.cancellations.freeBeforePacking,
+      afterDispatchHandledAsReturn:
+        policy.value.cancellations.afterDispatchHandledAsReturn,
+    },
+    returns: policy.value.returns,
+    privacy:
+      'Order and contact data is used to fulfil the order, provide support, prevent abuse, and meet approved retention duties.',
+    grievancePath:
+      'Use the secure order page or Help page to contact Hathkriti.',
+  };
+}
+
 export async function createCodOrder(
   database: D1Database,
   tokenHash: string,
@@ -120,6 +163,29 @@ export async function createCodOrder(
     itemSubtotalPaisa + delivery.chargePaisa + buyerFeePaisa;
   const id = crypto.randomUUID();
   const number = orderNumber(now);
+  const termsSnapshot = checkoutTermsSnapshot();
+  const statementSnapshot: OrderDocumentSnapshot = {
+    documentTitle: 'Order statement',
+    taxDocument: false,
+    orderNumber: number,
+    issuedAt: now,
+    currency: 'NPR',
+    paymentMethod: 'Cash on delivery',
+    paymentStatus: 'pending',
+    items: items.map((item) => ({
+      productName: item.nameEn,
+      sellerName: item.tradingName,
+      sku: item.sku,
+      unitPricePaisa: item.pricePaisa,
+      quantity: item.quantity,
+      lineTotalPaisa: item.pricePaisa * item.quantity,
+    })),
+    itemSubtotalPaisa,
+    deliveryChargePaisa: delivery.chargePaisa,
+    buyerPlatformFeePaisa: buyerFeePaisa,
+    taxTotalPaisa: 0,
+    grandTotalPaisa,
+  };
   const statements: D1PreparedStatement[] = [
     database
       .prepare(
@@ -184,6 +250,40 @@ export async function createCodOrder(
         ),
     );
   }
+
+  statements.push(
+    database
+      .prepare(
+        `INSERT INTO order_policy_acceptances (
+          id, order_id, policy_version, terms_snapshot_json, acceptance_method,
+          actor_user_id, request_id, accepted_at
+        ) VALUES (?, ?, ?, ?, 'affirmative_checkbox', ?, ?, ?)`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        id,
+        phaseOneMarketplacePolicy.version,
+        JSON.stringify(termsSnapshot),
+        customerId,
+        `${input.idempotencyKey}:policy-acceptance`,
+        now,
+      ),
+    database
+      .prepare(
+        `INSERT INTO order_documents (
+          id, order_id, kind, document_number, snapshot_json, status,
+          request_id, issued_at, voided_at
+        ) VALUES (?, ?, 'order_statement', ?, ?, 'issued', ?, ?, NULL)`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        id,
+        `STMT-${number}`,
+        JSON.stringify(statementSnapshot),
+        `${input.idempotencyKey}:order-statement`,
+        now,
+      ),
+  );
 
   if (customerId) {
     for (const channel of ['in_app', 'email', 'sms'] as const) {
@@ -351,7 +451,18 @@ export interface OrderReceipt {
   locale: 'en-NP' | 'ne-NP';
   estimatedMinDays: number;
   estimatedMaxDays: number;
+  policyVersion: string;
+  termsAcceptedAt: number | null;
+  documents: readonly OrderDocumentRow[];
   items: readonly OrderReceiptItem[];
+}
+
+export interface OrderDocumentRow {
+  id: string;
+  kind: 'order_statement' | 'payment_receipt';
+  documentNumber: string;
+  status: 'issued' | 'void';
+  issuedAt: number;
 }
 
 export async function getOrderReceipt(
@@ -369,10 +480,13 @@ export async function getOrderReceipt(
         orders.delivery_charge_paisa AS deliveryChargePaisa,
         orders.grand_total_paisa AS grandTotalPaisa, orders.placed_at AS placedAt,
         orders.delivered_at AS deliveredAt, orders.locale,
+        orders.policy_version AS policyVersion,
+        order_policy_acceptances.accepted_at AS termsAcceptedAt,
         shipments.status AS shipmentStatus, shipments.tracking_code AS trackingCode,
         shipments.estimated_min_days AS estimatedMinDays,
         shipments.estimated_max_days AS estimatedMaxDays
        FROM orders INNER JOIN shipments ON shipments.order_id = orders.id
+       LEFT JOIN order_policy_acceptances ON order_policy_acceptances.order_id = orders.id
        WHERE orders.order_number = ?
          AND ((? IS NOT NULL AND orders.receipt_token_hash = ?) OR (? IS NOT NULL AND orders.customer_id = ?))
        LIMIT 1`,
@@ -384,24 +498,76 @@ export async function getOrderReceipt(
       customerId,
       customerId,
     )
-    .first<Omit<OrderReceipt, 'address' | 'items'> & { addressJson: string }>();
+    .first<
+      Omit<OrderReceipt, 'address' | 'items' | 'documents'> & {
+        addressJson: string;
+      }
+    >();
   if (!order) return null;
-  const itemResult = await database
-    .prepare(
-      `SELECT order_items.id, order_items.product_name_snapshot AS productName,
+  const [itemResult, documentResult] = await Promise.all([
+    database
+      .prepare(
+        `SELECT order_items.id, order_items.product_name_snapshot AS productName,
         order_items.seller_name_snapshot AS sellerName,
         order_items.unit_price_paisa AS unitPricePaisa, order_items.quantity,
         order_items.line_total_paisa AS lineTotalPaisa,
         order_items.return_eligible_snapshot AS returnEligible
        FROM order_items INNER JOIN orders ON orders.id = order_items.order_id
        WHERE orders.order_number = ? ORDER BY order_items.created_at ASC`,
-    )
-    .bind(orderNumberValue)
-    .all<OrderReceiptItem>();
+      )
+      .bind(orderNumberValue)
+      .all<OrderReceiptItem>(),
+    database
+      .prepare(
+        `SELECT order_documents.id, order_documents.kind,
+        order_documents.document_number AS documentNumber,
+        order_documents.status, order_documents.issued_at AS issuedAt
+       FROM order_documents INNER JOIN orders ON orders.id = order_documents.order_id
+       WHERE orders.order_number = ? ORDER BY order_documents.issued_at ASC`,
+      )
+      .bind(orderNumberValue)
+      .all<OrderDocumentRow>(),
+  ]);
   return {
     ...order,
     address: JSON.parse(order.addressJson) as CheckoutInput['address'],
     items: itemResult.results,
+    documents: documentResult.results,
+  };
+}
+
+export async function getOrderDocument(
+  database: D1Database,
+  orderNumberValue: string,
+  documentId: string,
+  receiptTokenHash: string | null,
+  customerId: string | null = null,
+): Promise<(OrderDocumentRow & { snapshot: OrderDocumentSnapshot }) | null> {
+  const row = await database
+    .prepare(
+      `SELECT order_documents.id, order_documents.kind,
+      order_documents.document_number AS documentNumber,
+      order_documents.status, order_documents.issued_at AS issuedAt,
+      order_documents.snapshot_json AS snapshotJson
+     FROM order_documents INNER JOIN orders ON orders.id = order_documents.order_id
+     WHERE orders.order_number = ? AND order_documents.id = ?
+       AND ((? IS NOT NULL AND orders.receipt_token_hash = ?)
+         OR (? IS NOT NULL AND orders.customer_id = ?))
+     LIMIT 1`,
+    )
+    .bind(
+      orderNumberValue,
+      documentId,
+      receiptTokenHash,
+      receiptTokenHash,
+      customerId,
+      customerId,
+    )
+    .first<OrderDocumentRow & { snapshotJson: string }>();
+  if (!row) return null;
+  return {
+    ...row,
+    snapshot: JSON.parse(row.snapshotJson) as OrderDocumentSnapshot,
   };
 }
 

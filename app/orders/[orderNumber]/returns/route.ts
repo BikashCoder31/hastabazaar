@@ -12,6 +12,7 @@ import {
   type ReturnEvidenceInput,
 } from '@/lib/db/repositories/returns';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import { getCustomerUser } from '@/lib/auth/customer';
 import {
   maximumEvidenceFiles,
@@ -40,6 +41,14 @@ export async function POST(
   const customer = await getCustomerUser();
   if (!token && !customer)
     return json({ error: 'Order access could not be verified.' }, 404);
+  const bindings = env as unknown as { DB?: D1Database; MEDIA?: R2Bucket };
+  const database = requireDatabase(bindings);
+  const rateLimit = await consumeRequestRateLimit(database, request, {
+    scope: 'customer-return',
+    limit: 10,
+    windowMs: 60 * 60_000,
+  });
+  if (!rateLimit.allowed) return rateLimitJson(rateLimit);
   if (
     Number(request.headers.get('content-length') ?? 0) >
     maximumReturnRequestBytes
@@ -69,8 +78,6 @@ export async function POST(
   }
 
   const { orderNumber } = await context.params;
-  const bindings = env as unknown as { DB?: D1Database; MEDIA?: R2Bucket };
-  const database = requireDatabase(bindings);
   const bucket = requireMediaBucket(bindings);
   const returnRequestId = crypto.randomUUID();
   const uploaded: ReturnEvidenceInput[] = [];

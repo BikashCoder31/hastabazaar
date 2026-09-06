@@ -10,6 +10,7 @@ import {
   reviseAndResubmitProduct,
 } from '@/lib/db/repositories/products';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import {
   maximumProductSubmissionBytes,
   parseProductSubmission,
@@ -22,15 +23,22 @@ import {
 export const dynamic = 'force-dynamic';
 
 function json(body: unknown, status: number): Response {
-  return Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
+  return Response.json(body, {
+    status,
+    headers: { 'Cache-Control': 'no-store' },
+  });
 }
 
 export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  if (!isTrustedMutationRequest(request)) return json({ error: 'Cross-site requests are not allowed.' }, 403);
-  if (Number(request.headers.get('content-length') ?? 0) > maximumProductSubmissionBytes) {
+  if (!isTrustedMutationRequest(request))
+    return json({ error: 'Cross-site requests are not allowed.' }, 403);
+  if (
+    Number(request.headers.get('content-length') ?? 0) >
+    maximumProductSubmissionBytes
+  ) {
     return json({ error: 'The product submission is too large.' }, 413);
   }
 
@@ -41,10 +49,23 @@ export async function PATCH(
     const { id } = await context.params;
     const bindings = env as unknown as { DB?: D1Database; MEDIA?: R2Bucket };
     const database = requireDatabase(bindings);
-    const current = await getSellerProductForRevision(database, seller.sellerId, id);
+    const rateLimit = await consumeRequestRateLimit(database, request, {
+      scope: `seller-product-revision:${seller.sellerId}`,
+      limit: 20,
+      windowMs: 60 * 60_000,
+    });
+    if (!rateLimit.allowed) return rateLimitJson(rateLimit);
+    const current = await getSellerProductForRevision(
+      database,
+      seller.sellerId,
+      id,
+    );
     if (!current) return json({ error: 'Product not found.' }, 404);
     if (current.status !== 'needs_changes') {
-      return json({ error: 'Only products needing changes can be revised.' }, 409);
+      return json(
+        { error: 'Only products needing changes can be revised.' },
+        409,
+      );
     }
 
     let formData: FormData;
@@ -54,7 +75,8 @@ export async function PATCH(
       return json({ error: 'The product form could not be read.' }, 400);
     }
     const parsed = parseProductSubmission(formData);
-    if (!parsed.input) return json({ error: parsed.errors[0], errors: parsed.errors }, 400);
+    if (!parsed.input)
+      return json({ error: parsed.errors[0], errors: parsed.errors }, 400);
     if (!(await isActiveCategory(database, parsed.input.categoryId))) {
       return json({ error: 'Select an active product category.' }, 400);
     }
@@ -67,14 +89,17 @@ export async function PATCH(
     for (const field of productImageFields) {
       const value = formData.get(field);
       if (!(value instanceof File) || value.size === 0) continue;
-      const error = validateProductImage(value) ?? (await validateProductImageContent(value));
+      const error =
+        validateProductImage(value) ??
+        (await validateProductImageContent(value));
       if (error) imageErrors.push(`${field}: ${error}`);
       else files.push(value);
     }
     if (current.mediaCount + files.length > 5) {
       imageErrors.push('A product can have no more than 5 images.');
     }
-    if (imageErrors.length > 0) return json({ error: imageErrors[0], errors: imageErrors }, 400);
+    if (imageErrors.length > 0)
+      return json({ error: imageErrors[0], errors: imageErrors }, 400);
 
     bucket = requireMediaBucket(bindings);
     const images: ProductImageUpload[] = [];
@@ -107,16 +132,24 @@ export async function PATCH(
       previousInventory: current.inventoryQuantity,
       now: Date.now(),
     });
-    return json({ id, status: 'submitted', message: 'Product revised and resubmitted.' }, 200);
+    return json(
+      { id, status: 'submitted', message: 'Product revised and resubmitted.' },
+      200,
+    );
   } catch (error) {
     if (bucket && uploadedKeys.length > 0) {
       const cleanupBucket = bucket;
-      await Promise.allSettled(uploadedKeys.map((key) => cleanupBucket.delete(key)));
+      await Promise.allSettled(
+        uploadedKeys.map((key) => cleanupBucket.delete(key)),
+      );
     }
-    if (error instanceof SellerAuthorizationError) return json({ error: error.message }, error.status);
-    if (error instanceof ProductRevisionConflictError) return json({ error: error.message }, 409);
+    if (error instanceof SellerAuthorizationError)
+      return json({ error: error.message }, error.status);
+    if (error instanceof ProductRevisionConflictError)
+      return json({ error: error.message }, 409);
     const message = error instanceof Error ? error.message : '';
-    if (message.includes('UNIQUE constraint failed')) return json({ error: 'This SKU is already used by your shop.' }, 409);
+    if (message.includes('UNIQUE constraint failed'))
+      return json({ error: 'This SKU is already used by your shop.' }, 409);
     return json({ error: 'The product could not be resubmitted.' }, 500);
   }
 }

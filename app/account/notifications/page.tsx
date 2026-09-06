@@ -15,13 +15,13 @@ export default async function CustomerNotificationsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="eyebrow">Account / खाता</p>
-        <h1 className="section-title">Notifications / सूचनाहरू</h1>
+        <p className="eyebrow">Account</p>
+        <h1 className="section-title">Notifications</h1>
         <p className="mt-2 text-muted-foreground">
           In-app updates and the delivery state of queued email/SMS messages.
         </p>
       </div>
-      <NotificationList initial={items} locale={customer.locale} />
+      <NotificationList initial={items} />
     </div>
   );
 }

@@ -29,6 +29,8 @@ import {
 } from '../lib/db/repositories/complaints';
 import {
   countPublishedProducts,
+  createProductSubmission,
+  getSellerProductForRevision,
   listPublicDiscoveryCategories,
   listPublishedProducts,
 } from '../lib/db/repositories/products';
@@ -67,6 +69,14 @@ import {
   performGovernanceAction,
 } from '../lib/db/repositories/operations';
 import { ensureConfiguredStaffBootstrap } from '../lib/auth/staff-bootstrap';
+import {
+  createCodOrder,
+  getOrderDocument,
+  getOrderReceipt,
+} from '../lib/db/repositories/orders';
+import { transitionAdminFulfillment } from '../lib/db/repositories/fulfillment';
+import { consumeRequestRateLimit } from '../lib/http/rate-limit';
+import { parseProductSubmission } from '../lib/products/submission';
 
 const now = 1_788_672_000_000;
 const policy: ReturnPolicySnapshot = {
@@ -399,6 +409,308 @@ void test('snapshotted eligibility preserves statutory review and rejects late c
     }).decision,
     'ineligible',
   );
+});
+
+void test('product compliance validation requires return terms and valid preparation dates', () => {
+  const form = new FormData();
+  for (const [name, value] of Object.entries({
+    categoryId: 'cat',
+    sku: 'HK-TEST-NEW',
+    nameEn: 'Handmade test piece',
+    descriptionEn: 'A sufficiently detailed handmade product description.',
+    price: '1500.00',
+    inventoryQuantity: '3',
+    producer: 'Maker One',
+    materials: 'Natural fibre',
+    preparationDays: '4',
+    manufacturedAt: '2026-09-01',
+    expiresAt: '2027-09-01',
+    returnEligible: 'yes',
+  }))
+    form.set(name, value);
+  form.append('occasionIds', 'occasion-wedding');
+  assert.match(
+    parseProductSubmission(form).errors.join(' '),
+    /return conditions/i,
+  );
+  form.set(
+    'returnConditions',
+    'Unused and undamaged in the original packaging.',
+  );
+  const parsed = parseProductSubmission(form);
+  assert.deepEqual(parsed.errors, []);
+  assert.equal(parsed.input?.preparationDays, 4);
+  assert.equal(parsed.input?.madeToOrder, false);
+  assert.ok(parsed.input?.manufacturedAt);
+  assert.ok(parsed.input?.expiresAt);
+});
+
+void test('seller product compliance disclosures persist for moderation', async () => {
+  const fixture = await databaseFixture();
+  const db = fixture.database as unknown as D1Database;
+  try {
+    await db
+      .prepare(
+        `INSERT INTO occasions (id, slug, name_en, is_active, sort_order, created_at, updated_at)
+       VALUES ('occasion-compliance', 'compliance-gift', 'Compliance gift', 1, 1, ?, ?)`,
+      )
+      .bind(now, now)
+      .run();
+    await createProductSubmission(db, {
+      productId: 'product-compliance',
+      sellerId: 'seller-1',
+      actorId: 'seller-user-1',
+      slug: 'compliance-product',
+      input: {
+        categoryId: 'cat',
+        occasionIds: ['occasion-compliance'],
+        sku: 'COMPLIANCE-1',
+        nameEn: 'Compliance product',
+        nameNe: null,
+        descriptionEn:
+          'A product containing the complete applicable disclosure set.',
+        descriptionNe: null,
+        pricePaisa: 150_000,
+        compareAtPricePaisa: null,
+        inventoryQuantity: 3,
+        producer: 'Maker One',
+        materials: 'Natural fibre',
+        dimensions: '20 × 10 cm',
+        careInstructions: 'Wipe with a dry cloth.',
+        safetyInformation: 'Keep away from open flame.',
+        returnConditions: 'Unused and undamaged in the original packaging.',
+        returnEligible: true,
+        warranty: '30-day workmanship guarantee.',
+        madeToOrder: true,
+        preparationDays: 5,
+        manufacturedAt: now - 86_400_000,
+        expiresAt: null,
+        licenceReference: null,
+      },
+      images: [],
+      now,
+    });
+    const stored = await getSellerProductForRevision(
+      db,
+      'seller-1',
+      'product-compliance',
+    );
+    assert.equal(
+      stored?.returnConditions,
+      'Unused and undamaged in the original packaging.',
+    );
+    assert.equal(stored?.madeToOrder, 1);
+    assert.equal(stored?.preparationDays, 5);
+    assert.equal(stored?.manufacturedAt, now - 86_400_000);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+void test('checkout retains accepted terms and issues immutable order and COD documents', async () => {
+  const fixture = await databaseFixture();
+  const db = fixture.database as unknown as D1Database;
+  try {
+    await db
+      .prepare(
+        `INSERT INTO carts (id, anonymous_token_hash, currency, created_at, updated_at)
+       VALUES ('cart-docs', 'cart-token-docs', 'NPR', ?, ?)`,
+      )
+      .bind(now, now)
+      .run();
+    await db
+      .prepare(
+        `INSERT INTO cart_items (id, cart_id, product_id, quantity, created_at, updated_at)
+       VALUES ('cart-item-docs', 'cart-docs', 'product-1', 2, ?, ?)`,
+      )
+      .bind(now, now)
+      .run();
+    const order = await createCodOrder(
+      db,
+      'cart-token-docs',
+      'receipt-token-docs',
+      {
+        customerEmail: 'buyer@example.test',
+        customerPhone: '9811111111',
+        locale: 'en-NP',
+        termsAccepted: true,
+        idempotencyKey: '550e8400-e29b-41d4-a716-446655440000',
+        address: {
+          recipientName: 'Buyer One',
+          phone: '9811111111',
+          province: 'Madhesh',
+          district: 'Dhanusha',
+          municipality: 'Janakpur',
+          locality: 'Ward 1',
+        },
+      },
+      now,
+    );
+    const repeated = await createCodOrder(
+      db,
+      'cart-token-docs',
+      'receipt-token-docs',
+      {
+        customerEmail: 'buyer@example.test',
+        customerPhone: '9811111111',
+        locale: 'en-NP',
+        termsAccepted: true,
+        idempotencyKey: '550e8400-e29b-41d4-a716-446655440000',
+        address: {
+          recipientName: 'Buyer One',
+          phone: '9811111111',
+          province: 'Madhesh',
+          district: 'Dhanusha',
+          municipality: 'Janakpur',
+          locality: 'Ward 1',
+        },
+      },
+      now,
+    );
+    assert.equal(repeated.orderNumber, order.orderNumber);
+    const receipt = await getOrderReceipt(
+      db,
+      order.orderNumber,
+      'receipt-token-docs',
+    );
+    assert.equal(receipt?.policyVersion, 'phase-1.0');
+    assert.equal(receipt?.termsAcceptedAt, now);
+    assert.equal(receipt?.documents.length, 1);
+    const statement = receipt?.documents[0];
+    assert.ok(statement);
+    const statementDetail = await getOrderDocument(
+      db,
+      order.orderNumber,
+      statement.id,
+      'receipt-token-docs',
+    );
+    assert.equal(statementDetail?.snapshot.taxDocument, false);
+    assert.equal(
+      statementDetail?.snapshot.grandTotalPaisa,
+      order.grandTotalPaisa,
+    );
+    assert.equal(
+      await getOrderDocument(
+        db,
+        order.orderNumber,
+        statement.id,
+        'wrong-receipt-token',
+      ),
+      null,
+    );
+
+    const orderId = await db
+      .prepare(`SELECT id FROM orders WHERE order_number = ?`)
+      .bind(order.orderNumber)
+      .first<{ id: string }>();
+    assert.ok(orderId);
+    await db
+      .prepare(`UPDATE orders SET status = 'ready_for_pickup' WHERE id = ?`)
+      .bind(orderId.id)
+      .run();
+    await db
+      .prepare(
+        `UPDATE order_items SET fulfillment_status = 'ready_for_pickup' WHERE order_id = ?`,
+      )
+      .bind(orderId.id)
+      .run();
+    await transitionAdminFulfillment(db, {
+      orderId: orderId.id,
+      actorId: 'admin-1',
+      action: 'dispatch',
+      note: 'Manual dispatch reference confirmed.',
+      trackingCode: 'MANUAL-TEST-1',
+      requestId: 'dispatch-doc-test',
+      now: now + 1,
+    });
+    await transitionAdminFulfillment(db, {
+      orderId: orderId.id,
+      actorId: 'admin-1',
+      action: 'deliver',
+      note: 'COD collection and delivery confirmed.',
+      requestId: 'deliver-doc-test',
+      now: now + 2,
+    });
+    const delivered = await getOrderReceipt(
+      db,
+      order.orderNumber,
+      'receipt-token-docs',
+    );
+    assert.equal(delivered?.documents.length, 2);
+    assert.equal(delivered?.paymentStatus, 'paid');
+    const paymentDocument = delivered?.documents.find(
+      (item) => item.kind === 'payment_receipt',
+    );
+    assert.ok(paymentDocument);
+    const paymentDetail = await getOrderDocument(
+      db,
+      order.orderNumber,
+      paymentDocument.id,
+      'receipt-token-docs',
+    );
+    assert.equal(paymentDetail?.snapshot.paymentStatus, 'paid');
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+void test('database rate limits allow the configured window and reject repeats', async () => {
+  const fixture = await databaseFixture();
+  const db = fixture.database as unknown as D1Database;
+  try {
+    const request = new Request('https://example.test/api/action', {
+      headers: {
+        'cf-connecting-ip': '203.0.113.5',
+        'user-agent': 'test-agent',
+      },
+    });
+    assert.equal(
+      (
+        await consumeRequestRateLimit(db, request, {
+          scope: 'test',
+          limit: 2,
+          windowMs: 60_000,
+          now,
+        })
+      ).allowed,
+      true,
+    );
+    assert.equal(
+      (
+        await consumeRequestRateLimit(db, request, {
+          scope: 'test',
+          limit: 2,
+          windowMs: 60_000,
+          now: now + 1,
+        })
+      ).allowed,
+      true,
+    );
+    assert.equal(
+      (
+        await consumeRequestRateLimit(db, request, {
+          scope: 'test',
+          limit: 2,
+          windowMs: 60_000,
+          now: now + 2,
+        })
+      ).allowed,
+      false,
+    );
+    assert.equal(
+      (
+        await consumeRequestRateLimit(db, request, {
+          scope: 'test',
+          limit: 2,
+          windowMs: 60_000,
+          now: now + 60_001,
+        })
+      ).allowed,
+      true,
+    );
+  } finally {
+    await fixture.dispose();
+  }
 });
 
 void test('catalogue search combines safe text, category, and occasion filters', async () => {

@@ -2,6 +2,8 @@ import { env } from 'cloudflare:workers';
 
 import { requireDatabase, requireMediaBucket } from '@/lib/db/d1';
 import { createSellerApplication } from '@/lib/db/repositories/seller-applications';
+import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import {
   createSellerApplicationReference,
   maximumApplicationBytes,
@@ -22,6 +24,16 @@ function json(body: unknown, status: number): Response {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  if (!isTrustedMutationRequest(request))
+    return json({ error: 'Cross-site requests are not allowed.' }, 403);
+  const bindings = env as unknown as { DB?: D1Database; MEDIA?: R2Bucket };
+  const database = requireDatabase(bindings);
+  const rateLimit = await consumeRequestRateLimit(database, request, {
+    scope: 'seller-application',
+    limit: 5,
+    windowMs: 60 * 60_000,
+  });
+  if (!rateLimit.allowed) return rateLimitJson(rateLimit);
   const contentLength = Number(request.headers.get('content-length') ?? 0);
   if (contentLength > maximumApplicationBytes) {
     return json({ error: 'The application upload is too large.' }, 413);
@@ -70,11 +82,6 @@ export async function POST(request: Request): Promise<Response> {
     return json({ error: fileErrors[0], errors: fileErrors }, 400);
   }
 
-  const bindings = env as unknown as {
-    DB?: D1Database;
-    MEDIA?: R2Bucket;
-  };
-  const database = requireDatabase(bindings);
   const bucket = requireMediaBucket(bindings);
   const userId = crypto.randomUUID();
   const sellerId = crypto.randomUUID();

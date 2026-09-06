@@ -41,7 +41,12 @@ export async function POST(request: Request): Promise<Response> {
         input: {
           slug: typeof body.slug === 'string' ? body.slug : '',
           nameEn: typeof body.nameEn === 'string' ? body.nameEn : '',
-          nameNe: typeof body.nameNe === 'string' ? body.nameNe : '',
+          nameNe:
+            typeof body.nameNe === 'string' && body.nameNe.trim()
+              ? body.nameNe
+              : typeof body.nameEn === 'string'
+                ? body.nameEn
+                : '',
           isActive: Boolean(body.isActive),
           sortOrder: Number(body.sortOrder),
         },

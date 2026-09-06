@@ -13,8 +13,8 @@ export default async function PrivacyPage() {
   return (
     <div className="space-y-7">
       <div>
-        <p className="eyebrow">Privacy / गोपनीयता</p>
-        <h1 className="section-title">Your data rights / तपाईंका डाटा अधिकार</h1>
+        <p className="eyebrow">Privacy</p>
+        <h1 className="section-title">Your data rights</h1>
         <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
           Deletion is reviewed against order, tax, fraud-prevention, and audit
           retention duties; immutable audit facts are not silently erased.

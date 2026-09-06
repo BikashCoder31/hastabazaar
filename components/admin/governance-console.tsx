@@ -32,14 +32,19 @@ export function GovernanceConsole({
     router.refresh();
   }
   function createRule(form: FormData) {
-    return send('rule.create', Object.fromEntries(form));
+    const values = Object.fromEntries(form);
+    return send('rule.create', {
+      ...values,
+      titleNe: values.titleEn,
+      descriptionNe: values.descriptionEn,
+    });
   }
   function createPromotion(form: FormData) {
     const startsAt = form.get('startsAt');
     const endsAt = form.get('endsAt');
     return send('promotion.create', {
       nameEn: form.get('nameEn'),
-      nameNe: form.get('nameNe'),
+      nameNe: form.get('nameEn'),
       placement: form.get('placement'),
       startsAt:
         typeof startsAt === 'string'
@@ -81,22 +86,10 @@ export function GovernanceConsole({
             placeholder="English title"
             className="rounded-lg border p-2"
           />
-          <input
-            name="titleNe"
-            required
-            placeholder="नेपाली शीर्षक"
-            className="rounded-lg border p-2"
-          />
           <textarea
             name="descriptionEn"
             required
             placeholder="English guidance"
-            className="rounded-lg border p-2"
-          />
-          <textarea
-            name="descriptionNe"
-            required
-            placeholder="नेपाली मार्गदर्शन"
             className="rounded-lg border p-2"
           />
           <select name="severity" className="rounded-lg border p-2">
@@ -120,9 +113,7 @@ export function GovernanceConsole({
                 <strong>
                   {rule.code}: {rule.titleEn}
                 </strong>
-                <small className="ml-2">
-                  {rule.titleNe} · {rule.severity}
-                </small>
+                <small className="ml-2">{rule.severity}</small>
               </span>
               <button
                 onClick={() =>
@@ -151,12 +142,6 @@ export function GovernanceConsole({
             name="nameEn"
             required
             placeholder="English name"
-            className="rounded-lg border p-2"
-          />
-          <input
-            name="nameNe"
-            required
-            placeholder="नेपाली नाम"
             className="rounded-lg border p-2"
           />
           <select name="placement" className="rounded-lg border p-2">
@@ -207,9 +192,7 @@ export function GovernanceConsole({
               className="flex flex-wrap items-center justify-between gap-3 border-t py-3 text-sm"
             >
               <span>
-                <strong>
-                  {item.nameEn} / {item.nameNe}
-                </strong>
+                <strong>{item.nameEn}</strong>
                 <small className="ml-2 capitalize">
                   {item.placement} · {item.status.replaceAll('_', ' ')} · maker{' '}
                   {item.creatorName}

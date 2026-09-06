@@ -19,3 +19,7 @@ Authenticated customers can request data access, correction, deletion, or object
 ## Reporting and resilience boundaries
 
 Seller reports expose only that seller's delivered sales, units, returns, and inventory. Marketplace reports aggregate order value, delivered value, sellers, cases, refunds, and payouts using integer paisa. Incident and backup-verification registers support operational evidence, but they do not create infrastructure backups or external alerts. Production backup schedules, restore drills, email/SMS delivery, carrier webhooks, bank settlement imports, legal schedules, and monitoring require approved provider configuration before launch.
+
+## Request abuse controls
+
+All mutation routes use same-origin checks. Migration `0020` adds a D1-backed fixed-window limiter with hashed request fingerprints; checkout, seller applications, customer return uploads, complaints, verified reviews, and privacy requests enforce scoped limits before expensive or high-risk work. File type, size, count, and magic-byte checks remain in place. Turnstile and malware scanning are intentionally not claimed because they require external services; they remain launch-provider decisions.

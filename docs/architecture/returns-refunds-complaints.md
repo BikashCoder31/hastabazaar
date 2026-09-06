@@ -21,7 +21,7 @@ The working high-value threshold is **NPR 10,000** (`1_000_000` paisa). It is po
 
 ## Return workflow
 
-1. A customer selects one delivered item, quantity, reason, refund or replacement preference, language, details, and up to five JPG, PNG, WebP, or PDF evidence files.
+1. A customer selects one delivered item, quantity, reason, refund or replacement preference, details, and up to five JPG, PNG, WebP, or PDF evidence files. The current interface is English-only.
 2. Evidence bytes are stored in private R2 objects; D1 stores opaque object keys and verified metadata. Access is limited to the receipt holder, the owning seller, or staff.
 3. The owning seller may submit one factual recommendation without seeing unrelated customer information. The seller does not decide the case.
 4. Admin can request customer changes, reject, or approve a refund, replacement, or return-to-origin outcome and assign buyer, seller, carrier, or platform responsibility.
@@ -34,17 +34,17 @@ Return creation, seller response, every review, high-value decision, physical mo
 
 ## Complaint workflow
 
-Customers can create an order-wide or item-specific complaint in English or Nepali. Safety complaints start at urgent priority. Item complaints snapshot the seller boundary so only that seller can respond, again without customer contact data.
+Customers can create an order-wide or item-specific complaint in English. Safety complaints start at urgent priority. Item complaints snapshot the seller boundary so only that seller can respond, again without customer contact data. Bilingual-ready event fields remain populated with the English message until translation is re-enabled.
 
-Staff can assign a case to themselves, investigate it, request customer information, escalate it to an active Super Admin, resolve it with English and Nepali resolution text, reopen it, and close it. Customer replies move a waiting case back to investigation. Every change appends a bilingual `complaint_events` record plus an audit record; case history is never updated or deleted in place.
+Staff can assign a case to themselves, investigate it, request customer information, escalate it to an active Super Admin, resolve it, reopen it, and close it. Customer replies move a waiting case back to investigation. Every change appends a bilingual-ready `complaint_events` record plus an audit record; case history is never updated or deleted in place.
 
 ## Controlled-launch boundaries
 
 - COD refunds record a verified manual transaction reference; no bank, wallet, card, or carrier integration is guessed.
 - Bank/wallet destination capture and verification are not implemented. Operations must use an approved off-system verification procedure before entering a payment reference.
 - Manual outbound and return shipping jobs now record labels, tracking, pickup, transit, claims, and reconciliation per order/seller boundary. Live Nepal Can Move booking and webhooks remain blocked on the merchant contract and provider-issued documentation.
-- Production Super Admin identity, policy publication, malware scanning, upload abuse controls, notification delivery, accounting reconciliation, and legal retention schedules remain launch gates.
+- Production Super Admin identity, policy publication, malware scanning, challenge-based abuse controls, notification delivery, accounting reconciliation, and legal retention schedules remain launch gates. Internal same-origin validation, file limits/signature checks, and D1 request throttling are implemented.
 
 ## Verification
 
-`tests/returns-complaints.test.ts` applies every migration to an isolated in-memory SQLite database and covers policy decisions, idempotent retries, cross-seller denial, Admin rejection, ordinary seller-liability refund completion, exactly-once stock/ledger effects, high-value maker-checker enforcement, complaint assignment, customer and seller responses, escalation, and resolution.
+`tests/returns-complaints.test.ts` applies every migration through `0020` to isolated clean SQLite databases and covers product disclosures, checkout policy acceptance, order/payment documents, request throttling, policy decisions, idempotent retries, cross-seller denial, Admin rejection, ordinary seller-liability refund completion, exactly-once stock/ledger effects, high-value maker-checker enforcement, complaint assignment, customer and seller responses, escalation, and resolution.

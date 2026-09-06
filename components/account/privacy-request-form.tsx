@@ -25,14 +25,12 @@ export function PrivacyRequestForm() {
     setBusy(false);
     if (!response.ok)
       return setMessage(body.error ?? 'Request could not be submitted.');
-    setMessage('Request submitted. / अनुरोध पेश भयो।');
+    setMessage('Request submitted.');
     router.refresh();
   }
   return (
     <form action={submit} className="space-y-4 rounded-2xl border bg-card p-6">
-      <h2 className="font-heading text-2xl">
-        New privacy request / नयाँ गोपनीयता अनुरोध
-      </h2>
+      <h2 className="font-heading text-2xl">New privacy request</h2>
       <label className="block text-sm font-semibold">
         Request type
         <select
@@ -40,16 +38,14 @@ export function PrivacyRequestForm() {
           className="mt-2 w-full rounded-lg border bg-background p-3"
           required
         >
-          <option value="access">Access my data / डाटा हेर्न</option>
-          <option value="correction">Correct my data / सच्याउन</option>
-          <option value="deletion">Delete eligible data / मेटाउन</option>
-          <option value="retention_objection">
-            Object to retention / राखिएकोमा आपत्ति
-          </option>
+          <option value="access">Access my data</option>
+          <option value="correction">Correct my data</option>
+          <option value="deletion">Delete eligible data</option>
+          <option value="retention_objection">Object to retention</option>
         </select>
       </label>
       <label className="block text-sm font-semibold">
-        Details / विवरण
+        Details
         <textarea
           name="detail"
           minLength={20}
@@ -62,7 +58,7 @@ export function PrivacyRequestForm() {
         disabled={busy}
         className="rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50"
       >
-        {busy ? 'Submitting…' : 'Submit request / अनुरोध पठाउनुहोस्'}
+        {busy ? 'Submitting…' : 'Submit request'}
       </button>
       {message ? <output className="block text-sm">{message}</output> : null}
     </form>

@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { CheckCircle2, ImagePlus, LoaderCircle, ShieldCheck } from 'lucide-react';
+import {
+  CheckCircle2,
+  ImagePlus,
+  LoaderCircle,
+  ShieldCheck,
+} from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -16,7 +21,10 @@ import {
   FieldSet,
 } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
 import type {
   CategoryRow,
@@ -44,12 +52,23 @@ interface ModelContext {
   ): void | Promise<void>;
 }
 
-function setFormValue(form: HTMLFormElement, name: string, value: string): void {
+function setFormValue(
+  form: HTMLFormElement,
+  name: string,
+  value: string,
+): void {
   const field = form.elements.namedItem(name);
-  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+  if (
+    field instanceof HTMLInputElement ||
+    field instanceof HTMLTextAreaElement
+  ) {
     field.value = value;
     field.dispatchEvent(new Event('input', { bubbles: true }));
   }
+}
+
+function dateInputValue(value: number | null | undefined): string {
+  return value ? new Date(value).toISOString().slice(0, 10) : '';
 }
 
 export function ProductSubmissionForm({
@@ -66,7 +85,9 @@ export function ProductSubmissionForm({
   const isRevision = Boolean(initial);
 
   useEffect(() => {
-    const modelContext = (document as Document & { modelContext?: ModelContext }).modelContext;
+    const modelContext = (
+      document as Document & { modelContext?: ModelContext }
+    ).modelContext;
     if (!modelContext?.registerTool) return;
     const lifecycle = new AbortController();
     try {
@@ -82,9 +103,7 @@ export function ProductSubmissionForm({
               properties: {
                 sku: { type: 'string' },
                 nameEn: { type: 'string' },
-                nameNe: { type: 'string' },
                 descriptionEn: { type: 'string' },
-                descriptionNe: { type: 'string' },
                 price: { type: 'string' },
                 inventoryQuantity: { type: 'string' },
                 producer: { type: 'string' },
@@ -92,7 +111,14 @@ export function ProductSubmissionForm({
                 dimensions: { type: 'string' },
                 careInstructions: { type: 'string' },
               },
-              required: ['sku', 'nameEn', 'descriptionEn', 'price', 'producer', 'materials'],
+              required: [
+                'sku',
+                'nameEn',
+                'descriptionEn',
+                'price',
+                'producer',
+                'materials',
+              ],
               additionalProperties: false,
             },
             annotations: { readOnlyHint: false, untrustedContentHint: false },
@@ -101,12 +127,19 @@ export function ProductSubmissionForm({
               if (!form || !input || typeof input !== 'object') {
                 throw new Error('The product form is not available.');
               }
-              for (const [name, value] of Object.entries(input as Record<string, unknown>)) {
+              for (const [name, value] of Object.entries(
+                input as Record<string, unknown>,
+              )) {
                 if (typeof value === 'string') setFormValue(form, name, value);
               }
               form.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              form.querySelector<HTMLInputElement>('input[name="sku"]')?.focus();
-              return { status: 'prepared', next: 'Select a category and gift occasions, review the details, and attach product photos.' };
+              form
+                .querySelector<HTMLInputElement>('input[name="sku"]')
+                ?.focus();
+              return {
+                status: 'prepared',
+                next: 'Select a category and gift occasions, review the details, and attach product photos.',
+              };
             },
           },
           { signal: lifecycle.signal },
@@ -118,28 +151,34 @@ export function ProductSubmissionForm({
     return () => lifecycle.abort();
   }, []);
 
-  async function submit(event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>) {
+  async function submit(
+    event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>,
+  ) {
     event.preventDefault();
     setState({ status: 'submitting' });
     const form = event.currentTarget;
     try {
       const response = await fetch(
-        initial ? `/api/seller/products/${encodeURIComponent(initial.id)}` : '/api/seller/products',
+        initial
+          ? `/api/seller/products/${encodeURIComponent(initial.id)}`
+          : '/api/seller/products',
         {
-        method: initial ? 'PATCH' : 'POST',
-        body: new FormData(form),
-        headers: { Accept: 'application/json' },
+          method: initial ? 'PATCH' : 'POST',
+          body: new FormData(form),
+          headers: { Accept: 'application/json' },
         },
       );
       const result = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(result.error || 'Product submission failed.');
+      if (!response.ok)
+        throw new Error(result.error || 'Product submission failed.');
       form.reset();
       setState({ status: 'success' });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
       setState({
         status: 'error',
-        message: error instanceof Error ? error.message : 'Product submission failed.',
+        message:
+          error instanceof Error ? error.message : 'Product submission failed.',
       });
     }
   }
@@ -148,46 +187,83 @@ export function ProductSubmissionForm({
     return (
       <div className="rounded-2xl border bg-card p-8 shadow-sm">
         <CheckCircle2 className="size-10 text-primary" />
-        <h2 className="mt-5 font-heading text-3xl">{isRevision ? 'Product revised and resubmitted' : 'Product sent for review'}</h2>
+        <h2 className="mt-5 font-heading text-3xl">
+          {isRevision
+            ? 'Product revised and resubmitted'
+            : 'Product sent for review'}
+        </h2>
         <p className="mt-3 max-w-xl leading-7 text-muted-foreground">
-          Hathkriti will verify the listing before it can appear in the public shop.
+          Hathkriti will verify the listing before it can appear in the public
+          shop.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
-          <Link href="/seller/products" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">View my products</Link>
-          <Button variant="outline" onClick={() => setState({ status: 'idle' })}>Add another product</Button>
+          <Link
+            href="/seller/products"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+          >
+            View my products
+          </Link>
+          <Button
+            variant="outline"
+            onClick={() => setState({ status: 'idle' })}
+          >
+            Add another product
+          </Button>
         </div>
       </div>
     );
   }
 
   return (
-    <form ref={formRef} onSubmit={submit} className="space-y-9 rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
+    <form
+      ref={formRef}
+      onSubmit={submit}
+      className="space-y-9 rounded-2xl border bg-card p-6 shadow-sm sm:p-8"
+    >
       <FieldSet>
         <FieldLegend>Listing identity</FieldLegend>
-        <FieldDescription>Use a unique SKU from your own stock records.</FieldDescription>
+        <FieldDescription>
+          Use a unique SKU from your own stock records.
+        </FieldDescription>
         <FieldGroup className="grid gap-5 md:grid-cols-2">
           <Field>
             <FieldLabel htmlFor="categoryId">Category</FieldLabel>
-            <NativeSelect id="categoryId" name="categoryId" required className="w-full" defaultValue={initial?.categoryId}>
+            <NativeSelect
+              id="categoryId"
+              name="categoryId"
+              required
+              className="w-full"
+              defaultValue={initial?.categoryId}
+            >
               <NativeSelectOption value="">Select category</NativeSelectOption>
               {categories.map((category) => (
                 <NativeSelectOption key={category.id} value={category.id}>
-                  {category.nameEn}{category.nameNe ? ` · ${category.nameNe}` : ''}
+                  {category.nameEn}
                 </NativeSelectOption>
               ))}
             </NativeSelect>
           </Field>
           <Field>
             <FieldLabel htmlFor="sku">SKU</FieldLabel>
-            <Input id="sku" name="sku" required minLength={3} maxLength={40} placeholder="HK-BAG-001" defaultValue={initial?.sku} />
+            <Input
+              id="sku"
+              name="sku"
+              required
+              minLength={3}
+              maxLength={40}
+              placeholder="HK-BAG-001"
+              defaultValue={initial?.sku}
+            />
           </Field>
           <Field>
             <FieldLabel htmlFor="nameEn">Product name — English</FieldLabel>
-            <Input id="nameEn" name="nameEn" required maxLength={160} defaultValue={initial?.nameEn} />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="nameNe">Product name — Nepali</FieldLabel>
-            <Input id="nameNe" name="nameNe" maxLength={160} lang="ne" defaultValue={initial?.nameNe ?? ''} />
+            <Input
+              id="nameEn"
+              name="nameEn"
+              required
+              maxLength={160}
+              defaultValue={initial?.nameEn}
+            />
           </Field>
         </FieldGroup>
       </FieldSet>
@@ -195,20 +271,27 @@ export function ProductSubmissionForm({
       <FieldSet>
         <FieldLegend>Gift occasions</FieldLegend>
         <FieldDescription>
-          Select 1–5 occasions where this product is a good fit. These choices power customer discovery and are checked during moderation.
+          Select 1–5 occasions where this product is a good fit. These choices
+          power customer discovery and are checked during moderation.
         </FieldDescription>
         <FieldGroup className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {occasions.map((occasion) => (
-            <Field key={occasion.id} orientation="horizontal" className="rounded-xl border p-3">
+            <Field
+              key={occasion.id}
+              orientation="horizontal"
+              className="rounded-xl border p-3"
+            >
               <Checkbox
                 id={`occasion-${occasion.id}`}
                 name="occasionIds"
                 value={occasion.id}
                 defaultChecked={initial?.occasionIds.includes(occasion.id)}
               />
-              <FieldLabel htmlFor={`occasion-${occasion.id}`} className="font-normal">
+              <FieldLabel
+                htmlFor={`occasion-${occasion.id}`}
+                className="font-normal"
+              >
                 <span>{occasion.nameEn}</span>
-                {occasion.nameNe ? <span className="block text-xs text-muted-foreground" lang="ne">{occasion.nameNe}</span> : null}
               </FieldLabel>
             </Field>
           ))}
@@ -219,60 +302,285 @@ export function ProductSubmissionForm({
         <FieldLegend>Story and details</FieldLegend>
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor="descriptionEn">Description — English</FieldLabel>
-            <Textarea id="descriptionEn" name="descriptionEn" required maxLength={4000} rows={6} placeholder="Describe the craft, process, use, and what makes this item distinct." defaultValue={initial?.descriptionEn} />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="descriptionNe">Description — Nepali</FieldLabel>
-            <Textarea id="descriptionNe" name="descriptionNe" maxLength={4000} rows={5} lang="ne" defaultValue={initial?.descriptionNe ?? ''} />
+            <FieldLabel htmlFor="descriptionEn">
+              Description — English
+            </FieldLabel>
+            <Textarea
+              id="descriptionEn"
+              name="descriptionEn"
+              required
+              maxLength={4000}
+              rows={6}
+              placeholder="Describe the craft, process, use, and what makes this item distinct."
+              defaultValue={initial?.descriptionEn}
+            />
           </Field>
           <div className="grid gap-5 md:grid-cols-2">
-            <Field><FieldLabel htmlFor="producer">Producer or maker</FieldLabel><Input id="producer" name="producer" required maxLength={180} defaultValue={initial?.producer} /></Field>
-            <Field><FieldLabel htmlFor="materials">Materials</FieldLabel><Input id="materials" name="materials" required maxLength={1000} defaultValue={initial?.materials} /></Field>
-            <Field><FieldLabel htmlFor="dimensions">Dimensions</FieldLabel><Input id="dimensions" name="dimensions" maxLength={500} placeholder="For example, 28 × 20 × 8 cm" defaultValue={initial?.dimensions ?? ''} /></Field>
-            <Field><FieldLabel htmlFor="licenceReference">Licence reference, if required</FieldLabel><Input id="licenceReference" name="licenceReference" maxLength={160} defaultValue={initial?.licenceReference ?? ''} /></Field>
+            <Field>
+              <FieldLabel htmlFor="producer">Producer or maker</FieldLabel>
+              <Input
+                id="producer"
+                name="producer"
+                required
+                maxLength={180}
+                defaultValue={initial?.producer}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="materials">Materials</FieldLabel>
+              <Input
+                id="materials"
+                name="materials"
+                required
+                maxLength={1000}
+                defaultValue={initial?.materials}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="dimensions">Dimensions</FieldLabel>
+              <Input
+                id="dimensions"
+                name="dimensions"
+                maxLength={500}
+                placeholder="For example, 28 × 20 × 8 cm"
+                defaultValue={initial?.dimensions ?? ''}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="licenceReference">
+                Licence reference, if required
+              </FieldLabel>
+              <Input
+                id="licenceReference"
+                name="licenceReference"
+                maxLength={160}
+                defaultValue={initial?.licenceReference ?? ''}
+              />
+            </Field>
           </div>
-          <Field><FieldLabel htmlFor="careInstructions">Care instructions</FieldLabel><Textarea id="careInstructions" name="careInstructions" maxLength={1500} rows={3} defaultValue={initial?.careInstructions ?? ''} /></Field>
-          <Field><FieldLabel htmlFor="safetyInformation">Safety information</FieldLabel><Textarea id="safetyInformation" name="safetyInformation" maxLength={1500} rows={3} defaultValue={initial?.safetyInformation ?? ''} /></Field>
-          <Field><FieldLabel htmlFor="warranty">Warranty or guarantee</FieldLabel><Input id="warranty" name="warranty" maxLength={500} defaultValue={initial?.warranty ?? ''} /></Field>
+          <Field>
+            <FieldLabel htmlFor="careInstructions">
+              Care instructions
+            </FieldLabel>
+            <Textarea
+              id="careInstructions"
+              name="careInstructions"
+              maxLength={1500}
+              rows={3}
+              defaultValue={initial?.careInstructions ?? ''}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="safetyInformation">
+              Safe use and safety information
+            </FieldLabel>
+            <Textarea
+              id="safetyInformation"
+              name="safetyInformation"
+              maxLength={1500}
+              rows={3}
+              defaultValue={initial?.safetyInformation ?? ''}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="warranty">Warranty or guarantee</FieldLabel>
+            <Input
+              id="warranty"
+              name="warranty"
+              maxLength={500}
+              placeholder="For example, 30-day workmanship guarantee; or Not offered"
+              defaultValue={initial?.warranty ?? ''}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="returnConditions">
+              Return conditions
+            </FieldLabel>
+            <Textarea
+              id="returnConditions"
+              name="returnConditions"
+              maxLength={1500}
+              minLength={10}
+              rows={3}
+              placeholder="State the condition, packaging, and exclusions that apply. Statutory rights still override listing terms."
+              defaultValue={initial?.returnConditions ?? ''}
+            />
+          </Field>
+          <div className="grid gap-5 md:grid-cols-3">
+            <Field>
+              <FieldLabel htmlFor="preparationDays">
+                Preparation time (days)
+              </FieldLabel>
+              <Input
+                id="preparationDays"
+                name="preparationDays"
+                type="number"
+                required
+                min={0}
+                max={180}
+                step={1}
+                defaultValue={initial?.preparationDays ?? 2}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="manufacturedAt">
+                Manufacture date, if applicable
+              </FieldLabel>
+              <Input
+                id="manufacturedAt"
+                name="manufacturedAt"
+                type="date"
+                defaultValue={dateInputValue(initial?.manufacturedAt)}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="expiresAt">
+                Expiry date, if applicable
+              </FieldLabel>
+              <Input
+                id="expiresAt"
+                name="expiresAt"
+                type="date"
+                defaultValue={dateInputValue(initial?.expiresAt)}
+              />
+            </Field>
+          </div>
+          <Field orientation="horizontal">
+            <Checkbox
+              id="madeToOrder"
+              name="madeToOrder"
+              value="yes"
+              defaultChecked={Boolean(initial?.madeToOrder)}
+            />
+            <FieldLabel htmlFor="madeToOrder" className="font-normal">
+              Made to order
+            </FieldLabel>
+          </Field>
         </FieldGroup>
       </FieldSet>
 
       <FieldSet>
         <FieldLegend>Price and stock</FieldLegend>
-        <FieldDescription>Enter Nepalese rupees. Hathkriti stores money precisely in paisa.</FieldDescription>
+        <FieldDescription>
+          Enter Nepalese rupees. Hathkriti stores money precisely in paisa.
+        </FieldDescription>
         <FieldGroup className="grid gap-5 md:grid-cols-3">
-          <Field><FieldLabel htmlFor="price">Selling price (NPR)</FieldLabel><Input id="price" name="price" required inputMode="decimal" placeholder="1500.00" defaultValue={initial ? (initial.pricePaisa / 100).toFixed(2) : undefined} /></Field>
-          <Field><FieldLabel htmlFor="compareAtPrice">Original price (optional)</FieldLabel><Input id="compareAtPrice" name="compareAtPrice" inputMode="decimal" placeholder="1800.00" defaultValue={initial?.compareAtPricePaisa ? (initial.compareAtPricePaisa / 100).toFixed(2) : ''} /></Field>
-          <Field><FieldLabel htmlFor="inventoryQuantity">Available quantity</FieldLabel><Input id="inventoryQuantity" name="inventoryQuantity" type="number" required min={0} max={1000000} step={1} defaultValue={initial?.inventoryQuantity ?? 1} /></Field>
+          <Field>
+            <FieldLabel htmlFor="price">Selling price (NPR)</FieldLabel>
+            <Input
+              id="price"
+              name="price"
+              required
+              inputMode="decimal"
+              placeholder="1500.00"
+              defaultValue={
+                initial ? (initial.pricePaisa / 100).toFixed(2) : undefined
+              }
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="compareAtPrice">
+              Original price (optional)
+            </FieldLabel>
+            <Input
+              id="compareAtPrice"
+              name="compareAtPrice"
+              inputMode="decimal"
+              placeholder="1800.00"
+              defaultValue={
+                initial?.compareAtPricePaisa
+                  ? (initial.compareAtPricePaisa / 100).toFixed(2)
+                  : ''
+              }
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="inventoryQuantity">
+              Available quantity
+            </FieldLabel>
+            <Input
+              id="inventoryQuantity"
+              name="inventoryQuantity"
+              type="number"
+              required
+              min={0}
+              max={1000000}
+              step={1}
+              defaultValue={initial?.inventoryQuantity ?? 1}
+            />
+          </Field>
         </FieldGroup>
         <Field orientation="horizontal">
-          <Checkbox id="returnEligible" name="returnEligible" value="yes" defaultChecked={initial ? Boolean(initial.returnEligible) : true} />
-          <FieldLabel htmlFor="returnEligible" className="font-normal">Eligible for the standard Hathkriti return policy</FieldLabel>
+          <Checkbox
+            id="returnEligible"
+            name="returnEligible"
+            value="yes"
+            defaultChecked={initial ? Boolean(initial.returnEligible) : true}
+          />
+          <FieldLabel htmlFor="returnEligible" className="font-normal">
+            Eligible for the standard Hathkriti return policy
+          </FieldLabel>
         </Field>
       </FieldSet>
 
       <FieldSet>
         <FieldLegend>Product photos</FieldLegend>
-        <FieldDescription>{isRevision ? `You already have ${initial?.mediaCount ?? 0} photo(s). Add replacements or extra angles only if the total will remain at 5 or fewer.` : 'Attach 1–5 clear photos. JPG, PNG, or WebP; maximum 5 MB each.'}</FieldDescription>
+        <FieldDescription>
+          {isRevision
+            ? `You already have ${initial?.mediaCount ?? 0} photo(s). Add replacements or extra angles only if the total will remain at 5 or fewer.`
+            : 'Attach 1–5 clear photos. JPG, PNG, or WebP; maximum 5 MB each.'}
+        </FieldDescription>
         <FieldGroup className="grid gap-5 md:grid-cols-2">
           {[1, 2, 3, 4, 5].map((number) => (
             <Field key={number}>
-              <FieldLabel htmlFor={`image${number}`} className="flex items-center gap-2"><ImagePlus className="size-4" /> Additional photo {number}{number === 1 && !isRevision ? ' (required)' : ''}</FieldLabel>
-              <Input id={`image${number}`} name={`image${number}`} type="file" accept="image/jpeg,image/png,image/webp" required={number === 1 && !isRevision} className="h-11 py-2" />
+              <FieldLabel
+                htmlFor={`image${number}`}
+                className="flex items-center gap-2"
+              >
+                <ImagePlus className="size-4" /> Additional photo {number}
+                {number === 1 && !isRevision ? ' (required)' : ''}
+              </FieldLabel>
+              <Input
+                id={`image${number}`}
+                name={`image${number}`}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                required={number === 1 && !isRevision}
+                className="h-11 py-2"
+              />
             </Field>
           ))}
         </FieldGroup>
       </FieldSet>
 
       {state.status === 'error' ? (
-        <Alert variant="destructive"><AlertTitle>Product not submitted</AlertTitle><AlertDescription>{state.message}</AlertDescription></Alert>
+        <Alert variant="destructive">
+          <AlertTitle>Product not submitted</AlertTitle>
+          <AlertDescription>{state.message}</AlertDescription>
+        </Alert>
       ) : null}
 
       <div className="flex flex-col gap-4 border-t pt-6 sm:flex-row sm:items-center sm:justify-between">
-        <p className="flex max-w-xl items-start gap-2 text-sm leading-6 text-muted-foreground"><ShieldCheck className="mt-1 size-4 shrink-0 text-primary" />Submission starts review. It does not publish the listing automatically.</p>
-        <Button type="submit" size="lg" className="h-11 px-6" disabled={state.status === 'submitting'}>
-          {state.status === 'submitting' ? <><LoaderCircle className="animate-spin" /> Submitting…</> : isRevision ? 'Resubmit product' : 'Submit product for review'}
+        <p className="flex max-w-xl items-start gap-2 text-sm leading-6 text-muted-foreground">
+          <ShieldCheck className="mt-1 size-4 shrink-0 text-primary" />
+          Submission starts review. It does not publish the listing
+          automatically.
+        </p>
+        <Button
+          type="submit"
+          size="lg"
+          className="h-11 px-6"
+          disabled={state.status === 'submitting'}
+        >
+          {state.status === 'submitting' ? (
+            <>
+              <LoaderCircle className="animate-spin" /> Submitting…
+            </>
+          ) : isRevision ? (
+            'Resubmit product'
+          ) : (
+            'Submit product for review'
+          )}
         </Button>
       </div>
     </form>

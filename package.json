@@ -10,6 +10,7 @@
     "build": "vinext build",
     "start": "wrangler dev --config dist/server/wrangler.json",
     "db:generate": "drizzle-kit generate",
+    "test": "tsx --test tests/*.test.ts",
     "test:returns": "tsx --test tests/returns-complaints.test.ts",
     "lint": "oxlint",
     "format": "oxfmt"

@@ -20,7 +20,9 @@ These delivery rates are controlled-launch defaults. Replace them with carrier-i
 
 ## Integrity and privacy
 
-Every checkout has an idempotency key. Retrying the same request returns the same order instead of creating a duplicate. Database triggers verify that every product remains published and in stock, then reserve inventory inside the same D1 batch that creates the order. A failure rolls back the complete order.
+Every checkout has an idempotency key. Retrying the same request returns the same order instead of creating a duplicate. Database triggers verify that every product remains published and in stock, then reserve inventory inside the same D1 batch that creates the order. A failure rolls back the complete order. High-frequency checkout attempts are also bounded by a D1-backed fixed-window limit keyed by a one-way request fingerprint.
+
+The customer must affirmatively accept the displayed cancellation, return, privacy-use, and support terms. The accepted policy version, exact English snapshot, acceptance method, actor when signed in, request ID, and timestamp are written to `order_policy_acceptances` in the same batch as the order. The record is append-only and unique per order.
 
 Order receipt access requires both the order number and a separate HTTP-only receipt token. The database stores only the token hash. Customer details are available only on that receipt and inside protected operations views.
 
@@ -28,4 +30,4 @@ The order snapshots product names, seller names, prices, commission, policy vers
 
 ## Launch boundary
 
-Order creation produces a confirmed COD order, a pending manual COD payment record, a pending manual carrier shipment, and an audit/status event. The internal fulfilment workflow can later record dispatch and COD collection, but it does not contact a carrier, collect money online, send transactional email, or create a tax invoice. Those integrations require company registration, approved policies, and production provider credentials.
+Order creation produces a confirmed COD order, a pending manual COD payment record, a pending manual carrier shipment, an immutable order statement snapshot, and an audit/status event. Confirmed delivery and COD collection create a separate immutable payment-receipt snapshot. Customers can print either document or save it as PDF from the secure order page. These operational documents are clearly marked as not being PAN/VAT tax invoices; legal tax invoicing remains disabled until the company identity and approved invoice format are configured. The workflow does not contact a carrier, collect money online, or send transactional email.

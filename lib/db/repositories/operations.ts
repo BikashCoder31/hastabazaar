@@ -684,8 +684,8 @@ export async function performGovernanceAction(
       160,
     );
     const titleNe = requiredText(
-      dataText(options.data.titleNe),
-      'Nepali title',
+      dataText(options.data.titleNe) || titleEn,
+      'Stored secondary title',
       2,
       160,
     );
@@ -696,8 +696,8 @@ export async function performGovernanceAction(
       1000,
     );
     const descriptionNe = requiredText(
-      dataText(options.data.descriptionNe),
-      'Nepali description',
+      dataText(options.data.descriptionNe) || descriptionEn,
+      'Stored secondary description',
       5,
       1000,
     );
@@ -754,8 +754,8 @@ export async function performGovernanceAction(
       160,
     );
     const nameNe = requiredText(
-      dataText(options.data.nameNe),
-      'Nepali name',
+      dataText(options.data.nameNe) || nameEn,
+      'Stored secondary name',
       2,
       160,
     );

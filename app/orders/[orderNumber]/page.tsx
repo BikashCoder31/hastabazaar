@@ -170,10 +170,44 @@ export default async function OrderReceiptPage({
                   ? 'This order was cancelled and no payment is due.'
                   : 'No online payment has been taken.'}
             </p>
+            <section className="mt-8 border-t pt-7">
+              <h2 className="font-heading text-2xl">
+                Documents and accepted terms
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Checkout terms version {receipt.policyVersion}
+                {receipt.termsAcceptedAt
+                  ? ` was accepted on ${new Date(receipt.termsAcceptedAt).toLocaleString('en-NP')}.`
+                  : ' predates the acceptance record.'}
+              </p>
+              {receipt.documents.length ? (
+                <div className="mt-4 flex flex-wrap gap-3">
+                  {receipt.documents.map((document) => (
+                    <Button
+                      key={document.id}
+                      variant="outline"
+                      render={
+                        <Link
+                          href={`/orders/${encodeURIComponent(receipt.orderNumber)}/documents/${document.id}`}
+                        />
+                      }
+                    >
+                      {document.kind === 'payment_receipt'
+                        ? 'Payment receipt'
+                        : 'Order statement'}{' '}
+                      · {document.documentNumber}
+                    </Button>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-muted-foreground">
+                  No downloadable document is available for this earlier order.
+                </p>
+              )}
+            </section>
             <CustomerAftercare
               orderNumber={receipt.orderNumber}
               orderStatus={receipt.status}
-              locale={receipt.locale}
               items={receipt.items}
               returns={returnCases}
               complaints={complaints}

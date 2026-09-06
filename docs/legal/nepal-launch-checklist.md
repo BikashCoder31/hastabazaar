@@ -20,6 +20,8 @@ This checklist converts the Phase 1 plan into launch gates. It is an engineering
 
 ## Customer-facing product and checkout information
 
+Engineering status: migration `0020` and the seller, product, checkout, and secure-document interfaces collect/display the applicable product disclosures, retain affirmative policy acceptance, and issue non-tax order/payment documents. The launch boxes stay unchecked until real catalogue data, approved policy wording, legal identity, and the accountant-approved tax invoice format are verified.
+
 - [ ] Show accurate product identity/details, producer, origin when required, final price, tax treatment, delivery charge, payment method, and estimated delivery time.
 - [ ] Show safe-use/care information, warranty/guarantee, manufacture/expiry dates, and licences where applicable.
 - [ ] Show return eligibility, return period/conditions, cancellation-before-dispatch terms, refund method/timing, and grievance path before checkout.

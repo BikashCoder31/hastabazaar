@@ -1,6 +1,7 @@
 import type { NepalAddress } from '@/lib/shipping/provider';
 import type { OrderStatus } from '@/lib/marketplace/types';
 import { buildEarningsAccrualStatements } from '@/lib/db/repositories/payouts';
+import type { OrderDocumentSnapshot } from '@/lib/db/repositories/orders';
 
 export type ItemFulfillmentStatus =
   | 'confirmed'
@@ -368,9 +369,25 @@ export async function transitionAdminFulfillment(
   },
 ): Promise<void> {
   const order = await database
-    .prepare(`SELECT status FROM orders WHERE id = ? LIMIT 1`)
+    .prepare(
+      `SELECT status, order_number AS orderNumber,
+        item_subtotal_paisa AS itemSubtotalPaisa,
+        delivery_charge_paisa AS deliveryChargePaisa,
+        buyer_platform_fee_paisa AS buyerPlatformFeePaisa,
+        tax_total_paisa AS taxTotalPaisa,
+        grand_total_paisa AS grandTotalPaisa
+       FROM orders WHERE id = ? LIMIT 1`,
+    )
     .bind(options.orderId)
-    .first<{ status: OrderStatus }>();
+    .first<{
+      status: OrderStatus;
+      orderNumber: string;
+      itemSubtotalPaisa: number;
+      deliveryChargePaisa: number;
+      buyerPlatformFeePaisa: number;
+      taxTotalPaisa: number;
+      grandTotalPaisa: number;
+    }>();
   if (!order) throw new FulfillmentConflictError('Order not found.');
   if (options.action === 'cancel') {
     if (!['confirmed', 'packing', 'ready_for_pickup'].includes(order.status)) {
@@ -409,6 +426,34 @@ export async function transitionAdminFulfillment(
     );
   }
   const note = options.note.trim();
+  let paymentReceiptSnapshot: OrderDocumentSnapshot | null = null;
+  if (options.action === 'deliver') {
+    const receiptItems = await database
+      .prepare(
+        `SELECT product_name_snapshot AS productName,
+        seller_name_snapshot AS sellerName, sku_snapshot AS sku,
+        unit_price_paisa AS unitPricePaisa, quantity,
+        line_total_paisa AS lineTotalPaisa
+       FROM order_items WHERE order_id = ? ORDER BY created_at ASC`,
+      )
+      .bind(options.orderId)
+      .all<OrderDocumentSnapshot['items'][number]>();
+    paymentReceiptSnapshot = {
+      documentTitle: 'Cash on delivery payment receipt',
+      taxDocument: false,
+      orderNumber: order.orderNumber,
+      issuedAt: options.now,
+      currency: 'NPR',
+      paymentMethod: 'Cash on delivery',
+      paymentStatus: 'paid',
+      items: receiptItems.results,
+      itemSubtotalPaisa: order.itemSubtotalPaisa,
+      deliveryChargePaisa: order.deliveryChargePaisa,
+      buyerPlatformFeePaisa: order.buyerPlatformFeePaisa,
+      taxTotalPaisa: order.taxTotalPaisa,
+      grandTotalPaisa: order.grandTotalPaisa,
+    };
+  }
   const results = await database.batch([
     database
       .prepare(
@@ -534,6 +579,30 @@ export async function transitionAdminFulfillment(
         options.orderId,
         options.requestId,
       ),
+    ...(paymentReceiptSnapshot
+      ? [
+          database
+            .prepare(
+              `INSERT INTO order_documents (
+                id, order_id, kind, document_number, snapshot_json, status,
+                request_id, issued_at, voided_at
+              ) SELECT ?, ?, 'payment_receipt', ?, ?, 'issued', ?, ?, NULL
+                WHERE EXISTS (
+                  SELECT 1 FROM orders WHERE id = ? AND operation_request_id = ?
+                )`,
+            )
+            .bind(
+              crypto.randomUUID(),
+              options.orderId,
+              `RCPT-${order.orderNumber}`,
+              JSON.stringify(paymentReceiptSnapshot),
+              `${options.requestId}:payment-receipt`,
+              options.now,
+              options.orderId,
+              options.requestId,
+            ),
+        ]
+      : []),
     ...(options.action === 'deliver'
       ? buildEarningsAccrualStatements(database, {
           orderId: options.orderId,

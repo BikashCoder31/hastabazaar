@@ -12,6 +12,7 @@ import {
   type ComplaintCategory,
 } from '@/lib/db/repositories/complaints';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import { getCustomerUser } from '@/lib/auth/customer';
 
 export const dynamic = 'force-dynamic';
@@ -29,6 +30,13 @@ export async function POST(
   if (!token && !customer)
     return json({ error: 'Order access could not be verified.' }, 404);
   try {
+    const database = requireDatabase(env as unknown as { DB?: D1Database });
+    const rateLimit = await consumeRequestRateLimit(database, request, {
+      scope: 'customer-complaint',
+      limit: 10,
+      windowMs: 60 * 60_000,
+    });
+    if (!rateLimit.allowed) return rateLimitJson(rateLimit);
     const { orderNumber } = await context.params;
     const body = (await request.json()) as Record<string, unknown>;
     const orderItemId =
@@ -52,21 +60,18 @@ export async function POST(
       );
     if (requestId.length < 8 || requestId.length > 100)
       return json({ error: 'The request identifier is invalid.' }, 400);
-    const result = await createCustomerComplaint(
-      requireDatabase(env as unknown as { DB?: D1Database }),
-      {
-        orderNumber,
-        receiptTokenHash: token ? await hashOpaqueToken(token) : null,
-        customerId: customer?.userId ?? null,
-        orderItemId,
-        category,
-        subject,
-        detail,
-        locale,
-        requestId,
-        now: Date.now(),
-      },
-    );
+    const result = await createCustomerComplaint(database, {
+      orderNumber,
+      receiptTokenHash: token ? await hashOpaqueToken(token) : null,
+      customerId: customer?.userId ?? null,
+      orderItemId,
+      category,
+      subject,
+      detail,
+      locale,
+      requestId,
+      now: Date.now(),
+    });
     return json(
       {
         ...result,

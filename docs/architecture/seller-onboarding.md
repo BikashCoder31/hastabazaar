@@ -20,7 +20,7 @@ If the database transaction fails, newly uploaded objects are removed. Duplicate
 - Accepted: PDF, JPG, and PNG, up to 5 MB each and 22 MB for the complete request.
 - The server checks both the declared content type and the file signature.
 - Private document object keys never contain the applicant's filename.
-- Production launch still requires malware scanning, rate limiting/Turnstile, and a reviewed retention schedule. Staff-only document delivery is implemented with authentication, role checks, no-store headers, opaque object keys, and content-type hardening.
+- Seller applications are same-origin protected and D1 rate-limited before uploads are processed. Production launch still requires an approved malware scanner, optional challenge provider such as Turnstile, and a reviewed retention schedule. Staff-only document delivery is implemented with authentication, role checks, no-store headers, opaque object keys, and content-type hardening.
 
 ## Review and access
 
@@ -28,4 +28,4 @@ If the database transaction fails, newly uploaded objects are removed. Duplicate
 
 The review screen authenticates staff, looks up `user_roles` server-side, requires `seller.application.review`, prevents self-approval, and appends moderation and audit events. Approval marks pending evidence as verified and grants the seller role; rejection or change requests do not.
 
-Public customer authentication remains provider-neutral until the production identity provider is selected. The seller application itself does not create a usable password or sign-in session.
+Hosted Sites authentication supplies the stable user identity used by customer, seller, and staff pages. The seller application itself does not create a password or grant a seller session; approval and a matching signed-in identity are still required.

@@ -126,12 +126,13 @@ export async function createProductSubmission(
           id, seller_id, category_id, slug, sku, name_en, name_ne,
           description_en, description_ne, price_paisa, compare_at_price_paisa,
           inventory_quantity, producer, country_of_origin, materials, dimensions,
-          care_instructions, safety_information, return_eligible, warranty,
-          manufactured_at, expires_at, licence_reference, status, review_note,
+          care_instructions, safety_information, return_conditions, return_eligible, warranty,
+          made_to_order, preparation_days, manufactured_at, expires_at,
+          licence_reference, status, review_note,
           review_request_id, reviewed_by, published_at, created_at, updated_at
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NP', ?, ?, ?, ?, ?, ?,
-          NULL, NULL, ?, 'submitted', NULL, NULL, NULL, NULL, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NP', ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, 'submitted', NULL, NULL, NULL, NULL, ?, ?
         )`,
       )
       .bind(
@@ -152,8 +153,13 @@ export async function createProductSubmission(
         input.dimensions,
         input.careInstructions,
         input.safetyInformation,
+        input.returnConditions,
         input.returnEligible ? 1 : 0,
         input.warranty,
+        input.madeToOrder ? 1 : 0,
+        input.preparationDays,
+        input.manufacturedAt,
+        input.expiresAt,
         input.licenceReference,
         now,
         now,
@@ -282,8 +288,13 @@ export interface SellerProductRevision {
   dimensions: string | null;
   careInstructions: string | null;
   safetyInformation: string | null;
+  returnConditions: string | null;
   returnEligible: number;
   warranty: string | null;
+  madeToOrder: number;
+  preparationDays: number;
+  manufacturedAt: number | null;
+  expiresAt: number | null;
   licenceReference: string | null;
   status: ProductStatus;
   reviewNote: string | null;
@@ -310,10 +321,15 @@ export async function getSellerProductForRevision(
           products.compare_at_price_paisa AS compareAtPricePaisa,
           products.inventory_quantity AS inventoryQuantity,
           products.producer, products.materials, products.dimensions,
-          products.care_instructions AS careInstructions,
-          products.safety_information AS safetyInformation,
-          products.return_eligible AS returnEligible, products.warranty,
-          products.licence_reference AS licenceReference,
+           products.care_instructions AS careInstructions,
+           products.safety_information AS safetyInformation,
+           products.return_conditions AS returnConditions,
+           products.return_eligible AS returnEligible, products.warranty,
+           products.made_to_order AS madeToOrder,
+           products.preparation_days AS preparationDays,
+           products.manufactured_at AS manufacturedAt,
+           products.expires_at AS expiresAt,
+           products.licence_reference AS licenceReference,
           products.status, products.review_note AS reviewNote,
           (SELECT GROUP_CONCAT(product_occasions.occasion_id)
             FROM product_occasions
@@ -356,7 +372,8 @@ export async function reviseAndResubmitProduct(
           description_en = ?, description_ne = ?, price_paisa = ?,
           compare_at_price_paisa = ?, inventory_quantity = ?, producer = ?,
           materials = ?, dimensions = ?, care_instructions = ?,
-          safety_information = ?, return_eligible = ?, warranty = ?,
+          safety_information = ?, return_conditions = ?, return_eligible = ?, warranty = ?,
+          made_to_order = ?, preparation_days = ?, manufactured_at = ?, expires_at = ?,
           licence_reference = ?, status = 'submitted', review_note = NULL,
           review_request_id = ?, reviewed_by = NULL, updated_at = ?
          WHERE id = ? AND seller_id = ? AND status = 'needs_changes'`,
@@ -376,8 +393,13 @@ export async function reviseAndResubmitProduct(
         options.input.dimensions,
         options.input.careInstructions,
         options.input.safetyInformation,
+        options.input.returnConditions,
         options.input.returnEligible ? 1 : 0,
         options.input.warranty,
+        options.input.madeToOrder ? 1 : 0,
+        options.input.preparationDays,
+        options.input.manufacturedAt,
+        options.input.expiresAt,
         options.input.licenceReference,
         mutationId,
         options.now,
@@ -685,8 +707,13 @@ export interface ProductReviewDetail extends ProductReviewQueueRow {
   dimensions: string | null;
   careInstructions: string | null;
   safetyInformation: string | null;
+  returnConditions: string | null;
   returnEligible: number;
   warranty: string | null;
+  madeToOrder: number;
+  preparationDays: number;
+  manufacturedAt: number | null;
+  expiresAt: number | null;
   licenceReference: string | null;
   occasionNames: string | null;
   categoryId: string;
@@ -714,8 +741,13 @@ export async function getProductForReview(
         products.producer, products.materials, products.dimensions,
         products.care_instructions AS careInstructions,
         products.safety_information AS safetyInformation,
+        products.return_conditions AS returnConditions,
         products.return_eligible AS returnEligible,
-        products.warranty, products.licence_reference AS licenceReference,
+        products.warranty, products.made_to_order AS madeToOrder,
+        products.preparation_days AS preparationDays,
+        products.manufactured_at AS manufacturedAt,
+        products.expires_at AS expiresAt,
+        products.licence_reference AS licenceReference,
         (SELECT GROUP_CONCAT(occasions.name_en, ', ')
           FROM product_occasions
           INNER JOIN occasions ON occasions.id = product_occasions.occasion_id
@@ -926,7 +958,15 @@ export interface PublicProductRow {
   materials: string;
   dimensions: string | null;
   careInstructions: string | null;
+  safetyInformation: string | null;
+  returnConditions: string | null;
   returnEligible: number;
+  warranty: string | null;
+  madeToOrder: number;
+  preparationDays: number;
+  manufacturedAt: number | null;
+  expiresAt: number | null;
+  licenceReference: string | null;
   tradingName: string;
   categoryName: string;
   primaryMediaId: string | null;
@@ -1077,7 +1117,14 @@ export async function listPublishedProducts(
         products.inventory_quantity AS inventoryQuantity,
         products.producer, products.materials, products.dimensions,
         products.care_instructions AS careInstructions,
+        products.safety_information AS safetyInformation,
+        products.return_conditions AS returnConditions,
         products.return_eligible AS returnEligible,
+        products.warranty, products.made_to_order AS madeToOrder,
+        products.preparation_days AS preparationDays,
+        products.manufactured_at AS manufacturedAt,
+        products.expires_at AS expiresAt,
+        products.licence_reference AS licenceReference,
         seller_profiles.trading_name AS tradingName,
         categories.name_en AS categoryName,
         (SELECT product_media.id FROM product_media
@@ -1158,7 +1205,14 @@ export async function getPublishedProductBySlug(
         products.inventory_quantity AS inventoryQuantity,
         products.producer, products.materials, products.dimensions,
         products.care_instructions AS careInstructions,
+        products.safety_information AS safetyInformation,
+        products.return_conditions AS returnConditions,
         products.return_eligible AS returnEligible,
+        products.warranty, products.made_to_order AS madeToOrder,
+        products.preparation_days AS preparationDays,
+        products.manufactured_at AS manufacturedAt,
+        products.expires_at AS expiresAt,
+        products.licence_reference AS licenceReference,
         seller_profiles.trading_name AS tradingName,
         categories.name_en AS categoryName,
         (SELECT product_media.id FROM product_media

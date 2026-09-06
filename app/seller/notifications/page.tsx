@@ -15,10 +15,10 @@ export default async function SellerNotificationsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="eyebrow">Seller / विक्रेता</p>
-        <h1 className="section-title">Notifications / सूचनाहरू</h1>
+        <p className="eyebrow">Seller</p>
+        <h1 className="section-title">Notifications</h1>
       </div>
-      <NotificationList initial={items} locale="en-NP" />
+      <NotificationList initial={items} />
     </div>
   );
 }

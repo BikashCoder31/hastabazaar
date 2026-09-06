@@ -40,7 +40,10 @@ function TaxonomySection({
   const [newMode, setNewMode] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  async function submit(event: { preventDefault(): void; currentTarget: HTMLFormElement }) {
+  async function submit(event: {
+    preventDefault(): void;
+    currentTarget: HTMLFormElement;
+  }) {
     event.preventDefault();
     setBusy(true);
     setError('');
@@ -53,7 +56,7 @@ function TaxonomySection({
         id: editing?.id,
         slug: data.get('slug'),
         nameEn: data.get('nameEn'),
-        nameNe: data.get('nameNe'),
+        nameNe: data.get('nameEn'),
         sortOrder: Number(data.get('sortOrder')),
         isActive: data.get('isActive') === 'on',
         idempotencyKey: crypto.randomUUID(),
@@ -104,12 +107,6 @@ function TaxonomySection({
             name="nameEn"
             defaultValue={active.nameEn}
             placeholder="English name"
-            required
-          />
-          <Input
-            name="nameNe"
-            defaultValue={active.nameNe ?? ''}
-            placeholder="नेपाली नाम"
             required
           />
           <Input
@@ -164,12 +161,7 @@ function TaxonomySection({
             }}
             className="flex w-full items-center justify-between gap-4 py-3 text-left"
           >
-            <span>
-              <strong className="block text-sm">{row.nameEn}</strong>
-              <span lang="ne" className="text-xs text-muted-foreground">
-                {row.nameNe}
-              </span>
-            </span>
+            <strong className="block text-sm">{row.nameEn}</strong>
             <span className="text-right text-xs text-muted-foreground">
               {row.usageCount} products
               <br />

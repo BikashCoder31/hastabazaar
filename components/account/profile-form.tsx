@@ -10,13 +10,15 @@ import { Label } from '@/components/ui/label';
 export function ProfileForm(props: {
   displayName: string;
   phone: string | null;
-  locale: 'en-NP' | 'ne-NP';
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
-  async function submit(event: { preventDefault(): void; currentTarget: HTMLFormElement }) {
+  async function submit(event: {
+    preventDefault(): void;
+    currentTarget: HTMLFormElement;
+  }) {
     event.preventDefault();
     setSaving(true);
     setMessage('');
@@ -27,7 +29,7 @@ export function ProfileForm(props: {
       body: JSON.stringify({
         displayName: data.get('displayName'),
         phone: data.get('phone'),
-        locale: data.get('locale'),
+        locale: 'en-NP',
         idempotencyKey: crypto.randomUUID(),
       }),
     });
@@ -65,25 +67,17 @@ export function ProfileForm(props: {
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="locale">Preferred language</Label>
-        <select
-          id="locale"
-          name="locale"
-          defaultValue={props.locale}
-          className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
-        >
-          <option value="en-NP">English</option>
-          <option value="ne-NP">नेपाली</option>
-        </select>
+        <Label>Interface language</Label>
+        <div className="flex h-10 items-center rounded-lg border bg-muted/35 px-3 text-sm">
+          English
+        </div>
       </div>
       <div className="flex items-end gap-3">
         <Button type="submit" disabled={saving}>
           {saving ? 'Saving…' : 'Save profile'}
         </Button>
         {message ? (
-          <output className="text-sm text-muted-foreground">
-            {message}
-          </output>
+          <output className="text-sm text-muted-foreground">{message}</output>
         ) : null}
       </div>
     </form>

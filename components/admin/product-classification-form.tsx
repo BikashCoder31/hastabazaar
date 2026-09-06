@@ -22,7 +22,10 @@ export function ProductClassificationForm({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  async function submit(event: { preventDefault(): void; currentTarget: HTMLFormElement }) {
+  async function submit(event: {
+    preventDefault(): void;
+    currentTarget: HTMLFormElement;
+  }) {
     event.preventDefault();
     setBusy(true);
     setMessage('');
@@ -73,12 +76,7 @@ export function ProductClassificationForm({
                 defaultChecked={occasionIds.includes(item.id)}
                 className="mt-1 size-4 accent-primary"
               />
-              <span>
-                {item.nameEn}
-                <span className="block text-xs text-muted-foreground" lang="ne">
-                  {item.nameNe}
-                </span>
-              </span>
+              <span>{item.nameEn}</span>
             </label>
           ))}
         </div>
