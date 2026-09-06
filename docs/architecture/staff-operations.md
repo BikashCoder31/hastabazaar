@@ -35,3 +35,13 @@ Before the first production login:
 5. Sign in at `/admin` with the same email. The invitation is marked accepted and subsequent staff access can be managed from `/admin/team`.
 
 The example file contains no live identity. Do not commit the completed production statement.
+
+## Protected staging bootstrap
+
+For a private review deployment, Sites runtime variables may temporarily define
+`HATHKRITI_STAGING_SUPER_ADMIN_EMAIL` and `HATHKRITI_STAGING_ADMIN_EMAIL`.
+Only the exact configured Super Admin email can initiate the bootstrap. On its
+first `/admin` sign-in, the application creates audited, seven-day invitations
+for both distinct addresses. The Admin cannot bootstrap itself, and the path
+becomes inert as soon as an active Super Admin exists. Store the addresses only
+as protected runtime values and remove them after both invitations are accepted.

@@ -66,6 +66,7 @@ import {
   OperationsConflictError,
   performGovernanceAction,
 } from '../lib/db/repositories/operations';
+import { ensureConfiguredStaffBootstrap } from '../lib/auth/staff-bootstrap';
 
 const now = 1_788_672_000_000;
 const policy: ReturnPolicySnapshot = {
@@ -76,6 +77,69 @@ const policy: ReturnPolicySnapshot = {
   refundInitiationBusinessDays: 2,
   codRefundEstimateBusinessDays: [3, 7],
 };
+
+void test('staging staff bootstrap is identity-bound, idempotent, and maker-checker safe', async () => {
+  const fixture = await databaseFixture();
+  try {
+    const db = fixture.database;
+    const database = db as unknown as D1Database;
+    await db
+      .prepare(`DELETE FROM user_roles WHERE role IN ('admin', 'super_admin')`)
+      .run();
+
+    const configuration = {
+      superAdminEmail: 'owner@example.test',
+      adminEmail: 'reviewer@example.test',
+    };
+    assert.deepEqual(
+      await ensureConfiguredStaffBootstrap(
+        database,
+        'reviewer@example.test',
+        configuration,
+        now,
+      ),
+      [],
+    );
+    assert.deepEqual(
+      await ensureConfiguredStaffBootstrap(
+        database,
+        'OWNER@example.test',
+        configuration,
+        now,
+      ),
+      ['super_admin', 'admin'],
+    );
+    assert.deepEqual(
+      await ensureConfiguredStaffBootstrap(
+        database,
+        'owner@example.test',
+        configuration,
+        now,
+      ),
+      [],
+    );
+
+    const invitations = await db
+      .prepare(`SELECT email, role FROM staff_invitations ORDER BY role DESC`)
+      .all<{ email: string; role: string }>();
+    assert.deepEqual(
+      invitations.results.map((row) => ({ ...row })),
+      [
+        { email: 'owner@example.test', role: 'super_admin' },
+        { email: 'reviewer@example.test', role: 'admin' },
+      ],
+    );
+    const audit = await db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM audit_logs
+         WHERE action = 'staff.bootstrap.invitation.created'`,
+      )
+      .first<{ count: number }>();
+    assert.equal(audit?.count, 2);
+  } finally {
+    await fixture.dispose();
+  }
+});
 
 async function databaseFixture() {
   const sqlite = new DatabaseSync(':memory:');

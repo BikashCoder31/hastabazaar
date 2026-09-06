@@ -6,6 +6,7 @@ import {
   requireChatGPTUser,
   type ChatGPTUser,
 } from '@/app/chatgpt-auth';
+import { ensureConfiguredStaffBootstrap } from '@/lib/auth/staff-bootstrap';
 import { requireDatabase } from '@/lib/db/d1';
 import { can, type Permission } from '@/lib/marketplace/permissions';
 import type { MarketplaceRole } from '@/lib/marketplace/types';
@@ -49,8 +50,18 @@ export class StaffAuthorizationError extends Error {
   }
 }
 
+interface StaffRuntimeEnvironment {
+  DB?: D1Database;
+  HATHKRITI_STAGING_SUPER_ADMIN_EMAIL?: string;
+  HATHKRITI_STAGING_ADMIN_EMAIL?: string;
+}
+
+function runtimeEnvironment(): StaffRuntimeEnvironment {
+  return env as unknown as StaffRuntimeEnvironment;
+}
+
 function databaseFromEnvironment(): D1Database {
-  return requireDatabase(env as unknown as { DB?: D1Database });
+  return requireDatabase(runtimeEnvironment());
 }
 
 function normalizeEmail(value: string): string {
@@ -98,6 +109,17 @@ async function acceptMatchingInvitation(
     )
     .bind(email, now)
     .run();
+
+  const bindings = runtimeEnvironment();
+  await ensureConfiguredStaffBootstrap(
+    database,
+    email,
+    {
+      superAdminEmail: bindings.HATHKRITI_STAGING_SUPER_ADMIN_EMAIL,
+      adminEmail: bindings.HATHKRITI_STAGING_ADMIN_EMAIL,
+    },
+    now,
+  );
 
   const existingStaff = await database
     .prepare(
@@ -161,7 +183,10 @@ async function acceptMatchingInvitation(
     .bind(email)
     .first<ExistingUserRow>();
 
-  if (existingUser?.authSubject && existingUser.authSubject !== identity.userId) {
+  if (
+    existingUser?.authSubject &&
+    existingUser.authSubject !== identity.userId
+  ) {
     return null;
   }
 
