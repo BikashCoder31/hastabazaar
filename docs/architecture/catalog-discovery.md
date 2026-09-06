@@ -2,7 +2,7 @@
 
 ## Discovery dimensions
 
-Hathkriti treats category and gift occasion as separate concepts:
+Hastabazaar treats category and gift occasion as separate concepts:
 
 - Every product has one primary craft category.
 - A product must have 1–5 gift occasions and can therefore be discovered in several gifting journeys without creating duplicate listings.

@@ -1,6 +1,6 @@
 # Commerce data model
 
-Hathkriti uses Cloudflare D1 for structured marketplace records and R2 for product images and private seller documents. The logical bindings are `DB` and `MEDIA`.
+Hastabazaar uses Cloudflare D1 for structured marketplace records and R2 for product images and private seller documents. The logical bindings are `DB` and `MEDIA`.
 
 ## Main ownership boundaries
 
@@ -30,4 +30,4 @@ Seller finance is ledger-based. Delivered order items append sale, commission, a
 
 ## Authentication boundary
 
-The hosted Sites sign-in flow supplies stable user identity headers without storing passwords in Hathkriti. Guest cart, checkout, receipt-token, and order-aftercare paths remain available where designed. Authentication alone grants no marketplace authority: account status, seller ownership, `user_roles`, and the deny-by-default permission matrix are always enforced server-side.
+The hosted Sites sign-in flow supplies stable user identity headers without storing passwords in Hastabazaar. Guest cart, checkout, receipt-token, and order-aftercare paths remain available where designed. Authentication alone grants no marketplace authority: account status, seller ownership, `user_roles`, and the deny-by-default permission matrix are always enforced server-side.

@@ -8,7 +8,7 @@ import { SellerApplicationForm } from '@/components/seller/seller-application-fo
 export const metadata: Metadata = {
   title: 'Sell with us',
   description:
-    'Apply to become a verified seller on Hathkriti, Nepal’s handmade marketplace.',
+    'Apply to become a verified seller on Hastabazaar, Nepal’s handmade marketplace.',
 };
 
 const steps = [
@@ -40,7 +40,7 @@ export default function SellPage() {
             <div className="mt-4 grid gap-8 lg:grid-cols-[1fr_0.9fr] lg:items-end">
               <div>
                 <h1 className="max-w-3xl font-heading text-5xl leading-[1.02] tracking-tight sm:text-6xl">
-                  Bring your work to Hathkriti.
+                  Bring your work to Hastabazaar.
                 </h1>
                 <p className="mt-5 max-w-2xl text-lg leading-8 text-muted-foreground">
                   Apply once with your registered business details. No listing
@@ -48,7 +48,7 @@ export default function SellPage() {
                 </p>
               </div>
               <p className="rounded-2xl border border-border bg-background/80 p-5 text-sm leading-6 text-muted-foreground">
-                Hathkriti charges a 12% commission on the item subtotal after
+                Hastabazaar charges a 12% commission on the item subtotal after
                 seller-funded discounts. There is no joining fee or buyer
                 platform fee at launch.
               </p>

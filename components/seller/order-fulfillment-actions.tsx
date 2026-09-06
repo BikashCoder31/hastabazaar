@@ -20,7 +20,7 @@ import type { ItemFulfillmentStatus, SellerFulfillmentAction } from '@/lib/db/re
 const definitions = {
   start_packing: {
     title: 'Start packing these items?',
-    description: 'Hathkriti operations will see that preparation is underway.',
+    description: 'Hastabazaar operations will see that preparation is underway.',
     label: 'Start packing',
     icon: PackageOpen,
   },

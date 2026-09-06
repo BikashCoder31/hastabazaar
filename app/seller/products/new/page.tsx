@@ -16,7 +16,7 @@ export default async function NewProductPage() {
   ]);
   return (
     <div className="space-y-7">
-      <div><p className="eyebrow">New listing</p><h1 className="mt-2 font-heading text-4xl tracking-tight">Submit a product</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Provide enough information for customers and Hathkriti’s reviewer to understand exactly what is being sold.</p></div>
+      <div><p className="eyebrow">New listing</p><h1 className="mt-2 font-heading text-4xl tracking-tight">Submit a product</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Provide enough information for customers and Hastabazaar’s reviewer to understand exactly what is being sold.</p></div>
       <ProductSubmissionForm categories={categories} occasions={occasions} />
     </div>
   );

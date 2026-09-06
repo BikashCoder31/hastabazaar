@@ -5,17 +5,17 @@ export function SiteFooter() {
     <footer className="bg-foreground text-background">
       <div className="shell grid gap-10 py-12 sm:grid-cols-2 lg:grid-cols-[1.35fr_0.8fr_0.9fr_1.1fr]">
         <div>
-          <p className="font-heading text-3xl">Hathkriti</p>
+          <p className="font-heading text-3xl">Hastabazaar</p>
           <p className="mt-2 max-w-sm text-sm leading-6 text-background/65">
             A considered marketplace for handmade work and the people who make
             it.
           </p>
-          <p className="mt-6 text-xs text-background/45">© {new Date().getFullYear()} Hathkriti</p>
+          <p className="mt-6 text-xs text-background/45">© {new Date().getFullYear()} Hastabazaar</p>
         </div>
-        <FooterGroup title="Hathkriti">
+        <FooterGroup title="Hastabazaar">
           <FooterLink href="/#our-standard">About us</FooterLink>
           <FooterLink href="/shop">Our makers</FooterLink>
-          <FooterLink href="/sell">Sell on Hathkriti</FooterLink>
+          <FooterLink href="/sell">Sell on Hastabazaar</FooterLink>
         </FooterGroup>
         <FooterGroup title="Customer care">
           <FooterLink href="/help">Help center</FooterLink>

@@ -88,7 +88,7 @@ function checkoutTermsSnapshot(): Record<string, unknown> {
     privacy:
       'Order and contact data is used to fulfil the order, provide support, prevent abuse, and meet approved retention duties.',
     grievancePath:
-      'Use the secure order page or Help page to contact Hathkriti.',
+      'Use the secure order page or Help page to contact Hastabazaar.',
   };
 }
 

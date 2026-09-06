@@ -24,7 +24,7 @@ export function SellerCaseResponseForm({
   if (disabled)
     return (
       <p className="text-sm leading-6 text-muted-foreground">
-        Your response is recorded. Hathkriti operations owns the final decision.
+        Your response is recorded. Hastabazaar operations owns the final decision.
       </p>
     );
   async function submit() {

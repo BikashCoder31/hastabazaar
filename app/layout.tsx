@@ -3,13 +3,13 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: {
-    default: 'Hathkriti — Handmade with a human story',
-    template: '%s · Hathkriti',
+    default: 'Hastabazaar — Handmade with a human story',
+    template: '%s · Hastabazaar',
   },
   description:
     'A considered marketplace for handmade craft, jewellery, textiles, and homeware.',
   icons: {
-    icon: '/brand/hathkriti-logo.png',
+    icon: '/brand/hastabazaar-logo.png',
   },
 };
 

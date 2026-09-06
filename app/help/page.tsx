@@ -5,7 +5,7 @@ import { SiteHeader } from '@/components/layout/site-header';
 
 export const metadata: Metadata = {
   title: 'Customer help',
-  description: 'Shipping, tracking, returns, refunds, and complaint guidance for Hathkriti orders.',
+  description: 'Shipping, tracking, returns, refunds, and complaint guidance for Hastabazaar orders.',
 };
 
 const topics = [
@@ -27,7 +27,7 @@ const topics = [
   {
     id: 'complaints',
     title: 'Complaints',
-    body: 'Open the secure order receipt to create an item-specific or order-level complaint. Hathkriti can assign, investigate, escalate, request more information, and record the resolution without exposing unnecessary customer details to a seller.',
+    body: 'Open the secure order receipt to create an item-specific or order-level complaint. Hastabazaar can assign, investigate, escalate, request more information, and record the resolution without exposing unnecessary customer details to a seller.',
   },
 ] as const;
 

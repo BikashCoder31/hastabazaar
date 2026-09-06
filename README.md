@@ -1,6 +1,6 @@
-# Hathkriti storefront
+# Hastabazaar storefront
 
-A clean, non-WordPress foundation for the Hathkriti handmade marketplace.
+A clean, non-WordPress foundation for the Hastabazaar handmade marketplace.
 
 ## Development
 

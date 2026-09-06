@@ -8,7 +8,7 @@ export default async function AccountPage() {
       <p className="eyebrow">Customer account</p>
       <h1 className="mt-2 font-heading text-4xl">Your profile</h1>
       <p className="mt-3 max-w-2xl text-muted-foreground">
-        Manage the contact details used for future Hathkriti orders. The
+        Manage the contact details used for future Hastabazaar orders. The
         interface is currently English-only.
       </p>
       <section className="mt-8 rounded-2xl border bg-card p-6">

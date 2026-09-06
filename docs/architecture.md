@@ -2,7 +2,7 @@
 
 ## Current foundation
 
-Hathkriti is a Vinext/React application written in TypeScript and styled with Tailwind CSS. It is independent of WordPress and structured so the storefront, catalogue, account flows, and administration can evolve without mixing presentation and data-access concerns.
+Hastabazaar is a Vinext/React application written in TypeScript and styled with Tailwind CSS. It is independent of WordPress and structured so the storefront, catalogue, account flows, and administration can evolve without mixing presentation and data-access concerns.
 
 ## Boundaries
 

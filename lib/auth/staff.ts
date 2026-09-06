@@ -52,8 +52,8 @@ export class StaffAuthorizationError extends Error {
 
 interface StaffRuntimeEnvironment {
   DB?: D1Database;
-  HATHKRITI_STAGING_SUPER_ADMIN_EMAIL?: string;
-  HATHKRITI_STAGING_ADMIN_EMAIL?: string;
+  HASTABAZAAR_STAGING_SUPER_ADMIN_EMAIL?: string;
+  HASTABAZAAR_STAGING_ADMIN_EMAIL?: string;
 }
 
 function runtimeEnvironment(): StaffRuntimeEnvironment {
@@ -115,8 +115,8 @@ async function acceptMatchingInvitation(
     database,
     email,
     {
-      superAdminEmail: bindings.HATHKRITI_STAGING_SUPER_ADMIN_EMAIL,
-      adminEmail: bindings.HATHKRITI_STAGING_ADMIN_EMAIL,
+      superAdminEmail: bindings.HASTABAZAAR_STAGING_SUPER_ADMIN_EMAIL,
+      adminEmail: bindings.HASTABAZAAR_STAGING_ADMIN_EMAIL,
     },
     now,
   );

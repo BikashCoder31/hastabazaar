@@ -19,6 +19,13 @@ export async function ensureLocalTestAccount(
       .bind(userId, identity.userId, identity.email, identity.displayName, now, now),
     database
       .prepare(
+        `UPDATE users
+         SET email = ?, display_name = ?, updated_at = ?
+         WHERE id = ? AND auth_subject = ?`,
+      )
+      .bind(identity.email, identity.displayName, now, userId, identity.userId),
+    database
+      .prepare(
         `INSERT OR IGNORE INTO user_roles (user_id, role, assigned_by, assigned_at)
          VALUES (?, 'customer', NULL, ?)`,
       )
@@ -58,6 +65,13 @@ export async function ensureLocalTestAccount(
           )`,
         )
         .bind(userId, identity.email, now, now, now, now),
+      database
+        .prepare(
+          `UPDATE seller_profiles
+           SET support_email = ?, updated_at = ?
+           WHERE id = 'local-test-seller-profile' AND user_id = ?`,
+        )
+        .bind(identity.email, now, userId),
     );
   }
 
@@ -74,4 +88,3 @@ export async function ensureLocalTestAccount(
 
   await database.batch(statements);
 }
-

@@ -97,7 +97,7 @@ export function ProductSubmissionForm({
             name: 'prepare_product_submission',
             title: 'Prepare product submission',
             description:
-              'Fill the main text and pricing fields for a Hathkriti product listing. The seller must review the form, choose a category, attach real product photos, and submit it.',
+              'Fill the main text and pricing fields for a Hastabazaar product listing. The seller must review the form, choose a category, attach real product photos, and submit it.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -193,7 +193,7 @@ export function ProductSubmissionForm({
             : 'Product sent for review'}
         </h2>
         <p className="mt-3 max-w-xl leading-7 text-muted-foreground">
-          Hathkriti will verify the listing before it can appear in the public
+          Hastabazaar will verify the listing before it can appear in the public
           shop.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
@@ -462,7 +462,7 @@ export function ProductSubmissionForm({
       <FieldSet>
         <FieldLegend>Price and stock</FieldLegend>
         <FieldDescription>
-          Enter Nepalese rupees. Hathkriti stores money precisely in paisa.
+          Enter Nepalese rupees. Hastabazaar stores money precisely in paisa.
         </FieldDescription>
         <FieldGroup className="grid gap-5 md:grid-cols-3">
           <Field>
@@ -518,7 +518,7 @@ export function ProductSubmissionForm({
             defaultChecked={initial ? Boolean(initial.returnEligible) : true}
           />
           <FieldLabel htmlFor="returnEligible" className="font-normal">
-            Eligible for the standard Hathkriti return policy
+            Eligible for the standard Hastabazaar return policy
           </FieldLabel>
         </Field>
       </FieldSet>

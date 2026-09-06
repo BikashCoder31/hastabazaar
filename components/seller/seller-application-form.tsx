@@ -81,7 +81,7 @@ export function SellerApplicationForm() {
       name: 'prepare_seller_application',
       title: 'Prepare seller application',
       description:
-        'Fill the main Hathkriti seller application fields. The applicant must review the form, attach verification documents, accept the terms, and submit it.',
+        'Fill the main Hastabazaar seller application fields. The applicant must review the form, attach verification documents, accept the terms, and submit it.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -183,7 +183,7 @@ export function SellerApplicationForm() {
         <CheckCircle2 className="size-10 text-primary" aria-hidden="true" />
         <h2 className="mt-5 font-heading text-3xl">Application received</h2>
         <p className="mt-3 max-w-xl leading-7 text-muted-foreground">
-          Keep this reference for future communication. Hathkriti will verify
+          Keep this reference for future communication. Hastabazaar will verify
           the business and documents before seller access is enabled.
         </p>
         <p className="mt-6 inline-flex rounded-full bg-secondary px-4 py-2 font-mono text-sm font-bold text-secondary-foreground">

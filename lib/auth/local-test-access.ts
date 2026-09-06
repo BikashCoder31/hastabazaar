@@ -9,31 +9,31 @@ export const localTestRoles = [
 
 export type LocalTestRole = (typeof localTestRoles)[number];
 
-export const localTestCookieName = 'hathkriti_local_test_role';
+export const localTestCookieName = 'hastabazaar_local_test_role';
 
 const identities: Record<LocalTestRole, ChatGPTUser> = {
   customer: {
     userId: 'local-test-customer',
     displayName: 'Maya Customer',
-    email: 'customer@local.hathkriti.test',
+    email: 'customer@local.hastabazaar.test',
     fullName: 'Maya Customer',
   },
   seller: {
     userId: 'local-test-seller',
     displayName: 'Sita Artisan',
-    email: 'seller@local.hathkriti.test',
+    email: 'seller@local.hastabazaar.test',
     fullName: 'Sita Artisan',
   },
   admin: {
     userId: 'local-test-admin',
     displayName: 'Aarav Admin',
-    email: 'admin@local.hathkriti.test',
+    email: 'admin@local.hastabazaar.test',
     fullName: 'Aarav Admin',
   },
   super_admin: {
     userId: 'local-test-super-admin',
     displayName: 'Nisha Super Admin',
-    email: 'superadmin@local.hathkriti.test',
+    email: 'superadmin@local.hastabazaar.test',
     fullName: 'Nisha Super Admin',
   },
 };

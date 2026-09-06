@@ -130,7 +130,7 @@ export function ReturnCaseActions(props: Props) {
                 >
                   <option value="seller">Seller</option>
                   <option value="carrier">Carrier</option>
-                  <option value="platform">Hathkriti</option>
+                  <option value="platform">Hastabazaar</option>
                   <option value="buyer">Customer</option>
                 </select>
               </Field>

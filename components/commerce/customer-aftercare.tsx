@@ -360,7 +360,7 @@ export function CustomerAftercare({
                 <option value="delivery">Delivery</option>
                 <option value="seller">Seller</option>
                 <option value="refund">Refund</option>
-                <option value="service">Hathkriti service</option>
+                <option value="service">Hastabazaar service</option>
                 <option value="safety">Safety or urgent concern</option>
                 <option value="other">Other</option>
               </select>

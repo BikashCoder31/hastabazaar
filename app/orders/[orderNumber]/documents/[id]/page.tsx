@@ -46,7 +46,7 @@ export default async function OrderDocumentPage({
         <div className="mx-auto max-w-4xl rounded-2xl border bg-white p-6 shadow-sm sm:p-10 print:border-0 print:shadow-none">
           <div className="flex flex-wrap items-start justify-between gap-5 border-b pb-7">
             <div>
-              <p className="eyebrow">Hathkriti marketplace</p>
+              <p className="eyebrow">Hastabazaar marketplace</p>
               <h1 className="mt-2 font-heading text-4xl">{snapshot.documentTitle}</h1>
               <p className="mt-2 text-sm text-muted-foreground">{document.documentNumber}</p>
             </div>
@@ -63,7 +63,7 @@ export default async function OrderDocumentPage({
             </table>
           </div>
           <dl className="ml-auto mt-7 max-w-sm space-y-3 text-sm"><div className="flex justify-between"><dt>Items</dt><dd>{money(snapshot.itemSubtotalPaisa)}</dd></div><div className="flex justify-between"><dt>Delivery</dt><dd>{money(snapshot.deliveryChargePaisa)}</dd></div><div className="flex justify-between"><dt>Platform fee</dt><dd>{money(snapshot.buyerPlatformFeePaisa)}</dd></div><div className="flex justify-between"><dt>Tax collected</dt><dd>{money(snapshot.taxTotalPaisa)}</dd></div><div className="flex justify-between border-t pt-3 text-base font-semibold"><dt>Total</dt><dd>{money(snapshot.grandTotalPaisa)}</dd></div></dl>
-          <div className="mt-8 rounded-xl bg-secondary/35 p-5 text-sm leading-7"><p><strong>Payment:</strong> {snapshot.paymentMethod} · {snapshot.paymentStatus}</p><p className="mt-2 text-muted-foreground">This operational document preserves the order and payment snapshot. It is not a PAN/VAT tax invoice. Tax invoicing remains disabled until Hathkriti’s approved legal identity and invoice format are configured.</p></div>
+          <div className="mt-8 rounded-xl bg-secondary/35 p-5 text-sm leading-7"><p><strong>Payment:</strong> {snapshot.paymentMethod} · {snapshot.paymentStatus}</p><p className="mt-2 text-muted-foreground">This operational document preserves the order and payment snapshot. It is not a PAN/VAT tax invoice. Tax invoicing remains disabled until Hastabazaar’s approved legal identity and invoice format are configured.</p></div>
           <div className="mt-7 flex flex-wrap gap-3 print:hidden"><PrintDocumentButton /><Link href={`/orders/${encodeURIComponent(orderNumber)}`} className="inline-flex h-10 items-center rounded-lg border px-4 text-sm font-semibold">Back to order</Link></div>
         </div>
       </main>

@@ -220,7 +220,7 @@ export default async function ProductPage({
                 <dd className="mt-1 text-muted-foreground">
                   {product.returnEligible
                     ? product.returnConditions ||
-                      'Standard Hathkriti return conditions apply.'
+                      'Standard Hastabazaar return conditions apply.'
                     : 'Not eligible for change-of-mind returns. Statutory rights still apply.'}
                 </dd>
               </div>

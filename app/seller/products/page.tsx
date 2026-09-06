@@ -29,7 +29,7 @@ export default async function SellerProductsPage() {
         <Link href="/seller/products/new" className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"><PackagePlus className="size-4" /> Add product</Link>
       </div>
       {products.length === 0 ? (
-        <Card><CardContent className="flex flex-col items-center py-14 text-center"><PackagePlus className="size-9 text-muted-foreground" /><h2 className="mt-4 font-heading text-xl">Add your first product</h2><p className="mt-2 max-w-md text-sm text-muted-foreground">Listings remain private until Hathkriti reviews and publishes them.</p></CardContent></Card>
+        <Card><CardContent className="flex flex-col items-center py-14 text-center"><PackagePlus className="size-9 text-muted-foreground" /><h2 className="mt-4 font-heading text-xl">Add your first product</h2><p className="mt-2 max-w-md text-sm text-muted-foreground">Listings remain private until Hastabazaar reviews and publishes them.</p></CardContent></Card>
       ) : (
         <div className="space-y-3">
           {products.map((product) => (

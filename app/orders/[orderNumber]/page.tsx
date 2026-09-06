@@ -162,7 +162,7 @@ export default async function OrderReceiptPage({
               </span>
             </div>
             <p className="mt-6 text-sm leading-6 text-muted-foreground">
-              A Hathkriti operations member or delivery representative may call
+              A Hastabazaar operations member or delivery representative may call
               to confirm the address.{' '}
               {receipt.paymentStatus === 'paid'
                 ? 'COD payment is recorded as collected.'

@@ -12,11 +12,11 @@ These are configurable launch defaults. Every future commercial change must crea
 - Use Nepalese rupees (NPR) only. Store money as integer paisa; format it as NPR at the interface boundary.
 - Support English (`en-NP`) and Nepali (`ne-NP`) from the first release. English is the working default until the owner confirms otherwise.
 - Accept addresses and searchable names in both Latin and Devanagari text.
-- Operate as an intermediary multi-vendor marketplace. A Hathkriti-owned store is disabled for Phase 1 but may be introduced later without changing the vendor model.
+- Operate as an intermediary multi-vendor marketplace. A Hastabazaar-owned store is disabled for Phase 1 but may be introduced later without changing the vendor model.
 
 ## Tax and invoicing
 
-- Launch in PAN mode. Hathkriti must not collect or represent VAT until VAT registration is complete and a Super Admin activates a new tax-policy version.
+- Launch in PAN mode. Hastabazaar must not collect or represent VAT until VAT registration is complete and a Super Admin activates a new tax-policy version.
 - Keep Nepal's current 13% standard VAT rate as inactive reference data only. Revalidate it with the Inland Revenue Department before VAT activation.
 - Display the customer's final product price and all delivery or other charges before order confirmation.
 - Generate a sequential invoice and payment receipt containing the legal business name, PAN/VAT number as applicable, invoice and order numbers, date, item details, quantity, price, discounts, delivery charge, total, and payment method.
@@ -63,7 +63,7 @@ Seller and product self-approval is prohibited. Sponsored ranking is disabled at
 
 - Seller commission: **12%** of the item subtotal after seller-funded discounts. It excludes delivery charges and taxes.
 - Customer platform fee: **NPR 0** at launch.
-- Digital payment gateway cost: absorbed by Hathkriti during launch.
+- Digital payment gateway cost: absorbed by Hastabazaar during launch.
 - Delivery price: shown separately to the customer and passed through according to the carrier quote.
 - Featured placement fee: disabled.
 
@@ -97,7 +97,7 @@ All percentages and fixed fees are configuration, not constants scattered throug
 ## Shipping
 
 - Nepal Can Move is the intended initial delivery partner for nationwide delivery, COD, and tracking.
-- Hathkriti remains responsible to the customer for delivery even when the carrier performs it.
+- Hastabazaar remains responsible to the customer for delivery even when the carrier performs it.
 - Build against the generic interface in `lib/shipping/provider.ts`, keeping manual shipment handling and future carrier adapters possible.
 - Do not use guessed or unofficial Nepal Can Move endpoints. Complete merchant onboarding and obtain provider-issued API/webhook documentation first.
 - Shipping must support serviceability checks, transparent quotes, pickup, labels, tracking events, cancellation, return to origin, COD settlement, retries, and reconciliation.

@@ -185,7 +185,7 @@ export default async function Home() {
         >
           <div className="shell py-16 lg:py-20">
             <div className="max-w-2xl">
-              <p className="eyebrow">The Hathkriti standard</p>
+              <p className="eyebrow">The Hastabazaar standard</p>
               <h2 className="mt-3 font-heading text-4xl tracking-tight sm:text-5xl">
                 Built for craft, prepared with care.
               </h2>

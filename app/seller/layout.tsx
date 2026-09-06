@@ -31,7 +31,7 @@ export default async function SellerLayout({
             className="flex items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Image
-              src="/brand/hathkriti-logo.png"
+              src="/brand/hastabazaar-logo.png"
               alt=""
               width={44}
               height={44}
@@ -42,7 +42,7 @@ export default async function SellerLayout({
                 {seller.tradingName}
               </span>
               <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Hathkriti seller
+                Hastabazaar seller
               </span>
             </span>
           </Link>

@@ -2,7 +2,7 @@
 
 ## Ledger accrual
 
-When Admin confirms delivery, Hathkriti appends seller-ledger entries from the commercial values already snapshotted on each order item:
+When Admin confirms delivery, Hastabazaar appends seller-ledger entries from the commercial values already snapshotted on each order item:
 
 - `sale` credits the item line total;
 - `commission` debits the snapshotted 12% marketplace commission;

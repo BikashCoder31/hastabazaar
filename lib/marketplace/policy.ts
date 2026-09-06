@@ -10,7 +10,7 @@ export const phaseOneMarketplacePolicy = {
   effectiveFrom: '2026-09-05',
   value: {
     identity: {
-      brandName: 'Hathkriti',
+      brandName: 'Hastabazaar',
       operatingCountry: 'NP',
       currency: 'NPR',
       timezone: 'Asia/Kathmandu',

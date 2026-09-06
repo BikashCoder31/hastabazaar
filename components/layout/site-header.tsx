@@ -11,11 +11,11 @@ export async function SiteHeader() {
       <div className="shell flex h-20 items-center justify-between gap-6">
         <Link
           href="/"
-          aria-label="Hathkriti home"
+          aria-label="Hastabazaar home"
           className="flex items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Image
-            src="/brand/hathkriti-logo.png"
+            src="/brand/hastabazaar-logo.png"
             alt=""
             width={48}
             height={48}
@@ -23,7 +23,7 @@ export async function SiteHeader() {
             className="h-12 w-12 rounded-full object-cover"
           />
           <span className="font-heading text-2xl tracking-tight">
-            Hathkriti
+            Hastabazaar
           </span>
         </Link>
 

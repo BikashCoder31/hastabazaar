@@ -1,5 +1,5 @@
-export const CART_COOKIE = 'hathkriti_cart';
-export const RECEIPT_COOKIE = 'hathkriti_receipt';
+export const CART_COOKIE = 'hastabazaar_cart';
+export const RECEIPT_COOKIE = 'hastabazaar_receipt';
 
 const CART_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 const RECEIPT_MAX_AGE_SECONDS = 60 * 60 * 24 * 14;

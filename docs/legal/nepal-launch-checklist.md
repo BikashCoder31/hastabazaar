@@ -4,7 +4,7 @@ This checklist converts the Phase 1 plan into launch gates. It is an engineering
 
 ## Business and tax identity
 
-- [ ] Register the Hathkriti operating entity and collect the exact legal name, registration authority/number, registered office, PAN, and (only if applicable) VAT registration.
+- [ ] Register the Hastabazaar operating entity and collect the exact legal name, registration authority/number, registered office, PAN, and (only if applicable) VAT registration.
 - [ ] Put the required identity, customer-service contact, and grievance officer/contact on the website.
 - [ ] Complete electronic-commerce listing with the responsible government department and display the listing number.
 - [ ] Confirm PAN invoicing with the Inland Revenue Department/accountant; keep VAT collection disabled until separately registered and approved.
