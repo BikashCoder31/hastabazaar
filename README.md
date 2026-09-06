@@ -9,6 +9,11 @@ npm install
 npm run dev
 ```
 
+For local role testing, open `http://localhost:3000/local-testing` and choose
+Customer, Seller, Admin, or Super Admin. This development-only switcher creates
+clearly labelled sample records in the local D1 database and is unavailable in
+production builds.
+
 Production check:
 
 ```powershell
