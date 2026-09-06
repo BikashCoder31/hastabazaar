@@ -18,7 +18,7 @@ CREATE TRIGGER `order_items_require_available_inventory`
 BEFORE INSERT ON `order_items`
 FOR EACH ROW
 BEGIN
-	SELECT CASE
+	SELECT (CASE
 		WHEN NEW.product_id IS NULL OR NOT EXISTS (
 			SELECT 1 FROM products
 			WHERE id = NEW.product_id
@@ -26,7 +26,7 @@ BEGIN
 				AND inventory_quantity >= NEW.quantity
 		)
 		THEN RAISE(ABORT, 'product_unavailable')
-	END;
+	END);
 END;
 --> statement-breakpoint
 CREATE TRIGGER `order_items_reserve_inventory`
