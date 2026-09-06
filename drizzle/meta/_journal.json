@@ -1,0 +1,146 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1788628610358,
+      "tag": "0000_clear_lizard",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788628816906,
+      "tag": "0001_legal_adam_destine",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788629404199,
+      "tag": "0002_empty_butterfly",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788631022327,
+      "tag": "0003_plain_sharon_carter",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788631161738,
+      "tag": "0004_woozy_squadron_sinister",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1788631494655,
+      "tag": "0005_faithful_sharon_carter",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788631548599,
+      "tag": "0006_medical_northstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788632742935,
+      "tag": "0007_perfect_stryfe",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788633190679,
+      "tag": "0008_first_stryfe",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1788633674148,
+      "tag": "0009_luxuriant_the_executioner",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1788635058549,
+      "tag": "0010_strong_wiccan",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1788635120101,
+      "tag": "0011_safe_blink",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1788635153453,
+      "tag": "0012_living_micromacro",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1788677936888,
+      "tag": "0013_flaky_timeslip",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1788678970677,
+      "tag": "0014_medical_betty_ross",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1788679794246,
+      "tag": "0015_dear_expediter",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1788681393323,
+      "tag": "0016_brainy_psylocke",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1788683659178,
+      "tag": "0017_living_garia",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1788685336403,
+      "tag": "0018_colossal_scourge",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1788685964217,
+      "tag": "0019_slim_klaw",
+      "breakpoints": true
+    }
+  ]
+}

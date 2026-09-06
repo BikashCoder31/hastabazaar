@@ -1,0 +1,31 @@
+# Cart and COD checkout
+
+## Customer flow
+
+Visitors can add published, in-stock products to a durable guest cart. The cart is identified by an opaque, HTTP-only, same-site cookie; the database stores only its SHA-256 hash. A cart supports at most 20 different products and 10 units of one product.
+
+Checkout collects a Nepal delivery address, customer email, and contact number. The customer must accept the marketplace, privacy, cancellation, and return terms. Phase 1 checkout offers cash on delivery only, so no card, wallet, or bank credentials are requested or stored.
+
+## Commercial rules
+
+- Currency: NPR, stored as integer paisa.
+- Buyer platform fee: NPR 0.
+- Tax collected by the platform: NPR 0 while operating under the current PAN policy.
+- Seller commission: 12%, snapshotted on each order item.
+- Kathmandu Valley provisional delivery: NPR 150, estimated 1–3 days.
+- Terai priority districts provisional delivery: NPR 180, estimated 2–5 days.
+- Other Nepal districts provisional delivery: NPR 250, estimated 3–7 days.
+
+These delivery rates are controlled-launch defaults. Replace them with carrier-issued serviceability and quotes after the Nepal Can Move merchant contract is signed.
+
+## Integrity and privacy
+
+Every checkout has an idempotency key. Retrying the same request returns the same order instead of creating a duplicate. Database triggers verify that every product remains published and in stock, then reserve inventory inside the same D1 batch that creates the order. A failure rolls back the complete order.
+
+Order receipt access requires both the order number and a separate HTTP-only receipt token. The database stores only the token hash. Customer details are available only on that receipt and inside protected operations views.
+
+The order snapshots product names, seller names, prices, commission, policy version, and delivery address so later catalogue or policy edits cannot rewrite historical commercial terms.
+
+## Launch boundary
+
+Order creation produces a confirmed COD order, a pending manual COD payment record, a pending manual carrier shipment, and an audit/status event. The internal fulfilment workflow can later record dispatch and COD collection, but it does not contact a carrier, collect money online, send transactional email, or create a tax invoice. Those integrations require company registration, approved policies, and production provider credentials.

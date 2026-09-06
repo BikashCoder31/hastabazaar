@@ -1,0 +1,1 @@
+ALTER TABLE `seller_profiles` ADD `review_request_id` text;

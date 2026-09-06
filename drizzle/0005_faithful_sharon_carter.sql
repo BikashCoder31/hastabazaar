@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `idx_staff_invitations_pending_email_unique` ON `staff_invitations` (`email`) WHERE "staff_invitations"."status" = 'pending';

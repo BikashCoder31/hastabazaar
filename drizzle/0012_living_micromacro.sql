@@ -1,0 +1,1 @@
+ALTER TABLE `orders` ADD `operation_request_id` text;

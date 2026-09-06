@@ -1,0 +1,9 @@
+import { env } from 'cloudflare:workers';
+import { Star } from 'lucide-react';
+
+import { ReviewModerationActions } from '@/components/admin/review-moderation-actions';
+import { requireStaffPage } from '@/lib/auth/staff';
+import { requireDatabase } from '@/lib/db/d1';
+import { listReviewsForModeration } from '@/lib/db/repositories/customers';
+
+export default async function AdminReviewsPage() { await requireStaffPage('/admin/reviews', 'product.review'); const reviews = await listReviewsForModeration(requireDatabase(env as unknown as { DB?: D1Database })); return <div><p className="eyebrow">Trust and quality</p><h1 className="mt-2 font-heading text-4xl">Product reviews</h1><p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">Publish factual verified-purchase reviews, reject unsuitable submissions, and retain every decision in the audit log.</p><div className="mt-7 grid gap-4 lg:grid-cols-2">{reviews.map((review) => <article key={review.id} className="rounded-2xl border bg-card p-5"><div className="flex items-center justify-between gap-4"><p className="font-semibold">{review.productName}</p><span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold capitalize">{review.status}</span></div><div className="mt-3 flex text-amber-600">{Array.from({ length: review.rating }, (_, index) => <Star key={index} className="size-4 fill-current" />)}</div>{review.title ? <h2 className="mt-3 font-semibold">{review.title}</h2> : null}<p className="mt-2 text-sm leading-6 text-muted-foreground">{review.body}</p><p className="mt-3 text-xs">{review.customerName} · {review.orderNumber}</p><ReviewModerationActions id={review.id} status={review.status} /></article>)}{reviews.length === 0 ? <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground lg:col-span-2">No reviews are awaiting attention.</div> : null}</div></div>; }
