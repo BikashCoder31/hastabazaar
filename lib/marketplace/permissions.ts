@@ -29,6 +29,9 @@ export const permissions = [
   'admin.permissions.manage',
   'legal_content.publish',
   'audit_log.view',
+  'business_settings.view',
+  'business_settings.manage',
+  'business_settings.approve',
 ] as const;
 
 export type Permission = (typeof permissions)[number];
@@ -103,6 +106,7 @@ export const dualApprovalRequiredFor = [
   'refund.approve.high_value',
   'payout.approve',
   'seller.suspend',
+  'business_settings.approve',
 ] as const satisfies readonly Permission[];
 
 export const nonDelegableProtections = [
@@ -111,4 +115,5 @@ export const nonDelegableProtections = [
   'Only a super admin can grant or revoke admin access.',
   'Payout preparation and payout approval must be performed by different actors.',
   'Audit records are append-only; even super admins cannot delete them through the application.',
+  'Controlled business settings must be proposed and approved by different Super Admins.',
 ] as const;

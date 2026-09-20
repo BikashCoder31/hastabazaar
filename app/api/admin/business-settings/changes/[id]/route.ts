@@ -1,0 +1,139 @@
+import { env } from 'cloudflare:workers';
+
+import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
+import { requireDatabase } from '@/lib/db/d1';
+import {
+  approveBusinessSettingChange,
+  BusinessSettingConflictError,
+  createBusinessSettingReversalDraft,
+  publishBusinessSettingDraft,
+  rejectBusinessSettingChange,
+  submitBusinessSettingDraft,
+} from '@/lib/db/repositories/business-settings';
+import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
+import { isTrustedMutationRequest } from '@/lib/http/request-security';
+
+export const dynamic = 'force-dynamic';
+
+const json = (body: unknown, status: number) =>
+  Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
+
+async function requestBody(request: Request): Promise<Record<string, unknown>> {
+  const bytes = await readBoundedBody(request, 16 * 1024);
+  const value = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError('Invalid request.');
+  }
+  return value as Record<string, unknown>;
+}
+
+function requiredRevision(value: unknown): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 1) {
+    throw new RangeError('Expected revision must be a positive integer.');
+  }
+  return Number(value);
+}
+
+function requiredEffectiveFrom(value: unknown): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    throw new RangeError('Select a valid effective date.');
+  }
+  return Number(value);
+}
+
+export async function POST(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+): Promise<Response> {
+  if (!isTrustedMutationRequest(request)) {
+    return json({ error: 'Cross-site requests are not allowed.' }, 403);
+  }
+  try {
+    const body = await requestBody(request);
+    const action = body.action;
+    const { id } = await context.params;
+    const reason = typeof body.reason === 'string' ? body.reason : '';
+    const requestId =
+      typeof body.requestId === 'string'
+        ? body.requestId
+        : request.headers.get('x-request-id') ?? crypto.randomUUID();
+    const now = Date.now();
+    const database = requireDatabase(env as unknown as { DB?: D1Database });
+
+    if (action === 'approve' || action === 'reject') {
+      const actor = await requireStaffApi('business_settings.approve');
+      const expectedRevision = requiredRevision(body.expectedRevision);
+      if (action === 'approve') {
+        await approveBusinessSettingChange(database, {
+          id,
+          actorId: actor.id,
+          expectedRevision,
+          effectiveFrom: requiredEffectiveFrom(body.effectiveFrom),
+          reason,
+          requestId,
+          now,
+        });
+      } else {
+        await rejectBusinessSettingChange(database, {
+          id,
+          actorId: actor.id,
+          expectedRevision,
+          reason,
+          requestId,
+          now,
+        });
+      }
+      return json({ ok: true, action }, 200);
+    }
+
+    const actor = await requireStaffApi('business_settings.manage');
+    if (action === 'submit') {
+      await submitBusinessSettingDraft(database, {
+        id,
+        actorId: actor.id,
+        expectedRevision: requiredRevision(body.expectedRevision),
+        reason,
+        requestId,
+        now,
+      });
+      return json({ ok: true, action }, 200);
+    }
+    if (action === 'publish') {
+      await publishBusinessSettingDraft(database, {
+        id,
+        actorId: actor.id,
+        expectedRevision: requiredRevision(body.expectedRevision),
+        effectiveFrom: requiredEffectiveFrom(body.effectiveFrom),
+        reason,
+        requestId,
+        now,
+      });
+      return json({ ok: true, action }, 200);
+    }
+    if (action === 'reverse') {
+      const draft = await createBusinessSettingReversalDraft(database, {
+        sourceVersionId: id,
+        actorId: actor.id,
+        reason,
+        requestId,
+        now,
+      });
+      return json({ draft, action }, 201);
+    }
+    return json({ error: 'Select a valid business-setting action.' }, 400);
+  } catch (error) {
+    if (error instanceof StaffAuthorizationError) {
+      return json({ error: error.message }, error.status);
+    }
+    if (error instanceof BodyTooLargeError) {
+      return json({ error: error.message }, 413);
+    }
+    if (error instanceof BusinessSettingConflictError) {
+      return json({ error: error.message }, 409);
+    }
+    if (error instanceof RangeError || error instanceof TypeError) {
+      return json({ error: error.message }, 400);
+    }
+    return json({ error: 'Business setting action could not be completed.' }, 400);
+  }
+}

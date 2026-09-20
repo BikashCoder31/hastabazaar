@@ -334,6 +334,16 @@ if (definitions.length !== businessSettingKeys.length) {
 
 export const businessSettingDefinitions = definitions;
 
+export function parseBusinessSettingKey(value: unknown): BusinessSettingKey {
+  if (
+    typeof value !== 'string' ||
+    !businessSettingKeys.includes(value as BusinessSettingKey)
+  ) {
+    throw new Error(`Unknown business setting: ${String(value)}.`);
+  }
+  return value as BusinessSettingKey;
+}
+
 export function getBusinessSettingDefinition<K extends BusinessSettingKey>(
   key: K,
 ): BusinessSettingDefinition<K> {
