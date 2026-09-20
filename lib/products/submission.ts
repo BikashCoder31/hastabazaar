@@ -36,7 +36,8 @@ export interface ProductSubmissionInput {
   compareAtPricePaisa: number | null;
   inventoryQuantity: number;
   producer: string;
-  materials: string;
+  materials: readonly string[];
+  originStory: string | null;
   dimensions: string | null;
   size?: string | null;
   colour?: string | null;
@@ -68,6 +69,19 @@ export interface ProductImageUpload {
 function textField(formData: FormData, name: string): string {
   const value = formData.get(name);
   return typeof value === 'string' ? value.trim() : '';
+}
+
+export function normalizeProductMaterials(values:readonly string[]):readonly string[]{
+  const normalized:string[]=[];const seen=new Set<string>();
+  for(const raw of values.flatMap(value=>value.split(/[,\n]/))){
+    const value=raw.trim().replace(/\s+/g,' ');if(!value)continue;
+    if(value.length>80)throw new RangeError('Each material must be 80 characters or fewer.');
+    if(value.includes('<')||value.includes('>')||/\p{Cc}/u.test(value))throw new RangeError('Materials contain an invalid character.');
+    const key=value.toLocaleLowerCase('en');if(seen.has(key))continue;
+    seen.add(key);normalized.push(value);
+  }
+  if(normalized.length>20)throw new RangeError('Select no more than 20 materials.');
+  return Object.freeze(normalized);
 }
 
 function parseMoney(value: string): number | null | 'invalid' {
@@ -107,6 +121,9 @@ export function parseProductSubmission(formData: FormData): {
     ),
   ];
 
+  let materials:readonly string[]=[];
+  try{materials=normalizeProductMaterials(formData.getAll('materials').filter((value):value is string=>typeof value==='string'));}
+  catch(error){errors.push(error instanceof Error?error.message:'Materials are invalid.');}
   const input: ProductSubmissionInput = {
     categoryId: textField(formData, 'categoryId'),
     occasionIds,
@@ -120,7 +137,8 @@ export function parseProductSubmission(formData: FormData): {
       typeof compareAtPricePaisa === 'number' ? compareAtPricePaisa : null,
     inventoryQuantity,
     producer: textField(formData, 'producer'),
-    materials: textField(formData, 'materials'),
+    materials,
+    originStory: textField(formData,'originStory') || null,
     dimensions: textField(formData, 'dimensions') || null,
     size: textField(formData, 'size') || null,
     colour: textField(formData, 'colour') || null,
@@ -240,7 +258,7 @@ export function parseProductSubmission(formData: FormData): {
     ['descriptionEn', 'English description', 4000],
     ['descriptionNe', 'Nepali description', 4000],
     ['producer', 'Producer', 180],
-    ['materials', 'Materials', 1000],
+    ['originStory', 'Product story', 2000],
     ['dimensions', 'Dimensions', 500],
     ['size', 'Size', 300],
     ['colour', 'Colour', 300],

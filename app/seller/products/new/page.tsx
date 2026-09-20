@@ -7,15 +7,17 @@ import {
   listActiveCategories,
   listActiveOccasions,
 } from '@/lib/db/repositories/products';
+import { getProductMaterialSuggestions } from '@/lib/products/material-settings';
 
 export const dynamic = 'force-dynamic';
 
 export default async function NewProductPage() {
   await requireSellerPage('/seller/products/new');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const [categories, occasions] = await Promise.all([
+  const [categories, occasions, materialSuggestions] = await Promise.all([
     listActiveCategories(database),
     listActiveOccasions(database),
+    getProductMaterialSuggestions(database),
   ]);
   return (
     <div className="space-y-7">
@@ -29,7 +31,7 @@ export default async function NewProductPage() {
           understand exactly what is being sold.
         </p>
       </div>
-      <ProductSubmissionForm categories={categories} occasions={occasions} />
+      <ProductSubmissionForm categories={categories} occasions={occasions} materialSuggestions={materialSuggestions} />
     </div>
   );
 }

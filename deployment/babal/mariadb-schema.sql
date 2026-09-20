@@ -1249,6 +1249,11 @@ ALTER TABLE `managed_payout_entries` ADD CONSTRAINT `managed_payout_entries_payo
 ALTER TABLE `managed_payout_entries` ADD CONSTRAINT `managed_payout_entries_settlement_fk` FOREIGN KEY (`settlement_entry_id`) REFERENCES `managed_settlement_entries` (`id`) ON DELETE RESTRICT;
 ALTER TABLE `managed_invoice_groups` ADD CONSTRAINT `managed_invoice_order_fk` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE RESTRICT;
 
+-- Additive product-specific materials and origin story fields.
+ALTER TABLE `products`
+  ADD COLUMN `materials_json` LONGTEXT NOT NULL DEFAULT '[]',
+  ADD COLUMN `origin_story` LONGTEXT NULL;
+
 -- Babal.Host password authentication and server-side sessions.
 CREATE TABLE IF NOT EXISTS `user_credentials` (
   `user_id` VARCHAR(191) NOT NULL,

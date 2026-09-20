@@ -103,6 +103,14 @@ function useFilePreview(file: File | null): string | null {
   return url;
 }
 
+function MaterialsEditor({initial,suggestions}:{initial:string; suggestions:readonly string[]}){
+  const [materials,setMaterials]=useState(()=>initial.split(',').map(value=>value.trim()).filter(Boolean));
+  const [candidate,setCandidate]=useState('');
+  const listId='product-material-suggestions';
+  function add(){const value=candidate.trim().replace(/\s+/g,' ');if(!value||value.length>80)return;setMaterials(current=>current.some(item=>item.toLocaleLowerCase('en')===value.toLocaleLowerCase('en'))?current:[...current,value]);setCandidate('');}
+  return <Field><FieldLabel htmlFor="material-entry">Materials used — optional</FieldLabel><FieldDescription>Add only materials used in this product. Suggestions do not create sustainability or verification claims.</FieldDescription><div className="flex gap-2"><Input id="material-entry" list={listId} value={candidate} maxLength={80} placeholder="Search or add a material" onChange={event=>setCandidate(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();add();}}}/><Button type="button" variant="outline" onClick={add}><Plus/>Add</Button></div><datalist id={listId}>{suggestions.map(value=><option key={value} value={value}>{value}</option>)}</datalist>{materials.length?<ul className="flex flex-wrap gap-2" aria-label="Selected materials">{materials.map(value=><li className="inline-flex items-center gap-1 rounded-full border bg-muted px-3 py-1 text-sm" key={value.toLocaleLowerCase('en')}><input type="hidden" name="materials" value={value} aria-label={`${value} material`}/>{value}<button type="button" className="rounded p-1" aria-label={`Remove ${value}`} onClick={()=>setMaterials(current=>current.filter(item=>item!==value))}><Trash2 className="size-3"/></button></li>)}</ul>:<p className="text-sm text-muted-foreground">No materials added. This does not block submission.</p>}</Field>;
+}
+
 function ImageUploadSlot({
   slot,
   required,
@@ -315,11 +323,13 @@ export function ProductSubmissionForm({
   occasions,
   initial,
   mode = 'submit',
+  materialSuggestions = [],
 }: {
   categories: readonly CategoryRow[];
   occasions: readonly OccasionRow[];
   initial?: SellerProductRevision;
   mode?: 'submit' | 'draft';
+  materialSuggestions?: readonly string[];
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [state, setState] = useState<SubmissionState>({ status: 'idle' });
@@ -601,6 +611,12 @@ export function ProductSubmissionForm({
               placeholder="Describe the craft, process, use, and what makes this item distinct."
               defaultValue={initial?.descriptionEn}
             />
+          </Field>
+          <MaterialsEditor initial={initial?.materials ?? ''} suggestions={materialSuggestions}/>
+          <Field>
+            <FieldLabel htmlFor="originStory">The story behind this product — optional</FieldLabel>
+            <FieldDescription>Share what inspired this particular product. Keep your general maker biography in the maker profile.</FieldDescription>
+            <Textarea id="originStory" name="originStory" maxLength={2000} rows={5} placeholder="A short, genuine product-specific story" defaultValue={initial?.originStory ?? ''}/>
           </Field>
           <div className="grid gap-5 md:grid-cols-2">
             <Field>

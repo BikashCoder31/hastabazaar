@@ -143,14 +143,14 @@ async function insertProductSubmission(
         `INSERT INTO products (
           id, seller_id, category_id, slug, sku, name_en, name_ne,
           description_en, description_ne, price_paisa, compare_at_price_paisa,
-          inventory_quantity, producer, country_of_origin, materials, dimensions,
+          inventory_quantity, producer, country_of_origin, materials, materials_json, origin_story, dimensions,
           size, colour, variations, specifications,
           care_instructions, safety_information, return_conditions, return_eligible, warranty,
           made_to_order, preparation_days, manufactured_at, expires_at,
           licence_reference, status, review_note,
           review_request_id, reviewed_by, published_at, created_at, updated_at
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NP', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NP', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?
         )`,
       )
@@ -168,7 +168,9 @@ async function insertProductSubmission(
         input.compareAtPricePaisa,
         input.inventoryQuantity,
         input.producer,
-        input.materials,
+        input.materials.join(', '),
+        JSON.stringify(input.materials),
+        input.originStory,
         input.dimensions,
         input.size ?? null,
         input.colour ?? null,
@@ -338,6 +340,7 @@ export interface SellerProductRevision {
   inventoryQuantity: number;
   producer: string;
   materials: string;
+  originStory: string | null;
   dimensions: string | null;
   size: string | null;
   colour: string | null;
@@ -387,7 +390,7 @@ export async function getSellerProductForRevision(
           products.price_paisa AS pricePaisa,
           products.compare_at_price_paisa AS compareAtPricePaisa,
           products.inventory_quantity AS inventoryQuantity,
-          products.producer, products.materials, products.dimensions,
+          products.producer, products.materials, products.origin_story AS originStory, products.dimensions,
            products.size, products.colour, products.variations, products.specifications,
            products.care_instructions AS careInstructions,
            products.safety_information AS safetyInformation,
@@ -483,6 +486,7 @@ export async function reviseAndResubmitProduct(
         `UPDATE products SET category_id = ?, name_en = ?, name_ne = ?,
           description_en = ?, description_ne = ?, price_paisa = ?,
           compare_at_price_paisa = ?, inventory_quantity = ?, dimensions = ?,
+          materials = ?, materials_json = ?, origin_story = ?,
           size = ?, colour = ?, variations = ?, specifications = ?, care_instructions = ?,
           safety_information = ?, return_conditions = ?, return_eligible = ?, warranty = ?,
           made_to_order = ?, preparation_days = ?, manufactured_at = ?, expires_at = ?,
@@ -503,6 +507,9 @@ export async function reviseAndResubmitProduct(
         options.input.compareAtPricePaisa,
         options.input.inventoryQuantity,
         options.input.dimensions,
+        options.input.materials.join(', '),
+        JSON.stringify(options.input.materials),
+        options.input.originStory,
         options.input.size ?? null,
         options.input.colour ?? null,
         options.input.variations ?? null,
@@ -871,6 +878,7 @@ export interface ProductReviewDetail extends ProductReviewQueueRow {
   compareAtPricePaisa: number | null;
   producer: string;
   materials: string;
+  originStory: string | null;
   dimensions: string | null;
   size: string | null;
   colour: string | null;
@@ -909,7 +917,7 @@ export async function getProductForReview(
         products.price_paisa AS pricePaisa,
         products.compare_at_price_paisa AS compareAtPricePaisa,
         products.inventory_quantity AS inventoryQuantity,
-        products.producer, products.materials, products.dimensions,
+        products.producer, products.materials, products.origin_story AS originStory, products.dimensions,
         products.size, products.colour, products.variations, products.specifications,
         products.care_instructions AS careInstructions,
         products.safety_information AS safetyInformation,
@@ -1150,6 +1158,7 @@ export interface PublicProductRow {
   inventoryQuantity: number;
   producer: string;
   materials: string;
+  originStory: string | null;
   dimensions: string | null;
   size: string | null;
   colour: string | null;
@@ -1721,7 +1730,7 @@ export async function listPublishedProducts(
         products.price_paisa AS pricePaisa,
         products.compare_at_price_paisa AS compareAtPricePaisa,
         products.inventory_quantity AS inventoryQuantity,
-        products.producer, products.materials, products.dimensions,
+        products.producer, products.materials, products.origin_story AS originStory, products.dimensions,
         products.size, products.colour, products.variations, products.specifications,
         products.care_instructions AS careInstructions,
         products.safety_information AS safetyInformation,
@@ -1810,7 +1819,7 @@ export async function getPublishedProductBySlug(
         products.price_paisa AS pricePaisa,
         products.compare_at_price_paisa AS compareAtPricePaisa,
         products.inventory_quantity AS inventoryQuantity,
-        products.producer, products.materials, products.dimensions,
+        products.producer, products.materials, products.origin_story AS originStory, products.dimensions,
         products.size, products.colour, products.variations, products.specifications,
         products.care_instructions AS careInstructions,
         products.safety_information AS safetyInformation,

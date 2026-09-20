@@ -138,6 +138,7 @@ export default async function ProductReviewPage({
                 <Detail label="Producer">{product.producer}</Detail>
                 <Detail label="Origin">Nepal</Detail>
                 <Detail label="Materials">{product.materials}</Detail>
+                <Detail label="Product-origin story">{product.originStory}</Detail>
                 <Detail label="Dimensions">{product.dimensions}</Detail>
                 <Detail label="Size">{product.size}</Detail>
                 <Detail label="Colour">{product.colour}</Detail>

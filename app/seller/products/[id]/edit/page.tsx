@@ -9,6 +9,7 @@ import {
   listActiveCategories,
   listActiveOccasions,
 } from '@/lib/db/repositories/products';
+import { getProductMaterialSuggestions } from '@/lib/products/material-settings';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,10 +21,11 @@ export default async function ReviseProductPage({
   const { id } = await params;
   const seller = await requireSellerPage(`/seller/products/${id}/edit`);
   const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const [product, categories, occasions] = await Promise.all([
+  const [product, categories, occasions, materialSuggestions] = await Promise.all([
     getSellerProductForRevision(database, seller.sellerId, id),
     listActiveCategories(database),
     listActiveOccasions(database),
+    getProductMaterialSuggestions(database),
   ]);
   if (!product) notFound();
   if (!['draft', 'needs_changes', 'rejected', 'approved', 'published'].includes(product.status)) {
@@ -52,6 +54,7 @@ export default async function ReviseProductPage({
         categories={categories}
         occasions={occasions}
         initial={product}
+        materialSuggestions={materialSuggestions}
       />
     </div>
   );

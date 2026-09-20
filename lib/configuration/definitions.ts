@@ -52,6 +52,21 @@ function codeList(label: string, value: unknown): readonly string[] {
   return Object.freeze(normalized);
 }
 
+function displayTextList(label: string, value: unknown): readonly string[] {
+  if (!Array.isArray(value) || value.length > 100) throw new TypeError(`${label} must be a list of at most 100 items.`);
+  const result: string[]=[];
+  const seen=new Set<string>();
+  for(const entry of value){
+    if(typeof entry!=='string')throw new RangeError(`${label} contains an invalid value.`);
+    const normalized=entry.trim().replace(/\s+/g,' ');
+    if(!normalized||normalized.length>80||normalized.includes('<')||normalized.includes('>')||/\p{Cc}/u.test(normalized))throw new RangeError(`${label} contains an invalid value.`);
+    const key=normalized.toLocaleLowerCase('en');
+    if(seen.has(key))throw new RangeError(`${label} cannot contain duplicate values.`);
+    seen.add(key);result.push(normalized);
+  }
+  return Object.freeze(result);
+}
+
 const socialLinkHosts = {
   linkedin: new Set(['linkedin.com', 'www.linkedin.com']),
   x: new Set(['x.com', 'www.x.com']),
@@ -305,6 +320,19 @@ const definitions = [
     affectedSurfaces: ['managed_makers', 'returns', 'settlements'],
     requiredCapability: 'managed_adjustments_v1',
     validate: (value: unknown) => codeList('Managed adjustment reasons', value),
+  },
+  {
+    key: 'product_material_suggestions',
+    label: 'Product material suggestions',
+    description: 'Searchable optional material suggestions. Sellers may add another accurate material.',
+    defaultValue: Object.freeze(['clay','cotton','jute','wood','bamboo','wool','metal','glass','paper','Wooden beads']),
+    sensitivity: 'public_content',
+    changeControl: 'simple',
+    effectiveMode: 'immediate',
+    snapshotOnTransaction: false,
+    affectedSurfaces: ['seller_product_editor','managed_maker_product_drafts','catalogue'],
+    requiredCapability: null,
+    validate: (value: unknown) => displayTextList('Product material suggestions', value),
   },
   {
     key: 'official_social_links',

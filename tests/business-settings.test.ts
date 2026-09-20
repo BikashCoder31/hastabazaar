@@ -138,6 +138,7 @@ void test('only supported, validated controls exist and demonstration defaults r
     'open_box_category_codes',
     'open_box_service_area_codes',
     'managed_adjustment_reason_codes',
+    'product_material_suggestions',
     'official_social_links',
   ];
   assert.deepEqual([...keys].sort(), [...requiredKeys].sort());

@@ -57,6 +57,7 @@ const listKeys = new Set<BusinessSettingKey>([
   'open_box_category_codes',
   'open_box_service_area_codes',
   'managed_adjustment_reason_codes',
+  'product_material_suggestions',
 ]);
 
 function editorValueFor(value: unknown): unknown {
@@ -486,7 +487,7 @@ function SettingValueEditor({
   }
   return (
     <div className="space-y-2">
-      <Label htmlFor="setting-value">Comma-separated approved codes</Label>
+      <Label htmlFor="setting-value">Comma-separated approved values</Label>
       <Input id="setting-value" value={scalarString(value)} onChange={(event) => onChange(event.target.value)} />
     </div>
   );

@@ -1,3 +1,4 @@
+import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import {
   ArrowUpRight,
@@ -6,9 +7,24 @@ import {
   Mail,
   MapPin,
   ShieldCheck,
+  ExternalLink,
 } from 'lucide-react';
+import { getBusinessSettingDefinition } from '@/lib/configuration/definitions';
+import { requireDatabase } from '@/lib/db/d1';
+import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
+import type { OfficialSocialLinks } from '@/lib/configuration/types';
 
-export function SiteFooter() {
+async function officialLinks():Promise<OfficialSocialLinks>{
+  const fallback=getBusinessSettingDefinition('official_social_links').defaultValue;
+  try{
+    const db=requireDatabase(env as unknown as {DB?:D1Database});
+    const clock=await db.prepare("SELECT unixepoch('now') * 1000 AS now").first<{now:number}>();
+    return (await getEffectiveBusinessSetting(db,'official_social_links',Number(clock?.now??0))).value;
+  }catch{return fallback;}
+}
+
+export async function SiteFooter() {
+  const socialLinks=await officialLinks();
   return (
     <footer className="bg-[#101f39] text-white">
       <div className="shell py-12 sm:py-16">
@@ -20,6 +36,9 @@ export function SiteFooter() {
             >
               HastaBazaar<span className="text-[#f4c46b]">.</span>
             </Link>
+            <nav aria-label="Official Hastabazaar social media" className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm text-white/75">
+              {Object.entries(socialLinks).map(([platform,href])=><a key={platform} href={href} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center gap-1 rounded-sm py-1 capitalize transition-colors hover:text-[#f4c46b]">{platform}<ExternalLink className="size-3" aria-hidden="true"/></a>)}
+            </nav>
             <p className="mt-4 max-w-xs text-base leading-7 text-white/70">
               Handmade finds. Human stories. A little piece of Nepal, chosen
               with heart.

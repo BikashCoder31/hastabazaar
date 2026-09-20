@@ -13,6 +13,7 @@ export const businessSettingKeys = [
   'open_box_category_codes',
   'open_box_service_area_codes',
   'managed_adjustment_reason_codes',
+  'product_material_suggestions',
   'official_social_links',
 ] as const;
 
@@ -59,6 +60,7 @@ export type BusinessSettingValues = Readonly<{
   open_box_category_codes: readonly string[];
   open_box_service_area_codes: readonly string[];
   managed_adjustment_reason_codes: readonly string[];
+  product_material_suggestions: readonly string[];
   official_social_links: OfficialSocialLinks;
 }>;
 

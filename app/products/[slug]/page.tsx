@@ -279,6 +279,7 @@ export default async function ProductPage({
                 </div>
               ) : null}
             </dl>
+            {product.originStory ? <section className="mt-7 rounded-2xl border bg-secondary/20 p-6"><h2 className="font-heading text-2xl">The story behind this product</h2><p className="mt-3 whitespace-pre-line leading-7 text-muted-foreground">{product.originStory}</p></section> : null}
             <div className="mt-6 grid gap-3 text-sm text-muted-foreground sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
               <p className="flex items-center gap-2">
                 <ShieldCheck className="size-4 text-primary" /> Verified seller

@@ -393,6 +393,8 @@ export const products = sqliteTable(
     producer: text('producer').notNull(),
     countryOfOrigin: text('country_of_origin').notNull().default('NP'),
     materials: text('materials').notNull(),
+    materialsJson: text('materials_json').notNull().default('[]'),
+    originStory: text('origin_story'),
     dimensions: text('dimensions'),
     size: text('size'),
     colour: text('colour'),

@@ -32,7 +32,7 @@
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "48d28464cfd00209b2087a06940ee490f2c4c3b7810a714e1eabbc0b011e4464",
+      "sha256": "2cae29fd0aefcb67e882e80cc71a6b529fe7fc1ce87e2babed03ba23b4eaa7b6",
       "usage": "empty-database-only"
     },
     {

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { parseProductSubmission } from '../lib/products/submission';
 function form() { const f = new FormData(); for (const [key,value] of Object.entries({categoryId:'cat',occasionIds:'occasion',sku:'EXISTING-1',nameEn:'Handmade bowl',descriptionEn:'Handmade bowl description',price:'1000',inventoryQuantity:'2',preparationDays:'2'})) f.set(key,value); return f; }
 void test('new product form accepts omitted producer and materials without fabricated values', () => {
- const result = parseProductSubmission(form()); assert.deepEqual(result.errors, []); assert.equal(result.input?.producer, ''); assert.equal(result.input?.materials, '');
+ const result = parseProductSubmission(form()); assert.deepEqual(result.errors, []); assert.equal(result.input?.producer, ''); assert.deepEqual(result.input?.materials, []); assert.equal(result.input?.originStory, null);
 });
 void test('warranty Yes accepts months alone, rejects missing/negative/fractional duration', () => {
  const f=form(); f.set('warrantyOffered','yes'); f.set('warrantyMonths','6');
