@@ -32,7 +32,7 @@
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "5e212486e5db1b581ed55ad292146f75bda2bb4ae01f3d4d9827291533c92a00",
+      "sha256": "0ed1447fb36c492d1b678549b33d70ffb12c7e74bea5c106f609bbc01f3b06a6",
       "usage": "empty-database-only"
     },
     {
@@ -153,6 +153,11 @@
     {
       "path": "deployment/babal/mariadb-policy-commission-9-percent.sql",
       "sha256": "9a138f064ddf7ed491fa77160acbb1991164549ae0ac89deecc401806f6c082a",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-business-configuration.sql",
+      "sha256": "256d046feff33c3f32db74ab35bc88e5559ef8466adaf23cabc9ebd21dea6acb",
       "usage": "additive-maintenance"
     }
   ],
@@ -923,6 +928,33 @@
       "created_at",
       "product_id",
       "user_id"
+    ],
+    "business_setting_versions": [
+      "approved_at",
+      "approved_by",
+      "change_control",
+      "created_at",
+      "created_by",
+      "decision_note",
+      "effective_from",
+      "effective_until",
+      "id",
+      "last_request_id",
+      "published_at",
+      "published_by",
+      "reason",
+      "revision",
+      "setting_key",
+      "status",
+      "submitted_at",
+      "submitted_by",
+      "supersedes_id",
+      "value_json",
+      "version"
+    ],
+    "business_setting_guards": [
+      "id",
+      "valid"
     ],
     "user_credentials": [
       "created_at",

@@ -340,6 +340,91 @@ export const marketplaceSettings = sqliteTable('marketplace_settings', {
   updatedAt: timestamp('updated_at').notNull(),
 });
 
+export const businessSettingVersions = sqliteTable(
+  'business_setting_versions',
+  {
+    id: id(),
+    settingKey: text('setting_key').notNull(),
+    version: integer('version').notNull(),
+    valueJson: text('value_json').notNull(),
+    status: text('status', {
+      enum: ['draft', 'pending_approval', 'published', 'rejected', 'cancelled'],
+    })
+      .notNull()
+      .default('draft'),
+    revision: integer('revision').notNull().default(1),
+    changeControl: text('change_control', {
+      enum: ['simple', 'controlled'],
+    }).notNull(),
+    effectiveFrom: timestamp('effective_from'),
+    effectiveUntil: timestamp('effective_until'),
+    reason: text('reason').notNull(),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    createdAt: timestamp('created_at').notNull(),
+    submittedBy: text('submitted_by').references(() => users.id, {
+      onDelete: 'restrict',
+    }),
+    submittedAt: timestamp('submitted_at'),
+    approvedBy: text('approved_by').references(() => users.id, {
+      onDelete: 'restrict',
+    }),
+    approvedAt: timestamp('approved_at'),
+    publishedBy: text('published_by').references(() => users.id, {
+      onDelete: 'restrict',
+    }),
+    publishedAt: timestamp('published_at'),
+    decisionNote: text('decision_note'),
+    supersedesId: text('supersedes_id').references(
+      (): AnySQLiteColumn => businessSettingVersions.id,
+      { onDelete: 'restrict' },
+    ),
+    lastRequestId: text('last_request_id').notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_business_setting_versions_key_version').on(
+      table.settingKey,
+      table.version,
+    ),
+    uniqueIndex('idx_business_setting_versions_request').on(table.lastRequestId),
+    index('idx_business_setting_versions_effective').on(
+      table.settingKey,
+      table.status,
+      table.effectiveFrom,
+      table.effectiveUntil,
+    ),
+    index('idx_business_setting_versions_review').on(
+      table.status,
+      table.createdAt,
+    ),
+    check(
+      'business_setting_versions_status',
+      sql`${table.status} IN ('draft', 'pending_approval', 'published', 'rejected', 'cancelled')`,
+    ),
+    check('business_setting_versions_revision', sql`${table.revision} >= 1`),
+    check(
+      'business_setting_versions_control',
+      sql`${table.changeControl} IN ('simple', 'controlled')`,
+    ),
+    check(
+      'business_setting_versions_interval',
+      sql`${table.effectiveUntil} IS NULL OR (${table.effectiveFrom} IS NOT NULL AND ${table.effectiveUntil} > ${table.effectiveFrom})`,
+    ),
+  ],
+);
+
+export const businessSettingGuards = sqliteTable(
+  'business_setting_guards',
+  {
+    id: id(),
+    valid: integer('valid').notNull(),
+  },
+  (table) => [
+    check('business_setting_guards_valid', sql`${table.valid} = 1`),
+  ],
+);
+
 export const homepageProductControls = sqliteTable(
   'homepage_product_controls',
   {
