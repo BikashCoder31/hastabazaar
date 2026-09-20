@@ -8,7 +8,7 @@ export function CustomerRiderCode({
   jobs: readonly { id: string }[];
 }) {
   const [codes, setCodes] = useState<
-      Record<string, { code: string; expiresAt: number }>
+      Record<string, { code?: string; expiresAt: number; deliveryMode?: string; sentByEmail?: boolean }>
     >({}),
     [busy, setBusy] = useState<string | null>(null),
     [error, setError] = useState('');
@@ -25,8 +25,10 @@ export function CustomerRiderCode({
         },
       );
       const data = (await response.json()) as {
-        code: string;
+        code?: string;
         expiresAt: number;
+        deliveryMode?: string;
+        sentByEmail?: boolean;
         error?: string;
       };
       if (!response.ok) {
@@ -45,7 +47,7 @@ export function CustomerRiderCode({
   if (!jobs.length) return null;
   return (
     <section className="mb-6 rounded-2xl border bg-card p-5">
-      <h2 className="text-xl font-semibold">Prepaid delivery handover code</h2>
+      <h2 className="text-xl font-semibold">Parcel delivery authorization</h2>
       <p className="mt-2 text-sm">
         Request a code when your assigned rider arrives. Share it at handover.
         It expires after ten minutes and does not replace delivery proof or
@@ -56,13 +58,13 @@ export function CustomerRiderCode({
           <p className="text-sm font-medium">Parcel {index + 1}</p>
           {codes[job.id] ? (
             <output className="block">
-              <strong className="my-2 block text-2xl tracking-widest">
+              {codes[job.id].code ? <strong className="my-2 block text-2xl tracking-widest">
                 {codes[job.id].code}
-              </strong>
+              </strong> : <strong className="my-2 block">Code queued to the authorized order email.</strong>}
               <span className="text-sm">
                 Expires at{' '}
                 {new Date(codes[job.id].expiresAt).toLocaleTimeString()}. Keep
-                this page open; the code is not sent by email or SMS.
+                {codes[job.id].sentByEmail ? ' Check the captured staging email. Payment, inspection and rider proof are still required.' : ' Keep this page open.'}
               </span>
             </output>
           ) : (
@@ -72,7 +74,7 @@ export function CustomerRiderCode({
               className="mt-2 rounded-lg bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50"
               onClick={() => issue(job.id)}
             >
-              {busy === job.id ? 'Requesting…' : 'Show handover code'}
+              {busy === job.id ? 'Requesting…' : 'Request parcel code'}
             </button>
           )}
         </div>
@@ -123,7 +125,7 @@ export function RiderCodeVerification({
   }
   return (
     <section className="rounded-xl border p-4">
-      <h4 className="font-semibold">Prepaid handover code</h4>
+      <h4 className="font-semibold">Parcel handover code</h4>
       <p className="mt-1 text-sm">
         Ask the customer for the code from their protected order receipt. Do not
         record it in a proof photo or note.

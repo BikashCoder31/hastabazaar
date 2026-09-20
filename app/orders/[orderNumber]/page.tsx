@@ -231,13 +231,17 @@ export default async function OrderReceiptPage({
                       variant="outline"
                       render={
                         <Link
-                          href={`/orders/${encodeURIComponent(receipt.orderNumber)}/documents/${document.id}`}
+                          href={document.kind === 'simulated_invoice'
+                            ? `/orders/${encodeURIComponent(receipt.orderNumber)}/managed-invoices/${document.id}`
+                            : `/orders/${encodeURIComponent(receipt.orderNumber)}/documents/${document.id}`}
                         />
                       }
                     >
                       {document.kind === 'payment_receipt'
                         ? 'Payment receipt'
-                        : 'Order statement'}{' '}
+                        : document.kind === 'simulated_invoice'
+                          ? 'Simulated issuer invoice'
+                          : 'Order statement'}{' '}
                       · {document.documentNumber}
                     </Button>
                   ))}

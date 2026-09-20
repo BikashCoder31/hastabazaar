@@ -10,7 +10,7 @@ import { verifyRiderOtp } from '../lib/riders/repository';
 function fixture() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec(
-    "CREATE TABLE users(id TEXT PRIMARY KEY,status TEXT);CREATE TABLE orders(id TEXT PRIMARY KEY,order_number TEXT,customer_id TEXT,receipt_token_hash TEXT,payment_mode TEXT,status TEXT);CREATE TABLE shipping_jobs(id TEXT PRIMARY KEY,order_id TEXT,status TEXT);CREATE TABLE shipping_parcels(shipping_job_id TEXT PRIMARY KEY,rider_user_id TEXT,version INTEGER,method TEXT);CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY,status TEXT);CREATE TABLE rider_policy(id TEXT PRIMARY KEY,version INTEGER,open_box INTEGER,otp_scope TEXT);CREATE TABLE rider_otp_challenges(shipping_job_id TEXT PRIMARY KEY,rider_user_id TEXT,assignment_version INTEGER,code_hash TEXT,expires_at INTEGER,attempts INTEGER DEFAULT 0,consumed_at INTEGER);CREATE TABLE operation_transaction_guards(id TEXT PRIMARY KEY,valid INTEGER CHECK(valid=1));CREATE TABLE audit_logs(id TEXT,actor_id TEXT,action TEXT,subject_type TEXT,subject_id TEXT,reason TEXT,created_at INTEGER);CREATE TABLE rider_events(id TEXT,user_id TEXT,actor_id TEXT,action TEXT,report_id TEXT,note TEXT,created_at INTEGER);INSERT INTO users VALUES ('customer','active'),('rider','active'),('other','active');INSERT INTO orders VALUES ('order','ORDER-1','customer','exact-receipt-hash','prepaid','dispatched'),('other-order','ORDER-2','customer','other-receipt','prepaid','dispatched');INSERT INTO shipping_jobs VALUES ('job','order','dispatched'),('other-job','other-order','dispatched');INSERT INTO shipping_parcels VALUES ('job','rider',1,'own_rider'),('other-job','rider',1,'own_rider');INSERT INTO rider_profiles VALUES ('rider','approved');INSERT INTO rider_policy VALUES ('current',0,0,'off')",
+    "CREATE TABLE users(id TEXT PRIMARY KEY,status TEXT);CREATE TABLE orders(id TEXT PRIMARY KEY,order_number TEXT,customer_id TEXT,receipt_token_hash TEXT,payment_mode TEXT,status TEXT,customer_email TEXT);CREATE TABLE order_items(id TEXT PRIMARY KEY,order_id TEXT);CREATE TABLE managed_commercial_snapshots(id TEXT PRIMARY KEY,order_item_id TEXT);CREATE TABLE shipping_jobs(id TEXT PRIMARY KEY,order_id TEXT,status TEXT);CREATE TABLE shipping_parcels(shipping_job_id TEXT PRIMARY KEY,rider_user_id TEXT,version INTEGER,method TEXT);CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY,status TEXT);CREATE TABLE rider_policy(id TEXT PRIMARY KEY,version INTEGER,open_box INTEGER,otp_scope TEXT);CREATE TABLE rider_otp_challenges(shipping_job_id TEXT PRIMARY KEY,rider_user_id TEXT,assignment_version INTEGER,code_hash TEXT,expires_at INTEGER,attempts INTEGER DEFAULT 0,consumed_at INTEGER);CREATE TABLE operation_transaction_guards(id TEXT PRIMARY KEY,valid INTEGER CHECK(valid=1));CREATE TABLE audit_logs(id TEXT,actor_id TEXT,action TEXT,subject_type TEXT,subject_id TEXT,reason TEXT,created_at INTEGER);CREATE TABLE rider_events(id TEXT,user_id TEXT,actor_id TEXT,action TEXT,report_id TEXT,note TEXT,created_at INTEGER);CREATE TABLE notification_messages(id TEXT PRIMARY KEY,recipient_user_id TEXT,audience_role TEXT,channel TEXT,template_key TEXT,subject_en TEXT,subject_ne TEXT,body_en TEXT,body_ne TEXT,related_type TEXT,related_id TEXT,status TEXT,request_id TEXT UNIQUE,created_at INTEGER,business_event_key TEXT,guest_email TEXT,guest_order_id TEXT);INSERT INTO users VALUES ('customer','active'),('rider','active'),('other','active');INSERT INTO orders VALUES ('order','ORDER-1','customer','exact-receipt-hash','prepaid','dispatched','customer@example.test'),('other-order','ORDER-2','customer','other-receipt','prepaid','dispatched','customer@example.test');INSERT INTO shipping_jobs VALUES ('job','order','dispatched'),('other-job','other-order','dispatched');INSERT INTO shipping_parcels VALUES ('job','rider',1,'own_rider'),('other-job','rider',1,'own_rider');INSERT INTO rider_profiles VALUES ('rider','approved');INSERT INTO rider_policy VALUES ('current',0,0,'off')",
   );
   const db = {
     prepare(sql: string) {
@@ -58,7 +58,7 @@ void test('protected customer code discovery is off by default and rejects COD, 
     assert.deepEqual((await customerRiderCodeJobs(db, owner)).map(row=>({...row})), []);
     sqlite.exec("UPDATE rider_policy SET otp_scope='prepaid_only'");
     assert.deepEqual((await customerRiderCodeJobs(db, owner)).map(row=>({...row})), [
-      { id: 'job', version: 1 },
+      { id: 'job', version: 1, deliveryMode: 'prepaid' },
     ]);
     await assert.rejects(() =>
       requestCustomerRiderCode(db, { ...owner, jobId: 'other-job', now: 1 }),
@@ -84,6 +84,21 @@ void test('protected customer code discovery is off by default and rejects COD, 
   } finally {
     sqlite.close();
   }
+});
+void test('managed COD uses parcel-specific email OTP but verification alone does not deliver or mark payment', async () => {
+  const { sqlite, db } = fixture();
+  try {
+    sqlite.exec("UPDATE orders SET payment_mode='cod' WHERE id='order';INSERT INTO order_items VALUES ('managed-item','order');INSERT INTO managed_commercial_snapshots VALUES ('managed-snapshot','managed-item')");
+    assert.deepEqual((await customerRiderCodeJobs(db, owner)).map(row=>({...row})), [
+      { id: 'job', version: 1, deliveryMode: 'managed_cod' },
+    ]);
+    const issued = await requestCustomerRiderCode(db, {...owner,jobId:'job',now:100});
+    assert.equal(issued.deliveryMode, 'managed_cod');
+    assert.equal(sqlite.prepare("SELECT channel FROM notification_messages WHERE template_key='delivery.authorization'").get()?.channel, 'email');
+    assert.equal(await verifyRiderOtp(db,{jobId:'job',riderId:'rider',version:1,code:issued.code,now:101}),true);
+    assert.equal(sqlite.prepare("SELECT status FROM shipping_jobs WHERE id='job'").get()?.status,'dispatched');
+    assert.equal(sqlite.prepare("SELECT status FROM orders WHERE id='order'").get()?.status,'dispatched');
+  } finally { sqlite.close(); }
 });
 void test('exact receipt holder gets one ten-minute code, only current approved rider verifies, and no delivery transition occurs', async () => {
   const { sqlite, db } = fixture();

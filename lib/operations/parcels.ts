@@ -3,6 +3,8 @@ import {approvedRiderSql,riderReportAcceptance,riderGuard,riderNotifications} fr
 import {staffMutationGuard} from '../db/repositories/staff-mutation-guard';
 import {safeCourierUrl,parseLocation} from '../delivery/validation';
 import {buildEarningsAccrualStatements} from '../db/repositories/payouts';
+import {accrueManagedEntitlements} from '../db/repositories/managed-settlements';
+import {issueManagedInvoiceGroups} from '../db/repositories/managed-documents';
 export class ParcelConflictError extends Error {}
 export interface Parcel {
  id:string;orderId:string;sellerId:string;sellerName:string;status:string;codDuePaisa:number;collectedPaisa:number;remittedPaisa:number;version:number;
@@ -118,6 +120,8 @@ export async function operateParcel(db:D1Database,o:ParcelOperation){
  statements.push(parcelAudit(db,o,p.orderId,o.action));
  statements.push(...authority.statements);
  await transact(db,statements);
+ await accrueManagedEntitlements(db,{orderId:p.orderId,actorId:o.actorId,requestId:o.requestId+':managed-accrue',now:o.now});
+ await issueManagedInvoiceGroups(db,{orderId:p.orderId,requestId:o.requestId+':managed-invoice',now:o.now});
 }
 export async function parcelCashRecords(db:D1Database,orderId:string){return (await db.prepare(`SELECT c.id,c.shipping_job_id AS jobId,c.kind,c.amount_paisa AS amountPaisa,c.evidence_reference AS reference,c.status,c.created_by AS maker FROM parcel_cash_records c JOIN shipping_jobs j ON j.id=c.shipping_job_id WHERE j.order_id=? UNION ALL SELECT c.id,c.shipping_job_id AS jobId,'courier_cost' AS kind,c.amount_paisa AS amountPaisa,c.evidence_reference AS reference,'recorded' AS status,c.created_by AS maker FROM parcel_courier_costs c JOIN shipping_jobs j ON j.id=c.shipping_job_id WHERE j.order_id=?`).bind(orderId,orderId).all<{id:string;jobId:string;kind:string;amountPaisa:number;reference:string;status:string;maker:string}>()).results;}
 export function customerParcel(p:Parcel,now=Date.now()){

@@ -47,6 +47,7 @@ void test('checkout snapshot uses 9% platform retention and preserves all simula
     legalSellerReference: 'SIM-LEGAL-SELLER', invoiceIssuerReference: 'SIM-INVOICE-ISSUER',
     payoutBeneficiaryReference: 'SIM-MAKER-ACCOUNT', agreementVersion: 'SIM-MANAGED-2026-09',
     agreementLanguage: 'ne', termsSettingVersionId: 'setting-v1', productValuePaisa: 100_000,
+    deliveryHoldDays: 7, holdSettingVersionId: 'hold-v1',
     makerFundedDiscountPaisa: 0, platformFundedDiscountPaisa: 5_000, platformRetentionBps: 900,
   });
   assert.equal(snapshot.platformRetainedPaisa, 9_000);
@@ -61,6 +62,7 @@ void test('fixed-price snapshots require a supplier amount and apply no percenta
     legalSellerReference: 'SIM-LEGAL-SELLER', invoiceIssuerReference: 'SIM-INVOICE-ISSUER',
     payoutBeneficiaryReference: 'SIM-MAKER-ACCOUNT', agreementVersion: 'SIM-FIXED-2026-09',
     agreementLanguage: 'en', termsSettingVersionId: 'setting-v2', productValuePaisa: 150_000,
+    deliveryHoldDays: 7, holdSettingVersionId: 'hold-v1',
     makerFundedDiscountPaisa: 0, platformFundedDiscountPaisa: 0, platformRetentionBps: 900,
     agreedSupplierAmountPaisa: 100_000,
   });

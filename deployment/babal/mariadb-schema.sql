@@ -1158,6 +1158,8 @@ CREATE TABLE IF NOT EXISTS `managed_commercial_snapshots` (
   `agreement_version` VARCHAR(191) NOT NULL,
   `agreement_language` VARCHAR(8) NOT NULL,
   `terms_setting_version_id` VARCHAR(191) NULL,
+  `delivery_hold_days` BIGINT NOT NULL DEFAULT 7,
+  `hold_setting_version_id` VARCHAR(191) NULL,
   `product_value_paisa` BIGINT NOT NULL,
   `maker_funded_discount_paisa` BIGINT NOT NULL DEFAULT 0,
   `platform_funded_discount_paisa` BIGINT NOT NULL DEFAULT 0,
@@ -1191,7 +1193,8 @@ CREATE TABLE IF NOT EXISTS `managed_entitlements` (
 CREATE TABLE IF NOT EXISTS `managed_settlement_entries` (
   `id` VARCHAR(191) NOT NULL, `entitlement_id` VARCHAR(191) NOT NULL,
   `refund_id` VARCHAR(191) NULL, `type` VARCHAR(32) NOT NULL,
-  `amount_paisa` BIGINT NOT NULL, `reason_code` VARCHAR(191) NOT NULL,
+  `amount_paisa` BIGINT NOT NULL, `base_amount_paisa` BIGINT NULL,
+  `metadata_json` LONGTEXT NOT NULL, `reason_code` VARCHAR(191) NOT NULL,
   `request_id` VARCHAR(191) NOT NULL, `created_by` VARCHAR(191) NULL,
   `created_at` BIGINT NOT NULL, PRIMARY KEY (`id`),
   UNIQUE KEY `idx_managed_settlement_request` (`request_id`),

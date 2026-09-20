@@ -15,6 +15,8 @@ export interface ManagedCommercialTerms {
   agreementVersion: string;
   agreementLanguage: 'en' | 'ne';
   termsSettingVersionId: string | null;
+  deliveryHoldDays: number;
+  holdSettingVersionId: string | null;
   productValuePaisa: number;
   makerFundedDiscountPaisa: number;
   platformFundedDiscountPaisa: number;
@@ -41,6 +43,8 @@ export function buildManagedCommercialSnapshot(input: ManagedCommercialTerms) {
     agreementVersion: reference('Agreement version', input.agreementVersion),
     agreementLanguage: input.agreementLanguage,
     termsSettingVersionId: input.termsSettingVersionId,
+    deliveryHoldDays: input.deliveryHoldDays,
+    holdSettingVersionId: input.holdSettingVersionId,
     productValuePaisa: input.productValuePaisa,
     makerFundedDiscountPaisa: input.makerFundedDiscountPaisa,
     platformFundedDiscountPaisa: input.platformFundedDiscountPaisa,

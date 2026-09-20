@@ -60,12 +60,15 @@ export async function POST(
       windowMs: 3600000,
     });
     if (!limit.allowed) return rateLimitJson(limit);
-    return json(
-      await requestCustomerRiderCode(db, {
+    const issued = await requestCustomerRiderCode(db, {
         ...owner,
         jobId: value.jobId,
         now: Date.now(),
-      }),
+      });
+    return json(
+      issued.deliveryMode === 'managed_cod'
+        ? { expiresAt: issued.expiresAt, deliveryMode: issued.deliveryMode, sentByEmail: true }
+        : issued,
       201,
     );
   } catch (error) {

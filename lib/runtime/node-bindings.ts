@@ -451,7 +451,23 @@ class SmtpEmailService {
   }
 }
 
-const emailService = new SmtpEmailService();
+class LocalCaptureEmailService {
+  get configured() { return true; }
+  async send(message: OutgoingEmail): Promise<void> {
+    if (process.env.HASTABAZAAR_RUNTIME_ENV !== 'local_staging') throw new Error('Mail capture is local-staging only.');
+    const recipient = message.to.trim().toLowerCase();
+    if (!recipient.endsWith('@local.hastabazaar.test')) throw new Error('Local staging mail capture rejected a non-test recipient.');
+    const root = resolve(process.cwd(), '.staging', 'mail-capture');
+    await mkdir(root, { recursive: true });
+    const target = resolve(root, `${Date.now()}-${crypto.randomUUID()}.json`);
+    if (!target.startsWith(`${root}${sep}`)) throw new Error('Mail capture path escaped its disposable root.');
+    await writeFile(target, `${JSON.stringify({...message,capturedAt:Date.now(),simulationLabel:'SIMULATED — NOT VALID FOR PRODUCTION'},null,2)}\n`, { flag:'wx' });
+  }
+}
+
+const emailService = process.env.HASTABAZAAR_RUNTIME_ENV === 'local_staging'
+  ? new LocalCaptureEmailService()
+  : new SmtpEmailService();
 
 export const env = {
   DB: new MariaDbD1Database() as unknown as D1Database,

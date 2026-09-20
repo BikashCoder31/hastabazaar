@@ -9,10 +9,10 @@ export async function customerRiderCodeJobs(db: D1Database, o: RiderCodeOwner) {
   return (
     await db
       .prepare(
-        "SELECT j.id,p.version FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id JOIN orders o ON o.id=j.order_id JOIN rider_profiles rp ON rp.user_id=p.rider_user_id JOIN users ru ON ru.id=rp.user_id WHERE o.order_number=? AND ((o.customer_id=? AND EXISTS(SELECT 1 FROM users cu WHERE cu.id=o.customer_id AND cu.status='active')) OR (? IS NOT NULL AND o.receipt_token_hash=?)) AND o.status IN ('confirmed','packing','ready_for_pickup','dispatched') AND o.payment_mode<>'cod' AND j.status='dispatched' AND p.method='own_rider' AND rp.status='approved' AND ru.status='active' AND EXISTS(SELECT 1 FROM rider_policy WHERE id='current' AND otp_scope='prepaid_only') ORDER BY j.id",
+        "SELECT j.id,p.version,CASE WHEN EXISTS(SELECT 1 FROM order_items mi JOIN managed_commercial_snapshots ms ON ms.order_item_id=mi.id WHERE mi.order_id=o.id) THEN 'managed_cod' ELSE 'prepaid' END AS deliveryMode FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id JOIN orders o ON o.id=j.order_id JOIN rider_profiles rp ON rp.user_id=p.rider_user_id JOIN users ru ON ru.id=rp.user_id WHERE o.order_number=? AND ((o.customer_id=? AND EXISTS(SELECT 1 FROM users cu WHERE cu.id=o.customer_id AND cu.status='active')) OR (? IS NOT NULL AND o.receipt_token_hash=?)) AND o.status IN ('confirmed','packing','ready_for_pickup','dispatched') AND ((o.payment_mode<>'cod' AND EXISTS(SELECT 1 FROM rider_policy WHERE id='current' AND otp_scope='prepaid_only')) OR EXISTS(SELECT 1 FROM order_items mi JOIN managed_commercial_snapshots ms ON ms.order_item_id=mi.id WHERE mi.order_id=o.id)) AND j.status='dispatched' AND p.method='own_rider' AND rp.status='approved' AND ru.status='active' ORDER BY j.id",
       )
       .bind(o.orderNumber, o.customerId, o.receiptTokenHash, o.receiptTokenHash)
-      .all<{ id: string; version: number }>()
+      .all<{ id: string; version: number; deliveryMode: 'prepaid' | 'managed_cod' }>()
   ).results;
 }
 export async function requestCustomerRiderCode(

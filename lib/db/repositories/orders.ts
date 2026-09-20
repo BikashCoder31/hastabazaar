@@ -221,13 +221,14 @@ export async function createCodOrder(
   const rates = await getDeliveryRates(database);
   const sellerCommissionBps = await getMarketplaceCommissionBps(database);
   const hasManagedItems = items.some((item) => item.participationRoute === 'managed_maker');
-  const [managedProgram, managedModel, managedRetention] = hasManagedItems
+  const [managedProgram, managedModel, managedRetention, managedHold] = hasManagedItems
     ? await Promise.all([
         getEffectiveBusinessSetting(database, 'managed_maker_program_mode', now),
         getEffectiveBusinessSetting(database, 'managed_maker_active_model', now),
         getEffectiveBusinessSetting(database, 'managed_sale_linked_platform_retention_bps', now),
+        getEffectiveBusinessSetting(database, 'seller_delivery_hold_days', now),
       ])
-    : [null, null, null];
+    : [null, null, null, null];
   if (hasManagedItems && (
     managedProgram?.value !== 'activation_enabled' ||
     managedModel?.value !== 'managed_sale_linked_percentage_v1' ||
@@ -457,6 +458,8 @@ export async function createCodOrder(
         agreementVersion: item.managedAgreementVersion!,
         agreementLanguage: item.managedAgreementLanguage!,
         termsSettingVersionId: managedRetention!.versionId,
+        deliveryHoldDays: managedHold!.value,
+        holdSettingVersionId: managedHold!.versionId,
         productValuePaisa: lineTotalPaisa,
         makerFundedDiscountPaisa: sellerDiscountPaisa,
         platformFundedDiscountPaisa: platformDiscountPaisa,
@@ -467,15 +470,17 @@ export async function createCodOrder(
         database.prepare(`INSERT INTO managed_commercial_snapshots(
           id,order_item_id,seller_id,participation_route,commercial_model,
           legal_seller_reference,invoice_issuer_reference,payout_beneficiary_reference,
-          agreement_version,agreement_language,terms_setting_version_id,product_value_paisa,
+          agreement_version,agreement_language,terms_setting_version_id,delivery_hold_days,
+          hold_setting_version_id,product_value_paisa,
           maker_funded_discount_paisa,platform_funded_discount_paisa,eligible_base_paisa,
           platform_retention_bps,platform_retained_paisa,maker_entitlement_paisa,
           agreed_supplier_amount_paisa,simulation_label,created_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
           snapshotId, orderItemId, snapshot.sellerId, snapshot.participationRoute,
           snapshot.commercialModel, snapshot.legalSellerReference, snapshot.invoiceIssuerReference,
           snapshot.payoutBeneficiaryReference, snapshot.agreementVersion, snapshot.agreementLanguage,
-          snapshot.termsSettingVersionId, snapshot.productValuePaisa, snapshot.makerFundedDiscountPaisa,
+          snapshot.termsSettingVersionId, snapshot.deliveryHoldDays, snapshot.holdSettingVersionId,
+          snapshot.productValuePaisa, snapshot.makerFundedDiscountPaisa,
           snapshot.platformFundedDiscountPaisa, snapshot.eligibleBasePaisa, snapshot.platformRetentionBps,
           snapshot.platformRetainedPaisa, snapshot.makerEntitlementPaisa,
           snapshot.agreedSupplierAmountPaisa, snapshot.simulationLabel, now,
@@ -711,7 +716,7 @@ export interface OrderReceipt {
 
 export interface OrderDocumentRow {
   id: string;
-  kind: 'order_statement' | 'payment_receipt';
+  kind: 'order_statement' | 'payment_receipt' | 'simulated_invoice';
   documentNumber: string;
   status: 'issued' | 'void';
   issuedAt: number;
@@ -785,9 +790,15 @@ export async function getOrderReceipt(
         order_documents.document_number AS documentNumber,
         order_documents.status, order_documents.issued_at AS issuedAt
        FROM order_documents INNER JOIN orders ON orders.id = order_documents.order_id
-       WHERE orders.order_number = ? ORDER BY order_documents.issued_at ASC`,
+       WHERE orders.order_number = ?
+       UNION ALL
+       SELECT managed_invoice_groups.id,'simulated_invoice' AS kind,
+        managed_invoice_groups.invoice_number AS documentNumber,
+        managed_invoice_groups.status,managed_invoice_groups.issued_at AS issuedAt
+       FROM managed_invoice_groups INNER JOIN orders ON orders.id=managed_invoice_groups.order_id
+       WHERE orders.order_number = ? ORDER BY issuedAt ASC`,
       )
-      .bind(orderNumberValue)
+      .bind(orderNumberValue,orderNumberValue)
       .all<OrderDocumentRow>(),
   ]);
   const pricing = readDeliveryPricingSnapshot(
