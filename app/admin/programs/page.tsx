@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 export default async function ProgramsPage() {
   await requireStaffPage('/admin/programs', 'business_settings.view');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const now = Date.now();
+  const now = new Date().getTime();
   const [programMode, activeModel] = await Promise.all([
     getEffectiveBusinessSetting(database, 'managed_maker_program_mode', now),
     getEffectiveBusinessSetting(database, 'managed_maker_active_model', now),

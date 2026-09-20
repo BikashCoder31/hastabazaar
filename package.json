@@ -14,6 +14,9 @@
     "db:generate": "drizzle-kit generate",
     "test": "tsx --test tests/*.test.ts",
     "test:returns": "tsx --test tests/returns-complaints.test.ts",
+    "staging:verify": "tsx scripts/staging/verify-environment.mjs",
+    "staging:seed": "tsx scripts/staging/seed-fictional-fixtures.mjs",
+    "staging:reset": "tsx scripts/staging/reset-disposable-data.mjs",
     "lint": "oxlint",
     "format": "oxfmt"
   },

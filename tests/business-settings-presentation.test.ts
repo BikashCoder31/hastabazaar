@@ -15,6 +15,7 @@ import {
 void test('Business Settings presents current, draft, scheduled, preview, impact, and immutable history', () => {
   const html = renderToStaticMarkup(
     createElement(BusinessSettingsManager, {
+      asOf: 2_000,
       initialSettings: [
         {
           key: 'managed_sale_linked_platform_retention_bps',

@@ -106,6 +106,11 @@ export default defineConfig(async () => {
       cloudflare({
         viteEnvironment: { name: 'rsc', childEnvironments: ['ssr'] },
         config: localBindingConfig,
+        remoteBindings: false,
+        persistState:
+          process.env.HASTABAZAAR_RUNTIME_ENV === 'local_staging'
+            ? { path: '.staging/state' }
+            : { path: '.wrangler/state' },
       }),
     ],
   };

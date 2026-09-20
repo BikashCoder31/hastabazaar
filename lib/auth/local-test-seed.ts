@@ -63,10 +63,10 @@ export async function ensureLocalTestAccount(
             reviewed_by, approved_at, created_at, updated_at
           ) VALUES (
             'local-test-seller-profile', 'LOCAL-TEST-APPLICATION', ?,
-            'Local test artisan only', 'Janakpur Craft Studio',
-            'LOCAL TEST DATA - NOT A LEGAL AUTHORITY', 'LOCAL-TEST-REGISTRATION',
-            'PAN', 'LOCAL-TEST-PAN', 'Sita Artisan',
-            'Sample seller used only for local interface testing.',
+            'SIMULATED — NOT VALID FOR PRODUCTION', 'Janakpur Craft Studio',
+            'SIMULATED — NOT A LEGAL AUTHORITY', 'SIMULATED-REGISTRATION',
+            'PAN', '990000001', 'Sita Artisan',
+            'SIMULATED seller used only for local interface testing.',
             'Traditional textiles, gifts and home decor', '+9779800000000', ?,
             'Madhesh', 'Dhanusha', 'Janakpurdham', '4', 'Local test workshop',
             NULL, 'approved', 'local-test-v1', ?,
@@ -82,6 +82,35 @@ export async function ensureLocalTestAccount(
            WHERE id = 'local-test-seller-profile' AND user_id = ?`,
         )
         .bind(identity.email, now, userId),
+      database
+        .prepare(
+          `INSERT OR IGNORE INTO seller_participation_profiles (
+            seller_id, participation_route, application_stage, tax_status,
+            public_name, public_city, craft_experience_json, social_links_json,
+            commercial_model, legal_seller_reference, invoice_issuer_reference,
+            payout_beneficiary_reference, return_destination_type, version,
+            created_at, updated_at
+          ) VALUES (
+            'local-test-seller-profile', 'registered_seller', 'active',
+            'business_pan_only', 'Janakpur Craft Studio', 'Janakpurdham',
+            '[{"craft":"Traditional textiles","band":"one_to_three_years"}]',
+            '{}', NULL, 'local-test-seller-profile', 'local-test-seller-profile',
+            'local-test-seller-profile', 'maker_address', 1, ?, ?
+          )`,
+        )
+        .bind(now, now),
+      database
+        .prepare(
+          `INSERT OR IGNORE INTO seller_operational_addresses (
+            id, seller_id, purpose, same_as_address_id, province, district,
+            municipality, ward, locality, is_public, created_at, updated_at
+          ) VALUES (
+            'local-test-seller-verification-address', 'local-test-seller-profile',
+            'verification', NULL, 'Madhesh', 'Dhanusha', 'Janakpurdham', '4',
+            'SIMULATED private workshop address', 0, ?, ?
+          )`,
+        )
+        .bind(now, now),
     );
   }
 

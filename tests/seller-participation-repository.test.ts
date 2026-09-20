@@ -86,7 +86,7 @@ function managedMakerForm() {
   return form;
 }
 
-test('0045 preserves existing sellers and creates a compatible active participation profile', async () => {
+void test('0045 preserves existing sellers and creates a compatible active participation profile', async () => {
   const sqlite = new DatabaseSync(':memory:');
   try {
     await applyMigrations(sqlite, '0044');
@@ -121,7 +121,7 @@ test('0045 preserves existing sellers and creates a compatible active participat
   }
 });
 
-test('managed application persists absent tax data, private address, and editable shared profile', async () => {
+void test('managed application persists absent tax data, private address, and editable shared profile', async () => {
   const sqlite = new DatabaseSync(':memory:');
   try {
     await applyMigrations(sqlite);

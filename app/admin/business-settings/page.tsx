@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
 export default async function BusinessSettingsPage() {
   await requireStaffPage('/admin/business-settings', 'business_settings.view');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const now = Date.now();
+  const now = new Date().getTime();
   const initialSettings = await Promise.all(
     businessSettingDefinitions.map(async (definition) => ({
       key: definition.key,
@@ -47,6 +47,7 @@ export default async function BusinessSettingsPage() {
       </div>
       <BusinessSettingsManager
         initialSettings={initialSettings as readonly BusinessSettingsAdminItem[]}
+        asOf={now}
       />
     </div>
   );

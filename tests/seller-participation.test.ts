@@ -37,7 +37,7 @@ function baseForm(answer: 'yes' | 'no'): FormData {
   return form;
 }
 
-test('Yes selects Registered Seller and distinguishes PAN-only from VAT evidence', () => {
+void test('Yes selects Registered Seller and distinguishes PAN-only from VAT evidence', () => {
   const pan = baseForm('yes');
   pan.set('taxStatus', 'business_pan_only');
   pan.set('taxRegistrationNumber', '123456789');
@@ -72,7 +72,7 @@ test('Yes selects Registered Seller and distinguishes PAN-only from VAT evidence
   );
 });
 
-test('No opens Managed Maker without fake tax or registration identifiers', () => {
+void test('No opens Managed Maker without fake tax or registration identifiers', () => {
   const form = baseForm('no');
   const parsed = parseSellerApplication(form);
   assert.ok(parsed.input, parsed.errors.join('\n'));
@@ -98,7 +98,7 @@ test('No opens Managed Maker without fake tax or registration identifiers', () =
   }
 });
 
-test('shared maker profile keeps city public, address private, and optional fields optional', () => {
+void test('shared maker profile keeps city public, address private, and optional fields optional', () => {
   const minimal = baseForm('no');
   minimal.delete('experienceCraft');
   minimal.delete('experienceBand');
@@ -116,7 +116,7 @@ test('shared maker profile keeps city public, address private, and optional fiel
   assert.throws(() => parseCraftExperience('', 'less_than_one_year'));
 });
 
-test('pending routes may edit profiles and prepare drafts but cannot publish or sell', () => {
+void test('pending routes may edit profiles and prepare drafts but cannot publish or sell', () => {
   for (const stage of [
     'draft',
     'submitted',
@@ -135,7 +135,7 @@ test('pending routes may edit profiles and prepare drafts but cannot publish or 
   assert.equal(activeButApplicationsOnly.acceptOrders, false);
 });
 
-test('managed public identity retains the maker name without obscuring the seller role', () => {
+void test('managed public identity retains the maker name without obscuring the seller role', () => {
   assert.equal(
     managedMakerDisplayName('Fictional Clay Studio'),
     'Fictional Clay Studio — Managed by Hastabazaar',

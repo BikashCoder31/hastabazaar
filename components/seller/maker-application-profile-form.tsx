@@ -23,7 +23,7 @@ export function MakerApplicationProfileForm({ profile }: { profile: SellerPartic
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const experience = profile.craftExperience[0];
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
+  async function submit(event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>) {
     event.preventDefault();
     if (busy) return;
     setBusy(true);
@@ -43,7 +43,7 @@ export function MakerApplicationProfileForm({ profile }: { profile: SellerPartic
       setBusy(false);
     }
   }
-  return <form onSubmit={submit} className="mt-5 grid gap-4 rounded-2xl border bg-card p-6 sm:grid-cols-2">
+  return <form onSubmit={(event) => void submit(event)} className="mt-5 grid gap-4 rounded-2xl border bg-card p-6 sm:grid-cols-2">
     <Field name="publicName" label="Public maker/shop name" defaultValue={profile.publicName} required />
     <Field name="publicCity" label="Public city/town only" defaultValue={profile.publicCity} required />
     <Field name="experienceCraft" label="Craft for this experience (optional)" defaultValue={experience?.craft ?? ''} />
@@ -70,4 +70,3 @@ export function MakerApplicationProfileForm({ profile }: { profile: SellerPartic
 function Field({ name, label, ...props }: { name: string; label: string } & React.ComponentProps<typeof Input>) {
   return <div className="space-y-2"><Label htmlFor={name}>{label}</Label><Input id={name} name={name} maxLength={500} {...props} /></div>;
 }
-

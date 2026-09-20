@@ -27,7 +27,6 @@ import type {
   BusinessSettingEffectiveMode,
   BusinessSettingKey,
   BusinessSettingSensitivity,
-  BusinessSettingValues,
   OfficialSocialLinks,
 } from '@/lib/configuration/types';
 
@@ -64,6 +63,16 @@ function editorValueFor(value: unknown): unknown {
   return Array.isArray(value) ? value.join(', ') : value;
 }
 
+function scalarString(value: unknown): string {
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    typeof value === 'bigint'
+  ) return String(value);
+  return '';
+}
+
 function displayValue(key: BusinessSettingKey, value: unknown): string {
   if (
     (key === 'independent_seller_commission_bps' ||
@@ -84,13 +93,13 @@ function displayValue(key: BusinessSettingKey, value: unknown): string {
   if (Array.isArray(value)) return value.length ? value.join(', ') : 'None configured';
   if (value === null) return 'Not selected';
   if (typeof value === 'object') return 'Six validated official links';
-  return String(value).replaceAll('_', ' ');
+  return scalarString(value).replaceAll('_', ' ');
 }
 
 function parseEditorValue(key: BusinessSettingKey, value: unknown): unknown {
   if (numericKeys.has(key)) return Number(value);
   if (listKeys.has(key)) {
-    return String(value)
+    return scalarString(value)
       .split(',')
       .map((item) => item.trim())
       .filter(Boolean);
@@ -116,8 +125,10 @@ function versionPresentation(
 
 export function BusinessSettingsManager({
   initialSettings,
+  asOf,
 }: {
   initialSettings: readonly BusinessSettingsAdminItem[];
+  asOf: number;
 }) {
   const [settings] = useState(initialSettings);
   const [selectedKey, setSelectedKey] = useState<BusinessSettingKey>(
@@ -134,7 +145,6 @@ export function BusinessSettingsManager({
   const [effectiveFrom, setEffectiveFrom] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const now = Date.now();
 
   if (!selected) {
     return <p className="rounded-xl border p-6">No business settings are registered.</p>;
@@ -142,7 +152,7 @@ export function BusinessSettingsManager({
 
   const drafts = selected.history.filter((item) => item.status === 'draft');
   const scheduled = selected.history.filter(
-    (item) => item.status === 'published' && (item.effectiveFrom ?? 0) > now,
+    (item) => item.status === 'published' && (item.effectiveFrom ?? 0) > asOf,
   );
 
   function selectKey(key: BusinessSettingKey) {
@@ -193,7 +203,7 @@ export function BusinessSettingsManager({
           body: JSON.stringify({
             action,
             expectedRevision: version.revision,
-            effectiveFrom: effectiveFrom ? new Date(effectiveFrom).getTime() : Date.now(),
+            effectiveFrom: effectiveFrom ? new Date(effectiveFrom).getTime() : undefined,
             reason,
             requestId: crypto.randomUUID(),
           }),
@@ -303,7 +313,7 @@ export function BusinessSettingsManager({
                 {selected.affectedSurfaces.join(', ')}
               </p>
             </div>
-            {message ? <p role="status" className="text-sm font-medium">{message}</p> : null}
+            {message ? <output className="block text-sm font-medium">{message}</output> : null}
             <Button type="button" disabled={busy || reason.trim().length < 8} onClick={saveDraft}>
               Save draft
             </Button>
@@ -325,7 +335,7 @@ export function BusinessSettingsManager({
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="font-semibold">
-                        Version {version.version} · {versionPresentation(version, now)}
+                        Version {version.version} · {versionPresentation(version, asOf)}
                       </p>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {displayValue(selected.key, version.value)}
@@ -419,7 +429,7 @@ function SettingValueEditor({
   if (settingKey === 'managed_maker_program_mode') {
     return (
       <SelectEditor
-        value={String(value)}
+        value={scalarString(value)}
         onChange={onChange}
         options={[
           ['applications_only', 'Applications Only'],
@@ -431,7 +441,7 @@ function SettingValueEditor({
   if (settingKey === 'managed_maker_active_model') {
     return (
       <SelectEditor
-        value={value === null ? '' : String(value)}
+        value={value === null ? '' : scalarString(value)}
         onChange={onChange}
         options={[
           ['', 'No active model'],
@@ -444,7 +454,7 @@ function SettingValueEditor({
   if (settingKey === 'payout_processing_weekday') {
     return (
       <SelectEditor
-        value={String(value)}
+        value={scalarString(value)}
         onChange={onChange}
         options={['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day) => [day, day] as const)}
       />
@@ -469,7 +479,7 @@ function SettingValueEditor({
     );
   }
   if (settingKey === 'payout_cutoff_local_time') {
-    return <Input aria-label="Payout cutoff" type="time" value={String(value)} onChange={(event) => onChange(event.target.value)} />;
+    return <Input aria-label="Payout cutoff" type="time" value={scalarString(value)} onChange={(event) => onChange(event.target.value)} />;
   }
   if (settingKey === 'payout_timezone') {
     return <Input aria-label="Payout timezone" value="Asia/Kathmandu" readOnly />;
@@ -477,7 +487,7 @@ function SettingValueEditor({
   return (
     <div className="space-y-2">
       <Label htmlFor="setting-value">Comma-separated approved codes</Label>
-      <Input id="setting-value" value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} />
+      <Input id="setting-value" value={scalarString(value)} onChange={(event) => onChange(event.target.value)} />
     </div>
   );
 }
