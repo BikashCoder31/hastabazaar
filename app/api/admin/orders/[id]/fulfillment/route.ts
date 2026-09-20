@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:workers';
+import { sendPendingOrderUpdates } from '@/lib/email/send-order-updates';
 
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
@@ -41,6 +42,7 @@ export async function POST(
         now: Date.now(),
       },
     );
+    await sendPendingOrderUpdates({ orderId: id });
     return json({ ok: true });
   } catch (error) {
     if (error instanceof StaffAuthorizationError) return json({ error: error.message }, error.status);

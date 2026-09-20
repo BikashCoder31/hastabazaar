@@ -1,0 +1,70 @@
+{
+  "productNumber": 69,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only one clean isolated product image remained; the rest of the gallery consists of branded promotional or feature panels.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0anMc3Ky",
+    "canonicalUrl": "https://www.amazon.in/dp/B0GNMNR8XW",
+    "asin": "B0GNMNR8XW",
+    "sourceTitle": "CraftsCreation Kauna Grass Handbag for Women | Handmade Floral Embroidered Straw Purse | Eco-Friendly Boho Tote Bag | Ethnic Handbag for Wedding, Party & Beach | 12 x 10 x 4 Inch",
+    "sourcePriceInr": 999.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "CraftsCreation Natural Kauna-Grass Floral Embroidered Handbag",
+    "brand": "Generic",
+    "manufacturer": "CraftsCreation",
+    "description": "CraftsCreation Natural Kauna-Grass Floral Embroidered Handbag features handcrafted from natural Kauna grass. It combines hand-embroidered floral pattern with flap closure and hand-carry design. Lightweight structured straw construction.",
+    "keyFeatures": [
+      "Handcrafted from natural Kauna grass",
+      "Hand-embroidered floral pattern",
+      "Flap closure and hand-carry design",
+      "Lightweight structured straw construction"
+    ],
+    "specifications": {
+      "colourAndVariant": "Natural straw with floral embroidery",
+      "dimensions": "30.48 × 10.16 × 25.4 cm (12 × 4 × 10 in)",
+      "weight": "260 g",
+      "modelOrIdentifier": "MKLB05; ASIN B0GNMNR8XW",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Natural Kauna grass/straw with embroidered detailing",
+    "packageContents": "1 Kauna-grass floral handbag",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Potlis & Wristlets",
+    "tags": [
+      "Kauna grass bag",
+      "straw handbag",
+      "floral embroidered purse",
+      "eco-friendly tote",
+      "CraftsCreation"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "CraftsCreation Natural Kauna-Grass Floral Embroidered Handbag | Hathkriti",
+    "seoDescription": "CraftsCreation Natural Kauna-Grass Floral Embroidered Handbag from Hathkriti. Handcrafted from natural Kauna grass. Colour/variant: Natural straw with floral embroidery."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1798,
+    "originalPriceNpr": 3596,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 1,
+    "files": [
+      "images/hathkriti-p69-b0gnmnr8xw-01.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

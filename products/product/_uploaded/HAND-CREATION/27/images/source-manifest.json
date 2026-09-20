@@ -1,0 +1,63 @@
+{
+  "productNumber": 27,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0HC4S9NL7",
+  "selectedVariant": "Indigo Garden floral print",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HC4S9NL7",
+      "originalImageReference": "https://m.media-amazon.com/images/I/81emj43oWvL._SL1500_.jpg",
+      "filename": "hathkriti-p27-b0hc4s9nl7-01.jpg",
+      "dimensions": {
+        "width": 1500,
+        "height": 1500
+      },
+      "byteSize": 135274,
+      "sha256": "d0195a749231e0944aed49d6bb2b6e73bb4b9cab999d383158510bb7e9027da6",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HC4S9NL7",
+      "originalImageReference": "https://m.media-amazon.com/images/I/81dO333YweL._SL1500_.jpg",
+      "filename": "hathkriti-p27-b0hc4s9nl7-02.jpg",
+      "dimensions": {
+        "width": 1500,
+        "height": 1500
+      },
+      "byteSize": 309129,
+      "sha256": "7cbf6c52558fab2c9e0c2f654b054676462cc0e4ba83e6acf838e352f4e41626",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HC4S9NL7",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71ZXBp8S01L._SL1500_.jpg",
+      "filename": "hathkriti-p27-b0hc4s9nl7-03.jpg",
+      "dimensions": {
+        "width": 1500,
+        "height": 1500
+      },
+      "byteSize": 216214,
+      "sha256": "9a8d220726aa791a72bd4586cbcb541d43b2a943b582bab3781c09b9c41202c4",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 4
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HC4S9NL7",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71BAH6SdUsL._SL1500_.jpg",
+      "filename": "hathkriti-p27-b0hc4s9nl7-04.jpg",
+      "dimensions": {
+        "width": 1500,
+        "height": 1500
+      },
+      "byteSize": 187717,
+      "sha256": "8e63061af31d2889d51771e91705f37a609a5303527a1cb36e0f0730ee3a82e3",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 5
+    }
+  ]
+}

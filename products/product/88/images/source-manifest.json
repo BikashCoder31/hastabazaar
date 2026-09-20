@@ -1,0 +1,63 @@
+{
+  "productNumber": 88,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0FPLCJSMQ",
+  "selectedVariant": "Hot Pink; butterfly hanging with positive-message card",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0FPLCJSMQ",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51fBfEDtixL._SL1500_.jpg",
+      "filename": "hathkriti-p88-b0fplcjsmq-01.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 36414,
+      "sha256": "2cd13d3948d0969c701af7c45a37bafd76e840e3141ec1f8696c5743326c2b69",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0FPLCJSMQ",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51JTNDxFIBL._SL1500_.jpg",
+      "filename": "hathkriti-p88-b0fplcjsmq-02.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 37857,
+      "sha256": "50b7f100e60e222c3a3bfc8f1ebd8370606bcb2b97644be4b39c02d65d9263f9",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 3
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0FPLCJSMQ",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51B3Q1lVYfL._SL1500_.jpg",
+      "filename": "hathkriti-p88-b0fplcjsmq-03.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 38682,
+      "sha256": "a88bd43b96c6e183345c4d1ce5c25b7e9322aafe862850838110092b39f4f294",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 4
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0FPLCJSMQ",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51laVWcKoIL._SL1500_.jpg",
+      "filename": "hathkriti-p88-b0fplcjsmq-04.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 37792,
+      "sha256": "3157ec3988a6c1fbcb85fd615282b7738475e55a8b6e8868582f794160b1a616",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 7
+    }
+  ]
+}

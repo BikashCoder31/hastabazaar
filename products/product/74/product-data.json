@@ -1,0 +1,72 @@
+{
+  "productNumber": 74,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only three distinct exact-variant product-gallery images were available.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/09SXSpco",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HDTGWL48",
+    "asin": "B0HDTGWL48",
+    "sourceTitle": "RED ROSE CROCHET SLING BAG, Handmade Latest Crochet Bag | Beautiful Stylish Cross Body Bag, Shoulder Bag For Girls & Women | Best Sling Bag For Daily, Office & Casual Use",
+    "sourcePriceInr": 1399.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "KIRAN CRAFTS Red-Rose Handmade Crochet Sling Bag",
+    "brand": "Generic",
+    "manufacturer": "KIRAN CRAFTS",
+    "description": "KIRAN CRAFTS Red-Rose Handmade Crochet Sling Bag features handmade crochet construction. It combines red-rose design with magnetic closure. Shoulder strap and spacious single compartment.",
+    "keyFeatures": [
+      "Handmade crochet construction",
+      "Red-rose design",
+      "Magnetic closure",
+      "Shoulder strap and spacious single compartment"
+    ],
+    "specifications": {
+      "colourAndVariant": "Red Rose crochet design",
+      "dimensions": "21 × 20 × 20.32 cm",
+      "weight": "300 g",
+      "modelOrIdentifier": "Crochet Bag 001; ASIN B0HDTGWL48",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Cotton crochet material",
+    "packageContents": "1 sling bag",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Sling & Cross-Body Bags",
+    "tags": [
+      "red rose crochet bag",
+      "handmade sling bag",
+      "cotton crossbody",
+      "KIRAN CRAFTS",
+      "crochet shoulder bag"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "KIRAN CRAFTS Red-Rose Handmade Crochet Sling Bag | Hathkriti",
+    "seoDescription": "KIRAN CRAFTS Red-Rose Handmade Crochet Sling Bag from Hathkriti. Handmade crochet construction. Colour/variant: Red Rose crochet design."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 2438,
+    "originalPriceNpr": 4876,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 3,
+    "files": [
+      "images/hathkriti-p74-b0hdtgwl48-01.jpg",
+      "images/hathkriti-p74-b0hdtgwl48-02.jpg",
+      "images/hathkriti-p74-b0hdtgwl48-03.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

@@ -1,0 +1,76 @@
+{
+  "productNumber": 43,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/04Gqm2CO",
+    "canonicalUrl": "https://www.amazon.in/dp/B0CM6LG5YY",
+    "asin": "B0CM6LG5YY",
+    "sourceTitle": "Aakriti Art Creations’ Clay Artistry Huggies | Multicolor Brass Bells, Coconut Shell, Cotton Thread & Terracotta Pot Earrings | Lightweight Matte Finish Earrings | Handmade Ethnic Design",
+    "sourcePriceInr": 529.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Aakriti Art Creations Multicolour Terracotta Pot & Brass-Bell Earrings",
+    "brand": "AAKRITI ART CREATIONS",
+    "manufacturer": "Aakriti Art Creations",
+    "description": "Aakriti Art Creations Multicolour Terracotta Pot & Brass-Bell Earrings features handmade terracotta-pot drop design. It combines brass bells, coconut-shell beads and cotton-thread detailing with approximate 5 cm drop. One pair with multicolour matte finish.",
+    "keyFeatures": [
+      "Handmade terracotta-pot drop design",
+      "Brass bells, coconut-shell beads and cotton-thread detailing",
+      "Approximate 5 cm drop",
+      "One pair with multicolour matte finish"
+    ],
+    "specifications": {
+      "colourAndVariant": "Multicolour matte-finish ethnic design",
+      "dimensions": "2 × 2 × 5 cm",
+      "weight": "30 g (source feature text separately says 32 g)",
+      "modelOrIdentifier": "AAC-40-02-42-G; ASIN B0CM6LG5YY",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Terracotta, brass bells, coconut-shell/wood beads and cotton thread",
+    "packageContents": "1 pair of earrings",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Jewellery > Women > Earrings",
+    "tags": [
+      "terracotta earrings",
+      "brass bell earrings",
+      "tribal jewellery",
+      "multicolour earrings",
+      "handmade ethnic earrings"
+    ],
+    "safetyInformation": "Handle terracotta pieces carefully to reduce the risk of chipping or breakage.",
+    "seoTitle": "Aakriti Art Creations Multicolour Terracotta Pot & Brass-Bell Earrings | Hathkriti",
+    "seoDescription": "Aakriti Art Creations Multicolour Terracotta Pot & Brass-Bell Earrings from Hathkriti. Handmade terracotta-pot drop design. Colour/variant: Multicolour matte-finish ethnic design."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1046,
+    "originalPriceNpr": 2092,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p43-b0cm6lg5yy-01.jpg",
+      "images/hathkriti-p43-b0cm6lg5yy-02.jpg",
+      "images/hathkriti-p43-b0cm6lg5yy-03.jpg",
+      "images/hathkriti-p43-b0cm6lg5yy-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "Skin-friendly and durability claims were omitted because no supporting test information was provided.",
+    "The source warranty claim is not carried into the Hastabazaar listing."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

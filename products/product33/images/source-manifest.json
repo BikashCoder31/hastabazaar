@@ -1,0 +1,58 @@
+{
+  "productNumber": 33,
+  "sourcePage": "https://amzn.in/d/0gIscflM",
+  "canonicalSourcePage": "https://www.amazon.in/dp/B0FFTDN2PS",
+  "selectionRule": "Up to four distinct ordinary product images from the Amazon product gallery; videos, review images, ads and unrelated media excluded.",
+  "videoDownloaded": false,
+  "exactDuplicatesFoundAndExcluded": [],
+  "images": [
+    {
+      "sourcePage": "https://amzn.in/d/0gIscflM",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0FFTDN2PS",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71DJL9GuXkL._SL1254_.jpg",
+      "localFilename": "hb-er-b0fftdn2ps-multicolour-01.jpg",
+      "dimensions": {
+        "height": 1254,
+        "width": 1254
+      },
+      "byteSize": 176623,
+      "sha256": "3cc67e478db9082a9fe0130c0964d8d8802f9a33be6f3cd840f39fb0cab58bc5"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/0gIscflM",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0FFTDN2PS",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61aE7mTQAuL._SL1000_.jpg",
+      "localFilename": "hb-er-b0fftdn2ps-multicolour-02.jpg",
+      "dimensions": {
+        "height": 1000,
+        "width": 1000
+      },
+      "byteSize": 98856,
+      "sha256": "ccbbd4aa59b8c9ee978438ef7af6fbf59c958d3702fceb4a956323d9df6fc537"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/0gIscflM",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0FFTDN2PS",
+      "originalImageReference": "https://m.media-amazon.com/images/I/614mTwrQazL._SL1000_.jpg",
+      "localFilename": "hb-er-b0fftdn2ps-multicolour-03.jpg",
+      "dimensions": {
+        "height": 1000,
+        "width": 1000
+      },
+      "byteSize": 129996,
+      "sha256": "c809eb03aedbabf64c76b6324e64570ba94225d6aedeaec8f66665e2d36d055a"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/0gIscflM",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0FFTDN2PS",
+      "originalImageReference": "https://m.media-amazon.com/images/I/81Xu-uVegrL._SL1500_.jpg",
+      "localFilename": "hb-er-b0fftdn2ps-multicolour-04.jpg",
+      "dimensions": {
+        "height": 1500,
+        "width": 1500
+      },
+      "byteSize": 212755,
+      "sha256": "a0ee7431fb84672cbe703de3150a0214a2102d82b65e1bef5fb9a809d4296d71"
+    }
+  ]
+}

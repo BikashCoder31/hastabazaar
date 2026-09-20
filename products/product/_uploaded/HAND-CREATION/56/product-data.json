@@ -1,0 +1,73 @@
+{
+  "productNumber": 56,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0j8V1Evj",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HCZGXQ6Z",
+    "asin": "B0HCZGXQ6Z",
+    "sourceTitle": "SAMÉRA Bohemian Tote Bag for Women with Tassels, Cowrie Shells & Mirror Work | Handmade Ethnic Shoulder Handbag | Multicolor Fabric Tote for Office, College, Shopping, Travel, Party & Casual Use",
+    "sourcePriceInr": 999.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "SAMÉRA Royal Red Multicolour Bohemian Embroidered Tote",
+    "brand": "Generic (source storefront); SAMÉRA model name",
+    "manufacturer": "A2Z Luxury",
+    "description": "SAMÉRA Royal Red Multicolour Bohemian Embroidered Tote features embroidered bohemian tote with mirror work. It combines cowrie-shell and tassel embellishments with zipper closure with three compartments. Soft lining and shoulder straps.",
+    "keyFeatures": [
+      "Embroidered bohemian tote with mirror work",
+      "Cowrie-shell and tassel embellishments",
+      "Zipper closure with three compartments",
+      "Soft lining and shoulder straps"
+    ],
+    "specifications": {
+      "colourAndVariant": "Royal Red Multicolor",
+      "dimensions": "36 × 12 × 30 cm",
+      "weight": "500 g",
+      "modelOrIdentifier": "SAM-BTB-001; ASIN B0HCZGXQ6Z",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Premium fabric outer, polyester/soft cotton lining, PU leather handles, cowrie shells and mirror-work embellishments",
+    "packageContents": "1 tote bag",
+    "careInstructions": "Wipe with a soft dry cloth; do not machine wash; keep away from excess moisture and direct sunlight",
+    "category": "Bags > Totes",
+    "tags": [
+      "bohemian tote",
+      "mirror work bag",
+      "cowrie shell bag",
+      "red embroidered tote",
+      "ethnic handbag"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "SAMÉRA Royal Red Multicolour Bohemian Embroidered Tote | Hathkriti",
+    "seoDescription": "SAMÉRA Royal Red Multicolour Bohemian Embroidered Tote from Hathkriti. Embroidered bohemian tote with mirror work. Colour/variant: Royal Red Multicolor."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1798,
+    "originalPriceNpr": 3596,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p56-b0hczgxq6z-01.jpg",
+      "images/hathkriti-p56-b0hczgxq6z-02.jpg",
+      "images/hathkriti-p56-b0hczgxq6z-03.jpg",
+      "images/hathkriti-p56-b0hczgxq6z-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

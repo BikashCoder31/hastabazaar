@@ -1,0 +1,63 @@
+{
+  "productNumber": 63,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0H2YVN43X",
+  "selectedVariant": "Pink; heart-embellished beaded design",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H2YVN43X",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51TdpBs97gL.jpg",
+      "filename": "hathkriti-p63-b0h2yvn43x-01.jpg",
+      "dimensions": {
+        "width": 800,
+        "height": 800
+      },
+      "byteSize": 53541,
+      "sha256": "4542d83b3325824d51dbd380b8028613be3dc2fbbeea47290c2cd2eb11f5f461",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H2YVN43X",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51bhe3aT6tL.jpg",
+      "filename": "hathkriti-p63-b0h2yvn43x-02.jpg",
+      "dimensions": {
+        "width": 800,
+        "height": 800
+      },
+      "byteSize": 50491,
+      "sha256": "a0220653c1f7327bc9b8046d215b8779cda4a6b1c2f527e710135cecdb200402",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H2YVN43X",
+      "originalImageReference": "https://m.media-amazon.com/images/I/514w2CNHgcL.jpg",
+      "filename": "hathkriti-p63-b0h2yvn43x-03.jpg",
+      "dimensions": {
+        "width": 800,
+        "height": 800
+      },
+      "byteSize": 49717,
+      "sha256": "979fb9a4fe37e75cb6c5d4a777a520a7a1e01170fc0a0c3981ca65a3fd47eaf5",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 3
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H2YVN43X",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51-1F2Ec2aL.jpg",
+      "filename": "hathkriti-p63-b0h2yvn43x-04.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 33279,
+      "sha256": "764c08db1ceb54d1cfc61414e1023784ea7bee2aeb3cf64e2f1092e2484abcb8",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 7
+    }
+  ]
+}

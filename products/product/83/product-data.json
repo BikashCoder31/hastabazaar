@@ -1,0 +1,75 @@
+{
+  "productNumber": 83,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0chCzkc0",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HFD9PZGH",
+    "asin": "B0HFD9PZGH",
+    "sourceTitle": "LED Tree Branch Wall Decor –Fexible Lighted Floral Branches with Remote Control, 8 Lighting Modes & Timer for Bedroom, Living Room, Wedding, Cherry Blossom Wall Tree Light",
+    "sourcePriceInr": 999.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "AANKI STORE19 Cherry-Blossom LED Branch Wall Décor",
+    "brand": "AANKI STORE19",
+    "manufacturer": "Not stated on the source page.",
+    "description": "AANKI STORE19 Cherry-Blossom LED Branch Wall Décor features flexible lighted floral branches. It combines remote control with eight lighting modes with timer function. DIY branch arrangement for wall display.",
+    "keyFeatures": [
+      "Flexible lighted floral branches",
+      "Remote control with eight lighting modes",
+      "Timer function",
+      "DIY branch arrangement for wall display"
+    ],
+    "specifications": {
+      "colourAndVariant": "Cherry-blossom lighted branch design",
+      "dimensions": "Not stated on the source page.",
+      "weight": "Not stated on the source page.",
+      "modelOrIdentifier": "ASIN B0HFD9PZGH",
+      "countryOfOrigin": "Not stated on the source page."
+    },
+    "materials": "Material composition is not stated",
+    "packageContents": "Cherry-blossom lighted branches and remote control",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Home Décor > Decorative Lighting",
+    "tags": [
+      "LED branch wall décor",
+      "cherry blossom lights",
+      "remote control lighting",
+      "eight mode wall light",
+      "AANKI STORE19"
+    ],
+    "safetyInformation": "Check all supplied parts before installation.",
+    "seoTitle": "AANKI STORE19 Cherry-Blossom LED Branch Wall Décor | Hathkriti",
+    "seoDescription": "AANKI STORE19 Cherry-Blossom LED Branch Wall Décor from Hathkriti. Flexible lighted floral branches. Colour/variant: Cherry-blossom lighted branch design."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1798,
+    "originalPriceNpr": 3596,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p83-b0hfd9pzgh-01.jpg",
+      "images/hathkriti-p83-b0hfd9pzgh-02.jpg",
+      "images/hathkriti-p83-b0hfd9pzgh-03.jpg",
+      "images/hathkriti-p83-b0hfd9pzgh-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The final shape and wall coverage depend on manual arrangement of the flexible branches."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

@@ -1,0 +1,58 @@
+{
+  "productNumber": 29,
+  "sourcePage": "https://amzn.in/d/0fGU3amD",
+  "canonicalSourcePage": "https://www.amazon.in/dp/B0HHN46PRG",
+  "selectionRule": "Up to four distinct ordinary product images from the Amazon product gallery; videos, review images, ads and unrelated media excluded.",
+  "videoDownloaded": false,
+  "exactDuplicatesFoundAndExcluded": [],
+  "images": [
+    {
+      "sourcePage": "https://amzn.in/d/0fGU3amD",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0HHN46PRG",
+      "originalImageReference": "https://m.media-amazon.com/images/I/81ZER5F9MeL._SL1500_.jpg",
+      "localFilename": "hb-er-b0hhn46prg-multicolour-01.jpg",
+      "dimensions": {
+        "height": 1500,
+        "width": 1500
+      },
+      "byteSize": 213815,
+      "sha256": "d3420f1ebad42c650eb88aa818af5be86bdbf57376fda66c8c5119041b32b72c"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/0fGU3amD",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0HHN46PRG",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71BdWWiPVGL._SL1500_.jpg",
+      "localFilename": "hb-er-b0hhn46prg-multicolour-02.jpg",
+      "dimensions": {
+        "height": 1500,
+        "width": 1500
+      },
+      "byteSize": 172553,
+      "sha256": "57263e2ea050cc5f444d911e9085e0dbd0b1bf10d2917eb308cf3700623553c1"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/0fGU3amD",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0HHN46PRG",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71mNRsHEhhL._SL1500_.jpg",
+      "localFilename": "hb-er-b0hhn46prg-multicolour-03.jpg",
+      "dimensions": {
+        "height": 1500,
+        "width": 1500
+      },
+      "byteSize": 149599,
+      "sha256": "21bc5482a346e92f1847242b4634958762b1c4f03b2b7d61b75fdc2e90cafc13"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/0fGU3amD",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0HHN46PRG",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61FKPj1u5YL._SL1500_.jpg",
+      "localFilename": "hb-er-b0hhn46prg-multicolour-04.jpg",
+      "dimensions": {
+        "height": 1500,
+        "width": 694
+      },
+      "byteSize": 86371,
+      "sha256": "b6057463184e44f92c676cd5efc378faf1645d8385662027d433e425f8203e55"
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "productNumber": 79,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0dNIcnXl",
+    "canonicalUrl": "https://www.amazon.in/dp/B0F5X3751B",
+    "asin": "B0F5X3751B",
+    "sourceTitle": "Divyakosh Peacock Side Door Hanging Set of 2 for Home Entrance Decoration, Handmade Decorative Floral Door Hanging with Artificial Flowers, Pearl Bead & Tassels, Main Door Wall Decor for Diwali, Pooja",
+    "sourcePriceInr": 390.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Divyakosh Peacock Floral Side-Door Hangings - Set of 2",
+    "brand": "Divyakosh",
+    "manufacturer": "Not stated on the source page.",
+    "description": "Divyakosh Peacock Floral Side-Door Hangings - Set of 2 features pair of handmade peacock side-door hangings. It combines artificial flowers and pearl-bead strings with decorative beads and tassels. Designed for paired placement around an entrance or doorway.",
+    "keyFeatures": [
+      "Pair of handmade peacock side-door hangings",
+      "Artificial flowers and pearl-bead strings",
+      "Decorative beads and tassels",
+      "Designed for paired placement around an entrance or doorway"
+    ],
+    "specifications": {
+      "colourAndVariant": "Multicolour peacock and floral design; set of 2",
+      "dimensions": "Approximately 16 × 6 in each",
+      "weight": "Not stated on the source page.",
+      "modelOrIdentifier": "ASIN B0F5X3751B",
+      "countryOfOrigin": "Not stated on the source page."
+    },
+    "materials": "Peacock artwork panel, artificial flowers, pearl-style beads, decorative beads and tassels; base material not stated",
+    "packageContents": "2 peacock side-door hangings",
+    "careInstructions": "Maintenance-free artificial floral decoration; other care instructions are not stated.",
+    "category": "Home Décor > Hanging Ornaments",
+    "tags": [
+      "peacock door hanging",
+      "floral entrance décor",
+      "set of 2 hangings",
+      "pearl tassel décor",
+      "Divyakosh"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Divyakosh Peacock Floral Side-Door Hangings - Set of 2 | Hathkriti",
+    "seoDescription": "Divyakosh Peacock Floral Side-Door Hangings - Set of 2 from Hathkriti. Pair of handmade peacock side-door hangings. Colour/variant: Multicolour peacock and floral design; set of 2."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 824,
+    "originalPriceNpr": 1648,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p79-b0f5x3751b-01.jpg",
+      "images/hathkriti-p79-b0f5x3751b-02.jpg",
+      "images/hathkriti-p79-b0f5x3751b-03.jpg",
+      "images/hathkriti-p79-b0f5x3751b-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

@@ -1,0 +1,73 @@
+{
+  "productNumber": 29,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0a2nsjYD",
+    "canonicalUrl": "https://www.amazon.in/dp/B0F9VL5GRM",
+    "asin": "B0F9VL5GRM",
+    "sourceTitle": "Boho Bag for Women, Mobile Sling Bag, Macrame Handmade crochet Bag for Ladies",
+    "sourcePriceInr": 390.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Tvineco Pink Handmade Macramé Mobile Sling Bag",
+    "brand": "Tvineco",
+    "manufacturer": "Tvineco",
+    "description": "Tvineco Pink Handmade Macramé Mobile Sling Bag features handmade macramé-style cotton sling bag. It combines rectangular compact profile with pink strap with white frame. Shoulder strap included.",
+    "keyFeatures": [
+      "Handmade macramé-style cotton sling bag",
+      "Rectangular compact profile",
+      "Pink strap with white frame",
+      "Shoulder strap included"
+    ],
+    "specifications": {
+      "colourAndVariant": "Pink with white frame; Western style",
+      "dimensions": "24 × 5 × 15 cm",
+      "weight": "350 g",
+      "modelOrIdentifier": "Model 0019; part 039A; ASIN B0F9VL5GRM",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Cotton / macramé textile; source does not identify hardware composition",
+    "packageContents": "1 sling bag with shoulder strap",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Sling & Cross-Body Bags",
+    "tags": [
+      "pink sling bag",
+      "macrame bag",
+      "crochet bag",
+      "mobile pouch",
+      "boho crossbody"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Tvineco Pink Handmade Macramé Mobile Sling Bag | Hathkriti",
+    "seoDescription": "Tvineco Pink Handmade Macramé Mobile Sling Bag from Hathkriti. Handmade macramé-style cotton sling bag. Colour/variant: Pink with white frame; Western style."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 824,
+    "originalPriceNpr": 1648,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p29-b0f9vl5grm-01.jpg",
+      "images/hathkriti-p29-b0f9vl5grm-02.jpg",
+      "images/hathkriti-p29-b0f9vl5grm-03.jpg",
+      "images/hathkriti-p29-b0f9vl5grm-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

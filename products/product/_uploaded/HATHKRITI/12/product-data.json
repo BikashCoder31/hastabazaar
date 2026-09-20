@@ -1,0 +1,72 @@
+{
+  "productNumber": 12,
+  "status": "prepared_not_entered",
+  "source": {
+    "shortUrl": "https://amzn.in/d/09ph5B11",
+    "canonicalUrl": "https://www.amazon.in/dp/B0GDW5W1QN",
+    "asin": "B0GDW5W1QN",
+    "selectedVariant": "Multicolour",
+    "sourcePriceInr": 285,
+    "sourceReturnStatus": "10 days Returnable"
+  },
+  "listing": {
+    "category": "Jewelry & accessories",
+    "title": "Needful Multicolour Fabric Layered Oxidised Jhumka Earrings",
+    "occasions": [
+      "Wedding gifts",
+      "Birthday gifts",
+      "Tihar gifts",
+      "Anniversary"
+    ],
+    "description": "Long statement jhumka earrings with three layered fabric-covered discs, silver-tone bead detailing and a traditional oxidised dome drop. The multicolour printed fabric adds a lively finish for sarees, kurtis, lehengas and Indo-western outfits, while the push-back closure supports comfortable festive and occasion wear.",
+    "dimensions": "2.5 x 1 x 6.3 cm",
+    "licenceReference": null,
+    "careInstructions": null,
+    "safetyInformation": null,
+    "warrantyOffered": false,
+    "warrantyYears": null,
+    "warrantyMonths": null,
+    "warrantyDays": null,
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "preparationDays": 3,
+    "manufactureDate": null,
+    "expiryDate": null,
+    "madeToOrder": false,
+    "sellingPriceNpr": 656,
+    "originalPriceNpr": 1312,
+    "discountPercent": 50,
+    "stockQuantity": 10,
+    "returnEligible": true,
+    "suggestedInternalReference": "HB-JA-B0GDW5W1QN-MULTI",
+    "priceFormula": "round(285 × 1.6 + 200)"
+  },
+  "verifiedFacts": {
+    "brand": "NF Needful",
+    "manufacturer": "Shivzon India",
+    "manufacturerPartNumber": "000",
+    "materials": [
+      "Metal alloy",
+      "Fabric",
+      "Silver plating"
+    ],
+    "sourceGemType": "Quartz",
+    "colour": "Multicolour fabric with oxidised silver tone",
+    "closure": "Push back",
+    "itemWeightGrams": 10,
+    "countryOfOrigin": "India",
+    "packageContents": "One pair / one pack of earrings"
+  },
+  "images": [
+    "images/hb-ja-b0gdw5w1qn-multi-01.jpg",
+    "images/hb-ja-b0gdw5w1qn-multi-02.jpg",
+    "images/hb-ja-b0gdw5w1qn-multi-03.jpg",
+    "images/hb-ja-b0gdw5w1qn-multi-04.jpg"
+  ],
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 656,
+    "originalPriceNpr": 1312,
+    "discountPercent": 50
+  }
+}

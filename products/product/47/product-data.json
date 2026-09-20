@@ -1,0 +1,72 @@
+{
+  "productNumber": 47,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only three images matched the selected Pink Yellow chandbali; two shared gallery assets showed unrelated jewellery and were rejected.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0eFtkuIo",
+    "canonicalUrl": "https://www.amazon.in/dp/B0DGXCTMLM",
+    "asin": "B0DGXCTMLM",
+    "sourceTitle": "KHOJ.CITY Ethnic Earrings for Women | Lightweight, Hand-Painted Chandbali with Pearl Chain | Handmade Jewellery for Women | Boho Earrings For Girls",
+    "sourcePriceInr": 399.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "KHOJ.CITY Pink & Yellow Hand-Painted Chandbali Earrings",
+    "brand": "KHOJ.CITY",
+    "manufacturer": "EKHOJ Enterprises Private Limited",
+    "description": "KHOJ.CITY Pink & Yellow Hand-Painted Chandbali Earrings features hand-painted lotus motif. It combines crescent chandbali silhouette with layered pearl-style bead chains. Snap-down post finding.",
+    "keyFeatures": [
+      "Hand-painted lotus motif",
+      "Crescent chandbali silhouette",
+      "Layered pearl-style bead chains",
+      "Snap-down post finding"
+    ],
+    "specifications": {
+      "colourAndVariant": "Pink Yellow with green accent and pearl-style chains",
+      "dimensions": "6.35 × 3.81 × 1.27 cm",
+      "weight": "10 g",
+      "modelOrIdentifier": "KHJ-AMZ-ER-011; ASIN B0DGXCTMLM",
+      "countryOfOrigin": "Not stated on the source page."
+    },
+    "materials": "MDF board, fabric, acrylic colour, beads and thread",
+    "packageContents": "1 pair of drop earrings",
+    "careInstructions": "Store in a dry place",
+    "category": "Jewellery > Women > Earrings",
+    "tags": [
+      "chandbali earrings",
+      "pink yellow earrings",
+      "hand-painted jewellery",
+      "KHOJ CITY",
+      "pearl chain earrings"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "KHOJ.CITY Pink & Yellow Hand-Painted Chandbali Earrings | Hathkriti",
+    "seoDescription": "KHOJ.CITY Pink & Yellow Hand-Painted Chandbali Earrings from Hathkriti. Hand-painted lotus motif. Colour/variant: Pink Yellow with green accent and pearl-style chains."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 838,
+    "originalPriceNpr": 1676,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 3,
+    "files": [
+      "images/hathkriti-p47-b0dgxctmlm-01.jpg",
+      "images/hathkriti-p47-b0dgxctmlm-02.jpg",
+      "images/hathkriti-p47-b0dgxctmlm-03.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

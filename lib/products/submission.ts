@@ -6,8 +6,23 @@ export const productImageFields = [
   'image5',
 ] as const;
 
+/**
+ * New forms submit every image under the repeated `images` field. The legacy
+ * numbered names remain accepted so an already-open form can still be saved
+ * after a deployment.
+ */
+export function productImageFiles(formData: FormData): File[] {
+  const values = [
+    ...productImageFields.map((field) => formData.get(field)),
+    ...formData.getAll('images'),
+  ];
+  return values.filter(
+    (value): value is File => value instanceof File && value.size > 0,
+  );
+}
+
 export const maximumProductImageBytes = 5 * 1024 * 1024;
-export const maximumProductSubmissionBytes = 27 * 1024 * 1024;
+export const maximumProductSubmissionBytes = 47 * 1024 * 1024;
 
 export interface ProductSubmissionInput {
   categoryId: string;
@@ -23,6 +38,10 @@ export interface ProductSubmissionInput {
   producer: string;
   materials: string;
   dimensions: string | null;
+  size?: string | null;
+  colour?: string | null;
+  variations?: string | null;
+  specifications?: string | null;
   careInstructions: string | null;
   safetyInformation: string | null;
   returnConditions: string | null;
@@ -103,6 +122,10 @@ export function parseProductSubmission(formData: FormData): {
     producer: textField(formData, 'producer'),
     materials: textField(formData, 'materials'),
     dimensions: textField(formData, 'dimensions') || null,
+    size: textField(formData, 'size') || null,
+    colour: textField(formData, 'colour') || null,
+    variations: textField(formData, 'variations') || null,
+    specifications: textField(formData, 'specifications') || null,
     careInstructions: textField(formData, 'careInstructions') || null,
     safetyInformation: textField(formData, 'safetyInformation') || null,
     returnConditions: textField(formData, 'returnConditions') || null,
@@ -115,19 +138,45 @@ export function parseProductSubmission(formData: FormData): {
     licenceReference: textField(formData, 'licenceReference') || null,
   };
 
+  const warrantyOffered = textField(formData, 'warrantyOffered');
+  if (warrantyOffered === 'no') input.warranty = null;
+  else if (warrantyOffered === 'yes') {
+    const parts: string[] = [];
+    for (const [field, unit] of [
+      ['warrantyYears', 'year'],
+      ['warrantyMonths', 'month'],
+      ['warrantyDays', 'day'],
+    ] as const) {
+      const value = textField(formData, field);
+      if (
+        value &&
+        (!/^\d{1,6}$/.test(value) || !Number.isSafeInteger(Number(value)))
+      )
+        errors.push('Warranty duration must use non-negative whole numbers.');
+      else if (Number(value) > 0)
+        parts.push(
+          value.replace(/^0+/, '') +
+            ' ' +
+            unit +
+            (Number(value) === 1 ? '' : 's'),
+        );
+    }
+    if (!parts.length)
+      errors.push('Enter at least one positive warranty duration.');
+    input.warranty = parts.join(', ') || null;
+  } else if (warrantyOffered)
+    errors.push('Choose Yes or No for warranty or guarantee.');
+
   const required: Array<[keyof ProductSubmissionInput, string]> = [
     ['categoryId', 'Category'],
-    ['sku', 'SKU'],
     ['nameEn', 'English product name'],
     ['descriptionEn', 'English description'],
-    ['producer', 'Producer'],
-    ['materials', 'Materials'],
   ];
   for (const [field, label] of required) {
     if (!input[field]) errors.push(`${label} is required.`);
   }
 
-  if (!/^[A-Z0-9][A-Z0-9._-]{2,39}$/.test(input.sku)) {
+  if (input.sku && !/^[A-Z0-9][A-Z0-9._-]{2,39}$/.test(input.sku)) {
     errors.push(
       'SKU must be 3–40 letters, numbers, dots, dashes, or underscores.',
     );
@@ -140,9 +189,9 @@ export function parseProductSubmission(formData: FormData): {
   } else if (
     typeof compareAtPricePaisa === 'number' &&
     typeof pricePaisa === 'number' &&
-    compareAtPricePaisa <= pricePaisa
+    compareAtPricePaisa < pricePaisa
   ) {
-    errors.push('Comparison price must be higher than the selling price.');
+    errors.push('Original price cannot be lower than the selling price.');
   }
   if (
     !Number.isInteger(inventoryQuantity) ||
@@ -193,6 +242,10 @@ export function parseProductSubmission(formData: FormData): {
     ['producer', 'Producer', 180],
     ['materials', 'Materials', 1000],
     ['dimensions', 'Dimensions', 500],
+    ['size', 'Size', 300],
+    ['colour', 'Colour', 300],
+    ['variations', 'Variations', 1500],
+    ['specifications', 'Specifications', 2000],
     ['careInstructions', 'Care instructions', 1500],
     ['safetyInformation', 'Safety information', 1500],
     ['returnConditions', 'Return conditions', 1500],
@@ -262,4 +315,22 @@ export function createProductSlug(name: string): string {
       .replace(/^-+|-+$/g, '')
       .slice(0, 70) || 'handmade-product';
   return `${base}-${crypto.randomUUID().replaceAll('-', '').slice(0, 8)}`;
+}
+
+export function createProductSku(): string {
+  return 'HB-' + crypto.randomUUID().replaceAll('-', '').toUpperCase();
+}
+export function productPhotoCountError(
+  added: number,
+  existing?: number,
+): string | null {
+  if (
+    !Number.isInteger(added) ||
+    added < 0 ||
+    (existing !== undefined && (!Number.isInteger(existing) || existing < 0))
+  )
+    return 'Invalid photo count.';
+  return added + (existing ?? 0) < 4
+    ? 'Add at least four useful product photos from different angles.'
+    : null;
 }

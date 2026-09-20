@@ -1,0 +1,37 @@
+{
+  "productNumber": 32,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two clean images showed the exact selected white variant; the remaining gallery images included other colours.",
+  "sourcePage": "https://www.amazon.in/dp/B0H7CDWFV2",
+  "selectedVariant": "White; free size",
+  "requiredImageCount": 4,
+  "includedImageCount": 2,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H7CDWFV2",
+      "originalImageReference": "https://m.media-amazon.com/images/I/611aTuZREEL._SL1500_.jpg",
+      "filename": "hathkriti-p32-b0h7cdwfv2-01.jpg",
+      "dimensions": {
+        "width": 1001,
+        "height": 1500
+      },
+      "byteSize": 82506,
+      "sha256": "c63d11cf0aa968d9bf215417b20b74b27199dacd1a64afd2ea5924332b44d313",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H7CDWFV2",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61CcFYSqLPL._SL1264_.jpg",
+      "filename": "hathkriti-p32-b0h7cdwfv2-02.jpg",
+      "dimensions": {
+        "width": 843,
+        "height": 1264
+      },
+      "byteSize": 90670,
+      "sha256": "1d5f3280e1f39938a32762e569eecaefde3923a36547af87ef73588521741a82",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    }
+  ]
+}

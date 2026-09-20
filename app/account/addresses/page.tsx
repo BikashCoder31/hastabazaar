@@ -7,6 +7,9 @@ import { listCustomerAddresses } from '@/lib/db/repositories/customers';
 
 export default async function AddressesPage() {
   const customer = await requireCustomerPage('/account/addresses');
-  const addresses = await listCustomerAddresses(requireDatabase(env as unknown as { DB?: D1Database }), customer.userId);
+  const addresses = await listCustomerAddresses(
+    requireDatabase(env as unknown as { DB?: D1Database }),
+    customer.userId,
+  );
   return <AddressManager addresses={addresses} />;
 }

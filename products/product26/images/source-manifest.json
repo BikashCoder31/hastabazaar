@@ -1,0 +1,22 @@
+{
+  "productNumber": 26,
+  "sourcePage": "https://amzn.in/d/0g0aDarn",
+  "canonicalSourcePage": "https://www.amazon.in/dp/B0FBLC3ZXH",
+  "selectionRule": "Up to four distinct ordinary product images from the Amazon product gallery; videos, review images, ads and unrelated media excluded.",
+  "videoDownloaded": false,
+  "exactDuplicatesFoundAndExcluded": [],
+  "images": [
+    {
+      "sourcePage": "https://amzn.in/d/0g0aDarn",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0FBLC3ZXH",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61D7IZQe0kL._SL1280_.jpg",
+      "localFilename": "hb-er-b0fblc3zxh-blue-and-white-01.jpg",
+      "dimensions": {
+        "height": 1280,
+        "width": 960
+      },
+      "byteSize": 71903,
+      "sha256": "31650ed96fcbbe5252b24bf4378dbda0b158405fbcb2c07d9559e20fab8bd0b5"
+    }
+  ]
+}

@@ -61,7 +61,7 @@ Seller and product self-approval is prohibited. Sponsored ranking is disabled at
 
 ## Fees
 
-- Seller commission: **12%** of the item subtotal after seller-funded discounts. It excludes delivery charges and taxes.
+- Seller commission: **9%** of the item subtotal after seller-funded discounts. It excludes delivery charges and taxes. The active rate is an audited marketplace setting and is snapshotted onto every order item.
 - Customer platform fee: **NPR 0** at launch.
 - Digital payment gateway cost: absorbed by Hastabazaar during launch.
 - Delivery price: shown separately to the customer and passed through according to the carrier quote.

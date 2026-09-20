@@ -1,0 +1,71 @@
+{
+  "productNumber": 70,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two distinct exact-variant product-gallery images were available.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0dBAGeaL",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HFP8JHZT",
+    "asin": "B0HFP8JHZT",
+    "sourceTitle": "Handmade Round Crochet Bag for Women, Blue",
+    "sourcePriceInr": 699.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "PUMITOWN Blue Hand-Crocheted Scallop Crossbody Bag",
+    "brand": "PUMITOWN",
+    "manufacturer": "PUMITOWN",
+    "description": "PUMITOWN Blue Hand-Crocheted Scallop Crossbody Bag features hand-crocheted scallop texture. It combines twist-lock flap closure with detachable gold-tone chain strap. Matching yarn tassel and one cotton-lined pocket.",
+    "keyFeatures": [
+      "Hand-crocheted scallop texture",
+      "Twist-lock flap closure",
+      "Detachable gold-tone chain strap",
+      "Matching yarn tassel and one cotton-lined pocket"
+    ],
+    "specifications": {
+      "colourAndVariant": "Blue",
+      "dimensions": "25 × 20 × 5 cm",
+      "weight": "350 g",
+      "modelOrIdentifier": "C-66; ASIN B0HFP8JHZT",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Cotton yarn with cotton lining and gold-tone metal hardware",
+    "packageContents": "1 crochet crossbody bag with detachable chain strap",
+    "careInstructions": "Hand wash cold; do not bleach; reshape and lay flat to dry; do not iron directly on the yarn.",
+    "category": "Bags > Sling & Cross-Body Bags",
+    "tags": [
+      "blue crochet bag",
+      "scallop crossbody",
+      "cotton yarn purse",
+      "PUMITOWN bag",
+      "chain sling bag"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "PUMITOWN Blue Hand-Crocheted Scallop Crossbody Bag | Hathkriti",
+    "seoDescription": "PUMITOWN Blue Hand-Crocheted Scallop Crossbody Bag from Hathkriti. Hand-crocheted scallop texture. Colour/variant: Blue."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1318,
+    "originalPriceNpr": 2636,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 2,
+    "files": [
+      "images/hathkriti-p70-b0hfp8jhzt-01.jpg",
+      "images/hathkriti-p70-b0hfp8jhzt-02.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

@@ -1,0 +1,63 @@
+{
+  "productNumber": 57,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0BTJ431D9",
+  "selectedVariant": "Green",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0BTJ431D9",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71mXX9FDvaL._SL1000_.jpg",
+      "filename": "hathkriti-p57-b0btj431d9-01.jpg",
+      "dimensions": {
+        "width": 1000,
+        "height": 1000
+      },
+      "byteSize": 172275,
+      "sha256": "c58d39452f295feb0fad72ea744bb3765c87c1b3b98ff78be4cae587cf27d2b0",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0BTJ431D9",
+      "originalImageReference": "https://m.media-amazon.com/images/I/81u3P1KiKiL._SL1500_.jpg",
+      "filename": "hathkriti-p57-b0btj431d9-02.jpg",
+      "dimensions": {
+        "width": 1457,
+        "height": 1500
+      },
+      "byteSize": 361335,
+      "sha256": "ea8949177bbad78c8548658c5d1b81d4389f8e5e56c4ebeb3e3b0803b8b39778",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0BTJ431D9",
+      "originalImageReference": "https://m.media-amazon.com/images/I/91t9DRqVLFL._SL1500_.jpg",
+      "filename": "hathkriti-p57-b0btj431d9-03.jpg",
+      "dimensions": {
+        "width": 1457,
+        "height": 1500
+      },
+      "byteSize": 473070,
+      "sha256": "16c0ddbf77e526dfd402e7bbebe6405bfb6673a582326ac96f5028b3b93cf520",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 3
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0BTJ431D9",
+      "originalImageReference": "https://m.media-amazon.com/images/I/81RpzkVN9XL._SL1500_.jpg",
+      "filename": "hathkriti-p57-b0btj431d9-04.jpg",
+      "dimensions": {
+        "width": 1457,
+        "height": 1500
+      },
+      "byteSize": 330619,
+      "sha256": "4a3a1132569cd8d5b83b2eef539ee005a06de4ce22b982f3e5ea69df821b965f",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 4
+    }
+  ]
+}

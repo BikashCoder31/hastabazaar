@@ -1,0 +1,74 @@
+{
+  "productNumber": 11,
+  "status": "prepared_not_entered",
+  "source": {
+    "shortUrl": "https://amzn.in/d/05NJx3ZH",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HB4Z245C",
+    "asin": "B0HB4Z245C",
+    "selectedVariant": "Black rectangle daisy",
+    "sourcePriceInr": 399,
+    "sourceReturnStatus": "10 days Returnable"
+  },
+  "listing": {
+    "category": "Jewelry & accessories",
+    "title": "Aaroh Real Daisy Black Resin Oxidised Drop Earrings",
+    "occasions": [
+      "Birthday gifts",
+      "Anniversary",
+      "Mother’s Day",
+      "Wedding gifts"
+    ],
+    "description": "Statement drop earrings featuring real dried white daisy flowers set in glossy black resin, framed with oxidised silver-tone detailing and finished with black bead and pearl-style tassels. The lightweight pair works with ethnic, Indo-western, western and bohemian outfits for parties, festivals, weddings or casual outings.",
+    "dimensions": null,
+    "licenceReference": null,
+    "careInstructions": "Keep away from water, perfume and harsh chemicals. Store in a dry jewellery box or pouch when not in use.",
+    "safetyInformation": null,
+    "warrantyOffered": false,
+    "warrantyYears": null,
+    "warrantyMonths": null,
+    "warrantyDays": null,
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "preparationDays": 3,
+    "manufactureDate": null,
+    "expiryDate": null,
+    "madeToOrder": false,
+    "sellingPriceNpr": 838,
+    "originalPriceNpr": 1676,
+    "discountPercent": 50,
+    "stockQuantity": 10,
+    "returnEligible": true,
+    "suggestedInternalReference": "HB-JA-B0HB4Z245C-BLACK",
+    "priceFormula": "round(399 × 1.6 + 200)"
+  },
+  "verifiedFacts": {
+    "brand": "Generic",
+    "manufacturer": "Aaroh: the art of grace",
+    "manufacturerPartNumber": "Fj-brdfe-001",
+    "materials": [
+      "Resin",
+      "Alloy",
+      "Dried flower"
+    ],
+    "colour": "Black, white, yellow and oxidised silver tone",
+    "itemWeightGrams": 50,
+    "countryOfOrigin": "India",
+    "packageContents": "One pair / two earrings"
+  },
+  "sourceConcerns": [
+    "The source-listed 7.5 x 5 x 7 cm dimensions appear package-level and were not used as product dimensions.",
+    "The real-flower claim was not independently tested."
+  ],
+  "images": [
+    "images/hb-ja-b0hb4z245c-black-01.jpg",
+    "images/hb-ja-b0hb4z245c-black-02.jpg",
+    "images/hb-ja-b0hb4z245c-black-03.jpg",
+    "images/hb-ja-b0hb4z245c-black-04.jpg"
+  ],
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 838,
+    "originalPriceNpr": 1676,
+    "discountPercent": 50
+  }
+}

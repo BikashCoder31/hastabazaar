@@ -1,0 +1,58 @@
+{
+  "productNumber": 27,
+  "sourcePage": "https://amzn.in/d/09uor7Jk",
+  "canonicalSourcePage": "https://www.amazon.in/dp/B09FPJF5Q7",
+  "selectionRule": "Up to four distinct ordinary product images from the Amazon product gallery; videos, review images, ads and unrelated media excluded.",
+  "videoDownloaded": false,
+  "exactDuplicatesFoundAndExcluded": [],
+  "images": [
+    {
+      "sourcePage": "https://amzn.in/d/09uor7Jk",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B09FPJF5Q7",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71woZWl06UL._SL1500_.jpg",
+      "localFilename": "hb-er-b09fpjf5q7-blue-01.jpg",
+      "dimensions": {
+        "height": 1500,
+        "width": 1500
+      },
+      "byteSize": 130152,
+      "sha256": "c9d73e28d4876a6f484b4dad69eec61e9b6ba99359cd8ac95597c913041b0ad9"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/09uor7Jk",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B09FPJF5Q7",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71wOW2TMa9L._SL1500_.jpg",
+      "localFilename": "hb-er-b09fpjf5q7-blue-02.jpg",
+      "dimensions": {
+        "height": 1500,
+        "width": 1500
+      },
+      "byteSize": 124065,
+      "sha256": "9290238a6760f5a9f1181808fcc842a11749ca8bad70865444a136cfd3660cb9"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/09uor7Jk",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B09FPJF5Q7",
+      "originalImageReference": "https://m.media-amazon.com/images/I/A1FUxi8ACHL._SL1500_.jpg",
+      "localFilename": "hb-er-b09fpjf5q7-blue-03.jpg",
+      "dimensions": {
+        "height": 1500,
+        "width": 1500
+      },
+      "byteSize": 625551,
+      "sha256": "183e88d5d8a94ce17331ce7eb096ab767d3609295db0d691f2b46d7505c7d092"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/09uor7Jk",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B09FPJF5Q7",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71J9muujPOL._SL1500_.jpg",
+      "localFilename": "hb-er-b09fpjf5q7-blue-04.jpg",
+      "dimensions": {
+        "height": 1500,
+        "width": 1500
+      },
+      "byteSize": 143142,
+      "sha256": "d9582c60f61249f21282677e1e8804b009097ea17142ead4654768b859576336"
+    }
+  ]
+}

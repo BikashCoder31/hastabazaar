@@ -1,42 +1,70 @@
-export const sellerAgreementVersion = 'seller-terms-2026-09-draft';
+import { SELLER_AGREEMENT_VERSION } from '@/lib/content/legal-policies';
 
-export const sellerDocumentFields = [
-  {
-    field: 'businessRegistration',
-    kind: 'business_registration',
-    label: 'Business registration certificate',
-    required: true,
-  },
-  {
-    field: 'taxCertificate',
-    kind: 'pan_certificate',
-    label: 'PAN or VAT certificate',
-    required: true,
-  },
-  {
-    field: 'representativeIdentity',
-    kind: 'representative_identity',
-    label: 'Authorised representative identity',
-    required: true,
-  },
-  {
-    field: 'bankVerification',
-    kind: 'bank_verification',
-    label: 'Bank account verification',
-    required: false,
-  },
-] as const;
+export const sellerAgreementVersion = SELLER_AGREEMENT_VERSION;
 
 export type SellerDocumentKind =
-  | (typeof sellerDocumentFields)[number]['kind']
-  | 'vat_certificate';
+  | 'business_registration'
+  | 'pan_certificate'
+  | 'vat_certificate'
+  | 'representative_identity'
+  | 'bank_verification';
+export function sellerDocumentsForApplication(input: {
+  applicantType: 'individual' | 'company';
+  taxMode: 'PAN' | 'VAT' | 'BOTH';
+}) {
+  return [
+    ...(input.applicantType === 'company'
+      ? [
+          {
+            field: 'businessRegistration',
+            kind: 'business_registration' as const,
+            label: 'Company registration certificate',
+            required: true,
+          },
+        ]
+      : []),
+    ...(input.taxMode !== 'VAT'
+      ? [
+          {
+            field: 'panCertificate',
+            kind: 'pan_certificate' as const,
+            label: 'PAN certificate',
+            required: true,
+          },
+        ]
+      : []),
+    ...(input.taxMode !== 'PAN'
+      ? [
+          {
+            field: 'vatCertificate',
+            kind: 'vat_certificate' as const,
+            label: 'VAT certificate',
+            required: true,
+          },
+        ]
+      : []),
+    {
+      field: 'representativeIdentity',
+      kind: 'representative_identity' as const,
+      label: 'Identity document (optional)',
+      required: false,
+    },
+    {
+      field: 'bankVerification',
+      kind: 'bank_verification' as const,
+      label: 'Bank verification (optional)',
+      required: false,
+    },
+  ];
+}
 
 export interface SellerApplicationInput {
+  applicantType: 'individual' | 'company';
   legalName: string;
   tradingName: string;
   registrationAuthority: string;
   registrationNumber: string;
-  taxMode: 'PAN' | 'VAT';
+  taxMode: 'PAN' | 'VAT' | 'BOTH';
   taxRegistrationNumber: string;
   representativeName: string;
   email: string;
@@ -66,7 +94,7 @@ const acceptedDocumentTypes = new Set([
 ]);
 
 export const maximumDocumentBytes = 5 * 1024 * 1024;
-export const maximumApplicationBytes = 22 * 1024 * 1024;
+export const maximumApplicationBytes = 27 * 1024 * 1024;
 
 function textField(formData: FormData, name: string): string {
   const value = formData.get(name);
@@ -79,18 +107,33 @@ export function parseSellerApplication(formData: FormData): {
 } {
   const errors: string[] = [];
   const taxMode = textField(formData, 'taxMode');
+  const applicantType = textField(formData, 'applicantType');
+  if (!['individual', 'company'].includes(applicantType))
+    errors.push('Choose Individual or Company.');
+  if (!['PAN', 'VAT', 'BOTH'].includes(taxMode))
+    errors.push('Choose PAN, VAT or Both.');
   const email = textField(formData, 'email').toLowerCase();
   const phone = textField(formData, 'phone').replace(/[\s()-]/g, '');
   const acceptedTerms = textField(formData, 'acceptedTerms');
 
   const input: SellerApplicationInput = {
+    applicantType: applicantType === 'company' ? 'company' : 'individual',
     legalName: textField(formData, 'legalName'),
     tradingName: textField(formData, 'tradingName'),
-    registrationAuthority: textField(formData, 'registrationAuthority'),
-    registrationNumber: textField(formData, 'registrationNumber'),
-    taxMode: taxMode === 'VAT' ? 'VAT' : 'PAN',
+    registrationAuthority:
+      applicantType === 'company'
+        ? textField(formData, 'registrationAuthority')
+        : '',
+    registrationNumber:
+      applicantType === 'company'
+        ? textField(formData, 'registrationNumber')
+        : '',
+    taxMode: taxMode === 'BOTH' ? 'BOTH' : taxMode === 'VAT' ? 'VAT' : 'PAN',
     taxRegistrationNumber: textField(formData, 'taxRegistrationNumber'),
-    representativeName: textField(formData, 'representativeName'),
+    representativeName:
+      applicantType === 'company'
+        ? textField(formData, 'representativeName')
+        : textField(formData, 'legalName'),
     email,
     phone,
     province: textField(formData, 'province'),
@@ -105,8 +148,7 @@ export function parseSellerApplication(formData: FormData): {
   const requiredFields: Array<[keyof SellerApplicationInput, string]> = [
     ['legalName', 'Legal business name'],
     ['tradingName', 'Trading name'],
-    ['registrationAuthority', 'Registration authority'],
-    ['registrationNumber', 'Registration number'],
+
     ['taxRegistrationNumber', 'PAN or VAT number'],
     ['representativeName', 'Representative name'],
     ['email', 'Email'],
@@ -118,6 +160,12 @@ export function parseSellerApplication(formData: FormData): {
     ['businessDescription', 'Business description'],
     ['productCategories', 'Product categories'],
   ];
+
+  if (applicantType === 'company')
+    requiredFields.push(
+      ['registrationAuthority', 'Registration authority'],
+      ['registrationNumber', 'Registration number'],
+    );
 
   for (const [field, label] of requiredFields) {
     if (!input[field]) errors.push(`${label} is required.`);

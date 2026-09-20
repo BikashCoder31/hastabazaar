@@ -1,0 +1,76 @@
+{
+  "productNumber": 15,
+  "status": "prepared_not_entered",
+  "source": {
+    "shortUrl": "https://amzn.in/d/0582pQcq",
+    "canonicalUrl": "https://www.amazon.in/dp/B0G6L2V776",
+    "asin": "B0G6L2V776",
+    "selectedVariant": "Blue and yellow",
+    "sourcePriceInr": 265,
+    "sourceReturnStatus": "10 days Returnable"
+  },
+  "listing": {
+    "category": "Jewelry & accessories",
+    "title": "Blue & Yellow Oxidised Enamel Pearl Drop Earrings",
+    "occasions": [
+      "Birthday gifts",
+      "Wedding gifts",
+      "Anniversary",
+      "Tihar gifts"
+    ],
+    "description": "Blue-and-yellow enamel drop earrings with an oxidised silver-tone finish, floral detailing and pearl-style dangles. The hook design creates a lightweight bohemian statement for festive, beach, casual and traditional styling. Material purity and gemstone claims are intentionally not expanded because the source information conflicts.",
+    "dimensions": null,
+    "licenceReference": null,
+    "careInstructions": null,
+    "safetyInformation": null,
+    "warrantyOffered": false,
+    "warrantyYears": null,
+    "warrantyMonths": null,
+    "warrantyDays": null,
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "preparationDays": 3,
+    "manufactureDate": null,
+    "expiryDate": null,
+    "madeToOrder": false,
+    "sellingPriceNpr": 624,
+    "originalPriceNpr": 1248,
+    "discountPercent": 50,
+    "stockQuantity": 10,
+    "returnEligible": true,
+    "suggestedInternalReference": "HB-JA-B0G6L2V776-BLUE-YELLOW",
+    "priceFormula": "round(265 × 1.6 + 200)"
+  },
+  "verifiedFacts": {
+    "brand": "Generic",
+    "manufacturer": "Shrim Jewels / SRGems",
+    "materialsAsListed": [
+      "Silver",
+      "Oxidized silver",
+      "Pearl"
+    ],
+    "colour": "Blue, yellow, oxidised silver tone and white pearl-style drops",
+    "countryOfOrigin": "India",
+    "packageContents": "One pair of earrings"
+  },
+  "sourceConflicts": [
+    {
+      "field": "materialsAndAuthenticity",
+      "factTable": "Silver / oxidized silver / pearl",
+      "featureText": "925 Sterling Silver / Gold Plated; natural or synthetic gemstones",
+      "listingTreatment": "Purity, gold-plating, hypoallergenic and natural-gemstone claims omitted pending Seller verification"
+    }
+  ],
+  "images": [
+    "images/hb-ja-b0g6l2v776-blue-yellow-01.jpg",
+    "images/hb-ja-b0g6l2v776-blue-yellow-02.jpg",
+    "images/hb-ja-b0g6l2v776-blue-yellow-03.jpg",
+    "images/hb-ja-b0g6l2v776-blue-yellow-04.jpg"
+  ],
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 624,
+    "originalPriceNpr": 1248,
+    "discountPercent": 50
+  }
+}

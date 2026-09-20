@@ -1,0 +1,73 @@
+{
+  "productNumber": 63,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0b7Pbil4",
+    "canonicalUrl": "https://www.amazon.in/dp/B0H2YVN43X",
+    "asin": "B0H2YVN43X",
+    "sourceTitle": "Boho Girl Chic Pink Heart Embellished Fully Beaded Shoulder Bag for Women, Luxury Handbag, Ladies Bag, Tote Bag, Shoulder Bag, Designer Stylish Bag for Women",
+    "sourcePriceInr": 2659.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Boho Girl Pink Heart-Embellished Beaded Shoulder Bag",
+    "brand": "Boho Girl",
+    "manufacturer": "Bag Maker",
+    "description": "Boho Girl Pink Heart-Embellished Beaded Shoulder Bag features hand-applied beadwork with a heart motif. It combines button closure and one interior pocket with shoulder strap with a compact evening-bag profile. Premium inner lining for small daily essentials.",
+    "keyFeatures": [
+      "Hand-applied beadwork with a heart motif",
+      "Button closure and one interior pocket",
+      "Shoulder strap with a compact evening-bag profile",
+      "Premium inner lining for small daily essentials"
+    ],
+    "specifications": {
+      "colourAndVariant": "Pink; heart-embellished beaded design",
+      "dimensions": "22.8 × 12.7 × 4.4 cm",
+      "weight": "499 g",
+      "modelOrIdentifier": "BGB25-347; ASIN B0H2YVN43X",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Polyester outer material with decorative beads; inner lining material not stated",
+    "packageContents": "1 shoulder bag",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Hobos & Shoulder Bags",
+    "tags": [
+      "pink beaded bag",
+      "heart shoulder bag",
+      "evening handbag",
+      "Boho Girl bag",
+      "embellished purse"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Boho Girl Pink Heart-Embellished Beaded Shoulder Bag | Hathkriti",
+    "seoDescription": "Boho Girl Pink Heart-Embellished Beaded Shoulder Bag from Hathkriti. Hand-applied beadwork with a heart motif. Colour/variant: Pink; heart-embellished beaded design."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 4454,
+    "originalPriceNpr": 8908,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p63-b0h2yvn43x-01.jpg",
+      "images/hathkriti-p63-b0h2yvn43x-02.jpg",
+      "images/hathkriti-p63-b0h2yvn43x-03.jpg",
+      "images/hathkriti-p63-b0h2yvn43x-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

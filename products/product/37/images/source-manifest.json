@@ -1,0 +1,37 @@
+{
+  "productNumber": 37,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two distinct exact-variant product-gallery images were available.",
+  "sourcePage": "https://www.amazon.in/dp/B0HDK7GWKH",
+  "selectedVariant": "Magenta and white",
+  "requiredImageCount": 4,
+  "includedImageCount": 2,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HDK7GWKH",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71qCFG3cwNL._SL1254_.jpg",
+      "filename": "hathkriti-p37-b0hdk7gwkh-01.jpg",
+      "dimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "byteSize": 182701,
+      "sha256": "b389aea16113acbba2d00a8330c8be4cff48404614d2de736468b94463e30c15",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HDK7GWKH",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71A9QKbCDDL._SL1448_.jpg",
+      "filename": "hathkriti-p37-b0hdk7gwkh-02.jpg",
+      "dimensions": {
+        "width": 1086,
+        "height": 1448
+      },
+      "byteSize": 166235,
+      "sha256": "2e00d77a722be31c7ad36ab5494f3b0832af394dcdb74fe22de7b27e6068bc60",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    }
+  ]
+}

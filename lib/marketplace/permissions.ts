@@ -70,8 +70,30 @@ export const rolePermissions: Readonly<
   super_admin: permissions,
 };
 
-export function can(role: MarketplaceRole, permission: Permission): boolean {
-  return rolePermissions[role].includes(permission);
+export interface PermissionSubject {
+  role: MarketplaceRole;
+  /** Undefined preserves legacy role access; an empty list revokes all configurable access. */
+  permissions?: readonly Permission[];
+}
+
+export const configurableAdminPermissions = adminPermissions.filter(
+  (permission) => !customerPermissions.includes(permission),
+);
+
+export function validateAdminPermissions(value: unknown): Permission[] {
+  if (!Array.isArray(value) || value.some((item) => !configurableAdminPermissions.includes(item))) {
+    throw new Error('Select only the listed Admin permissions. Reserved Super Admin actions cannot be delegated.');
+  }
+  return configurableAdminPermissions.filter((item) => value.includes(item));
+}
+
+export function effectivePermissions(subject: PermissionSubject): readonly Permission[] {
+  if (subject.role !== 'admin' || subject.permissions === undefined) return rolePermissions[subject.role];
+  return [...customerPermissions, ...configurableAdminPermissions.filter((item) => subject.permissions!.includes(item))];
+}
+
+export function can(subject: MarketplaceRole | PermissionSubject, permission: Permission): boolean {
+  return effectivePermissions(typeof subject === 'string' ? { role: subject } : subject).includes(permission);
 }
 
 export const dualApprovalRequiredFor = [

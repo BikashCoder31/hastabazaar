@@ -1,0 +1,76 @@
+{
+  "productNumber": 42,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/026weiQD",
+    "canonicalUrl": "https://www.amazon.in/dp/B08DDHNQ21",
+    "asin": "B08DDHNQ21",
+    "sourceTitle": "Terracotta Earrings for women and Girls Handmade Earring, Combo of 5 Multicolor Medium size Earring - Traditional Women Earrings Sets - Birthday Anniversary Gift for Girls Women",
+    "sourcePriceInr": 294.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "EKAM EK Multicolour Handmade Terracotta Earrings - Set of 5",
+    "brand": "EKAM EK",
+    "manufacturer": "EKAM EK",
+    "description": "EKAM EK Multicolour Handmade Terracotta Earrings - Set of 5 features five-pair handcrafted terracotta earring set. It combines multicolour painted traditional designs with push-back findings. Medium-size assortment.",
+    "keyFeatures": [
+      "Five-pair handcrafted terracotta earring set",
+      "Multicolour painted traditional designs",
+      "Push-back findings",
+      "Medium-size assortment"
+    ],
+    "specifications": {
+      "colourAndVariant": "Multicolour; five-pair medium-size set",
+      "dimensions": "Not stated; source lists package dimensions of 12 × 6 × 3 cm",
+      "weight": "Not stated on the source page.",
+      "modelOrIdentifier": "Terracotta Earrings for Women Girls; ASIN B08DDHNQ21",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Terracotta / clay; source stone field says agate but this is not supported by the other source facts",
+    "packageContents": "5 pairs of earrings",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Jewellery > Women > Earrings",
+    "tags": [
+      "terracotta earrings",
+      "earring set",
+      "multicolour earrings",
+      "hand-painted jewellery",
+      "set of 5"
+    ],
+    "safetyInformation": "Handle terracotta pieces carefully to reduce the risk of chipping or breakage.",
+    "seoTitle": "EKAM EK Multicolour Handmade Terracotta Earrings - Set of 5 | Hathkriti",
+    "seoDescription": "EKAM EK Multicolour Handmade Terracotta Earrings - Set of 5 from Hathkriti. Five-pair handcrafted terracotta earring set. Colour/variant: Multicolour; five-pair medium-size set."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 670,
+    "originalPriceNpr": 1340,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p42-b08ddhnq21-01.jpg",
+      "images/hathkriti-p42-b08ddhnq21-02.jpg",
+      "images/hathkriti-p42-b08ddhnq21-03.jpg",
+      "images/hathkriti-p42-b08ddhnq21-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source makes unsupported hypoallergenic and sensitive-skin claims; these are omitted.",
+    "The source warranty claim is not carried into the Hastabazaar listing."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

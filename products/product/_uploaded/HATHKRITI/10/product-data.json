@@ -1,0 +1,71 @@
+{
+  "productNumber": 10,
+  "status": "prepared_not_entered",
+  "source": {
+    "shortUrl": "https://amzn.in/d/0heD13Dz",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HFCZWKTQ",
+    "asin": "B0HFCZWKTQ",
+    "selectedVariant": "Blue",
+    "sourcePriceInr": 485,
+    "sourceReturnStatus": "10 days Returnable"
+  },
+  "listing": {
+    "category": "Jewelry & accessories",
+    "title": "Luminara Atelier Handmade Blue Crochet Evil Eye Drop Earrings",
+    "occasions": [
+      "Birthday gifts",
+      "Anniversary",
+      "Wedding gifts",
+      "Others"
+    ],
+    "description": "Handmade blue crochet drop earrings featuring a circular evil-eye motif and a small mirror-centre stud. Royal blue, teal, white and black yarn create a bold bohemian look, while the lightweight construction suits festivals, beach outings and casual styling. Handmade pieces may vary slightly in colour and texture.",
+    "dimensions": "5 x 5 x 2 cm",
+    "licenceReference": null,
+    "careInstructions": null,
+    "safetyInformation": null,
+    "warrantyOffered": false,
+    "warrantyYears": null,
+    "warrantyMonths": null,
+    "warrantyDays": null,
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "preparationDays": 3,
+    "manufactureDate": null,
+    "expiryDate": null,
+    "madeToOrder": false,
+    "sellingPriceNpr": 976,
+    "originalPriceNpr": 1952,
+    "discountPercent": 50,
+    "stockQuantity": 10,
+    "returnEligible": true,
+    "suggestedInternalReference": "HB-JA-B0HFCZWKTQ-BLUE",
+    "priceFormula": "round(485 × 1.6 + 200)"
+  },
+  "verifiedFacts": {
+    "brand": "Luminara Atelier",
+    "manufacturer": "Luminara Atelier",
+    "manufacturerPartNumber": "Ee-crochet-evileye-blue-001",
+    "materials": [
+      "Crochet thread",
+      "Cotton yarn",
+      "Mirror glass",
+      "Silver-plated metal"
+    ],
+    "colour": "Royal blue, teal, white and black",
+    "itemWeightGrams": 15,
+    "countryOfOrigin": "India",
+    "packageContents": "One pair / two earrings"
+  },
+  "images": [
+    "images/hb-ja-b0hfczwktq-blue-01.jpg",
+    "images/hb-ja-b0hfczwktq-blue-02.jpg",
+    "images/hb-ja-b0hfczwktq-blue-03.jpg",
+    "images/hb-ja-b0hfczwktq-blue-04.jpg"
+  ],
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 976,
+    "originalPriceNpr": 1952,
+    "discountPercent": 50
+  }
+}

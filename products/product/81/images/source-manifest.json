@@ -1,0 +1,37 @@
+{
+  "productNumber": 81,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two clean gallery images remained; the other two contain seller branding and feature-panel graphics.",
+  "sourcePage": "https://www.amazon.in/dp/B0D29GVBGR",
+  "selectedVariant": "Meditating Buddha artwork; set of 3 bottle-shaped panels",
+  "requiredImageCount": 4,
+  "includedImageCount": 2,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0D29GVBGR",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51LrI0eFRaL.jpg",
+      "filename": "hathkriti-p81-b0d29gvbgr-01.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 33379,
+      "sha256": "5c901ea4a61b08fd200928f83c9083972434459ab2ba02a19572c693d8d9162e",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0D29GVBGR",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41xt16jxjPL.jpg",
+      "filename": "hathkriti-p81-b0d29gvbgr-02.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 28440,
+      "sha256": "298e4698531b4e1ab903949f4b28ae8c2f54ff37dc8a66918c13842e6b52a2ac",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    }
+  ]
+}

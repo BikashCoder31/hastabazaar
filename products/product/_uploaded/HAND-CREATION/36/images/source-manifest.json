@@ -1,0 +1,63 @@
+{
+  "productNumber": 36,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0H9SK17RL",
+  "selectedVariant": "Black pouch with orange and cream daisy pattern (visible gallery); source fact table says grey and yellow",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H9SK17RL",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61id5TSzrDL._SL1254_.jpg",
+      "filename": "hathkriti-p36-b0h9sk17rl-01.jpg",
+      "dimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "byteSize": 123777,
+      "sha256": "a37ab815d322bf390b654ba0cff3176902db8491061d21ab243e81116f2c3d14",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H9SK17RL",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71r3QGcT6jL._SL1450_.jpg",
+      "filename": "hathkriti-p36-b0h9sk17rl-02.jpg",
+      "dimensions": {
+        "width": 1085,
+        "height": 1450
+      },
+      "byteSize": 197863,
+      "sha256": "e1ab50ca5c5033f9cf5ce67ee2087fbaed60f8fb9fbb2c616d88fc483dcfd21f",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H9SK17RL",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71ui+fIepZL._SL1450_.jpg",
+      "filename": "hathkriti-p36-b0h9sk17rl-03.jpg",
+      "dimensions": {
+        "width": 1085,
+        "height": 1450
+      },
+      "byteSize": 155253,
+      "sha256": "7b7c483d9172c118e419e4ade836b0c6ffda4789257350bbbe6071343b7f8a3b",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 3
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H9SK17RL",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71USqoJPBEL._SL1450_.jpg",
+      "filename": "hathkriti-p36-b0h9sk17rl-04.jpg",
+      "dimensions": {
+        "width": 1085,
+        "height": 1450
+      },
+      "byteSize": 157556,
+      "sha256": "229282ca9127a1d7d69b96b3f8df283bd5b2edec81d0440bcf89a8ce8e134d72",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 4
+    }
+  ]
+}

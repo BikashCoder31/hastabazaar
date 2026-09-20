@@ -1,3 +1,4 @@
+import { publicProductEligibility } from '@/lib/products/eligibility';
 export interface PublicProductRow {
   id: string;
   slug: string;
@@ -43,7 +44,7 @@ export async function listPublishedProducts(
       FROM products
       INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
       INNER JOIN categories ON categories.id = products.category_id
-      WHERE products.status = ?
+      WHERE products.status = ? AND ${publicProductEligibility()}
         AND seller_profiles.status = ?
         AND categories.is_active = 1
       ORDER BY products.published_at DESC, products.id ASC

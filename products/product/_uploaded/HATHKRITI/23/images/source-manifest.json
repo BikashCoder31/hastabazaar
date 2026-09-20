@@ -1,0 +1,58 @@
+{
+  "productNumber": 23,
+  "sourcePage": "https://amzn.in/d/038nk2tA",
+  "canonicalSourcePage": "https://www.amazon.in/dp/B0H2ZBFFMT",
+  "selectionRule": "Up to four distinct ordinary product images from the Amazon product gallery; videos, review images, ads and unrelated media excluded.",
+  "videoDownloaded": false,
+  "exactDuplicatesFoundAndExcluded": [],
+  "images": [
+    {
+      "sourcePage": "https://amzn.in/d/038nk2tA",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0H2ZBFFMT",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71EbuTX2mJL._SL1254_.jpg",
+      "localFilename": "hb-er-b0h2zbffmt-blue-with-cream-coloured-beads-01.jpg",
+      "dimensions": {
+        "height": 1254,
+        "width": 1254
+      },
+      "byteSize": 142712,
+      "sha256": "80613d866b1f7bdb6e9564b113edbfc0a7697b168dd20dac3cdce6a142991d81"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/038nk2tA",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0H2ZBFFMT",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71H9GqHFC9L._SL1254_.jpg",
+      "localFilename": "hb-er-b0h2zbffmt-blue-with-cream-coloured-beads-02.jpg",
+      "dimensions": {
+        "height": 1254,
+        "width": 1254
+      },
+      "byteSize": 170365,
+      "sha256": "e787ba4115e60ff99d7af56db1af1448aa0651a375aefd4595fe6f2392b5a697"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/038nk2tA",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0H2ZBFFMT",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71fCII15nUL._SL1254_.jpg",
+      "localFilename": "hb-er-b0h2zbffmt-blue-with-cream-coloured-beads-03.jpg",
+      "dimensions": {
+        "height": 1254,
+        "width": 1254
+      },
+      "byteSize": 207743,
+      "sha256": "efd6dde36d4d2d7395f9f384058c2553ea3e4bccee45e9e44c70a7e76bd20f5e"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/038nk2tA",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0H2ZBFFMT",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71QIKbG4b3L._SL1254_.jpg",
+      "localFilename": "hb-er-b0h2zbffmt-blue-with-cream-coloured-beads-04.jpg",
+      "dimensions": {
+        "height": 1254,
+        "width": 1254
+      },
+      "byteSize": 136351,
+      "sha256": "e12b49633ea2863c86978995b9060fb757d9eed07e554f15b738533f51f99a42"
+    }
+  ]
+}

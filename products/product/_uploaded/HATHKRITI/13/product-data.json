@@ -1,0 +1,69 @@
+{
+  "productNumber": 13,
+  "status": "prepared_not_entered",
+  "source": {
+    "shortUrl": "https://amzn.in/d/0hn4k1lc",
+    "canonicalUrl": "https://www.amazon.in/dp/B09V2J97YY",
+    "asin": "B09V2J97YY",
+    "selectedVariant": "Sunflower",
+    "sourcePriceInr": 299,
+    "sourceReturnStatus": "10 days Returnable"
+  },
+  "listing": {
+    "category": "Jewelry & accessories",
+    "title": "Modpide Handmade Resin Sunflower Dangle Earrings",
+    "occasions": [
+      "Birthday gifts",
+      "Anniversary",
+      "Mother’s Day",
+      "Others"
+    ],
+    "description": "Bright sunflower dangle earrings made from yellow and brown resin with silver-tone fish-hook fittings. The lightweight floral design adds a cheerful bohemian accent to casual outfits, parties and seasonal gifting.",
+    "dimensions": "Flower approximately 2.5 cm wide; total drop approximately 4.2 cm",
+    "licenceReference": null,
+    "careInstructions": "Remove before bathing, exercise or sleep; keep dry when stored.",
+    "safetyInformation": null,
+    "warrantyOffered": false,
+    "warrantyYears": null,
+    "warrantyMonths": null,
+    "warrantyDays": null,
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "preparationDays": 3,
+    "manufactureDate": null,
+    "expiryDate": null,
+    "madeToOrder": false,
+    "sellingPriceNpr": 678,
+    "originalPriceNpr": 1356,
+    "discountPercent": 50,
+    "stockQuantity": 10,
+    "returnEligible": true,
+    "suggestedInternalReference": "HB-JA-B09V2J97YY-SUNFLOWER",
+    "priceFormula": "round(299 × 1.6 + 200)"
+  },
+  "verifiedFacts": {
+    "brand": "Modpide",
+    "manufacturer": "Modpide",
+    "manufacturerPartNumber": "KQ01",
+    "materials": [
+      "Resin",
+      "Zinc / silver-tone metal fittings"
+    ],
+    "colour": "Yellow, brown and silver tone",
+    "itemWeightGrams": 9,
+    "countryOfOrigin": null,
+    "packageContents": "One pair of earrings"
+  },
+  "images": [
+    "images/hb-ja-b09v2j97yy-sunflower-01.jpg",
+    "images/hb-ja-b09v2j97yy-sunflower-02.jpg",
+    "images/hb-ja-b09v2j97yy-sunflower-03.jpg",
+    "images/hb-ja-b09v2j97yy-sunflower-04.jpg"
+  ],
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 678,
+    "originalPriceNpr": 1356,
+    "discountPercent": 50
+  }
+}

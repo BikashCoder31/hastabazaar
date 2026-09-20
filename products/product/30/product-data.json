@@ -1,0 +1,70 @@
+{
+  "productNumber": 30,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two distinct exact-variant product-gallery images were available.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0auN4zs4",
+    "canonicalUrl": "https://www.amazon.in/dp/B0H7NNK4NY",
+    "asin": "B0H7NNK4NY",
+    "sourceTitle": "Crochet Hair scarf bandana",
+    "sourcePriceInr": 329.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Maroon Cotton Crochet Hair-Scarf Bandana",
+    "brand": "Generic",
+    "manufacturer": "Handmade Artisan",
+    "description": "Maroon Cotton Crochet Hair-Scarf Bandana features open-weave crochet design. It combines cotton fabric with one-size hair scarf. Bohemian styling.",
+    "keyFeatures": [
+      "Open-weave crochet design",
+      "Cotton fabric",
+      "One-size hair scarf",
+      "Bohemian styling"
+    ],
+    "specifications": {
+      "colourAndVariant": "Maroon; one size fits most",
+      "dimensions": "10 × 10 × 5 cm (source-listed; likely folded/packaged measurement)",
+      "weight": "0.4 g (source-listed; requires seller verification)",
+      "modelOrIdentifier": "HA-001; ASIN B0H7NNK4NY",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Cotton",
+    "packageContents": "1 crochet hair scarf",
+    "careInstructions": "Hand wash cold, lay flat to dry; do not bleach, tumble dry or iron directly on the crochet pattern",
+    "category": "Clothing & Accessories > Hair Scarves & Bandanas",
+    "tags": [
+      "crochet bandana",
+      "hair scarf",
+      "maroon bandana",
+      "boho headwear"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Maroon Cotton Crochet Hair-Scarf Bandana | Hathkriti",
+    "seoDescription": "Maroon Cotton Crochet Hair-Scarf Bandana from Hathkriti. Open-weave crochet design. Colour/variant: Maroon; one size fits most."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 726,
+    "originalPriceNpr": 1452,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 2,
+    "files": [
+      "images/hathkriti-p30-b0h7nnk4ny-01.jpg",
+      "images/hathkriti-p30-b0h7nnk4ny-02.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

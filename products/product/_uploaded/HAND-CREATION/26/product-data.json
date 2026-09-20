@@ -1,0 +1,73 @@
+{
+  "productNumber": 26,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/01QtIqLR",
+    "canonicalUrl": "https://www.amazon.in/dp/B0H371JR4T",
+    "asin": "B0H371JR4T",
+    "sourceTitle": "Handcrafted Bag – Woven Evil Eye Wristlet Clutch – Bohemian Zipper Pouch for Travel, Phone & Cosmetics | Casual Beach Carry Pouch",
+    "sourcePriceInr": 499.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "SHOPERTUNITI Brown Woven Evil-Eye Boho Sling Bag",
+    "brand": "SHOPERTUNITI",
+    "manufacturer": "Handcrafted Artisan",
+    "description": "SHOPERTUNITI Brown Woven Evil-Eye Boho Sling Bag features woven rectangular boho design with evil-eye motif. It combines adjustable shoulder strap with compact compartment for daily essentials. Natural-toned strap and floral-pattern detailing.",
+    "keyFeatures": [
+      "Woven rectangular boho design with evil-eye motif",
+      "Adjustable shoulder strap",
+      "Compact compartment for daily essentials",
+      "Natural-toned strap and floral-pattern detailing"
+    ],
+    "specifications": {
+      "colourAndVariant": "Brown; Boho style",
+      "dimensions": "20 × 14 × 12 cm",
+      "weight": "230 g",
+      "modelOrIdentifier": "Eyeclutch-001 / Eeclutch001; ASIN B0H371JR4T",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Source feature text states woven jute; fact table describes a natural cotton frame and natural strap",
+    "packageContents": "1 sling bag with shoulder strap",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Sling & Cross-Body Bags",
+    "tags": [
+      "evil eye bag",
+      "woven sling bag",
+      "boho bag",
+      "brown crossbody bag",
+      "handcrafted bag"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "SHOPERTUNITI Brown Woven Evil-Eye Boho Sling Bag | Hathkriti",
+    "seoDescription": "SHOPERTUNITI Brown Woven Evil-Eye Boho Sling Bag from Hathkriti. Woven rectangular boho design with evil-eye motif. Colour/variant: Brown; Boho style."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 998,
+    "originalPriceNpr": 1996,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p26-b0h371jr4t-01.jpg",
+      "images/hathkriti-p26-b0h371jr4t-02.jpg",
+      "images/hathkriti-p26-b0h371jr4t-03.jpg",
+      "images/hathkriti-p26-b0h371jr4t-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

@@ -1,0 +1,46 @@
+{
+  "productNumber": 16,
+  "sourcePage": "https://amzn.in/d/0fv7Dfop",
+  "canonicalSourcePage": "https://www.amazon.in/dp/B0HFNQK3KT",
+  "selectionRule": "Up to four distinct ordinary product images from the Amazon product gallery; videos, review images, ads and unrelated media excluded.",
+  "videoDownloaded": false,
+  "exactDuplicatesFoundAndExcluded": [],
+  "images": [
+    {
+      "sourcePage": "https://amzn.in/d/0fv7Dfop",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0HFNQK3KT",
+      "originalImageReference": "https://m.media-amazon.com/images/I/21l7RbyaQTL._SL1500_.jpg",
+      "localFilename": "hb-er-b0hfnqk3kt-oatmilk-01.jpg",
+      "dimensions": {
+        "height": 500,
+        "width": 500
+      },
+      "byteSize": 7974,
+      "sha256": "a329576ba8e11c59ff4b42900fb0e9ab422da612feb8e65d86ab0dfd20ac497d"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/0fv7Dfop",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0HFNQK3KT",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41t9S8+vfmL._SL1500_.jpg",
+      "localFilename": "hb-er-b0hfnqk3kt-oatmilk-02.jpg",
+      "dimensions": {
+        "height": 500,
+        "width": 500
+      },
+      "byteSize": 18942,
+      "sha256": "7bc9a7a05c205a571e3fba406d46c41bc5989e43e0d45ee0a1b11cfefc44377b"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/0fv7Dfop",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0HFNQK3KT",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41DdwnKS5UL._SL1500_.jpg",
+      "localFilename": "hb-er-b0hfnqk3kt-oatmilk-03.jpg",
+      "dimensions": {
+        "height": 500,
+        "width": 500
+      },
+      "byteSize": 22845,
+      "sha256": "c002d6695b0c6d32700a51ea764f8dff708064deb159253c5948c0199a9f558e"
+    }
+  ]
+}

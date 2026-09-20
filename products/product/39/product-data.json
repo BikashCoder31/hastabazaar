@@ -1,0 +1,71 @@
+{
+  "productNumber": 39,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two clean images remained after rejecting two images with promotional/branding text.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/077yoK65",
+    "canonicalUrl": "https://www.amazon.in/dp/B0H9KYXV44",
+    "asin": "B0H9KYXV44",
+    "sourceTitle": "Crochet handmade cute Seashell pattern handbag. 18cms 20cms. Maroon color. Suitable for teens and adults. Pearl decoration. Short handle.",
+    "sourcePriceInr": 1680.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Maroon Crochet Seashell-Pattern Handbag with Pearl Detail",
+    "brand": "Generic",
+    "manufacturer": "Crochet World SNP",
+    "description": "Maroon Crochet Seashell-Pattern Handbag with Pearl Detail features handmade crochet seashell pattern. It combines pearl embellishment and white crochet rose accent with short crochet handle. Compact bag for teens and adults.",
+    "keyFeatures": [
+      "Handmade crochet seashell pattern",
+      "Pearl embellishment and white crochet rose accent",
+      "Short crochet handle",
+      "Compact bag for teens and adults"
+    ],
+    "specifications": {
+      "colourAndVariant": "Maroon",
+      "dimensions": "20 × 18 × 18 cm; source title separately states 18 × 20 cm",
+      "weight": "100 g",
+      "modelOrIdentifier": "CROSLI1006SEA12; ASIN B0H9KYXV44",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Crochet yarn and pearl-style embellishments",
+    "packageContents": "1 crochet handbag",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Handbags",
+    "tags": [
+      "crochet handbag",
+      "seashell pattern bag",
+      "maroon handbag",
+      "pearl detail bag",
+      "handmade bag"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Maroon Crochet Seashell-Pattern Handbag with Pearl Detail | Hathkriti",
+    "seoDescription": "Maroon Crochet Seashell-Pattern Handbag with Pearl Detail from Hathkriti. Handmade crochet seashell pattern. Colour/variant: Maroon."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 2888,
+    "originalPriceNpr": 5776,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 2,
+    "files": [
+      "images/hathkriti-p39-b0h9kyxv44-01.jpg",
+      "images/hathkriti-p39-b0h9kyxv44-02.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

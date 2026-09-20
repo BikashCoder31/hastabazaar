@@ -1,377 +1,641 @@
 'use client';
-
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-
+import { Children, isValidElement, useState, type ReactNode } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { StatusBadge } from '@/components/admin/status-badge';
+import { ConfirmOperation } from '@/components/admin/confirm-operation';
+import { useAdminMutation } from '@/components/admin/use-admin-mutation';
 import type { GovernanceOverview } from '@/lib/db/repositories/operations';
+
+const selectClass =
+  'w-full rounded-lg border bg-background px-3 py-2 text-base';
+type Decision = {
+  action: string;
+  data: Record<string, unknown>;
+  title: string;
+  description: string;
+};
+const date = (value: number) =>
+  new Intl.DateTimeFormat('en-NP', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Asia/Kathmandu',
+  }).format(value);
 
 export function GovernanceConsole({
   data,
   superAdmin,
+  actorId,
 }: {
   data: GovernanceOverview;
   superAdmin: boolean;
+  actorId: string;
 }) {
-  const router = useRouter();
+  const { send, pending, error } = useAdminMutation();
   const [message, setMessage] = useState('');
-  const [busy, setBusy] = useState(false);
-  async function send(action: string, data: Record<string, unknown>) {
-    setBusy(true);
+  const [validation, setValidation] = useState('');
+  const [decision, setDecision] = useState<Decision | null>(null);
+  const [userSearch, setUserSearch] = useState('');
+  async function save(action: string, values: Record<string, unknown>) {
     setMessage('');
-    const response = await fetch('/api/admin/governance', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action, data, requestId: crypto.randomUUID() }),
-    });
-    const body = (await response.json().catch(() => ({}))) as {
-      error?: string;
-    };
-    setBusy(false);
-    if (!response.ok) return setMessage(body.error ?? 'Operation failed.');
-    setMessage('Saved successfully.');
-    router.refresh();
+    setValidation('');
+    const ok = await send('/api/admin/governance', { action, data: values });
+    if (ok)
+      setMessage('Saved. The operation has been recorded in audit history.');
+    return ok;
   }
-  function createRule(form: FormData) {
-    const values = Object.fromEntries(form);
-    return send('rule.create', {
-      ...values,
-      titleNe: values.titleEn,
-      descriptionNe: values.descriptionEn,
-    });
+  async function submit(
+    event: { preventDefault(): void; currentTarget: HTMLFormElement },
+    action: string,
+  ) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    let body: Record<string, unknown> = Object.fromEntries(values);
+    if (action === 'rule.create')
+      body = {
+        ...body,
+        titleNe: body.titleEn,
+        descriptionNe: body.descriptionEn,
+      };
+    if (action === 'promotion.create') {
+      const productIds = values.getAll('productIds');
+      const startInput = values.get('startsAt');
+      const startsAt =
+        typeof startInput === 'string'
+          ? new Date(startInput).getTime()
+          : Number.NaN;
+      const endInput = values.get('endsAt');
+      const endsAt =
+        typeof endInput === 'string'
+          ? new Date(endInput).getTime()
+          : Number.NaN;
+      if (
+        !Number.isSafeInteger(startsAt) ||
+        !Number.isSafeInteger(endsAt) ||
+        endsAt <= startsAt ||
+        productIds.length > 24
+      ) {
+        setValidation(
+          'Choose an end time after the start time and no more than 24 products.',
+        );
+        return;
+      }
+      body = { ...body, nameNe: body.nameEn, startsAt, endsAt, productIds };
+    }
+    if (await save(action, body)) form.reset();
   }
-  function createPromotion(form: FormData) {
-    const startsAt = form.get('startsAt');
-    const endsAt = form.get('endsAt');
-    return send('promotion.create', {
-      nameEn: form.get('nameEn'),
-      nameNe: form.get('nameEn'),
-      placement: form.get('placement'),
-      startsAt:
-        typeof startsAt === 'string'
-          ? new Date(startsAt).getTime()
-          : Number.NaN,
-      endsAt:
-        typeof endsAt === 'string' ? new Date(endsAt).getTime() : Number.NaN,
-      note: form.get('note'),
-      productIds: form.getAll('productIds'),
-    });
-  }
-  function createIncident(form: FormData) {
-    return send('incident.create', Object.fromEntries(form));
-  }
-  function verifyBackup(form: FormData) {
-    return send('backup.verify', Object.fromEntries(form));
-  }
+  const visibleUsers = data.users.filter((user) =>
+    (user.displayName + ' ' + user.email + ' ' + (user.roles ?? ''))
+      .toLowerCase()
+      .includes(userSearch.toLowerCase().trim()),
+  );
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
       {message ? (
-        <output className="block rounded-lg border bg-card p-3 text-sm">
+        <output className="block rounded-xl border bg-secondary p-4 text-sm">
           {message}
         </output>
       ) : null}
-      <section className="rounded-2xl border bg-card p-5">
-        <h2 className="font-heading text-2xl">
-          Prohibited & restricted products
-        </h2>
-        <form action={createRule} className="mt-4 grid gap-2 md:grid-cols-3">
-          <input
-            name="code"
-            required
-            placeholder="Rule code"
-            className="rounded-lg border p-2"
-          />
-          <input
-            name="titleEn"
-            required
-            placeholder="English title"
-            className="rounded-lg border p-2"
-          />
-          <textarea
-            name="descriptionEn"
-            required
-            placeholder="English guidance"
-            className="rounded-lg border p-2"
-          />
-          <select name="severity" className="rounded-lg border p-2">
-            <option value="prohibited">Prohibited</option>
-            <option value="restricted">Restricted</option>
-          </select>
-          <button
-            disabled={busy}
-            className="rounded-lg bg-primary p-2 font-semibold text-primary-foreground"
-          >
-            Add rule
-          </button>
-        </form>
-        <div className="mt-5 space-y-2">
-          {data.rules.map((rule) => (
-            <div
-              key={rule.id}
-              className="flex flex-wrap items-center justify-between gap-3 border-t py-3 text-sm"
-            >
-              <span>
-                <strong>
-                  {rule.code}: {rule.titleEn}
-                </strong>
-                <small className="ml-2">{rule.severity}</small>
-              </span>
-              <button
-                onClick={() =>
-                  send('rule.toggle', { id: rule.id, isActive: !rule.isActive })
-                }
-                className="rounded-lg border px-3 py-2"
-              >
-                {rule.isActive ? 'Deactivate' : 'Activate'}
-              </button>
-            </div>
-          ))}
-        </div>
-      </section>
-      <section className="rounded-2xl border bg-card p-5">
-        <h2 className="font-heading text-2xl">
-          Promotions & featured placement
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Admin prepares; a different Super Admin approves.
-        </p>
-        <form
-          action={createPromotion}
-          className="mt-4 grid gap-2 md:grid-cols-3"
+      {error || validation ? (
+        <p
+          role="alert"
+          className="rounded-xl border border-destructive/25 bg-card p-4 text-sm text-destructive"
         >
-          <input
-            name="nameEn"
-            required
-            placeholder="English name"
-            className="rounded-lg border p-2"
-          />
-          <select name="placement" className="rounded-lg border p-2">
-            <option value="homepage">Homepage</option>
-            <option value="shop">Shop</option>
-          </select>
-          <input
-            name="startsAt"
-            type="datetime-local"
-            required
-            className="rounded-lg border p-2"
-          />
-          <input
-            name="endsAt"
-            type="datetime-local"
-            required
-            className="rounded-lg border p-2"
-          />
-          <input
-            name="note"
-            required
-            minLength={8}
-            placeholder="Campaign rationale"
-            className="rounded-lg border p-2"
-          />
-          <select
-            name="productIds"
-            multiple
-            className="min-h-28 rounded-lg border p-2 md:col-span-2"
-          >
-            {data.products.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.nameEn}
-              </option>
-            ))}
-          </select>
-          <button
-            disabled={busy}
-            className="rounded-lg bg-primary p-2 font-semibold text-primary-foreground"
-          >
-            Submit for approval
-          </button>
-        </form>
-        <div className="mt-5 space-y-2">
-          {data.promotions.map((item) => (
-            <div
-              key={item.id}
-              className="flex flex-wrap items-center justify-between gap-3 border-t py-3 text-sm"
-            >
-              <span>
-                <strong>{item.nameEn}</strong>
-                <small className="ml-2 capitalize">
-                  {item.placement} · {item.status.replaceAll('_', ' ')} · maker{' '}
-                  {item.creatorName}
-                </small>
-              </span>
-              {superAdmin && item.status === 'pending_approval' ? (
-                <span className="flex gap-2">
-                  <button
-                    onClick={() => send('promotion.approve', { id: item.id })}
-                    className="rounded-lg border px-3 py-2"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => send('promotion.reject', { id: item.id })}
-                    className="rounded-lg border px-3 py-2 text-destructive"
-                  >
-                    Reject
-                  </button>
-                </span>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      </section>
-      {superAdmin ? (
-        <>
-          <section className="rounded-2xl border bg-card p-5">
-            <h2 className="font-heading text-2xl">
-              Customer & user management
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Role assignment remains in the protected Team workflow. Account
-              suspension cannot target your own account.
-            </p>
-            <div className="mt-4 max-h-96 overflow-auto">
-              {data.users.map((user) => (
-                <div
-                  key={user.id}
-                  className="flex flex-wrap justify-between gap-3 border-t py-3 text-sm"
-                >
-                  <span>
-                    <strong>{user.displayName}</strong>
-                    <small className="ml-2">
-                      {user.email} · {user.roles || 'no role'} · {user.status}
-                    </small>
-                  </span>
-                  <button
-                    onClick={() =>
-                      send('user.status', {
-                        id: user.id,
-                        status:
-                          user.status === 'active' ? 'disabled' : 'active',
-                      })
-                    }
-                    className="rounded-lg border px-3 py-2"
-                  >
-                    {user.status === 'active' ? 'Suspend' : 'Reactivate'}
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
-          <section className="grid gap-5 lg:grid-cols-2">
-            <div className="rounded-2xl border bg-card p-5">
-              <h2 className="font-heading text-2xl">Incident management</h2>
-              <form action={createIncident} className="mt-4 space-y-2">
-                <input
-                  name="title"
-                  required
-                  placeholder="Incident title"
-                  className="w-full rounded-lg border p-2"
-                />
-                <select
-                  name="severity"
-                  className="w-full rounded-lg border p-2"
-                >
-                  <option>low</option>
-                  <option>medium</option>
-                  <option>high</option>
-                  <option>critical</option>
-                </select>
-                <textarea
-                  name="detail"
-                  required
-                  minLength={20}
-                  placeholder="What happened and immediate response"
-                  className="w-full rounded-lg border p-2"
-                />
-                <button
-                  disabled={busy}
-                  className="rounded-lg bg-primary p-2 font-semibold text-primary-foreground"
-                >
-                  Open incident
-                </button>
-              </form>
-              {data.incidents.map((item) => (
-                <div key={item.id} className="mt-3 border-t pt-3 text-sm">
-                  <strong>
-                    {item.referenceNumber}: {item.title}
-                  </strong>
-                  <p className="capitalize">
-                    {item.severity} · {item.status}
-                  </p>
-                  {item.status !== 'resolved' ? (
-                    <button
-                      onClick={() =>
-                        send('incident.update', {
-                          id: item.id,
-                          status: 'resolved',
-                          resolution:
-                            'Resolution confirmed through the operations console.',
-                        })
-                      }
-                      className="mt-2 rounded-lg border px-3 py-2"
-                    >
-                      Mark resolved
-                    </button>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-            <div className="rounded-2xl border bg-card p-5">
-              <h2 className="font-heading text-2xl">
-                Backup verification register
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                This records evidence; it does not claim to create a provider
-                backup.
-              </p>
-              <form action={verifyBackup} className="mt-4 space-y-2">
-                <select name="scope" className="w-full rounded-lg border p-2">
-                  <option value="d1">D1</option>
-                  <option value="r2">R2</option>
-                  <option value="full">Full</option>
-                </select>
-                <select name="status" className="w-full rounded-lg border p-2">
-                  <option value="verified">Verified</option>
-                  <option value="failed">Failed</option>
-                </select>
-                <input
-                  name="evidenceReference"
-                  required
-                  placeholder="Provider evidence / export reference"
-                  className="w-full rounded-lg border p-2"
-                />
-                <textarea
-                  name="note"
-                  required
-                  minLength={8}
-                  placeholder="Verification result"
-                  className="w-full rounded-lg border p-2"
-                />
-                <button
-                  disabled={busy}
-                  className="rounded-lg bg-primary p-2 font-semibold text-primary-foreground"
-                >
-                  Record verification
-                </button>
-              </form>
-              {data.backups.map((item) => (
-                <p key={item.id} className="mt-3 border-t pt-3 text-sm">
-                  <strong>
-                    {item.scope.toUpperCase()} · {item.status}
-                  </strong>
-                  <br />
-                  {item.evidenceReference} ·{' '}
-                  {new Date(item.verifiedAt).toLocaleString()}
-                </p>
-              ))}
-            </div>
-          </section>
-        </>
-      ) : (
-        <p className="rounded-2xl border bg-card p-5 text-sm text-muted-foreground">
-          User status, incident, backup verification, and promotion decisions
-          are visible to Super Admins only.
+          {validation || error}
         </p>
-      )}
+      ) : null}
+      <fieldset disabled={pending} className="min-w-0">
+        <Tabs defaultValue="rules" className="gap-5">
+          <div className="overflow-x-auto pb-1">
+            <TabsList aria-label="Governance sections" className="min-h-12">
+              <TabsTrigger value="rules" className="px-4">
+                Product rules
+              </TabsTrigger>
+              <TabsTrigger value="promotions" className="px-4">
+                Promotions
+              </TabsTrigger>
+              {superAdmin ? (
+                <>
+                  <TabsTrigger value="users" className="px-4">
+                    Users
+                  </TabsTrigger>
+                  <TabsTrigger value="incidents" className="px-4">
+                    Incidents
+                  </TabsTrigger>
+                  <TabsTrigger value="backups" className="px-4">
+                    Backup register
+                  </TabsTrigger>
+                </>
+              ) : null}
+            </TabsList>
+          </div>
+          <TabsContent value="rules">
+            <Panel
+              title="Prohibited & restricted products"
+              description="Maintain the guidance used when reviewing listings. Changes are recorded in the audit log."
+            >
+              <form
+                onSubmit={(event) => void submit(event, 'rule.create')}
+                className="grid gap-4 sm:grid-cols-2"
+              >
+                <Field label="Rule code">
+                  <Input
+                    name="code"
+                    required
+                    minLength={2}
+                    maxLength={40}
+                    placeholder="e.g. RESTRICTED_MATERIAL"
+                  />
+                </Field>
+                <Field label="Rule title">
+                  <Input
+                    name="titleEn"
+                    required
+                    minLength={3}
+                    maxLength={160}
+                  />
+                </Field>
+                <Field label="Guidance">
+                  <Textarea
+                    name="descriptionEn"
+                    required
+                    minLength={10}
+                    maxLength={1000}
+                  />
+                </Field>
+                <Field label="Severity">
+                  <select name="severity" className={selectClass}>
+                    <option value="prohibited">Prohibited</option>
+                    <option value="restricted">Restricted</option>
+                  </select>
+                </Field>
+                <div className="sm:col-span-2">
+                  <Button type="submit">Add rule</Button>
+                </div>
+              </form>
+              <div className="mt-6 divide-y">
+                {data.rules.length === 0 ? (
+                  <Empty>No rules have been recorded.</Empty>
+                ) : (
+                  data.rules.map((rule) => (
+                    <div
+                      key={rule.id}
+                      className="flex flex-wrap items-center justify-between gap-3 py-4"
+                    >
+                      <div>
+                        <p className="font-semibold">{rule.titleEn}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {rule.code} · {rule.severity} ·{' '}
+                          {rule.isActive ? 'Active' : 'Inactive'}
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          setDecision({
+                            action: 'rule.toggle',
+                            data: { id: rule.id, isActive: !rule.isActive },
+                            title:
+                              (rule.isActive ? 'Deactivate ' : 'Activate ') +
+                              rule.titleEn +
+                              '?',
+                            description:
+                              'This changes the active moderation guidance. Existing audit records are retained.',
+                          })
+                        }
+                      >
+                        {rule.isActive ? 'Deactivate' : 'Activate'}
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Panel>
+          </TabsContent>
+          <TabsContent value="promotions">
+            <Panel
+              title="Promotions & featured placement"
+              description="Prepare a placement, then ask a different Super Admin to approve it. This does not create a discount or change product prices."
+            >
+              <form
+                onSubmit={(event) => void submit(event, 'promotion.create')}
+                className="grid gap-4 sm:grid-cols-2"
+              >
+                <Field label="Campaign name">
+                  <Input name="nameEn" required minLength={3} maxLength={160} />
+                </Field>
+                <Field label="Placement">
+                  <select name="placement" className={selectClass}>
+                    <option value="homepage">Homepage</option>
+                    <option value="shop">Shop</option>
+                  </select>
+                </Field>
+                <Field label="Starts at (your device time)">
+                  <Input name="startsAt" type="datetime-local" required />
+                </Field>
+                <Field label="Ends at (your device time)">
+                  <Input name="endsAt" type="datetime-local" required />
+                </Field>
+                <div className="sm:col-span-2">
+                  <Field label="Campaign rationale">
+                    <Textarea
+                      name="note"
+                      required
+                      minLength={8}
+                      maxLength={1000}
+                    />
+                  </Field>
+                </div>
+                <fieldset className="sm:col-span-2">
+                  <legend className="mb-2 font-medium">
+                    Published products (up to 24)
+                  </legend>
+                  {data.products.length ? (
+                    <div className="grid max-h-56 gap-2 overflow-y-auto rounded-xl border p-3 sm:grid-cols-2">
+                      {data.products.map((product) => (
+                        <label
+                          key={product.id}
+                          className="flex min-h-11 items-center gap-3 rounded-lg px-2 hover:bg-muted"
+                        >
+                          <input
+                            type="checkbox"
+                            name="productIds"
+                            value={product.id}
+                            className="size-4 shrink-0 accent-primary"
+                          />
+                          <span>{product.nameEn}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <Empty>
+                      No published products are available to feature.
+                    </Empty>
+                  )}
+                </fieldset>
+                <div className="sm:col-span-2">
+                  <Button type="submit">Submit for independent approval</Button>
+                </div>
+              </form>
+              <div className="mt-6 divide-y">
+                {data.promotions.length === 0 ? (
+                  <Empty>No promotions yet.</Empty>
+                ) : (
+                  data.promotions.map((item) => (
+                    <article key={item.id} className="space-y-3 py-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="font-semibold">{item.nameEn}</h3>
+                        <StatusBadge status={item.status} />
+                      </div>
+                      <p className="text-sm leading-6 text-muted-foreground">
+                        {item.placement === 'homepage' ? 'Homepage' : 'Shop'} ·
+                        prepared by {item.creatorName}
+                        <br />
+                        {date(item.startsAt)} – {date(item.endsAt)} (Nepal time)
+                      </p>
+                      {superAdmin && item.status === 'pending_approval' ? (
+                        item.createdBy === actorId ? (
+                          <p className="text-sm text-muted-foreground">
+                            You prepared this promotion. A different Super Admin
+                            must decide.
+                          </p>
+                        ) : (
+                          <div className="flex gap-2">
+                            {(['approve', 'reject'] as const).map((action) => (
+                              <Button
+                                key={action}
+                                variant="outline"
+                                onClick={() =>
+                                  setDecision({
+                                    action: 'promotion.' + action,
+                                    data: { id: item.id },
+                                    title:
+                                      (action === 'approve'
+                                        ? 'Approve '
+                                        : 'Reject ') +
+                                      item.nameEn +
+                                      '?',
+                                    description:
+                                      action === 'approve'
+                                        ? 'This authorizes the placement for its scheduled window. Your independent decision will be recorded.'
+                                        : 'This closes the pending proposal as rejected. The proposal and audit history remain available.',
+                                  })
+                                }
+                              >
+                                {action === 'approve'
+                                  ? 'Approve placement'
+                                  : 'Reject proposal'}
+                              </Button>
+                            ))}
+                          </div>
+                        )
+                      ) : null}
+                    </article>
+                  ))
+                )}
+              </div>
+            </Panel>
+          </TabsContent>
+          {superAdmin ? (
+            <>
+              <TabsContent value="users">
+                <Panel
+                  title="User accounts"
+                  description="Account status only. Staff role assignment stays in Staff access. You cannot suspend your own account."
+                >
+                  <Field label="Search loaded accounts">
+                    <Input
+                      type="search"
+                      value={userSearch}
+                      onChange={(event) => setUserSearch(event.target.value)}
+                      placeholder="Name, email, or role"
+                    />
+                  </Field>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Showing matches from the latest {data.users.length} accounts
+                    (maximum 300).
+                  </p>
+                  <div className="mt-4 divide-y">
+                    {visibleUsers.length === 0 ? (
+                      <Empty>No accounts match this search.</Empty>
+                    ) : (
+                      visibleUsers.map((user) => (
+                        <div
+                          key={user.id}
+                          className="flex flex-wrap items-center justify-between gap-3 py-4"
+                        >
+                          <div className="min-w-0 break-words">
+                            <p className="font-semibold">
+                              {user.displayName}
+                              {user.id === actorId ? ' (you)' : ''}
+                            </p>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              {user.email}
+                            </p>
+                            <p className="mt-1 text-sm capitalize text-muted-foreground">
+                              {user.roles?.replaceAll('_', ' ') || 'No role'} ·{' '}
+                              {user.status}
+                            </p>
+                          </div>
+                          {user.id !== actorId ? (
+                            <Button
+                              variant="outline"
+                              onClick={() =>
+                                setDecision({
+                                  action: 'user.status',
+                                  data: {
+                                    id: user.id,
+                                    status:
+                                      user.status === 'active'
+                                        ? 'disabled'
+                                        : 'active',
+                                  },
+                                  title:
+                                    (user.status === 'active'
+                                      ? 'Suspend '
+                                      : 'Reactivate ') +
+                                    user.displayName +
+                                    '?',
+                                  description:
+                                    'This changes this account’s access to the marketplace. Its records and audit history will not be deleted.',
+                                })
+                              }
+                            >
+                              {user.status === 'active'
+                                ? 'Suspend account'
+                                : 'Reactivate account'}
+                            </Button>
+                          ) : null}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </Panel>
+              </TabsContent>
+              <TabsContent value="incidents">
+                <Panel
+                  title="Incident register"
+                  description="Record operational issues and the actual response. This register does not run monitoring or contact external services."
+                >
+                  <form
+                    onSubmit={(event) => void submit(event, 'incident.create')}
+                    className="grid gap-4 sm:grid-cols-2"
+                  >
+                    <Field label="Incident title">
+                      <Input
+                        name="title"
+                        required
+                        minLength={4}
+                        maxLength={160}
+                      />
+                    </Field>
+                    <Field label="Severity">
+                      <select name="severity" className={selectClass}>
+                        {['low', 'medium', 'high', 'critical'].map((value) => (
+                          <option key={value}>{value}</option>
+                        ))}
+                      </select>
+                    </Field>
+                    <div className="sm:col-span-2">
+                      <Field label="What happened and immediate response">
+                        <Textarea
+                          name="detail"
+                          required
+                          minLength={20}
+                          maxLength={3000}
+                        />
+                      </Field>
+                    </div>
+                    <div>
+                      <Button type="submit">Open incident</Button>
+                    </div>
+                  </form>
+                  <div className="mt-6 divide-y">
+                    {data.incidents.length === 0 ? (
+                      <Empty>No incidents recorded.</Empty>
+                    ) : (
+                      data.incidents.map((item) => (
+                        <article key={item.id} className="py-5">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h3 className="font-semibold">
+                              {item.referenceNumber}: {item.title}
+                            </h3>
+                            <StatusBadge status={item.status} />
+                          </div>
+                          <p className="mt-1 text-sm capitalize text-muted-foreground">
+                            {item.severity} severity
+                          </p>
+                          {item.resolution ? (
+                            <p className="mt-3 whitespace-pre-wrap text-sm leading-6">
+                              {item.resolution}
+                            </p>
+                          ) : null}
+                          {item.status !== 'resolved' ? (
+                            <form
+                              onSubmit={(event) =>
+                                void submit(event, 'incident.update')
+                              }
+                              className="mt-4 grid gap-3 sm:grid-cols-2"
+                            >
+                              <input type="hidden" name="id" value={item.id} />
+                              <Field label="Next status">
+                                <select name="status" className={selectClass}>
+                                  <option value="mitigating">Mitigating</option>
+                                  <option value="monitoring">Monitoring</option>
+                                  <option value="resolved">Resolved</option>
+                                </select>
+                              </Field>
+                              <Field label="Response or resolution note">
+                                <Textarea
+                                  name="resolution"
+                                  required
+                                  minLength={8}
+                                  maxLength={2000}
+                                />
+                              </Field>
+                              <div>
+                                <Button type="submit" variant="outline">
+                                  Record incident update
+                                </Button>
+                              </div>
+                            </form>
+                          ) : null}
+                        </article>
+                      ))
+                    )}
+                  </div>
+                </Panel>
+              </TabsContent>
+              <TabsContent value="backups">
+                <Panel
+                  title="Backup verification register"
+                  description="Record checks you have actually performed. Saving here does not create, download, or restore a backup."
+                >
+                  <form
+                    onSubmit={(event) => void submit(event, 'backup.verify')}
+                    className="grid gap-4 sm:grid-cols-2"
+                  >
+                    <Field label="Scope">
+                      <select name="scope" className={selectClass}>
+                        <option value="d1">D1 database</option>
+                        <option value="r2">R2 files</option>
+                        <option value="full">Full</option>
+                      </select>
+                    </Field>
+                    <Field label="Verification result">
+                      <select name="status" className={selectClass}>
+                        <option value="verified">Verified</option>
+                        <option value="failed">Failed</option>
+                      </select>
+                    </Field>
+                    <Field label="Evidence or export reference">
+                      <Input
+                        name="evidenceReference"
+                        required
+                        minLength={4}
+                        maxLength={500}
+                      />
+                    </Field>
+                    <Field label="Verification notes">
+                      <Textarea
+                        name="note"
+                        required
+                        minLength={8}
+                        maxLength={1000}
+                      />
+                    </Field>
+                    <div className="sm:col-span-2">
+                      <Button type="submit">Record verification</Button>
+                    </div>
+                  </form>
+                  <div className="mt-6 divide-y">
+                    {data.backups.length === 0 ? (
+                      <Empty>No backup verification evidence recorded.</Empty>
+                    ) : (
+                      data.backups.map((item) => (
+                        <article
+                          key={item.id}
+                          className="space-y-2 break-words py-4"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h3 className="font-semibold">
+                              {item.scope.toUpperCase()} verification
+                            </h3>
+                            <StatusBadge status={item.status} />
+                          </div>
+                          <p>{item.evidenceReference}</p>
+                          <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+                            {item.note}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {date(item.verifiedAt)} (Nepal time)
+                          </p>
+                        </article>
+                      ))
+                    )}
+                  </div>
+                </Panel>
+              </TabsContent>
+            </>
+          ) : null}
+        </Tabs>
+      </fieldset>
+      <ConfirmOperation
+        open={decision !== null}
+        onOpenChange={(open) => {
+          if (!open) setDecision(null);
+        }}
+        title={decision?.title ?? 'Confirm operation'}
+        description={decision?.description ?? ''}
+        pending={pending}
+        error={error}
+        onConfirm={() => {
+          if (decision)
+            void save(decision.action, decision.data).then((ok) => {
+              if (ok) setDecision(null);
+            });
+        }}
+      />
     </div>
+  );
+}
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  const required = Children.toArray(children).some(
+    (child) => isValidElement<{ required?: boolean }>(child) && child.props.required,
+  );
+  return (
+    <label className="grid content-start gap-2 text-sm font-medium">
+      <span>{label}{required && <span aria-hidden="true"> *</span>}</span>
+      {children}
+    </label>
+  );
+}
+function Panel({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border bg-card p-5 sm:p-6">
+      <h2 className="font-heading text-2xl">{title}</h2>
+      <p className="mt-2 mb-6 max-w-3xl text-sm leading-6 text-muted-foreground">
+        {description}
+      </p>
+      {children}
+    </section>
+  );
+}
+function Empty({ children }: { children: ReactNode }) {
+  return (
+    <p className="rounded-xl bg-muted/50 p-4 text-sm text-muted-foreground">
+      {children}
+    </p>
   );
 }

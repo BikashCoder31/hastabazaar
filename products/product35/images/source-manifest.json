@@ -1,0 +1,58 @@
+{
+  "productNumber": 35,
+  "sourcePage": "https://amzn.in/d/09YA4NKh",
+  "canonicalSourcePage": "https://www.amazon.in/dp/B0GRTW587M",
+  "selectionRule": "Up to four distinct ordinary product images from the Amazon product gallery; videos, review images, ads and unrelated media excluded.",
+  "videoDownloaded": false,
+  "exactDuplicatesFoundAndExcluded": [],
+  "images": [
+    {
+      "sourcePage": "https://amzn.in/d/09YA4NKh",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0GRTW587M",
+      "originalImageReference": "https://m.media-amazon.com/images/I/31Ij1zDlOZL._SL1500_.jpg",
+      "localFilename": "hb-er-b0grtw587m-01.jpg",
+      "dimensions": {
+        "height": 500,
+        "width": 500
+      },
+      "byteSize": 14385,
+      "sha256": "0427e1323469b68918d74940849d1014dbc3afadf2bca6a8b6080f6705a2f2ed"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/09YA4NKh",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0GRTW587M",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41v3yuznKaL._SL1500_.jpg",
+      "localFilename": "hb-er-b0grtw587m-02.jpg",
+      "dimensions": {
+        "height": 800,
+        "width": 584
+      },
+      "byteSize": 17616,
+      "sha256": "fe4958a4322347d620ce6f88714164fb9838448f856968b5022783b66ba4f432"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/09YA4NKh",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0GRTW587M",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51grvUgLANL._SL1500_.jpg",
+      "localFilename": "hb-er-b0grtw587m-03.jpg",
+      "dimensions": {
+        "height": 800,
+        "width": 579
+      },
+      "byteSize": 56481,
+      "sha256": "39f1e02ddadc5bf10c8c70dade121b268a148f5d3194bc248f61a9bb3de8654b"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/09YA4NKh",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0GRTW587M",
+      "originalImageReference": "https://m.media-amazon.com/images/I/513PbfEcOrL._SL1500_.jpg",
+      "localFilename": "hb-er-b0grtw587m-04.jpg",
+      "dimensions": {
+        "height": 800,
+        "width": 597
+      },
+      "byteSize": 64079,
+      "sha256": "cc032ed7c2c4f8f3bc953d9cc19b894ed113d576ff742ab31515e5d2939b3a92"
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "productNumber": 46,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only one distinct exact-variant product-gallery image was available.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0bwmbNs3",
+    "canonicalUrl": "https://www.amazon.in/dp/B0D6GXBVLV",
+    "asin": "B0D6GXBVLV",
+    "sourceTitle": "Handmade Terracotta Earrings For women and Girls, Handmade Jewellery Earring Combo Set, Painted Handmade Earrings For Party Occastion & Daily Use.",
+    "sourcePriceInr": 194.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Le Bijouxistic Hand-Painted Terracotta Earrings - PCK_of_1",
+    "brand": "Le Bijouxistic",
+    "manufacturer": "Ekam EK",
+    "description": "Le Bijouxistic Hand-Painted Terracotta Earrings - PCK_of_1 features hand-painted terracotta earring design. It combines french-wire finding with traditional multicolour styling.",
+    "keyFeatures": [
+      "Hand-painted terracotta earring design",
+      "French-wire finding",
+      "Traditional multicolour styling"
+    ],
+    "specifications": {
+      "colourAndVariant": "Multicolour; style PCK_of_1",
+      "dimensions": "Not stated on the source page.",
+      "weight": "150 g (source-listed; requires seller verification)",
+      "modelOrIdentifier": "Terrcotta Earrings for Women Girls; ASIN B0D6GXBVLV",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Terracotta / clay",
+    "packageContents": "Source selector says PCK_of_1 while feature text says five earrings; quantity requires seller verification",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Jewellery > Women > Earrings",
+    "tags": [
+      "terracotta earrings",
+      "hand-painted earrings",
+      "multicolour jewellery",
+      "ethnic earrings"
+    ],
+    "safetyInformation": "Handle terracotta pieces carefully to reduce the risk of chipping or breakage.",
+    "seoTitle": "Le Bijouxistic Hand-Painted Terracotta Earrings - PCK_of_1 | Hathkriti",
+    "seoDescription": "Le Bijouxistic Hand-Painted Terracotta Earrings - PCK_of_1 from Hathkriti. Hand-painted terracotta earring design. Colour/variant: Multicolour; style PCK_of_1."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 510,
+    "originalPriceNpr": 1020,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 1,
+    "files": [
+      "images/hathkriti-p46-b0d6gxbvlv-01.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The selected style says PCK_of_1 but the feature text says a five-earring set; do not publish a quantity until verified."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

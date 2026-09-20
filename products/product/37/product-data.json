@@ -1,0 +1,70 @@
+{
+  "productNumber": 37,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two distinct exact-variant product-gallery images were available.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/095K90Hc",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HDK7GWKH",
+    "asin": "B0HDK7GWKH",
+    "sourceTitle": "Women’s Crochet Sling Bag with Floral Daisy Design | Handmade Knitted Crossbody Bag | Cute Small Shoulder Bag for Girls & Women | Lightweight Everyday Handbag",
+    "sourcePriceInr": 699.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Sehura Magenta & White Crochet Floral Sling Bag",
+    "brand": "Sehura",
+    "manufacturer": "Sehura",
+    "description": "Sehura Magenta & White Crochet Floral Sling Bag features handmade crochet floral bag. It combines compact shoulder-bag design with soft yarn construction. Intended for small daily essentials.",
+    "keyFeatures": [
+      "Handmade crochet floral bag",
+      "Compact shoulder-bag design",
+      "Soft yarn construction",
+      "Intended for small daily essentials"
+    ],
+    "specifications": {
+      "colourAndVariant": "Magenta and white",
+      "dimensions": "14 × 10 × 8 cm",
+      "weight": "240 g",
+      "modelOrIdentifier": "BAG-SUNF; ASIN B0HDK7GWKH",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Crochet yarn; fibre composition not stated",
+    "packageContents": "1 crochet bag",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Sling & Cross-Body Bags",
+    "tags": [
+      "crochet sling bag",
+      "floral crossbody",
+      "magenta bag",
+      "handmade shoulder bag"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Sehura Magenta & White Crochet Floral Sling Bag | Hathkriti",
+    "seoDescription": "Sehura Magenta & White Crochet Floral Sling Bag from Hathkriti. Handmade crochet floral bag. Colour/variant: Magenta and white."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1318,
+    "originalPriceNpr": 2636,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 2,
+    "files": [
+      "images/hathkriti-p37-b0hdk7gwkh-01.jpg",
+      "images/hathkriti-p37-b0hdk7gwkh-02.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

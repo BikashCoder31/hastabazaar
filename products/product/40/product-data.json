@@ -1,0 +1,70 @@
+{
+  "productNumber": 40,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only three exact-variant gallery images were available, and one contains promotional text; four are required.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/087JrdlO",
+    "canonicalUrl": "https://www.amazon.in/dp/B0GQ37NYXX",
+    "asin": "B0GQ37NYXX",
+    "sourceTitle": "Handmade Crochet Rose Flower Sling Bag, Pink and Red with Green Strap, 15cm Diameter, Crossbody Purse for Kids and Adults",
+    "sourcePriceInr": 1490.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Pink & Red Crochet Rose-Flower Sling Bag",
+    "brand": "Generic",
+    "manufacturer": "Crochet World SNP",
+    "description": "Pink & Red Crochet Rose-Flower Sling Bag features handmade layered crochet rose design. It combines green crochet shoulder strap with compact round profile. Designed for cards, keys and other small essentials.",
+    "keyFeatures": [
+      "Handmade layered crochet rose design",
+      "Green crochet shoulder strap",
+      "Compact round profile",
+      "Designed for cards, keys and other small essentials"
+    ],
+    "specifications": {
+      "colourAndVariant": "Pink and red flower with green strap",
+      "dimensions": "15 cm diameter; source also lists 15 × 15 × 15 cm",
+      "weight": "100 g",
+      "modelOrIdentifier": "CROSLI1006RED43; ASIN B0GQ37NYXX",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Crochet yarn; fibre composition not stated",
+    "packageContents": "1 crochet sling bag",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Sling & Cross-Body Bags",
+    "tags": [
+      "rose sling bag",
+      "crochet flower purse",
+      "pink crossbody bag",
+      "handmade floral bag"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Pink & Red Crochet Rose-Flower Sling Bag | Hathkriti",
+    "seoDescription": "Pink & Red Crochet Rose-Flower Sling Bag from Hathkriti. Handmade layered crochet rose design. Colour/variant: Pink and red flower with green strap."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 2584,
+    "originalPriceNpr": 5168,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 2,
+    "files": [
+      "images/hathkriti-p40-b0gq37nyxx-01.jpg",
+      "images/hathkriti-p40-b0gq37nyxx-02.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

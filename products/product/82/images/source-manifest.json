@@ -1,0 +1,63 @@
+{
+  "productNumber": 82,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0GZ7JKBVN",
+  "selectedVariant": "Black hands with gold flute, gold base and peacock feather",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0GZ7JKBVN",
+      "originalImageReference": "https://m.media-amazon.com/images/I/5131q1-gXrL.jpg",
+      "filename": "hathkriti-p82-b0gz7jkbvn-01.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 37377,
+      "sha256": "05127c0d1491830204f477af207d88f91dbd5615618f6e40428274b502fa82d1",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0GZ7JKBVN",
+      "originalImageReference": "https://m.media-amazon.com/images/I/411-dPsrG2L.jpg",
+      "filename": "hathkriti-p82-b0gz7jkbvn-02.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 25505,
+      "sha256": "3878d4960d8a959a229e4e2c1f0298b0a332c0b3c945b05b97c2cb7e8b343029",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0GZ7JKBVN",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41lT17BS1AL.jpg",
+      "filename": "hathkriti-p82-b0gz7jkbvn-03.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 30531,
+      "sha256": "4b0347467608ef21a9082b05921927e8b80971adf38404901ade767ae483ae09",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 5
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0GZ7JKBVN",
+      "originalImageReference": "https://m.media-amazon.com/images/I/512ilJbdCML.jpg",
+      "filename": "hathkriti-p82-b0gz7jkbvn-04.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 38921,
+      "sha256": "388cc6247cf4149074407bf836eff56564049fc6d11f69f6dbec402a6dcf5836",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 6
+    }
+  ]
+}

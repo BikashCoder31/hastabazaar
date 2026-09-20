@@ -1,0 +1,79 @@
+{
+  "productNumber": 26,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0g0aDarn",
+    "canonicalUrl": "https://www.amazon.in/dp/B0FBLC3ZXH",
+    "asin": "B0FBLC3ZXH",
+    "capturedPriceInr": 180,
+    "amazonReturnEligibility": "10 days Returnable"
+  },
+  "verifiedSourceFacts": {
+    "sourceTitle": "Blue & White Crochet Crescent Hoop Earrings",
+    "brand": "Generic",
+    "manufacturer": "Creativethreads",
+    "modelOrIdentifier": "CTE0005",
+    "materials": "Cotton thread/yarn with stainless-steel hooks; no gemstone",
+    "colourAndVariant": "Blue and white; Single source style",
+    "dimensions": "3.5 × 3.5 × 4 cm; approximately 3.5 cm diameter stated",
+    "weight": "5 g",
+    "packageContents": "Net quantity: 2 pack",
+    "careInstructions": "Requires Seller input.",
+    "countryOfOrigin": "India",
+    "returnEligibility": "10 days Returnable",
+    "warranty": "Not stated on source; leave blank."
+  },
+  "rewrittenMarketingCopy": {
+    "storefrontTitle": "Blue & White Crochet Crescent Hoop Earrings",
+    "description": "Handmade crochet hoop earrings with a blue-and-white crescent pattern and decorative openwork. Cotton thread and stainless-steel hooks create a lightweight casual accessory.",
+    "keyFeatures": [
+      "Hand-crocheted crescent pattern",
+      "Blue-to-white colour contrast",
+      "Hoop silhouette",
+      "Stainless-steel hooks"
+    ],
+    "seoTitle": "Blue & White Crochet Crescent Hoop Earrings | Hastabazaar",
+    "seoDescription": "Blue & White Crochet Crescent Hoop Earrings. Handmade crochet hoop earrings with a blue-and-white crescent pattern and decorative openwork. Cotton thread and "
+  },
+  "suggestedValues": {
+    "category": "Jewellery > Earrings",
+    "tags": [
+      "earrings",
+      "handmade jewellery",
+      "crochet"
+    ],
+    "sku": "HB-ER-B0FBLC3ZXH-BLUE-AND-WHITE",
+    "pricing": {
+      "formula": "round(180 × 1.6 + 150)",
+      "sellingPriceNpr": 438,
+      "originalPriceNpr": 876,
+      "discountPercent": 50
+    },
+    "stockQuantity": 10,
+    "preparationTimeDays": 3,
+    "returnWording": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "listingPurpose": "Genuine commercial listing"
+  },
+  "valuesSellerMustSupply": [
+    "Shipping weight and package dimensions if Hastabazaar requires shipping-specific values; item/package values above may not be shipping measurements.",
+    "Any safety warning required for this exact product; none was stated on the source page."
+  ],
+  "legalOrAuthenticityConcerns": [
+    "Only one distinct source-gallery product image was available.",
+    "User states that resale and image-reuse rights are authorized; this has not been independently verified.",
+    "Permanent legal documents and policy identifiers are pending. Do not enable genuine public orders until those controls are complete."
+  ],
+  "images": {
+    "selectedCount": 1,
+    "requestedMaximum": 4,
+    "videoDownloaded": false,
+    "exactDuplicatesExcluded": 0,
+    "order": [
+      "hb-er-b0fblc3zxh-blue-and-white-01.jpg"
+    ]
+  },
+  "publication": {
+    "preparedOnly": true,
+    "enteredInHastabazaar": false,
+    "published": false
+  }
+}

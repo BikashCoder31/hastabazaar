@@ -1,0 +1,10 @@
+{
+  "productNumber": 61,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "The source describes a multi-design item without an exact selectable design, and the gallery relies on ambiguous/synthetic-looking scenes; an exact four-image variant set cannot be verified.",
+  "sourcePage": "https://www.amazon.in/dp/B0H3PV91L2",
+  "selectedVariant": "Multicolour; multiple design presentation",
+  "requiredImageCount": 4,
+  "includedImageCount": 0,
+  "images": []
+}

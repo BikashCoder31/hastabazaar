@@ -1,0 +1,58 @@
+{
+  "productNumber": 25,
+  "sourcePage": "https://amzn.in/d/06rmEDbo",
+  "canonicalSourcePage": "https://www.amazon.in/dp/B0B7NRDWMQ",
+  "selectionRule": "Up to four distinct ordinary product images from the Amazon product gallery; videos, review images, ads and unrelated media excluded.",
+  "videoDownloaded": false,
+  "exactDuplicatesFoundAndExcluded": [],
+  "images": [
+    {
+      "sourcePage": "https://amzn.in/d/06rmEDbo",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0B7NRDWMQ",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61KHwLwpULL._SL1500_.jpg",
+      "localFilename": "hb-er-b0b7nrdwmq-oxidised-silver-tone-01.jpg",
+      "dimensions": {
+        "height": 1500,
+        "width": 1500
+      },
+      "byteSize": 99763,
+      "sha256": "1167f060111f5063be8a9d7988fec5bf3d7ab45bd94d1bc7a37fe7928713a960"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/06rmEDbo",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0B7NRDWMQ",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71+BytMaJZL._SL1500_.jpg",
+      "localFilename": "hb-er-b0b7nrdwmq-oxidised-silver-tone-02.jpg",
+      "dimensions": {
+        "height": 1500,
+        "width": 1500
+      },
+      "byteSize": 131652,
+      "sha256": "f83edcf07ccdf83793b9f43f0877c11bb4e691e99d580ae9b96ca8ef808ac3b8"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/06rmEDbo",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0B7NRDWMQ",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71Whkz7T10L._SL1500_.jpg",
+      "localFilename": "hb-er-b0b7nrdwmq-oxidised-silver-tone-03.jpg",
+      "dimensions": {
+        "height": 1500,
+        "width": 1500
+      },
+      "byteSize": 175795,
+      "sha256": "78fc52b257c3d07b83df8fb026a3cbde03d0b8c7da0960e7fd1abfa4f5ad524d"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/06rmEDbo",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0B7NRDWMQ",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51knHen1G-L._SL1500_.jpg",
+      "localFilename": "hb-er-b0b7nrdwmq-oxidised-silver-tone-04.jpg",
+      "dimensions": {
+        "height": 1500,
+        "width": 1500
+      },
+      "byteSize": 51429,
+      "sha256": "d7efb461ceaae70dfcb87de85086a827bc3531537f06f979e62988b89b09ec46"
+    }
+  ]
+}

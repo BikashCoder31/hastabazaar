@@ -1,0 +1,50 @@
+{
+  "productNumber": 74,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only three distinct exact-variant product-gallery images were available.",
+  "sourcePage": "https://www.amazon.in/dp/B0HDTGWL48",
+  "selectedVariant": "Red Rose crochet design",
+  "requiredImageCount": 4,
+  "includedImageCount": 3,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HDTGWL48",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41LIN3YhPxL.jpg",
+      "filename": "hathkriti-p74-b0hdtgwl48-01.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 24945,
+      "sha256": "bd0529788af8c219510a18c2cece8e57410c1495dd5db794fe096d72664cf68c",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HDTGWL48",
+      "originalImageReference": "https://m.media-amazon.com/images/I/416e6Xge0IL.jpg",
+      "filename": "hathkriti-p74-b0hdtgwl48-02.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 31932,
+      "sha256": "9e733dfd7f2d332b01a2ac711b9472614cf48de00c4fca30ae7c2f0c2f4df408",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HDTGWL48",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41N2nMZK4xL.jpg",
+      "filename": "hathkriti-p74-b0hdtgwl48-03.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 25125,
+      "sha256": "5ca11bb187ebc76651d268262a2616f8719d9a3c280622edd09747f526550a89",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 3
+    }
+  ]
+}

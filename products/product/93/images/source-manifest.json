@@ -1,0 +1,63 @@
+{
+  "productNumber": 93,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B09YRZ734R",
+  "selectedVariant": "WH_5012N; Rajasthani folk-musician design; set of 3",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B09YRZ734R",
+      "originalImageReference": "https://m.media-amazon.com/images/I/516XnNAnSpL._SL1500_.jpg",
+      "filename": "hathkriti-p93-b09yrz734r-01.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 40948,
+      "sha256": "cb17c1266eee25d2e512299cd1028bca972e3fcd5f179956d9be3f542f5a33ee",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B09YRZ734R",
+      "originalImageReference": "https://m.media-amazon.com/images/I/517KYkO9udL._SL1500_.jpg",
+      "filename": "hathkriti-p93-b09yrz734r-02.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 34874,
+      "sha256": "51f3ba6f3172ebdd1372f572844f9187f1290b952dcf9038d02b97b70be9d661",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B09YRZ734R",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41rQbmzLYuL._SL1500_.jpg",
+      "filename": "hathkriti-p93-b09yrz734r-03.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 25509,
+      "sha256": "1eb4601e8c5b356f14ccdbe932354f1b556ea30b7ea8c472433ea5bb49ec23f8",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 3
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B09YRZ734R",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41gonveLr7L._SL1500_.jpg",
+      "filename": "hathkriti-p93-b09yrz734r-04.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 30274,
+      "sha256": "a971fc953e0e96ed49f10fe70bdf9563be89bce37453a356596d972e459ac228",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 5
+    }
+  ]
+}

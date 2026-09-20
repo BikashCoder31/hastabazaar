@@ -1,5 +1,5 @@
-import { sites } from '@openai/sites-vite-plugin';
 import tailwindcss from '@tailwindcss/postcss';
+import { fileURLToPath } from 'node:url';
 import vinext from 'vinext';
 import { defineConfig } from 'vite';
 import hostingConfig from './.openai/hosting.json' with { type: 'json' };
@@ -8,6 +8,37 @@ const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   '00000000-0000-4000-8000-000000000000';
 
 const { d1, r2 } = hostingConfig;
+
+const hostedLocalTestStub = `
+export const localTestRoles = ['customer', 'seller', 'admin', 'super_admin'];
+export const localTestCookieName = 'hastabazaar_local_test_role';
+export function isLocalTestRequest() { return false; }
+export function readLocalTestRole() { return null; }
+export function getLocalTestIdentity() { return null; }
+export function localTestIdentity() {
+  throw new Error('Local test identities are not included in hosted builds.');
+}
+export async function ensureLocalTestAccount() {
+  throw new Error('Local test accounts are disabled in hosted builds.');
+}
+`;
+
+function disableHostedLocalTesting() {
+  return {
+    name: 'hastabazaar-disable-hosted-local-testing',
+    enforce: 'pre' as const,
+    load(id: string) {
+      const sourcePath = id.split('?', 1)[0].replaceAll('\\\\', '/');
+      if (
+        sourcePath.endsWith('/lib/auth/local-test-access.ts') ||
+        sourcePath.endsWith('/lib/auth/local-test-seed.ts')
+      ) {
+        return hostedLocalTestStub;
+      }
+      return null;
+    },
+  };
+}
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === 'seatbelt';
@@ -36,6 +67,24 @@ const localBindingConfig = {
 };
 
 export default defineConfig(async () => {
+  const isBabalBuild = process.env.DEPLOY_TARGET === 'babal';
+  if (isBabalBuild) {
+    return {
+      css: { postcss: { plugins: [tailwindcss()] } },
+      plugins: [disableHostedLocalTesting(), vinext()],
+      resolve: {
+        alias: [
+          {
+            find: 'cloudflare:workers',
+            replacement: fileURLToPath(
+              new URL('./lib/runtime/node-bindings.ts', import.meta.url),
+            ),
+          },
+        ],
+      },
+    };
+  }
+
   // Keep Wrangler and Miniflare state project-local. These are non-secret tool
   // settings; application environment belongs in ignored `.env*` files.
   process.env.WRANGLER_WRITE_LOGS ??= 'false';
@@ -44,6 +93,7 @@ export default defineConfig(async () => {
 
   // Wrangler snapshots its log path while the Cloudflare plugin is imported.
   const { cloudflare } = await import('@cloudflare/vite-plugin');
+  const { sites } = await import('@openai/sites-vite-plugin');
 
   return {
     css: { postcss: { plugins: [tailwindcss()] } },

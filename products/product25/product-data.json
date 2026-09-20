@@ -1,0 +1,81 @@
+{
+  "productNumber": 25,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/06rmEDbo",
+    "canonicalUrl": "https://www.amazon.in/dp/B0B7NRDWMQ",
+    "asin": "B0B7NRDWMQ",
+    "capturedPriceInr": 241,
+    "amazonReturnEligibility": "10 days Returnable"
+  },
+  "verifiedSourceFacts": {
+    "sourceTitle": "Voylla Moksha Damru Trishul Oxidised Earrings",
+    "brand": "VOYLLA",
+    "manufacturer": "Voylla Fashions Pvt Ltd",
+    "modelOrIdentifier": "Model 8907617888163",
+    "materials": "Brass; no gemstone",
+    "colourAndVariant": "Oxidised silver tone; Single source style",
+    "dimensions": "2.79 × 2.16 × 2.79 cm",
+    "weight": "10.7 g",
+    "packageContents": "Net quantity: 2 count",
+    "careInstructions": "Requires Seller input.",
+    "countryOfOrigin": "India",
+    "returnEligibility": "10 days Returnable",
+    "warranty": "Not stated on source; leave blank."
+  },
+  "rewrittenMarketingCopy": {
+    "storefrontTitle": "Voylla Moksha Damru Trishul Oxidised Earrings",
+    "description": "Voylla Moksha earrings featuring damru and trishul motifs in an oxidised finish. The temple-inspired brass design is suited to everyday ethnic and festive styling.",
+    "keyFeatures": [
+      "Damru and trishul spiritual motif",
+      "Oxidised finish",
+      "Temple-inspired styling",
+      "Brass construction"
+    ],
+    "seoTitle": "Voylla Moksha Damru Trishul Oxidised Earrings | Hastabazaar",
+    "seoDescription": "Voylla Moksha Damru Trishul Oxidised Earrings. Voylla Moksha earrings featuring damru and trishul motifs in an oxidised finish. The temple-inspired brass desi"
+  },
+  "suggestedValues": {
+    "category": "Jewellery > Earrings",
+    "tags": [
+      "earrings",
+      "handmade jewellery",
+      "oxidised"
+    ],
+    "sku": "HB-ER-B0B7NRDWMQ-OXIDISED-SILVER-TONE",
+    "pricing": {
+      "formula": "round(241 × 1.6 + 150)",
+      "sellingPriceNpr": 536,
+      "originalPriceNpr": 1072,
+      "discountPercent": 50
+    },
+    "stockQuantity": 10,
+    "preparationTimeDays": 3,
+    "returnWording": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "listingPurpose": "Genuine commercial listing"
+  },
+  "valuesSellerMustSupply": [
+    "Shipping weight and package dimensions if Hastabazaar requires shipping-specific values; item/package values above may not be shipping measurements.",
+    "Any safety warning required for this exact product; none was stated on the source page."
+  ],
+  "legalOrAuthenticityConcerns": [
+    "User states that resale and image-reuse rights are authorized; this has not been independently verified.",
+    "Permanent legal documents and policy identifiers are pending. Do not enable genuine public orders until those controls are complete."
+  ],
+  "images": {
+    "selectedCount": 4,
+    "requestedMaximum": 4,
+    "videoDownloaded": false,
+    "exactDuplicatesExcluded": 0,
+    "order": [
+      "hb-er-b0b7nrdwmq-oxidised-silver-tone-01.jpg",
+      "hb-er-b0b7nrdwmq-oxidised-silver-tone-02.jpg",
+      "hb-er-b0b7nrdwmq-oxidised-silver-tone-03.jpg",
+      "hb-er-b0b7nrdwmq-oxidised-silver-tone-04.jpg"
+    ]
+  },
+  "publication": {
+    "preparedOnly": true,
+    "enteredInHastabazaar": false,
+    "published": false
+  }
+}

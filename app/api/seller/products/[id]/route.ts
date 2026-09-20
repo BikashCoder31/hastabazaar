@@ -1,3 +1,6 @@
+import { validateProductVideo } from '@/lib/media/product-video';
+import { productPhotoCountError } from '@/lib/products/submission';
+import { readBoundedForm, BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
 
 import { requireSellerApi, SellerAuthorizationError } from '@/lib/auth/seller';
@@ -6,15 +9,16 @@ import {
   areActiveOccasions,
   getSellerProductForRevision,
   isActiveCategory,
+  listSellerOwnedMediaForMutation,
   ProductRevisionConflictError,
   reviseAndResubmitProduct,
 } from '@/lib/db/repositories/products';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
+import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import {
   maximumProductSubmissionBytes,
   parseProductSubmission,
-  productImageFields,
+  productImageFiles,
   validateProductImage,
   validateProductImageContent,
   type ProductImageUpload,
@@ -61,19 +65,26 @@ export async function PATCH(
       id,
     );
     if (!current) return json({ error: 'Product not found.' }, 404);
-    if (current.status !== 'needs_changes') {
+    if (!['draft', 'needs_changes', 'rejected', 'approved', 'published'].includes(current.status)) {
       return json(
-        { error: 'Only products needing changes can be revised.' },
+        { error: 'This product cannot be edited while it is in its current review state.' },
         409,
       );
     }
 
     let formData: FormData;
     try {
-      formData = await request.formData();
-    } catch {
+      formData = await readBoundedForm(request, maximumProductSubmissionBytes);
+    } catch (error) {
+      if (error instanceof BodyTooLargeError) return json({ error: error.message }, 413);
       return json({ error: 'The product form could not be read.' }, 400);
     }
+    if(formData.get('reviewRequestId') !== (current.reviewRequestId ?? ''))return json({error:'This product review changed. Reload the form before resubmitting.'},409);
+    // Removed seller fields retain their original persisted values on revision.
+    formData.set('producer', current.producer);
+    formData.set('materials', current.materials);
+    if (!formData.has('warrantyOffered')) formData.set('warranty', current.warranty ?? '');
+    formData.set('sku', ''); // New SKUs are generated; revisions retain the persisted SKU.
     const parsed = parseProductSubmission(formData);
     if (!parsed.input)
       return json({ error: parsed.errors[0], errors: parsed.errors }, 400);
@@ -84,26 +95,79 @@ export async function PATCH(
       return json({ error: 'Select 1–5 active gift occasions.' }, 400);
     }
 
+    const ownedMedia = await listSellerOwnedMediaForMutation(
+      database,
+      seller.sellerId,
+      id,
+    );
+    const ownedById = new Map(ownedMedia.map((media) => [media.id, media]));
+    const removedMediaIds = new Set(
+      formData
+        .getAll('removeMediaId')
+        .filter((value): value is string => typeof value === 'string'),
+    );
+    const imageFiles = productImageFiles(formData);
+    const replacementImages: File[] = [];
+    for (const [field, value] of formData.entries()) {
+      if (!field.startsWith('replaceImage:') || !(value instanceof File) || value.size === 0) continue;
+      const mediaId = field.slice('replaceImage:'.length);
+      const existing = ownedById.get(mediaId);
+      if (!existing || !existing.mimeType.startsWith('image/')) {
+        return json({ error: 'An image selected for replacement is no longer available.' }, 409);
+      }
+      removedMediaIds.add(mediaId);
+      replacementImages.push(value);
+    }
+    const replacementVideo = formData.get('replacementVideo');
+    if (replacementVideo instanceof File && replacementVideo.size > 0) {
+      const existingVideo = ownedMedia.find((media) => media.mimeType === 'video/mp4');
+      if (!existingVideo) return json({ error: 'The video selected for replacement is no longer available.' }, 409);
+      removedMediaIds.add(existingVideo.id);
+    }
+    if ([...removedMediaIds].some((mediaId) => !ownedById.has(mediaId))) {
+      return json({ error: 'One of the selected media items is no longer available.' }, 409);
+    }
+
     const files: File[] = [];
     const imageErrors: string[] = [];
-    for (const field of productImageFields) {
-      const value = formData.get(field);
-      if (!(value instanceof File) || value.size === 0) continue;
+    for (const [index, value] of [...imageFiles, ...replacementImages].entries()) {
       const error =
         validateProductImage(value) ??
         (await validateProductImageContent(value));
-      if (error) imageErrors.push(`${field}: ${error}`);
+      if (error) imageErrors.push(`Image ${index + 1}: ${error}`);
       else files.push(value);
     }
-    if (current.mediaCount + files.length > 5) {
-      imageErrors.push('A product can have no more than 5 images.');
-    }
+    const retainedImageCount = ownedMedia.filter(
+      (media) => media.mimeType.startsWith('image/') && !removedMediaIds.has(media.id),
+    ).length;
+    const countError = productPhotoCountError(files.length, retainedImageCount);
+    if (countError) imageErrors.push(countError);
     if (imageErrors.length > 0)
       return json({ error: imageErrors[0], errors: imageErrors }, 400);
 
+    const video = replacementVideo instanceof File && replacementVideo.size > 0
+      ? replacementVideo
+      : formData.get('video');
+    if (video instanceof File && video.size > 0) {
+      const retainedVideoCount = ownedMedia.filter(
+        (media) => media.mimeType === 'video/mp4' && !removedMediaIds.has(media.id),
+      ).length;
+      if (retainedVideoCount > 0) return json({ error: 'Remove or replace the existing video before uploading another.' }, 400);
+      const videoError = await validateProductVideo(video);
+      if (videoError) return json({ error: videoError }, 400);
+      files.push(video);
+    }
+
     bucket = requireMediaBucket(bindings);
     const images: ProductImageUpload[] = [];
-    for (const [index, file] of files.entries()) {
+    const nextImageSort = Math.max(
+      -1,
+      ...ownedMedia
+        .filter((media) => media.mimeType.startsWith('image/') && !removedMediaIds.has(media.id))
+        .map((media) => media.sortOrder),
+    ) + 1;
+    let imageOffset = 0;
+    for (const file of files) {
       const mediaId = crypto.randomUUID();
       const objectKey = `private/product-media/${seller.sellerId}/${id}/${mediaId}`;
       await bucket.put(objectKey, file.stream(), {
@@ -119,7 +183,7 @@ export async function PATCH(
         sizeBytes: file.size,
         altEn: parsed.input.nameEn,
         altNe: parsed.input.nameNe,
-        sortOrder: current.mediaCount + index,
+        sortOrder: file.type === 'video/mp4' ? 1_000_000 : nextImageSort + imageOffset++,
       });
     }
 
@@ -129,11 +193,27 @@ export async function PATCH(
       actorId: seller.userId,
       input: parsed.input,
       images,
+      removedMediaIds: [...removedMediaIds],
       previousInventory: current.inventoryQuantity,
+      expectedStatus: current.status,
+      expectedReviewRequestId: current.reviewRequestId,
       now: Date.now(),
     });
+    const removedKeys = ownedMedia
+      .filter((media) => removedMediaIds.has(media.id))
+      .map((media) => media.objectKey);
+    if (removedKeys.length > 0) {
+      await Promise.allSettled(removedKeys.map((key) => bucket!.delete(key)));
+    }
     return json(
-      { id, status: 'submitted', message: 'Product revised and resubmitted.' },
+      {
+        id,
+        status: 'submitted',
+        message:
+          current.status === 'published' || current.status === 'approved'
+            ? 'Product updated and submitted for approval.'
+            : 'Product revised and resubmitted for approval.',
+      },
       200,
     );
   } catch (error) {
@@ -148,8 +228,8 @@ export async function PATCH(
     if (error instanceof ProductRevisionConflictError)
       return json({ error: error.message }, 409);
     const message = error instanceof Error ? error.message : '';
-    if (message.includes('UNIQUE constraint failed'))
-      return json({ error: 'This SKU is already used by your shop.' }, 409);
+    if (/UNIQUE constraint failed|Duplicate entry/i.test(message))
+      return json({ error: 'A unique product reference could not be reserved. Please reload and try again.' }, 409);
     return json({ error: 'The product could not be resubmitted.' }, 500);
   }
 }

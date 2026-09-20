@@ -1,0 +1,24 @@
+{
+  "productNumber": 46,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only one distinct exact-variant product-gallery image was available.",
+  "sourcePage": "https://www.amazon.in/dp/B0D6GXBVLV",
+  "selectedVariant": "Multicolour; style PCK_of_1",
+  "requiredImageCount": 4,
+  "includedImageCount": 1,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0D6GXBVLV",
+      "originalImageReference": "https://m.media-amazon.com/images/I/712wJQWpp4L._SL1500_.jpg",
+      "filename": "hathkriti-p46-b0d6gxbvlv-01.jpg",
+      "dimensions": {
+        "width": 1500,
+        "height": 1500
+      },
+      "byteSize": 135301,
+      "sha256": "755807e75b05017d6f44c12f4737a5891410cf94c39b7d3c956fb73983c1e740",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "productNumber": 54,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "All four gallery assets are seller-branded promotional panels; no clean product-gallery set of four is available.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/08ofBpHe",
+    "canonicalUrl": "https://www.amazon.in/dp/B0CGMBHYPD",
+    "asin": "B0CGMBHYPD",
+    "sourceTitle": "Women Handmade Crochet Handbag | Handcrafted Handbags For Daily, Cotton Bag Office and Causal Use Multicolor",
+    "sourcePriceInr": 499.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "ZZARA DECORATION Multicolour Crochet Cotton Flower Handbag",
+    "brand": "ZZARA DECORATION",
+    "manufacturer": "Indian Home Decor",
+    "description": "ZZARA DECORATION Multicolour Crochet Cotton Flower Handbag features handmade multicolour crochet flower work. It combines cotton-rope construction with can be carried by hand or over the shoulder. Bohemian floral styling.",
+    "keyFeatures": [
+      "Handmade multicolour crochet flower work",
+      "Cotton-rope construction",
+      "Can be carried by hand or over the shoulder",
+      "Bohemian floral styling"
+    ],
+    "specifications": {
+      "colourAndVariant": "Multicolour floral design",
+      "dimensions": "35 × 30 × 65 cm including strap; feature text states 35 × 30 cm body and 60 cm base-to-top length",
+      "weight": "400 g",
+      "modelOrIdentifier": "C02 / CCB2 / CC02; ASIN B0CGMBHYPD",
+      "countryOfOrigin": "India"
+    },
+    "materials": "100% natural cotton rope, according to the source feature text",
+    "packageContents": "1 crochet cotton bag",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Top-Handle Bags",
+    "tags": [
+      "crochet handbag",
+      "multicolour bag",
+      "cotton flower bag",
+      "boho handbag",
+      "handmade bag"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "ZZARA DECORATION Multicolour Crochet Cotton Flower Handbag | Hathkriti",
+    "seoDescription": "ZZARA DECORATION Multicolour Crochet Cotton Flower Handbag from Hathkriti. Handmade multicolour crochet flower work. Colour/variant: Multicolour floral design."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 998,
+    "originalPriceNpr": 1996,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 0,
+    "files": [],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

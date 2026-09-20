@@ -1,0 +1,287 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
+
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const snapshotPath = resolve(projectRoot, 'drizzle/meta/0020_snapshot.json');
+const outputPath = resolve(projectRoot, 'deployment/babal/mariadb-schema.sql');
+const recoveryOutputPath = resolve(
+  projectRoot,
+  'deployment/babal/mariadb-reset-empty-import.sql',
+);
+const snapshot = JSON.parse(await readFile(snapshotPath, 'utf8'));
+
+const quote = (value) => `\`${String(value).replaceAll('`', '``')}\``;
+
+function identifier(value) {
+  if (value.length <= 64) return value;
+  const suffix = createHash('sha256').update(value).digest('hex').slice(0, 10);
+  return `${value.slice(0, 53)}_${suffix}`;
+}
+
+function indexedTextColumns(table) {
+  const names = new Set();
+  for (const column of Object.values(table.columns)) {
+    if (column.primaryKey) names.add(column.name);
+  }
+  for (const index of Object.values(table.indexes ?? {})) {
+    for (const column of index.columns) names.add(column);
+  }
+  for (const key of Object.values(table.foreignKeys ?? {})) {
+    for (const column of key.columnsFrom) names.add(column);
+    for (const column of key.columnsTo) names.add(column);
+  }
+  for (const key of Object.values(table.compositePrimaryKeys ?? {})) {
+    for (const column of key.columns) names.add(column);
+  }
+  return names;
+}
+
+function columnType(column, compactText) {
+  if (column.type === 'integer') return 'BIGINT';
+  if (column.type === 'text') {
+    if (compactText.has(column.name)) return 'VARCHAR(191)';
+    return 'LONGTEXT';
+  }
+  throw new Error(`Unsupported SQLite column type: ${column.type}`);
+}
+
+function defaultSql(value) {
+  if (value === undefined) return '';
+  if (value === true) return ' DEFAULT 1';
+  if (value === false) return ' DEFAULT 0';
+  return ` DEFAULT ${value}`;
+}
+
+function checkExpression(tableName, expression) {
+  return expression.replace(
+    new RegExp(`"${tableName}"\\."([^"]+)"`, 'g'),
+    (_, column) => quote(column),
+  );
+}
+
+function checkConflictsWithForeignKeyAction(table, check) {
+  return Object.values(table.foreignKeys ?? {}).some((key) => {
+    const changesColumn =
+      key.onDelete === 'set null' ||
+      key.onDelete === 'cascade' ||
+      key.onUpdate === 'set null' ||
+      key.onUpdate === 'cascade';
+    return (
+      changesColumn &&
+      key.columnsFrom.some((column) => check.value.includes(`"${column}"`))
+    );
+  });
+}
+
+function generatedColumns(tableName) {
+  if (tableName === 'staff_invitations') {
+    return [
+      "`pending_email_key` VARCHAR(191) GENERATED ALWAYS AS (CASE WHEN `status` = 'pending' THEN `email` ELSE NULL END) STORED",
+    ];
+  }
+  if (tableName === 'payout_entries') {
+    return [
+      '`active_ledger_entry_key` VARCHAR(191) GENERATED ALWAYS AS (CASE WHEN `released_at` IS NULL THEN `ledger_entry_id` ELSE NULL END) STORED',
+    ];
+  }
+  if (tableName === 'seller_ledger_entries') {
+    const active =
+      "`order_item_id` IS NOT NULL AND `type` IN ('sale', 'commission', 'reserve_hold', 'reserve_release')";
+    return [
+      `\`active_order_item_key\` VARCHAR(191) GENERATED ALWAYS AS (CASE WHEN ${active} THEN \`order_item_id\` ELSE NULL END) STORED`,
+      `\`active_order_item_type\` VARCHAR(191) GENERATED ALWAYS AS (CASE WHEN ${active} THEN \`type\` ELSE NULL END) STORED`,
+    ];
+  }
+  return [];
+}
+
+function generatedIndexes(tableName) {
+  if (tableName === 'staff_invitations') {
+    return [
+      'UNIQUE KEY `idx_staff_invitations_pending_email_unique` (`pending_email_key`)',
+    ];
+  }
+  if (tableName === 'payout_entries') {
+    return [
+      'UNIQUE KEY `idx_payout_entries_active_ledger_unique` (`active_ledger_entry_key`)',
+    ];
+  }
+  if (tableName === 'seller_ledger_entries') {
+    return [
+      'UNIQUE KEY `idx_seller_ledger_order_item_type_unique` (`active_order_item_key`, `active_order_item_type`)',
+    ];
+  }
+  return [];
+}
+
+const output = [
+  '-- Hatsabazaar production schema for MariaDB 10.11+',
+  '-- Generated from drizzle/meta/0020_snapshot.json. Import into an empty database.',
+  'SET NAMES utf8mb4;',
+  "SET time_zone = '+00:00';",
+  'SET FOREIGN_KEY_CHECKS = 0;',
+  '',
+];
+const foreignKeys = [];
+
+for (const [tableName, table] of Object.entries(snapshot.tables)) {
+  const compactText = indexedTextColumns(table);
+  const definitions = [];
+  for (const column of Object.values(table.columns)) {
+    definitions.push(
+      [
+        quote(column.name),
+        columnType(column, compactText),
+        column.notNull ? 'NOT NULL' : 'NULL',
+        defaultSql(column.default).trim(),
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
+  }
+  definitions.push(...generatedColumns(tableName));
+
+  const primaryColumns = Object.values(table.columns)
+    .filter((column) => column.primaryKey)
+    .map((column) => column.name);
+  if (primaryColumns.length > 0) {
+    definitions.push(`PRIMARY KEY (${primaryColumns.map(quote).join(', ')})`);
+  }
+  for (const key of Object.values(table.compositePrimaryKeys ?? {})) {
+    definitions.push(`PRIMARY KEY (${key.columns.map(quote).join(', ')})`);
+  }
+  for (const index of Object.values(table.indexes ?? {})) {
+    if (index.where) continue;
+    definitions.push(
+      `${index.isUnique ? 'UNIQUE ' : ''}KEY ${quote(index.name)} (${index.columns.map(quote).join(', ')})`,
+    );
+  }
+  definitions.push(...generatedIndexes(tableName));
+  for (const check of Object.values(table.checkConstraints ?? {})) {
+    if (checkConflictsWithForeignKeyAction(table, check)) {
+      output.push(
+        `-- ${check.name} is enforced by application transactions because MariaDB 10.11 rejects CHECK columns changed by SET NULL/CASCADE foreign-key actions.`,
+      );
+      continue;
+    }
+    definitions.push(
+      `CONSTRAINT ${quote(check.name)} CHECK (${checkExpression(tableName, check.value)})`,
+    );
+  }
+
+  output.push(
+    `CREATE TABLE IF NOT EXISTS ${quote(tableName)} (`,
+    definitions.map((definition) => `  ${definition}`).join(',\n'),
+    ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;',
+    '',
+  );
+
+  for (const key of Object.values(table.foreignKeys ?? {})) {
+    foreignKeys.push(
+      `ALTER TABLE ${quote(key.tableFrom)} ADD CONSTRAINT ${quote(identifier(key.name))} FOREIGN KEY (${key.columnsFrom.map(quote).join(', ')}) REFERENCES ${quote(key.tableTo)} (${key.columnsTo.map(quote).join(', ')}) ON DELETE ${key.onDelete.toUpperCase()} ON UPDATE ${key.onUpdate.toUpperCase()};`,
+    );
+  }
+}
+
+output.push(
+  '-- Babal.Host password authentication and server-side sessions.',
+  'CREATE TABLE IF NOT EXISTS `user_credentials` (',
+  '  `user_id` VARCHAR(191) NOT NULL,',
+  '  `password_hash` VARCHAR(191) NOT NULL,',
+  '  `password_salt` VARCHAR(191) NOT NULL,',
+  '  `password_version` BIGINT NOT NULL DEFAULT 1,',
+  '  `created_at` BIGINT NOT NULL,',
+  '  `updated_at` BIGINT NOT NULL,',
+  '  PRIMARY KEY (`user_id`)',
+  ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;',
+  '',
+  'CREATE TABLE IF NOT EXISTS `user_sessions` (',
+  '  `token_hash` VARCHAR(64) NOT NULL,',
+  '  `user_id` VARCHAR(191) NOT NULL,',
+  '  `expires_at` BIGINT NOT NULL,',
+  '  `created_at` BIGINT NOT NULL,',
+  '  `last_seen_at` BIGINT NOT NULL,',
+  '  PRIMARY KEY (`token_hash`),',
+  '  KEY `idx_user_sessions_user` (`user_id`),',
+  '  KEY `idx_user_sessions_expiry` (`expires_at`)',
+  ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;',
+  '',
+  'CREATE TABLE IF NOT EXISTS `email_login_challenges` (',
+  '  `token_hash` VARCHAR(64) NOT NULL,',
+  '  `code_hash` VARCHAR(64) NOT NULL,',
+  '  `user_id` VARCHAR(191) NOT NULL,',
+  '  `attempts` BIGINT NOT NULL DEFAULT 0,',
+  '  `expires_at` BIGINT NOT NULL,',
+  '  `created_at` BIGINT NOT NULL,',
+  '  `consumed_at` BIGINT NULL,',
+  '  PRIMARY KEY (`token_hash`),',
+  '  KEY `idx_email_login_challenges_user_created` (`user_id`, `created_at`),',
+  '  KEY `idx_email_login_challenges_expiry` (`expires_at`),',
+  '  CONSTRAINT `email_login_challenges_user_id_users_id_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION',
+  ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;',
+  '',
+  '-- Foreign keys are added after every table exists to support circular references.',
+  ...foreignKeys,
+  'ALTER TABLE `user_credentials` ADD CONSTRAINT `user_credentials_user_id_users_id_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;',
+  'ALTER TABLE `user_sessions` ADD CONSTRAINT `user_sessions_user_id_users_id_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;',
+  '',
+  '-- Production-safe discovery taxonomy. No sample users, sellers, or products are inserted.',
+  `INSERT IGNORE INTO \`categories\` (\`id\`, \`parent_id\`, \`slug\`, \`name_en\`, \`name_ne\`, \`is_active\`, \`sort_order\`, \`created_at\`, \`updated_at\`) VALUES
+  ('cat-gifts', NULL, 'gifts', 'Gifts', 'उपहार', 1, 10, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('cat-home-decor', NULL, 'home-decor', 'Home decor', 'गृह सजावट', 1, 20, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('cat-jewelry-accessories', NULL, 'jewelry-accessories', 'Jewelry & accessories', 'गहना तथा सहायक सामग्री', 1, 30, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('cat-traditional-textiles', NULL, 'traditional-textiles', 'Traditional textiles', 'परम्परागत कपडा', 1, 40, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('cat-lifestyle', NULL, 'lifestyle', 'Lifestyle', 'जीवनशैली', 1, 50, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('cat-art-paintings', NULL, 'art-paintings', 'Art & paintings', 'कला तथा चित्रकला', 1, 60, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('cat-pottery', NULL, 'pottery', 'Pottery', 'माटोका भाँडा', 1, 70, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('cat-wood-bamboo-craft', NULL, 'wood-bamboo-craft', 'Wood/bamboo craft', 'काठ तथा बाँसका हस्तकला', 1, 80, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('cat-personalized-gifts', NULL, 'personalized-gifts', 'Personalized gifts', 'व्यक्तिगत उपहार', 1, 90, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('cat-corporate-gifting', NULL, 'corporate-gifting', 'Corporate gifting', 'संस्थागत उपहार', 1, 100, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000);`,
+  '',
+  `INSERT IGNORE INTO \`occasions\` (\`id\`, \`slug\`, \`name_en\`, \`name_ne\`, \`is_active\`, \`sort_order\`, \`created_at\`, \`updated_at\`) VALUES
+  ('occasion-birthday', 'birthday-gifts', 'Birthday gifts', 'जन्मदिनका उपहार', 1, 10, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-wedding', 'wedding-gifts', 'Wedding gifts', 'विवाहका उपहार', 1, 20, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-dashain', 'dashain-gifts', 'Dashain gifts', 'दशैंका उपहार', 1, 30, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-tihar', 'tihar-gifts', 'Tihar gifts', 'तिहारका उपहार', 1, 40, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-mothers-day', 'mothers-day', 'Mother''s Day', 'आमाको मुख हेर्ने दिन', 1, 50, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-fathers-day', 'fathers-day', 'Father''s Day', 'बुबाको मुख हेर्ने दिन', 1, 60, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-anniversary', 'anniversary', 'Anniversary', 'वार्षिकोत्सव', 1, 70, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-corporate', 'corporate-gifts', 'Corporate gifts', 'संस्थागत उपहार', 1, 80, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-nepali-abroad', 'nepali-gifts-abroad', 'Nepali gifts abroad', 'विदेशमा नेपाली उपहार', 1, 90, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-housewarming', 'housewarming', 'Housewarming', 'गृहप्रवेशका उपहार', 1, 100, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-personalized', 'personalized-gifts', 'Personalized gifts', 'व्यक्तिगत उपहार', 1, 110, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000);`,
+  '',
+  'CREATE TABLE IF NOT EXISTS `hastabazaar_schema_versions` (',
+  '  `version` VARCHAR(64) NOT NULL,',
+  '  `applied_at` BIGINT NOT NULL,',
+  '  PRIMARY KEY (`version`)',
+  ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;',
+  "INSERT IGNORE INTO `hastabazaar_schema_versions` (`version`, `applied_at`) VALUES ('0020_snapshot', UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000);",
+  '',
+  'SET FOREIGN_KEY_CHECKS = 1;',
+  '',
+);
+
+await mkdir(dirname(outputPath), { recursive: true });
+const schemaSql = output.join('\n');
+await writeFile(outputPath, schemaSql, 'utf8');
+const resetTables = [
+  'email_login_challenges',
+  'user_sessions',
+  'user_credentials',
+  'hastabazaar_schema_versions',
+  ...Object.keys(snapshot.tables).reverse(),
+];
+const recoverySql = [
+  '-- RECOVERY ONLY: clears the failed partial import in an otherwise empty database.',
+  '-- Do not use this file after real users, products, orders, or uploads exist.',
+  'SET FOREIGN_KEY_CHECKS = 0;',
+  ...resetTables.map((table) => `DROP TABLE IF EXISTS ${quote(table)};`),
+  '',
+  schemaSql,
+].join('\n');
+await writeFile(recoveryOutputPath, recoverySql, 'utf8');
+console.log(`Wrote ${outputPath}`);
+console.log(`Wrote ${recoveryOutputPath}`);

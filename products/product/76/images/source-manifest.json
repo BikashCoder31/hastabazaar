@@ -1,0 +1,37 @@
+{
+  "productNumber": 76,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only three gallery images were available and two lifestyle images are near-duplicate compositions; four distinct images are required.",
+  "sourcePage": "https://www.amazon.in/dp/B0GRP4BPBM",
+  "selectedVariant": "1-piece Red Rose variant",
+  "requiredImageCount": 4,
+  "includedImageCount": 2,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0GRP4BPBM",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51SiKNLH6ML.jpg",
+      "filename": "hathkriti-p76-b0grp4bpbm-01.jpg",
+      "dimensions": {
+        "width": 400,
+        "height": 500
+      },
+      "byteSize": 33804,
+      "sha256": "9c3d731328e14db0e4995e8eae185809137d3ed6e22e57ce7eaf73556b1c090c",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0GRP4BPBM",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41BmjkNjKPL.jpg",
+      "filename": "hathkriti-p76-b0grp4bpbm-02.jpg",
+      "dimensions": {
+        "width": 400,
+        "height": 500
+      },
+      "byteSize": 28445,
+      "sha256": "7d224006395b210b3dc16f7e5bb327083464db9886d802bb1c5eaf7172c91d21",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "sourcePage": "https://www.amazon.in/dp/B0HCTK2G6F",
+  "shortSourcePage": "https://amzn.in/d/0feju22m",
+  "videoDownloaded": false,
+  "exactDuplicatesFound": false,
+  "selectionNote": "Only three distinct legitimate product-gallery images were available; no fourth duplicate was added.",
+  "images": [
+    {
+      "sourceImageReference": "https://m.media-amazon.com/images/I/61FG4vK3ttL._SL1500_.jpg",
+      "localFilename": "hb-ja-b0hctk2g6f-pink-01.jpg",
+      "width": 1500,
+      "height": 998,
+      "byteSize": 93343,
+      "sha256": "4126a8ae9c9984b2030cbd05c36e7304b47a868d1e0395e2d6699d0be3a430c8"
+    },
+    {
+      "sourceImageReference": "https://m.media-amazon.com/images/I/71w8F3SA2ZL._SL1254_.jpg",
+      "localFilename": "hb-ja-b0hctk2g6f-pink-02.jpg",
+      "width": 1254,
+      "height": 1254,
+      "byteSize": 142547,
+      "sha256": "3fb7a9ad733c1e6adf1ce13fe150efdf1ee03c54bdb43b5a1cab642811d87ef1"
+    },
+    {
+      "sourceImageReference": "https://m.media-amazon.com/images/I/71ZJWtUFcFL._SL1500_.jpg",
+      "localFilename": "hb-ja-b0hctk2g6f-pink-03.jpg",
+      "width": 1500,
+      "height": 1500,
+      "byteSize": 118913,
+      "sha256": "c365049a9e69bd0410acee2405fd4cb18ad9d43e6bc5f739bc5457b292a0ab1b"
+    }
+  ]
+}

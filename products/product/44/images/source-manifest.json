@@ -1,0 +1,50 @@
+{
+  "productNumber": 44,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only three images matched the selected green earrings; two shared gallery assets showed unrelated jewellery and were rejected.",
+  "sourcePage": "https://www.amazon.in/dp/B0DGXDSNVM",
+  "selectedVariant": "Green multicolour hand-painted design",
+  "requiredImageCount": 4,
+  "includedImageCount": 3,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0DGXDSNVM",
+      "originalImageReference": "https://m.media-amazon.com/images/I/710mEC+wcBL._SL1200_.jpg",
+      "filename": "hathkriti-p44-b0dgxdsnvm-01.jpg",
+      "dimensions": {
+        "width": 1200,
+        "height": 1200
+      },
+      "byteSize": 150496,
+      "sha256": "ffb79b139aa95adc64ee0c77420cec9e7e3fc4f36d68b069fa996e01f6ed677e",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0DGXDSNVM",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61+tdWLftgL._SL1200_.jpg",
+      "filename": "hathkriti-p44-b0dgxdsnvm-02.jpg",
+      "dimensions": {
+        "width": 1200,
+        "height": 1200
+      },
+      "byteSize": 86091,
+      "sha256": "6da01832bac02b4ff814e006b6049990894e842ffd294782902d66d732c4483d",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0DGXDSNVM",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61hwq5PDGHL._SL1200_.jpg",
+      "filename": "hathkriti-p44-b0dgxdsnvm-03.jpg",
+      "dimensions": {
+        "width": 1200,
+        "height": 1200
+      },
+      "byteSize": 97441,
+      "sha256": "370957547ccce7463aa0485db4ee1bffc0a19a64005ec3b9b0e9fecd8b9376e3",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 3
+    }
+  ]
+}

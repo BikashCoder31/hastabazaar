@@ -1,0 +1,80 @@
+{
+  "productNumber": 88,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/03c0k0WF",
+    "canonicalUrl": "https://www.amazon.in/dp/B0FPLCJSMQ",
+    "asin": "B0FPLCJSMQ",
+    "sourceTitle": "PATPAT Crochet Butterfly Mini Hanging Positive Message Emotional Support",
+    "sourcePriceInr": 361.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "PATPAT Hot-Pink Crochet Butterfly Positive-Message Hanging",
+    "brand": "PATPAT",
+    "manufacturer": "PATPAT",
+    "description": "PATPAT Hot-Pink Crochet Butterfly Positive-Message Hanging features handmade hot-pink crochet butterfly ornament. It combines positive-message card attached to the front with compact hanging design. Designed for home, office or personal display spaces.",
+    "keyFeatures": [
+      "Handmade hot-pink crochet butterfly ornament",
+      "Positive-message card attached to the front",
+      "Compact hanging design",
+      "Designed for home, office or personal display spaces"
+    ],
+    "specifications": {
+      "colourAndVariant": "Hot Pink; butterfly hanging with positive-message card",
+      "dimensions": "10 × 7 × 2 cm",
+      "weight": "10 g",
+      "modelOrIdentifier": "ASIN B0FPLCJSMQ",
+      "countryOfOrigin": "China"
+    },
+    "materials": "Source feature text describes premium woollen yarn; the source fact table inconsistently lists silicone",
+    "packageContents": "1 crochet butterfly hanging with message card",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Home Décor > Hanging Ornaments",
+    "tags": [
+      "crochet butterfly",
+      "positive message gift",
+      "hot pink hanging",
+      "emotional support gift",
+      "PATPAT"
+    ],
+    "giftOccasions": [
+      "Birthday",
+      "Friendship",
+      "Encouragement"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "PATPAT Hot-Pink Crochet Butterfly Positive-Message Hanging | Hathkriti",
+    "seoDescription": "PATPAT Hot-Pink Crochet Butterfly Positive-Message Hanging from Hathkriti. Handmade hot-pink crochet butterfly ornament. Colour/variant: Hot Pink; butterfly hanging with positive-message card."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 778,
+    "originalPriceNpr": 1556,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p88-b0fplcjsmq-01.jpg",
+      "images/hathkriti-p88-b0fplcjsmq-02.jpg",
+      "images/hathkriti-p88-b0fplcjsmq-03.jpg",
+      "images/hathkriti-p88-b0fplcjsmq-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source feature text describes woollen yarn while its fact table lists silicone; both claims are preserved rather than resolving the inconsistency."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

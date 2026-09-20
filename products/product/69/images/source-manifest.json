@@ -1,0 +1,24 @@
+{
+  "productNumber": 69,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only one clean isolated product image remained; the rest of the gallery consists of branded promotional or feature panels.",
+  "sourcePage": "https://www.amazon.in/dp/B0GNMNR8XW",
+  "selectedVariant": "Natural straw with floral embroidery",
+  "requiredImageCount": 4,
+  "includedImageCount": 1,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0GNMNR8XW",
+      "originalImageReference": "https://m.media-amazon.com/images/I/4180Ws+8-BL.jpg",
+      "filename": "hathkriti-p69-b0gnmnr8xw-01.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 23501,
+      "sha256": "334d4798f933bf059ba3494576f0a52a810d6d8197c236a86703d9cbcc633471",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    }
+  ]
+}

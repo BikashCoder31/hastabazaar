@@ -1,0 +1,80 @@
+{
+  "productNumber": 87,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0djNqSHE",
+    "canonicalUrl": "https://www.amazon.in/dp/B0H2XPSPW4",
+    "asin": "B0H2XPSPW4",
+    "sourceTitle": "Crochet Toys Blue Bean with Graduation Cap Crochet Gifts for Friends, Handmade Crochet Items with Positive Message Card for Graduates, Miniature Cute Stuff for Office Home Decor",
+    "sourcePriceInr": 329.0,
+    "sourceReturnable": false
+  },
+  "listing": {
+    "storefrontTitle": "Cybersnc Blue Graduation-Bean Crochet Desk Toy",
+    "brand": "Cybersnc",
+    "manufacturer": "Cybersnc",
+    "description": "Cybersnc Blue Graduation-Bean Crochet Desk Toy features handmade blue bean-shaped crochet figure. It combines graduation cap and tassel detail with positive message card for graduates. Compact size for desks, shelves or car dashboards.",
+    "keyFeatures": [
+      "Handmade blue bean-shaped crochet figure",
+      "Graduation cap and tassel detail",
+      "Positive message card for graduates",
+      "Compact size for desks, shelves or car dashboards"
+    ],
+    "specifications": {
+      "colourAndVariant": "Blue Bean with graduation cap and message card",
+      "dimensions": "9.5 × 5.5 × 14 cm per source gallery size panel",
+      "weight": "20 g",
+      "modelOrIdentifier": "T0XK0HC0XU; ASIN B0H2XPSPW4",
+      "countryOfOrigin": "Not stated on the source page."
+    },
+    "materials": "Polyester outer material with soft yarn construction",
+    "packageContents": "1 crochet graduation bean with message card",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Home Décor > Decorative Objects",
+    "tags": [
+      "graduation crochet gift",
+      "blue bean toy",
+      "positive message gift",
+      "desk décor",
+      "Cybersnc"
+    ],
+    "giftOccasions": [
+      "Graduation",
+      "Farewell",
+      "Friendship"
+    ],
+    "safetyInformation": "Source lists a manufacturer-recommended age of 2 months to 3 years.",
+    "seoTitle": "Cybersnc Blue Graduation-Bean Crochet Desk Toy | Hathkriti",
+    "seoDescription": "Cybersnc Blue Graduation-Bean Crochet Desk Toy from Hathkriti. Handmade blue bean-shaped crochet figure. Colour/variant: Blue Bean with graduation cap and message card."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 726,
+    "originalPriceNpr": 1452,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": null,
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p87-b0h2xpspw4-01.jpg",
+      "images/hathkriti-p87-b0h2xpspw4-02.jpg",
+      "images/hathkriti-p87-b0h2xpspw4-03.jpg",
+      "images/hathkriti-p87-b0h2xpspw4-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source page did not display a returnability confirmation, so no 10-day return wording is included."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

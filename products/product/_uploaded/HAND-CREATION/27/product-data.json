@@ -1,0 +1,73 @@
+{
+  "productNumber": 27,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/04rNVBxL",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HC4S9NL7",
+    "asin": "B0HC4S9NL7",
+    "sourceTitle": "Handmade Quilted Small Tote Bag for Women with Zipper – 100% Cotton Floral Print Lunch Bag| Reusable Eco-Friendly Tote for Office, Travel, Shopping, Picnic & Gifting Handbag",
+    "sourcePriceInr": 649.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "THREADORA LIVING Indigo Garden Quilted Cotton Tote Bag",
+    "brand": "THREADORA LIVING",
+    "manufacturer": "Labels by Daisy",
+    "description": "THREADORA LIVING Indigo Garden Quilted Cotton Tote Bag features quilted cotton construction with floral print. It combines zipper closure and one main compartment with double handles. Foldable, lightweight and home washable.",
+    "keyFeatures": [
+      "Quilted cotton construction with floral print",
+      "Zipper closure and one main compartment",
+      "Double handles",
+      "Foldable, lightweight and home washable"
+    ],
+    "specifications": {
+      "colourAndVariant": "Indigo Garden floral print",
+      "dimensions": "30 × 2 × 30 cm",
+      "weight": "300 g",
+      "modelOrIdentifier": "TL-TOTE-001; ASIN B0HC4S9NL7",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Cotton outer, cotton lining and cotton handles",
+    "packageContents": "1 tote bag",
+    "careInstructions": "Hand wash or home wash; follow the source care label",
+    "category": "Bags > Totes",
+    "tags": [
+      "quilted tote bag",
+      "cotton tote",
+      "floral lunch bag",
+      "indigo bag",
+      "reusable tote"
+    ],
+    "safetyInformation": "Not water resistant",
+    "seoTitle": "THREADORA LIVING Indigo Garden Quilted Cotton Tote Bag | Hathkriti",
+    "seoDescription": "THREADORA LIVING Indigo Garden Quilted Cotton Tote Bag from Hathkriti. Quilted cotton construction with floral print. Colour/variant: Indigo Garden floral print."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1238,
+    "originalPriceNpr": 2476,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p27-b0hc4s9nl7-01.jpg",
+      "images/hathkriti-p27-b0hc4s9nl7-02.jpg",
+      "images/hathkriti-p27-b0hc4s9nl7-03.jpg",
+      "images/hathkriti-p27-b0hc4s9nl7-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

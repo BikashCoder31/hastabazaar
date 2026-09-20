@@ -1,0 +1,63 @@
+{
+  "productNumber": 33,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B082R66QHS",
+  "selectedVariant": "Lush Midnight",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B082R66QHS",
+      "originalImageReference": "https://m.media-amazon.com/images/I/615S-Q04WbL._SL1080_.jpg",
+      "filename": "hathkriti-p33-b082r66qhs-01.jpg",
+      "dimensions": {
+        "width": 1080,
+        "height": 1080
+      },
+      "byteSize": 111789,
+      "sha256": "06de7b9e01ed57482639e89dcc2da4f1585a01ce7e84e7547327fa698e929650",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B082R66QHS",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71IJCvGJwZL._SL1500_.jpg",
+      "filename": "hathkriti-p33-b082r66qhs-02.jpg",
+      "dimensions": {
+        "width": 1500,
+        "height": 1500
+      },
+      "byteSize": 171600,
+      "sha256": "348d69ad169c892ac20e8a51efca084609f992f2738fd5e3e9eaf1faa54f19a2",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B082R66QHS",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71ZO9rzS17L._SL1500_.jpg",
+      "filename": "hathkriti-p33-b082r66qhs-03.jpg",
+      "dimensions": {
+        "width": 1500,
+        "height": 1500
+      },
+      "byteSize": 118844,
+      "sha256": "0e84beb0912d2cb01e622dfdfae5d30d5a45e7bd64750bae0096888ab33b8045",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 4
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B082R66QHS",
+      "originalImageReference": "https://m.media-amazon.com/images/I/91atZvj01fL._SL1500_.jpg",
+      "filename": "hathkriti-p33-b082r66qhs-04.jpg",
+      "dimensions": {
+        "width": 1500,
+        "height": 1500
+      },
+      "byteSize": 395288,
+      "sha256": "a718c5f9fa9d5068672356571a2cd8abbd7abf944bfa54f77556fdd78ffbc1f6",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 5
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "productNumber": 35,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two clean unbranded product views remained after rejecting branded packaging and synthetic-looking lifestyle scenes.",
+  "sourcePage": "https://www.amazon.in/dp/B0H9HT914Z",
+  "selectedVariant": "Brown bear design",
+  "requiredImageCount": 4,
+  "includedImageCount": 2,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H9HT914Z",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61rZTFtoSmL._SL1254_.jpg",
+      "filename": "hathkriti-p35-b0h9ht914z-01.jpg",
+      "dimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "byteSize": 96802,
+      "sha256": "77bd3a8c9677e000bd64f1146ce69494f93d323941810fb1d45862c0ab64d37c",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H9HT914Z",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61oarW0EdgL._SL1254_.jpg",
+      "filename": "hathkriti-p35-b0h9ht914z-02.jpg",
+      "dimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "byteSize": 108614,
+      "sha256": "2c0df0eeca97e09e3b1656399fcd70bcd18a17b2f0c032d64afc21bddded89be",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 5
+    }
+  ]
+}

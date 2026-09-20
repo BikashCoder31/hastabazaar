@@ -1,0 +1,73 @@
+{
+  "productNumber": 57,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0ghrCa9C",
+    "canonicalUrl": "https://www.amazon.in/dp/B0BTJ431D9",
+    "asin": "B0BTJ431D9",
+    "sourceTitle": "Maresse Women Boho Bag Embroidered Crossbody Sling Bag For Women",
+    "sourcePriceInr": 899.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Maresse Green Embroidered Boho Clutch & Sling Bag",
+    "brand": "Generic (source storefront); Maresse source title",
+    "manufacturer": "Rey Retails",
+    "description": "Maresse Green Embroidered Boho Clutch & Sling Bag features embroidered bohemian envelope clutch. It combines mirror, bead, coin and fringe embellishments with detachable silver-tone chain strap. Convertible clutch and crossbody styling.",
+    "keyFeatures": [
+      "Embroidered bohemian envelope clutch",
+      "Mirror, bead, coin and fringe embellishments",
+      "Detachable silver-tone chain strap",
+      "Convertible clutch and crossbody styling"
+    ],
+    "specifications": {
+      "colourAndVariant": "Green",
+      "dimensions": "12 × 5 × 9 cm",
+      "weight": "400 g",
+      "modelOrIdentifier": "107108; ASIN B0BTJ431D9",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Embroidered textile with bead, mirror, coin and fringe embellishments; chain metal not stated",
+    "packageContents": "1 clutch with detachable chain strap",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Clutches",
+    "tags": [
+      "green boho bag",
+      "embroidered clutch",
+      "mirror work purse",
+      "crossbody clutch",
+      "Maresse bag"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Maresse Green Embroidered Boho Clutch & Sling Bag | Hathkriti",
+    "seoDescription": "Maresse Green Embroidered Boho Clutch & Sling Bag from Hathkriti. Embroidered bohemian envelope clutch. Colour/variant: Green."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1638,
+    "originalPriceNpr": 3276,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p57-b0btj431d9-01.jpg",
+      "images/hathkriti-p57-b0btj431d9-02.jpg",
+      "images/hathkriti-p57-b0btj431d9-03.jpg",
+      "images/hathkriti-p57-b0btj431d9-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

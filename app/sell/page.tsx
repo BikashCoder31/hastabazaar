@@ -1,5 +1,8 @@
 import type { Metadata } from 'next';
+import { getAuthenticatedUser } from '@/app/auth';
+export const dynamic = 'force-dynamic';
 import { ClipboardCheck, FileCheck2, Store } from 'lucide-react';
+import Link from 'next/link';
 
 import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
@@ -8,19 +11,19 @@ import { SellerApplicationForm } from '@/components/seller/seller-application-fo
 export const metadata: Metadata = {
   title: 'Sell with us',
   description:
-    'Apply to become a verified seller on Hastabazaar, Nepal’s handmade marketplace.',
+    'Apply to become a verified seller on HastaBazaar.',
 };
 
 const steps = [
   {
     icon: Store,
     title: 'Tell us about your business',
-    body: 'Share your registered identity, location, and the products you make or curate.',
+    body: 'Choose Individual or Company, then share your legal identity, contact details and products.',
   },
   {
     icon: FileCheck2,
     title: 'Provide verification',
-    body: 'Upload registration, tax, and representative documents for private review.',
+    body: 'Upload your selected PAN and/or VAT certificates. Companies also provide registration evidence.',
   },
   {
     icon: ClipboardCheck,
@@ -29,18 +32,19 @@ const steps = [
   },
 ];
 
-export default function SellPage() {
+export default async function SellPage() {
+  const identity = await getAuthenticatedUser();
   return (
     <div className="min-h-screen bg-background text-foreground">
       <SiteHeader />
-      <main>
+      <main tabIndex={-1} id="main-content">
         <section className="border-b border-border/70 bg-secondary/35">
           <div className="shell py-12 lg:py-16">
             <p className="eyebrow">For makers and craft businesses in Nepal</p>
             <div className="mt-4 grid gap-8 lg:grid-cols-[1fr_0.9fr] lg:items-end">
               <div>
                 <h1 className="max-w-3xl font-heading text-5xl leading-[1.02] tracking-tight sm:text-6xl">
-                  Bring your work to Hastabazaar.
+                  Bring your work to HastaBazaar.
                 </h1>
                 <p className="mt-5 max-w-2xl text-lg leading-8 text-muted-foreground">
                   Apply once with your registered business details. No listing
@@ -48,9 +52,17 @@ export default function SellPage() {
                 </p>
               </div>
               <p className="rounded-2xl border border-border bg-background/80 p-5 text-sm leading-6 text-muted-foreground">
-                Hastabazaar charges a 12% commission on the item subtotal after
-                seller-funded discounts. There is no joining fee or buyer
-                platform fee at launch.
+                <strong>9% commission on completed, paid product sales. No joining fee.</strong>{' '}
+                HastaBazaar charges a 9% commission on the product selling value
+                after seller-funded discounts, excluding separately stated
+                product taxes and delivery charges. Discounts funded entirely by
+                HastaBazaar do not reduce the seller&apos;s agreed product value.
+                Taxes legally chargeable on the commission are itemised
+                separately.{' '}
+                <Link href="/seller-agreement" className="font-semibold text-primary underline">
+                  Read the Seller Marketplace Agreement
+                </Link>
+                .
               </p>
             </div>
           </div>
@@ -82,7 +94,7 @@ export default function SellPage() {
               Start verification
             </h2>
           </div>
-          <SellerApplicationForm />
+          <SellerApplicationForm accountEmail={identity?.email} />
         </section>
       </main>
       <SiteFooter />

@@ -1,0 +1,63 @@
+{
+  "productNumber": 84,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0GG44W63Z",
+  "selectedVariant": "Peacock - Big; handpainted pair",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0GG44W63Z",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71L9jy1TolL._SL1500_.jpg",
+      "filename": "hathkriti-p84-b0gg44w63z-01.jpg",
+      "dimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "byteSize": 157143,
+      "sha256": "34499e9f64946f54b7b40cf2e2324fc0e7d941402d9f2db4595295c3c64e0a57",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0GG44W63Z",
+      "originalImageReference": "https://m.media-amazon.com/images/I/512QUUF0-wL._SL1500_.jpg",
+      "filename": "hathkriti-p84-b0gg44w63z-02.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 34356,
+      "sha256": "ccbd3e551e6c0e0e6f51d39e02f92386b40b9e599b618913225e2c5d29ac4bac",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 3
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0GG44W63Z",
+      "originalImageReference": "https://m.media-amazon.com/images/I/514Eiadan3L._SL1500_.jpg",
+      "filename": "hathkriti-p84-b0gg44w63z-03.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 38864,
+      "sha256": "c00844f6b96c5c709b7a931b2da5acceae21549c15c24cf3cdf9e7579b06c4aa",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 4
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0GG44W63Z",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41TXohtQkkL._SL1500_.jpg",
+      "filename": "hathkriti-p84-b0gg44w63z-04.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 31048,
+      "sha256": "035cfb230e25d496d3b93c44670e2da7340e68aae8bb99d425129f7d80f56458",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 7
+    }
+  ]
+}

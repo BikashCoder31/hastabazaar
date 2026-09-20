@@ -1,3 +1,5 @@
+import {staffMutationGuard} from './staff-mutation-guard';
+import { operationalBusinessNotificationStatements } from '../../operations/business-notifications';
 import type { StaffRole } from '@/lib/auth/staff';
 import { phaseOneMarketplacePolicy } from '@/lib/marketplace/policy';
 
@@ -35,7 +37,9 @@ export function buildEarningsAccrualStatements(
     FROM order_items
     INNER JOIN orders ON orders.id = order_items.order_id
     INNER JOIN seller_profiles ON seller_profiles.id = order_items.seller_id
-    WHERE orders.status = 'delivered' AND order_items.fulfillment_status = 'delivered'
+    WHERE orders.status = 'delivered' AND orders.payment_status = 'paid'
+      AND order_items.fulfillment_status = 'delivered'
+      AND NOT EXISTS(SELECT 1 FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id WHERE j.order_id=orders.id AND ((j.status NOT IN ('delivered','cancelled')) OR p.remitted_paisa<>p.cod_due_paisa))
       ${orderFilter}`;
 
   return [
@@ -59,7 +63,7 @@ export function buildEarningsAccrualStatements(
       ) SELECT lower(hex(randomblob(16))), order_items.seller_id, order_items.id,
         NULL, NULL, 'commission', -order_items.commission_paisa,
         COALESCE(orders.delivered_at, ?) + ?,
-        'Hastabazaar commission', COALESCE(orders.delivered_at, ?)
+        'HastaBazaar commission', COALESCE(orders.delivered_at, ?)
         ${base}`,
       )
       .bind(options.now, availableOffset, options.now, ...orderBindings),
@@ -112,6 +116,7 @@ export async function accrueExistingDeliveredEarnings(
   database: D1Database,
   options: { actorId: string; requestId: string; now: number },
 ): Promise<void> {
+  const authority=await staffMutationGuard(database,options.actorId,'payout.prepare',PayoutConflictError);
   if (
     await database
       .prepare(`SELECT id FROM audit_logs WHERE request_id = ? LIMIT 1`)
@@ -137,6 +142,7 @@ export async function accrueExistingDeliveredEarnings(
         options.requestId,
         options.now,
       ),
+    ...authority.statements,
   ]);
 }
 
@@ -145,6 +151,7 @@ export interface SellerFinanceSummary {
   pendingPaisa: number;
   grossSalesPaisa: number;
   commissionPaisa: number;
+  commissionReversalPaisa: number;
   refundPaisa: number;
   paidPaisa: number;
 }
@@ -231,6 +238,7 @@ export async function getSellerFinanceSummary(
       COALESCE(SUM(CASE WHEN payout_entries.ledger_entry_id IS NULL AND seller_ledger_entries.available_at > ? THEN seller_ledger_entries.amount_paisa ELSE 0 END), 0) AS pendingPaisa,
       COALESCE(SUM(CASE WHEN seller_ledger_entries.type = 'sale' THEN seller_ledger_entries.amount_paisa ELSE 0 END), 0) AS grossSalesPaisa,
       COALESCE(SUM(CASE WHEN seller_ledger_entries.type = 'commission' THEN seller_ledger_entries.amount_paisa ELSE 0 END), 0) AS commissionPaisa,
+      COALESCE(SUM(CASE WHEN seller_ledger_entries.type = 'commission_reversal' THEN seller_ledger_entries.amount_paisa ELSE 0 END), 0) AS commissionReversalPaisa,
       COALESCE(SUM(CASE WHEN seller_ledger_entries.type = 'refund' THEN seller_ledger_entries.amount_paisa ELSE 0 END), 0) AS refundPaisa
      FROM seller_ledger_entries
      LEFT JOIN payout_entries ON payout_entries.ledger_entry_id = seller_ledger_entries.id AND payout_entries.released_at IS NULL
@@ -249,6 +257,7 @@ export async function getSellerFinanceSummary(
     pendingPaisa: Number(ledger?.pendingPaisa ?? 0),
     grossSalesPaisa: Number(ledger?.grossSalesPaisa ?? 0),
     commissionPaisa: Number(ledger?.commissionPaisa ?? 0),
+    commissionReversalPaisa: Number(ledger?.commissionReversalPaisa ?? 0),
     refundPaisa: Number(ledger?.refundPaisa ?? 0),
     paidPaisa: Number(paid?.paidPaisa ?? 0),
   };
@@ -323,10 +332,10 @@ export async function listPayoutCandidates(
        AND seller_ledger_entries.available_at <= ?
        AND payout_entries.ledger_entry_id IS NULL
      GROUP BY seller_profiles.id
-     HAVING SUM(seller_ledger_entries.amount_paisa) >= ?
+     HAVING SUM(seller_ledger_entries.amount_paisa) > 0
      ORDER BY amountPaisa DESC`,
     )
-    .bind(now, payoutPolicy.minimumPayoutPaisa)
+    .bind(now)
     .all<PayoutCandidate>();
   return result.results;
 }
@@ -406,9 +415,9 @@ export async function requestSellerPayout(
     options.sellerId,
     options.now,
   );
-  if (summary.availablePaisa < payoutPolicy.minimumPayoutPaisa)
+  if (summary.availablePaisa <= 0)
     throw new PayoutConflictError(
-      `Your available balance has not reached the NPR ${(payoutPolicy.minimumPayoutPaisa / 100).toLocaleString('en-NP')} minimum.`,
+      'A positive available balance is required to request a payout.',
     );
   const note = options.note.trim();
   if (note.length < 8 || note.length > 500)
@@ -444,6 +453,7 @@ export async function requestSellerPayout(
         options.requestId,
         options.now,
       ),
+    ...await operationalBusinessNotificationStatements(database,{kind:'payout.requested',sourceId:id,eventId:options.requestId,actorId:options.actorId,now:options.now}),
   ]);
   return id;
 }
@@ -460,6 +470,7 @@ export async function processPayoutRequest(
     now: number;
   },
 ): Promise<void> {
+  const authority=await staffMutationGuard(database,options.actorId,'payout.prepare',PayoutConflictError,options.actorRole);
   if (
     await database
       .prepare(`SELECT id FROM audit_logs WHERE request_id = ?`)
@@ -518,6 +529,7 @@ export async function processPayoutRequest(
           options.requestId,
           options.now,
         ),
+      ...authority.statements,
     ]);
   } else {
     await database.batch([
@@ -546,7 +558,9 @@ export async function processPayoutRequest(
           options.requestId,
           options.now,
         ),
-    ]);
+        ...await operationalBusinessNotificationStatements(database,{kind:'payout.request.result',sourceId:options.id,eventId:options.requestId,actorId:options.actorId,now:options.now}),
+    ...authority.statements,
+  ]);
   }
 }
 
@@ -566,6 +580,7 @@ export async function prepareSellerPayout(
     now: number;
   },
 ): Promise<{ id: string; duplicate: boolean }> {
+  const authority=await staffMutationGuard(database,options.actorId,'payout.prepare',PayoutConflictError,options.actorRole);
   const duplicate = await database
     .prepare(`SELECT id FROM payouts WHERE created_request_id = ? LIMIT 1`)
     .bind(options.requestId)
@@ -599,9 +614,9 @@ export async function prepareSellerPayout(
     (sum, entry) => sum + entry.amountPaisa,
     0,
   );
-  if (amountPaisa < payoutPolicy.minimumPayoutPaisa) {
+  if (amountPaisa <= 0) {
     throw new PayoutConflictError(
-      `The seller has not reached the NPR ${(payoutPolicy.minimumPayoutPaisa / 100).toLocaleString('en-NP')} minimum payout.`,
+      'The seller needs a positive available balance for payout preparation.',
     );
   }
   const note = options.note.trim();
@@ -681,6 +696,8 @@ export async function prepareSellerPayout(
         options.requestId,
       ),
   );
+  statements.push(...await operationalBusinessNotificationStatements(database,{kind:'payout.prepared',sourceId:payoutId,eventId:options.requestId,actorId:options.actorId,now:options.now}));
+  statements.push(...authority.statements);
   await database.batch(statements);
   return { id: payoutId, duplicate: false };
 }
@@ -741,6 +758,7 @@ export async function operatePayout(
     now: number;
   },
 ): Promise<void> {
+  const authority=await staffMutationGuard(database,options.actorId,options.action==='approve'||options.action==='reject'?'payout.approve':'payout.mark_paid',PayoutConflictError,options.actorRole);
   if (
     await database
       .prepare(`SELECT id FROM payout_events WHERE request_id = ? LIMIT 1`)
@@ -914,6 +932,8 @@ export async function operatePayout(
         options.payoutId,
         options.requestId,
       ),
+    ...await operationalBusinessNotificationStatements(database,{kind:'payout.result',sourceId:options.payoutId,eventId:options.requestId,actorId:options.actorId,now:options.now,status:toStatus}),
+    ...authority.statements,
   ]);
   if (
     (results[0].meta.changes ?? 0) !== 1 ||

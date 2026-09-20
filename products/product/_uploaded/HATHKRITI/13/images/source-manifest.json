@@ -1,0 +1,41 @@
+{
+  "sourcePage": "https://www.amazon.in/dp/B09V2J97YY",
+  "shortSourcePage": "https://amzn.in/d/0hn4k1lc",
+  "videoDownloaded": false,
+  "exactDuplicatesFound": false,
+  "selectionNote": "Four distinct product-gallery images selected after visual review.",
+  "images": [
+    {
+      "sourceImageReference": "https://m.media-amazon.com/images/I/51koVTR03UL._SL1000_.jpg",
+      "localFilename": "hb-ja-b09v2j97yy-sunflower-01.jpg",
+      "width": 1000,
+      "height": 1000,
+      "byteSize": 39498,
+      "sha256": "7fd1fe94fea19efa92c1d2691a5337c67fc053ffc0cfa1292aa51a2fb0d9d16b"
+    },
+    {
+      "sourceImageReference": "https://m.media-amazon.com/images/I/71f2Bo3vcCL._SL1116_.jpg",
+      "localFilename": "hb-ja-b09v2j97yy-sunflower-02.jpg",
+      "width": 896,
+      "height": 1116,
+      "byteSize": 134660,
+      "sha256": "f4f2adf2342365cc5dffbab4dc681b3723667157044f3a87f8175033412b9b07"
+    },
+    {
+      "sourceImageReference": "https://m.media-amazon.com/images/I/719KpxlctVL._SL1500_.jpg",
+      "localFilename": "hb-ja-b09v2j97yy-sunflower-03.jpg",
+      "width": 1341,
+      "height": 1500,
+      "byteSize": 80907,
+      "sha256": "827d04a34ceb7717fb25ed325a1ec9ab2def5701fc594653f4526b4896a8503b"
+    },
+    {
+      "sourceImageReference": "https://m.media-amazon.com/images/I/51H1YtfUIOL._SL1000_.jpg",
+      "localFilename": "hb-ja-b09v2j97yy-sunflower-04.jpg",
+      "width": 1000,
+      "height": 1000,
+      "byteSize": 55055,
+      "sha256": "74fbe139e3908e03efae41f92ec0f6cbf9cbf72c69f41799e0229af8b3559344"
+    }
+  ]
+}

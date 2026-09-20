@@ -1,0 +1,70 @@
+{
+  "productNumber": 78,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "The gallery relies entirely on synthetic-looking room composites and provides no clean isolated product views; a legitimate four-image set could not be verified.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0aKp1RvJ",
+    "canonicalUrl": "https://www.amazon.in/dp/B0H9DL4PCW",
+    "asin": "B0H9DL4PCW",
+    "sourceTitle": "Handmade 5 Birds Wall Hanging for Home Decoration Item,Festival,Kids Room,Balcony,Handcrafted Decorative Item",
+    "sourcePriceInr": 189.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Sohibe Multicolour Handmade Five-Bird Wall Hanging",
+    "brand": "Sohibe",
+    "manufacturer": "Not stated on the source page.",
+    "description": "Sohibe Multicolour Handmade Five-Bird Wall Hanging features handcrafted five-bird hanging design. It combines vibrant floral patterns with decorative hanging elements that make a gentle sound when moved. Eco-friendly weatherproof and water-resistant paint.",
+    "keyFeatures": [
+      "Handcrafted five-bird hanging design",
+      "Vibrant floral patterns",
+      "Decorative hanging elements that make a gentle sound when moved",
+      "Eco-friendly weatherproof and water-resistant paint"
+    ],
+    "specifications": {
+      "colourAndVariant": "Multicolour five-bird floral design",
+      "dimensions": "Not stated on the source page.",
+      "weight": "Not stated on the source page.",
+      "modelOrIdentifier": "ASIN B0H9DL4PCW",
+      "countryOfOrigin": "Not stated on the source page."
+    },
+    "materials": "Material composition is not stated; the source states eco-friendly, weatherproof and water-resistant paint",
+    "packageContents": "1 five-bird wall hanging",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Home Décor > Hanging Ornaments",
+    "tags": [
+      "bird wall hanging",
+      "multicolour home décor",
+      "handcrafted ornament",
+      "balcony hanging",
+      "Sohibe"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Sohibe Multicolour Handmade Five-Bird Wall Hanging | Hathkriti",
+    "seoDescription": "Sohibe Multicolour Handmade Five-Bird Wall Hanging from Hathkriti. Handcrafted five-bird hanging design. Colour/variant: Multicolour five-bird floral design."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 502,
+    "originalPriceNpr": 1004,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 0,
+    "files": [],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source notes that handmade items may show slight colour or design variations."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

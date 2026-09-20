@@ -1,0 +1,46 @@
+{
+  "productNumber": 36,
+  "sourcePage": "https://amzn.in/d/0fepewAR",
+  "canonicalSourcePage": "https://www.amazon.in/dp/B0H515J46W",
+  "selectionRule": "Up to four distinct ordinary images for the selected Pink variant from the Amazon product gallery; synthetic-looking lifestyle images, videos, review images, ads and unrelated media excluded.",
+  "videoDownloaded": false,
+  "exactDuplicatesFoundAndExcluded": [],
+  "images": [
+    {
+      "sourcePage": "https://amzn.in/d/0fepewAR",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0H515J46W",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51wZD7Os5zL.jpg",
+      "localFilename": "hb-er-b0h515j46w-pink-01.jpg",
+      "dimensions": {
+        "height": 695,
+        "width": 695
+      },
+      "byteSize": 56546,
+      "sha256": "f6d97172735b0ade5354c12721ff2c1356ca18a1332d07d4a059269a7f500ea3"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/0fepewAR",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0H515J46W",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51xsm+2HyyL.jpg",
+      "localFilename": "hb-er-b0h515j46w-pink-02.jpg",
+      "dimensions": {
+        "height": 695,
+        "width": 695
+      },
+      "byteSize": 34931,
+      "sha256": "a15fa9ba511ec04dd948985c4e026e7c5fca137bf10fd3bf89932e785892fdeb"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/0fepewAR",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0H515J46W",
+      "originalImageReference": "https://m.media-amazon.com/images/I/5198SZix1UL.jpg",
+      "localFilename": "hb-er-b0h515j46w-pink-03.jpg",
+      "dimensions": {
+        "height": 500,
+        "width": 500
+      },
+      "byteSize": 38623,
+      "sha256": "c6360e51840a3cf598cd7ac711e44ba701d722f13b152bbd8fbb4196a82f2c70"
+    }
+  ]
+}

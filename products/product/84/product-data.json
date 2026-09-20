@@ -1,0 +1,82 @@
+{
+  "productNumber": 84,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0fdqOGyk",
+    "canonicalUrl": "https://www.amazon.in/dp/B0GG44W63Z",
+    "asin": "B0GG44W63Z",
+    "sourceTitle": "CraftVatika Elegant Metal Peacock Candle Holder - Peacock Decoration Items, Perfect Home Decoration Diwali, Intricate Design Tealight Candle Holders for Home Decor, Handpainted Tealight Candle Holder",
+    "sourcePriceInr": 999.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "CraftVatika Handpainted Peacock Tealight Holders - Set of 2",
+    "brand": "CraftVatika",
+    "manufacturer": "CraftVatika Private Limited",
+    "description": "CraftVatika Handpainted Peacock Tealight Holders - Set of 2 features pair of handpainted peacock tealight candle holders. It combines iron construction with a glossy enamel-painted finish with tabletop design with stable bases. Suitable for home, festive, mandir and event décor.",
+    "keyFeatures": [
+      "Pair of handpainted peacock tealight candle holders",
+      "Iron construction with a glossy enamel-painted finish",
+      "Tabletop design with stable bases",
+      "Suitable for home, festive, mandir and event décor"
+    ],
+    "specifications": {
+      "colourAndVariant": "Peacock - Big; handpainted pair",
+      "dimensions": "10.5 × 13.5 × 35.5 cm per source fact table",
+      "weight": "736 g for the pair per source fact table; a source bullet lists 368 g per holder",
+      "modelOrIdentifier": "TCMH525; ASIN B0GG44W63Z",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Iron with protective coating and enamel paint",
+    "packageContents": "2 tealight candle holders",
+    "careInstructions": "Wipe with a dry cloth.",
+    "category": "Home Décor > Tealight Candle Holders",
+    "tags": [
+      "peacock candle holder",
+      "tealight holder pair",
+      "handpainted metal décor",
+      "Diwali décor",
+      "CraftVatika"
+    ],
+    "giftOccasions": [
+      "Diwali",
+      "Housewarming",
+      "Wedding",
+      "Anniversary",
+      "Religious occasion"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "CraftVatika Handpainted Peacock Tealight Holders - Set of 2 | Hathkriti",
+    "seoDescription": "CraftVatika Handpainted Peacock Tealight Holders - Set of 2 from Hathkriti. Pair of handpainted peacock tealight candle holders. Colour/variant: Peacock - Big; handpainted pair."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1798,
+    "originalPriceNpr": 3596,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p84-b0gg44w63z-01.jpg",
+      "images/hathkriti-p84-b0gg44w63z-02.jpg",
+      "images/hathkriti-p84-b0gg44w63z-03.jpg",
+      "images/hathkriti-p84-b0gg44w63z-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source fact table lists 736 g while a feature bullet lists 368 g; the record identifies 736 g as the pair weight and preserves the per-holder figure."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

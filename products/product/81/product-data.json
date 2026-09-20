@@ -1,0 +1,73 @@
+{
+  "productNumber": 81,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two clean gallery images remained; the other two contain seller branding and feature-panel graphics.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/00X3ksPl",
+    "canonicalUrl": "https://www.amazon.in/dp/B0D29GVBGR",
+    "asin": "B0D29GVBGR",
+    "sourceTitle": "Artvibes Meditating Gautam Buddha Bottle shaped Wooden Wall Hanging | Spiritual Decor Items | Wall Art Painting For Hall | Wall Paintings | Handcrafted Art | Poster | Gift Items (WH_9507N), Set of 3",
+    "sourcePriceInr": 199.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Artvibes Meditating Buddha Bottle-Shaped Wall Hangings - Set of 3",
+    "brand": "Artvibes",
+    "manufacturer": "Not stated on the source page.",
+    "description": "Artvibes Meditating Buddha Bottle-Shaped Wall Hangings - Set of 3 features set of three bottle-shaped wall hangings. It combines meditating Gautam Buddha artwork with handmade on engineered wood. Ready-to-hang construction.",
+    "keyFeatures": [
+      "Set of three bottle-shaped wall hangings",
+      "Meditating Gautam Buddha artwork",
+      "Handmade on engineered wood",
+      "Ready-to-hang construction"
+    ],
+    "specifications": {
+      "colourAndVariant": "Meditating Buddha artwork; set of 3 bottle-shaped panels",
+      "dimensions": "Each panel: 3.5 in wide × 10.6 in high",
+      "weight": "Not stated on the source page.",
+      "modelOrIdentifier": "WH_9507N; ASIN B0D29GVBGR",
+      "countryOfOrigin": "Not stated on the source page."
+    },
+    "materials": "Engineered wood with printed artwork",
+    "packageContents": "3 wall hangings",
+    "careInstructions": "Dust with a soft cloth.",
+    "category": "Home Décor > Signs & Plaques",
+    "tags": [
+      "Buddha wall hanging",
+      "wooden spiritual décor",
+      "set of 3 wall art",
+      "bottle shaped plaque",
+      "Artvibes"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Artvibes Meditating Buddha Bottle-Shaped Wall Hangings - Set of 3 | Hathkriti",
+    "seoDescription": "Artvibes Meditating Buddha Bottle-Shaped Wall Hangings - Set of 3 from Hathkriti. Set of three bottle-shaped wall hangings. Colour/variant: Meditating Buddha artwork; set of 3 bottle-shaped panels."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 518,
+    "originalPriceNpr": 1036,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 2,
+    "files": [
+      "images/hathkriti-p81-b0d29gvbgr-01.jpg",
+      "images/hathkriti-p81-b0d29gvbgr-02.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source notes that final colours may differ slightly due to display and printing resolution."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

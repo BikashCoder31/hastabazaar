@@ -1,0 +1,10 @@
+{
+  "productNumber": 78,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "The gallery relies entirely on synthetic-looking room composites and provides no clean isolated product views; a legitimate four-image set could not be verified.",
+  "sourcePage": "https://www.amazon.in/dp/B0H9DL4PCW",
+  "selectedVariant": "Multicolour five-bird floral design",
+  "requiredImageCount": 4,
+  "includedImageCount": 0,
+  "images": []
+}

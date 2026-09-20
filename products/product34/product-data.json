@@ -1,0 +1,80 @@
+{
+  "productNumber": 34,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/01NKmosx",
+    "canonicalUrl": "https://www.amazon.in/dp/B07RHSGBH8",
+    "asin": "B07RHSGBH8",
+    "capturedPriceInr": 180,
+    "amazonReturnEligibility": "10 days Returnable"
+  },
+  "verifiedSourceFacts": {
+    "sourceTitle": "Tia Crafts Orange Silk-Thread Chand Bali Earrings",
+    "brand": "Tia Crafts",
+    "manufacturer": "Tia Crafts",
+    "modelOrIdentifier": "ASIN B07RHSGBH8",
+    "materials": "Silk thread, base/non-precious metal and pearl",
+    "colourAndVariant": "Orange; Colour: Orange",
+    "dimensions": "Item dimensions require Seller input; package dimensions 10.1 × 8 × 4.9 cm",
+    "weight": "10 g",
+    "packageContents": "Requires Seller input; net quantity was not stated.",
+    "careInstructions": "Keep away from water, perfume and heat.",
+    "countryOfOrigin": "India",
+    "returnEligibility": "10 days Returnable",
+    "warranty": "Not stated on source; leave blank."
+  },
+  "rewrittenMarketingCopy": {
+    "storefrontTitle": "Tia Crafts Orange Silk-Thread Chand Bali Earrings",
+    "description": "Orange handmade chand bali earrings combining silk thread, base metal and pearl detailing. The colourful jhumki-inspired design is intended for festive and ethnic styling.",
+    "keyFeatures": [
+      "Handmade silk-thread jhumki design",
+      "Chand bali silhouette",
+      "Pearl detailing",
+      "Orange festive colour"
+    ],
+    "seoTitle": "Tia Crafts Orange Silk-Thread Chand Bali Earrings | Hastabazaar",
+    "seoDescription": "Tia Crafts Orange Silk-Thread Chand Bali Earrings. Orange handmade chand bali earrings combining silk thread, base metal and pearl detailing. The colourful jh"
+  },
+  "suggestedValues": {
+    "category": "Jewellery > Earrings",
+    "tags": [
+      "earrings",
+      "handmade jewellery"
+    ],
+    "sku": "HB-ER-B07RHSGBH8-ORANGE",
+    "pricing": {
+      "formula": "round(180 × 1.6 + 150)",
+      "sellingPriceNpr": 438,
+      "originalPriceNpr": 876,
+      "discountPercent": 50
+    },
+    "stockQuantity": 10,
+    "preparationTimeDays": 3,
+    "returnWording": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "listingPurpose": "Genuine commercial listing"
+  },
+  "valuesSellerMustSupply": [
+    "Shipping weight and package dimensions if Hastabazaar requires shipping-specific values; item/package values above may not be shipping measurements.",
+    "Any safety warning required for this exact product; none was stated on the source page.",
+    "Confirm the exact package contents/net quantity."
+  ],
+  "legalOrAuthenticityConcerns": [
+    "Only one distinct source-gallery product image was available.",
+    "Only package dimensions were stated; item dimensions require Seller input.",
+    "User states that resale and image-reuse rights are authorized; this has not been independently verified.",
+    "Permanent legal documents and policy identifiers are pending. Do not enable genuine public orders until those controls are complete."
+  ],
+  "images": {
+    "selectedCount": 1,
+    "requestedMaximum": 4,
+    "videoDownloaded": false,
+    "exactDuplicatesExcluded": 0,
+    "order": [
+      "hb-er-b07rhsgbh8-orange-01.jpg"
+    ]
+  },
+  "publication": {
+    "preparedOnly": true,
+    "enteredInHastabazaar": false,
+    "published": false
+  }
+}

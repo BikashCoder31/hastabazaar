@@ -1,0 +1,63 @@
+{
+  "productNumber": 83,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0HFD9PZGH",
+  "selectedVariant": "Cherry-blossom lighted branch design",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HFD9PZGH",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51pws4MfrbL.jpg",
+      "filename": "hathkriti-p83-b0hfd9pzgh-01.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 36485,
+      "sha256": "e3064d3ddf347dba35e2ca100078b7d6626c5b0f304fd62e14e039b0f86f51c2",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HFD9PZGH",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51hvBhhYUSL.jpg",
+      "filename": "hathkriti-p83-b0hfd9pzgh-02.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 37339,
+      "sha256": "5396ae7d88d4dbdd8c3c0aec66d1374e5cad9d510eb53a9a48cd1e30081ce131",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 5
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HFD9PZGH",
+      "originalImageReference": "https://m.media-amazon.com/images/I/5177cuzA4uL.jpg",
+      "filename": "hathkriti-p83-b0hfd9pzgh-03.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 42083,
+      "sha256": "3bf40c8abfe85d8c18dbdfa43d39ab50f75cc41d13ad887c66718e98f9142be2",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 6
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HFD9PZGH",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41+UljTtAkL.jpg",
+      "filename": "hathkriti-p83-b0hfd9pzgh-04.jpg",
+      "dimensions": {
+        "width": 402,
+        "height": 500
+      },
+      "byteSize": 27242,
+      "sha256": "4180c3b9a9194777a808acfdeab37014f683369ad2fa892080f9c62ca237a047",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 8
+    }
+  ]
+}

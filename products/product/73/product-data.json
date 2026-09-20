@@ -1,0 +1,71 @@
+{
+  "productNumber": 73,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two clean exact-product views remained after rejecting branded promotional panels and synthetic-looking model scenes.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/05ZPFvke",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HBJVZLP5",
+    "asin": "B0HBJVZLP5",
+    "sourceTitle": "MOMISY Handicraft Handmade Cotton Ethnic Rajasthani Embroidered Banjara Bags for Women Sling Clutch with Handle Purses for Ladies Girls",
+    "sourcePriceInr": 639.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "MOMISY Multicolour Rajasthani Banjara Embroidered Sling Bag",
+    "brand": "MOMISY",
+    "manufacturer": "MOMISY",
+    "description": "MOMISY Multicolour Rajasthani Banjara Embroidered Sling Bag features handmade Rajasthani Banjara embroidery. It combines magnetic closure with convertible handle and shoulder strap. Two pockets with cotton-fabric inner lining.",
+    "keyFeatures": [
+      "Handmade Rajasthani Banjara embroidery",
+      "Magnetic closure",
+      "Convertible handle and shoulder strap",
+      "Two pockets with cotton-fabric inner lining"
+    ],
+    "specifications": {
+      "colourAndVariant": "Multicolour Rajasthani Banjara embroidery",
+      "dimensions": "19 × 28 × 5 cm",
+      "weight": "315 g",
+      "modelOrIdentifier": "SB-Banjara-H-P; ASIN B0HBJVZLP5",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Cotton outer and cotton-fabric lining with embroidered detailing",
+    "packageContents": "1 crossbody bag",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Sling & Cross-Body Bags",
+    "tags": [
+      "Banjara sling bag",
+      "Rajasthani embroidery",
+      "multicolour cotton bag",
+      "ethnic crossbody",
+      "MOMISY"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "MOMISY Multicolour Rajasthani Banjara Embroidered Sling Bag | Hathkriti",
+    "seoDescription": "MOMISY Multicolour Rajasthani Banjara Embroidered Sling Bag from Hathkriti. Handmade Rajasthani Banjara embroidery. Colour/variant: Multicolour Rajasthani Banjara embroidery."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1222,
+    "originalPriceNpr": 2444,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 2,
+    "files": [
+      "images/hathkriti-p73-b0hbjvzlp5-01.jpg",
+      "images/hathkriti-p73-b0hbjvzlp5-02.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

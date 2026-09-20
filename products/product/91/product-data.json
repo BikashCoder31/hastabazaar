@@ -1,0 +1,76 @@
+{
+  "productNumber": 91,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only three distinct exact-product views remained after rejecting a lower-resolution duplicate of the main cup image; four are required.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/03z36Wqj",
+    "canonicalUrl": "https://www.amazon.in/dp/B0FFZT3Z6J",
+    "asin": "B0FFZT3Z6J",
+    "sourceTitle": "Purbanchal Handcrafted 6-Inch Bamboo Cup | Eco-Friendly Natural Drinkware | Reusable Handmade Mug | Sustainable Gift Item from Assam | Traditional Bamboo Craft",
+    "sourcePriceInr": 179.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Purbanchal Natural-Bamboo Handcrafted Mug",
+    "brand": "Generic",
+    "manufacturer": "Purbanchal Hasta Udyog",
+    "description": "Purbanchal Natural-Bamboo Handcrafted Mug features handcrafted Assamese-style bamboo mug. It combines traditional patterned body with a bamboo handle with reusable 200 ml capacity. Source describes use for water, juice or mocktails.",
+    "keyFeatures": [
+      "Handcrafted Assamese-style bamboo mug",
+      "Traditional patterned body with a bamboo handle",
+      "Reusable 200 ml capacity",
+      "Source describes use for water, juice or mocktails"
+    ],
+    "specifications": {
+      "colourAndVariant": "Natural bamboo; 200 ml",
+      "dimensions": "6-inch size stated in the source title",
+      "weight": "30 g",
+      "modelOrIdentifier": "ASIN B0FFZT3Z6J",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Natural bamboo",
+    "packageContents": "1 bamboo cup",
+    "careInstructions": "Source states that it can be washed daily.",
+    "category": "Kitchen & Dining > Drinkware > Mugs",
+    "tags": [
+      "bamboo mug",
+      "Assam handicraft",
+      "natural drinkware",
+      "reusable cup",
+      "handcrafted gift"
+    ],
+    "giftOccasions": [
+      "Festival",
+      "Housewarming"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Purbanchal Natural-Bamboo Handcrafted Mug | Hathkriti",
+    "seoDescription": "Purbanchal Natural-Bamboo Handcrafted Mug from Hathkriti. Handcrafted Assamese-style bamboo mug. Colour/variant: Natural bamboo; 200 ml."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 486,
+    "originalPriceNpr": 972,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 3,
+    "files": [
+      "images/hathkriti-p91-b0ffzt3z6j-01.jpg",
+      "images/hathkriti-p91-b0ffzt3z6j-02.jpg",
+      "images/hathkriti-p91-b0ffzt3z6j-03.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

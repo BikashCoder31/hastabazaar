@@ -1,0 +1,75 @@
+{
+  "productNumber": 71,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/00aAMapb",
+    "canonicalUrl": "https://www.amazon.in/dp/B0C4Y5G5JD",
+    "asin": "B0C4Y5G5JD",
+    "sourceTitle": "Bridal Women' Antique Brass Purse Ethnic Handmade Metal Clutch Bag",
+    "sourcePriceInr": 699.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "SHAKUNTLA VINTAGE Antique-Brass Stone-Mosaic Bridal Clutch",
+    "brand": "SHAKUNTLA VINTAGE",
+    "manufacturer": "SHAKUNTLA VINTAGE",
+    "description": "SHAKUNTLA VINTAGE Antique-Brass Stone-Mosaic Bridal Clutch features vintage stone-mosaic design. It combines antique-brass-look metal frame with push-lock clasp closure. Shoulder strap and one interior pocket.",
+    "keyFeatures": [
+      "Vintage stone-mosaic design",
+      "Antique-brass-look metal frame",
+      "Push-lock clasp closure",
+      "Shoulder strap and one interior pocket"
+    ],
+    "specifications": {
+      "colourAndVariant": "Antique brass with multicolour stone mosaic",
+      "dimensions": "18 × 6 × 14 cm",
+      "weight": "0.3 g as stated by the source; this value may be erroneous",
+      "modelOrIdentifier": "ABC-17; ASIN B0C4Y5G5JD",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Metal frame with stone-mosaic decoration; source fact table lists nylon outer material",
+    "packageContents": "1 clutch bag",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Clutches",
+    "tags": [
+      "antique brass clutch",
+      "stone mosaic purse",
+      "bridal metal bag",
+      "ethnic clutch",
+      "SHAKUNTLA VINTAGE"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "SHAKUNTLA VINTAGE Antique-Brass Stone-Mosaic Bridal Clutch | Hathkriti",
+    "seoDescription": "SHAKUNTLA VINTAGE Antique-Brass Stone-Mosaic Bridal Clutch from Hathkriti. Vintage stone-mosaic design. Colour/variant: Antique brass with multicolour stone mosaic."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1318,
+    "originalPriceNpr": 2636,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p71-b0c4y5g5jd-01.jpg",
+      "images/hathkriti-p71-b0c4y5g5jd-02.jpg",
+      "images/hathkriti-p71-b0c4y5g5jd-03.jpg",
+      "images/hathkriti-p71-b0c4y5g5jd-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source states an item weight of 0.3 g, which appears implausibly low; it is preserved verbatim and flagged rather than corrected."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

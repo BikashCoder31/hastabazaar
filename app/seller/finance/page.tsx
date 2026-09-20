@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { Banknote, Clock3, HandCoins, ReceiptText } from 'lucide-react';
+import Link from 'next/link';
 
 import { StatusBadge } from '@/components/admin/status-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,6 +21,7 @@ import {
   listPayoutRequests,
 } from '@/lib/db/repositories/payouts';
 import { PayoutRequestForm } from '@/components/seller/payout-request-form';
+import { getCommissionSetting } from '@/lib/db/repositories/marketplace-settings';
 
 export const dynamic = 'force-dynamic';
 const money = (paisa: number) =>
@@ -35,12 +37,14 @@ const date = (value: number) =>
 export default async function SellerFinancePage() {
   const seller = await requireSellerPage('/seller/finance');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const [summary, ledger, payouts, requests] = await Promise.all([
-    getSellerFinanceSummary(database, seller.sellerId),
-    listSellerLedger(database, seller.sellerId),
-    listSellerPayouts(database, seller.sellerId),
-    listPayoutRequests(database, seller.sellerId),
-  ]);
+  const [summary, ledger, payouts, requests, commissionSetting] =
+    await Promise.all([
+      getSellerFinanceSummary(database, seller.sellerId),
+      listSellerLedger(database, seller.sellerId),
+      listSellerPayouts(database, seller.sellerId),
+      listPayoutRequests(database, seller.sellerId),
+      getCommissionSetting(database),
+    ]);
   const cards = [
     {
       label: 'Available for payout',
@@ -50,7 +54,7 @@ export default async function SellerFinancePage() {
     { label: 'Pending release', value: summary.pendingPaisa, icon: Clock3 },
     { label: 'Paid to you', value: summary.paidPaisa, icon: Banknote },
     {
-      label: 'Gross delivered sales',
+      label: 'Gross completed, paid sales',
       value: summary.grossSalesPaisa,
       icon: ReceiptText,
     },
@@ -62,13 +66,23 @@ export default async function SellerFinancePage() {
         <h1 className="mt-2 font-heading text-4xl tracking-tight">
           Earnings and settlements
         </h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Delivered sales become available after the policy hold. Commission,
-          reserve, refunds, and every payout remain visible as immutable
-          entries.
+        <p className="mt-3 max-w-3xl text-base leading-7 text-muted-foreground">
+          Completed, paid sales become available after the policy hold.
+          Commission, reserves, refunds, commission reversals, and every payout
+          remain visible as immutable entries.
+        </p>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
+          HastaBazaar charges a 9% commission on the product selling value after
+          seller-funded discounts, excluding separately stated product taxes and
+          delivery charges. Discounts funded entirely by HastaBazaar do not
+          reduce the seller&apos;s agreed product value. Taxes legally chargeable on
+          the commission are itemised separately.{' '}
+          <Link href="/seller-agreement" className="font-semibold text-primary underline">
+            Seller Marketplace Agreement
+          </Link>
         </p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
         {cards.map(({ label, value, icon: Icon }) => (
           <Card key={label}>
             <CardHeader className="grid grid-cols-[1fr_auto] items-center">
@@ -78,14 +92,19 @@ export default async function SellerFinancePage() {
               <Icon className="size-5 text-primary" />
             </CardHeader>
             <CardContent>
-              <p className="font-heading text-3xl tabular-nums">
+              <p className="break-words font-heading text-3xl tabular-nums">
                 {money(value)}
               </p>
             </CardContent>
           </Card>
         ))}
       </div>
-      <PayoutRequestForm />
+      <PayoutRequestForm
+        availablePaisa={summary.availablePaisa}
+        hasOpenRequest={requests.some(
+          (request) => request.status === 'submitted',
+        )}
+      />
       {requests.length ? (
         <Card>
           <CardHeader>
@@ -99,6 +118,11 @@ export default async function SellerFinancePage() {
               >
                 <span>
                   {date(request.createdAt)} · {request.sellerNote}
+                  {request.processingNote ? (
+                    <span className="mt-2 block text-muted-foreground">
+                      Admin note: {request.processingNote}
+                    </span>
+                  ) : null}
                 </span>
                 <strong className="capitalize">{request.status}</strong>
               </div>
@@ -110,11 +134,19 @@ export default async function SellerFinancePage() {
         <CardHeader>
           <CardTitle>Balance details</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 text-sm sm:grid-cols-3">
+        <CardContent className="grid gap-4 text-sm sm:grid-cols-4">
           <div>
-            <p className="text-muted-foreground">Commission</p>
+            <p className="text-muted-foreground">
+              Commission (current rate {commissionSetting.percent}%)
+            </p>
             <p className="mt-1 font-semibold">
               {money(Math.abs(summary.commissionPaisa))}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Commission reversals</p>
+            <p className="mt-1 font-semibold">
+              {money(summary.commissionReversalPaisa)}
             </p>
           </div>
           <div>
@@ -124,8 +156,8 @@ export default async function SellerFinancePage() {
             </p>
           </div>
           <div>
-            <p className="text-muted-foreground">Minimum payout</p>
-            <p className="mt-1 font-semibold">NPR 1,000.00</p>
+            <p className="text-muted-foreground">Payout eligibility</p>
+            <p className="mt-1 font-semibold">Any positive available balance</p>
           </div>
         </CardContent>
       </Card>

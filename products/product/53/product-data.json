@@ -1,0 +1,74 @@
+{
+  "productNumber": 53,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only three clean exact-variant images remained after rejecting two synthetic-looking lifestyle/collage images.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0aCwsR4B",
+    "canonicalUrl": "https://www.amazon.in/dp/B0GSKJYPPW",
+    "asin": "B0GSKJYPPW",
+    "sourceTitle": "Shreyadzines Crochet Mandala Earrings for Women | Boho Handmade Thread Round Drop Earrings | Lightweight Ethnic Bohemian Dangle Earrings for Girls",
+    "sourcePriceInr": 170.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Shreyadzines Light Pink Crochet Mandala Drop Earrings",
+    "brand": "Shreyadzines",
+    "manufacturer": "Jwell Exports LLP",
+    "description": "Shreyadzines Light Pink Crochet Mandala Drop Earrings features round crochet mandala design. It combines light pink thread work with french-wire hook closure. Pair of bohemian drop earrings.",
+    "keyFeatures": [
+      "Round crochet mandala design",
+      "Light pink thread work",
+      "French-wire hook closure",
+      "Pair of bohemian drop earrings"
+    ],
+    "specifications": {
+      "colourAndVariant": "Light Pink",
+      "dimensions": "6.1 × 5.08 × 0.25 cm (source also rounds this to 6.1 × 5.1 × 0.3 cm)",
+      "weight": "49 g",
+      "modelOrIdentifier": "JME; ASIN B0GSKJYPPW",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Crochet thread on a lightweight base; source fact table also lists metal but does not identify the metal type",
+    "packageContents": "1 pair of earrings (2 pieces)",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Jewellery > Women > Earrings",
+    "tags": [
+      "light pink earrings",
+      "crochet earrings",
+      "mandala earrings",
+      "boho jewellery",
+      "handmade earrings"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Shreyadzines Light Pink Crochet Mandala Drop Earrings | Hathkriti",
+    "seoDescription": "Shreyadzines Light Pink Crochet Mandala Drop Earrings from Hathkriti. Round crochet mandala design. Colour/variant: Light Pink."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 472,
+    "originalPriceNpr": 944,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 3,
+    "files": [
+      "images/hathkriti-p53-b0gskjyppw-01.jpg",
+      "images/hathkriti-p53-b0gskjyppw-02.jpg",
+      "images/hathkriti-p53-b0gskjyppw-03.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "Product 24 is the Multicolour variant from the same Amazon family; this Light Pink ASIN is retained as a distinct variant, not a duplicate."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

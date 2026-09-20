@@ -1,0 +1,63 @@
+{
+  "productNumber": 31,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0G2CLMJW6",
+  "selectedVariant": "Turquoise Black 3; multicolour Warli-art print",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0G2CLMJW6",
+      "originalImageReference": "https://m.media-amazon.com/images/I/916BjByvLZL._SL1500_.jpg",
+      "filename": "hathkriti-p31-b0g2clmjw6-01.jpg",
+      "dimensions": {
+        "width": 1048,
+        "height": 1500
+      },
+      "byteSize": 474453,
+      "sha256": "411fd4fe04f8f33bf883942404a2f2575dd08468859f20f9e011c17d28e0ec39",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0G2CLMJW6",
+      "originalImageReference": "https://m.media-amazon.com/images/I/612GrrkASgL._SL1248_.jpg",
+      "filename": "hathkriti-p31-b0g2clmjw6-02.jpg",
+      "dimensions": {
+        "width": 1248,
+        "height": 832
+      },
+      "byteSize": 112906,
+      "sha256": "4539fc5cc4f93781d0397ec55c80d3bb4ba713ea1021b08e6a951b86f5532ee3",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0G2CLMJW6",
+      "originalImageReference": "https://m.media-amazon.com/images/I/91SooXLnzjL._SL1500_.jpg",
+      "filename": "hathkriti-p31-b0g2clmjw6-03.jpg",
+      "dimensions": {
+        "width": 1125,
+        "height": 1500
+      },
+      "byteSize": 344212,
+      "sha256": "ddffce7de530c234e9b94e230ecb8b1d4060451ad1b3a91e450623645c7966fc",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 3
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0G2CLMJW6",
+      "originalImageReference": "https://m.media-amazon.com/images/I/91BnGrB8oWL._SL1500_.jpg",
+      "filename": "hathkriti-p31-b0g2clmjw6-04.jpg",
+      "dimensions": {
+        "width": 1065,
+        "height": 1500
+      },
+      "byteSize": 537148,
+      "sha256": "89a80e73ade23098e40857a8d6cc86fdc4225f9af7ca79a6f18bdcdf11cf0431",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 5
+    }
+  ]
+}

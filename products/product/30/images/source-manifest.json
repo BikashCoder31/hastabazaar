@@ -1,0 +1,37 @@
+{
+  "productNumber": 30,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two distinct exact-variant product-gallery images were available.",
+  "sourcePage": "https://www.amazon.in/dp/B0H7NNK4NY",
+  "selectedVariant": "Maroon; one size fits most",
+  "requiredImageCount": 4,
+  "includedImageCount": 2,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H7NNK4NY",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71Au5cIiQGL._SL1472_.jpg",
+      "filename": "hathkriti-p30-b0h7nnk4ny-01.jpg",
+      "dimensions": {
+        "width": 1080,
+        "height": 1472
+      },
+      "byteSize": 165142,
+      "sha256": "ae3d628c4265b1674a5df1cb6bf0e34d8b973371dda5a50f75a1874ff1b94d5d",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H7NNK4NY",
+      "originalImageReference": "https://m.media-amazon.com/images/I/81mhOVlxdQL._SL1500_.jpg",
+      "filename": "hathkriti-p30-b0h7nnk4ny-02.jpg",
+      "dimensions": {
+        "width": 1072,
+        "height": 1500
+      },
+      "byteSize": 294050,
+      "sha256": "61ae9411dbc433cbc7bac2a5a554f59923ce97117ecf291be0bd8daa49e83a96",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    }
+  ]
+}

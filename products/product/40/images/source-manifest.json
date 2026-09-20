@@ -1,0 +1,37 @@
+{
+  "productNumber": 40,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only three exact-variant gallery images were available, and one contains promotional text; four are required.",
+  "sourcePage": "https://www.amazon.in/dp/B0GQ37NYXX",
+  "selectedVariant": "Pink and red flower with green strap",
+  "requiredImageCount": 4,
+  "includedImageCount": 2,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0GQ37NYXX",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51AS0zhV7TL._SL1188_.jpg",
+      "filename": "hathkriti-p40-b0gq37nyxx-01.jpg",
+      "dimensions": {
+        "width": 842,
+        "height": 1188
+      },
+      "byteSize": 62493,
+      "sha256": "83f278f7d2f02d079714e5e297b562524f55a009cebc57f74fb659cc6636a946",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0GQ37NYXX",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71RxHpUmSrL._SL1500_.jpg",
+      "filename": "hathkriti-p40-b0gq37nyxx-02.jpg",
+      "dimensions": {
+        "width": 1500,
+        "height": 1500
+      },
+      "byteSize": 121754,
+      "sha256": "20ff8e6c0d6b636fba87d1e27e6512eb74e570eb5173a23b56ac381e49140cc7",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    }
+  ]
+}

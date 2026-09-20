@@ -1,0 +1,88 @@
+{
+  "productNumber": 17,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/05XzES9f",
+    "canonicalUrl": "https://www.amazon.in/dp/B0FSTBP6DV",
+    "asin": "B0FSTBP6DV",
+    "capturedPriceInr": 374,
+    "amazonReturnEligibility": "10 days Returnable"
+  },
+  "verifiedSourceFacts": {
+    "sourceTitle": "Handmade Fish-Style Oxidised Ear Cuffs",
+    "brand": "Handmade Harmony",
+    "manufacturer": "Handmade Harmony",
+    "modelOrIdentifier": "FISH",
+    "materials": "Brass with oxidised silver-replica plating; no gemstone",
+    "colourAndVariant": "Oxidised silver tone; Single source style",
+    "dimensions": "8 × 1.5 × 8 cm",
+    "weight": "12.6 g",
+    "packageContents": "Net quantity: 1 set",
+    "careInstructions": "Requires Seller input.",
+    "countryOfOrigin": "India",
+    "returnEligibility": "10 days Returnable",
+    "warranty": "Not stated on source; leave blank."
+  },
+  "rewrittenMarketingCopy": {
+    "storefrontTitle": "Handmade Fish-Style Oxidised Ear Cuffs",
+    "description": "Handmade fish-style ear cuffs made from brass with an oxidised silver-tone replica finish. The bohemian design can be paired with casual, festive and occasion outfits.",
+    "keyFeatures": [
+      "Fish-shaped ear-cuff design",
+      "Handmade brass construction",
+      "Oxidised silver-tone finish",
+      "Lightweight design"
+    ],
+    "seoTitle": "Handmade Fish-Style Oxidised Ear Cuffs | Hastabazaar",
+    "seoDescription": "Handmade Fish-Style Oxidised Ear Cuffs. Handmade fish-style ear cuffs made from brass with an oxidised silver-tone replica finish. The bohemian design can be "
+  },
+  "suggestedValues": {
+    "category": "Jewellery > Earrings",
+    "tags": [
+      "earrings",
+      "handmade jewellery",
+      "oxidised"
+    ],
+    "sku": "HB-ER-B0FSTBP6DV-OXIDISED-SILVER-TONE",
+    "pricing": {
+      "formula": "round(374 × 1.6 + 200)",
+      "sellingPriceNpr": 798,
+      "originalPriceNpr": 1596,
+      "discountPercent": 50
+    },
+    "stockQuantity": 10,
+    "preparationTimeDays": 3,
+    "returnWording": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "listingPurpose": "Genuine commercial listing"
+  },
+  "valuesSellerMustSupply": [
+    "Shipping weight and package dimensions if Hastabazaar requires shipping-specific values; item/package values above may not be shipping measurements.",
+    "Any safety warning required for this exact product; none was stated on the source page."
+  ],
+  "legalOrAuthenticityConcerns": [
+    "User states that resale and image-reuse rights are authorized; this has not been independently verified.",
+    "Permanent legal documents and policy identifiers are pending. Do not enable genuine public orders until those controls are complete."
+  ],
+  "images": {
+    "selectedCount": 4,
+    "requestedMaximum": 4,
+    "videoDownloaded": false,
+    "exactDuplicatesExcluded": 0,
+    "order": [
+      "hb-er-b0fstbp6dv-oxidised-silver-tone-01.jpg",
+      "hb-er-b0fstbp6dv-oxidised-silver-tone-02.jpg",
+      "hb-er-b0fstbp6dv-oxidised-silver-tone-03.jpg",
+      "hb-er-b0fstbp6dv-oxidised-silver-tone-04.jpg"
+    ]
+  },
+  "publication": {
+    "preparedOnly": true,
+    "enteredInHastabazaar": false,
+    "published": false
+  },
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 798,
+    "originalPriceNpr": 1596,
+    "discountPercent": 50
+  }
+}

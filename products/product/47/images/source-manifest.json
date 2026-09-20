@@ -1,0 +1,50 @@
+{
+  "productNumber": 47,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only three images matched the selected Pink Yellow chandbali; two shared gallery assets showed unrelated jewellery and were rejected.",
+  "sourcePage": "https://www.amazon.in/dp/B0DGXCTMLM",
+  "selectedVariant": "Pink Yellow with green accent and pearl-style chains",
+  "requiredImageCount": 4,
+  "includedImageCount": 3,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0DGXCTMLM",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71kwfid0-xL._SL1200_.jpg",
+      "filename": "hathkriti-p47-b0dgxctmlm-01.jpg",
+      "dimensions": {
+        "width": 1200,
+        "height": 1200
+      },
+      "byteSize": 147656,
+      "sha256": "2b7b85a329672850b624d75ddc2392c8927e0fb54048db6d332c2a0e242616a4",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0DGXCTMLM",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61+8ljRgYSL._SL1200_.jpg",
+      "filename": "hathkriti-p47-b0dgxctmlm-02.jpg",
+      "dimensions": {
+        "width": 1200,
+        "height": 1200
+      },
+      "byteSize": 128170,
+      "sha256": "56fa3e4aed0910b142d0395b547495f0a1a7eabeef3fa10f6778166cce582656",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0DGXCTMLM",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61ABrP57EvL._SL1200_.jpg",
+      "filename": "hathkriti-p47-b0dgxctmlm-03.jpg",
+      "dimensions": {
+        "width": 1200,
+        "height": 1200
+      },
+      "byteSize": 98498,
+      "sha256": "5cc8b06b68b4429c2eb9b5068ea2ad3829aad8fefde3916a46900c1571f951fe",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 3
+    }
+  ]
+}

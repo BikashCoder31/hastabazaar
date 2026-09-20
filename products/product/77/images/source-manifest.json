@@ -1,0 +1,10 @@
+{
+  "productNumber": 77,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "The gallery states that buyers receive a random colour and random design, so one exact selectable variant and a matching four-image set cannot be verified.",
+  "sourcePage": "https://www.amazon.in/dp/B0GLP2XT3P",
+  "selectedVariant": "Multicolour",
+  "requiredImageCount": 4,
+  "includedImageCount": 0,
+  "images": []
+}

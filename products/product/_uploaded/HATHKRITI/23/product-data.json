@@ -1,0 +1,87 @@
+{
+  "productNumber": 23,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/038nk2tA",
+    "canonicalUrl": "https://www.amazon.in/dp/B0H2ZBFFMT",
+    "asin": "B0H2ZBFFMT",
+    "capturedPriceInr": 249,
+    "amazonReturnEligibility": "10 days Returnable"
+  },
+  "verifiedSourceFacts": {
+    "sourceTitle": "TR HAUTE Blue Woven Hoop Drop Earrings",
+    "brand": "TR HAUTE",
+    "manufacturer": "TR HAUTE",
+    "modelOrIdentifier": "Tr-haute-blue-hoop-drop",
+    "materials": "Fabric/cord, alloy and beads; no gemstone",
+    "colourAndVariant": "Blue with cream-coloured beads; Single source style",
+    "dimensions": "7.5 × 6 × 0.1 cm",
+    "weight": "8 g",
+    "packageContents": "Net quantity: 1 pack",
+    "careInstructions": "Requires Seller input.",
+    "countryOfOrigin": "India",
+    "returnEligibility": "10 days Returnable",
+    "warranty": "Not stated on source; leave blank."
+  },
+  "rewrittenMarketingCopy": {
+    "storefrontTitle": "TR HAUTE Blue Woven Hoop Drop Earrings",
+    "description": "Blue handwoven hoop drop earrings with cream-coloured beads arranged in a floral centre and gold-tone connecting links. A bold bohemian accessory for parties, vacations and beachwear.",
+    "keyFeatures": [
+      "Handwoven blue circular frame",
+      "Cream bead floral centre",
+      "Gold-tone links",
+      "Bohemian statement style"
+    ],
+    "seoTitle": "TR HAUTE Blue Woven Hoop Drop Earrings | Hastabazaar",
+    "seoDescription": "TR HAUTE Blue Woven Hoop Drop Earrings. Blue handwoven hoop drop earrings with cream-coloured beads arranged in a floral centre and gold-tone connecting links"
+  },
+  "suggestedValues": {
+    "category": "Jewellery > Earrings",
+    "tags": [
+      "earrings",
+      "handmade jewellery"
+    ],
+    "sku": "HB-ER-B0H2ZBFFMT-BLUE-WITH-CREAM-COLOURED-BEADS",
+    "pricing": {
+      "formula": "round(249 × 1.6 + 200)",
+      "sellingPriceNpr": 598,
+      "originalPriceNpr": 1196,
+      "discountPercent": 50
+    },
+    "stockQuantity": 10,
+    "preparationTimeDays": 3,
+    "returnWording": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "listingPurpose": "Genuine commercial listing"
+  },
+  "valuesSellerMustSupply": [
+    "Shipping weight and package dimensions if Hastabazaar requires shipping-specific values; item/package values above may not be shipping measurements.",
+    "Any safety warning required for this exact product; none was stated on the source page."
+  ],
+  "legalOrAuthenticityConcerns": [
+    "User states that resale and image-reuse rights are authorized; this has not been independently verified.",
+    "Permanent legal documents and policy identifiers are pending. Do not enable genuine public orders until those controls are complete."
+  ],
+  "images": {
+    "selectedCount": 4,
+    "requestedMaximum": 4,
+    "videoDownloaded": false,
+    "exactDuplicatesExcluded": 0,
+    "order": [
+      "hb-er-b0h2zbffmt-blue-with-cream-coloured-beads-01.jpg",
+      "hb-er-b0h2zbffmt-blue-with-cream-coloured-beads-02.jpg",
+      "hb-er-b0h2zbffmt-blue-with-cream-coloured-beads-03.jpg",
+      "hb-er-b0h2zbffmt-blue-with-cream-coloured-beads-04.jpg"
+    ]
+  },
+  "publication": {
+    "preparedOnly": true,
+    "enteredInHastabazaar": false,
+    "published": false
+  },
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 598,
+    "originalPriceNpr": 1196,
+    "discountPercent": 50
+  }
+}

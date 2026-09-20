@@ -1,0 +1,58 @@
+{
+  "productNumber": 18,
+  "sourcePage": "https://amzn.in/d/0bW1rdoH",
+  "canonicalSourcePage": "https://www.amazon.in/dp/B0DKJYCF2B",
+  "selectionRule": "Up to four distinct ordinary product images from the Amazon product gallery; videos, review images, ads and unrelated media excluded.",
+  "videoDownloaded": false,
+  "exactDuplicatesFoundAndExcluded": [],
+  "images": [
+    {
+      "sourcePage": "https://amzn.in/d/0bW1rdoH",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0DKJYCF2B",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71w-Sa7i+YL._SL1200_.jpg",
+      "localFilename": "hb-er-b0dkjycf2b-pink-01.jpg",
+      "dimensions": {
+        "height": 1200,
+        "width": 1200
+      },
+      "byteSize": 145949,
+      "sha256": "37501eb1934b7d086f1cef26005a497cedf3240abdfe01d43730acec9f537f0a"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/0bW1rdoH",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0DKJYCF2B",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61rgE2IMimL._SL1200_.jpg",
+      "localFilename": "hb-er-b0dkjycf2b-pink-02.jpg",
+      "dimensions": {
+        "height": 1200,
+        "width": 1200
+      },
+      "byteSize": 93796,
+      "sha256": "fe3203d7d7caef167e2a3e71d087999104787a1d3425ea659b3472858fe5208f"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/0bW1rdoH",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0DKJYCF2B",
+      "originalImageReference": "https://m.media-amazon.com/images/I/613muanQpxL._SL1200_.jpg",
+      "localFilename": "hb-er-b0dkjycf2b-pink-03.jpg",
+      "dimensions": {
+        "height": 1200,
+        "width": 1200
+      },
+      "byteSize": 93299,
+      "sha256": "34b176ecedc4934117acc2720ea253fbc505840004a1685c3198a20c583c8781"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/0bW1rdoH",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0DKJYCF2B",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41GJvaUB0mL.jpg",
+      "localFilename": "hb-er-b0dkjycf2b-pink-04.jpg",
+      "dimensions": {
+        "height": 500,
+        "width": 500
+      },
+      "byteSize": 31793,
+      "sha256": "b582947d0ec62b21721b49bbc6c46f20e34ecbc3e31d940a9a9c6524955f527e"
+    }
+  ]
+}

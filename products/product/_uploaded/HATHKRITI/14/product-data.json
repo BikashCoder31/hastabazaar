@@ -1,0 +1,73 @@
+{
+  "productNumber": 14,
+  "status": "prepared_not_entered",
+  "source": {
+    "shortUrl": "https://amzn.in/d/0a30frLA",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HG4T7XV2",
+    "asin": "B0HG4T7XV2",
+    "selectedVariant": "Stars",
+    "sourcePriceInr": 899,
+    "sourceReturnStatus": "10 days Returnable"
+  },
+  "listing": {
+    "category": "Jewelry & accessories",
+    "title": "Pradiyas Meenakari Earrings Set - 12 Multicolour Pairs with Velvet Box",
+    "occasions": [
+      "Wedding gifts",
+      "Birthday gifts",
+      "Tihar gifts",
+      "Anniversary"
+    ],
+    "description": "A coordinated set of 12 multicolour Meenakari-style earring pairs presented in a folding black velvet storage box. The assortment combines stud, jhumki and dangle silhouettes with floral and geometric enamel work, gold-tone metal and pearl-style drops. Designed to pair with sarees, lehengas, salwar suits and kurtas for weddings, festivals and traditional celebrations.",
+    "dimensions": null,
+    "licenceReference": null,
+    "careInstructions": null,
+    "safetyInformation": null,
+    "warrantyOffered": false,
+    "warrantyYears": null,
+    "warrantyMonths": null,
+    "warrantyDays": null,
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "preparationDays": 3,
+    "manufactureDate": null,
+    "expiryDate": null,
+    "madeToOrder": false,
+    "sellingPriceNpr": 1638,
+    "originalPriceNpr": 3276,
+    "discountPercent": 50,
+    "stockQuantity": 10,
+    "returnEligible": true,
+    "suggestedInternalReference": "HB-JA-B0HG4T7XV2-MULTI-12",
+    "priceFormula": "round(899 × 1.6 + 200)"
+  },
+  "verifiedFacts": {
+    "brand": "Pradiyas Fashion Jewellery",
+    "manufacturer": "Pradiyas Fashion Jewellery",
+    "manufacturerPartNumber": "P-003",
+    "materials": [
+      "Gold-plated metal",
+      "Enamel / Meenakari-style detailing",
+      "Pearl-style drops"
+    ],
+    "colour": "Assorted multicolour",
+    "itemWeightGrams": 400,
+    "countryOfOrigin": "India",
+    "packageContents": "12 pairs of earrings and one folding velvet storage box"
+  },
+  "sourceConcerns": [
+    "The source-listed 5 x 4 x 5 cm dimensions do not appear consistent with the full 12-pair box and were not used as listing dimensions."
+  ],
+  "images": [
+    "images/hb-ja-b0hg4t7xv2-multi-12-01.jpg",
+    "images/hb-ja-b0hg4t7xv2-multi-12-02.jpg",
+    "images/hb-ja-b0hg4t7xv2-multi-12-03.jpg",
+    "images/hb-ja-b0hg4t7xv2-multi-12-04.jpg"
+  ],
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 1638,
+    "originalPriceNpr": 3276,
+    "discountPercent": 50
+  }
+}

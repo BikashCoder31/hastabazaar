@@ -1,0 +1,1233 @@
+-- RECOVERY ONLY: clears the failed partial import in an otherwise empty database.
+-- Do not use this file after real users, products, orders, or uploads exist.
+SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS `email_login_challenges`;
+DROP TABLE IF EXISTS `user_sessions`;
+DROP TABLE IF EXISTS `user_credentials`;
+DROP TABLE IF EXISTS `hastabazaar_schema_versions`;
+DROP TABLE IF EXISTS `wishlist_items`;
+DROP TABLE IF EXISTS `users`;
+DROP TABLE IF EXISTS `user_roles`;
+DROP TABLE IF EXISTS `staff_invitations`;
+DROP TABLE IF EXISTS `shipping_jobs`;
+DROP TABLE IF EXISTS `shipping_job_events`;
+DROP TABLE IF EXISTS `shipments`;
+DROP TABLE IF EXISTS `shipment_events`;
+DROP TABLE IF EXISTS `seller_profiles`;
+DROP TABLE IF EXISTS `seller_ledger_entries`;
+DROP TABLE IF EXISTS `seller_documents`;
+DROP TABLE IF EXISTS `return_requests`;
+DROP TABLE IF EXISTS `return_request_events`;
+DROP TABLE IF EXISTS `return_outcomes`;
+DROP TABLE IF EXISTS `return_evidence`;
+DROP TABLE IF EXISTS `request_rate_limits`;
+DROP TABLE IF EXISTS `refunds`;
+DROP TABLE IF EXISTS `refund_liability_entries`;
+DROP TABLE IF EXISTS `promotions`;
+DROP TABLE IF EXISTS `promotion_products`;
+DROP TABLE IF EXISTS `prohibited_product_rules`;
+DROP TABLE IF EXISTS `products`;
+DROP TABLE IF EXISTS `product_reviews`;
+DROP TABLE IF EXISTS `product_occasions`;
+DROP TABLE IF EXISTS `product_media`;
+DROP TABLE IF EXISTS `policy_versions`;
+DROP TABLE IF EXISTS `payouts`;
+DROP TABLE IF EXISTS `payout_requests`;
+DROP TABLE IF EXISTS `payout_events`;
+DROP TABLE IF EXISTS `payout_entries`;
+DROP TABLE IF EXISTS `payments`;
+DROP TABLE IF EXISTS `orders`;
+DROP TABLE IF EXISTS `order_status_events`;
+DROP TABLE IF EXISTS `order_policy_acceptances`;
+DROP TABLE IF EXISTS `order_items`;
+DROP TABLE IF EXISTS `order_item_status_events`;
+DROP TABLE IF EXISTS `order_documents`;
+DROP TABLE IF EXISTS `operational_incidents`;
+DROP TABLE IF EXISTS `occasions`;
+DROP TABLE IF EXISTS `notification_messages`;
+DROP TABLE IF EXISTS `moderation_events`;
+DROP TABLE IF EXISTS `inventory_adjustments`;
+DROP TABLE IF EXISTS `data_rights_requests`;
+DROP TABLE IF EXISTS `data_rights_events`;
+DROP TABLE IF EXISTS `complaints`;
+DROP TABLE IF EXISTS `complaint_events`;
+DROP TABLE IF EXISTS `categories`;
+DROP TABLE IF EXISTS `carts`;
+DROP TABLE IF EXISTS `cart_items`;
+DROP TABLE IF EXISTS `backup_verifications`;
+DROP TABLE IF EXISTS `audit_logs`;
+DROP TABLE IF EXISTS `addresses`;
+
+-- Hatsabazaar production schema for MariaDB 10.11+
+-- Generated from drizzle/meta/0020_snapshot.json. Import into an empty database.
+SET NAMES utf8mb4;
+SET time_zone = '+00:00';
+SET FOREIGN_KEY_CHECKS = 0;
+
+CREATE TABLE IF NOT EXISTS `addresses` (
+  `id` VARCHAR(191) NOT NULL,
+  `user_id` VARCHAR(191) NOT NULL,
+  `label` LONGTEXT NOT NULL,
+  `recipient_name` LONGTEXT NOT NULL,
+  `phone` LONGTEXT NOT NULL,
+  `province` LONGTEXT NOT NULL,
+  `district` LONGTEXT NOT NULL,
+  `municipality` LONGTEXT NOT NULL,
+  `ward` LONGTEXT NULL,
+  `locality` LONGTEXT NOT NULL,
+  `landmark` LONGTEXT NULL,
+  `postal_code` LONGTEXT NULL,
+  `is_default` BIGINT NOT NULL DEFAULT 0,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_addresses_user_default` (`user_id`, `is_default`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `audit_logs` (
+  `id` VARCHAR(191) NOT NULL,
+  `actor_id` VARCHAR(191) NULL,
+  `action` LONGTEXT NOT NULL,
+  `subject_type` VARCHAR(191) NOT NULL,
+  `subject_id` VARCHAR(191) NULL,
+  `reason` LONGTEXT NULL,
+  `previous_json` LONGTEXT NULL,
+  `next_json` LONGTEXT NULL,
+  `request_id` LONGTEXT NULL,
+  `ip_hash` LONGTEXT NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_audit_logs_subject` (`subject_type`, `subject_id`, `created_at`),
+  KEY `idx_audit_logs_actor` (`actor_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `backup_verifications` (
+  `id` VARCHAR(191) NOT NULL,
+  `scope` LONGTEXT NOT NULL,
+  `status` LONGTEXT NOT NULL,
+  `evidence_reference` LONGTEXT NOT NULL,
+  `note` LONGTEXT NOT NULL,
+  `verified_by` VARCHAR(191) NOT NULL,
+  `request_id` VARCHAR(191) NOT NULL,
+  `verified_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_backup_verifications_request_unique` (`request_id`),
+  KEY `idx_backup_verifications_verified_at` (`verified_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `cart_items` (
+  `id` VARCHAR(191) NOT NULL,
+  `cart_id` VARCHAR(191) NOT NULL,
+  `product_id` VARCHAR(191) NOT NULL,
+  `quantity` BIGINT NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_cart_items_cart_product_unique` (`cart_id`, `product_id`),
+  CONSTRAINT `cart_items_quantity_positive` CHECK (`quantity` > 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `carts` (
+  `id` VARCHAR(191) NOT NULL,
+  `user_id` VARCHAR(191) NULL,
+  `anonymous_token_hash` VARCHAR(191) NULL,
+  `currency` LONGTEXT NOT NULL DEFAULT 'NPR',
+  `expires_at` BIGINT NULL,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_carts_user_unique` (`user_id`),
+  UNIQUE KEY `idx_carts_anonymous_token_unique` (`anonymous_token_hash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `categories` (
+  `id` VARCHAR(191) NOT NULL,
+  `parent_id` VARCHAR(191) NULL,
+  `slug` VARCHAR(191) NOT NULL,
+  `name_en` LONGTEXT NOT NULL,
+  `name_ne` LONGTEXT NULL,
+  `is_active` BIGINT NOT NULL DEFAULT 1,
+  `sort_order` BIGINT NOT NULL DEFAULT 0,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_categories_slug_unique` (`slug`),
+  KEY `idx_categories_parent_sort` (`parent_id`, `sort_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `complaint_events` (
+  `id` VARCHAR(191) NOT NULL,
+  `complaint_id` VARCHAR(191) NOT NULL,
+  `from_status` LONGTEXT NULL,
+  `to_status` LONGTEXT NOT NULL,
+  `action` LONGTEXT NOT NULL,
+  `actor_id` VARCHAR(191) NULL,
+  `actor_type` LONGTEXT NOT NULL,
+  `public_message_en` LONGTEXT NOT NULL,
+  `public_message_ne` LONGTEXT NOT NULL,
+  `internal_note` LONGTEXT NULL,
+  `request_id` VARCHAR(191) NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_complaint_events_case_created` (`complaint_id`, `created_at`),
+  UNIQUE KEY `idx_complaint_events_request_id_unique` (`request_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `complaints` (
+  `id` VARCHAR(191) NOT NULL,
+  `reference_number` VARCHAR(191) NOT NULL,
+  `customer_id` VARCHAR(191) NULL,
+  `order_id` VARCHAR(191) NULL,
+  `order_item_id` VARCHAR(191) NULL,
+  `seller_id` VARCHAR(191) NULL,
+  `category` LONGTEXT NOT NULL,
+  `subject` LONGTEXT NOT NULL,
+  `detail` LONGTEXT NOT NULL,
+  `locale` LONGTEXT NOT NULL DEFAULT 'en-NP',
+  `priority` LONGTEXT NOT NULL DEFAULT 'normal',
+  `status` VARCHAR(191) NOT NULL,
+  `assigned_to` VARCHAR(191) NULL,
+  `resolution` LONGTEXT NULL,
+  `resolution_ne` LONGTEXT NULL,
+  `seller_response` LONGTEXT NULL,
+  `seller_responded_by` VARCHAR(191) NULL,
+  `seller_responded_at` BIGINT NULL,
+  `escalation_reason` LONGTEXT NULL,
+  `escalated_to` VARCHAR(191) NULL,
+  `assigned_at` BIGINT NULL,
+  `created_request_id` VARCHAR(191) NULL,
+  `operation_request_id` LONGTEXT NULL,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  `resolved_at` BIGINT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_complaints_reference_unique` (`reference_number`),
+  UNIQUE KEY `idx_complaints_created_request_unique` (`created_request_id`),
+  KEY `idx_complaints_queue` (`status`, `created_at`),
+  KEY `idx_complaints_order` (`order_id`),
+  KEY `idx_complaints_seller_queue` (`seller_id`, `status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `data_rights_events` (
+  `id` VARCHAR(191) NOT NULL,
+  `data_rights_request_id` VARCHAR(191) NOT NULL,
+  `from_status` LONGTEXT NULL,
+  `to_status` LONGTEXT NOT NULL,
+  `action` LONGTEXT NOT NULL,
+  `actor_id` VARCHAR(191) NOT NULL,
+  `actor_role` LONGTEXT NOT NULL,
+  `note` LONGTEXT NOT NULL,
+  `operation_request_id` VARCHAR(191) NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_data_rights_events_operation_unique` (`operation_request_id`),
+  KEY `idx_data_rights_events_request_created` (`data_rights_request_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `data_rights_requests` (
+  `id` VARCHAR(191) NOT NULL,
+  `reference_number` VARCHAR(191) NOT NULL,
+  `customer_id` VARCHAR(191) NOT NULL,
+  `request_type` LONGTEXT NOT NULL,
+  `detail` LONGTEXT NOT NULL,
+  `status` VARCHAR(191) NOT NULL DEFAULT 'submitted',
+  `assigned_to` VARCHAR(191) NULL,
+  `resolution` LONGTEXT NULL,
+  `created_request_id` VARCHAR(191) NOT NULL,
+  `operation_request_id` LONGTEXT NULL,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  `completed_at` BIGINT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_data_rights_reference_unique` (`reference_number`),
+  UNIQUE KEY `idx_data_rights_created_request_unique` (`created_request_id`),
+  KEY `idx_data_rights_queue` (`status`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `inventory_adjustments` (
+  `id` VARCHAR(191) NOT NULL,
+  `product_id` VARCHAR(191) NOT NULL,
+  `seller_id` VARCHAR(191) NOT NULL,
+  `actor_id` VARCHAR(191) NOT NULL,
+  `previous_quantity` BIGINT NOT NULL,
+  `next_quantity` BIGINT NOT NULL,
+  `reason` LONGTEXT NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_inventory_adjustments_product_created` (`product_id`, `created_at`),
+  KEY `idx_inventory_adjustments_seller_created` (`seller_id`, `created_at`),
+  CONSTRAINT `inventory_adjustments_quantities_non_negative` CHECK (`previous_quantity` >= 0 AND `next_quantity` >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `moderation_events` (
+  `id` VARCHAR(191) NOT NULL,
+  `subject_type` VARCHAR(191) NOT NULL,
+  `subject_id` VARCHAR(191) NOT NULL,
+  `from_status` LONGTEXT NOT NULL,
+  `to_status` LONGTEXT NOT NULL,
+  `reason` LONGTEXT NOT NULL,
+  `actor_id` VARCHAR(191) NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_moderation_events_subject` (`subject_type`, `subject_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `notification_messages` (
+  `id` VARCHAR(191) NOT NULL,
+  `recipient_user_id` VARCHAR(191) NOT NULL,
+  `audience_role` LONGTEXT NOT NULL,
+  `channel` VARCHAR(191) NOT NULL,
+  `template_key` LONGTEXT NOT NULL,
+  `subject_en` LONGTEXT NOT NULL,
+  `subject_ne` LONGTEXT NOT NULL,
+  `body_en` LONGTEXT NOT NULL,
+  `body_ne` LONGTEXT NOT NULL,
+  `related_type` LONGTEXT NULL,
+  `related_id` LONGTEXT NULL,
+  `status` VARCHAR(191) NOT NULL DEFAULT 'queued',
+  `provider_reference` LONGTEXT NULL,
+  `failure_reason` LONGTEXT NULL,
+  `request_id` VARCHAR(191) NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  `sent_at` BIGINT NULL,
+  `read_at` BIGINT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_notification_messages_request_unique` (`request_id`),
+  KEY `idx_notification_messages_recipient_created` (`recipient_user_id`, `created_at`),
+  KEY `idx_notification_messages_delivery_queue` (`channel`, `status`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `occasions` (
+  `id` VARCHAR(191) NOT NULL,
+  `slug` VARCHAR(191) NOT NULL,
+  `name_en` LONGTEXT NOT NULL,
+  `name_ne` LONGTEXT NULL,
+  `is_active` BIGINT NOT NULL DEFAULT 1,
+  `sort_order` BIGINT NOT NULL DEFAULT 0,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_occasions_slug_unique` (`slug`),
+  KEY `idx_occasions_active_sort` (`is_active`, `sort_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `operational_incidents` (
+  `id` VARCHAR(191) NOT NULL,
+  `reference_number` VARCHAR(191) NOT NULL,
+  `severity` VARCHAR(191) NOT NULL,
+  `status` VARCHAR(191) NOT NULL,
+  `title` LONGTEXT NOT NULL,
+  `detail` LONGTEXT NOT NULL,
+  `resolution` LONGTEXT NULL,
+  `owner_id` VARCHAR(191) NOT NULL,
+  `request_id` VARCHAR(191) NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  `resolved_at` BIGINT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_operational_incidents_reference_unique` (`reference_number`),
+  UNIQUE KEY `idx_operational_incidents_request_unique` (`request_id`),
+  KEY `idx_operational_incidents_status_severity` (`status`, `severity`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `order_documents` (
+  `id` VARCHAR(191) NOT NULL,
+  `order_id` VARCHAR(191) NOT NULL,
+  `kind` VARCHAR(191) NOT NULL,
+  `document_number` VARCHAR(191) NOT NULL,
+  `snapshot_json` LONGTEXT NOT NULL,
+  `status` LONGTEXT NOT NULL DEFAULT 'issued',
+  `request_id` VARCHAR(191) NOT NULL,
+  `issued_at` BIGINT NOT NULL,
+  `voided_at` BIGINT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_order_documents_number_unique` (`document_number`),
+  UNIQUE KEY `idx_order_documents_request_unique` (`request_id`),
+  UNIQUE KEY `idx_order_documents_order_kind_unique` (`order_id`, `kind`),
+  KEY `idx_order_documents_order_issued` (`order_id`, `issued_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `order_item_status_events` (
+  `id` VARCHAR(191) NOT NULL,
+  `order_item_id` VARCHAR(191) NOT NULL,
+  `from_status` LONGTEXT NOT NULL,
+  `to_status` LONGTEXT NOT NULL,
+  `note` LONGTEXT NOT NULL,
+  `actor_id` VARCHAR(191) NULL,
+  `request_id` VARCHAR(191) NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_order_item_status_events_item_created` (`order_item_id`, `created_at`),
+  UNIQUE KEY `idx_order_item_status_events_request_item_unique` (`request_id`, `order_item_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `order_items` (
+  `id` VARCHAR(191) NOT NULL,
+  `order_id` VARCHAR(191) NOT NULL,
+  `product_id` VARCHAR(191) NULL,
+  `seller_id` VARCHAR(191) NOT NULL,
+  `seller_name_snapshot` LONGTEXT NOT NULL,
+  `product_name_snapshot` LONGTEXT NOT NULL,
+  `sku_snapshot` LONGTEXT NOT NULL,
+  `unit_price_paisa` BIGINT NOT NULL,
+  `quantity` BIGINT NOT NULL,
+  `seller_discount_paisa` BIGINT NOT NULL DEFAULT 0,
+  `commission_bps` BIGINT NOT NULL,
+  `commission_paisa` BIGINT NOT NULL,
+  `tax_paisa` BIGINT NOT NULL DEFAULT 0,
+  `line_total_paisa` BIGINT NOT NULL,
+  `return_eligible_snapshot` BIGINT NOT NULL DEFAULT 1,
+  `fulfillment_status` LONGTEXT NOT NULL DEFAULT 'confirmed',
+  `fulfillment_request_id` LONGTEXT NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_order_items_order` (`order_id`),
+  KEY `idx_order_items_seller` (`seller_id`, `created_at`),
+  KEY `idx_order_items_seller_order` (`seller_id`, `order_id`),
+  CONSTRAINT `order_items_quantity_positive` CHECK (`quantity` > 0),
+  CONSTRAINT `order_items_commission_valid` CHECK (`commission_bps` >= 0 AND `commission_bps` <= 10000)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `order_policy_acceptances` (
+  `id` VARCHAR(191) NOT NULL,
+  `order_id` VARCHAR(191) NOT NULL,
+  `policy_version` LONGTEXT NOT NULL,
+  `terms_snapshot_json` LONGTEXT NOT NULL,
+  `acceptance_method` LONGTEXT NOT NULL,
+  `actor_user_id` VARCHAR(191) NULL,
+  `request_id` VARCHAR(191) NOT NULL,
+  `accepted_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_order_policy_acceptances_order_unique` (`order_id`),
+  UNIQUE KEY `idx_order_policy_acceptances_request_unique` (`request_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `order_status_events` (
+  `id` VARCHAR(191) NOT NULL,
+  `order_id` VARCHAR(191) NOT NULL,
+  `from_status` LONGTEXT NULL,
+  `to_status` LONGTEXT NOT NULL,
+  `note` LONGTEXT NOT NULL,
+  `actor_id` VARCHAR(191) NULL,
+  `request_id` VARCHAR(191) NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_order_status_events_order_created` (`order_id`, `created_at`),
+  UNIQUE KEY `idx_order_status_events_request_unique` (`request_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `orders` (
+  `id` VARCHAR(191) NOT NULL,
+  `order_number` VARCHAR(191) NOT NULL,
+  `receipt_token_hash` VARCHAR(191) NULL,
+  `operation_request_id` LONGTEXT NULL,
+  `customer_id` VARCHAR(191) NULL,
+  `customer_email` LONGTEXT NOT NULL,
+  `customer_phone` LONGTEXT NOT NULL,
+  `status` VARCHAR(191) NOT NULL,
+  `locale` LONGTEXT NOT NULL,
+  `currency` LONGTEXT NOT NULL DEFAULT 'NPR',
+  `policy_version` LONGTEXT NOT NULL,
+  `return_policy_snapshot_json` LONGTEXT NOT NULL DEFAULT '{"generalRequestWindowDays":7,"deliveryDamageEvidenceWindowHours":48,"changeOfMindEnabled":true,"highValueRefundThresholdPaisa":1000000,"refundInitiationBusinessDays":2,"codRefundEstimateBusinessDays":[3,7]}',
+  `shipping_address_json` LONGTEXT NOT NULL,
+  `item_subtotal_paisa` BIGINT NOT NULL,
+  `seller_discount_paisa` BIGINT NOT NULL DEFAULT 0,
+  `delivery_charge_paisa` BIGINT NOT NULL,
+  `buyer_platform_fee_paisa` BIGINT NOT NULL DEFAULT 0,
+  `tax_total_paisa` BIGINT NOT NULL DEFAULT 0,
+  `grand_total_paisa` BIGINT NOT NULL,
+  `payment_mode` LONGTEXT NOT NULL,
+  `payment_status` LONGTEXT NOT NULL,
+  `placed_at` BIGINT NULL,
+  `delivered_at` BIGINT NULL,
+  `cancelled_at` BIGINT NULL,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_orders_order_number_unique` (`order_number`),
+  UNIQUE KEY `idx_orders_receipt_token_unique` (`receipt_token_hash`),
+  KEY `idx_orders_customer_created` (`customer_id`, `created_at`),
+  KEY `idx_orders_status_created` (`status`, `created_at`),
+  CONSTRAINT `orders_money_non_negative` CHECK (`item_subtotal_paisa` >= 0 AND `seller_discount_paisa` >= 0 AND `delivery_charge_paisa` >= 0 AND `buyer_platform_fee_paisa` >= 0 AND `tax_total_paisa` >= 0 AND `grand_total_paisa` >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `payments` (
+  `id` VARCHAR(191) NOT NULL,
+  `order_id` VARCHAR(191) NOT NULL,
+  `provider` VARCHAR(191) NOT NULL,
+  `provider_reference` VARCHAR(191) NULL,
+  `method` LONGTEXT NOT NULL,
+  `status` LONGTEXT NOT NULL,
+  `amount_paisa` BIGINT NOT NULL,
+  `currency` LONGTEXT NOT NULL DEFAULT 'NPR',
+  `idempotency_key` VARCHAR(191) NOT NULL,
+  `failure_code` LONGTEXT NULL,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_payments_idempotency_unique` (`idempotency_key`),
+  UNIQUE KEY `idx_payments_provider_reference_unique` (`provider`, `provider_reference`),
+  KEY `idx_payments_order_created` (`order_id`, `created_at`),
+  CONSTRAINT `payments_amount_non_negative` CHECK (`amount_paisa` >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `payout_entries` (
+  `payout_id` VARCHAR(191) NOT NULL,
+  `ledger_entry_id` VARCHAR(191) NOT NULL,
+  `released_at` BIGINT NULL,
+  `release_reason` LONGTEXT NULL,
+  `active_ledger_entry_key` VARCHAR(191) GENERATED ALWAYS AS (CASE WHEN `released_at` IS NULL THEN `ledger_entry_id` ELSE NULL END) STORED,
+  PRIMARY KEY (`payout_id`, `ledger_entry_id`),
+  UNIQUE KEY `idx_payout_entries_active_ledger_unique` (`active_ledger_entry_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `payout_events` (
+  `id` VARCHAR(191) NOT NULL,
+  `payout_id` VARCHAR(191) NOT NULL,
+  `from_status` LONGTEXT NULL,
+  `to_status` LONGTEXT NOT NULL,
+  `action` LONGTEXT NOT NULL,
+  `actor_id` VARCHAR(191) NOT NULL,
+  `actor_type` LONGTEXT NOT NULL,
+  `note` LONGTEXT NOT NULL,
+  `request_id` VARCHAR(191) NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_payout_events_payout_created` (`payout_id`, `created_at`),
+  UNIQUE KEY `idx_payout_events_request_unique` (`request_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `payout_requests` (
+  `id` VARCHAR(191) NOT NULL,
+  `seller_id` VARCHAR(191) NOT NULL,
+  `status` VARCHAR(191) NOT NULL DEFAULT 'submitted',
+  `seller_note` LONGTEXT NOT NULL,
+  `available_amount_snapshot_paisa` BIGINT NOT NULL,
+  `payout_id` VARCHAR(191) NULL,
+  `processed_by` VARCHAR(191) NULL,
+  `processing_note` LONGTEXT NULL,
+  `created_request_id` VARCHAR(191) NOT NULL,
+  `operation_request_id` LONGTEXT NULL,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_payout_requests_created_unique` (`created_request_id`),
+  KEY `idx_payout_requests_seller_status` (`seller_id`, `status`),
+  KEY `idx_payout_requests_queue` (`status`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `payouts` (
+  `id` VARCHAR(191) NOT NULL,
+  `seller_id` VARCHAR(191) NOT NULL,
+  `payout_number` VARCHAR(191) NOT NULL,
+  `status` VARCHAR(191) NOT NULL,
+  `amount_paisa` BIGINT NOT NULL,
+  `destination_reference` LONGTEXT NOT NULL,
+  `prepared_by` VARCHAR(191) NOT NULL,
+  `approved_by` VARCHAR(191) NULL,
+  `processed_by` VARCHAR(191) NULL,
+  `provider_reference` LONGTEXT NULL,
+  `note` LONGTEXT NULL,
+  `period_start` BIGINT NULL,
+  `period_end` BIGINT NULL,
+  `scheduled_for` BIGINT NOT NULL,
+  `approved_at` BIGINT NULL,
+  `processed_at` BIGINT NULL,
+  `paid_at` BIGINT NULL,
+  `failed_at` BIGINT NULL,
+  `failure_reason` LONGTEXT NULL,
+  `created_request_id` VARCHAR(191) NULL,
+  `operation_request_id` LONGTEXT NULL,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_payouts_number_unique` (`payout_number`),
+  UNIQUE KEY `idx_payouts_created_request_unique` (`created_request_id`),
+  KEY `idx_payouts_seller_status` (`seller_id`, `status`),
+  KEY `idx_payouts_status_scheduled` (`status`, `scheduled_for`),
+  CONSTRAINT `payouts_amount_positive` CHECK (`amount_paisa` > 0),
+  CONSTRAINT `payouts_maker_checker` CHECK (`approved_by` IS NULL OR `approved_by` != `prepared_by`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `policy_versions` (
+  `id` VARCHAR(191) NOT NULL,
+  `policy_key` VARCHAR(191) NOT NULL,
+  `version` VARCHAR(191) NOT NULL,
+  `document_json` LONGTEXT NOT NULL,
+  `effective_from` BIGINT NOT NULL,
+  `effective_until` BIGINT NULL,
+  `created_by` VARCHAR(191) NOT NULL,
+  `approved_by` VARCHAR(191) NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_policy_versions_key_version_unique` (`policy_key`, `version`),
+  KEY `idx_policy_versions_effective` (`policy_key`, `effective_from`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `product_media` (
+  `id` VARCHAR(191) NOT NULL,
+  `product_id` VARCHAR(191) NOT NULL,
+  `object_key` VARCHAR(191) NOT NULL,
+  `original_name` LONGTEXT NOT NULL DEFAULT '',
+  `mime_type` LONGTEXT NOT NULL DEFAULT 'image/jpeg',
+  `size_bytes` BIGINT NOT NULL DEFAULT 0,
+  `alt_en` LONGTEXT NOT NULL,
+  `alt_ne` LONGTEXT NULL,
+  `width` BIGINT NULL,
+  `height` BIGINT NULL,
+  `sort_order` BIGINT NOT NULL DEFAULT 0,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_product_media_object_key_unique` (`object_key`),
+  KEY `idx_product_media_product_sort` (`product_id`, `sort_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `product_occasions` (
+  `product_id` VARCHAR(191) NOT NULL,
+  `occasion_id` VARCHAR(191) NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`product_id`, `occasion_id`),
+  KEY `idx_product_occasions_occasion_product` (`occasion_id`, `product_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `product_reviews` (
+  `id` VARCHAR(191) NOT NULL,
+  `product_id` VARCHAR(191) NOT NULL,
+  `customer_id` VARCHAR(191) NOT NULL,
+  `order_item_id` VARCHAR(191) NOT NULL,
+  `rating` BIGINT NOT NULL,
+  `title` LONGTEXT NULL,
+  `body` LONGTEXT NOT NULL,
+  `status` VARCHAR(191) NOT NULL DEFAULT 'pending',
+  `moderation_note` LONGTEXT NULL,
+  `moderated_by` VARCHAR(191) NULL,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_product_reviews_order_item_unique` (`order_item_id`),
+  KEY `idx_product_reviews_public` (`product_id`, `status`, `created_at`),
+  KEY `idx_product_reviews_moderation_queue` (`status`, `created_at`),
+  CONSTRAINT `product_reviews_rating_valid` CHECK (`rating` >= 1 AND `rating` <= 5)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `products` (
+  `id` VARCHAR(191) NOT NULL,
+  `seller_id` VARCHAR(191) NOT NULL,
+  `category_id` VARCHAR(191) NOT NULL,
+  `slug` VARCHAR(191) NOT NULL,
+  `sku` VARCHAR(191) NOT NULL,
+  `name_en` LONGTEXT NOT NULL,
+  `name_ne` LONGTEXT NULL,
+  `description_en` LONGTEXT NOT NULL,
+  `description_ne` LONGTEXT NULL,
+  `price_paisa` BIGINT NOT NULL,
+  `compare_at_price_paisa` BIGINT NULL,
+  `inventory_quantity` BIGINT NOT NULL DEFAULT 0,
+  `producer` LONGTEXT NOT NULL,
+  `country_of_origin` LONGTEXT NOT NULL DEFAULT 'NP',
+  `materials` LONGTEXT NOT NULL,
+  `dimensions` LONGTEXT NULL,
+  `care_instructions` LONGTEXT NULL,
+  `safety_information` LONGTEXT NULL,
+  `return_conditions` LONGTEXT NULL,
+  `return_eligible` BIGINT NOT NULL DEFAULT 1,
+  `warranty` LONGTEXT NULL,
+  `made_to_order` BIGINT NOT NULL DEFAULT 0,
+  `preparation_days` BIGINT NOT NULL DEFAULT 2,
+  `manufactured_at` BIGINT NULL,
+  `expires_at` BIGINT NULL,
+  `licence_reference` LONGTEXT NULL,
+  `status` VARCHAR(191) NOT NULL DEFAULT 'draft',
+  `review_note` LONGTEXT NULL,
+  `review_request_id` LONGTEXT NULL,
+  `reviewed_by` VARCHAR(191) NULL,
+  `published_at` BIGINT NULL,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_products_slug_unique` (`slug`),
+  UNIQUE KEY `idx_products_seller_sku_unique` (`seller_id`, `sku`),
+  KEY `idx_products_public_catalog` (`status`, `category_id`, `published_at`),
+  KEY `idx_products_seller_status` (`seller_id`, `status`),
+  KEY `idx_products_seller_updated` (`seller_id`, `updated_at`),
+  KEY `idx_products_review_queue` (`status`, `created_at`),
+  KEY `idx_products_public_recent` (`status`, `published_at`),
+  CONSTRAINT `products_price_non_negative` CHECK (`price_paisa` >= 0),
+  CONSTRAINT `products_compare_price_non_negative` CHECK (`compare_at_price_paisa` IS NULL OR `compare_at_price_paisa` >= 0),
+  CONSTRAINT `products_inventory_non_negative` CHECK (`inventory_quantity` >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `prohibited_product_rules` (
+  `id` VARCHAR(191) NOT NULL,
+  `code` VARCHAR(191) NOT NULL,
+  `title_en` LONGTEXT NOT NULL,
+  `title_ne` LONGTEXT NOT NULL,
+  `description_en` LONGTEXT NOT NULL,
+  `description_ne` LONGTEXT NOT NULL,
+  `severity` VARCHAR(191) NOT NULL,
+  `is_active` BIGINT NOT NULL DEFAULT 1,
+  `created_by` VARCHAR(191) NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_prohibited_product_rules_code_unique` (`code`),
+  KEY `idx_prohibited_product_rules_active` (`is_active`, `severity`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `promotion_products` (
+  `promotion_id` VARCHAR(191) NOT NULL,
+  `product_id` VARCHAR(191) NOT NULL,
+  `sort_order` BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`promotion_id`, `product_id`),
+  KEY `idx_promotion_products_product` (`product_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `promotions` (
+  `id` VARCHAR(191) NOT NULL,
+  `name_en` LONGTEXT NOT NULL,
+  `name_ne` LONGTEXT NOT NULL,
+  `status` VARCHAR(191) NOT NULL DEFAULT 'draft',
+  `placement` LONGTEXT NOT NULL,
+  `starts_at` BIGINT NOT NULL,
+  `ends_at` BIGINT NOT NULL,
+  `created_by` VARCHAR(191) NOT NULL,
+  `approved_by` VARCHAR(191) NULL,
+  `note` LONGTEXT NOT NULL,
+  `created_request_id` VARCHAR(191) NOT NULL,
+  `operation_request_id` LONGTEXT NULL,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_promotions_created_request_unique` (`created_request_id`),
+  KEY `idx_promotions_status_window` (`status`, `starts_at`, `ends_at`),
+  CONSTRAINT `promotions_window_valid` CHECK (`ends_at` > `starts_at`),
+  CONSTRAINT `promotions_maker_checker` CHECK (`approved_by` IS NULL OR `approved_by` != `created_by`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `refund_liability_entries` (
+  `id` VARCHAR(191) NOT NULL,
+  `refund_id` VARCHAR(191) NOT NULL,
+  `seller_id` VARCHAR(191) NULL,
+  `party` LONGTEXT NOT NULL,
+  `amount_paisa` BIGINT NOT NULL,
+  `description` LONGTEXT NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_refund_liability_refund` (`refund_id`),
+  KEY `idx_refund_liability_seller` (`seller_id`, `created_at`),
+  CONSTRAINT `refund_liability_amount_positive` CHECK (`amount_paisa` > 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- refunds_high_value_maker_checker is enforced by application transactions because MariaDB 10.11 rejects CHECK columns changed by SET NULL/CASCADE foreign-key actions.
+CREATE TABLE IF NOT EXISTS `refunds` (
+  `id` VARCHAR(191) NOT NULL,
+  `order_id` VARCHAR(191) NOT NULL,
+  `return_request_id` VARCHAR(191) NULL,
+  `payment_id` VARCHAR(191) NULL,
+  `status` VARCHAR(191) NOT NULL,
+  `amount_paisa` BIGINT NOT NULL,
+  `item_amount_paisa` BIGINT NULL,
+  `delivery_amount_paisa` BIGINT NOT NULL DEFAULT 0,
+  `reason` LONGTEXT NOT NULL,
+  `requested_by` VARCHAR(191) NULL,
+  `approved_by` VARCHAR(191) NULL,
+  `high_value_approved_by` VARCHAR(191) NULL,
+  `processed_by` VARCHAR(191) NULL,
+  `liability` LONGTEXT NOT NULL DEFAULT 'platform',
+  `is_high_value` BIGINT NOT NULL DEFAULT 0,
+  `operation_request_id` LONGTEXT NULL,
+  `provider_reference` LONGTEXT NULL,
+  `requested_at` BIGINT NOT NULL,
+  `approved_at` BIGINT NULL,
+  `processed_at` BIGINT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_refunds_order` (`order_id`),
+  KEY `idx_refunds_status_requested` (`status`, `requested_at`),
+  UNIQUE KEY `idx_refunds_return_request_unique` (`return_request_id`),
+  CONSTRAINT `refunds_amount_positive` CHECK (`amount_paisa` > 0),
+  CONSTRAINT `refunds_components_valid` CHECK (`item_amount_paisa` IS NULL OR (`item_amount_paisa` >= 0 AND `delivery_amount_paisa` >= 0 AND `item_amount_paisa` + `delivery_amount_paisa` = `amount_paisa`))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `request_rate_limits` (
+  `key` VARCHAR(191) NOT NULL,
+  `request_count` BIGINT NOT NULL DEFAULT 0,
+  `window_started_at` BIGINT NOT NULL,
+  `expires_at` BIGINT NOT NULL,
+  PRIMARY KEY (`key`),
+  KEY `idx_request_rate_limits_expiry` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `return_evidence` (
+  `id` VARCHAR(191) NOT NULL,
+  `return_request_id` VARCHAR(191) NOT NULL,
+  `object_key` VARCHAR(191) NOT NULL,
+  `original_name` LONGTEXT NOT NULL,
+  `mime_type` LONGTEXT NOT NULL,
+  `size_bytes` BIGINT NOT NULL,
+  `uploaded_by_type` LONGTEXT NOT NULL,
+  `uploaded_by` VARCHAR(191) NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_return_evidence_object_key_unique` (`object_key`),
+  KEY `idx_return_evidence_request_created` (`return_request_id`, `created_at`),
+  CONSTRAINT `return_evidence_size_positive` CHECK (`size_bytes` > 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `return_outcomes` (
+  `id` VARCHAR(191) NOT NULL,
+  `return_request_id` VARCHAR(191) NOT NULL,
+  `outcome` LONGTEXT NOT NULL,
+  `refund_id` VARCHAR(191) NULL,
+  `replacement_reference` LONGTEXT NULL,
+  `return_shipment_reference` LONGTEXT NULL,
+  `restock_quantity` BIGINT NOT NULL DEFAULT 0,
+  `note_en` LONGTEXT NOT NULL,
+  `note_ne` LONGTEXT NOT NULL,
+  `resolved_by` VARCHAR(191) NOT NULL,
+  `request_id` VARCHAR(191) NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_return_outcomes_request_unique` (`return_request_id`),
+  UNIQUE KEY `idx_return_outcomes_request_id_unique` (`request_id`),
+  CONSTRAINT `return_outcomes_restock_non_negative` CHECK (`restock_quantity` >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `return_request_events` (
+  `id` VARCHAR(191) NOT NULL,
+  `return_request_id` VARCHAR(191) NOT NULL,
+  `from_status` LONGTEXT NULL,
+  `to_status` LONGTEXT NOT NULL,
+  `action` LONGTEXT NOT NULL,
+  `actor_id` VARCHAR(191) NULL,
+  `actor_type` LONGTEXT NOT NULL,
+  `public_message_en` LONGTEXT NOT NULL,
+  `public_message_ne` LONGTEXT NOT NULL,
+  `internal_note` LONGTEXT NULL,
+  `request_id` VARCHAR(191) NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_return_events_request_created` (`return_request_id`, `created_at`),
+  UNIQUE KEY `idx_return_events_request_id_unique` (`request_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `return_requests` (
+  `id` VARCHAR(191) NOT NULL,
+  `reference_number` VARCHAR(191) NULL,
+  `order_item_id` VARCHAR(191) NOT NULL,
+  `requested_by` VARCHAR(191) NULL,
+  `reason` LONGTEXT NOT NULL,
+  `detail` LONGTEXT NOT NULL,
+  `locale` LONGTEXT NOT NULL DEFAULT 'en-NP',
+  `quantity` BIGINT NOT NULL DEFAULT 1,
+  `requested_resolution` LONGTEXT NOT NULL DEFAULT 'refund',
+  `status` VARCHAR(191) NOT NULL,
+  `responsibility` LONGTEXT NOT NULL DEFAULT 'undetermined',
+  `eligibility_decision` LONGTEXT NOT NULL DEFAULT 'manual_review',
+  `eligibility_reason_en` LONGTEXT NOT NULL DEFAULT 'Pending review',
+  `eligibility_reason_ne` LONGTEXT NOT NULL DEFAULT 'समीक्षा बाँकी',
+  `policy_snapshot_json` LONGTEXT NOT NULL DEFAULT '{}',
+  `seller_recommendation` LONGTEXT NULL,
+  `seller_response` LONGTEXT NULL,
+  `seller_response_locale` LONGTEXT NULL,
+  `seller_responded_by` VARCHAR(191) NULL,
+  `seller_responded_at` BIGINT NULL,
+  `investigation_summary` LONGTEXT NULL,
+  `resolution_outcome` LONGTEXT NULL,
+  `return_shipment_reference` LONGTEXT NULL,
+  `created_request_id` VARCHAR(191) NULL,
+  `operation_request_id` LONGTEXT NULL,
+  `requested_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL DEFAULT 0,
+  `resolved_at` BIGINT NULL,
+  `reviewed_by` VARCHAR(191) NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_return_requests_reference_unique` (`reference_number`),
+  KEY `idx_return_requests_item` (`order_item_id`, `requested_at`),
+  UNIQUE KEY `idx_return_requests_created_request_unique` (`created_request_id`),
+  KEY `idx_return_requests_status` (`status`, `requested_at`),
+  CONSTRAINT `return_requests_quantity_positive` CHECK (`quantity` > 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `seller_documents` (
+  `id` VARCHAR(191) NOT NULL,
+  `seller_id` VARCHAR(191) NOT NULL,
+  `kind` VARCHAR(191) NOT NULL,
+  `object_key` VARCHAR(191) NOT NULL,
+  `original_name` LONGTEXT NOT NULL,
+  `mime_type` LONGTEXT NOT NULL,
+  `size_bytes` BIGINT NOT NULL,
+  `status` LONGTEXT NOT NULL DEFAULT 'pending',
+  `uploaded_at` BIGINT NOT NULL,
+  `reviewed_at` BIGINT NULL,
+  `reviewed_by` VARCHAR(191) NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_seller_documents_object_key_unique` (`object_key`),
+  KEY `idx_seller_documents_seller_kind` (`seller_id`, `kind`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `seller_ledger_entries` (
+  `id` VARCHAR(191) NOT NULL,
+  `seller_id` VARCHAR(191) NOT NULL,
+  `order_item_id` VARCHAR(191) NULL,
+  `refund_id` VARCHAR(191) NULL,
+  `payout_id` VARCHAR(191) NULL,
+  `type` VARCHAR(191) NOT NULL,
+  `amount_paisa` BIGINT NOT NULL,
+  `available_at` BIGINT NULL,
+  `description` LONGTEXT NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  `active_order_item_key` VARCHAR(191) GENERATED ALWAYS AS (CASE WHEN `order_item_id` IS NOT NULL AND `type` IN ('sale', 'commission', 'reserve_hold', 'reserve_release') THEN `order_item_id` ELSE NULL END) STORED,
+  `active_order_item_type` VARCHAR(191) GENERATED ALWAYS AS (CASE WHEN `order_item_id` IS NOT NULL AND `type` IN ('sale', 'commission', 'reserve_hold', 'reserve_release') THEN `type` ELSE NULL END) STORED,
+  PRIMARY KEY (`id`),
+  KEY `idx_seller_ledger_balance` (`seller_id`, `available_at`),
+  KEY `idx_seller_ledger_order_item` (`order_item_id`),
+  UNIQUE KEY `idx_seller_ledger_refund_unique` (`refund_id`),
+  UNIQUE KEY `idx_seller_ledger_payout_unique` (`payout_id`),
+  UNIQUE KEY `idx_seller_ledger_order_item_type_unique` (`active_order_item_key`, `active_order_item_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `seller_profiles` (
+  `id` VARCHAR(191) NOT NULL,
+  `application_reference` VARCHAR(191) NULL,
+  `user_id` VARCHAR(191) NOT NULL,
+  `legal_name` LONGTEXT NOT NULL,
+  `trading_name` LONGTEXT NOT NULL,
+  `registration_authority` VARCHAR(191) NOT NULL,
+  `registration_number` VARCHAR(191) NOT NULL,
+  `tax_mode` LONGTEXT NOT NULL,
+  `tax_registration_number` VARCHAR(191) NOT NULL,
+  `representative_name` LONGTEXT NOT NULL,
+  `business_description` LONGTEXT NULL,
+  `product_categories` LONGTEXT NULL,
+  `support_phone` LONGTEXT NOT NULL,
+  `support_email` LONGTEXT NOT NULL,
+  `province` LONGTEXT NOT NULL,
+  `district` LONGTEXT NOT NULL,
+  `municipality` LONGTEXT NOT NULL,
+  `ward` LONGTEXT NULL,
+  `locality` LONGTEXT NOT NULL,
+  `payout_account_reference` LONGTEXT NULL,
+  `status` VARCHAR(191) NOT NULL DEFAULT 'draft',
+  `seller_agreement_version` LONGTEXT NULL,
+  `seller_agreement_accepted_at` BIGINT NULL,
+  `review_note` LONGTEXT NULL,
+  `review_request_id` LONGTEXT NULL,
+  `reviewed_by` VARCHAR(191) NULL,
+  `approved_at` BIGINT NULL,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_seller_profiles_application_reference_unique` (`application_reference`),
+  UNIQUE KEY `idx_seller_profiles_user_unique` (`user_id`),
+  UNIQUE KEY `idx_seller_profiles_registration_unique` (`registration_authority`, `registration_number`),
+  UNIQUE KEY `idx_seller_profiles_tax_number_unique` (`tax_registration_number`),
+  KEY `idx_seller_profiles_review_queue` (`status`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `shipment_events` (
+  `id` VARCHAR(191) NOT NULL,
+  `shipment_id` VARCHAR(191) NOT NULL,
+  `provider_event_id` VARCHAR(191) NULL,
+  `status` LONGTEXT NOT NULL,
+  `location` LONGTEXT NULL,
+  `note` LONGTEXT NULL,
+  `occurred_at` BIGINT NOT NULL,
+  `received_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_shipment_events_provider_event_unique` (`shipment_id`, `provider_event_id`),
+  KEY `idx_shipment_events_timeline` (`shipment_id`, `occurred_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `shipments` (
+  `id` VARCHAR(191) NOT NULL,
+  `order_id` VARCHAR(191) NOT NULL,
+  `provider` VARCHAR(191) NOT NULL,
+  `provider_shipment_id` VARCHAR(191) NULL,
+  `tracking_code` VARCHAR(191) NULL,
+  `status` LONGTEXT NOT NULL,
+  `payment_mode` LONGTEXT NOT NULL,
+  `cod_amount_paisa` BIGINT NULL,
+  `delivery_charge_paisa` BIGINT NOT NULL,
+  `estimated_min_days` BIGINT NOT NULL,
+  `estimated_max_days` BIGINT NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_shipments_provider_id_unique` (`provider`, `provider_shipment_id`),
+  KEY `idx_shipments_order` (`order_id`),
+  KEY `idx_shipments_tracking` (`tracking_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `shipping_job_events` (
+  `id` VARCHAR(191) NOT NULL,
+  `shipping_job_id` VARCHAR(191) NOT NULL,
+  `from_status` LONGTEXT NULL,
+  `to_status` LONGTEXT NOT NULL,
+  `action` LONGTEXT NOT NULL,
+  `actor_id` VARCHAR(191) NOT NULL,
+  `actor_role` LONGTEXT NOT NULL,
+  `note` LONGTEXT NOT NULL,
+  `request_id` VARCHAR(191) NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_shipping_job_events_request_unique` (`request_id`),
+  KEY `idx_shipping_job_events_job_created` (`shipping_job_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `shipping_jobs` (
+  `id` VARCHAR(191) NOT NULL,
+  `order_id` VARCHAR(191) NOT NULL,
+  `seller_id` VARCHAR(191) NOT NULL,
+  `direction` VARCHAR(191) NOT NULL,
+  `status` VARCHAR(191) NOT NULL,
+  `carrier` LONGTEXT NOT NULL DEFAULT 'nepal_can_move_manual',
+  `label_reference` LONGTEXT NULL,
+  `tracking_code` LONGTEXT NULL,
+  `pickup_window_start` BIGINT NULL,
+  `pickup_window_end` BIGINT NULL,
+  `claim_reference` LONGTEXT NULL,
+  `reconciliation_status` VARCHAR(191) NOT NULL DEFAULT 'unreconciled',
+  `reconciliation_note` LONGTEXT NULL,
+  `created_by` VARCHAR(191) NOT NULL,
+  `created_request_id` VARCHAR(191) NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_shipping_jobs_order_seller_direction_unique` (`order_id`, `seller_id`, `direction`),
+  UNIQUE KEY `idx_shipping_jobs_created_request_unique` (`created_request_id`),
+  KEY `idx_shipping_jobs_seller_status` (`seller_id`, `status`),
+  KEY `idx_shipping_jobs_reconciliation` (`reconciliation_status`, `updated_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `staff_invitations` (
+  `id` VARCHAR(191) NOT NULL,
+  `email` VARCHAR(191) NOT NULL,
+  `role` LONGTEXT NOT NULL,
+  `status` VARCHAR(191) NOT NULL DEFAULT 'pending',
+  `invited_by` VARCHAR(191) NULL,
+  `accepted_by` VARCHAR(191) NULL,
+  `expires_at` BIGINT NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  `accepted_at` BIGINT NULL,
+  `revoked_at` BIGINT NULL,
+  `pending_email_key` VARCHAR(191) GENERATED ALWAYS AS (CASE WHEN `status` = 'pending' THEN `email` ELSE NULL END) STORED,
+  PRIMARY KEY (`id`),
+  KEY `idx_staff_invitations_email_status_created` (`email`, `status`, `created_at`),
+  KEY `idx_staff_invitations_status_expires` (`status`, `expires_at`),
+  UNIQUE KEY `idx_staff_invitations_pending_email_unique` (`pending_email_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `user_roles` (
+  `user_id` VARCHAR(191) NOT NULL,
+  `role` VARCHAR(191) NOT NULL,
+  `assigned_by` VARCHAR(191) NULL,
+  `assigned_at` BIGINT NOT NULL,
+  PRIMARY KEY (`user_id`, `role`),
+  KEY `idx_user_roles_role` (`role`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `users` (
+  `id` VARCHAR(191) NOT NULL,
+  `auth_subject` VARCHAR(191) NULL,
+  `email` VARCHAR(191) NOT NULL,
+  `phone` VARCHAR(191) NULL,
+  `display_name` LONGTEXT NOT NULL,
+  `locale` LONGTEXT NOT NULL DEFAULT 'en-NP',
+  `status` LONGTEXT NOT NULL DEFAULT 'active',
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_users_email_unique` (`email`),
+  UNIQUE KEY `idx_users_phone_unique` (`phone`),
+  UNIQUE KEY `idx_users_auth_subject_unique` (`auth_subject`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `wishlist_items` (
+  `user_id` VARCHAR(191) NOT NULL,
+  `product_id` VARCHAR(191) NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`user_id`, `product_id`),
+  KEY `idx_wishlist_items_user_created` (`user_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Babal.Host password authentication and server-side sessions.
+CREATE TABLE IF NOT EXISTS `user_credentials` (
+  `user_id` VARCHAR(191) NOT NULL,
+  `password_hash` VARCHAR(191) NOT NULL,
+  `password_salt` VARCHAR(191) NOT NULL,
+  `password_version` BIGINT NOT NULL DEFAULT 1,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `user_sessions` (
+  `token_hash` VARCHAR(64) NOT NULL,
+  `user_id` VARCHAR(191) NOT NULL,
+  `expires_at` BIGINT NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  `last_seen_at` BIGINT NOT NULL,
+  PRIMARY KEY (`token_hash`),
+  KEY `idx_user_sessions_user` (`user_id`),
+  KEY `idx_user_sessions_expiry` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `email_login_challenges` (
+  `token_hash` VARCHAR(64) NOT NULL,
+  `code_hash` VARCHAR(64) NOT NULL,
+  `user_id` VARCHAR(191) NOT NULL,
+  `attempts` BIGINT NOT NULL DEFAULT 0,
+  `expires_at` BIGINT NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  `consumed_at` BIGINT NULL,
+  PRIMARY KEY (`token_hash`),
+  KEY `idx_email_login_challenges_user_created` (`user_id`, `created_at`),
+  KEY `idx_email_login_challenges_expiry` (`expires_at`),
+  CONSTRAINT `email_login_challenges_user_id_users_id_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Foreign keys are added after every table exists to support circular references.
+ALTER TABLE `addresses` ADD CONSTRAINT `addresses_user_id_users_id_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `audit_logs` ADD CONSTRAINT `audit_logs_actor_id_users_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `backup_verifications` ADD CONSTRAINT `backup_verifications_verified_by_users_id_fk` FOREIGN KEY (`verified_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `cart_items` ADD CONSTRAINT `cart_items_cart_id_carts_id_fk` FOREIGN KEY (`cart_id`) REFERENCES `carts` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `cart_items` ADD CONSTRAINT `cart_items_product_id_products_id_fk` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `carts` ADD CONSTRAINT `carts_user_id_users_id_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `categories` ADD CONSTRAINT `categories_parent_id_categories_id_fk` FOREIGN KEY (`parent_id`) REFERENCES `categories` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `complaint_events` ADD CONSTRAINT `complaint_events_complaint_id_complaints_id_fk` FOREIGN KEY (`complaint_id`) REFERENCES `complaints` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `complaint_events` ADD CONSTRAINT `complaint_events_actor_id_users_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `complaints` ADD CONSTRAINT `complaints_customer_id_users_id_fk` FOREIGN KEY (`customer_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `complaints` ADD CONSTRAINT `complaints_order_id_orders_id_fk` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `complaints` ADD CONSTRAINT `complaints_order_item_id_order_items_id_fk` FOREIGN KEY (`order_item_id`) REFERENCES `order_items` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `complaints` ADD CONSTRAINT `complaints_seller_id_seller_profiles_id_fk` FOREIGN KEY (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `complaints` ADD CONSTRAINT `complaints_assigned_to_users_id_fk` FOREIGN KEY (`assigned_to`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `complaints` ADD CONSTRAINT `complaints_seller_responded_by_users_id_fk` FOREIGN KEY (`seller_responded_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `complaints` ADD CONSTRAINT `complaints_escalated_to_users_id_fk` FOREIGN KEY (`escalated_to`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `data_rights_events` ADD CONSTRAINT `data_rights_events_data_rights_request_id_data_rights_0016aafd0c` FOREIGN KEY (`data_rights_request_id`) REFERENCES `data_rights_requests` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `data_rights_events` ADD CONSTRAINT `data_rights_events_actor_id_users_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `data_rights_requests` ADD CONSTRAINT `data_rights_requests_customer_id_users_id_fk` FOREIGN KEY (`customer_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `data_rights_requests` ADD CONSTRAINT `data_rights_requests_assigned_to_users_id_fk` FOREIGN KEY (`assigned_to`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `inventory_adjustments` ADD CONSTRAINT `inventory_adjustments_product_id_products_id_fk` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `inventory_adjustments` ADD CONSTRAINT `inventory_adjustments_seller_id_seller_profiles_id_fk` FOREIGN KEY (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `inventory_adjustments` ADD CONSTRAINT `inventory_adjustments_actor_id_users_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `moderation_events` ADD CONSTRAINT `moderation_events_actor_id_users_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `notification_messages` ADD CONSTRAINT `notification_messages_recipient_user_id_users_id_fk` FOREIGN KEY (`recipient_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `operational_incidents` ADD CONSTRAINT `operational_incidents_owner_id_users_id_fk` FOREIGN KEY (`owner_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `order_documents` ADD CONSTRAINT `order_documents_order_id_orders_id_fk` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `order_item_status_events` ADD CONSTRAINT `order_item_status_events_order_item_id_order_items_id_fk` FOREIGN KEY (`order_item_id`) REFERENCES `order_items` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `order_item_status_events` ADD CONSTRAINT `order_item_status_events_actor_id_users_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `order_items` ADD CONSTRAINT `order_items_order_id_orders_id_fk` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `order_items` ADD CONSTRAINT `order_items_product_id_products_id_fk` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `order_items` ADD CONSTRAINT `order_items_seller_id_seller_profiles_id_fk` FOREIGN KEY (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `order_policy_acceptances` ADD CONSTRAINT `order_policy_acceptances_order_id_orders_id_fk` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `order_policy_acceptances` ADD CONSTRAINT `order_policy_acceptances_actor_user_id_users_id_fk` FOREIGN KEY (`actor_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `order_status_events` ADD CONSTRAINT `order_status_events_order_id_orders_id_fk` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `order_status_events` ADD CONSTRAINT `order_status_events_actor_id_users_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `orders` ADD CONSTRAINT `orders_customer_id_users_id_fk` FOREIGN KEY (`customer_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `payments` ADD CONSTRAINT `payments_order_id_orders_id_fk` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `payout_entries` ADD CONSTRAINT `payout_entries_payout_id_payouts_id_fk` FOREIGN KEY (`payout_id`) REFERENCES `payouts` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `payout_entries` ADD CONSTRAINT `payout_entries_ledger_entry_id_seller_ledger_entries_id_fk` FOREIGN KEY (`ledger_entry_id`) REFERENCES `seller_ledger_entries` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `payout_events` ADD CONSTRAINT `payout_events_payout_id_payouts_id_fk` FOREIGN KEY (`payout_id`) REFERENCES `payouts` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `payout_events` ADD CONSTRAINT `payout_events_actor_id_users_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `payout_requests` ADD CONSTRAINT `payout_requests_seller_id_seller_profiles_id_fk` FOREIGN KEY (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `payout_requests` ADD CONSTRAINT `payout_requests_payout_id_payouts_id_fk` FOREIGN KEY (`payout_id`) REFERENCES `payouts` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `payout_requests` ADD CONSTRAINT `payout_requests_processed_by_users_id_fk` FOREIGN KEY (`processed_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `payouts` ADD CONSTRAINT `payouts_seller_id_seller_profiles_id_fk` FOREIGN KEY (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `payouts` ADD CONSTRAINT `payouts_prepared_by_users_id_fk` FOREIGN KEY (`prepared_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `payouts` ADD CONSTRAINT `payouts_approved_by_users_id_fk` FOREIGN KEY (`approved_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `payouts` ADD CONSTRAINT `payouts_processed_by_users_id_fk` FOREIGN KEY (`processed_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `policy_versions` ADD CONSTRAINT `policy_versions_created_by_users_id_fk` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `policy_versions` ADD CONSTRAINT `policy_versions_approved_by_users_id_fk` FOREIGN KEY (`approved_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `product_media` ADD CONSTRAINT `product_media_product_id_products_id_fk` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `product_occasions` ADD CONSTRAINT `product_occasions_product_id_products_id_fk` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `product_occasions` ADD CONSTRAINT `product_occasions_occasion_id_occasions_id_fk` FOREIGN KEY (`occasion_id`) REFERENCES `occasions` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `product_reviews` ADD CONSTRAINT `product_reviews_product_id_products_id_fk` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `product_reviews` ADD CONSTRAINT `product_reviews_customer_id_users_id_fk` FOREIGN KEY (`customer_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `product_reviews` ADD CONSTRAINT `product_reviews_order_item_id_order_items_id_fk` FOREIGN KEY (`order_item_id`) REFERENCES `order_items` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `product_reviews` ADD CONSTRAINT `product_reviews_moderated_by_users_id_fk` FOREIGN KEY (`moderated_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `products` ADD CONSTRAINT `products_seller_id_seller_profiles_id_fk` FOREIGN KEY (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `products` ADD CONSTRAINT `products_category_id_categories_id_fk` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `products` ADD CONSTRAINT `products_reviewed_by_users_id_fk` FOREIGN KEY (`reviewed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `prohibited_product_rules` ADD CONSTRAINT `prohibited_product_rules_created_by_users_id_fk` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `promotion_products` ADD CONSTRAINT `promotion_products_promotion_id_promotions_id_fk` FOREIGN KEY (`promotion_id`) REFERENCES `promotions` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `promotion_products` ADD CONSTRAINT `promotion_products_product_id_products_id_fk` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `promotions` ADD CONSTRAINT `promotions_created_by_users_id_fk` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `promotions` ADD CONSTRAINT `promotions_approved_by_users_id_fk` FOREIGN KEY (`approved_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `refund_liability_entries` ADD CONSTRAINT `refund_liability_entries_refund_id_refunds_id_fk` FOREIGN KEY (`refund_id`) REFERENCES `refunds` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `refund_liability_entries` ADD CONSTRAINT `refund_liability_entries_seller_id_seller_profiles_id_fk` FOREIGN KEY (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `refunds` ADD CONSTRAINT `refunds_order_id_orders_id_fk` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `refunds` ADD CONSTRAINT `refunds_return_request_id_return_requests_id_fk` FOREIGN KEY (`return_request_id`) REFERENCES `return_requests` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `refunds` ADD CONSTRAINT `refunds_payment_id_payments_id_fk` FOREIGN KEY (`payment_id`) REFERENCES `payments` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `refunds` ADD CONSTRAINT `refunds_requested_by_users_id_fk` FOREIGN KEY (`requested_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `refunds` ADD CONSTRAINT `refunds_approved_by_users_id_fk` FOREIGN KEY (`approved_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `refunds` ADD CONSTRAINT `refunds_high_value_approved_by_users_id_fk` FOREIGN KEY (`high_value_approved_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `refunds` ADD CONSTRAINT `refunds_processed_by_users_id_fk` FOREIGN KEY (`processed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `return_evidence` ADD CONSTRAINT `return_evidence_return_request_id_return_requests_id_fk` FOREIGN KEY (`return_request_id`) REFERENCES `return_requests` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `return_evidence` ADD CONSTRAINT `return_evidence_uploaded_by_users_id_fk` FOREIGN KEY (`uploaded_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `return_outcomes` ADD CONSTRAINT `return_outcomes_return_request_id_return_requests_id_fk` FOREIGN KEY (`return_request_id`) REFERENCES `return_requests` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `return_outcomes` ADD CONSTRAINT `return_outcomes_refund_id_refunds_id_fk` FOREIGN KEY (`refund_id`) REFERENCES `refunds` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `return_outcomes` ADD CONSTRAINT `return_outcomes_resolved_by_users_id_fk` FOREIGN KEY (`resolved_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `return_request_events` ADD CONSTRAINT `return_request_events_return_request_id_return_requests_id_fk` FOREIGN KEY (`return_request_id`) REFERENCES `return_requests` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `return_request_events` ADD CONSTRAINT `return_request_events_actor_id_users_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `return_requests` ADD CONSTRAINT `return_requests_order_item_id_order_items_id_fk` FOREIGN KEY (`order_item_id`) REFERENCES `order_items` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `return_requests` ADD CONSTRAINT `return_requests_requested_by_users_id_fk` FOREIGN KEY (`requested_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `return_requests` ADD CONSTRAINT `return_requests_seller_responded_by_users_id_fk` FOREIGN KEY (`seller_responded_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `return_requests` ADD CONSTRAINT `return_requests_reviewed_by_users_id_fk` FOREIGN KEY (`reviewed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `seller_documents` ADD CONSTRAINT `seller_documents_seller_id_seller_profiles_id_fk` FOREIGN KEY (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `seller_documents` ADD CONSTRAINT `seller_documents_reviewed_by_users_id_fk` FOREIGN KEY (`reviewed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `seller_ledger_entries` ADD CONSTRAINT `seller_ledger_entries_seller_id_seller_profiles_id_fk` FOREIGN KEY (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `seller_ledger_entries` ADD CONSTRAINT `seller_ledger_entries_order_item_id_order_items_id_fk` FOREIGN KEY (`order_item_id`) REFERENCES `order_items` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `seller_ledger_entries` ADD CONSTRAINT `seller_ledger_entries_refund_id_refunds_id_fk` FOREIGN KEY (`refund_id`) REFERENCES `refunds` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `seller_ledger_entries` ADD CONSTRAINT `seller_ledger_entries_payout_id_payouts_id_fk` FOREIGN KEY (`payout_id`) REFERENCES `payouts` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `seller_profiles` ADD CONSTRAINT `seller_profiles_user_id_users_id_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `seller_profiles` ADD CONSTRAINT `seller_profiles_reviewed_by_users_id_fk` FOREIGN KEY (`reviewed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `shipment_events` ADD CONSTRAINT `shipment_events_shipment_id_shipments_id_fk` FOREIGN KEY (`shipment_id`) REFERENCES `shipments` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `shipments` ADD CONSTRAINT `shipments_order_id_orders_id_fk` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `shipping_job_events` ADD CONSTRAINT `shipping_job_events_shipping_job_id_shipping_jobs_id_fk` FOREIGN KEY (`shipping_job_id`) REFERENCES `shipping_jobs` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `shipping_job_events` ADD CONSTRAINT `shipping_job_events_actor_id_users_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `shipping_jobs` ADD CONSTRAINT `shipping_jobs_order_id_orders_id_fk` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `shipping_jobs` ADD CONSTRAINT `shipping_jobs_seller_id_seller_profiles_id_fk` FOREIGN KEY (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `shipping_jobs` ADD CONSTRAINT `shipping_jobs_created_by_users_id_fk` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE `staff_invitations` ADD CONSTRAINT `staff_invitations_invited_by_users_id_fk` FOREIGN KEY (`invited_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `staff_invitations` ADD CONSTRAINT `staff_invitations_accepted_by_users_id_fk` FOREIGN KEY (`accepted_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `user_roles` ADD CONSTRAINT `user_roles_user_id_users_id_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `user_roles` ADD CONSTRAINT `user_roles_assigned_by_users_id_fk` FOREIGN KEY (`assigned_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE `wishlist_items` ADD CONSTRAINT `wishlist_items_user_id_users_id_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `wishlist_items` ADD CONSTRAINT `wishlist_items_product_id_products_id_fk` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `user_credentials` ADD CONSTRAINT `user_credentials_user_id_users_id_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE `user_sessions` ADD CONSTRAINT `user_sessions_user_id_users_id_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- Production-safe discovery taxonomy. No sample users, sellers, or products are inserted.
+INSERT IGNORE INTO `categories` (`id`, `parent_id`, `slug`, `name_en`, `name_ne`, `is_active`, `sort_order`, `created_at`, `updated_at`) VALUES
+  ('cat-gifts', NULL, 'gifts', 'Gifts', 'उपहार', 1, 10, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('cat-home-decor', NULL, 'home-decor', 'Home decor', 'गृह सजावट', 1, 20, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('cat-jewelry-accessories', NULL, 'jewelry-accessories', 'Jewelry & accessories', 'गहना तथा सहायक सामग्री', 1, 30, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('cat-traditional-textiles', NULL, 'traditional-textiles', 'Traditional textiles', 'परम्परागत कपडा', 1, 40, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('cat-lifestyle', NULL, 'lifestyle', 'Lifestyle', 'जीवनशैली', 1, 50, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('cat-art-paintings', NULL, 'art-paintings', 'Art & paintings', 'कला तथा चित्रकला', 1, 60, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('cat-pottery', NULL, 'pottery', 'Pottery', 'माटोका भाँडा', 1, 70, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('cat-wood-bamboo-craft', NULL, 'wood-bamboo-craft', 'Wood/bamboo craft', 'काठ तथा बाँसका हस्तकला', 1, 80, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('cat-personalized-gifts', NULL, 'personalized-gifts', 'Personalized gifts', 'व्यक्तिगत उपहार', 1, 90, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('cat-corporate-gifting', NULL, 'corporate-gifting', 'Corporate gifting', 'संस्थागत उपहार', 1, 100, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000);
+
+INSERT IGNORE INTO `occasions` (`id`, `slug`, `name_en`, `name_ne`, `is_active`, `sort_order`, `created_at`, `updated_at`) VALUES
+  ('occasion-birthday', 'birthday-gifts', 'Birthday gifts', 'जन्मदिनका उपहार', 1, 10, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-wedding', 'wedding-gifts', 'Wedding gifts', 'विवाहका उपहार', 1, 20, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-dashain', 'dashain-gifts', 'Dashain gifts', 'दशैंका उपहार', 1, 30, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-tihar', 'tihar-gifts', 'Tihar gifts', 'तिहारका उपहार', 1, 40, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-mothers-day', 'mothers-day', 'Mother''s Day', 'आमाको मुख हेर्ने दिन', 1, 50, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-fathers-day', 'fathers-day', 'Father''s Day', 'बुबाको मुख हेर्ने दिन', 1, 60, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-anniversary', 'anniversary', 'Anniversary', 'वार्षिकोत्सव', 1, 70, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-corporate', 'corporate-gifts', 'Corporate gifts', 'संस्थागत उपहार', 1, 80, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-nepali-abroad', 'nepali-gifts-abroad', 'Nepali gifts abroad', 'विदेशमा नेपाली उपहार', 1, 90, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-housewarming', 'housewarming', 'Housewarming', 'गृहप्रवेशका उपहार', 1, 100, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000),
+  ('occasion-personalized', 'personalized-gifts', 'Personalized gifts', 'व्यक्तिगत उपहार', 1, 110, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000, UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000);
+
+CREATE TABLE IF NOT EXISTS `hastabazaar_schema_versions` (
+  `version` VARCHAR(64) NOT NULL,
+  `applied_at` BIGINT NOT NULL,
+  PRIMARY KEY (`version`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+INSERT IGNORE INTO `hastabazaar_schema_versions` (`version`, `applied_at`) VALUES ('0020_snapshot', UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000);
+
+SET FOREIGN_KEY_CHECKS = 1;

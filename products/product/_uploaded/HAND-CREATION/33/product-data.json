@@ -1,0 +1,75 @@
+{
+  "productNumber": 33,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/07LC95r2",
+    "canonicalUrl": "https://www.amazon.in/dp/B082R66QHS",
+    "asin": "B082R66QHS",
+    "sourceTitle": "DailyObjects Women's Zip Wallet | Made with Vegan Leather Material | Carefully Handcrafted | Holds up to 8 Cards | Slim and Easy to Fit in Pocket | Coin Pocket with Button Closure",
+    "sourcePriceInr": 648.99,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "DailyObjects Lush Midnight Vegan-Leather Zip Wallet",
+    "brand": "DailyObjects",
+    "manufacturer": "DailyObjects / Firki Wholesale Private Limited",
+    "description": "DailyObjects Lush Midnight Vegan-Leather Zip Wallet features zip-around compact wallet. It combines eight-card capacity stated in the source title with coin pocket with button closure. Six compartments and slim profile.",
+    "keyFeatures": [
+      "Zip-around compact wallet",
+      "Eight-card capacity stated in the source title",
+      "Coin pocket with button closure",
+      "Six compartments and slim profile"
+    ],
+    "specifications": {
+      "colourAndVariant": "Lush Midnight",
+      "dimensions": "1.98 × 11.43 × 9.91 cm",
+      "weight": "100 g",
+      "modelOrIdentifier": "LUSH-MIDN-DOB-ZIP-WALLET; ASIN B082R66QHS",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Vegan leather",
+    "packageContents": "1 women's bi-fold zip wallet",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags & Wallets > Women's Wallets",
+    "tags": [
+      "women's wallet",
+      "zip wallet",
+      "vegan leather wallet",
+      "midnight wallet",
+      "card holder"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "DailyObjects Lush Midnight Vegan-Leather Zip Wallet | Hathkriti",
+    "seoDescription": "DailyObjects Lush Midnight Vegan-Leather Zip Wallet from Hathkriti. Zip-around compact wallet. Colour/variant: Lush Midnight."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1238,
+    "originalPriceNpr": 2476,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p33-b082r66qhs-01.jpg",
+      "images/hathkriti-p33-b082r66qhs-02.jpg",
+      "images/hathkriti-p33-b082r66qhs-03.jpg",
+      "images/hathkriti-p33-b082r66qhs-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source states a 30-day manufacturer warranty, but the Hastabazaar listing must not promise a warranty."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

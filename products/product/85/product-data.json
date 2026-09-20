@@ -1,0 +1,76 @@
+{
+  "productNumber": 85,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two distinct exact-product gallery views were available; the other candidate duplicates the main composition at lower resolution.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/04fsutd5",
+    "canonicalUrl": "https://www.amazon.in/dp/B08287KNH2",
+    "asin": "B08287KNH2",
+    "sourceTitle": "eCraftIndia Multicolour Handcrafted Decorative Window Door Wall Hanging Bells Wind Chimes Decorative Showpiece| Diwali Decoration Items for Home Decor| Gift for Diwali Navratri Housewarming",
+    "sourcePriceInr": 194.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "eCraftIndia Multicolour Hanging-Bell Door Décor",
+    "brand": "eCraftIndia",
+    "manufacturer": "Intellozene / eCraftIndia",
+    "description": "eCraftIndia Multicolour Hanging-Bell Door Décor features handcrafted decorative hanging with multiple bells. It combines designed for doors, walls and windows with bead, cotton-lace and fancy-stone embellishment. Traditional multicolour decorative design.",
+    "keyFeatures": [
+      "Handcrafted decorative hanging with multiple bells",
+      "Designed for doors, walls and windows",
+      "Bead, cotton-lace and fancy-stone embellishment",
+      "Traditional multicolour decorative design"
+    ],
+    "specifications": {
+      "colourAndVariant": "Multicolour; STRBEL500",
+      "dimensions": "5.5 × 5.5 × 19 inches",
+      "weight": "300 g",
+      "modelOrIdentifier": "STRBEL500; ASIN B08287KNH2",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Beads, cotton laces and fancy stones; source description also mentions fabric, wood, metal bells and artificial pearls",
+    "packageContents": "1 decorative wall, door or window hanging",
+    "careInstructions": "Gentle wash, or use a dry or wet cotton cloth to remove dirt.",
+    "category": "Home Décor > Wall & Door Hangings",
+    "tags": [
+      "hanging bells",
+      "door hanging",
+      "multicolour wall décor",
+      "Diwali decoration",
+      "eCraftIndia"
+    ],
+    "giftOccasions": [
+      "Diwali",
+      "Navratri",
+      "Housewarming"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "eCraftIndia Multicolour Hanging-Bell Door Décor | Hathkriti",
+    "seoDescription": "eCraftIndia Multicolour Hanging-Bell Door Décor from Hathkriti. Handcrafted decorative hanging with multiple bells. Colour/variant: Multicolour; STRBEL500."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 510,
+    "originalPriceNpr": 1020,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 2,
+    "files": [
+      "images/hathkriti-p85-b08287knh2-01.jpg",
+      "images/hathkriti-p85-b08287knh2-02.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

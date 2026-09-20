@@ -16,6 +16,7 @@ const allowedActions: readonly ProductReviewAction[] = [
   'request_changes',
   'approve',
   'publish',
+  'unpublish',
   'reject',
 ];
 
@@ -41,6 +42,7 @@ export async function POST(
     }
     const permission = body.action === 'publish' ? 'product.publish' : 'product.review';
     const staff = await requireStaffApi(permission);
+    if (body.action === 'unpublish' && staff.role !== 'super_admin') return json({ error: 'Only Super Admin can unpublish products.' }, 403);
     const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
     if (body.action !== 'start_review' && reason.length < 8) {
       return json({ error: 'Add a clear review note of at least 8 characters.' }, 400);

@@ -1,0 +1,83 @@
+{
+  "productNumber": 30,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/00ydMvBZ",
+    "canonicalUrl": "https://www.amazon.in/dp/B0CQ7XPHXM",
+    "asin": "B0CQ7XPHXM",
+    "capturedPriceInr": 245,
+    "amazonReturnEligibility": "10 days Returnable"
+  },
+  "verifiedSourceFacts": {
+    "sourceTitle": "Tipsy Closet Blue Butterfly Beaded Danglers",
+    "brand": "TipsyCloset",
+    "manufacturer": "Tipsy Closet",
+    "modelOrIdentifier": "Model BUTTERFLY2",
+    "materials": "Beads; feature text also mentions seed beads, sequins and pearls; no gemstone",
+    "colourAndVariant": "Blue; Colour: Blue; pack of 1 pair",
+    "dimensions": "Item dimensions not stated; package dimensions 10 × 10 × 5 cm",
+    "weight": "50 g",
+    "packageContents": "Net quantity: 1 set",
+    "careInstructions": "Requires Seller input.",
+    "countryOfOrigin": "India",
+    "returnEligibility": "10 days Returnable",
+    "warranty": "Not stated on source; leave blank."
+  },
+  "rewrittenMarketingCopy": {
+    "storefrontTitle": "Tipsy Closet Blue Butterfly Beaded Danglers",
+    "description": "Blue butterfly dangler earrings handcrafted with beaded and embroidered detailing. The embellished bohemian design creates a colourful statement for parties, festivals and special occasions.",
+    "keyFeatures": [
+      "Handmade butterfly motif",
+      "Beaded and embroidered detailing",
+      "Blue bohemian statement style",
+      "Floral stud top"
+    ],
+    "seoTitle": "Tipsy Closet Blue Butterfly Beaded Danglers | Hastabazaar",
+    "seoDescription": "Tipsy Closet Blue Butterfly Beaded Danglers. Blue butterfly dangler earrings handcrafted with beaded and embroidered detailing. The embellished bohemian desig"
+  },
+  "suggestedValues": {
+    "category": "Jewellery > Earrings",
+    "tags": [
+      "earrings",
+      "handmade jewellery",
+      "beaded"
+    ],
+    "sku": "HB-ER-B0CQ7XPHXM-BLUE",
+    "pricing": {
+      "formula": "round(245 × 1.6 + 150)",
+      "sellingPriceNpr": 542,
+      "originalPriceNpr": 1084,
+      "discountPercent": 50
+    },
+    "stockQuantity": 10,
+    "preparationTimeDays": 3,
+    "returnWording": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "listingPurpose": "Genuine commercial listing"
+  },
+  "valuesSellerMustSupply": [
+    "Shipping weight and package dimensions if Hastabazaar requires shipping-specific values; item/package values above may not be shipping measurements.",
+    "Any safety warning required for this exact product; none was stated on the source page."
+  ],
+  "legalOrAuthenticityConcerns": [
+    "Only package dimensions were stated; item dimensions require Seller input.",
+    "Comfort and allergy claims from the source were omitted because no supporting test information was provided.",
+    "User states that resale and image-reuse rights are authorized; this has not been independently verified.",
+    "Permanent legal documents and policy identifiers are pending. Do not enable genuine public orders until those controls are complete."
+  ],
+  "images": {
+    "selectedCount": 4,
+    "requestedMaximum": 4,
+    "videoDownloaded": false,
+    "exactDuplicatesExcluded": 0,
+    "order": [
+      "hb-er-b0cq7xphxm-blue-01.jpg",
+      "hb-er-b0cq7xphxm-blue-02.jpg",
+      "hb-er-b0cq7xphxm-blue-03.jpg",
+      "hb-er-b0cq7xphxm-blue-04.jpg"
+    ]
+  },
+  "publication": {
+    "preparedOnly": true,
+    "enteredInHastabazaar": false,
+    "published": false
+  }
+}

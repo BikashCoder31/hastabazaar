@@ -1,0 +1,63 @@
+{
+  "productNumber": 90,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0H3FQ57SB",
+  "selectedVariant": "Light Brown; large round basket; pack of 1",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H3FQ57SB",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71UtaKyHT1L._SL1500_.jpg",
+      "filename": "hathkriti-p90-b0h3fq57sb-01.jpg",
+      "dimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "byteSize": 188231,
+      "sha256": "36d7ab88f88948bcf7d0a9c544b96149cf8ae27b5cda5f4ccbcad55d036ecdc2",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H3FQ57SB",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51Bpaz7KekL._SL1500_.jpg",
+      "filename": "hathkriti-p90-b0h3fq57sb-02.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 400
+      },
+      "byteSize": 34626,
+      "sha256": "2858c32669344ab958af786d2fa36a6968fb4cad4f23dcfa0d0bce11ebb70b0d",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 3
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H3FQ57SB",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41-GElT7k1L._SL1500_.jpg",
+      "filename": "hathkriti-p90-b0h3fq57sb-03.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 375
+      },
+      "byteSize": 29733,
+      "sha256": "06c477d520d38fe96847527b3c8c90bf2ae7efda57cb656cd6e5463e06673a5c",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 4
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H3FQ57SB",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51qTMh7nrAL._SL1500_.jpg",
+      "filename": "hathkriti-p90-b0h3fq57sb-04.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 60546,
+      "sha256": "d024c862b7fcb6639e1bd697f53b99ca6dcd6fe97015112cd65f77443e72b019",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 5
+    }
+  ]
+}

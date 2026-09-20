@@ -1,0 +1,73 @@
+{
+  "productNumber": 49,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0f2SOY07",
+    "canonicalUrl": "https://www.amazon.in/dp/B0GMD5H598",
+    "asin": "B0GMD5H598",
+    "sourceTitle": "ZOFYASH Handmade Beaded Heart Motifs Earrings for Women and Girls, Multi-Color Blue Gradient Design",
+    "sourcePriceInr": 169.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "ZOFYASH Blue Gradient Beaded Heart Drop Earrings",
+    "brand": "Generic (source storefront); ZOFYASH manufacturer",
+    "manufacturer": "ZOFYASH",
+    "description": "ZOFYASH Blue Gradient Beaded Heart Drop Earrings features four connected beaded heart motifs. It combines white-to-navy blue gradient with push-back finding. Long vertical statement design.",
+    "keyFeatures": [
+      "Four connected beaded heart motifs",
+      "White-to-navy blue gradient",
+      "Push-back finding",
+      "Long vertical statement design"
+    ],
+    "specifications": {
+      "colourAndVariant": "Blue ombré gradient",
+      "dimensions": "8 × 2.5 × 2.5 cm",
+      "weight": "15 g",
+      "modelOrIdentifier": "BLUHEAREARING; ASIN B0GMD5H598",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Beads, fabric and motif elements; source does not identify metal composition",
+    "packageContents": "1 pair of dangle earrings",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Jewellery > Women > Earrings",
+    "tags": [
+      "heart earrings",
+      "beaded earrings",
+      "blue gradient earrings",
+      "statement earrings",
+      "ZOFYASH"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "ZOFYASH Blue Gradient Beaded Heart Drop Earrings | Hathkriti",
+    "seoDescription": "ZOFYASH Blue Gradient Beaded Heart Drop Earrings from Hathkriti. Four connected beaded heart motifs. Colour/variant: Blue ombré gradient."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 470,
+    "originalPriceNpr": 940,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p49-b0gmd5h598-01.jpg",
+      "images/hathkriti-p49-b0gmd5h598-02.jpg",
+      "images/hathkriti-p49-b0gmd5h598-03.jpg",
+      "images/hathkriti-p49-b0gmd5h598-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

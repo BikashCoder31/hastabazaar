@@ -1,0 +1,76 @@
+{
+  "productNumber": 58,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0g1ApR6a",
+    "canonicalUrl": "https://www.amazon.in/dp/B0DDJ9XKT1",
+    "asin": "B0DDJ9XKT1",
+    "sourceTitle": "Attractive Hand Bag | Large Tote | Summer Bucket | Bamboo Beach Basket for Women | Boho Handbag | Jute Handmade",
+    "sourcePriceInr": 199.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Beautiful Hommies Beige & Black Summer Tote Bag",
+    "brand": "Beautiful Hommies",
+    "manufacturer": "Rudra Enterprise",
+    "description": "Beautiful Hommies Beige & Black Summer Tote Bag features large summer tote / bucket-bag silhouette. It combines zipper closure with one main compartment. Hand-carry design for beach, travel or daily use.",
+    "keyFeatures": [
+      "Large summer tote / bucket-bag silhouette",
+      "Zipper closure",
+      "One main compartment",
+      "Hand-carry design for beach, travel or daily use"
+    ],
+    "specifications": {
+      "colourAndVariant": "BEIGE-BLACK",
+      "dimensions": "38 × 29 × 29 cm",
+      "weight": "400 g",
+      "modelOrIdentifier": "Tote Bag/Sling Bag; ASIN B0DDJ9XKT1",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Source title/feature text says jute, straw or bamboo-style woven material, while the fact table says cotton outer and lining; material requires seller verification",
+    "packageContents": "1 bag; source included-components field calls it a sling bag",
+    "careInstructions": "Hand wash only",
+    "category": "Bags > Totes",
+    "tags": [
+      "beige black tote",
+      "summer beach bag",
+      "woven handbag",
+      "bucket bag",
+      "large tote"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Beautiful Hommies Beige & Black Summer Tote Bag | Hathkriti",
+    "seoDescription": "Beautiful Hommies Beige & Black Summer Tote Bag from Hathkriti. Large summer tote / bucket-bag silhouette. Colour/variant: BEIGE-BLACK."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 518,
+    "originalPriceNpr": 1036,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p58-b0ddj9xkt1-01.jpg",
+      "images/hathkriti-p58-b0ddj9xkt1-02.jpg",
+      "images/hathkriti-p58-b0ddj9xkt1-03.jpg",
+      "images/hathkriti-p58-b0ddj9xkt1-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source conflicts on cotton, jute, straw and bamboo material descriptions; do not claim a specific fibre until verified.",
+    "The gallery exposes lower-resolution originals (approximately 554 px for the lead image), which should be checked against Hastabazaar's upload quality requirements."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

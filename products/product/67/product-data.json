@@ -1,0 +1,71 @@
+{
+  "productNumber": 67,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two clean exact-product views remained after rejecting a synthetic-looking model image and a promotional feature panel.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0eS5ExYQ",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HGGRFNNC",
+    "asin": "B0HGGRFNNC",
+    "sourceTitle": "GLADTOGIFT Crochet Sunflower Potli Bag for Women",
+    "sourcePriceInr": 950.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "GLAD TO GIFT Black Crochet Sunflower Potli Sling Bag",
+    "brand": "GLAD TO GIFT",
+    "manufacturer": "Gladtogift",
+    "description": "GLAD TO GIFT Black Crochet Sunflower Potli Sling Bag features hand-crocheted black potli body. It combines yellow sunflower motif with drawstring closure. Long sling or shoulder strap.",
+    "keyFeatures": [
+      "Hand-crocheted black potli body",
+      "Yellow sunflower motif",
+      "Drawstring closure",
+      "Long sling or shoulder strap"
+    ],
+    "specifications": {
+      "colourAndVariant": "Black with yellow sunflower motif",
+      "dimensions": "10 × 10 × 10 cm",
+      "weight": "300 g",
+      "modelOrIdentifier": "crochet01; ASIN B0HGGRFNNC",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Crocheted cotton yarn",
+    "packageContents": "1 crochet sunflower potli bag",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Potlis & Wristlets",
+    "tags": [
+      "sunflower crochet bag",
+      "black potli bag",
+      "crochet sling",
+      "boho handbag",
+      "GLAD TO GIFT"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "GLAD TO GIFT Black Crochet Sunflower Potli Sling Bag | Hathkriti",
+    "seoDescription": "GLAD TO GIFT Black Crochet Sunflower Potli Sling Bag from Hathkriti. Hand-crocheted black potli body. Colour/variant: Black with yellow sunflower motif."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1720,
+    "originalPriceNpr": 3440,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 2,
+    "files": [
+      "images/hathkriti-p67-b0hggrfnnc-01.jpg",
+      "images/hathkriti-p67-b0hggrfnnc-02.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

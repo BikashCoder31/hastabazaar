@@ -1,0 +1,75 @@
+{
+  "productNumber": 52,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0g4nV7NM",
+    "canonicalUrl": "https://www.amazon.in/dp/B09FPGHR24",
+    "asin": "B09FPGHR24",
+    "sourceTitle": "Handcrafted Tribal & Dhokra Art Earrings for Women – Wooden, Nature-Inspired Statement Drop & Traditional Ethnic Designs",
+    "sourcePriceInr": 339.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Aakriti Art Creations Floral-Arrow Wooden Tribal Drop Earrings",
+    "brand": "AAKRITI ART CREATIONS",
+    "manufacturer": "Not stated",
+    "description": "Aakriti Art Creations Floral-Arrow Wooden Tribal Drop Earrings features hand-painted floral-arrow tribal design. It combines lightweight wooden drops with french-wire hook closure. Matte multicolour finish.",
+    "keyFeatures": [
+      "Hand-painted floral-arrow tribal design",
+      "Lightweight wooden drops",
+      "French-wire hook closure",
+      "Matte multicolour finish"
+    ],
+    "specifications": {
+      "colourAndVariant": "Floral Arrows Earrings; multicolour",
+      "dimensions": "Approximately 2.5 × 0.7 × 7.6 cm (source feature text)",
+      "weight": "20 g",
+      "modelOrIdentifier": "ASIN B09FPGHR24",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Wood with zinc fittings",
+    "packageContents": "1 pair of earrings",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Jewellery > Women > Earrings",
+    "tags": [
+      "wooden earrings",
+      "tribal earrings",
+      "floral arrow earrings",
+      "hand-painted jewellery",
+      "Aakriti Art Creations"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Aakriti Art Creations Floral-Arrow Wooden Tribal Drop Earrings | Hathkriti",
+    "seoDescription": "Aakriti Art Creations Floral-Arrow Wooden Tribal Drop Earrings from Hathkriti. Hand-painted floral-arrow tribal design. Colour/variant: Floral Arrows Earrings; multicolour."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 742,
+    "originalPriceNpr": 1484,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p52-b09fpghr24-01.jpg",
+      "images/hathkriti-p52-b09fpghr24-02.jpg",
+      "images/hathkriti-p52-b09fpghr24-03.jpg",
+      "images/hathkriti-p52-b09fpghr24-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source's skin-friendly and long-lasting claims were omitted because no supporting test information was provided."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

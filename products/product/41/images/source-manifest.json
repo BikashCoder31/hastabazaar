@@ -1,0 +1,63 @@
+{
+  "productNumber": 41,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0HG7V4H37",
+  "selectedVariant": "Blue, white and black Nazar pattern; pack of 2",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HG7V4H37",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71jOL1DrSoL._SL1024_.jpg",
+      "filename": "hathkriti-p41-b0hg7v4h37-01.jpg",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "byteSize": 212146,
+      "sha256": "103ee0646772a7f80c48c558ac70bd4d2846f55324d76be21fc378f149b832ee",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HG7V4H37",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71OZ8923nAL._SL1024_.jpg",
+      "filename": "hathkriti-p41-b0hg7v4h37-02.jpg",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "byteSize": 184917,
+      "sha256": "165851913c597d607739d13b68e4f9d9ec25728ca135ad694b0833f612ed2f1f",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HG7V4H37",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71H0VruQiYL._SL1024_.jpg",
+      "filename": "hathkriti-p41-b0hg7v4h37-03.jpg",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "byteSize": 149584,
+      "sha256": "a00db46e921c8b3674ebaa84b645c532c38e461f3420528589dc4e7dc998c1b9",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 4
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HG7V4H37",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61+USu2aYZL._SL1254_.jpg",
+      "filename": "hathkriti-p41-b0hg7v4h37-04.jpg",
+      "dimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "byteSize": 100817,
+      "sha256": "839454f0eefca5ee65a7f0e013d43a9a40a23ff83bf26c5410f0b238e8ffa8a7",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 5
+    }
+  ]
+}

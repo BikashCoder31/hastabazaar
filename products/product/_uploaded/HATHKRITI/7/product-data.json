@@ -1,0 +1,80 @@
+{
+  "productNumber": 7,
+  "status": "prepared_not_entered",
+  "source": {
+    "shortUrl": "https://amzn.in/d/0fZSpAfj",
+    "canonicalUrl": "https://www.amazon.in/dp/B0FK5F9S63",
+    "asin": "B0FK5F9S63",
+    "selectedVariant": "Navy blue floral; Amazon selector displayed Black",
+    "sourcePriceInr": 719,
+    "sourceReturnStatus": "10 days Return & Exchange"
+  },
+  "listing": {
+    "category": "Lifestyle",
+    "title": "Boho Girl Indigo Blossom Embroidered Tote Bag - Navy Blue",
+    "occasions": [
+      "Birthday gifts",
+      "Anniversary",
+      "Mother’s Day",
+      "Others"
+    ],
+    "description": "A compact crescent-shaped women's tote in deep navy fabric, finished with embroidered blue-and-ivory flowers, a padded top handle and a pale-blue ribbon detail. The zip closure, polyester lining and two pockets make it suitable for casual outings, brunch or travel. Spot clean only and air dry in shade.",
+    "dimensions": "24.13 x 13.37 x 5.72 cm",
+    "licenceReference": null,
+    "careInstructions": "Spot clean with a damp cloth. Do not machine wash. Air dry in shade.",
+    "safetyInformation": null,
+    "warrantyOffered": false,
+    "warrantyYears": null,
+    "warrantyMonths": null,
+    "warrantyDays": null,
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "preparationDays": 3,
+    "manufactureDate": null,
+    "expiryDate": null,
+    "madeToOrder": false,
+    "sellingPriceNpr": 1350,
+    "originalPriceNpr": 2700,
+    "discountPercent": 50,
+    "stockQuantity": 10,
+    "returnEligible": true,
+    "suggestedInternalReference": "HB-BG-B0FK5F9S63-NAVY",
+    "priceFormula": "round(719 × 1.6 + 200)"
+  },
+  "verifiedFacts": {
+    "brand": "Boho Girl",
+    "manufacturer": "Parul Handicrafts Pvt Ltd",
+    "manufacturerPartNumber": "BGB25-303",
+    "closure": "Zipper",
+    "lining": "Polyester",
+    "pocketCount": 2,
+    "colour": "Navy blue with blue, ivory and green embroidery",
+    "itemWeightGrams": 499,
+    "countryOfOrigin": "India",
+    "packageContents": "One tote bag"
+  },
+  "sourceConflicts": [
+    {
+      "field": "colour",
+      "titleAndImages": "Navy blue",
+      "variantSelector": "Black"
+    },
+    {
+      "field": "outerMaterial",
+      "factPanel": "Jacquard",
+      "featureText": "Canvas"
+    }
+  ],
+  "images": [
+    "images/hb-bg-b0fk5f9s63-navy-01.jpg",
+    "images/hb-bg-b0fk5f9s63-navy-02.jpg",
+    "images/hb-bg-b0fk5f9s63-navy-03.jpg",
+    "images/hb-bg-b0fk5f9s63-navy-04.jpg"
+  ],
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 1350,
+    "originalPriceNpr": 2700,
+    "discountPercent": 50
+  }
+}

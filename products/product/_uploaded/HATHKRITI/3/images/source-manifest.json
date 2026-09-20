@@ -1,0 +1,44 @@
+{
+  "sourcePage": "https://www.amazon.in/dp/B0CM6LBD6L",
+  "shortSourcePage": "https://amzn.in/d/09MRdsGw",
+  "videoDownloaded": false,
+  "exactDuplicatesFound": false,
+  "images": [
+    {
+      "sequence": 1,
+      "originalImageReference": "https://m.media-amazon.com/images/I/61v3PFBdQEL._SL1500_.jpg",
+      "localFilename": "hb-aac-b0cm6lbd6l-terracotta-danglers-01.jpg",
+      "width": 1500,
+      "height": 1500,
+      "byteSize": 70127,
+      "sha256": "c44ece6fc04c3e17443cd1991d6401f8f36f27dec66f306a8b60323a10ba9e12"
+    },
+    {
+      "sequence": 2,
+      "originalImageReference": "https://m.media-amazon.com/images/I/7100brKeKNL._SL1500_.jpg",
+      "localFilename": "hb-aac-b0cm6lbd6l-terracotta-danglers-02.jpg",
+      "width": 1500,
+      "height": 1500,
+      "byteSize": 148655,
+      "sha256": "e9fc696ddd0fe3c93bbbed5f9a026eb268f62b3581cd1dd3b284e53d11a994f4"
+    },
+    {
+      "sequence": 3,
+      "originalImageReference": "https://m.media-amazon.com/images/I/616-HPnYhfL._SL1500_.jpg",
+      "localFilename": "hb-aac-b0cm6lbd6l-terracotta-danglers-03.jpg",
+      "width": 1500,
+      "height": 1500,
+      "byteSize": 55682,
+      "sha256": "86f6174fe36bf1cbbae2f86b7a011ad5701127c50e1b5907fea6d5f605429839"
+    },
+    {
+      "sequence": 4,
+      "originalImageReference": "https://m.media-amazon.com/images/I/81ztJbwW04L._SL1500_.jpg",
+      "localFilename": "hb-aac-b0cm6lbd6l-terracotta-danglers-04.jpg",
+      "width": 1500,
+      "height": 1500,
+      "byteSize": 212495,
+      "sha256": "6f6f3d7df50f222b3a2c1da054b0e742c7e4a79cdb5e718c5c8a5662838b9944"
+    }
+  ]
+}

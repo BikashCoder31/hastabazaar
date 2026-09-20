@@ -40,7 +40,7 @@ export default async function LocalTestingPage() {
   const activeRole = readLocalTestRole(requestHeaders);
 
   return (
-    <main className="min-h-screen bg-muted/35 py-12 sm:py-20">
+    <main tabIndex={-1} id="main-content" className="min-h-screen bg-muted/35 py-12 sm:py-20">
       <div className="shell max-w-5xl">
         <Link href="/" className="text-sm font-semibold text-primary hover:underline">
           ← Storefront home
@@ -48,7 +48,7 @@ export default async function LocalTestingPage() {
         <div className="mt-8 rounded-3xl border bg-card p-6 shadow-sm sm:p-10">
           <p className="eyebrow">Local development only</p>
           <h1 className="mt-3 font-heading text-4xl tracking-tight sm:text-5xl">
-            Test every Hastabazaar interface
+            Test every HastaBazaar interface
           </h1>
           <p className="mt-4 max-w-2xl leading-7 text-muted-foreground">
             Choose a sample role. The role switch and its sample records exist only in the local development server and are disabled in production builds.

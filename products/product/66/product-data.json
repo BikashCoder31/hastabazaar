@@ -1,0 +1,73 @@
+{
+  "productNumber": 66,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/08MhU0l1",
+    "canonicalUrl": "https://www.amazon.in/dp/B0F8RDMX94",
+    "asin": "B0F8RDMX94",
+    "sourceTitle": "THE TAN CLAN Flora Resham Hand Embroidered Clutches Purse Luxury Evening HandBags for Women",
+    "sourcePriceInr": 1755.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "THE TAN CLAN Flora Resham-Embroidered Evening Clutch",
+    "brand": "THE TAN CLAN",
+    "manufacturer": "A. N. Lifestyle Private Limited",
+    "description": "THE TAN CLAN Flora Resham-Embroidered Evening Clutch features resham hand-embroidered Flora design. It combines clasp closure and hand-carry style with cotton-blend outer with suede lining. Compact evening-clutch profile for small essentials.",
+    "keyFeatures": [
+      "Resham hand-embroidered Flora design",
+      "Clasp closure and hand-carry style",
+      "Cotton-blend outer with suede lining",
+      "Compact evening-clutch profile for small essentials"
+    ],
+    "specifications": {
+      "colourAndVariant": "Flora resham-embroidered design",
+      "dimensions": "20 × 12 × 4 cm",
+      "weight": "300 g",
+      "modelOrIdentifier": "Flora; ASIN B0F8RDMX94",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Cotton-blend outer material with suede lining and resham embroidery",
+    "packageContents": "1 clutch",
+    "careInstructions": "Hand wash only. Keep away from heat sources. Store in a cool, dry place.",
+    "category": "Bags > Clutches",
+    "tags": [
+      "resham embroidered clutch",
+      "Flora evening bag",
+      "hand embroidered purse",
+      "THE TAN CLAN",
+      "party clutch"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "THE TAN CLAN Flora Resham-Embroidered Evening Clutch | Hathkriti",
+    "seoDescription": "THE TAN CLAN Flora Resham-Embroidered Evening Clutch from Hathkriti. Resham hand-embroidered Flora design. Colour/variant: Flora resham-embroidered design."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 3008,
+    "originalPriceNpr": 6016,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p66-b0f8rdmx94-01.jpg",
+      "images/hathkriti-p66-b0f8rdmx94-02.jpg",
+      "images/hathkriti-p66-b0f8rdmx94-03.jpg",
+      "images/hathkriti-p66-b0f8rdmx94-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

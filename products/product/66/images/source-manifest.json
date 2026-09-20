@@ -1,0 +1,63 @@
+{
+  "productNumber": 66,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0F8RDMX94",
+  "selectedVariant": "Flora resham-embroidered design",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0F8RDMX94",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41Vvnam+xzL.jpg",
+      "filename": "hathkriti-p66-b0f8rdmx94-01.jpg",
+      "dimensions": {
+        "width": 372,
+        "height": 500
+      },
+      "byteSize": 23019,
+      "sha256": "400f25a0b811a4b31334498c47f54d422a950b22d251ec4bdb953503632fe18e",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0F8RDMX94",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41k7A74Y8QL.jpg",
+      "filename": "hathkriti-p66-b0f8rdmx94-02.jpg",
+      "dimensions": {
+        "width": 375,
+        "height": 500
+      },
+      "byteSize": 19552,
+      "sha256": "dd1661b7741132c908909923cd712720502133bf7e8ad91297d2c2ce12db1cf4",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 8
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0F8RDMX94",
+      "originalImageReference": "https://m.media-amazon.com/images/I/31X-UOWLj7L.jpg",
+      "filename": "hathkriti-p66-b0f8rdmx94-03.jpg",
+      "dimensions": {
+        "width": 372,
+        "height": 500
+      },
+      "byteSize": 10646,
+      "sha256": "59da571f7ec0ca31b6fb206e5f044a1c02650c575b208dfc43a2237cf98261b0",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 9
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0F8RDMX94",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41sfNVUUtnL.jpg",
+      "filename": "hathkriti-p66-b0f8rdmx94-04.jpg",
+      "dimensions": {
+        "width": 372,
+        "height": 500
+      },
+      "byteSize": 23284,
+      "sha256": "35e94f58750f061c5015cbbeb0062ba335657f514edf527b64e3c1eea0a83521",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 10
+    }
+  ]
+}

@@ -1,9 +1,10 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { sendJson } from '@/lib/http/client-request';
 import { Textarea } from '@/components/ui/textarea';
 
 export function SellerCaseResponseForm({
@@ -16,6 +17,7 @@ export function SellerCaseResponseForm({
   disabled: boolean;
 }) {
   const router = useRouter();
+  const inputId = useId();
   const [response, setResponse] = useState('');
   const [recommendation, setRecommendation] = useState('accept');
   const [requestId] = useState(() => crypto.randomUUID());
@@ -24,10 +26,12 @@ export function SellerCaseResponseForm({
   if (disabled)
     return (
       <p className="text-sm leading-6 text-muted-foreground">
-        Your response is recorded. Hastabazaar operations owns the final decision.
+        No further response is requested at this stage. HastaBazaar operations
+        makes the final decision.
       </p>
     );
   async function submit() {
+    if (pending || disabled) return;
     setPending(true);
     setError('');
     try {
@@ -40,14 +44,12 @@ export function SellerCaseResponseForm({
         idempotencyKey: requestId,
         ...(kind === 'return' ? { recommendation, locale: 'en-NP' } : {}),
       };
-      const request = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(resultBody),
-      });
-      const result = (await request.json()) as { error?: string };
-      if (!request.ok)
-        throw new Error(result.error || 'Response could not be saved.');
+      await sendJson(
+        endpoint,
+        'POST',
+        resultBody,
+        'Response could not be saved.',
+      );
       router.refresh();
     } catch (cause) {
       setError(
@@ -58,11 +60,13 @@ export function SellerCaseResponseForm({
     }
   }
   return (
-    <div className="space-y-4">
+    <div className="seller-form space-y-4">
       {kind === 'return' ? (
         <div className="space-y-2">
-          <Label>Recommendation</Label>
+          <Label htmlFor={inputId + '-recommendation'}>Recommendation</Label>
           <select
+            id={inputId + '-recommendation'}
+            disabled={pending}
             value={recommendation}
             onChange={(event) => setRecommendation(event.target.value)}
             className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
@@ -74,8 +78,10 @@ export function SellerCaseResponseForm({
         </div>
       ) : null}
       <div className="space-y-2">
-        <Label>Response for the investigation</Label>
+        <Label htmlFor={inputId}>Response for the investigation</Label>
         <Textarea
+          id={inputId}
+          disabled={pending}
           value={response}
           onChange={(event) => setResponse(event.target.value)}
           minLength={20}

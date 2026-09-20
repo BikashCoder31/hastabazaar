@@ -1,0 +1,75 @@
+{
+  "productNumber": 62,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0h83vwcT",
+    "canonicalUrl": "https://www.amazon.in/dp/B0H63QN6DH",
+    "asin": "B0H63QN6DH",
+    "sourceTitle": "Handmade Crochet Flower Crossbody Sling Bag for Women | Boho Knitted Bucket Shoulder Purse Rose Design",
+    "sourcePriceInr": 699.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "StylizShades Black Crochet Rose Flower-Pot Sling Bag",
+    "brand": "StylizShades",
+    "manufacturer": "Keuze",
+    "description": "StylizShades Black Crochet Rose Flower-Pot Sling Bag features handmade flower-pot inspired crochet bag. It combines red crochet rose appliqués with adjustable sling strap. Compact space for phone, wallet, keys and small accessories.",
+    "keyFeatures": [
+      "Handmade flower-pot inspired crochet bag",
+      "Red crochet rose appliqués",
+      "Adjustable sling strap",
+      "Compact space for phone, wallet, keys and small accessories"
+    ],
+    "specifications": {
+      "colourAndVariant": "Black with red crochet roses",
+      "dimensions": "22 × 18 × 8 cm",
+      "weight": "50 g",
+      "modelOrIdentifier": "SS-70-PL-BAG-BLK / SS-217; ASIN B0H63QN6DH",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Crochet yarn; fibre composition not stated",
+    "packageContents": "1 rose crochet sling bag",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Sling & Cross-Body Bags",
+    "tags": [
+      "crochet rose bag",
+      "black sling bag",
+      "flower pot purse",
+      "boho crossbody",
+      "StylizShades"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "StylizShades Black Crochet Rose Flower-Pot Sling Bag | Hathkriti",
+    "seoDescription": "StylizShades Black Crochet Rose Flower-Pot Sling Bag from Hathkriti. Handmade flower-pot inspired crochet bag. Colour/variant: Black with red crochet roses."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1318,
+    "originalPriceNpr": 2636,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p62-b0h63qn6dh-01.jpg",
+      "images/hathkriti-p62-b0h63qn6dh-02.jpg",
+      "images/hathkriti-p62-b0h63qn6dh-03.jpg",
+      "images/hathkriti-p62-b0h63qn6dh-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "Product 60 is the Off-White variant from the same Amazon family; this Black ASIN is retained as a distinct variant, not a duplicate."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

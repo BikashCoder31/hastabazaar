@@ -1,0 +1,37 @@
+{
+  "productNumber": 67,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two clean exact-product views remained after rejecting a synthetic-looking model image and a promotional feature panel.",
+  "sourcePage": "https://www.amazon.in/dp/B0HGGRFNNC",
+  "selectedVariant": "Black with yellow sunflower motif",
+  "requiredImageCount": 4,
+  "includedImageCount": 2,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HGGRFNNC",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41rHOz8W+DL.jpg",
+      "filename": "hathkriti-p67-b0hggrfnnc-01.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 26979,
+      "sha256": "35ce9a9b0c4adc42c8ea03c87108c878ca3178d1975a82df196ed87da4489d19",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HGGRFNNC",
+      "originalImageReference": "https://m.media-amazon.com/images/I/5157VYnhRtL.jpg",
+      "filename": "hathkriti-p67-b0hggrfnnc-02.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 37490,
+      "sha256": "7d38dc867f5579f029e674ea313b1f6cd807c0e1798c64e5d02d585b1a1704e5",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    }
+  ]
+}

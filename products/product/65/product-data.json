@@ -1,0 +1,75 @@
+{
+  "productNumber": 65,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/02CMmzR5",
+    "canonicalUrl": "https://www.amazon.in/dp/B0GSGD3VWQ",
+    "asin": "B0GSGD3VWQ",
+    "sourceTitle": "Maresse Wooden Clutch for Women | Embroidered Ethnic Party Purse",
+    "sourcePriceInr": 989.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Maresse Brown Mango-Wood Maharani-Embroidered Clutch",
+    "brand": "Maresse",
+    "manufacturer": "Rey Retails",
+    "description": "Maresse Brown Mango-Wood Maharani-Embroidered Clutch features mango-wood body with Maharani embroidered front panel. It combines magnetic closure and nylon lining with detachable chain for clutch, sling or crossbody carry. Compact interior for a phone and small essentials.",
+    "keyFeatures": [
+      "Mango-wood body with Maharani embroidered front panel",
+      "Magnetic closure and nylon lining",
+      "Detachable chain for clutch, sling or crossbody carry",
+      "Compact interior for a phone and small essentials"
+    ],
+    "specifications": {
+      "colourAndVariant": "Brown wood with black panel and Maharani embroidery",
+      "dimensions": "15 × 10 × 6 cm",
+      "weight": "400 g",
+      "modelOrIdentifier": "Wooden Clutch; ASIN B0GSGD3VWQ",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Mango wood with embroidered front panel and nylon lining",
+    "packageContents": "1 wooden clutch with detachable chain strap",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Clutches",
+    "tags": [
+      "wooden clutch",
+      "Maharani embroidered purse",
+      "ethnic party bag",
+      "Maresse clutch",
+      "mango wood handbag"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Maresse Brown Mango-Wood Maharani-Embroidered Clutch | Hathkriti",
+    "seoDescription": "Maresse Brown Mango-Wood Maharani-Embroidered Clutch from Hathkriti. Mango-wood body with Maharani embroidered front panel. Colour/variant: Brown wood with black panel and Maharani embroidery."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1782,
+    "originalPriceNpr": 3564,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p65-b0gsgd3vwq-01.jpg",
+      "images/hathkriti-p65-b0gsgd3vwq-02.jpg",
+      "images/hathkriti-p65-b0gsgd3vwq-03.jpg",
+      "images/hathkriti-p65-b0gsgd3vwq-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source feature text claims rose embroidery, but the exact product gallery visibly shows a Maharani embroidered front panel; the gallery-visible design is used for the listing."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

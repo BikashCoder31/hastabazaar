@@ -1,0 +1,72 @@
+{
+  "productNumber": 44,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only three images matched the selected green earrings; two shared gallery assets showed unrelated jewellery and were rejected.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/05JUKjxE",
+    "canonicalUrl": "https://www.amazon.in/dp/B0DGXDSNVM",
+    "asin": "B0DGXDSNVM",
+    "sourceTitle": "KHOJ.CITY Handmade Earrings For Women | Hand-Painted Round Drop Earrings | Lightweight Ethnic Jhumka Style Accessory | Boho Earrings For Girls | Funky Earrings For Party, Events, Gifting",
+    "sourcePriceInr": 399.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "KHOJ.CITY Green Hand-Painted Round Drop Earrings",
+    "brand": "KHOJ.CITY",
+    "manufacturer": "EKHOJ Enterprises Private Limited",
+    "description": "KHOJ.CITY Green Hand-Painted Round Drop Earrings features round hand-painted drop design. It combines fabric-covered MDF base with glass-bead and thread detailing. Lever-back finding.",
+    "keyFeatures": [
+      "Round hand-painted drop design",
+      "Fabric-covered MDF base",
+      "Glass-bead and thread detailing",
+      "Lever-back finding"
+    ],
+    "specifications": {
+      "colourAndVariant": "Green multicolour hand-painted design",
+      "dimensions": "6.35 × 3.81 × 1.27 cm",
+      "weight": "16 g",
+      "modelOrIdentifier": "KHJ-AMZ-ER-001; ASIN B0DGXDSNVM",
+      "countryOfOrigin": "Not stated on the source page."
+    },
+    "materials": "MDF board, fabric, acrylic colour, glass beads and thread; source feature text separately mentions brass hooks",
+    "packageContents": "1 pair of drop earrings",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Jewellery > Women > Earrings",
+    "tags": [
+      "green earrings",
+      "hand-painted earrings",
+      "round drop earrings",
+      "KHOJ CITY",
+      "boho jewellery"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "KHOJ.CITY Green Hand-Painted Round Drop Earrings | Hathkriti",
+    "seoDescription": "KHOJ.CITY Green Hand-Painted Round Drop Earrings from Hathkriti. Round hand-painted drop design. Colour/variant: Green multicolour hand-painted design."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 838,
+    "originalPriceNpr": 1676,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 3,
+    "files": [
+      "images/hathkriti-p44-b0dgxdsnvm-01.jpg",
+      "images/hathkriti-p44-b0dgxdsnvm-02.jpg",
+      "images/hathkriti-p44-b0dgxdsnvm-03.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

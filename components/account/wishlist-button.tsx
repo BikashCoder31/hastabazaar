@@ -1,21 +1,79 @@
 'use client';
-
 import { Heart } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-
 import { Button } from '@/components/ui/button';
+import { sendJson } from '@/lib/http/client-request';
 
-export function WishlistButton({ productId, initialSaved, signInPath, compact = false }: { productId: string; initialSaved: boolean; signInPath?: string; compact?: boolean }) {
+export function WishlistButton({
+  productId,
+  initialSaved,
+  signInPath,
+  compact = false,
+}: {
+  productId: string;
+  initialSaved: boolean;
+  signInPath?: string;
+  compact?: boolean;
+}) {
   const router = useRouter();
   const [saved, setSaved] = useState(initialSaved);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   async function toggle() {
-    if (signInPath) { window.location.assign(signInPath); return; }
+    if (busy) return;
     setBusy(true);
-    const response = await fetch('/api/account/wishlist', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ productId, saved: !saved }) });
-    if (response.ok) { setSaved(!saved); router.refresh(); }
-    setBusy(false);
+    setError('');
+    try {
+      await sendJson(
+        '/api/account/wishlist',
+        'PUT',
+        { productId, saved: !saved },
+        'Your wishlist could not be updated.',
+      );
+      setSaved(!saved);
+      router.refresh();
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : 'Your wishlist could not be updated.',
+      );
+    } finally {
+      setBusy(false);
+    }
   }
-  return <Button type="button" variant={saved ? 'secondary' : 'outline'} size={compact ? 'sm' : 'default'} disabled={busy} onClick={() => void toggle()} aria-pressed={saved}><Heart className={saved ? 'fill-current' : ''} /> {saved ? 'Saved' : 'Save to wishlist'}</Button>;
+  if (signInPath)
+    return (
+      <a
+        href={signInPath}
+        target="_top"
+        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border px-5 py-2 text-sm font-semibold hover:bg-secondary"
+      >
+        <Heart className="size-4" />
+        Save to wishlist
+      </a>
+    );
+  return (
+    <div>
+      <Button
+        type="button"
+        variant={saved ? 'secondary' : 'outline'}
+        size={compact ? 'sm' : 'default'}
+        disabled={busy}
+        onClick={() => void toggle()}
+        aria-pressed={saved}
+        aria-label={saved ? 'Remove from wishlist' : 'Save to wishlist'}
+        className="min-h-11 rounded-full px-4"
+      >
+        <Heart className={saved ? 'fill-current' : ''} />
+        {busy ? 'Updating…' : saved ? 'Saved · Remove' : 'Save to wishlist'}
+      </Button>
+      {error ? (
+        <p role="alert" className="mt-2 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
 }

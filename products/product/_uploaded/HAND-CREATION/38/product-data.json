@@ -1,0 +1,74 @@
+{
+  "productNumber": 38,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/044bo7zV",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HHSJ975R",
+    "asin": "B0HHSJ975R",
+    "sourceTitle": "Handmade Crochet Bucket Bag, Dark (maroon and Green) with Heart Applique",
+    "sourcePriceInr": 498.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Burgundy & Green Crochet Heart-Appliqué Bucket Bag",
+    "brand": "Generic",
+    "manufacturer": "Handmade Artisan",
+    "description": "Burgundy & Green Crochet Heart-Appliqué Bucket Bag features handmade crochet bucket-bag construction. It combines heart, floral and fruit appliqué details with long crocheted shoulder strap. Drawstring top closure.",
+    "keyFeatures": [
+      "Handmade crochet bucket-bag construction",
+      "Heart, floral and fruit appliqué details",
+      "Long crocheted shoulder strap",
+      "Drawstring top closure"
+    ],
+    "specifications": {
+      "colourAndVariant": "Burgundy/maroon and green with red heart detail (visible gallery); source fact table separately says off-white and burgundy",
+      "dimensions": "18 × 20 × 22 cm",
+      "weight": "250 g",
+      "modelOrIdentifier": "CRO-BAG-001 / CROCHET-BUCKET-RG-001; ASIN B0HHSJ975R",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Crochet yarn; fibre composition not stated",
+    "packageContents": "1 crochet handbag with shoulder strap",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Hobos & Shoulder Bags",
+    "tags": [
+      "crochet bucket bag",
+      "heart applique bag",
+      "burgundy shoulder bag",
+      "handmade handbag"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Burgundy & Green Crochet Heart-Appliqué Bucket Bag | Hathkriti",
+    "seoDescription": "Burgundy & Green Crochet Heart-Appliqué Bucket Bag from Hathkriti. Handmade crochet bucket-bag construction. Colour/variant: Burgundy/maroon and green with red heart detail (visible gallery); source fact table separately says off-white and burgundy."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 997,
+    "originalPriceNpr": 1994,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p38-b0hhsj975r-01.jpg",
+      "images/hathkriti-p38-b0hhsj975r-02.jpg",
+      "images/hathkriti-p38-b0hhsj975r-03.jpg",
+      "images/hathkriti-p38-b0hhsj975r-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source title and specification table use different colour descriptions; the visible gallery shows burgundy/maroon, green and red details and is treated as authoritative for the selected product."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

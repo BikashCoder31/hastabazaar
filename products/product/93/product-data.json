@@ -1,0 +1,80 @@
+{
+  "productNumber": 93,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0fEOgT5l",
+    "canonicalUrl": "https://www.amazon.in/dp/B09YRZ734R",
+    "asin": "B09YRZ734R",
+    "sourceTitle": "Artvibes Folk Musicians MDF Wooden Wall Art for Home Decor | Music Art for Decoration | Wall Poster | Rajasthani Culture Wall Art | Graphic Art | Unique Gift | Signs & Plaques(WH_5012N), Set of 3",
+    "sourcePriceInr": 229.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Artvibes Rajasthani Folk-Musician Wooden Wall Art - Set of 3",
+    "brand": "Artvibes",
+    "manufacturer": "Wishbag Online Private Limited",
+    "description": "Artvibes Rajasthani Folk-Musician Wooden Wall Art - Set of 3 features three-piece Rajasthani folk-musician wall-art set. It combines printed engineered-wood construction with ready-to-hang unframed design. Suitable for living rooms, bedrooms, offices or entrances.",
+    "keyFeatures": [
+      "Three-piece Rajasthani folk-musician wall-art set",
+      "Printed engineered-wood construction",
+      "Ready-to-hang unframed design",
+      "Suitable for living rooms, bedrooms, offices or entrances"
+    ],
+    "specifications": {
+      "colourAndVariant": "WH_5012N; Rajasthani folk-musician design; set of 3",
+      "dimensions": "Overall source measurements: 43 × 38 cm; source bullet also states 15 × 17 inches",
+      "weight": "170 g",
+      "modelOrIdentifier": "WH_5012N; ASIN B09YRZ734R",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Engineered wood",
+    "packageContents": "3 wall hangings",
+    "careInstructions": "Dust with a soft cloth.",
+    "category": "Home Décor > Wall Art",
+    "tags": [
+      "Rajasthani wall art",
+      "folk musician décor",
+      "wooden wall hanging",
+      "set of 3",
+      "Artvibes"
+    ],
+    "giftOccasions": [
+      "Housewarming",
+      "Festival"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Artvibes Rajasthani Folk-Musician Wooden Wall Art - Set of 3 | Hathkriti",
+    "seoDescription": "Artvibes Rajasthani Folk-Musician Wooden Wall Art - Set of 3 from Hathkriti. Three-piece Rajasthani folk-musician wall-art set. Colour/variant: WH_5012N; Rajasthani folk-musician design; set of 3."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 566,
+    "originalPriceNpr": 1132,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p93-b09yrz734r-01.jpg",
+      "images/hathkriti-p93-b09yrz734r-02.jpg",
+      "images/hathkriti-p93-b09yrz734r-03.jpg",
+      "images/hathkriti-p93-b09yrz734r-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source notes that displayed colours can vary slightly because of screen and print resolution.",
+    "Product 81 is another Artvibes three-piece wall-art set, but it has a different ASIN, model number and Buddha artwork; this WH_5012N folk-musician design is retained as a distinct variant."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

@@ -1,0 +1,63 @@
+{
+  "productNumber": 87,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0H2XPSPW4",
+  "selectedVariant": "Blue Bean with graduation cap and message card",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H2XPSPW4",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41l3DsNSEAL._SL1500_.jpg",
+      "filename": "hathkriti-p87-b0h2xpspw4-01.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 26094,
+      "sha256": "8148eb6999d28668bd0c38066247b8cad1e4a3645e1e34c997c4a65396e38c63",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H2XPSPW4",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51ZBO8oGolL._SL1500_.jpg",
+      "filename": "hathkriti-p87-b0h2xpspw4-02.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 50335,
+      "sha256": "3ebaaaf45879495c25c6cd3b840946a7ae08ec2e9e965d8755022a6e83bb216c",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H2XPSPW4",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41wx0F42MiL._SL1500_.jpg",
+      "filename": "hathkriti-p87-b0h2xpspw4-03.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 32559,
+      "sha256": "a67c0a61630333ef4c7bd06257f423495204dc82afcd66069aefd55ff6a99b15",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 3
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H2XPSPW4",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51mXaAjAQ3L._SL1500_.jpg",
+      "filename": "hathkriti-p87-b0h2xpspw4-04.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 51114,
+      "sha256": "43a19748759769be702757dff79b4b84aebebc4ad5b20bfab4914c611a0870ad",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 6
+    }
+  ]
+}

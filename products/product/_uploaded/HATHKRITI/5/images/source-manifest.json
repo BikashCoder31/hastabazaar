@@ -1,0 +1,13 @@
+{
+  "sourcePage": "https://www.amazon.in/dp/B08HY12HC3",
+  "shortSourcePage": "https://amzn.in/d/00ohnJZI",
+  "videosObserved": 2,
+  "videoDownloaded": false,
+  "exactDuplicatesFound": false,
+  "images": [
+    {"sequence":1,"originalImageReference":"https://m.media-amazon.com/images/I/81Zp-90Z-zL._SL1500_.jpg","localFilename":"hb-jhg-b08hy12hc3-raja-rani-tealight-01.jpg","width":1500,"height":1500,"byteSize":252171,"sha256":"a86ddb2fce2494b023eebcf15a28623fac5789121ce804ab24504731a0c07af8"},
+    {"sequence":2,"originalImageReference":"https://m.media-amazon.com/images/I/81sdF+0S13L._SL1500_.jpg","localFilename":"hb-jhg-b08hy12hc3-raja-rani-tealight-02.jpg","width":1500,"height":1500,"byteSize":250872,"sha256":"cf17e20febfe5589cb7197d8f6ee4ed0fa5e0d0b12db64826816670340408336"},
+    {"sequence":3,"originalImageReference":"https://m.media-amazon.com/images/I/811iOHVoJ5L._SL1500_.jpg","localFilename":"hb-jhg-b08hy12hc3-raja-rani-tealight-03.jpg","width":1500,"height":1500,"byteSize":233654,"sha256":"1c2952c95987a8c13942f23d15ba194c20b25207070d1c95bfbd6558f1c402cc"},
+    {"sequence":4,"originalImageReference":"https://m.media-amazon.com/images/I/81U-oy3GPML._SL1500_.jpg","localFilename":"hb-jhg-b08hy12hc3-raja-rani-tealight-04.jpg","width":1500,"height":1500,"byteSize":201841,"sha256":"2c45231d615c85709c761937dc3f1c8fbdc365c9861a117632fd7d7993aecc4e"}
+  ]
+}

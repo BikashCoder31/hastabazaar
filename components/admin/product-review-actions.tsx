@@ -21,14 +21,15 @@ import type { ProductReviewAction } from '@/lib/db/repositories/products';
 const definitions = {
   start_review: { label: 'Start review', title: 'Start reviewing this product?', description: 'The listing will move into active review.', variant: 'default', icon: SearchCheck },
   request_changes: { label: 'Request changes', title: 'Return this listing for changes?', description: 'The seller will see your review note and must correct the listing.', variant: 'outline', icon: FilePenLine },
-  approve: { label: 'Approve product', title: 'Approve this product?', description: 'Approval confirms the listing meets Hastabazaar’s catalogue requirements. It remains private until published.', variant: 'default', icon: CheckCircle2 },
-  publish: { label: 'Publish product', title: 'Publish this product?', description: 'The product will immediately become visible in the public Hastabazaar shop.', variant: 'default', icon: Globe2 },
+  approve: { label: 'Approve product', title: 'Approve this product?', description: 'Approval confirms the listing meets HastaBazaar’s catalogue requirements. It remains private until published.', variant: 'default', icon: CheckCircle2 },
+  publish: { label: 'Publish product', title: 'Publish this product?', description: 'The product will immediately become visible in the public HastaBazaar shop.', variant: 'default', icon: Globe2 },
+  unpublish: { label: 'Unpublish product', title: 'Unpublish this product?', description: 'The product will leave the storefront and return to review. Existing orders remain unchanged.', variant: 'destructive', icon: XCircle },
   reject: { label: 'Reject product', title: 'Reject this product?', description: 'The listing will be closed with your reason in its permanent review history.', variant: 'destructive', icon: XCircle },
 } as const;
 
 type Definition = (typeof definitions)[keyof typeof definitions] & { action: ProductReviewAction };
 
-export function ProductReviewActions({ productId, status }: { productId: string; status: string }) {
+export function ProductReviewActions({ productId, status, canUnpublish = false, canPublish = false }: { productId: string; status: string; canUnpublish?: boolean; canPublish?: boolean }) {
   const router = useRouter();
   const [reason, setReason] = useState('');
   const [selected, setSelected] = useState<Definition | null>(null);
@@ -40,8 +41,8 @@ export function ProductReviewActions({ productId, status }: { productId: string;
       : status === 'under_review'
         ? ['request_changes', 'approve', 'reject']
         : status === 'approved'
-          ? ['publish']
-          : [];
+          ? (canPublish ? ['publish'] : [])
+          : status === 'published' && canUnpublish ? ['unpublish'] : [];
 
   if (actions.length === 0) return <p className="text-sm leading-6 text-muted-foreground">No review action is available for this product status.</p>;
 

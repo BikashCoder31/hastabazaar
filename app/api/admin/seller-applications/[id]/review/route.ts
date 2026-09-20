@@ -42,6 +42,8 @@ export async function POST(
     const body = (await request.json()) as {
       action?: unknown;
       reason?: unknown;
+      payoutAccountReference?: unknown;
+      settlementTermsReference?: unknown;
     };
     const action = body.action;
     const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
@@ -75,6 +77,14 @@ export async function POST(
         request.headers.get('x-request-id') ??
         crypto.randomUUID(),
       now: Date.now(),
+      payoutAccountReference:
+        typeof body.payoutAccountReference === 'string'
+          ? body.payoutAccountReference
+          : undefined,
+      settlementTermsReference:
+        typeof body.settlementTermsReference === 'string'
+          ? body.settlementTermsReference
+          : undefined,
     });
     return json({ status: result.to, message: 'Application updated.' }, 200);
   } catch (error) {

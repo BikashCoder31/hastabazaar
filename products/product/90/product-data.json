@@ -1,0 +1,79 @@
+{
+  "productNumber": 90,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0dB3RIqz",
+    "canonicalUrl": "https://www.amazon.in/dp/B0H3FQ57SB",
+    "asin": "B0H3FQ57SB",
+    "sourceTitle": "Large Handmade Bamboo Fruit Basket | Natural Wicker Storage Basket for Fruits, Vegetables, Bread & Puja Items | Round Cane Basket for Kitchen, Dining Table & Home Decor (Pack of 1)",
+    "sourcePriceInr": 293.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "ECOLIA Light-Brown Handmade Bamboo Fruit Basket",
+    "brand": "ECOLIA",
+    "manufacturer": "Dipta Proprietary",
+    "description": "ECOLIA Light-Brown Handmade Bamboo Fruit Basket features hand-woven natural bamboo basket. It combines wide open round-bowl design with suitable for fruit, vegetables, bread or puja items. Light-brown finish for countertop or dining-table display.",
+    "keyFeatures": [
+      "Hand-woven natural bamboo basket",
+      "Wide open round-bowl design",
+      "Suitable for fruit, vegetables, bread or puja items",
+      "Light-brown finish for countertop or dining-table display"
+    ],
+    "specifications": {
+      "colourAndVariant": "Light Brown; large round basket; pack of 1",
+      "dimensions": "30 × 30 × 12 cm",
+      "weight": "320 g",
+      "modelOrIdentifier": "ASIN B0H3FQ57SB",
+      "countryOfOrigin": "Not stated on the source page."
+    },
+    "materials": "Natural bamboo / wicker cane",
+    "packageContents": "1 large round storage basket",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Home & Kitchen > Storage Baskets",
+    "tags": [
+      "bamboo fruit basket",
+      "round wicker basket",
+      "kitchen storage",
+      "puja basket",
+      "ECOLIA"
+    ],
+    "giftOccasions": [
+      "Housewarming",
+      "Religious occasion"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "ECOLIA Light-Brown Handmade Bamboo Fruit Basket | Hathkriti",
+    "seoDescription": "ECOLIA Light-Brown Handmade Bamboo Fruit Basket from Hathkriti. Hand-woven natural bamboo basket. Colour/variant: Light Brown; large round basket; pack of 1."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 669,
+    "originalPriceNpr": 1338,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p90-b0h3fq57sb-01.jpg",
+      "images/hathkriti-p90-b0h3fq57sb-02.jpg",
+      "images/hathkriti-p90-b0h3fq57sb-03.jpg",
+      "images/hathkriti-p90-b0h3fq57sb-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "A gallery image showing a different lidded basket was rejected and is not part of the selected four-image set."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

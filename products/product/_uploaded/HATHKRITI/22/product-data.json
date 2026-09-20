@@ -1,0 +1,88 @@
+{
+  "productNumber": 22,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0fSkViLB",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HBB35DMX",
+    "asin": "B0HBB35DMX",
+    "capturedPriceInr": 159,
+    "amazonReturnEligibility": "10 days Returnable"
+  },
+  "verifiedSourceFacts": {
+    "sourceTitle": "Oxidised Silver-Tone Elephant Charm Drop Earrings",
+    "brand": "Generic",
+    "manufacturer": "DameKart",
+    "modelOrIdentifier": "ASIN B0HBB35DMX",
+    "materials": "German silver alloy",
+    "colourAndVariant": "Oxidised silver tone; Single source style",
+    "dimensions": "4.5 × 3.5 × 4.5 cm",
+    "weight": "20 g",
+    "packageContents": "Net quantity: 1 set",
+    "careInstructions": "Requires Seller input.",
+    "countryOfOrigin": "India",
+    "returnEligibility": "10 days Returnable",
+    "warranty": "Not stated on source; leave blank."
+  },
+  "rewrittenMarketingCopy": {
+    "storefrontTitle": "Oxidised Silver-Tone Elephant Charm Drop Earrings",
+    "description": "Oxidised silver-tone elephant charm drop earrings with floral, dot and geometric detailing. The tribal-inspired design works with kurtas, sarees, bohemian outfits and casual looks.",
+    "keyFeatures": [
+      "Detailed elephant charm",
+      "Oxidised antique-style finish",
+      "Fish-hook ear wires",
+      "Tribal and ethnic styling"
+    ],
+    "seoTitle": "Oxidised Silver-Tone Elephant Charm Drop Earrings | Hastabazaar",
+    "seoDescription": "Oxidised Silver-Tone Elephant Charm Drop Earrings. Oxidised silver-tone elephant charm drop earrings with floral, dot and geometric detailing. The tribal-insp"
+  },
+  "suggestedValues": {
+    "category": "Jewellery > Earrings",
+    "tags": [
+      "earrings",
+      "handmade jewellery",
+      "oxidised"
+    ],
+    "sku": "HB-ER-B0HBB35DMX-OXIDISED-SILVER-TONE",
+    "pricing": {
+      "formula": "round(159 × 1.6 + 200)",
+      "sellingPriceNpr": 454,
+      "originalPriceNpr": 908,
+      "discountPercent": 50
+    },
+    "stockQuantity": 10,
+    "preparationTimeDays": 3,
+    "returnWording": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "listingPurpose": "Genuine commercial listing"
+  },
+  "valuesSellerMustSupply": [
+    "Shipping weight and package dimensions if Hastabazaar requires shipping-specific values; item/package values above may not be shipping measurements.",
+    "Any safety warning required for this exact product; none was stated on the source page."
+  ],
+  "legalOrAuthenticityConcerns": [
+    "User states that resale and image-reuse rights are authorized; this has not been independently verified.",
+    "Permanent legal documents and policy identifiers are pending. Do not enable genuine public orders until those controls are complete."
+  ],
+  "images": {
+    "selectedCount": 4,
+    "requestedMaximum": 4,
+    "videoDownloaded": false,
+    "exactDuplicatesExcluded": 0,
+    "order": [
+      "hb-er-b0hbb35dmx-oxidised-silver-tone-01.jpg",
+      "hb-er-b0hbb35dmx-oxidised-silver-tone-02.jpg",
+      "hb-er-b0hbb35dmx-oxidised-silver-tone-03.jpg",
+      "hb-er-b0hbb35dmx-oxidised-silver-tone-04.jpg"
+    ]
+  },
+  "publication": {
+    "preparedOnly": true,
+    "enteredInHastabazaar": false,
+    "published": false
+  },
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 454,
+    "originalPriceNpr": 908,
+    "discountPercent": 50
+  }
+}

@@ -1,0 +1,125 @@
+{
+  "sellerAccount": "Hathkriti",
+  "status": "uploaded-user-confirmed",
+  "dashboardListingRecordCount": 21,
+  "dashboardUniqueTitleCount": 20,
+  "localArchivedFolderCount": 18,
+  "dashboardOnlyProductNumbersWithoutLocalFolders": [1, 2],
+  "rejectedIncompleteProductNumbers": [9, 16, 20],
+  "knownDuplicate": {
+    "storefrontTitle": "KHOJ.CITY Pink Handmade Boho Drop Earrings",
+    "dashboardRecordCount": 2,
+    "note": "The records use different SKUs. Do not delete or archive either record without explicit user approval."
+  },
+  "duplicateCheckRequiredBeforeFutureProcessing": true,
+  "localProducts": [
+    {
+      "productNumber": 3,
+      "storefrontTitle": "AAKRITI ART CREATIONS Handmade Tribal Terracotta Dangle Earrings - Multicolor",
+      "asin": "B0CM6LBD6L",
+      "suppliedUrl": "https://amzn.in/d/09MRdsGw"
+    },
+    {
+      "productNumber": 4,
+      "storefrontTitle": "TIED RIBBONS Handmade Red Crochet Flower Bouquet",
+      "asin": "B0HJ5S88QV",
+      "suppliedUrl": "https://amzn.in/d/075p6Tsi"
+    },
+    {
+      "productNumber": 5,
+      "storefrontTitle": "JH Gallery Handmade Raja Rani Tealight Holders - Multicolour, Pack of 2",
+      "asin": "B08HY12HC3",
+      "suppliedUrl": "https://amzn.in/d/00ohnJZI"
+    },
+    {
+      "productNumber": 6,
+      "storefrontTitle": "ATRANGI STUDIO Handpainted Wooden Elephant Wall Hanging - Blue, 11 Inch",
+      "asin": "B0F4DSTV2P",
+      "suppliedUrl": "https://amzn.in/d/09CYDGOA"
+    },
+    {
+      "productNumber": 7,
+      "storefrontTitle": "Boho Girl Indigo Blossom Embroidered Tote Bag - Navy Blue",
+      "asin": "B0FK5F9S63",
+      "suppliedUrl": "https://amzn.in/d/0fZSpAfj"
+    },
+    {
+      "productNumber": 8,
+      "storefrontTitle": "Bhakti Shringar Handmade Tulsi Wood Shree Radha Stud Earrings",
+      "asin": "B0GQ9JKNBS",
+      "suppliedUrl": "https://amzn.in/d/06V7iErH"
+    },
+    {
+      "productNumber": 10,
+      "storefrontTitle": "Luminara Atelier Handmade Blue Crochet Evil Eye Drop Earrings",
+      "asin": "B0HFCZWKTQ",
+      "suppliedUrl": "https://amzn.in/d/0heD13Dz"
+    },
+    {
+      "productNumber": 11,
+      "storefrontTitle": "Aaroh Real Daisy Black Resin Oxidised Drop Earrings",
+      "asin": "B0HB4Z245C",
+      "suppliedUrl": "https://amzn.in/d/05NJx3ZH"
+    },
+    {
+      "productNumber": 12,
+      "storefrontTitle": "Needful Multicolour Fabric Layered Oxidised Jhumka Earrings",
+      "asin": "B0GDW5W1QN",
+      "suppliedUrl": "https://amzn.in/d/09ph5B11"
+    },
+    {
+      "productNumber": 13,
+      "storefrontTitle": "Modpide Handmade Resin Sunflower Dangle Earrings",
+      "asin": "B09V2J97YY",
+      "suppliedUrl": "https://amzn.in/d/0hn4k1lc"
+    },
+    {
+      "productNumber": 14,
+      "storefrontTitle": "Pradiyas Meenakari Earrings Set - 12 Multicolour Pairs with Velvet Box",
+      "asin": "B0HG4T7XV2",
+      "suppliedUrl": "https://amzn.in/d/0a30frLA"
+    },
+    {
+      "productNumber": 15,
+      "storefrontTitle": "Blue & Yellow Oxidised Enamel Pearl Drop Earrings",
+      "asin": "B0G6L2V776",
+      "suppliedUrl": "https://amzn.in/d/0582pQcq"
+    },
+    {
+      "productNumber": 17,
+      "storefrontTitle": "Handmade Fish-Style Oxidised Ear Cuffs",
+      "asin": "B0FSTBP6DV",
+      "suppliedUrl": "https://amzn.in/d/05XzES9f"
+    },
+    {
+      "productNumber": 18,
+      "storefrontTitle": "KHOJ.CITY Pink Handmade Boho Drop Earrings",
+      "asin": "B0DKJYCF2B",
+      "suppliedUrl": "https://amzn.in/d/0bW1rdoH"
+    },
+    {
+      "productNumber": 19,
+      "storefrontTitle": "Dark Green Double-Flower Dangle Earrings",
+      "asin": "B0CL2KG44P",
+      "suppliedUrl": "https://amzn.in/d/0dDpZZEQ"
+    },
+    {
+      "productNumber": 21,
+      "storefrontTitle": "QTEVER Blue & Green Scarlet Macaw Clay Earrings",
+      "asin": "B0DL4MD6BX",
+      "suppliedUrl": "https://amzn.in/d/00ah51Bz"
+    },
+    {
+      "productNumber": 22,
+      "storefrontTitle": "Oxidised Silver-Tone Elephant Charm Drop Earrings",
+      "asin": "B0HBB35DMX",
+      "suppliedUrl": "https://amzn.in/d/0fSkViLB"
+    },
+    {
+      "productNumber": 23,
+      "storefrontTitle": "TR HAUTE Blue Woven Hoop Drop Earrings",
+      "asin": "B0H2ZBFFMT",
+      "suppliedUrl": "https://amzn.in/d/038nk2tA"
+    }
+  ]
+}

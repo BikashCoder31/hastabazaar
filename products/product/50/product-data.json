@@ -1,0 +1,72 @@
+{
+  "productNumber": 50,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only three clean unbranded product views remained after rejecting a branded panel and a synthetic-looking lifestyle collage.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/011O7zyU",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HD5KZR4M",
+    "asin": "B0HD5KZR4M",
+    "sourceTitle": "Handmade Crochet Sunflower Earrings for Women and Girls | Lightweight Floral Boho Earrings for Women | Knitted Handmade Jewellery | Gift for Girls & Women",
+    "sourcePriceInr": 149.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Handmade Crochet Sunflower French-Wire Earrings",
+    "brand": "Generic",
+    "manufacturer": "Vibrant Valley",
+    "description": "Handmade Crochet Sunflower French-Wire Earrings features handmade crochet sunflower motif. It combines french-wire hook closure with compact floral design. No gemstone.",
+    "keyFeatures": [
+      "Handmade crochet sunflower motif",
+      "French-wire hook closure",
+      "Compact floral design",
+      "No gemstone"
+    ],
+    "specifications": {
+      "colourAndVariant": "Yellow and brown sunflower design",
+      "dimensions": "4.5 × 4.5 × 0.2 cm",
+      "weight": "1 g",
+      "modelOrIdentifier": "VVCROER01; ASIN B0HD5KZR4M",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Acrylic yarn / synthetic fibre; source identifies no metal type",
+    "packageContents": "1 pair of earrings",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Jewellery > Women > Earrings",
+    "tags": [
+      "sunflower earrings",
+      "crochet earrings",
+      "floral jewellery",
+      "yellow earrings",
+      "handmade earrings"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Handmade Crochet Sunflower French-Wire Earrings | Hathkriti",
+    "seoDescription": "Handmade Crochet Sunflower French-Wire Earrings from Hathkriti. Handmade crochet sunflower motif. Colour/variant: Yellow and brown sunflower design."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 438,
+    "originalPriceNpr": 876,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 3,
+    "files": [
+      "images/hathkriti-p50-b0hd5kzr4m-01.jpg",
+      "images/hathkriti-p50-b0hd5kzr4m-02.jpg",
+      "images/hathkriti-p50-b0hd5kzr4m-03.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

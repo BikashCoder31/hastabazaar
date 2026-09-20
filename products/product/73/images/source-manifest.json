@@ -1,0 +1,37 @@
+{
+  "productNumber": 73,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two clean exact-product views remained after rejecting branded promotional panels and synthetic-looking model scenes.",
+  "sourcePage": "https://www.amazon.in/dp/B0HBJVZLP5",
+  "selectedVariant": "Multicolour Rajasthani Banjara embroidery",
+  "requiredImageCount": 4,
+  "includedImageCount": 2,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HBJVZLP5",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41fKkI5HefL.jpg",
+      "filename": "hathkriti-p73-b0hbjvzlp5-01.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 25929,
+      "sha256": "d920ded3c6e106744bdfa5ca952bf4e9a7b1ac6991c81daae7ef5c247b35878d",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HBJVZLP5",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51tsVhmAiKL.jpg",
+      "filename": "hathkriti-p73-b0hbjvzlp5-02.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 35013,
+      "sha256": "16c244d70fcdcc1bc566e32037e81d0ae14a2b2f730e076d838df184d2736be8",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 8
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "productNumber": 31,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0ejbmndi",
+    "canonicalUrl": "https://www.amazon.in/dp/B0G2CLMJW6",
+    "asin": "B0G2CLMJW6",
+    "sourceTitle": "KRISHNAV CREATION Handmade Tribal Print Soft Silk Scarf Dupatta Stol Multi Color Traditional Art Pattern with Tassels (2Mx1.1M -1Pc)",
+    "sourcePriceInr": 499.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "KRISHNAV CREATION Turquoise Warli-Print Polycotton Dupatta",
+    "brand": "Generic (source storefront); KRISHNAV CREATION packer",
+    "manufacturer": "Indian Artisan Textiles",
+    "description": "KRISHNAV CREATION Turquoise Warli-Print Polycotton Dupatta features traditional Warli-art and geometric print. It combines tasselled edges with lightweight polycotton handloom fabric. No-stretch weave.",
+    "keyFeatures": [
+      "Traditional Warli-art and geometric print",
+      "Tasselled edges",
+      "Lightweight polycotton handloom fabric",
+      "No-stretch weave"
+    ],
+    "specifications": {
+      "colourAndVariant": "Turquoise Black 3; multicolour Warli-art print",
+      "dimensions": "2 × 1.1 m (source also lists 200 × 110 × 0.1 cm)",
+      "weight": "150 g",
+      "modelOrIdentifier": "KC0011; ASIN B0G2CLMJW6",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Polycotton",
+    "packageContents": "1 ethnic scarf / dupatta",
+    "careInstructions": "Hand wash cold and lay flat to dry; do not bleach",
+    "category": "Clothing & Accessories > Women > Dupattas",
+    "tags": [
+      "Warli print dupatta",
+      "polycotton scarf",
+      "tribal print stole",
+      "tassel dupatta",
+      "turquoise scarf"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "KRISHNAV CREATION Turquoise Warli-Print Polycotton Dupatta | Hathkriti",
+    "seoDescription": "KRISHNAV CREATION Turquoise Warli-Print Polycotton Dupatta from Hathkriti. Traditional Warli-art and geometric print. Colour/variant: Turquoise Black 3; multicolour Warli-art print."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 998,
+    "originalPriceNpr": 1996,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p31-b0g2clmjw6-01.jpg",
+      "images/hathkriti-p31-b0g2clmjw6-02.jpg",
+      "images/hathkriti-p31-b0g2clmjw6-03.jpg",
+      "images/hathkriti-p31-b0g2clmjw6-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

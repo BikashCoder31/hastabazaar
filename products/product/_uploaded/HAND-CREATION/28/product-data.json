@@ -1,0 +1,73 @@
+{
+  "productNumber": 28,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/060UDd0I",
+    "canonicalUrl": "https://www.amazon.in/dp/B0D1KPN4WL",
+    "asin": "B0D1KPN4WL",
+    "sourceTitle": "Craft Trade Clutch Bags for Women Ethnic Rajasthani Embroidered Mirror Work Cotton Hand Bags for Girls Handmade Purses for Ladies",
+    "sourcePriceInr": 249.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Craft Trade Green Rajasthani Embroidered Mirror-Work Clutch",
+    "brand": "Generic (source storefront); Craft Trade manufacturer",
+    "manufacturer": "Craft Trade",
+    "description": "Craft Trade Green Rajasthani Embroidered Mirror-Work Clutch features rectangular ethnic clutch. It combines rajasthani-style embroidery and mirror work with compact space for phone, cash and small accessories. Floral pattern for festive and traditional styling.",
+    "keyFeatures": [
+      "Rectangular ethnic clutch",
+      "Rajasthani-style embroidery and mirror work",
+      "Compact space for phone, cash and small accessories",
+      "Floral pattern for festive and traditional styling"
+    ],
+    "specifications": {
+      "colourAndVariant": "Green; Style 6",
+      "dimensions": "25 × 2 × 13 cm",
+      "weight": "120 g",
+      "modelOrIdentifier": "HDB02GR-BR; ASIN B0D1KPN4WL",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Cotton bag with embroidery and mirror-work embellishment",
+    "packageContents": "1 clutch bag",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Clutches",
+    "tags": [
+      "embroidered clutch",
+      "mirror work bag",
+      "green clutch",
+      "Rajasthani bag",
+      "ethnic purse"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Craft Trade Green Rajasthani Embroidered Mirror-Work Clutch | Hathkriti",
+    "seoDescription": "Craft Trade Green Rajasthani Embroidered Mirror-Work Clutch from Hathkriti. Rectangular ethnic clutch. Colour/variant: Green; Style 6."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 598,
+    "originalPriceNpr": 1196,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p28-b0d1kpn4wl-01.jpg",
+      "images/hathkriti-p28-b0d1kpn4wl-02.jpg",
+      "images/hathkriti-p28-b0d1kpn4wl-03.jpg",
+      "images/hathkriti-p28-b0d1kpn4wl-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

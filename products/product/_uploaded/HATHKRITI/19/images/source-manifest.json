@@ -1,0 +1,58 @@
+{
+  "productNumber": 19,
+  "sourcePage": "https://amzn.in/d/0dDpZZEQ",
+  "canonicalSourcePage": "https://www.amazon.in/dp/B0CL2KG44P",
+  "selectionRule": "Up to four distinct ordinary product images from the Amazon product gallery; videos, review images, ads and unrelated media excluded.",
+  "videoDownloaded": false,
+  "exactDuplicatesFoundAndExcluded": [],
+  "images": [
+    {
+      "sourcePage": "https://amzn.in/d/0dDpZZEQ",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0CL2KG44P",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51Q3aGfawgL._SL1500_.jpg",
+      "localFilename": "hb-er-b0cl2kg44p-dark-green-01.jpg",
+      "dimensions": {
+        "height": 673,
+        "width": 679
+      },
+      "byteSize": 46644,
+      "sha256": "f5be52e2f762c7b5e77e2c43a673a2680f8c88bc59a9826be2f8d08ac9d29d4b"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/0dDpZZEQ",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0CL2KG44P",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61bpnnkeFXL._SL1500_.jpg",
+      "localFilename": "hb-er-b0cl2kg44p-dark-green-02.jpg",
+      "dimensions": {
+        "height": 827,
+        "width": 679
+      },
+      "byteSize": 85454,
+      "sha256": "a67e007f533af0424ba59720bc48234c2a1ed0e73505412430d92c4415f74788"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/0dDpZZEQ",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0CL2KG44P",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51016yCOCuL._SL1500_.jpg",
+      "localFilename": "hb-er-b0cl2kg44p-dark-green-03.jpg",
+      "dimensions": {
+        "height": 733,
+        "width": 679
+      },
+      "byteSize": 46789,
+      "sha256": "b83bc25bb96710c015f5ede671e421115cc563b0c6395b3fc1ead77a32d615a7"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/0dDpZZEQ",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0CL2KG44P",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51slXGeMkAL._SL1500_.jpg",
+      "localFilename": "hb-er-b0cl2kg44p-dark-green-04.jpg",
+      "dimensions": {
+        "height": 679,
+        "width": 679
+      },
+      "byteSize": 56788,
+      "sha256": "b0bf6c3a92dcea67b73fccbccc623212f27613127ab363974c54c8cd036e1a5b"
+    }
+  ]
+}

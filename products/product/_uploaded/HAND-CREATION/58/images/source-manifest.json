@@ -1,0 +1,63 @@
+{
+  "productNumber": 58,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0DDJ9XKT1",
+  "selectedVariant": "BEIGE-BLACK",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0DDJ9XKT1",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51Pz2PZ11TL.jpg",
+      "filename": "hathkriti-p58-b0ddj9xkt1-01.jpg",
+      "dimensions": {
+        "width": 554,
+        "height": 554
+      },
+      "byteSize": 32853,
+      "sha256": "4d65395ea64d3e1f0617f838f3648b4c8513b8a7b0037ba11b089ca3cd6eb1a8",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0DDJ9XKT1",
+      "originalImageReference": "https://m.media-amazon.com/images/I/510DjeOAjhL.jpg",
+      "filename": "hathkriti-p58-b0ddj9xkt1-02.jpg",
+      "dimensions": {
+        "width": 554,
+        "height": 554
+      },
+      "byteSize": 60280,
+      "sha256": "8be28caeebaf7bf52bfdb7d29e8aa306145a664205b84aebf2ab14d4940b87c4",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0DDJ9XKT1",
+      "originalImageReference": "https://m.media-amazon.com/images/I/610XDMHzAoL.jpg",
+      "filename": "hathkriti-p58-b0ddj9xkt1-03.jpg",
+      "dimensions": {
+        "width": 679,
+        "height": 667
+      },
+      "byteSize": 67546,
+      "sha256": "1a17ddf9e59b701f3449e11fde1cd0c12dd52f5a80c832d7eddc773744a3bfc1",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 3
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0DDJ9XKT1",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61g+fVBYT3L.jpg",
+      "filename": "hathkriti-p58-b0ddj9xkt1-04.jpg",
+      "dimensions": {
+        "width": 613,
+        "height": 575
+      },
+      "byteSize": 66171,
+      "sha256": "9bb5960067d07f560c46d51c7c4c0559518ba624a1b868808574978476972a5e",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 4
+    }
+  ]
+}

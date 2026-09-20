@@ -1,0 +1,87 @@
+{
+  "productNumber": 19,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0dDpZZEQ",
+    "canonicalUrl": "https://www.amazon.in/dp/B0CL2KG44P",
+    "asin": "B0CL2KG44P",
+    "capturedPriceInr": 447,
+    "amazonReturnEligibility": "10 days Returnable"
+  },
+  "verifiedSourceFacts": {
+    "sourceTitle": "Dark Green Double-Flower Dangle Earrings",
+    "brand": "MIZORRI",
+    "manufacturer": "JCPL, Noida",
+    "modelOrIdentifier": "HE029LY03DGR",
+    "materials": "Zinc/alloy; no gemstone",
+    "colourAndVariant": "Dark Green; Colour: Dark Green",
+    "dimensions": "5 × 3.1 × 5 cm; stated drop length 4.8 cm",
+    "weight": "100 g",
+    "packageContents": "Net quantity: 2 count",
+    "careInstructions": "Requires Seller input.",
+    "countryOfOrigin": "Taiwan",
+    "returnEligibility": "10 days Returnable",
+    "warranty": "Not stated on source; leave blank."
+  },
+  "rewrittenMarketingCopy": {
+    "storefrontTitle": "Dark Green Double-Flower Dangle Earrings",
+    "description": "Dark green double-flower dangle earrings with layered metal petals. The statement floral silhouette is designed for parties, celebrations, office styling and special occasions.",
+    "keyFeatures": [
+      "Layered double-flower design",
+      "Dark green statement finish",
+      "Dangle silhouette",
+      "Suitable for party and occasion styling"
+    ],
+    "seoTitle": "Dark Green Double-Flower Dangle Earrings | Hastabazaar",
+    "seoDescription": "Dark Green Double-Flower Dangle Earrings. Dark green double-flower dangle earrings with layered metal petals. The statement floral silhouette is designed for "
+  },
+  "suggestedValues": {
+    "category": "Jewellery > Earrings",
+    "tags": [
+      "earrings",
+      "handmade jewellery"
+    ],
+    "sku": "HB-ER-B0CL2KG44P-DARK-GREEN",
+    "pricing": {
+      "formula": "round(447 × 1.6 + 200)",
+      "sellingPriceNpr": 915,
+      "originalPriceNpr": 1830,
+      "discountPercent": 50
+    },
+    "stockQuantity": 10,
+    "preparationTimeDays": 3,
+    "returnWording": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "listingPurpose": "Genuine commercial listing"
+  },
+  "valuesSellerMustSupply": [
+    "Shipping weight and package dimensions if Hastabazaar requires shipping-specific values; item/package values above may not be shipping measurements.",
+    "Any safety warning required for this exact product; none was stated on the source page."
+  ],
+  "legalOrAuthenticityConcerns": [
+    "User states that resale and image-reuse rights are authorized; this has not been independently verified.",
+    "Permanent legal documents and policy identifiers are pending. Do not enable genuine public orders until those controls are complete."
+  ],
+  "images": {
+    "selectedCount": 4,
+    "requestedMaximum": 4,
+    "videoDownloaded": false,
+    "exactDuplicatesExcluded": 0,
+    "order": [
+      "hb-er-b0cl2kg44p-dark-green-01.jpg",
+      "hb-er-b0cl2kg44p-dark-green-02.jpg",
+      "hb-er-b0cl2kg44p-dark-green-03.jpg",
+      "hb-er-b0cl2kg44p-dark-green-04.jpg"
+    ]
+  },
+  "publication": {
+    "preparedOnly": true,
+    "enteredInHastabazaar": false,
+    "published": false
+  },
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 915,
+    "originalPriceNpr": 1830,
+    "discountPercent": 50
+  }
+}

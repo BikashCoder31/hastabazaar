@@ -1,0 +1,72 @@
+{
+  "productNumber": 8,
+  "status": "prepared_not_entered",
+  "source": {
+    "shortUrl": "https://amzn.in/d/06V7iErH",
+    "canonicalUrl": "https://www.amazon.in/dp/B0GQ9JKNBS",
+    "asin": "B0GQ9JKNBS",
+    "selectedVariant": "Shree Radha Name",
+    "sourcePriceInr": 199,
+    "sourceReturnStatus": "10 days Returnable"
+  },
+  "listing": {
+    "category": "Jewelry & accessories",
+    "title": "Bhakti Shringar Handmade Tulsi Wood Shree Radha Stud Earrings",
+    "occasions": [
+      "Birthday gifts",
+      "Wedding gifts",
+      "Tihar gifts",
+      "Others"
+    ],
+    "description": "Lightweight devotional stud earrings handcrafted from Tulsi wood and engraved with the Shree Radha name. Designed for women and girls, the natural wood-tone pair complements traditional and devotional attire for daily wear, temple visits, bhajan gatherings and festivals.",
+    "dimensions": null,
+    "licenceReference": null,
+    "careInstructions": null,
+    "safetyInformation": null,
+    "warrantyOffered": false,
+    "warrantyYears": null,
+    "warrantyMonths": null,
+    "warrantyDays": null,
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "preparationDays": 3,
+    "manufactureDate": null,
+    "expiryDate": null,
+    "madeToOrder": false,
+    "sellingPriceNpr": 518,
+    "originalPriceNpr": 1036,
+    "discountPercent": 50,
+    "stockQuantity": 10,
+    "returnEligible": true,
+    "suggestedInternalReference": "HB-JA-B0GQ9JKNBS-RADHA",
+    "priceFormula": "round(199 × 1.6 + 200)"
+  },
+  "verifiedFacts": {
+    "brand": "Bhakti Shringar",
+    "manufacturer": "Vrindavan Store",
+    "manufacturerPartNumber": "TulsI_Tops",
+    "materials": [
+      "Tulsi wood"
+    ],
+    "colour": "Natural brown wood",
+    "itemWeightGrams": 10,
+    "countryOfOrigin": "India",
+    "packageContents": "One pair / one set of stud earrings"
+  },
+  "sourceConcerns": [
+    "The source-listed 10 x 8 x 3 cm dimensions appear package-level and were not used as product dimensions.",
+    "The source's pure/original Tulsi authenticity claim was not independently tested."
+  ],
+  "images": [
+    "images/hb-ja-b0gq9jknbs-radha-01.jpg",
+    "images/hb-ja-b0gq9jknbs-radha-02.jpg",
+    "images/hb-ja-b0gq9jknbs-radha-03.jpg",
+    "images/hb-ja-b0gq9jknbs-radha-04.jpg"
+  ],
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 518,
+    "originalPriceNpr": 1036,
+    "discountPercent": 50
+  }
+}

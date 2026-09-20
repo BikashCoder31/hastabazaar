@@ -1,0 +1,37 @@
+{
+  "productNumber": 80,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "The gallery mixes the stated four-piece set with images showing a different quantity, and one remaining view duplicates another; four distinct exact-set images cannot be verified.",
+  "sourcePage": "https://www.amazon.in/dp/B0DPXFH4LB",
+  "selectedVariant": "Four-piece decorative string set with LED T-lights",
+  "requiredImageCount": 4,
+  "includedImageCount": 2,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0DPXFH4LB",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41mt7zFu9SL.jpg",
+      "filename": "hathkriti-p80-b0dpxfh4lb-01.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 30020,
+      "sha256": "01b15915e06c67cf969257eeae621062fc23792af4bdca83320042e419545bb1",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 3
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0DPXFH4LB",
+      "originalImageReference": "https://m.media-amazon.com/images/I/31AMd+UWNLL.jpg",
+      "filename": "hathkriti-p80-b0dpxfh4lb-02.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 11671,
+      "sha256": "da31bc3d15d0f38808067f7ce338aeaf04e90bc23c6d2a84651556dc4ced4a26",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 4
+    }
+  ]
+}

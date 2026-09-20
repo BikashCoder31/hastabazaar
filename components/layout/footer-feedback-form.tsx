@@ -1,0 +1,211 @@
+'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useState } from 'react';
+
+import { feedbackTopics } from '@/lib/feedback/customer-feedback';
+
+type SubmissionState =
+  | { kind: 'idle'; message: '' }
+  | { kind: 'success' | 'error'; message: string };
+
+const fieldClass =
+  'mt-1.5 min-h-11 w-full rounded-lg border border-white/25 bg-white/10 px-3 py-2 text-sm text-white outline-none placeholder:text-white/50 focus:border-[#f4c46b] focus:ring-2 focus:ring-[#f4c46b]/30 disabled:opacity-60';
+
+export function FooterFeedbackForm() {
+  const pathname = usePathname();
+  const [busy, setBusy] = useState(false);
+  const [state, setState] = useState<SubmissionState>({
+    kind: 'idle',
+    message: '',
+  });
+
+  async function submit(event: {
+    preventDefault(): void;
+    currentTarget: HTMLFormElement;
+  }) {
+    event.preventDefault();
+    if (busy) return;
+    const form = event.currentTarget;
+    setBusy(true);
+    setState({ kind: 'idle', message: '' });
+
+    try {
+      const response = await fetch('/api/feedback', {
+        method: 'POST',
+        body: new FormData(form),
+      });
+      const result = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+      } | null;
+      if (!response.ok || !result?.ok) {
+        throw new Error(
+          result?.error ?? 'Your query could not be sent. Please try again.',
+        );
+      }
+      form.reset();
+      setState({
+        kind: 'success',
+        message: 'Thank you. Your query has been sent to the HastaBazaar team.',
+      });
+    } catch (reason) {
+      setState({
+        kind: 'error',
+        message:
+          reason instanceof Error
+            ? reason.message
+            : 'Your query could not be sent. Please try again.',
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section
+      aria-labelledby="footer-feedback-title"
+      className="mt-10 border-t border-white/15 pt-10"
+    >
+      <div className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr] lg:gap-12">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.14em] text-[#f4c46b]">
+            Questions and feedback
+          </p>
+          <h2 id="footer-feedback-title" className="mt-2 font-heading text-3xl">
+            How can we help?
+          </h2>
+          <p className="mt-3 max-w-lg text-sm leading-6 text-white/70">
+            Send a product question, order query or suggestion. Please do not
+            include passwords, payment card details or identity documents.
+          </p>
+        </div>
+
+        <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+          <input type="hidden" name="pagePath" value={pathname || '/'} />
+          <div
+            aria-hidden="true"
+            className="absolute -left-[10000px] h-px w-px overflow-hidden"
+          >
+            <label htmlFor="footer-website">Website</label>
+            <input
+              id="footer-website"
+              name="website"
+              type="text"
+              tabIndex={-1}
+              autoComplete="off"
+            />
+          </div>
+
+          <label className="block text-sm font-medium">
+            Your name <span aria-hidden="true">*</span>
+            <input
+              className={fieldClass}
+              name="name"
+              autoComplete="name"
+              minLength={2}
+              maxLength={100}
+              required
+              disabled={busy}
+            />
+          </label>
+          <label className="block text-sm font-medium">
+            Email address <span aria-hidden="true">*</span>
+            <input
+              className={fieldClass}
+              name="email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              maxLength={254}
+              required
+              disabled={busy}
+            />
+          </label>
+          <label className="block text-sm font-medium">
+            Query type <span aria-hidden="true">*</span>
+            <select
+              className={fieldClass}
+              name="topic"
+              defaultValue=""
+              required
+              disabled={busy}
+            >
+              <option value="" disabled className="text-foreground">
+                Choose a topic
+              </option>
+              {feedbackTopics.map((topic) => (
+                <option key={topic} value={topic} className="text-foreground">
+                  {topic}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm font-medium">
+            Order reference (optional)
+            <input
+              className={fieldClass}
+              name="orderReference"
+              autoComplete="off"
+              maxLength={80}
+              disabled={busy}
+            />
+          </label>
+          <label className="block text-sm font-medium sm:col-span-2">
+            Your query <span aria-hidden="true">*</span>
+            <textarea
+              className={`${fieldClass} min-h-28 resize-y`}
+              name="message"
+              minLength={10}
+              maxLength={2_000}
+              required
+              disabled={busy}
+              placeholder="Tell us what you need help with."
+            />
+          </label>
+          <label className="flex items-start gap-3 text-xs leading-5 text-white/70 sm:col-span-2">
+            <input
+              type="checkbox"
+              name="privacyAcknowledgement"
+              value="accepted"
+              required
+              disabled={busy}
+              className="mt-1 size-4 shrink-0 accent-[#f4c46b]"
+            />
+            <span>
+              I understand that HastaBazaar will use these details to respond to
+              my query, as described in the{' '}
+              <Link
+                href="/privacy"
+                className="font-semibold text-white underline underline-offset-2 hover:text-[#f4c46b]"
+              >
+                privacy policy
+              </Link>
+              .
+            </span>
+          </label>
+          <div className="flex flex-wrap items-center gap-4 sm:col-span-2">
+            <button
+              type="submit"
+              disabled={busy}
+              className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#f4c46b] px-6 text-sm font-semibold text-[#101f39] transition-colors hover:bg-[#ffd98f] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f4c46b] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {busy ? 'Sending…' : 'Send query'}
+            </button>
+            <output
+              aria-live="polite"
+              className={
+                state.kind === 'error'
+                  ? 'text-sm font-medium text-red-200'
+                  : 'text-sm font-medium text-white/80'
+              }
+            >
+              {state.message}
+            </output>
+          </div>
+        </form>
+      </div>
+    </section>
+  );
+}

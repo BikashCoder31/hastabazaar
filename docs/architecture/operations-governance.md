@@ -12,6 +12,11 @@ Shipping jobs are unique by order, seller, and direction, preserving multi-vendo
 
 Admins can maintain bilingual prohibited/restricted-product guidance and prepare time-bounded homepage or shop promotions containing published products. A different Super Admin must approve or reject a promotion. Super Admins can suspend/reactivate other users, open and resolve operational incidents, and record backup verification evidence. They cannot change their own account status. These operations append audit records and never invent a registration, carrier, backup, or payment-provider result.
 
+The [staff UI](admin-workspace.md) now separates governance sections by role,
+confirms sensitive changes, and requires an actual incident response note.
+Recording privacy completion, a backup verification, or a payout payment
+remains an evidence-recording action rather than an external integration.
+
 ## Privacy and retention
 
 Authenticated customers can request data access, correction, deletion, or object to retention. Admins assign and investigate; only a Super Admin can make the final decision or mark completion. Requests and state changes are append-only. A deletion request is not an instruction to erase orders, payments, fraud controls, or audits that must be retained; the recorded decision must cite the applicable approved retention basis.

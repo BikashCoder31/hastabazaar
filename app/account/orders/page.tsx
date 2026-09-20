@@ -1,16 +1,56 @@
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
-import { PackageOpen } from 'lucide-react';
-
-import { OrderStatusBadge } from '@/components/commerce/order-status-badge';
+import { Package, ReceiptText } from 'lucide-react';
+import { AccountEmpty, AccountHeading } from '@/components/account/account-ui';
+import { CustomerOrderList } from '@/components/account/order-list';
 import { requireCustomerPage } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
 import { listCustomerOrders } from '@/lib/db/repositories/customers';
 
-function money(paisa: number) { return new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR' }).format(paisa / 100); }
-
 export default async function CustomerOrdersPage() {
   const customer = await requireCustomerPage('/account/orders');
-  const orders = await listCustomerOrders(requireDatabase(env as unknown as { DB?: D1Database }), customer.userId);
-  return <div><p className="eyebrow">Purchase history</p><h1 className="mt-2 font-heading text-4xl">Your orders</h1>{orders.length ? <div className="mt-7 grid gap-4">{orders.map((order) => <article key={order.orderNumber} className="rounded-2xl border bg-card p-5 sm:flex sm:items-center sm:justify-between"><div><Link href={`/orders/${order.orderNumber}`} className="font-semibold text-primary hover:underline">{order.orderNumber}</Link><p className="mt-2 text-sm text-muted-foreground">{new Date(order.placedAt).toLocaleString('en-NP')} · {order.itemCount} item{order.itemCount === 1 ? '' : 's'}</p></div><div className="mt-4 flex items-center gap-4 sm:mt-0"><OrderStatusBadge status={order.status} /><strong>{money(order.grandTotalPaisa)}</strong></div></article>)}</div> : <div className="mt-7 rounded-2xl border border-dashed p-12 text-center"><PackageOpen className="mx-auto size-9 text-primary" /><p className="mt-4 font-semibold">No account orders yet</p><p className="mt-2 text-sm text-muted-foreground">Orders placed while signed in will appear here.</p><Link href="/shop" className="mt-5 inline-flex text-sm font-semibold text-primary hover:underline">Browse the collection</Link></div>}</div>;
+  const orders = await listCustomerOrders(
+    requireDatabase(env as unknown as { DB?: D1Database }),
+    customer.userId,
+  );
+  return (
+    <div>
+      <AccountHeading
+        eyebrow="From maker to doorstep"
+        title="Your orders."
+        description="Follow each delivery, open your receipt, or get help with an item."
+      />
+      {orders.length ? (
+        <>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Showing your{' '}
+            {orders.length === 100 ? '100 most recent' : orders.length}{' '}
+            {orders.length === 1 ? 'order' : 'orders'}.
+          </p>
+          <CustomerOrderList orders={orders} />
+        </>
+      ) : (
+        <AccountEmpty
+          icon={Package}
+          title="A new story starts with a find."
+          description="Your orders will appear here when you check out while signed in."
+          href="/shop"
+          action="Discover the collection"
+        />
+      )}
+      <div className="mt-6 flex items-start gap-3 rounded-2xl bg-secondary p-5">
+        <ReceiptText className="mt-0.5 size-5 shrink-0 text-primary" />
+        <div>
+          <p className="font-semibold">Bought something as a guest?</p>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            Use the private receipt link you received after checkout to view
+            that order.
+          </p>
+          <Link href="/help#tracking" className="section-link mt-1">
+            Help finding a guest order →
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
 }

@@ -1,3 +1,8 @@
+import { productClosurePredicate } from './product-closure';
+import { businessNotificationStatements } from '../../operations/business-notifications';
+import type { FeaturedProduct } from '@/lib/catalog/featured-products';
+import { createProductSku } from '@/lib/products/submission';
+import { publicProductEligibility } from '@/lib/products/eligibility';
 import { productTransitions } from '@/lib/marketplace/workflows';
 import type { ProductStatus } from '@/lib/marketplace/types';
 import type {
@@ -44,6 +49,7 @@ const launchDiscoveryCategorySlugs = [
   'wood-bamboo-craft',
   'personalized-gifts',
   'corporate-gifting',
+  'others',
 ] as const;
 
 export async function listPublicDiscoveryCategories(
@@ -106,7 +112,17 @@ export async function areActiveOccasions(
   return Number(row?.count ?? 0) === occasionIds.length;
 }
 
-export async function createProductSubmission(
+export async function createProductSubmission(database: D1Database, options: Parameters<typeof insertProductSubmission>[1]): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { await insertProductSubmission(database, { ...options, input: { ...options.input, sku: createProductSku() } }); return; }
+    catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (attempt === 2 || !/UNIQUE constraint failed|Duplicate entry/i.test(message)) throw error;
+    }
+  }
+}
+
+async function insertProductSubmission(
   database: D1Database,
   options: {
     productId: string;
@@ -126,12 +142,13 @@ export async function createProductSubmission(
           id, seller_id, category_id, slug, sku, name_en, name_ne,
           description_en, description_ne, price_paisa, compare_at_price_paisa,
           inventory_quantity, producer, country_of_origin, materials, dimensions,
+          size, colour, variations, specifications,
           care_instructions, safety_information, return_conditions, return_eligible, warranty,
           made_to_order, preparation_days, manufactured_at, expires_at,
           licence_reference, status, review_note,
           review_request_id, reviewed_by, published_at, created_at, updated_at
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NP', ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NP', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, 'submitted', NULL, NULL, NULL, NULL, ?, ?
         )`,
       )
@@ -151,6 +168,10 @@ export async function createProductSubmission(
         input.producer,
         input.materials,
         input.dimensions,
+        input.size ?? null,
+        input.colour ?? null,
+        input.variations ?? null,
+        input.specifications ?? null,
         input.careInstructions,
         input.safetyInformation,
         input.returnConditions,
@@ -231,6 +252,7 @@ export async function createProductSubmission(
     );
   }
 
+  statements.push(...await businessNotificationStatements(database,{eventId:productId,sourceType:'product',sourceId:productId,status:'submitted',actorId,now,kind:'submitted'}));
   await database.batch(statements);
 }
 
@@ -244,6 +266,8 @@ export interface SellerProductRow {
   inventoryQuantity: number;
   status: ProductStatus;
   reviewNote: string | null;
+  categoryName: string;
+  createdAt: number;
   updatedAt: number;
   primaryMediaId: string | null;
 }
@@ -251,23 +275,48 @@ export interface SellerProductRow {
 export async function listSellerProducts(
   database: D1Database,
   sellerId: string,
+  filters: { status?: string; search?: string } = {},
 ): Promise<readonly SellerProductRow[]> {
+  const conditions = [
+    'products.seller_id = ?',
+    'NOT EXISTS (SELECT 1 FROM product_deletions WHERE product_id = products.id)',
+  ];
+  const bindings: unknown[] = [sellerId];
+  if (filters.status === 'pending') {
+    conditions.push("products.status IN ('submitted', 'under_review', 'approved')");
+  } else if (filters.status === 'out_of_stock') {
+    conditions.push("products.status = 'published' AND products.inventory_quantity = 0");
+  } else if (
+    filters.status &&
+    ['draft', 'published', 'rejected', 'needs_changes', 'archived'].includes(filters.status)
+  ) {
+    conditions.push('products.status = ?');
+    bindings.push(filters.status);
+  }
+  const search = filters.search?.trim();
+  if (search) {
+    conditions.push("(products.name_en LIKE ? ESCAPE '\\' OR products.sku LIKE ? ESCAPE '\\')");
+    const pattern = `%${search.replace(/[\\%_]/g, '\\$&')}%`;
+    bindings.push(pattern, pattern);
+  }
   const result = await database
     .prepare(
       `SELECT products.id, products.slug, products.sku,
         products.name_en AS nameEn, products.name_ne AS nameNe,
         products.price_paisa AS pricePaisa,
         products.inventory_quantity AS inventoryQuantity,
-        products.status, products.review_note AS reviewNote,
-        products.updated_at AS updatedAt,
+        products.status, products.review_note AS reviewNote, products.review_request_id AS reviewRequestId,
+        categories.name_en AS categoryName,
+        products.created_at AS createdAt, products.updated_at AS updatedAt,
         (SELECT product_media.id FROM product_media
-          WHERE product_media.product_id = products.id
+          WHERE product_media.product_id = products.id AND product_media.mime_type LIKE 'image/%'
           ORDER BY product_media.sort_order ASC LIMIT 1) AS primaryMediaId
        FROM products
-       WHERE products.seller_id = ?
+       INNER JOIN categories ON categories.id = products.category_id
+       WHERE ${conditions.join(' AND ')}
        ORDER BY products.updated_at DESC`,
     )
-    .bind(sellerId)
+    .bind(...bindings)
     .all<SellerProductRow>();
   return result.results;
 }
@@ -286,6 +335,10 @@ export interface SellerProductRevision {
   producer: string;
   materials: string;
   dimensions: string | null;
+  size: string | null;
+  colour: string | null;
+  variations: string | null;
+  specifications: string | null;
   careInstructions: string | null;
   safetyInformation: string | null;
   returnConditions: string | null;
@@ -298,11 +351,21 @@ export interface SellerProductRevision {
   licenceReference: string | null;
   status: ProductStatus;
   reviewNote: string | null;
+  reviewRequestId: string | null;
   mediaCount: number;
+  videoCount: number;
+  media: readonly SellerProductMediaRow[];
   occasionIds: readonly string[];
 }
 
-type SellerProductRevisionRow = Omit<SellerProductRevision, 'occasionIds'> & {
+export interface SellerProductMediaRow {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  sortOrder: number;
+}
+
+type SellerProductRevisionRow = Omit<SellerProductRevision, 'occasionIds' | 'media'> & {
   occasionIdsCsv: string | null;
 };
 
@@ -321,6 +384,7 @@ export async function getSellerProductForRevision(
           products.compare_at_price_paisa AS compareAtPricePaisa,
           products.inventory_quantity AS inventoryQuantity,
           products.producer, products.materials, products.dimensions,
+           products.size, products.colour, products.variations, products.specifications,
            products.care_instructions AS careInstructions,
            products.safety_information AS safetyInformation,
            products.return_conditions AS returnConditions,
@@ -330,11 +394,12 @@ export async function getSellerProductForRevision(
            products.manufactured_at AS manufacturedAt,
            products.expires_at AS expiresAt,
            products.licence_reference AS licenceReference,
-          products.status, products.review_note AS reviewNote,
+          products.status, products.review_note AS reviewNote, products.review_request_id AS reviewRequestId,
           (SELECT GROUP_CONCAT(product_occasions.occasion_id)
             FROM product_occasions
             WHERE product_occasions.product_id = products.id) AS occasionIdsCsv,
-          COUNT(product_media.id) AS mediaCount
+          COUNT(CASE WHEN product_media.mime_type LIKE 'image/%' THEN 1 END) AS mediaCount,
+          COUNT(CASE WHEN product_media.mime_type = 'video/mp4' THEN 1 END) AS videoCount
          FROM products
          LEFT JOIN product_media ON product_media.product_id = products.id
          WHERE products.id = ? AND products.seller_id = ?
@@ -342,12 +407,44 @@ export async function getSellerProductForRevision(
     )
     .bind(productId, sellerId)
     .first<SellerProductRevisionRow>();
-  return row
-    ? {
-        ...row,
-        occasionIds: row.occasionIdsCsv ? row.occasionIdsCsv.split(',') : [],
-      }
-    : null;
+  if (!row) return null;
+  const media = await database
+    .prepare(
+      `SELECT id, original_name AS originalName, mime_type AS mimeType,
+        sort_order AS sortOrder
+       FROM product_media WHERE product_id = ? ORDER BY sort_order ASC`,
+    )
+    .bind(productId)
+    .all<SellerProductMediaRow>();
+  return {
+    ...row,
+    media: media.results,
+    occasionIds: row.occasionIdsCsv ? row.occasionIdsCsv.split(',') : [],
+  };
+}
+
+export interface SellerOwnedMediaMutationRow extends SellerProductMediaRow {
+  objectKey: string;
+}
+
+export async function listSellerOwnedMediaForMutation(
+  database: D1Database,
+  sellerId: string,
+  productId: string,
+): Promise<readonly SellerOwnedMediaMutationRow[]> {
+  const result = await database
+    .prepare(
+      `SELECT product_media.id, product_media.object_key AS objectKey,
+        product_media.original_name AS originalName,
+        product_media.mime_type AS mimeType, product_media.sort_order AS sortOrder
+       FROM product_media
+       INNER JOIN products ON products.id = product_media.product_id
+       WHERE product_media.product_id = ? AND products.seller_id = ?
+       ORDER BY product_media.sort_order ASC`,
+    )
+    .bind(productId, sellerId)
+    .all<SellerOwnedMediaMutationRow>();
+  return result.results;
 }
 
 export class ProductRevisionConflictError extends Error {}
@@ -360,27 +457,40 @@ export async function reviseAndResubmitProduct(
     actorId: string;
     input: ProductSubmissionInput;
     images: readonly ProductImageUpload[];
+    removedMediaIds?: readonly string[];
+    expectedStatus?: ProductStatus;
     previousInventory: number;
+    expectedReviewRequestId?: string | null;
     now: number;
   },
 ): Promise<void> {
   const mutationId = crypto.randomUUID();
+  const addedPhotos=options.images.filter(m=>m.mimeType.startsWith('image/')).length;
+  const addedVideos=options.images.filter(m=>m.mimeType==='video/mp4').length;
+  if(addedPhotos+addedVideos!==options.images.length||addedVideos>1)throw new ProductRevisionConflictError('Upload product images and no more than one MP4 video.');
+  const expectedStatus = options.expectedStatus ?? 'needs_changes';
+  if (!['draft', 'needs_changes', 'rejected', 'approved', 'published'].includes(expectedStatus)) {
+    throw new ProductRevisionConflictError('This product status cannot be edited.');
+  }
+  const removedMediaIds = [...new Set(options.removedMediaIds ?? [])];
   const statements: D1PreparedStatement[] = [
     database
       .prepare(
-        `UPDATE products SET category_id = ?, sku = ?, name_en = ?, name_ne = ?,
+        `UPDATE products SET category_id = ?, name_en = ?, name_ne = ?,
           description_en = ?, description_ne = ?, price_paisa = ?,
-          compare_at_price_paisa = ?, inventory_quantity = ?, producer = ?,
-          materials = ?, dimensions = ?, care_instructions = ?,
+          compare_at_price_paisa = ?, inventory_quantity = ?, dimensions = ?,
+          size = ?, colour = ?, variations = ?, specifications = ?, care_instructions = ?,
           safety_information = ?, return_conditions = ?, return_eligible = ?, warranty = ?,
           made_to_order = ?, preparation_days = ?, manufactured_at = ?, expires_at = ?,
           licence_reference = ?, status = 'submitted', review_note = NULL,
           review_request_id = ?, reviewed_by = NULL, updated_at = ?
-         WHERE id = ? AND seller_id = ? AND status = 'needs_changes'`,
+         WHERE id = ? AND seller_id = ? AND status = ?
+          AND (? = 0 OR review_request_id = ? OR (review_request_id IS NULL AND ? IS NULL))
+          AND (SELECT COUNT(*) FROM product_media WHERE product_id=products.id AND mime_type LIKE 'image/%'${removedMediaIds.length ? ` AND id NOT IN (${removedMediaIds.map(() => '?').join(',')})` : ''}) + ? >= 4
+          AND (SELECT COUNT(*) FROM product_media WHERE product_id=products.id AND mime_type='video/mp4'${removedMediaIds.length ? ` AND id NOT IN (${removedMediaIds.map(() => '?').join(',')})` : ''}) + ? <= 1`,
       )
       .bind(
         options.input.categoryId,
-        options.input.sku,
         options.input.nameEn,
         options.input.nameNe,
         options.input.descriptionEn,
@@ -388,9 +498,11 @@ export async function reviseAndResubmitProduct(
         options.input.pricePaisa,
         options.input.compareAtPricePaisa,
         options.input.inventoryQuantity,
-        options.input.producer,
-        options.input.materials,
         options.input.dimensions,
+        options.input.size ?? null,
+        options.input.colour ?? null,
+        options.input.variations ?? null,
+        options.input.specifications ?? null,
         options.input.careInstructions,
         options.input.safetyInformation,
         options.input.returnConditions,
@@ -405,6 +517,14 @@ export async function reviseAndResubmitProduct(
         options.now,
         options.productId,
         options.sellerId,
+        expectedStatus,
+        options.expectedReviewRequestId === undefined ? 0 : 1,
+        options.expectedReviewRequestId ?? null,
+        options.expectedReviewRequestId ?? null,
+        ...removedMediaIds,
+        addedPhotos,
+        ...removedMediaIds,
+        addedVideos,
       ),
     database
       .prepare(
@@ -419,14 +539,26 @@ export async function reviseAndResubmitProduct(
         crypto.randomUUID(),
         options.actorId,
         options.productId,
-        JSON.stringify({ status: 'needs_changes' }),
-        JSON.stringify({ status: 'submitted', sku: options.input.sku }),
+        JSON.stringify({ status: expectedStatus }),
+        JSON.stringify({ status: 'submitted', identityPreserved: true }),
         mutationId,
         options.now,
         options.productId,
         mutationId,
       ),
   ];
+
+  for (const mediaId of removedMediaIds) {
+    statements.push(
+      database
+        .prepare(
+          `DELETE FROM product_media
+           WHERE id = ? AND product_id = ?
+             AND EXISTS (SELECT 1 FROM products WHERE id = ? AND review_request_id = ?)`,
+        )
+        .bind(mediaId, options.productId, options.productId, mutationId),
+    );
+  }
 
   statements.push(
     database
@@ -507,6 +639,7 @@ export async function reviseAndResubmitProduct(
     );
   }
 
+  statements.push(...await businessNotificationStatements(database,{eventId:mutationId,sourceType:'product',sourceId:options.productId,status:'submitted',reviewRequestId:mutationId,actorId:options.actorId,now:options.now,kind:'submitted'}));
   const results = await database.batch(statements);
   if ((results[0].meta.changes ?? 0) !== 1) {
     throw new ProductRevisionConflictError(
@@ -517,8 +650,12 @@ export async function reviseAndResubmitProduct(
 
 export interface SellerProductStats {
   total: number;
-  awaitingReview: number;
+  pendingApproval: number;
   published: number;
+  rejected: number;
+  drafts: number;
+  outOfStock: number;
+  needsChanges: number;
   lowStock: number;
 }
 
@@ -530,16 +667,25 @@ export async function getSellerProductStats(
     (await database
       .prepare(
         `SELECT COUNT(*) AS total,
-          COALESCE(SUM(CASE WHEN status IN ('submitted', 'under_review') THEN 1 ELSE 0 END), 0) AS awaitingReview,
+          COALESCE(SUM(CASE WHEN status IN ('submitted', 'under_review', 'approved') THEN 1 ELSE 0 END), 0) AS pendingApproval,
           COALESCE(SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END), 0) AS published,
+          COALESCE(SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END), 0) AS rejected,
+          COALESCE(SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END), 0) AS drafts,
+          COALESCE(SUM(CASE WHEN status = 'published' AND inventory_quantity = 0 THEN 1 ELSE 0 END), 0) AS outOfStock,
+          COALESCE(SUM(CASE WHEN status = 'needs_changes' THEN 1 ELSE 0 END), 0) AS needsChanges,
           COALESCE(SUM(CASE WHEN status = 'published' AND inventory_quantity <= 5 THEN 1 ELSE 0 END), 0) AS lowStock
-         FROM products WHERE seller_id = ?`,
+         FROM products WHERE seller_id = ?
+           AND NOT EXISTS (SELECT 1 FROM product_deletions WHERE product_id = products.id)`,
       )
       .bind(sellerId)
       .first<SellerProductStats>()) ?? {
       total: 0,
-      awaitingReview: 0,
+      pendingApproval: 0,
       published: 0,
+      rejected: 0,
+      drafts: 0,
+      outOfStock: 0,
+      needsChanges: 0,
       lowStock: 0,
     }
   );
@@ -645,11 +791,17 @@ export interface ProductReviewQueueRow extends SellerProductRow {
   tradingName: string;
   categoryName: string;
   submittedAt: number;
+  homepageHidden: number;
+  homepageVersion: number;
+  homepageReason: string | null;
+  homepageUpdatedAt: number | null;
+  homepageUpdatedByName: string | null;
 }
 
 export async function listProductsForReview(
   database: D1Database,
   limit = 100,
+  publishedOnly = false,
 ): Promise<readonly ProductReviewQueueRow[]> {
   const result = await database
     .prepare(
@@ -658,16 +810,27 @@ export async function listProductsForReview(
         products.price_paisa AS pricePaisa,
         products.inventory_quantity AS inventoryQuantity,
         products.status, products.review_note AS reviewNote,
-        products.updated_at AS updatedAt, products.created_at AS submittedAt,
+        products.updated_at AS updatedAt, products.created_at AS createdAt,
+        products.created_at AS submittedAt,
         seller_profiles.trading_name AS tradingName,
         categories.name_en AS categoryName,
+        COALESCE(homepage_product_controls.is_hidden, 0) AS homepageHidden,
+        COALESCE(homepage_product_controls.version, 0) AS homepageVersion,
+        homepage_product_controls.reason AS homepageReason,
+        homepage_product_controls.updated_at AS homepageUpdatedAt,
+        homepage_actor.display_name AS homepageUpdatedByName,
         (SELECT product_media.id FROM product_media
           WHERE product_media.product_id = products.id
+            AND product_media.mime_type LIKE 'image/%'
           ORDER BY product_media.sort_order ASC LIMIT 1) AS primaryMediaId
        FROM products
        INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
        INNER JOIN categories ON categories.id = products.category_id
-       WHERE products.status IN ('submitted', 'under_review', 'needs_changes', 'approved')
+       LEFT JOIN homepage_product_controls
+         ON homepage_product_controls.product_id = products.id
+       LEFT JOIN users homepage_actor
+         ON homepage_actor.id = homepage_product_controls.updated_by
+       WHERE ${publishedOnly ? "products.status = 'published'" : "products.status IN ('submitted', 'under_review', 'needs_changes', 'approved')"}
        ORDER BY products.created_at ASC
        LIMIT ?`,
     )
@@ -705,6 +868,10 @@ export interface ProductReviewDetail extends ProductReviewQueueRow {
   producer: string;
   materials: string;
   dimensions: string | null;
+  size: string | null;
+  colour: string | null;
+  variations: string | null;
+  specifications: string | null;
   careInstructions: string | null;
   safetyInformation: string | null;
   returnConditions: string | null;
@@ -739,6 +906,7 @@ export async function getProductForReview(
         products.compare_at_price_paisa AS compareAtPricePaisa,
         products.inventory_quantity AS inventoryQuantity,
         products.producer, products.materials, products.dimensions,
+        products.size, products.colour, products.variations, products.specifications,
         products.care_instructions AS careInstructions,
         products.safety_information AS safetyInformation,
         products.return_conditions AS returnConditions,
@@ -755,15 +923,26 @@ export async function getProductForReview(
         (SELECT GROUP_CONCAT(product_occasions.occasion_id, ',')
           FROM product_occasions WHERE product_occasions.product_id = products.id) AS occasionIds,
         products.status, products.review_note AS reviewNote,
-        products.updated_at AS updatedAt, products.created_at AS submittedAt,
+        products.updated_at AS updatedAt, products.created_at AS createdAt,
+        products.created_at AS submittedAt,
         seller_profiles.trading_name AS tradingName,
         categories.name_en AS categoryName,
+        COALESCE(homepage_product_controls.is_hidden, 0) AS homepageHidden,
+        COALESCE(homepage_product_controls.version, 0) AS homepageVersion,
+        homepage_product_controls.reason AS homepageReason,
+        homepage_product_controls.updated_at AS homepageUpdatedAt,
+        homepage_actor.display_name AS homepageUpdatedByName,
         (SELECT product_media.id FROM product_media
           WHERE product_media.product_id = products.id
+            AND product_media.mime_type LIKE 'image/%'
           ORDER BY product_media.sort_order ASC LIMIT 1) AS primaryMediaId
        FROM products
        INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
        INNER JOIN categories ON categories.id = products.category_id
+       LEFT JOIN homepage_product_controls
+         ON homepage_product_controls.product_id = products.id
+       LEFT JOIN users homepage_actor
+         ON homepage_actor.id = homepage_product_controls.updated_by
        WHERE products.id = ? LIMIT 1`,
     )
     .bind(productId)
@@ -807,6 +986,7 @@ export type ProductReviewAction =
   | 'request_changes'
   | 'approve'
   | 'publish'
+  | 'unpublish'
   | 'reject';
 
 const reviewTransitions: Record<
@@ -828,6 +1008,7 @@ const reviewTransitions: Record<
     to: 'approved',
     auditAction: 'product.approved',
   },
+  unpublish: { from: 'published', to: 'under_review', auditAction: 'product.unpublished' },
   publish: {
     from: 'approved',
     to: 'published',
@@ -853,6 +1034,13 @@ export async function reviewProduct(
     now: number;
   },
 ): Promise<ProductStatus> {
+  if (options.action === 'unpublish') {
+    const allowed = await database.prepare(
+      `SELECT 1 FROM users JOIN user_roles ON user_roles.user_id = users.id
+       WHERE users.id = ? AND users.status = 'active' AND user_roles.role = 'super_admin'`,
+    ).bind(options.actorId).first();
+    if (!allowed) throw new ProductReviewConflictError('Only an active Super Admin can unpublish products.');
+  }
   const transition = reviewTransitions[options.action];
   const current = await database
     .prepare(
@@ -882,7 +1070,7 @@ export async function reviewProduct(
     database
       .prepare(
         `UPDATE products SET status = ?, review_note = ?, review_request_id = ?,
-          reviewed_by = ?, published_at = CASE WHEN ? = 'published' THEN ? ELSE published_at END,
+          reviewed_by = ?, published_at = CASE WHEN ? = 'published' THEN ? WHEN ? = 'under_review' THEN NULL ELSE published_at END,
           updated_at = ? WHERE id = ? AND status = ?`,
       )
       .bind(
@@ -892,6 +1080,7 @@ export async function reviewProduct(
         options.actorId,
         transition.to,
         options.now,
+        transition.to,
         options.now,
         options.productId,
         transition.from,
@@ -935,6 +1124,7 @@ export async function reviewProduct(
         options.productId,
         options.requestId,
       ),
+    ...(options.action==='start_review'?[]:await businessNotificationStatements(database,{eventId:options.requestId,sourceType:'product',sourceId:options.productId,status:transition.to,reviewRequestId:options.requestId,actorId:options.actorId,now:options.now,kind:'result'})),
   ]);
   if ((results[0].meta.changes ?? 0) !== 1) {
     throw new ProductReviewConflictError(
@@ -957,6 +1147,10 @@ export interface PublicProductRow {
   producer: string;
   materials: string;
   dimensions: string | null;
+  size: string | null;
+  colour: string | null;
+  variations: string | null;
+  specifications: string | null;
   careInstructions: string | null;
   safetyInformation: string | null;
   returnConditions: string | null;
@@ -981,48 +1175,253 @@ export interface PublicCatalogueFilters {
   sort?: 'newest' | 'price-low' | 'price-high' | 'name';
 }
 
+interface HomepageProductQueryRow {
+  slug: string;
+  name: string;
+  pricePaisa: number;
+  compareAtPricePaisa: number | null;
+  category: string;
+  tradingName: string;
+  mediaId: string;
+}
+
+export interface HomepagePromotion {
+  id: string;
+  nameEn: string;
+  startsAt: number;
+  endsAt: number;
+  productCount: number;
+}
+
+export interface HomepageManageableProduct {
+  id: string;
+  slug: string;
+  nameEn: string;
+  pricePaisa: number;
+  inventoryQuantity: number;
+  publishedAt: number;
+  tradingName: string;
+  categoryName: string;
+  primaryMediaId: string | null;
+  homepageHidden: number;
+  homepageVersion: number;
+  homepageReason: string | null;
+  homepageUpdatedAt: number | null;
+  homepageUpdatedByName: string | null;
+}
+
+export interface HomepageProductControlPage {
+  items: readonly HomepageManageableProduct[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export class HomepageVisibilityConflictError extends Error {}
+
+function homepageProduct(
+  row: HomepageProductQueryRow,
+  label: FeaturedProduct['label'],
+): FeaturedProduct {
+  const pricePaisa = Number(row.pricePaisa);
+  return {
+    slug: row.slug,
+    name: row.name,
+    pricePaisa,
+    compareAtPricePaisa:
+      row.compareAtPricePaisa === null
+        ? null
+        : Number(row.compareAtPricePaisa),
+    price: new Intl.NumberFormat('en-NP').format(pricePaisa / 100),
+    category: row.category,
+    image: `/api/product-media/${row.mediaId}`,
+    imageAlt: row.name,
+    tradingName: row.tradingName,
+    label,
+  };
+}
+
+function homepageLimit(value: number): number {
+  if (!Number.isInteger(value) || value < 1 || value > 24)
+    throw new RangeError('Homepage product limit must be an integer from 1 through 24.');
+  return value;
+}
+
 export async function listHomepagePromotedProducts(
   database: D1Database,
   now = Date.now(),
-): Promise<
-  readonly import('@/lib/catalog/featured-products').FeaturedProduct[]
-> {
+  limit = 8,
+): Promise<readonly FeaturedProduct[]> {
+  homepageLimit(limit);
   const result = await database
     .prepare(
-      `SELECT products.slug, products.name_en AS name, products.price_paisa AS pricePaisa,
-      categories.name_en AS category,
-      (SELECT product_media.id FROM product_media WHERE product_media.product_id = products.id
-        ORDER BY product_media.sort_order ASC LIMIT 1) AS mediaId
+      `SELECT products.slug, products.name_en AS name, products.price_paisa AS pricePaisa, products.compare_at_price_paisa AS compareAtPricePaisa,
+      categories.name_en AS category, seller_profiles.trading_name AS tradingName,
+      homepage_media.id AS mediaId
      FROM promotions
      INNER JOIN promotion_products ON promotion_products.promotion_id = promotions.id
      INNER JOIN products ON products.id = promotion_products.product_id
      INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
      INNER JOIN categories ON categories.id = products.category_id
+     INNER JOIN product_media homepage_media ON homepage_media.id = (
+       SELECT candidate_media.id FROM product_media candidate_media
+       WHERE candidate_media.product_id = products.id
+         AND candidate_media.mime_type LIKE 'image/%'
+       ORDER BY candidate_media.sort_order ASC, candidate_media.id ASC LIMIT 1
+     )
      WHERE promotions.status = 'active' AND promotions.placement = 'homepage'
        AND promotions.starts_at <= ? AND promotions.ends_at > ?
-       AND products.status = 'published' AND seller_profiles.status = 'approved'
-       AND categories.is_active = 1
+       AND ${publicProductEligibility()} AND seller_profiles.status = 'approved'
+       AND categories.is_active = 1 AND products.inventory_quantity > 0
+       AND NOT EXISTS (
+         SELECT 1 FROM homepage_product_controls
+         WHERE homepage_product_controls.product_id = products.id
+           AND homepage_product_controls.is_hidden = 1
+       )
      ORDER BY promotions.created_at DESC, promotion_products.sort_order ASC
-     LIMIT 8`,
+     LIMIT ?`,
+    )
+    .bind(now, now, Math.min(limit * 3, 24))
+    .all<HomepageProductQueryRow>();
+  const unique = new Map<string, FeaturedProduct>();
+  for (const row of result.results) {
+    if (!unique.has(row.slug)) unique.set(row.slug, homepageProduct(row, 'Offer'));
+  }
+  return [...unique.values()].slice(0, limit);
+}
+
+export async function listActiveHomepagePromotions(
+  database: D1Database,
+  now = Date.now(),
+): Promise<readonly HomepagePromotion[]> {
+  const result = await database
+    .prepare(
+      `SELECT promotions.id, promotions.name_en AS nameEn,
+        promotions.starts_at AS startsAt, promotions.ends_at AS endsAt,
+        COUNT(DISTINCT products.id) AS productCount
+       FROM promotions
+       INNER JOIN promotion_products ON promotion_products.promotion_id = promotions.id
+       INNER JOIN products ON products.id = promotion_products.product_id
+       INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
+       INNER JOIN categories ON categories.id = products.category_id
+       WHERE promotions.status = 'active' AND promotions.placement = 'homepage'
+         AND promotions.starts_at <= ? AND promotions.ends_at > ?
+         AND ${publicProductEligibility()} AND seller_profiles.status = 'approved'
+         AND categories.is_active = 1 AND products.inventory_quantity > 0
+         AND NOT EXISTS (
+           SELECT 1 FROM homepage_product_controls
+           WHERE homepage_product_controls.product_id = products.id
+             AND homepage_product_controls.is_hidden = 1
+         )
+         AND EXISTS (
+           SELECT 1 FROM product_media offer_media
+           WHERE offer_media.product_id = products.id
+             AND offer_media.mime_type LIKE 'image/%'
+         )
+       GROUP BY promotions.id, promotions.name_en, promotions.starts_at, promotions.ends_at
+       HAVING COUNT(DISTINCT products.id) > 0
+       ORDER BY promotions.created_at DESC
+       LIMIT 3`,
     )
     .bind(now, now)
-    .all<{
-      slug: string;
-      name: string;
-      pricePaisa: number;
-      category: string;
-      mediaId: string | null;
+    .all<HomepagePromotion>();
+  return result.results.map((row) => ({
+    ...row,
+    startsAt: Number(row.startsAt),
+    endsAt: Number(row.endsAt),
+    productCount: Number(row.productCount),
+  }));
+}
+
+export async function listHomepageLatestProducts(
+  database: D1Database,
+  limit = 8,
+): Promise<readonly FeaturedProduct[]> {
+  homepageLimit(limit);
+  const result = await database
+    .prepare(
+      `SELECT products.slug, products.name_en AS name,
+        products.price_paisa AS pricePaisa,
+        products.compare_at_price_paisa AS compareAtPricePaisa,
+        categories.name_en AS category, seller_profiles.trading_name AS tradingName,
+        homepage_media.id AS mediaId
+       FROM products
+       INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
+       INNER JOIN categories ON categories.id = products.category_id
+       INNER JOIN product_media homepage_media ON homepage_media.id = (
+         SELECT candidate_media.id FROM product_media candidate_media
+         WHERE candidate_media.product_id = products.id
+           AND candidate_media.mime_type LIKE 'image/%'
+         ORDER BY candidate_media.sort_order ASC, candidate_media.id ASC LIMIT 1
+       )
+       WHERE ${publicProductEligibility()} AND seller_profiles.status = 'approved'
+         AND categories.is_active = 1 AND products.inventory_quantity > 0
+         AND products.published_at IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM homepage_product_controls
+           WHERE homepage_product_controls.product_id = products.id
+             AND homepage_product_controls.is_hidden = 1
+         )
+       ORDER BY products.published_at DESC, products.id ASC
+       LIMIT ?`,
+    )
+    .bind(limit)
+    .all<HomepageProductQueryRow>();
+  return result.results.map((row) => homepageProduct(row, 'New'));
+}
+
+export async function listHomepageTopProducts(
+  database: D1Database,
+  options: { now?: number; windowDays?: number; limit?: number } = {},
+): Promise<readonly FeaturedProduct[]> {
+  const now = options.now ?? Date.now();
+  const windowDays = options.windowDays ?? 90;
+  const limit = homepageLimit(options.limit ?? 8);
+  if (!Number.isInteger(windowDays) || windowDays < 1 || windowDays > 3650)
+    throw new RangeError('Homepage sales window must be from 1 through 3650 days.');
+  const since = now - windowDays * 86_400_000;
+  const result = await database
+    .prepare(
+      `SELECT products.slug, products.name_en AS name,
+        products.price_paisa AS pricePaisa,
+        products.compare_at_price_paisa AS compareAtPricePaisa,
+        categories.name_en AS category, seller_profiles.trading_name AS tradingName,
+        homepage_media.id AS mediaId, SUM(order_items.quantity) AS soldQuantity,
+        COUNT(DISTINCT orders.id) AS deliveredOrderCount
+       FROM order_items
+       INNER JOIN orders ON orders.id = order_items.order_id
+       INNER JOIN products ON products.id = order_items.product_id
+       INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
+       INNER JOIN categories ON categories.id = products.category_id
+       INNER JOIN product_media homepage_media ON homepage_media.id = (
+         SELECT candidate_media.id FROM product_media candidate_media
+         WHERE candidate_media.product_id = products.id
+           AND candidate_media.mime_type LIKE 'image/%'
+         ORDER BY candidate_media.sort_order ASC, candidate_media.id ASC LIMIT 1
+       )
+       WHERE orders.status = 'delivered' AND orders.delivered_at IS NOT NULL
+         AND orders.delivered_at >= ? AND orders.delivered_at <= ?
+         AND order_items.fulfillment_status = 'delivered'
+         AND ${publicProductEligibility()} AND seller_profiles.status = 'approved'
+         AND categories.is_active = 1 AND products.inventory_quantity > 0
+         AND NOT EXISTS (
+           SELECT 1 FROM homepage_product_controls
+           WHERE homepage_product_controls.product_id = products.id
+             AND homepage_product_controls.is_hidden = 1
+         )
+       GROUP BY products.id, products.slug, products.name_en, products.price_paisa,
+         products.compare_at_price_paisa, categories.name_en,
+         seller_profiles.trading_name, homepage_media.id, products.published_at
+       ORDER BY soldQuantity DESC, deliveredOrderCount DESC,
+         products.published_at DESC, products.id ASC
+       LIMIT ?`,
+    )
+    .bind(since, now, limit)
+    .all<HomepageProductQueryRow & {
+      soldQuantity: number;
+      deliveredOrderCount: number;
     }>();
-  return result.results
-    .filter((row) => row.mediaId)
-    .map((row) => ({
-      slug: row.slug,
-      name: row.name,
-      price: new Intl.NumberFormat('en-NP').format(row.pricePaisa / 100),
-      category: row.category,
-      image: `/api/product-media/${row.mediaId}`,
-      imageAlt: row.name,
-    }));
+  return result.results.map((row) => homepageProduct(row, 'Popular'));
 }
 
 function escapeLike(value: string): string {
@@ -1030,6 +1429,209 @@ function escapeLike(value: string): string {
     .replaceAll('\\', '\\\\')
     .replaceAll('%', '\\%')
     .replaceAll('_', '\\_');
+}
+
+export async function listHomepageProductControls(
+  database: D1Database,
+  filters: {
+    query?: string;
+    visibility?: 'all' | 'visible' | 'hidden';
+    page?: number;
+    pageSize?: number;
+  } = {},
+): Promise<HomepageProductControlPage> {
+  const page = filters.page ?? 1;
+  const pageSize = filters.pageSize ?? 30;
+  if (!Number.isInteger(page) || page < 1)
+    throw new RangeError('Homepage control page must be a positive integer.');
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100)
+    throw new RangeError('Homepage control page size must be from 1 through 100.');
+  const visibility = filters.visibility ?? 'all';
+  if (!['all', 'visible', 'hidden'].includes(visibility))
+    throw new RangeError('Homepage visibility filter is invalid.');
+
+  const query = filters.query?.trim().slice(0, 100) ?? '';
+  const conditions = [
+    "products.status = 'published'",
+    'NOT EXISTS (SELECT 1 FROM product_deletions WHERE product_deletions.product_id = products.id)',
+  ];
+  const bindings: unknown[] = [];
+  if (visibility === 'visible')
+    conditions.push('COALESCE(homepage_product_controls.is_hidden, 0) = 0');
+  if (visibility === 'hidden')
+    conditions.push('COALESCE(homepage_product_controls.is_hidden, 0) = 1');
+  if (query) {
+    const pattern = `%${escapeLike(query)}%`;
+    conditions.push(
+      `(products.name_en LIKE ? ESCAPE '\\' OR products.sku LIKE ? ESCAPE '\\' OR seller_profiles.trading_name LIKE ? ESCAPE '\\')`,
+    );
+    bindings.push(pattern, pattern, pattern);
+  }
+  const where = conditions.join(' AND ');
+  const from = `FROM products
+    INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
+    INNER JOIN categories ON categories.id = products.category_id
+    LEFT JOIN homepage_product_controls
+      ON homepage_product_controls.product_id = products.id
+    LEFT JOIN users homepage_actor
+      ON homepage_actor.id = homepage_product_controls.updated_by`;
+  const [rows, count] = await Promise.all([
+    database
+      .prepare(
+        `SELECT products.id, products.slug, products.name_en AS nameEn,
+          products.price_paisa AS pricePaisa,
+          products.inventory_quantity AS inventoryQuantity,
+          products.published_at AS publishedAt,
+          seller_profiles.trading_name AS tradingName,
+          categories.name_en AS categoryName,
+          (SELECT product_media.id FROM product_media
+            WHERE product_media.product_id = products.id
+              AND product_media.mime_type LIKE 'image/%'
+            ORDER BY product_media.sort_order ASC, product_media.id ASC LIMIT 1) AS primaryMediaId,
+          COALESCE(homepage_product_controls.is_hidden, 0) AS homepageHidden,
+          COALESCE(homepage_product_controls.version, 0) AS homepageVersion,
+          homepage_product_controls.reason AS homepageReason,
+          homepage_product_controls.updated_at AS homepageUpdatedAt,
+          homepage_actor.display_name AS homepageUpdatedByName
+         ${from} WHERE ${where}
+         ORDER BY products.published_at DESC, products.id ASC
+         LIMIT ? OFFSET ?`,
+      )
+      .bind(...bindings, pageSize, (page - 1) * pageSize)
+      .all<HomepageManageableProduct>(),
+    database
+      .prepare(`SELECT COUNT(*) AS total ${from} WHERE ${where}`)
+      .bind(...bindings)
+      .first<{ total: number }>(),
+  ]);
+  return { items: rows.results, total: Number(count?.total ?? 0), page, pageSize };
+}
+
+export async function setHomepageProductVisibility(
+  database: D1Database,
+  options: {
+    productId: string;
+    actorId: string;
+    hidden: boolean;
+    expectedVersion: number;
+    reason: string;
+    requestId: string;
+    now: number;
+  },
+): Promise<{ hidden: boolean; version: number }> {
+  const reason = options.reason.trim();
+  if (reason.length < 8 || reason.length > 500)
+    throw new HomepageVisibilityConflictError(
+      'Add a clear homepage-control reason from 8 through 500 characters.',
+    );
+  if (!Number.isInteger(options.expectedVersion) || options.expectedVersion < 0)
+    throw new HomepageVisibilityConflictError('Homepage visibility version is invalid.');
+  if (!options.requestId || options.requestId.length > 191)
+    throw new HomepageVisibilityConflictError('Homepage control request is invalid.');
+
+  const actor = await database
+    .prepare(
+      `SELECT 1 FROM users
+       INNER JOIN user_roles ON user_roles.user_id = users.id
+       WHERE users.id = ? AND users.status = 'active'
+         AND user_roles.role = 'super_admin' LIMIT 1`,
+    )
+    .bind(options.actorId)
+    .first();
+  if (!actor)
+    throw new HomepageVisibilityConflictError(
+      'Only an active Super Admin can control homepage visibility.',
+    );
+
+  const current = await database
+    .prepare(
+      `SELECT products.id, COALESCE(homepage_product_controls.is_hidden, 0) AS hidden,
+        COALESCE(homepage_product_controls.version, 0) AS version,
+        homepage_product_controls.last_request_id AS lastRequestId
+       FROM products
+       LEFT JOIN homepage_product_controls
+         ON homepage_product_controls.product_id = products.id
+       WHERE products.id = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM product_deletions
+           WHERE product_deletions.product_id = products.id
+         ) LIMIT 1`,
+    )
+    .bind(options.productId)
+    .first<{ id: string; hidden: number; version: number; lastRequestId: string | null }>();
+  if (!current) throw new HomepageVisibilityConflictError('Product not found.');
+  if (current.lastRequestId === options.requestId) {
+    if (Boolean(current.hidden) !== options.hidden)
+      throw new HomepageVisibilityConflictError('Homepage request identifier was reused.');
+    return { hidden: options.hidden, version: current.version };
+  }
+  if (current.version !== options.expectedVersion)
+    throw new HomepageVisibilityConflictError(
+      'Homepage visibility changed. Refresh and try again.',
+    );
+  if (Boolean(current.hidden) === options.hidden)
+    return { hidden: options.hidden, version: current.version };
+
+  const nextVersion = current.version + 1;
+  const mutation = current.version === 0
+    ? database.prepare(
+        `INSERT INTO homepage_product_controls (
+          product_id, is_hidden, reason, version, updated_by,
+          last_request_id, created_at, updated_at
+        ) SELECT ?, ?, ?, 1, ?, ?, ?, ?
+        WHERE EXISTS (
+          SELECT 1 FROM products WHERE products.id = ?
+            AND NOT EXISTS (
+              SELECT 1 FROM product_deletions
+              WHERE product_deletions.product_id = products.id
+            )
+        ) AND EXISTS (
+          SELECT 1 FROM users
+          INNER JOIN user_roles ON user_roles.user_id = users.id
+          WHERE users.id = ? AND users.status = 'active'
+            AND user_roles.role = 'super_admin'
+        ) AND NOT EXISTS (
+          SELECT 1 FROM homepage_product_controls WHERE product_id = ?
+        )`,
+      ).bind(options.productId, options.hidden ? 1 : 0, reason,
+        options.actorId, options.requestId, options.now, options.now,
+        options.productId, options.actorId, options.productId)
+    : database.prepare(
+        `UPDATE homepage_product_controls
+         SET is_hidden = ?, reason = ?, version = version + 1,
+           updated_by = ?, last_request_id = ?, updated_at = ?
+         WHERE product_id = ? AND version = ?
+           AND EXISTS (
+             SELECT 1 FROM users
+             INNER JOIN user_roles ON user_roles.user_id = users.id
+             WHERE users.id = ? AND users.status = 'active'
+               AND user_roles.role = 'super_admin'
+           )`,
+      ).bind(options.hidden ? 1 : 0, reason, options.actorId,
+        options.requestId, options.now, options.productId, current.version,
+        options.actorId);
+  const results = await database.batch([
+    mutation,
+    database.prepare(
+      `INSERT INTO audit_logs (
+        id, actor_id, action, subject_type, subject_id, reason,
+        previous_json, next_json, request_id, ip_hash, created_at
+      ) SELECT ?, ?, ?, 'product', ?, ?, ?, ?, ?, NULL, ?
+      FROM homepage_product_controls
+      WHERE product_id = ? AND version = ? AND last_request_id = ?`,
+    ).bind(crypto.randomUUID(), options.actorId,
+      options.hidden ? 'homepage.product.hidden' : 'homepage.product.shown',
+      options.productId, reason,
+      JSON.stringify({ homepageHidden: Boolean(current.hidden), version: current.version }),
+      JSON.stringify({ homepageHidden: options.hidden, version: nextVersion }),
+      options.requestId, options.now, options.productId, nextVersion,
+      options.requestId),
+  ]);
+  if ((results[0].meta.changes ?? 0) !== 1)
+    throw new HomepageVisibilityConflictError(
+      'Homepage visibility changed. Refresh and try again.',
+    );
+  return { hidden: options.hidden, version: nextVersion };
 }
 
 export async function listPublishedProducts(
@@ -1054,7 +1656,7 @@ export async function listPublishedProducts(
   }[sort];
   if (!orderBy) throw new RangeError('Catalogue sort is invalid.');
   const conditions = [
-    `products.status = 'published'`,
+    `${publicProductEligibility()}`,
     `seller_profiles.status = 'approved'`,
     `categories.is_active = 1`,
   ];
@@ -1116,6 +1718,7 @@ export async function listPublishedProducts(
         products.compare_at_price_paisa AS compareAtPricePaisa,
         products.inventory_quantity AS inventoryQuantity,
         products.producer, products.materials, products.dimensions,
+        products.size, products.colour, products.variations, products.specifications,
         products.care_instructions AS careInstructions,
         products.safety_information AS safetyInformation,
         products.return_conditions AS returnConditions,
@@ -1146,7 +1749,7 @@ export async function countPublishedProducts(
   filters: Omit<PublicCatalogueFilters, 'limit' | 'page' | 'sort'> = {},
 ): Promise<number> {
   const conditions = [
-    `products.status = 'published'`,
+    `${publicProductEligibility()}`,
     `seller_profiles.status = 'approved'`,
     `categories.is_active = 1`,
   ];
@@ -1204,6 +1807,7 @@ export async function getPublishedProductBySlug(
         products.compare_at_price_paisa AS compareAtPricePaisa,
         products.inventory_quantity AS inventoryQuantity,
         products.producer, products.materials, products.dimensions,
+        products.size, products.colour, products.variations, products.specifications,
         products.care_instructions AS careInstructions,
         products.safety_information AS safetyInformation,
         products.return_conditions AS returnConditions,
@@ -1221,7 +1825,7 @@ export async function getPublishedProductBySlug(
        FROM products
        INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
        INNER JOIN categories ON categories.id = products.category_id
-       WHERE products.slug = ? AND products.status = 'published' LIMIT 1`,
+       WHERE products.slug = ? AND ${publicProductEligibility()} LIMIT 1`,
     )
     .bind(slug)
     .first<PublicProductRow>();
@@ -1253,7 +1857,7 @@ export async function getProductMediaObject(
         `SELECT product_media.object_key AS objectKey,
           product_media.original_name AS originalName,
           product_media.mime_type AS mimeType,
-          products.status AS productStatus, products.seller_id AS sellerId
+          CASE WHEN ${publicProductEligibility()} THEN 'published' ELSE 'archived' END AS productStatus, products.seller_id AS sellerId
          FROM product_media
          INNER JOIN products ON products.id = product_media.product_id
          WHERE product_media.id = ? LIMIT 1`,
@@ -1267,4 +1871,56 @@ export async function getProductMediaObject(
         sellerId: string;
       }>()) ?? null
   );
+}
+
+export class ProductArchiveConflictError extends Error {}
+
+export async function archiveSellerProduct(
+  database: D1Database,
+  options: { productId: string; sellerId: string; actorId: string; now: number },
+): Promise<void> {
+  const mutationId = crypto.randomUUID();
+  const results = await database.batch([
+    database.prepare(
+      `UPDATE products SET status = 'archived', updated_at = ?, review_request_id = ?
+       WHERE id = ? AND seller_id = ? AND status = 'published' AND ${productClosurePredicate}`,
+    ).bind(options.now, mutationId, options.productId, options.sellerId),
+    database.prepare(
+      `INSERT INTO audit_logs (id, actor_id, action, subject_type, subject_id, reason,
+        previous_json, next_json, request_id, ip_hash, created_at)
+       SELECT ?, ?, 'product.archived', 'product', ?, 'Seller archived published listing',
+         ?, ?, ?, NULL, ?
+       WHERE EXISTS (SELECT 1 FROM products WHERE id = ? AND seller_id = ?
+         AND status = 'archived' AND review_request_id = ?)`,
+    ).bind(crypto.randomUUID(), options.actorId, options.productId,
+      JSON.stringify({status: 'published'}), JSON.stringify({status: 'archived'}),
+      mutationId, options.now, options.productId, options.sellerId, mutationId),
+  ]);
+  if ((results[0].meta.changes ?? 0) !== 1) {
+    throw new ProductArchiveConflictError('Published product not found, its status changed, or related obligations remain. Review the product blockers and refresh.');
+  }
+}
+
+export async function deleteSellerProduct(
+  database: D1Database,
+  options: { productId: string; sellerId: string; actorId: string; now: number },
+): Promise<void> {
+  const requestId = crypto.randomUUID();
+  const results = await database.batch([
+    database.prepare(
+      `INSERT INTO product_deletions (product_id, deleted_by, deleted_at, request_id)
+       SELECT id, ?, ?, ? FROM products WHERE id = ? AND seller_id = ? AND status = 'archived'
+       AND NOT EXISTS (SELECT 1 FROM product_deletions WHERE product_id = products.id) AND ${productClosurePredicate}`,
+    ).bind(options.actorId, options.now, requestId, options.productId, options.sellerId),
+    database.prepare(
+      `INSERT INTO audit_logs (id, actor_id, action, subject_type, subject_id, reason,
+         previous_json, next_json, request_id, ip_hash, created_at)
+       SELECT ?, ?, 'product.deleted', 'product', ?, 'Seller removed archived listing',
+         NULL, ?, ?, NULL, ? WHERE EXISTS
+         (SELECT 1 FROM product_deletions WHERE product_id = ? AND request_id = ?)`,
+    ).bind(crypto.randomUUID(), options.actorId, options.productId,
+      JSON.stringify({deleted: true, recordsRetained: true}), requestId, options.now,
+      options.productId, requestId),
+  ]);
+  if ((results[0].meta.changes ?? 0) !== 1) throw new ProductArchiveConflictError('Archive this product before deleting it. Related obligations must be cleared; review the product blockers and refresh.');
 }

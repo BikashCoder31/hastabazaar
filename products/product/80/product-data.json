@@ -1,0 +1,73 @@
+{
+  "productNumber": 80,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "The gallery mixes the stated four-piece set with images showing a different quantity, and one remaining view duplicates another; four distinct exact-set images cannot be verified.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0c6Vl8tW",
+    "canonicalUrl": "https://www.amazon.in/dp/B0DPXFH4LB",
+    "asin": "B0DPXFH4LB",
+    "sourceTitle": "Divyakosh Wall Hangings for Home Living Decor, Set of 4 Diwali Lights, Handmade Diwali Decoration Door Valance Hanging with LED T-Lights for Wedding",
+    "sourcePriceInr": 1176.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Divyakosh Handmade LED T-Light Wall Hangings - Set of 4",
+    "brand": "Divyakosh",
+    "manufacturer": "Not stated on the source page.",
+    "description": "Divyakosh Handmade LED T-Light Wall Hangings - Set of 4 features set of four decorative hanging strings. It combines each string includes an LED T-light or diya with suitable for indoor or outdoor festive decoration as stated by the source. Designed for doors, walls, mandirs and event décor.",
+    "keyFeatures": [
+      "Set of four decorative hanging strings",
+      "Each string includes an LED T-light or diya",
+      "Suitable for indoor or outdoor festive decoration as stated by the source",
+      "Designed for doors, walls, mandirs and event décor"
+    ],
+    "specifications": {
+      "colourAndVariant": "Four-piece decorative string set with LED T-lights",
+      "dimensions": "Not stated on the source page.",
+      "weight": "Not stated on the source page.",
+      "modelOrIdentifier": "ASIN B0DPXFH4LB",
+      "countryOfOrigin": "Not stated on the source page."
+    },
+    "materials": "Material composition is not stated",
+    "packageContents": "4 decorative hanging strings with LED T-lights/diyas",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Home Décor > Decorative Garlands",
+    "tags": [
+      "LED wall hanging",
+      "Diwali lights",
+      "set of 4 hangings",
+      "door valance décor",
+      "Divyakosh"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Divyakosh Handmade LED T-Light Wall Hangings - Set of 4 | Hathkriti",
+    "seoDescription": "Divyakosh Handmade LED T-Light Wall Hangings - Set of 4 from Hathkriti. Set of four decorative hanging strings. Colour/variant: Four-piece decorative string set with LED T-lights."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 2082,
+    "originalPriceNpr": 4164,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 2,
+    "files": [
+      "images/hathkriti-p80-b0dpxfh4lb-01.jpg",
+      "images/hathkriti-p80-b0dpxfh4lb-02.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source combines LED T-lights with a statement about oil, ghee or tealight use without clarifying which supplied parts support open flame; no compatibility claim has been added."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

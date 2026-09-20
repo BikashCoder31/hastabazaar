@@ -1,0 +1,85 @@
+{
+  "productNumber": 5,
+  "status": "prepared_not_entered",
+  "source": {
+    "shortUrl": "https://amzn.in/d/00ohnJZI",
+    "canonicalUrl": "https://www.amazon.in/dp/B08HY12HC3",
+    "asin": "B08HY12HC3",
+    "selectedVariant": "Raja Rani Couple - Pack of 2",
+    "sourcePriceInr": 339,
+    "sourceReturnStatus": "10 days Returnable"
+  },
+  "listing": {
+    "category": "Home décor",
+    "title": "JH Gallery Handmade Raja Rani Tealight Holders - Multicolour, Pack of 2",
+    "occasions": [
+      "Tihar gifts",
+      "Housewarming",
+      "Wedding gifts",
+      "Anniversary"
+    ],
+    "description": "A pack of two handmade Raja–Rani tealight holders created by JH Gallery artisans in Rajasthan. Each multicolour tabletop piece combines cloth-bodied puppets, an umbrella-style canopy and a decorated recycled base with a holder for a standard tealight or small wax diya. Hand-painted details may vary slightly between pieces. Suitable for pooja spaces, festive displays, centre tables and return gifting. Tealights are not promised as included.",
+    "dimensions": null,
+    "licenceReference": null,
+    "careInstructions": "Wipe with a dry cloth or remove dust with a blower. Allow the holder to cool before moving it.",
+    "safetyInformation": "Do not leave a burning flame unattended. Allow the holder to cool before moving it. An LED tealight may be used where an open flame is not wanted.",
+    "warrantyOffered": false,
+    "warrantyYears": null,
+    "warrantyMonths": null,
+    "warrantyDays": null,
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "preparationDays": 3,
+    "manufactureDate": null,
+    "expiryDate": null,
+    "madeToOrder": false,
+    "sellingPriceNpr": 742,
+    "originalPriceNpr": 1484,
+    "discountPercent": 50,
+    "stockQuantity": 10,
+    "returnEligible": true,
+    "suggestedInternalReference": "HB-JHG-B08HY12HC3-RAJA-RANI-P2",
+    "priceFormula": "round(339 × 1.6 + 200)"
+  },
+  "verifiedFacts": {
+    "brand": "JH Gallery",
+    "manufacturer": "Jeevan Handicrafts",
+    "modelNumber": "Dolls Couple",
+    "manufacturerPartNumber": "JHG0DCT",
+    "materials": [
+      "Cardboard",
+      "Glass",
+      "Metal",
+      "Paper",
+      "Plastic",
+      "Rubber",
+      "Cloth-body puppet components"
+    ],
+    "colour": "Multicolour",
+    "finish": "Handmade and hand-painted",
+    "itemWeightGrams": 250,
+    "countryOfOrigin": "India",
+    "packageContents": "Two Raja-Rani tealight holders; tealight/LED inclusion is not confirmed"
+  },
+  "sourceConflicts": [
+    {
+      "field": "dimensions",
+      "title": "9 cm",
+      "featureText": "about 3.5 inches tall",
+      "technicalTable": "7.6 x 7.6 x 7.6 cm",
+      "listingValue": null
+    }
+  ],
+  "images": [
+    "images/hb-jhg-b08hy12hc3-raja-rani-tealight-01.jpg",
+    "images/hb-jhg-b08hy12hc3-raja-rani-tealight-02.jpg",
+    "images/hb-jhg-b08hy12hc3-raja-rani-tealight-03.jpg",
+    "images/hb-jhg-b08hy12hc3-raja-rani-tealight-04.jpg"
+  ],
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 742,
+    "originalPriceNpr": 1484,
+    "discountPercent": 50
+  }
+}

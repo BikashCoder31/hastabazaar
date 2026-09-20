@@ -1,0 +1,73 @@
+{
+  "productNumber": 75,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0c9mkViX",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HHSBGMVH",
+    "asin": "B0HHSBGMVH",
+    "sourceTitle": "Crochet Floral Bucket Bag, White with Magenta Flowers",
+    "sourcePriceInr": 498.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "White Crochet Bucket Bag with Magenta Floral Appliqués",
+    "brand": "Generic",
+    "manufacturer": "Handmade Artisan",
+    "description": "White Crochet Bucket Bag with Magenta Floral Appliqués features hand-crocheted mini bucket shape. It combines magenta 3D flowers with green stems with braided white-and-magenta shoulder strap. Open-top unlined single compartment.",
+    "keyFeatures": [
+      "Hand-crocheted mini bucket shape",
+      "Magenta 3D flowers with green stems",
+      "Braided white-and-magenta shoulder strap",
+      "Open-top unlined single compartment"
+    ],
+    "specifications": {
+      "colourAndVariant": "White with magenta flowers and green stems",
+      "dimensions": "12 × 12 × 14 cm",
+      "weight": "250 g",
+      "modelOrIdentifier": "Cro-bag-cherry-002; ASIN B0HHSBGMVH",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Cotton yarn with gold-tone metal strap clasp",
+    "packageContents": "1 crochet handbag with shoulder strap",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Hobos & Shoulder Bags",
+    "tags": [
+      "crochet floral bag",
+      "white bucket bag",
+      "magenta flower purse",
+      "handmade crossbody",
+      "cottagecore bag"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "White Crochet Bucket Bag with Magenta Floral Appliqués | Hathkriti",
+    "seoDescription": "White Crochet Bucket Bag with Magenta Floral Appliqués from Hathkriti. Hand-crocheted mini bucket shape. Colour/variant: White with magenta flowers and green stems."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 997,
+    "originalPriceNpr": 1994,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p75-b0hhsbgmvh-01.jpg",
+      "images/hathkriti-p75-b0hhsbgmvh-02.jpg",
+      "images/hathkriti-p75-b0hhsbgmvh-03.jpg",
+      "images/hathkriti-p75-b0hhsbgmvh-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

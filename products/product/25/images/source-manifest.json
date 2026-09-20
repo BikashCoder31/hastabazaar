@@ -1,0 +1,37 @@
+{
+  "productNumber": 25,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two distinct exact-variant product-gallery images were available.",
+  "sourcePage": "https://www.amazon.in/dp/B07PB1RY1P",
+  "selectedVariant": "Bottle Green",
+  "requiredImageCount": 4,
+  "includedImageCount": 2,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B07PB1RY1P",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61YHF4xsWOL._SL1100_.jpg",
+      "filename": "hathkriti-p25-b07pb1ry1p-01.jpg",
+      "dimensions": {
+        "width": 1100,
+        "height": 1100
+      },
+      "byteSize": 95410,
+      "sha256": "b5e2196c2d553ef788c52e82636cda7a176057f5f96e7dbee27e245c425308b0",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B07PB1RY1P",
+      "originalImageReference": "https://m.media-amazon.com/images/I/512LsonReSL._SL1100_.jpg",
+      "filename": "hathkriti-p25-b07pb1ry1p-02.jpg",
+      "dimensions": {
+        "width": 1100,
+        "height": 1031
+      },
+      "byteSize": 44386,
+      "sha256": "853b0678264324e7bd56e63e5bd3ef04444901ef7d31b53cae83e68f55029628",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    }
+  ]
+}

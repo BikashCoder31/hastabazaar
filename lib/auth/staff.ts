@@ -1,19 +1,23 @@
+import { recordStaffAuthorizationOutcome } from '@/lib/operations/authorization-audit';
+import { hasMailboxProof } from './mailbox-verification';
 import { env } from 'cloudflare:workers';
 import { redirect } from 'next/navigation';
 
 import {
-  getChatGPTUser,
-  requireChatGPTUser,
-  type ChatGPTUser,
-} from '@/app/chatgpt-auth';
+  getAuthenticatedUser,
+  requireAuthenticatedUser,
+  type AuthenticatedUser,
+} from '@/app/auth';
 import { ensureConfiguredStaffBootstrap } from '@/lib/auth/staff-bootstrap';
 import { requireDatabase } from '@/lib/db/d1';
+import { getStaffPermissionProfile } from '@/lib/db/repositories/staff-permissions';
 import { can, type Permission } from '@/lib/marketplace/permissions';
 import type { MarketplaceRole } from '@/lib/marketplace/types';
 
 export type StaffRole = Extract<MarketplaceRole, 'admin' | 'super_admin'>;
 
 export interface StaffUser {
+  permissions?: readonly Permission[];
   id: string;
   authSubject: string;
   email: string;
@@ -52,6 +56,8 @@ export class StaffAuthorizationError extends Error {
 
 interface StaffRuntimeEnvironment {
   DB?: D1Database;
+  HASTABAZAAR_SUPER_ADMIN_EMAIL?: string;
+  HASTABAZAAR_ADMIN_EMAIL?: string;
   HASTABAZAAR_STAGING_SUPER_ADMIN_EMAIL?: string;
   HASTABAZAAR_STAGING_ADMIN_EMAIL?: string;
 }
@@ -91,13 +97,15 @@ async function findStaffBySubject(
     .bind(authSubject)
     .first<StaffRow>();
 
-  return row ?? null;
+  if (!row) return null;
+  return row.role === 'super_admin' ? row : { ...row, permissions: (await getStaffPermissionProfile(database, row.id)).permissions };
 }
 
 async function acceptMatchingInvitation(
   database: D1Database,
-  identity: ChatGPTUser,
+  identity: AuthenticatedUser,
 ): Promise<StaffUser | null> {
+  if (!hasMailboxProof(identity)) return null;
   const email = normalizeEmail(identity.email);
   const now = Date.now();
 
@@ -115,8 +123,12 @@ async function acceptMatchingInvitation(
     database,
     email,
     {
-      superAdminEmail: bindings.HASTABAZAAR_STAGING_SUPER_ADMIN_EMAIL,
-      adminEmail: bindings.HASTABAZAAR_STAGING_ADMIN_EMAIL,
+      superAdminEmail:
+        bindings.HASTABAZAAR_SUPER_ADMIN_EMAIL ??
+        bindings.HASTABAZAAR_STAGING_SUPER_ADMIN_EMAIL,
+      adminEmail:
+        bindings.HASTABAZAAR_ADMIN_EMAIL ??
+        bindings.HASTABAZAAR_STAGING_ADMIN_EMAIL,
     },
     now,
   );
@@ -262,7 +274,7 @@ async function acceptMatchingInvitation(
 }
 
 export async function getStaffUser(): Promise<StaffUser | null> {
-  const identity = await getChatGPTUser();
+  const identity = await getAuthenticatedUser();
   if (!identity) return null;
 
   const database = databaseFromEnvironment();
@@ -276,13 +288,13 @@ export async function requireStaffPage(
   returnTo: string,
   permission?: Permission,
 ): Promise<StaffUser> {
-  const identity = await requireChatGPTUser(returnTo);
+  const identity = await requireAuthenticatedUser(returnTo);
   const database = databaseFromEnvironment();
   const staff =
     (await findStaffBySubject(database, identity.userId)) ??
     (await acceptMatchingInvitation(database, identity));
 
-  if (!staff || (permission && !can(staff.role, permission))) {
+  if (!staff || (permission && !can(staff, permission))) {
     redirect('/staff-access-denied');
   }
   return staff;
@@ -291,7 +303,7 @@ export async function requireStaffPage(
 export async function requireStaffApi(
   permission: Permission,
 ): Promise<StaffUser> {
-  const identity = await getChatGPTUser();
+  const identity = await getAuthenticatedUser();
   if (!identity) {
     throw new StaffAuthorizationError('Authentication is required.', 401);
   }
@@ -301,7 +313,8 @@ export async function requireStaffApi(
     (await findStaffBySubject(database, identity.userId)) ??
     (await acceptMatchingInvitation(database, identity));
 
-  if (!staff || !can(staff.role, permission)) {
+  if (!staff || !can(staff, permission)) {
+    if(staff)await recordStaffAuthorizationOutcome(database,{actorId:staff.id,permission,outcome:'denied'});
     throw new StaffAuthorizationError('Staff access is not permitted.', 403);
   }
   return staff;

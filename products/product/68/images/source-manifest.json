@@ -1,0 +1,63 @@
+{
+  "productNumber": 68,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0H9XXNQNF",
+  "selectedVariant": "Multicolour handmade patchwork; patch arrangement may vary",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H9XXNQNF",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41eg-1BjDGL.jpg",
+      "filename": "hathkriti-p68-b0h9xxnqnf-01.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 29740,
+      "sha256": "43df6bf6dee8388c65881cfcf1e925488486288f09041ae4c91c5e379b2b4271",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H9XXNQNF",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41OQw9AQs-L.jpg",
+      "filename": "hathkriti-p68-b0h9xxnqnf-02.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 28003,
+      "sha256": "acd0c64cecdc32e9dc7526e246e4bce7e0d872ec8a7825a243d6831ce172bbfe",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 3
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H9XXNQNF",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41vcWElxBHL.jpg",
+      "filename": "hathkriti-p68-b0h9xxnqnf-03.jpg",
+      "dimensions": {
+        "width": 282,
+        "height": 500
+      },
+      "byteSize": 23053,
+      "sha256": "acfe34c70960d17a1b045f3f673cdbb145de3da3be592ae5400746ce9a43baf6",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 4
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H9XXNQNF",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41GDxW8VSwL.jpg",
+      "filename": "hathkriti-p68-b0h9xxnqnf-04.jpg",
+      "dimensions": {
+        "width": 282,
+        "height": 500
+      },
+      "byteSize": 22820,
+      "sha256": "7946423b449665c62103fa5c361762f047988e13c7f7f321298090a966755168",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 5
+    }
+  ]
+}

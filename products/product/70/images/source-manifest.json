@@ -1,0 +1,37 @@
+{
+  "productNumber": 70,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two distinct exact-variant product-gallery images were available.",
+  "sourcePage": "https://www.amazon.in/dp/B0HFP8JHZT",
+  "selectedVariant": "Blue",
+  "requiredImageCount": 4,
+  "includedImageCount": 2,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HFP8JHZT",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41qhNTaPTVL.jpg",
+      "filename": "hathkriti-p70-b0hfp8jhzt-01.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 32002,
+      "sha256": "3af3509476400a383d76775828bc61dbc2ec54b153a0e864066f966d290b1910",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HFP8JHZT",
+      "originalImageReference": "https://m.media-amazon.com/images/I/519SAmQjBkL.jpg",
+      "filename": "hathkriti-p70-b0hfp8jhzt-02.jpg",
+      "dimensions": {
+        "width": 400,
+        "height": 500
+      },
+      "byteSize": 37639,
+      "sha256": "fbcaefc71a57bee7af91613fc603ec912f5f2389129711d794774db1cb71502a",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    }
+  ]
+}

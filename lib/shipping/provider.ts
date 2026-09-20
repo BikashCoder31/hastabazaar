@@ -14,6 +14,7 @@ export type ShipmentStatus =
   | 'cancelled';
 
 export interface NepalAddress {
+  location?: import('../delivery/validation').DeliveryLocation;
   recipientName: string;
   phone: string;
   province: string;

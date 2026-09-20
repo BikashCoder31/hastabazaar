@@ -1,0 +1,23 @@
+{
+  "63": {"selected": [1, 2, 3, 7]},
+  "64": {"selected": [1, 2, 7, 8]},
+  "65": {"selected": [1, 3, 7, 9]},
+  "66": {"selected": [1, 8, 9, 10]},
+  "67": {"selected": [], "retained": [1, 2], "excludedReason": "Only two clean exact-product views remained after rejecting a synthetic-looking model image and a promotional feature panel."},
+  "68": {"selected": [1, 3, 4, 5]},
+  "69": {"selected": [], "retained": [1], "excludedReason": "Only one clean isolated product image remained; the rest of the gallery consists of branded promotional or feature panels."},
+  "70": {"selected": [], "retained": [1, 2], "excludedReason": "Only two distinct exact-variant product-gallery images were available."},
+  "71": {"selected": [1, 3, 5, 6]},
+  "72": {"selected": [], "retained": [1, 2], "excludedReason": "Only two distinct exact-variant product-gallery images were available."},
+  "73": {"selected": [], "retained": [1, 8], "excludedReason": "Only two clean exact-product views remained after rejecting branded promotional panels and synthetic-looking model scenes."},
+  "74": {"selected": [], "retained": [1, 2, 3], "excludedReason": "Only three distinct exact-variant product-gallery images were available."},
+  "75": {"selected": [1, 2, 3, 4]},
+  "76": {"selected": [], "retained": [1, 2], "excludedReason": "Only three gallery images were available and two lifestyle images are near-duplicate compositions; four distinct images are required."},
+  "77": {"selected": [], "retained": [], "excludedReason": "The gallery states that buyers receive a random colour and random design, so one exact selectable variant and a matching four-image set cannot be verified."},
+  "78": {"selected": [], "retained": [], "excludedReason": "The gallery relies entirely on synthetic-looking room composites and provides no clean isolated product views; a legitimate four-image set could not be verified."},
+  "79": {"selected": [1, 3, 4, 6]},
+  "80": {"selected": [], "retained": [3, 4], "excludedReason": "The gallery mixes the stated four-piece set with images showing a different quantity, and one remaining view duplicates another; four distinct exact-set images cannot be verified."},
+  "81": {"selected": [], "retained": [1, 2], "excludedReason": "Only two clean gallery images remained; the other two contain seller branding and feature-panel graphics."},
+  "82": {"selected": [1, 2, 5, 6]},
+  "83": {"selected": [1, 5, 6, 8]}
+}

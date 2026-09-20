@@ -1,0 +1,68 @@
+{
+  "productNumber": 61,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "The source describes a multi-design item without an exact selectable design, and the gallery relies on ambiguous/synthetic-looking scenes; an exact four-image variant set cannot be verified.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0d8bnbW8",
+    "canonicalUrl": "https://www.amazon.in/dp/B0H3PV91L2",
+    "asin": "B0H3PV91L2",
+    "sourceTitle": "Handmade Embroidered Boho Purse for Women | Ethnic Handbag | Designer Shoulder Bag for Parties & Travel. (Multicolor & multi design)",
+    "sourcePriceInr": 699.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "RPVOXON Multicolour Embroidered Boho Shoulder Bag",
+    "brand": "RPVOXON",
+    "manufacturer": "RPVOXON",
+    "description": "RPVOXON Multicolour Embroidered Boho Shoulder Bag features handmade embroidered boho design. It combines cowrie shells, mirror work and tassel embellishments with zipper closure. Shoulder-carry handles.",
+    "keyFeatures": [
+      "Handmade embroidered boho design",
+      "Cowrie shells, mirror work and tassel embellishments",
+      "Zipper closure",
+      "Shoulder-carry handles"
+    ],
+    "specifications": {
+      "colourAndVariant": "Multicolour; multiple design presentation",
+      "dimensions": "14 × 11 × 13 cm",
+      "weight": "150 g",
+      "modelOrIdentifier": "Model 1; ASIN B0H3PV91L2",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Embroidered textile with cowrie-shell, mirror and tassel embellishments; exact fibre composition not stated",
+    "packageContents": "1 embroidered handbag",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Hobos & Shoulder Bags",
+    "tags": [
+      "embroidered boho purse",
+      "multicolour shoulder bag",
+      "cowrie shell bag",
+      "mirror work handbag",
+      "RPVOXON"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "RPVOXON Multicolour Embroidered Boho Shoulder Bag | Hathkriti",
+    "seoDescription": "RPVOXON Multicolour Embroidered Boho Shoulder Bag from Hathkriti. Handmade embroidered boho design. Colour/variant: Multicolour; multiple design presentation."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1318,
+    "originalPriceNpr": 2636,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 0,
+    "files": [],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

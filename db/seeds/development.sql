@@ -13,7 +13,7 @@ INSERT OR IGNORE INTO categories (
   updated_at
 ) VALUES
   ('cat-gifts', NULL, 'gifts', 'Gifts', 'उपहार', 1, 10, 1788681600000, 1788681600000),
-  ('cat-home-decor', NULL, 'home-decor', 'Home décor', 'गृह सजावट', 1, 20, 1788681600000, 1788681600000),
+  ('cat-home-decor', NULL, 'home-decor', 'Home decor', 'गृह सजावट', 1, 20, 1788681600000, 1788681600000),
   ('cat-jewelry-accessories', NULL, 'jewelry-accessories', 'Jewelry & accessories', 'गहना तथा सहायक सामग्री', 1, 30, 1788681600000, 1788681600000),
   ('cat-traditional-textiles', NULL, 'traditional-textiles', 'Traditional textiles', 'परम्परागत कपडा', 1, 40, 1788681600000, 1788681600000),
   ('cat-lifestyle', NULL, 'lifestyle', 'Lifestyle', 'जीवनशैली', 1, 50, 1788681600000, 1788681600000),

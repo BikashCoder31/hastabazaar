@@ -23,14 +23,14 @@ import type { AdminFulfillmentAction } from '@/lib/db/repositories/fulfillment';
 const definitions = {
   dispatch: { label: 'Mark dispatched', title: 'Dispatch this order?', description: 'The customer will see the consignment as dispatched.', icon: Send, variant: 'default' },
   deliver: { label: 'Confirm delivery', title: 'Confirm delivery and COD collection?', description: 'This records the COD payment as collected and closes fulfilment.', icon: CircleCheckBig, variant: 'default' },
-  cancel: { label: 'Cancel order', title: 'Cancel this complete order?', description: 'The order and shipment will close, and all reserved inventory will be restored.', icon: Ban, variant: 'destructive' },
+  cancel: { label: 'Cancel order', title: 'Cancel this complete order?', description: 'Eligible parcels close and reserved inventory is restored. Custom production already started requires a separate staff review. Readiness and revised amounts are checked before cancellation.', icon: Ban, variant: 'destructive' },
 } as const;
 
-export function AdminOrderFulfillmentActions({ orderId, status }: { orderId: string; status: string }) {
+export function AdminOrderFulfillmentActions({ orderId, status, initialTrackingCode }: { orderId: string; status: string; initialTrackingCode?: string | null }) {
   const router = useRouter();
   const [selected, setSelected] = useState<AdminFulfillmentAction | null>(null);
   const [note, setNote] = useState('');
-  const [trackingCode, setTrackingCode] = useState('');
+  const [trackingCode, setTrackingCode] = useState(initialTrackingCode??'');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const actions: AdminFulfillmentAction[] = status === 'ready_for_pickup'

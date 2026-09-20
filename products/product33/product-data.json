@@ -1,0 +1,82 @@
+{
+  "productNumber": 33,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0gIscflM",
+    "canonicalUrl": "https://www.amazon.in/dp/B0FFTDN2PS",
+    "asin": "B0FFTDN2PS",
+    "capturedPriceInr": 199,
+    "amazonReturnEligibility": "10 days Returnable"
+  },
+  "verifiedSourceFacts": {
+    "sourceTitle": "WORLD CRAZE Multicolour Kashmiri Chandbali Jhumka Earrings",
+    "brand": "WORLD CRAZE THE FINEST OF THEM ALL",
+    "manufacturer": "WORLD CRAZE THE FINEST OF THEM ALL",
+    "modelOrIdentifier": "2008",
+    "materials": "Faux pearls and alloy metal",
+    "colourAndVariant": "Multicolour; Colour: Multi",
+    "dimensions": "7.5 × 5.5 × 1.2 cm",
+    "weight": "50 g",
+    "packageContents": "Net quantity: 2 pack",
+    "careInstructions": "Requires Seller input.",
+    "countryOfOrigin": "India",
+    "returnEligibility": "10 days Returnable",
+    "warranty": "Not stated on source; leave blank."
+  },
+  "rewrittenMarketingCopy": {
+    "storefrontTitle": "WORLD CRAZE Multicolour Kashmiri Chandbali Jhumka Earrings",
+    "description": "Multicolour Kashmiri-style chandbali jhumka earrings with long chain tassels, latkan details and faux-pearl drops. Designed to complement sarees, lehengas, kurtis and festive outfits.",
+    "keyFeatures": [
+      "Chandbali-inspired jhumka shape",
+      "Long chain tassels and latkan elements",
+      "Pearl-style drops",
+      "Multicolour festive detailing"
+    ],
+    "seoTitle": "WORLD CRAZE Multicolour Kashmiri Chandbali Jhumka Earrings | Hastabazaar",
+    "seoDescription": "WORLD CRAZE Multicolour Kashmiri Chandbali Jhumka Earrings. Multicolour Kashmiri-style chandbali jhumka earrings with long chain tassels, latkan details and f"
+  },
+  "suggestedValues": {
+    "category": "Jewellery > Earrings",
+    "tags": [
+      "earrings",
+      "handmade jewellery",
+      "chandbali",
+      "jhumka"
+    ],
+    "sku": "HB-ER-B0FFTDN2PS-MULTICOLOUR",
+    "pricing": {
+      "formula": "round(199 × 1.6 + 150)",
+      "sellingPriceNpr": 468,
+      "originalPriceNpr": 936,
+      "discountPercent": 50
+    },
+    "stockQuantity": 10,
+    "preparationTimeDays": 3,
+    "returnWording": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "listingPurpose": "Genuine commercial listing"
+  },
+  "valuesSellerMustSupply": [
+    "Shipping weight and package dimensions if Hastabazaar requires shipping-specific values; item/package values above may not be shipping measurements.",
+    "Any safety warning required for this exact product; none was stated on the source page."
+  ],
+  "legalOrAuthenticityConcerns": [
+    "User states that resale and image-reuse rights are authorized; this has not been independently verified.",
+    "Permanent legal documents and policy identifiers are pending. Do not enable genuine public orders until those controls are complete."
+  ],
+  "images": {
+    "selectedCount": 4,
+    "requestedMaximum": 4,
+    "videoDownloaded": false,
+    "exactDuplicatesExcluded": 0,
+    "order": [
+      "hb-er-b0fftdn2ps-multicolour-01.jpg",
+      "hb-er-b0fftdn2ps-multicolour-02.jpg",
+      "hb-er-b0fftdn2ps-multicolour-03.jpg",
+      "hb-er-b0fftdn2ps-multicolour-04.jpg"
+    ]
+  },
+  "publication": {
+    "preparedOnly": true,
+    "enteredInHastabazaar": false,
+    "published": false
+  }
+}

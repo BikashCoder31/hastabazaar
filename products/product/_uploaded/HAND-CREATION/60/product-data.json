@@ -1,0 +1,73 @@
+{
+  "productNumber": 60,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0g3HVBBo",
+    "canonicalUrl": "https://www.amazon.in/dp/B0H715BXZ2",
+    "asin": "B0H715BXZ2",
+    "sourceTitle": "Handmade Crochet Flower Crossbody Sling Bag for Women | Boho Knitted Bucket Shoulder Purse Rose Design",
+    "sourcePriceInr": 699.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "StylizShades Off-White Crochet Rose Flower-Pot Sling Bag",
+    "brand": "StylizShades",
+    "manufacturer": "Keuze",
+    "description": "StylizShades Off-White Crochet Rose Flower-Pot Sling Bag features handmade flower-pot inspired crochet bag. It combines red crochet rose appliqués with long sling strap. Compact space for phone, wallet, keys and small accessories.",
+    "keyFeatures": [
+      "Handmade flower-pot inspired crochet bag",
+      "Red crochet rose appliqués",
+      "Long sling strap",
+      "Compact space for phone, wallet, keys and small accessories"
+    ],
+    "specifications": {
+      "colourAndVariant": "Off-White with red crochet roses",
+      "dimensions": "22 × 18 × 8 cm",
+      "weight": "50 g",
+      "modelOrIdentifier": "SS-70-PL-BAG-OWHT / SS-218; ASIN B0H715BXZ2",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Crochet yarn; fibre composition not stated",
+    "packageContents": "1 rose crochet sling bag",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Sling & Cross-Body Bags",
+    "tags": [
+      "crochet rose bag",
+      "off-white sling bag",
+      "flower pot purse",
+      "boho crossbody",
+      "StylizShades"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "StylizShades Off-White Crochet Rose Flower-Pot Sling Bag | Hathkriti",
+    "seoDescription": "StylizShades Off-White Crochet Rose Flower-Pot Sling Bag from Hathkriti. Handmade flower-pot inspired crochet bag. Colour/variant: Off-White with red crochet roses."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1318,
+    "originalPriceNpr": 2636,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p60-b0h715bxz2-01.jpg",
+      "images/hathkriti-p60-b0h715bxz2-02.jpg",
+      "images/hathkriti-p60-b0h715bxz2-03.jpg",
+      "images/hathkriti-p60-b0h715bxz2-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

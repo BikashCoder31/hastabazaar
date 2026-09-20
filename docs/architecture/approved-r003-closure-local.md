@@ -1,0 +1,11 @@
+# Approved R003 product closure
+
+Seller archive and soft-delete now repeat the same product-specific obligation SQL in the actual conditional mutation. The seller list explains blockers and links to underlying owned orders, cases or finance. Soft deletion retains product, order, reviews and aftercare history; Super Admin unpublish is unchanged.
+
+Checks cover unfinished item fulfillment/payment and product seller parcel/COD, open item returns, item/order complaints, related unfinished refunds, missing sale/commission evidence for fulfilled items, unpaid per-item ledger balances or unfinished payout claims, and unpaid product reserves. A paid payout claim must belong to the same seller. A refund-linked legacy ledger entry is attributed through refund -> return -> item, so another product's known adjustment does not block. Non-attributable unpaid seller adjustments and open seller-wide complaints hold sold products for staff review; the code never guesses these are settled. No new staff override or invented ledger entry is introduced.
+
+An unused return window alone never blocks closure. Known unrelated product reserves and adjustments do not block. Atomic mutation predicates prevent a new obligation between screen load and mutation from being ignored. Missing historical accounting attribution remains a staff investigation requirement, not an automatic settlement claim.
+
+Files: lib/db/repositories/product-closure.ts; archive/delete functions in products.ts; app/seller/products/page.tsx; components/seller/archive-product-button.tsx; tests/product-closure.test.ts; existing two archive/delete synthetic fixtures now model cancelled items; scripts/verify-product-closure-native.ts. No migration, shared manifest or partial cancellation changes.
+
+Verification: first regression run reproduced three archive/race bypass failures. Five current focused closure tests pass, plus relevant existing regressions (8 combined). Touched lint passed. Native MariaDB full-manifest verification previously passed missing-earnings rejection, obligation arriving immediately before mutation, and archived/deleted cancelled-item history retention. Latest native run also passes with the refund-attribution rules. Current artifact: outputs/approved-four-2026-09-13T05-17-00-125Z/product-closure-native.json. Only fresh synthetic databases used, no sends or deployment.

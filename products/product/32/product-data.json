@@ -1,0 +1,71 @@
+{
+  "productNumber": 32,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two clean images showed the exact selected white variant; the remaining gallery images included other colours.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0aobI7jV",
+    "canonicalUrl": "https://www.amazon.in/dp/B0H7CDWFV2",
+    "asin": "B0H7CDWFV2",
+    "sourceTitle": "KB STAR Cute Bow Women Casual Luxurious Premium Checkered Acrylic Woolen Muffler/Scarf/Stole for Winter",
+    "sourcePriceInr": 650.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "KB STAR White Checkered Acrylic-Wool Bow Muffler",
+    "brand": "KB STAR",
+    "manufacturer": "KB STAR",
+    "description": "KB STAR White Checkered Acrylic-Wool Bow Muffler features white checkered winter muffler with bow detail. It combines acrylic-wool fabric with free-size unisex styling. Designed for casual and formal winter wear.",
+    "keyFeatures": [
+      "White checkered winter muffler with bow detail",
+      "Acrylic-wool fabric",
+      "Free-size unisex styling",
+      "Designed for casual and formal winter wear"
+    ],
+    "specifications": {
+      "colourAndVariant": "White; free size",
+      "dimensions": "15 × 10 × 0.1 cm (source-listed; likely folded/packaged measurement)",
+      "weight": "190 g",
+      "modelOrIdentifier": "Woollen Muffler_new; ASIN B0H7CDWFV2",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Source lists wool and acrylic wool; exact fibre percentages are not stated",
+    "packageContents": "1 muffler",
+    "careInstructions": "Source is inconsistent: feature text says machine wash or hand wash only, while the care field says machine wash. Follow the physical care label.",
+    "category": "Clothing & Accessories > Winter Wear > Mufflers & Scarves",
+    "tags": [
+      "white muffler",
+      "winter scarf",
+      "checkered scarf",
+      "bow muffler",
+      "acrylic wool scarf"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "KB STAR White Checkered Acrylic-Wool Bow Muffler | Hathkriti",
+    "seoDescription": "KB STAR White Checkered Acrylic-Wool Bow Muffler from Hathkriti. White checkered winter muffler with bow detail. Colour/variant: White; free size."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1240,
+    "originalPriceNpr": 2480,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 2,
+    "files": [
+      "images/hathkriti-p32-b0h7cdwfv2-01.jpg",
+      "images/hathkriti-p32-b0h7cdwfv2-02.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

@@ -1,7 +1,11 @@
+import {cancellationChoices,cancellationPreview,cancelSelectedParcels,CancellationConflictError} from '../../cancellation/repository';
+import { operationalBusinessNotificationStatements } from '../../operations/business-notifications';
+import { staffMutationGuard } from './staff-mutation-guard';
 import type { NepalAddress } from '@/lib/shipping/provider';
 import type { OrderStatus } from '@/lib/marketplace/types';
 import { buildEarningsAccrualStatements } from '@/lib/db/repositories/payouts';
 import type { OrderDocumentSnapshot } from '@/lib/db/repositories/orders';
+import {readDeliveryPricingSnapshot,type DeliveryPricingSnapshot} from '@/lib/checkout/delivery-rates';
 
 export type ItemFulfillmentStatus =
   | 'confirmed'
@@ -70,12 +74,13 @@ export interface FulfillmentOrderDetail {
   items: readonly FulfillmentItem[];
   history: readonly OrderTimelineEvent[];
   shipmentHistory: readonly ShipmentTimelineEvent[];
+  deliveryPricing: (Pick<DeliveryPricingSnapshot,'pricingPolicy'|'baseChargePaisa'> & {originalStoreCount:number;currentStoreCount:number}) | null;
 }
 
 type FulfillmentOrderBase = Omit<
   FulfillmentOrderDetail,
-  'address' | 'items' | 'history' | 'shipmentHistory'
-> & { addressJson: string };
+  'address' | 'items' | 'history' | 'shipmentHistory' | 'deliveryPricing'
+> & { addressJson: string; deliveryRateSnapshotJson:string|null; originalStoreCount:number; currentStoreCount:number };
 
 async function loadOrderBase(
   database: D1Database,
@@ -87,10 +92,12 @@ async function loadOrderBase(
       .prepare(
         `SELECT orders.id, orders.order_number AS orderNumber, orders.status,
           orders.customer_email AS customerEmail, orders.customer_phone AS customerPhone,
-          orders.shipping_address_json AS addressJson,
-          orders.item_subtotal_paisa AS itemSubtotalPaisa,
-          orders.delivery_charge_paisa AS deliveryChargePaisa,
-          orders.grand_total_paisa AS grandTotalPaisa,
+          orders.shipping_address_json AS addressJson, orders.delivery_rate_snapshot_json AS deliveryRateSnapshotJson,
+          (SELECT COUNT(DISTINCT original_items.seller_id) FROM order_items original_items WHERE original_items.order_id=orders.id) AS originalStoreCount,
+          (SELECT COUNT(DISTINCT current_items.seller_id) FROM order_items current_items WHERE current_items.order_id=orders.id AND current_items.fulfillment_status<>'cancelled') AS currentStoreCount,
+          COALESCE(orders.current_subtotal_paisa,orders.item_subtotal_paisa) AS itemSubtotalPaisa,
+          COALESCE(orders.current_delivery_paisa,orders.delivery_charge_paisa) AS deliveryChargePaisa,
+          COALESCE(orders.current_total_paisa,orders.grand_total_paisa) AS grandTotalPaisa,
           orders.payment_mode AS paymentMode, orders.payment_status AS paymentStatus,
           orders.placed_at AS placedAt, orders.delivered_at AS deliveredAt,
           orders.cancelled_at AS cancelledAt, shipments.id AS shipmentId,
@@ -175,11 +182,14 @@ export async function getOperationsOrderDetail(
     loadItems(database, base.id),
     loadHistory(database, base.id),
   ]);
+  const pricing=readDeliveryPricingSnapshot(base.deliveryRateSnapshotJson,base.deliveryChargePaisa);
+  const {addressJson,deliveryRateSnapshotJson:_deliveryRateSnapshotJson,originalStoreCount,currentStoreCount,...safeBase}=base;
   return {
-    ...base,
-    address: JSON.parse(base.addressJson) as NepalAddress,
+    ...safeBase,
+    address: JSON.parse(addressJson) as NepalAddress,
     items,
     ...timelines,
+    deliveryPricing:pricing.kind==='current'?{pricingPolicy:pricing.snapshot.pricingPolicy,baseChargePaisa:pricing.snapshot.baseChargePaisa,originalStoreCount,currentStoreCount}:null,
   };
 }
 
@@ -201,11 +211,14 @@ export async function getSellerOrderDetail(
     loadItems(database, base.id, sellerId),
     loadHistory(database, base.id),
   ]);
+  const pricing=readDeliveryPricingSnapshot(base.deliveryRateSnapshotJson,base.deliveryChargePaisa);
+  const {addressJson,deliveryRateSnapshotJson:_deliveryRateSnapshotJson,originalStoreCount,currentStoreCount,...safeBase}=base;
   return {
-    ...base,
-    address: JSON.parse(base.addressJson) as NepalAddress,
+    ...safeBase,
+    address: JSON.parse(addressJson) as NepalAddress,
     items,
     ...timelines,
+    deliveryPricing:pricing.kind==='current'?{pricingPolicy:pricing.snapshot.pricingPolicy,baseChargePaisa:pricing.snapshot.baseChargePaisa,originalStoreCount,currentStoreCount}:null,
   };
 }
 
@@ -240,10 +253,11 @@ export async function transitionSellerFulfillment(
   const transition = sellerActions[options.action];
   const note = options.note.trim() || transition.note;
   const aggregateStatusSql = `CASE
+    WHEN EXISTS(SELECT 1 FROM order_items WHERE order_id=orders.id AND fulfillment_status IN ('dispatched','delivered')) THEN 'dispatched'
     WHEN NOT EXISTS (
       SELECT 1 FROM order_items
       WHERE order_items.order_id = orders.id
-        AND order_items.fulfillment_status != 'ready_for_pickup'
+        AND order_items.fulfillment_status NOT IN ('ready_for_pickup','cancelled')
     ) THEN 'ready_for_pickup'
     ELSE 'packing'
   END`;
@@ -251,7 +265,7 @@ export async function transitionSellerFulfillment(
     database
       .prepare(
         `UPDATE orders SET operation_request_id = ?, updated_at = ?
-         WHERE id = ? AND status IN ('confirmed', 'packing')
+         WHERE id = ? AND (status IN ('confirmed', 'packing') OR (status='dispatched' AND EXISTS(SELECT 1 FROM shipping_jobs j JOIN shipping_parcels p ON p.shipping_job_id=j.id WHERE j.order_id=orders.id)))
            AND EXISTS (
              SELECT 1 FROM order_items WHERE order_id = orders.id AND seller_id = ?
            )
@@ -348,6 +362,15 @@ export async function transitionSellerFulfillment(
         options.orderId,
         options.requestId,
       ),
+    ...(transition.to === 'ready_for_pickup'
+      ? await operationalBusinessNotificationStatements(database, {
+          kind: 'order.pickup_ready',
+          sourceId: options.orderId,
+          eventId: options.requestId,
+          actorId: options.actorId,
+          now: options.now,
+        })
+      : []),
   ]);
   if ((results[0].meta.changes ?? 0) !== 1) {
     throw new FulfillmentConflictError(
@@ -368,9 +391,27 @@ export async function transitionAdminFulfillment(
     now: number;
   },
 ): Promise<void> {
+  const authority = await staffMutationGuard(
+    database,
+    options.actorId,
+    'order.manage',
+    FulfillmentConflictError,
+  );
+  if (
+    await database
+      .prepare(
+        'SELECT p.shipping_job_id FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id WHERE j.order_id=? LIMIT 1',
+      )
+      .bind(options.orderId)
+      .first()
+  )
+    throw new FulfillmentConflictError(
+      'Use the seller parcel controls for this order.',
+    );
   const order = await database
     .prepare(
       `SELECT status, order_number AS orderNumber,
+        wallet_credit_paisa AS walletCreditPaisa, referral_discount_paisa AS referralDiscountPaisa,
         item_subtotal_paisa AS itemSubtotalPaisa,
         delivery_charge_paisa AS deliveryChargePaisa,
         buyer_platform_fee_paisa AS buyerPlatformFeePaisa,
@@ -381,6 +422,8 @@ export async function transitionAdminFulfillment(
     .bind(options.orderId)
     .first<{
       status: OrderStatus;
+      walletCreditPaisa: number;
+      referralDiscountPaisa: number;
       orderNumber: string;
       itemSubtotalPaisa: number;
       deliveryChargePaisa: number;
@@ -403,6 +446,7 @@ export async function transitionAdminFulfillment(
       requestId: options.requestId,
       now: options.now,
       recordInventoryAdjustments: true,
+      staffGuards: authority.statements,
     });
   }
 
@@ -452,6 +496,8 @@ export async function transitionAdminFulfillment(
       buyerPlatformFeePaisa: order.buyerPlatformFeePaisa,
       taxTotalPaisa: order.taxTotalPaisa,
       grandTotalPaisa: order.grandTotalPaisa,
+      walletCreditPaisa: order.walletCreditPaisa,
+      referralDiscountPaisa: order.referralDiscountPaisa,
     };
   }
   const results = await database.batch([
@@ -630,6 +676,7 @@ export async function transitionAdminFulfillment(
         options.orderId,
         options.requestId,
       ),
+    ...authority.statements,
   ]);
   if ((results[0].meta.changes ?? 0) !== 1) {
     throw new FulfillmentConflictError(
@@ -661,7 +708,7 @@ export async function cancelCustomerOrder(
       options.customerId ?? null,
     )
     .first<{ id: string; status: OrderStatus }>();
-  if (!order || order.status !== 'confirmed') {
+  if (!order || !['confirmed','packing','ready_for_pickup','dispatched'].includes(order.status)) {
     throw new FulfillmentConflictError(
       'This order can no longer be cancelled online.',
     );
@@ -674,6 +721,8 @@ export async function cancelCustomerOrder(
     requestId: options.requestId,
     now: options.now,
     recordInventoryAdjustments: false,
+    customerId: options.customerId,
+    receiptTokenHash: options.receiptTokenHash,
   });
 }
 
@@ -687,193 +736,12 @@ async function cancelOrder(
     requestId: string;
     now: number;
     recordInventoryAdjustments: boolean;
+    customerId?: string | null;
+    receiptTokenHash?: string | null;
+    staffGuards?: readonly D1PreparedStatement[];
   },
 ): Promise<void> {
-  const items = await database
-    .prepare(
-      `SELECT id, product_id AS productId, seller_id AS sellerId, quantity,
-        fulfillment_status AS fulfillmentStatus
-       FROM order_items WHERE order_id = ?`,
-    )
-    .bind(options.orderId)
-    .all<{
-      id: string;
-      productId: string | null;
-      sellerId: string;
-      quantity: number;
-      fulfillmentStatus: ItemFulfillmentStatus;
-    }>();
-  const statements: D1PreparedStatement[] = [
-    database
-      .prepare(
-        `UPDATE orders SET status = 'cancelled', payment_status = 'cancelled',
-          cancelled_at = ?, updated_at = ?, operation_request_id = ?
-         WHERE id = ? AND status = ?`,
-      )
-      .bind(
-        options.now,
-        options.now,
-        options.requestId,
-        options.orderId,
-        options.expectedStatus,
-      ),
-    database
-      .prepare(
-        `INSERT INTO order_status_events (
-          id, order_id, from_status, to_status, note, actor_id, request_id, created_at
-        ) SELECT ?, ?, ?, 'cancelled', ?, ?, ?, ?
-          WHERE EXISTS (SELECT 1 FROM orders WHERE id = ? AND operation_request_id = ?)`,
-      )
-      .bind(
-        crypto.randomUUID(),
-        options.orderId,
-        options.expectedStatus,
-        options.note,
-        options.actorId,
-        options.requestId,
-        options.now,
-        options.orderId,
-        options.requestId,
-      ),
-    database
-      .prepare(
-        `INSERT INTO order_item_status_events (
-          id, order_item_id, from_status, to_status, note, actor_id, request_id, created_at
-        ) SELECT lower(hex(randomblob(16))), id, fulfillment_status, 'cancelled', ?, ?, ?, ?
-          FROM order_items WHERE order_id = ? AND fulfillment_status != 'cancelled'
-            AND EXISTS (SELECT 1 FROM orders WHERE id = ? AND operation_request_id = ?)`,
-      )
-      .bind(
-        options.note,
-        options.actorId,
-        options.requestId,
-        options.now,
-        options.orderId,
-        options.orderId,
-        options.requestId,
-      ),
-    database
-      .prepare(
-        `UPDATE order_items SET fulfillment_status = 'cancelled', fulfillment_request_id = ?
-         WHERE order_id = ? AND fulfillment_status != 'cancelled'
-           AND EXISTS (SELECT 1 FROM orders WHERE id = ? AND operation_request_id = ?)`,
-      )
-      .bind(
-        options.requestId,
-        options.orderId,
-        options.orderId,
-        options.requestId,
-      ),
-    database
-      .prepare(
-        `UPDATE payments SET status = 'cancelled', updated_at = ?
-         WHERE order_id = ? AND EXISTS (
-           SELECT 1 FROM orders WHERE id = ? AND operation_request_id = ?
-         )`,
-      )
-      .bind(options.now, options.orderId, options.orderId, options.requestId),
-    database
-      .prepare(
-        `UPDATE shipments SET status = 'cancelled', updated_at = ?
-         WHERE order_id = ? AND EXISTS (
-           SELECT 1 FROM orders WHERE id = ? AND operation_request_id = ?
-         )`,
-      )
-      .bind(options.now, options.orderId, options.orderId, options.requestId),
-    database
-      .prepare(
-        `INSERT INTO shipment_events (
-          id, shipment_id, provider_event_id, status, location, note, occurred_at, received_at
-        ) SELECT ?, id, ?, 'cancelled', NULL, ?, ?, ? FROM shipments
-          WHERE order_id = ? AND EXISTS (
-            SELECT 1 FROM orders WHERE id = ? AND operation_request_id = ?
-          )`,
-      )
-      .bind(
-        crypto.randomUUID(),
-        options.requestId,
-        options.note,
-        options.now,
-        options.now,
-        options.orderId,
-        options.orderId,
-        options.requestId,
-      ),
-  ];
-
-  for (const item of items.results) {
-    if (!item.productId || item.fulfillmentStatus === 'cancelled') continue;
-    statements.push(
-      database
-        .prepare(
-          `UPDATE products SET inventory_quantity = inventory_quantity + ?, updated_at = ?
-           WHERE id = ? AND EXISTS (
-             SELECT 1 FROM orders WHERE id = ? AND operation_request_id = ?
-           )`,
-        )
-        .bind(
-          item.quantity,
-          options.now,
-          item.productId,
-          options.orderId,
-          options.requestId,
-        ),
-    );
-    if (options.recordInventoryAdjustments && options.actorId) {
-      statements.push(
-        database
-          .prepare(
-            `INSERT INTO inventory_adjustments (
-              id, product_id, seller_id, actor_id, previous_quantity,
-              next_quantity, reason, created_at
-            ) SELECT ?, products.id, ?, ?, products.inventory_quantity - ?,
-              products.inventory_quantity, ?, ? FROM products
-              WHERE products.id = ? AND EXISTS (
-                SELECT 1 FROM orders WHERE id = ? AND operation_request_id = ?
-              )`,
-          )
-          .bind(
-            crypto.randomUUID(),
-            item.sellerId,
-            options.actorId,
-            item.quantity,
-            `Order cancellation: ${options.note}`,
-            options.now,
-            item.productId,
-            options.orderId,
-            options.requestId,
-          ),
-      );
-    }
-  }
-
-  statements.push(
-    database
-      .prepare(
-        `INSERT INTO audit_logs (
-          id, actor_id, action, subject_type, subject_id, reason,
-          previous_json, next_json, request_id, ip_hash, created_at
-        ) SELECT ?, ?, 'order.cancelled', 'order', ?, ?, ?, ?, ?, NULL, ?
-          WHERE EXISTS (SELECT 1 FROM orders WHERE id = ? AND operation_request_id = ?)`,
-      )
-      .bind(
-        crypto.randomUUID(),
-        options.actorId,
-        options.orderId,
-        options.note,
-        JSON.stringify({ status: options.expectedStatus }),
-        JSON.stringify({ status: 'cancelled', inventoryRestored: true }),
-        options.requestId,
-        options.now,
-        options.orderId,
-        options.requestId,
-      ),
-  );
-
-  const results = await database.batch(statements);
-  if ((results[0].meta.changes ?? 0) !== 1) {
-    throw new FulfillmentConflictError(
-      'This order changed. Refresh and try again.',
-    );
-  }
+  const order=await database.prepare('SELECT order_number AS number FROM orders WHERE id=?').bind(options.orderId).first<{number:string}>();if(!order)throw new FulfillmentConflictError('Order not found.');
+  const access={orderNumber:order.number,actorId:options.actorId??undefined,customerId:options.customerId,receiptTokenHash:options.receiptTokenHash};
+  try{const choices=await cancellationChoices(database,access),sellerIds=choices.map(r=>r.id);const preview=await cancellationPreview(database,access,sellerIds);await cancelSelectedParcels(database,access,{sellerIds,fingerprint:preview.fingerprint,requestId:options.requestId,note:options.note,now:options.now});}catch(error){throw new FulfillmentConflictError(error instanceof CancellationConflictError?error.message:'Cancellation requires a current review.');}
 }

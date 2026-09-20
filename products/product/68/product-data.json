@@ -1,0 +1,75 @@
+{
+  "productNumber": 68,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0chiK0ew",
+    "canonicalUrl": "https://www.amazon.in/dp/B0H9XXNQNF",
+    "asin": "B0H9XXNQNF",
+    "sourceTitle": "Banjara Sling Bag with Cowrie Shell Embellishments and Tassel Details, 25x18 Cm Handmade Patch Work",
+    "sourcePriceInr": 629.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Multicolour Banjara Patchwork Cowrie-Shell Sling Bag",
+    "brand": "the art and craft house",
+    "manufacturer": "Not stated on the source page.",
+    "description": "Multicolour Banjara Patchwork Cowrie-Shell Sling Bag features handmade Banjara patchwork design. It combines cowrie-shell and tassel embellishments with brown leather top handle. Compact sling-bag format for daily essentials.",
+    "keyFeatures": [
+      "Handmade Banjara patchwork design",
+      "Cowrie-shell and tassel embellishments",
+      "Brown leather top handle",
+      "Compact sling-bag format for daily essentials"
+    ],
+    "specifications": {
+      "colourAndVariant": "Multicolour handmade patchwork; patch arrangement may vary",
+      "dimensions": "25 × 18 cm; depth not stated",
+      "weight": "Not stated on the source page.",
+      "modelOrIdentifier": "ASIN B0H9XXNQNF",
+      "countryOfOrigin": "Not stated on the source page."
+    },
+    "materials": "Patchwork textile with cowrie-shell and tassel embellishments; brown leather handle",
+    "packageContents": "1 sling bag",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Messenger & Sling Bags",
+    "tags": [
+      "Banjara sling bag",
+      "cowrie shell bag",
+      "multicolour patchwork",
+      "tassel bag",
+      "handmade sling"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Multicolour Banjara Patchwork Cowrie-Shell Sling Bag | Hathkriti",
+    "seoDescription": "Multicolour Banjara Patchwork Cowrie-Shell Sling Bag from Hathkriti. Handmade Banjara patchwork design. Colour/variant: Multicolour handmade patchwork; patch arrangement may vary."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1206,
+    "originalPriceNpr": 2412,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p68-b0h9xxnqnf-01.jpg",
+      "images/hathkriti-p68-b0h9xxnqnf-02.jpg",
+      "images/hathkriti-p68-b0h9xxnqnf-03.jpg",
+      "images/hathkriti-p68-b0h9xxnqnf-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source states that hand-applied patches may vary while the base colour remains the same."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

@@ -1,0 +1,73 @@
+{
+  "productNumber": 64,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/03cKlCgx",
+    "canonicalUrl": "https://www.amazon.in/dp/B0F6K8H2K2",
+    "asin": "B0F6K8H2K2",
+    "sourceTitle": "Boho Girl Feathered Fantasy Tote for Women – Embroidered Bird and Floral Canvas Bag with Butterfly Design – Unique Everyday Handbag with Round Cane Handles & Spacious Interior",
+    "sourcePriceInr": 1599.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Boho Girl Feathered Fantasy Embroidered Cane-Handle Tote",
+    "brand": "Boho Girl",
+    "manufacturer": "Parul Handicrafts Pvt Ltd",
+    "description": "Boho Girl Feathered Fantasy Embroidered Cane-Handle Tote features bird, flower and butterfly embroidery. It combines round natural-cane handles with zipper closure with three pockets. Spacious textured everyday tote design.",
+    "keyFeatures": [
+      "Bird, flower and butterfly embroidery",
+      "Round natural-cane handles",
+      "Zipper closure with three pockets",
+      "Spacious textured everyday tote design"
+    ],
+    "specifications": {
+      "colourAndVariant": "Multicolour bird, flower and butterfly embroidery",
+      "dimensions": "50.8 × 15.24 × 31.75 cm",
+      "weight": "499 g",
+      "modelOrIdentifier": "BGB24-250; ASIN B0F6K8H2K2",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Textured fabric described as canvas in the source title, with polyester lining and cane handles",
+    "packageContents": "1 tote bag",
+    "careInstructions": "Wipe with a damp cloth.",
+    "category": "Bags > Totes",
+    "tags": [
+      "embroidered tote",
+      "bird floral bag",
+      "cane handle tote",
+      "Boho Girl bag",
+      "multicolour handbag"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Boho Girl Feathered Fantasy Embroidered Cane-Handle Tote | Hathkriti",
+    "seoDescription": "Boho Girl Feathered Fantasy Embroidered Cane-Handle Tote from Hathkriti. Bird, flower and butterfly embroidery. Colour/variant: Multicolour bird, flower and butterfly embroidery."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 2758,
+    "originalPriceNpr": 5516,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p64-b0f6k8h2k2-01.jpg",
+      "images/hathkriti-p64-b0f6k8h2k2-02.jpg",
+      "images/hathkriti-p64-b0f6k8h2k2-03.jpg",
+      "images/hathkriti-p64-b0f6k8h2k2-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

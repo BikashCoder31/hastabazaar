@@ -1,0 +1,90 @@
+{
+  "productNumber": 36,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0fepewAR",
+    "canonicalUrl": "https://www.amazon.in/dp/B0H515J46W",
+    "asin": "B0H515J46W",
+    "capturedPriceInr": 310,
+    "amazonReturnEligibility": "10 days Returnable"
+  },
+  "verifiedSourceFacts": {
+    "sourceTitle": "JANNAH JEWEL GOA Crochet Cowrie Shell Mandala Earrings for Women — Handmade Pink Boho Thread Earrings",
+    "brand": "JANNAH JEWEL GOA",
+    "manufacturer": "JANNAH JEWEL GOA",
+    "modelOrIdentifier": "JJG-WHITE-EARINGS (source identifier conflicts with the selected Pink variant)",
+    "materials": "Woven thread, cowrie/kaudi shells and alloy metal hooks; no gemstone",
+    "colourAndVariant": "Pink selected; other source options shown: Black, Blue, Green, Multicolor, Mustard, Red and White",
+    "dimensions": "6.1 × 5.08 × 0.25 cm; source also rounds this to 6.1 × 5.1 × 0.2 cm",
+    "weight": "50 g",
+    "packageContents": "1 set",
+    "careInstructions": "Requires Seller input; no care instructions were stated on the source page.",
+    "countryOfOrigin": "India",
+    "returnEligibility": "10 days Returnable",
+    "warranty": "Not stated on source; leave blank.",
+    "safetyWarnings": "Requires Seller input; none were stated on the source page."
+  },
+  "rewrittenMarketingCopy": {
+    "storefrontTitle": "JANNAH JEWEL GOA Pink Crochet Cowrie Shell Earrings",
+    "description": "Handmade pink crochet earrings with a mandala-inspired circular form, cowrie-shell accents and alloy hooks. The artisan-style pair complements ethnic outfits, casual looks, beachwear and festive styling.",
+    "keyFeatures": [
+      "Mandala-inspired crochet threadwork",
+      "Decorative cowrie-shell accents",
+      "Pink bohemian statement design",
+      "Alloy metal hooks"
+    ],
+    "seoTitle": "JANNAH JEWEL GOA Pink Crochet Cowrie Shell Earrings | Hastabazaar",
+    "seoDescription": "JANNAH JEWEL GOA Pink Crochet Cowrie Shell Earrings. Handmade pink crochet mandala earrings with cowrie-shell accents for ethnic, beach, casual and festive styling."
+  },
+  "suggestedValues": {
+    "category": "Jewellery > Earrings",
+    "tags": [
+      "earrings",
+      "handmade jewellery",
+      "crochet earrings",
+      "cowrie shell earrings",
+      "boho jewellery",
+      "pink earrings"
+    ],
+    "sku": "HB-ER-B0H515J46W-PINK",
+    "pricing": {
+      "formula": "round(310 × 1.6 + 150)",
+      "sellingPriceNpr": 646,
+      "originalPriceNpr": 1292,
+      "discountPercent": 50
+    },
+    "stockQuantity": 10,
+    "preparationTimeDays": 3,
+    "returnWording": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "listingPurpose": "Genuine commercial listing",
+    "preparedVariant": "Pink only"
+  },
+  "valuesSellerMustSupply": [
+    "Shipping weight and package dimensions if Hastabazaar requires shipping-specific measurements; the source only states item measurements.",
+    "Care instructions for this exact product.",
+    "Any safety warning required for this exact product; none was stated on the source page.",
+    "Confirm whether the source identifier JJG-WHITE-EARINGS is valid for the selected Pink variant before using it as a model number."
+  ],
+  "legalOrAuthenticityConcerns": [
+    "The selected variant is Pink and the visible images are pink, but the source product description says white and the item part number contains WHITE; Pink is retained and the conflict is flagged for Seller verification.",
+    "The source calls the item lightweight but states an item weight of 50 g; the weight should be confirmed before publication.",
+    "Only three suitable images were retained; source lifestyle images that appeared synthetically generated were excluded.",
+    "User states that resale and image-reuse rights are authorized; this has not been independently verified.",
+    "Permanent legal documents and policy identifiers are pending. Do not enable genuine public orders until those controls are complete."
+  ],
+  "images": {
+    "selectedCount": 3,
+    "requestedMaximum": 4,
+    "videoDownloaded": false,
+    "exactDuplicatesExcluded": 0,
+    "order": [
+      "hb-er-b0h515j46w-pink-01.jpg",
+      "hb-er-b0h515j46w-pink-02.jpg",
+      "hb-er-b0h515j46w-pink-03.jpg"
+    ]
+  },
+  "publication": {
+    "preparedOnly": true,
+    "enteredInHastabazaar": false,
+    "published": false
+  }
+}

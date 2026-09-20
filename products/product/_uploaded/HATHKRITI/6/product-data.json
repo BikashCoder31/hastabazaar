@@ -1,0 +1,76 @@
+{
+  "productNumber": 6,
+  "status": "prepared_not_entered",
+  "source": {
+    "shortUrl": "https://amzn.in/d/09CYDGOA",
+    "canonicalUrl": "https://www.amazon.in/dp/B0F4DSTV2P",
+    "asin": "B0F4DSTV2P",
+    "selectedVariant": "Blue",
+    "sourcePriceInr": 1955,
+    "sourceReturnStatus": "10 days Returnable"
+  },
+  "listing": {
+    "category": "Home décor",
+    "title": "ATRANGI STUDIO Handpainted Wooden Elephant Wall Hanging - Blue, 11 Inch",
+    "occasions": [
+      "Housewarming",
+      "Wedding gifts",
+      "Anniversary",
+      "Tihar gifts"
+    ],
+    "description": "A handcrafted elephant wall accent made from mango wood with painted folk-art detailing and metal ear elements. The blue, red and orange design is supplied with a fitted rear hook for indoor display in entryways, living rooms, bedrooms, offices or pooja spaces. As a hand-painted artisan piece, small variations in colour and detailing may occur.",
+    "dimensions": null,
+    "licenceReference": null,
+    "careInstructions": null,
+    "safetyInformation": "Mount securely on a suitable wall fixing and keep away from excessive moisture.",
+    "warrantyOffered": false,
+    "warrantyYears": null,
+    "warrantyMonths": null,
+    "warrantyDays": null,
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "preparationDays": 3,
+    "manufactureDate": null,
+    "expiryDate": null,
+    "madeToOrder": false,
+    "sellingPriceNpr": 3328,
+    "originalPriceNpr": 6656,
+    "discountPercent": 50,
+    "stockQuantity": 10,
+    "returnEligible": true,
+    "suggestedInternalReference": "HB-HD-B0F4DSTV2P-BLUE",
+    "priceFormula": "round(1955 × 1.6 + 200)"
+  },
+  "verifiedFacts": {
+    "brand": "ATRANGI STUDIO",
+    "manufacturer": "Atrangi Lifestyle Private Limited",
+    "materials": [
+      "Mango wood",
+      "Iron"
+    ],
+    "colour": "Blue with multicolour painted detailing",
+    "itemWeightGrams": 904,
+    "countryOfOrigin": null,
+    "packageContents": "One elephant wall hanging"
+  },
+  "sourceConflicts": [
+    {
+      "field": "dimensions",
+      "productOverview": "7 x 23 cm",
+      "galleryGraphic": "approximately 11 x 9.25 inches",
+      "listingValue": null
+    }
+  ],
+  "images": [
+    "images/hb-hd-b0f4dstv2p-blue-01.jpg",
+    "images/hb-hd-b0f4dstv2p-blue-02.jpg",
+    "images/hb-hd-b0f4dstv2p-blue-03.jpg",
+    "images/hb-hd-b0f4dstv2p-blue-04.jpg"
+  ],
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 3328,
+    "originalPriceNpr": 6656,
+    "discountPercent": 50
+  }
+}

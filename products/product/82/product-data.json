@@ -1,0 +1,75 @@
+{
+  "productNumber": 82,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0dnneqvf",
+    "canonicalUrl": "https://www.amazon.in/dp/B0GZ7JKBVN",
+    "asin": "B0GZ7JKBVN",
+    "sourceTitle": "CraftVatika Krishna Hand Showpiece with Flute Peacock Feather,Housewarming Gifts for New Home,Wedding for Couple Home Office Decor Decoration Items for Living Room,Griha Pravesh Gift",
+    "sourcePriceInr": 898.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "CraftVatika Black-and-Gold Krishna Hand with Flute Showpiece",
+    "brand": "CraftVatika",
+    "manufacturer": "Not stated on the source page.",
+    "description": "CraftVatika Black-and-Gold Krishna Hand with Flute Showpiece features krishna hand sculpture holding a flute. It combines peacock-feather detailing with black and gold finish. Freestanding resin décor for shelf, table or pooja space.",
+    "keyFeatures": [
+      "Krishna hand sculpture holding a flute",
+      "Peacock-feather detailing",
+      "Black and gold finish",
+      "Freestanding resin décor for shelf, table or pooja space"
+    ],
+    "specifications": {
+      "colourAndVariant": "Black hands with gold flute, gold base and peacock feather",
+      "dimensions": "21 × 6.5 × 15 cm",
+      "weight": "463 g",
+      "modelOrIdentifier": "ASIN B0GZ7JKBVN",
+      "countryOfOrigin": "Not stated on the source page."
+    },
+    "materials": "Resin",
+    "packageContents": "1 Krishna hand showpiece with flute and peacock feather",
+    "careInstructions": "Wipe gently to preserve the finish; no polishing is required as stated by the source.",
+    "category": "Home Décor > Idols & Figurines",
+    "tags": [
+      "Krishna hand showpiece",
+      "flute peacock feather décor",
+      "black gold resin statue",
+      "spiritual home décor",
+      "CraftVatika"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "CraftVatika Black-and-Gold Krishna Hand with Flute Showpiece | Hathkriti",
+    "seoDescription": "CraftVatika Black-and-Gold Krishna Hand with Flute Showpiece from Hathkriti. Krishna hand sculpture holding a flute. Colour/variant: Black hands with gold flute, gold base and peacock feather."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1637,
+    "originalPriceNpr": 3274,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p82-b0gz7jkbvn-01.jpg",
+      "images/hathkriti-p82-b0gz7jkbvn-02.jpg",
+      "images/hathkriti-p82-b0gz7jkbvn-03.jpg",
+      "images/hathkriti-p82-b0gz7jkbvn-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source feature text claims glossy white hands, but the exact product gallery visibly shows black hands with a gold flute and base; the gallery-visible colour is used for the listing."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

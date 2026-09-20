@@ -1,0 +1,73 @@
+{
+  "productNumber": 76,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only three gallery images were available and two lifestyle images are near-duplicate compositions; four distinct images are required.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0b0wj4XY",
+    "canonicalUrl": "https://www.amazon.in/dp/B0GRP4BPBM",
+    "asin": "B0GRP4BPBM",
+    "sourceTitle": "AGANTUK Handmade Crochet Artificial Flower Pot | Yellow, Red, Pink & Sunflower Roses | Woolen Home Decor Showpiece (1, Red Rose)",
+    "sourcePriceInr": 299.0,
+    "sourceReturnable": false
+  },
+  "listing": {
+    "storefrontTitle": "AGANTUK Red-Rose Handmade Crochet Flower-Pot Showpiece",
+    "brand": "AGANTUK",
+    "manufacturer": "Not stated on the source page.",
+    "description": "AGANTUK Red-Rose Handmade Crochet Flower-Pot Showpiece features handmade crochet flower-pot design. It combines red rose artificial-flower variant with soft-yarn construction. Maintenance-free tabletop décor.",
+    "keyFeatures": [
+      "Handmade crochet flower-pot design",
+      "Red rose artificial-flower variant",
+      "Soft-yarn construction",
+      "Maintenance-free tabletop décor"
+    ],
+    "specifications": {
+      "colourAndVariant": "1-piece Red Rose variant",
+      "dimensions": "Not stated on the source page.",
+      "weight": "0.2 kg",
+      "modelOrIdentifier": "ASIN B0GRP4BPBM",
+      "countryOfOrigin": "Not stated on the source page."
+    },
+    "materials": "Crochet yarn/wool as described by the source",
+    "packageContents": "1 red-rose crochet flower-pot showpiece",
+    "careInstructions": "No watering or sunlight required; other care instructions are not stated.",
+    "category": "Home Décor > Artificial Flowers",
+    "tags": [
+      "crochet flower pot",
+      "red rose décor",
+      "woolen showpiece",
+      "handmade home décor",
+      "AGANTUK"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "AGANTUK Red-Rose Handmade Crochet Flower-Pot Showpiece | Hathkriti",
+    "seoDescription": "AGANTUK Red-Rose Handmade Crochet Flower-Pot Showpiece from Hathkriti. Handmade crochet flower-pot design. Colour/variant: 1-piece Red Rose variant."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 678,
+    "originalPriceNpr": 1356,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": null,
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 2,
+    "files": [
+      "images/hathkriti-p76-b0grp4bpbm-01.jpg",
+      "images/hathkriti-p76-b0grp4bpbm-02.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source offers 10-day replacement, not a return or exchange; Hastabazaar return wording is therefore omitted."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

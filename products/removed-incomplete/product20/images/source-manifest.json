@@ -1,0 +1,22 @@
+{
+  "productNumber": 20,
+  "sourcePage": "https://amzn.in/d/0egBD683",
+  "canonicalSourcePage": "https://www.amazon.in/dp/B0H6JNN42P",
+  "selectionRule": "Up to four distinct ordinary product images from the Amazon product gallery; videos, review images, ads and unrelated media excluded.",
+  "videoDownloaded": false,
+  "exactDuplicatesFoundAndExcluded": [],
+  "images": [
+    {
+      "sourcePage": "https://amzn.in/d/0egBD683",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0H6JNN42P",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71T9VcJdvyL._SL1500_.jpg",
+      "localFilename": "hb-er-b0h6jnn42p-orange-01.jpg",
+      "dimensions": {
+        "height": 1500,
+        "width": 1500
+      },
+      "byteSize": 165353,
+      "sha256": "519b3af79cf70dfe388d1a6122b4120abfeab4448b7349e064b1ffa02b2eaa40"
+    }
+  ]
+}

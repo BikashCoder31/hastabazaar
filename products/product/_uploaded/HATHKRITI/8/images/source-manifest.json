@@ -1,0 +1,41 @@
+{
+  "sourcePage": "https://www.amazon.in/dp/B0GQ9JKNBS",
+  "shortSourcePage": "https://amzn.in/d/06V7iErH",
+  "videoDownloaded": false,
+  "exactDuplicatesFound": false,
+  "selectionNote": "Four distinct product-gallery images selected after visual review.",
+  "images": [
+    {
+      "sourceImageReference": "https://m.media-amazon.com/images/I/31e7dDIXm2L._SL1500_.jpg",
+      "localFilename": "hb-ja-b0gq9jknbs-radha-01.jpg",
+      "width": 333,
+      "height": 500,
+      "byteSize": 8610,
+      "sha256": "89c5a12e97c1f13c0c4ce0a1496e70f4811453286cdeb2a8374ef519a5c49893"
+    },
+    {
+      "sourceImageReference": "https://m.media-amazon.com/images/I/4198o5PdnKL._SL1500_.jpg",
+      "localFilename": "hb-ja-b0gq9jknbs-radha-02.jpg",
+      "width": 365,
+      "height": 500,
+      "byteSize": 21803,
+      "sha256": "319b1c71f610c4d7a5180aef6e2a4f0b16c5b7c909f0ad66b45e6f7dd1d04bd3"
+    },
+    {
+      "sourceImageReference": "https://m.media-amazon.com/images/I/41PrQiDC2VL._SL1500_.jpg",
+      "localFilename": "hb-ja-b0gq9jknbs-radha-03.jpg",
+      "width": 507,
+      "height": 695,
+      "byteSize": 29415,
+      "sha256": "b467fcecdd372198e6391c974bfd6d950ce04c57dbc57608de5fb3c44d5c7bd7"
+    },
+    {
+      "sourceImageReference": "https://m.media-amazon.com/images/I/21V-bUtUJXL._SL1500_.jpg",
+      "localFilename": "hb-ja-b0gq9jknbs-radha-04.jpg",
+      "width": 507,
+      "height": 695,
+      "byteSize": 6604,
+      "sha256": "f6f25aec8f049bcf43438aaeb631b6e58ed004be147c60e917d3454d686a47cf"
+    }
+  ]
+}

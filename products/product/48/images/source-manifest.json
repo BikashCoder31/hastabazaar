@@ -1,0 +1,63 @@
+{
+  "productNumber": 48,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B08VH7M968",
+  "selectedVariant": "Multicolour; set of 5",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B08VH7M968",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71jtqvO3JyL._SL1500_.jpg",
+      "filename": "hathkriti-p48-b08vh7m968-01.jpg",
+      "dimensions": {
+        "width": 1500,
+        "height": 1500
+      },
+      "byteSize": 94004,
+      "sha256": "96506a816b4d833e0233affd805b1b5422cfac86887664e59b64840330a63ed3",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B08VH7M968",
+      "originalImageReference": "https://m.media-amazon.com/images/I/6139j9SiJSL._SL1500_.jpg",
+      "filename": "hathkriti-p48-b08vh7m968-02.jpg",
+      "dimensions": {
+        "width": 1500,
+        "height": 1500
+      },
+      "byteSize": 74331,
+      "sha256": "054a2619c2d384505be317ceebbeb92597ec3a509cc6161122d9b48a01f6510b",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B08VH7M968",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61CvVU6GL8L._SL1500_.jpg",
+      "filename": "hathkriti-p48-b08vh7m968-03.jpg",
+      "dimensions": {
+        "width": 1500,
+        "height": 1500
+      },
+      "byteSize": 53096,
+      "sha256": "95fb7f2dd2759b6bbaa1f0ea077fd5722500ff103f4aec8e02c1adfa31fdf9c7",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 3
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B08VH7M968",
+      "originalImageReference": "https://m.media-amazon.com/images/I/618dFFtQcIL._SL1500_.jpg",
+      "filename": "hathkriti-p48-b08vh7m968-04.jpg",
+      "dimensions": {
+        "width": 1500,
+        "height": 1500
+      },
+      "byteSize": 58261,
+      "sha256": "7c57874314c3da95cfda2b18faccc52cb14326062aff13cef3c8146fe60b637f",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 4
+    }
+  ]
+}

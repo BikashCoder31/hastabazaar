@@ -1,0 +1,89 @@
+{
+  "productNumber": 21,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/00ah51Bz",
+    "canonicalUrl": "https://www.amazon.in/dp/B0DL4MD6BX",
+    "asin": "B0DL4MD6BX",
+    "capturedPriceInr": 299,
+    "amazonReturnEligibility": "10 days Returnable"
+  },
+  "verifiedSourceFacts": {
+    "sourceTitle": "QTEVER Blue & Green Scarlet Macaw Clay Earrings",
+    "brand": "QTEVER",
+    "manufacturer": "MISO ARTS",
+    "modelOrIdentifier": "Model 002",
+    "materials": "Mould-it clay; no gemstone",
+    "colourAndVariant": "Blue and green; Single source style",
+    "dimensions": "2.5 × 3.5 cm; product details also state 2.5 × 0.02 × 3.5 cm",
+    "weight": "8 g",
+    "packageContents": "Net quantity: 1 set",
+    "careInstructions": "Requires Seller input.",
+    "countryOfOrigin": "India",
+    "returnEligibility": "10 days Returnable",
+    "warranty": "Not stated on source; leave blank."
+  },
+  "rewrittenMarketingCopy": {
+    "storefrontTitle": "QTEVER Blue & Green Scarlet Macaw Clay Earrings",
+    "description": "Handmade blue and green dangle earrings shaped as scarlet macaw birds. Crafted from mould-it clay, the lightweight pair adds a playful nature-inspired accent.",
+    "keyFeatures": [
+      "Handmade scarlet-macaw bird motif",
+      "Blue and green colour combination",
+      "Clay construction",
+      "Lightweight dangle style"
+    ],
+    "seoTitle": "QTEVER Blue & Green Scarlet Macaw Clay Earrings | Hastabazaar",
+    "seoDescription": "QTEVER Blue & Green Scarlet Macaw Clay Earrings. Handmade blue and green dangle earrings shaped as scarlet macaw birds. Crafted from mould-it clay, the lightw"
+  },
+  "suggestedValues": {
+    "category": "Jewellery > Earrings",
+    "tags": [
+      "earrings",
+      "handmade jewellery",
+      "clay"
+    ],
+    "sku": "HB-ER-B0DL4MD6BX-BLUE-AND-GREEN",
+    "pricing": {
+      "formula": "round(299 × 1.6 + 200)",
+      "sellingPriceNpr": 678,
+      "originalPriceNpr": 1356,
+      "discountPercent": 50
+    },
+    "stockQuantity": 10,
+    "preparationTimeDays": 3,
+    "returnWording": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "listingPurpose": "Genuine commercial listing"
+  },
+  "valuesSellerMustSupply": [
+    "Shipping weight and package dimensions if Hastabazaar requires shipping-specific values; item/package values above may not be shipping measurements.",
+    "Any safety warning required for this exact product; none was stated on the source page."
+  ],
+  "legalOrAuthenticityConcerns": [
+    "The source presents the dimensions in two formats and omits one value in one location; Seller should confirm thickness.",
+    "User states that resale and image-reuse rights are authorized; this has not been independently verified.",
+    "Permanent legal documents and policy identifiers are pending. Do not enable genuine public orders until those controls are complete."
+  ],
+  "images": {
+    "selectedCount": 4,
+    "requestedMaximum": 4,
+    "videoDownloaded": false,
+    "exactDuplicatesExcluded": 0,
+    "order": [
+      "hb-er-b0dl4md6bx-blue-and-green-01.jpg",
+      "hb-er-b0dl4md6bx-blue-and-green-02.jpg",
+      "hb-er-b0dl4md6bx-blue-and-green-03.jpg",
+      "hb-er-b0dl4md6bx-blue-and-green-04.jpg"
+    ]
+  },
+  "publication": {
+    "preparedOnly": true,
+    "enteredInHastabazaar": false,
+    "published": false
+  },
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 678,
+    "originalPriceNpr": 1356,
+    "discountPercent": 50
+  }
+}

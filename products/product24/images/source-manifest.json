@@ -1,0 +1,46 @@
+{
+  "productNumber": 24,
+  "sourcePage": "https://amzn.in/d/0bxzYoJk",
+  "canonicalSourcePage": "https://www.amazon.in/dp/B08TVGMKT8",
+  "selectionRule": "Up to four distinct ordinary product images from the Amazon product gallery; videos, review images, ads and unrelated media excluded.",
+  "videoDownloaded": false,
+  "exactDuplicatesFoundAndExcluded": [],
+  "images": [
+    {
+      "sourcePage": "https://amzn.in/d/0bxzYoJk",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B08TVGMKT8",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71ion0zb-ML._SL1254_.jpg",
+      "localFilename": "hb-er-b08tvgmkt8-light-purple-01.jpg",
+      "dimensions": {
+        "height": 1254,
+        "width": 1254
+      },
+      "byteSize": 137615,
+      "sha256": "2ece6f70d77378875170610422f727da55671b4ba729ffb2a645cebfe3b5e5c7"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/0bxzYoJk",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B08TVGMKT8",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61aiiKqThRL._SL1448_.jpg",
+      "localFilename": "hb-er-b08tvgmkt8-light-purple-02.jpg",
+      "dimensions": {
+        "height": 1448,
+        "width": 1086
+      },
+      "byteSize": 122755,
+      "sha256": "7c89a8aa5a71826255ed2906cb5098bc961acf173c556735b81645c8295af961"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/0bxzYoJk",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B08TVGMKT8",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71R-2e4lFGL._SL1448_.jpg",
+      "localFilename": "hb-er-b08tvgmkt8-light-purple-03.jpg",
+      "dimensions": {
+        "height": 1448,
+        "width": 1086
+      },
+      "byteSize": 184377,
+      "sha256": "651b9a69b2847a50b1eefe9feee32f33e7c58e93e4792828f05fad4f39d936a1"
+    }
+  ]
+}

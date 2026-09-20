@@ -1,0 +1,73 @@
+{
+  "productNumber": 36,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0hboPxeG",
+    "canonicalUrl": "https://www.amazon.in/dp/B0H9SK17RL",
+    "asin": "B0H9SK17RL",
+    "sourceTitle": "Handmade Crochet Daisy Drawstring Pouch | Mini Yarn Coin & Earbuds Holder | Floral Knitted Gift Pouch",
+    "sourcePriceInr": 259.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Black, Orange & Cream Crochet Daisy Drawstring Earbuds Pouch",
+    "brand": "Generic",
+    "manufacturer": "Calibre Trade",
+    "description": "Black, Orange & Cream Crochet Daisy Drawstring Earbuds Pouch features handmade crochet pouch with daisy motif. It combines drawstring closure with compact storage for earbuds or coins. Approximately 5 cm according to the source feature text.",
+    "keyFeatures": [
+      "Handmade crochet pouch with daisy motif",
+      "Drawstring closure",
+      "Compact storage for earbuds or coins",
+      "Approximately 5 cm according to the source feature text"
+    ],
+    "specifications": {
+      "colourAndVariant": "Black pouch with orange and cream daisy pattern (visible gallery); source fact table says grey and yellow",
+      "dimensions": "Approximately 5 cm (source feature text; full dimensions not stated)",
+      "weight": "15 g",
+      "modelOrIdentifier": "ASIN B0H9SK17RL",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Soft cotton yarn",
+    "packageContents": "1 crochet earbuds pouch",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Electronics Accessories > Earbud Cases",
+    "tags": [
+      "crochet earbuds pouch",
+      "daisy pouch",
+      "coin purse",
+      "grey yellow pouch",
+      "drawstring pouch"
+    ],
+    "safetyInformation": "Keep the drawstring and small stored items away from young children unless supervised.",
+    "seoTitle": "Black, Orange & Cream Crochet Daisy Drawstring Earbuds Pouch | Hathkriti",
+    "seoDescription": "Black, Orange & Cream Crochet Daisy Drawstring Earbuds Pouch from Hathkriti. Handmade crochet pouch with daisy motif. Colour/variant: Black pouch with orange and cream daisy pattern (visible gallery); source fact table says grey and yellow."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 614,
+    "originalPriceNpr": 1228,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p36-b0h9sk17rl-01.jpg",
+      "images/hathkriti-p36-b0h9sk17rl-02.jpg",
+      "images/hathkriti-p36-b0h9sk17rl-03.jpg",
+      "images/hathkriti-p36-b0h9sk17rl-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

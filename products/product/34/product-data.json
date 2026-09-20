@@ -1,0 +1,71 @@
+{
+  "productNumber": 34,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two distinct exact-variant product-gallery images were available.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/00g6KCVU",
+    "canonicalUrl": "https://www.amazon.in/dp/B0H6QXPFVV",
+    "asin": "B0H6QXPFVV",
+    "sourceTitle": "Handmade Crochet Wallet with Bow, Cotton Yarn, Foldable",
+    "sourcePriceInr": 299.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Beige & Brown Handmade Crochet Bow Wallet",
+    "brand": "Generic",
+    "manufacturer": "Handmade Artisan",
+    "description": "Beige & Brown Handmade Crochet Bow Wallet features handmade cotton-yarn crochet wallet. It combines two-tone bow detail with flap and snap closure. Three compartments with card, coin, cash and receipt storage.",
+    "keyFeatures": [
+      "Handmade cotton-yarn crochet wallet",
+      "Two-tone bow detail",
+      "Flap and snap closure",
+      "Three compartments with card, coin, cash and receipt storage"
+    ],
+    "specifications": {
+      "colourAndVariant": "Beige and brown",
+      "dimensions": "Not stated on the source page.",
+      "weight": "150 g",
+      "modelOrIdentifier": "CRW-BOW-001 / CROCHET-BOW-WALLET-001; ASIN B0H6QXPFVV",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Cotton yarn",
+    "packageContents": "1 crochet wallet",
+    "careInstructions": "Hand wash with mild detergent",
+    "category": "Bags & Wallets > Women's Wallets",
+    "tags": [
+      "crochet wallet",
+      "bow wallet",
+      "cotton wallet",
+      "beige wallet",
+      "handmade purse"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Beige & Brown Handmade Crochet Bow Wallet | Hathkriti",
+    "seoDescription": "Beige & Brown Handmade Crochet Bow Wallet from Hathkriti. Handmade cotton-yarn crochet wallet. Colour/variant: Beige and brown."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 678,
+    "originalPriceNpr": 1356,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 2,
+    "files": [
+      "images/hathkriti-p34-b0h6qxpfvv-01.jpg",
+      "images/hathkriti-p34-b0h6qxpfvv-02.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

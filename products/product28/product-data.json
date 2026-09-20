@@ -1,0 +1,81 @@
+{
+  "productNumber": 28,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/013z6Goo",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HCNK41S4",
+    "asin": "B0HCNK41S4",
+    "capturedPriceInr": 449,
+    "amazonReturnEligibility": "10 days Returnable"
+  },
+  "verifiedSourceFacts": {
+    "sourceTitle": "Aestheticz Handmade Red Flower Drop Earrings",
+    "brand": "Aestheticz",
+    "manufacturer": "Aestheticz",
+    "modelOrIdentifier": "AZE020",
+    "materials": "Alloy and resin with 304 stainless-steel ear needles; no gemstone",
+    "colourAndVariant": "Red; Colour represented by source link: Red",
+    "dimensions": "5 × 3 × 5 cm",
+    "weight": "26 g",
+    "packageContents": "Net quantity: 1 pack",
+    "careInstructions": "Requires Seller input.",
+    "countryOfOrigin": "India",
+    "returnEligibility": "10 days Returnable",
+    "warranty": "Not stated on source; leave blank."
+  },
+  "rewrittenMarketingCopy": {
+    "storefrontTitle": "Aestheticz Handmade Red Flower Drop Earrings",
+    "description": "Handmade red floral drop earrings in alloy and resin, finished with 304 stainless-steel ear needles. The retro statement design adds a bold accent to casual and occasion outfits.",
+    "keyFeatures": [
+      "Handmade floral design",
+      "304 stainless-steel ear needles",
+      "Alloy and resin construction",
+      "Retro statement style"
+    ],
+    "seoTitle": "Aestheticz Handmade Red Flower Drop Earrings | Hastabazaar",
+    "seoDescription": "Aestheticz Handmade Red Flower Drop Earrings. Handmade red floral drop earrings in alloy and resin, finished with 304 stainless-steel ear needles. The retro s"
+  },
+  "suggestedValues": {
+    "category": "Jewellery > Earrings",
+    "tags": [
+      "earrings",
+      "handmade jewellery",
+      "flower"
+    ],
+    "sku": "HB-ER-B0HCNK41S4-RED",
+    "pricing": {
+      "formula": "round(449 × 1.6 + 150)",
+      "sellingPriceNpr": 868,
+      "originalPriceNpr": 1736,
+      "discountPercent": 50
+    },
+    "stockQuantity": 10,
+    "preparationTimeDays": 3,
+    "returnWording": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "listingPurpose": "Genuine commercial listing"
+  },
+  "valuesSellerMustSupply": [
+    "Shipping weight and package dimensions if Hastabazaar requires shipping-specific values; item/package values above may not be shipping measurements.",
+    "Any safety warning required for this exact product; none was stated on the source page."
+  ],
+  "legalOrAuthenticityConcerns": [
+    "Only three distinct gallery images matched this exact red floral design; a multi-product promotional image was excluded.",
+    "User states that resale and image-reuse rights are authorized; this has not been independently verified.",
+    "Permanent legal documents and policy identifiers are pending. Do not enable genuine public orders until those controls are complete."
+  ],
+  "images": {
+    "selectedCount": 3,
+    "requestedMaximum": 4,
+    "videoDownloaded": false,
+    "exactDuplicatesExcluded": 0,
+    "order": [
+      "hb-er-b0hcnk41s4-red-01.jpg",
+      "hb-er-b0hcnk41s4-red-02.jpg",
+      "hb-er-b0hcnk41s4-red-03.jpg"
+    ]
+  },
+  "publication": {
+    "preparedOnly": true,
+    "enteredInHastabazaar": false,
+    "published": false
+  }
+}

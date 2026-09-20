@@ -1,0 +1,41 @@
+{
+  "sourcePage": "https://www.amazon.in/dp/B0GDW5W1QN",
+  "shortSourcePage": "https://amzn.in/d/09ph5B11",
+  "videoDownloaded": false,
+  "exactDuplicatesFound": false,
+  "selectionNote": "Four distinct product-gallery images selected after visual review.",
+  "images": [
+    {
+      "sourceImageReference": "https://m.media-amazon.com/images/I/514V22c+sJL._SL1500_.jpg",
+      "localFilename": "hb-ja-b0gdw5w1qn-multi-01.jpg",
+      "width": 800,
+      "height": 800,
+      "byteSize": 47178,
+      "sha256": "bb180b34097dea3e8662d5987b2d25cff6874adce460bde0afc1b4573ff1ac92"
+    },
+    {
+      "sourceImageReference": "https://m.media-amazon.com/images/I/61Q69meGh0L._SL1500_.jpg",
+      "localFilename": "hb-ja-b0gdw5w1qn-multi-02.jpg",
+      "width": 800,
+      "height": 800,
+      "byteSize": 75440,
+      "sha256": "7e33fb0f14465e9ab2a144c7daf327315ebb67c4c5e93a1f298df00f3d0eec27"
+    },
+    {
+      "sourceImageReference": "https://m.media-amazon.com/images/I/61Q9daNHDiL._SL1500_.jpg",
+      "localFilename": "hb-ja-b0gdw5w1qn-multi-03.jpg",
+      "width": 800,
+      "height": 800,
+      "byteSize": 68938,
+      "sha256": "e9035b03f048ae261462550688f1278e84bf1781c2117ca659fa1a4539b40261"
+    },
+    {
+      "sourceImageReference": "https://m.media-amazon.com/images/I/51sQXOgpduL._SL1500_.jpg",
+      "localFilename": "hb-ja-b0gdw5w1qn-multi-04.jpg",
+      "width": 500,
+      "height": 500,
+      "byteSize": 36276,
+      "sha256": "4800d915108f25c7864ea1f1d82ca092053c0056757e4381966eef7ed64b08a3"
+    }
+  ]
+}

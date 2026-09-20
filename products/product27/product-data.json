@@ -1,0 +1,81 @@
+{
+  "productNumber": 27,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/09uor7Jk",
+    "canonicalUrl": "https://www.amazon.in/dp/B09FPJF5Q7",
+    "asin": "B09FPJF5Q7",
+    "capturedPriceInr": 499,
+    "amazonReturnEligibility": "10 days Returnable"
+  },
+  "verifiedSourceFacts": {
+    "sourceTitle": "Aakriti Art Creations Blue Dhokra Round Earrings",
+    "brand": "AAKRITI ART CREATIONS",
+    "manufacturer": "Requires Seller input; manufacturer was not stated.",
+    "modelOrIdentifier": "ASIN B09FPJF5Q7",
+    "materials": "Beads, fabric, lady brass and resin",
+    "colourAndVariant": "Blue; Colour: Round Earrings in Blue",
+    "dimensions": "Approximately 3.8 × 1.2 × 7.6 cm",
+    "weight": "30 g",
+    "packageContents": "One pair of handcrafted earrings; net quantity 1 count",
+    "careInstructions": "Requires Seller input.",
+    "countryOfOrigin": "India",
+    "returnEligibility": "10 days Returnable",
+    "warranty": "Not stated on source; leave blank."
+  },
+  "rewrittenMarketingCopy": {
+    "storefrontTitle": "Aakriti Art Creations Blue Dhokra Round Earrings",
+    "description": "Blue round statement earrings combining beads, fabric, lady brass and resin in a Dhokra-inspired design. Handcrafted tribal detailing and a matte finish complement ethnic and fusion outfits.",
+    "keyFeatures": [
+      "Dhokra-inspired round design",
+      "Handcrafted tribal artwork",
+      "Blue beads and fabric",
+      "Matte finish"
+    ],
+    "seoTitle": "Aakriti Art Creations Blue Dhokra Round Earrings | Hastabazaar",
+    "seoDescription": "Aakriti Art Creations Blue Dhokra Round Earrings. Blue round statement earrings combining beads, fabric, lady brass and resin in a Dhokra-inspired design. Han"
+  },
+  "suggestedValues": {
+    "category": "Jewellery > Earrings",
+    "tags": [
+      "earrings",
+      "handmade jewellery"
+    ],
+    "sku": "HB-ER-B09FPJF5Q7-BLUE",
+    "pricing": {
+      "formula": "round(499 × 1.6 + 150)",
+      "sellingPriceNpr": 948,
+      "originalPriceNpr": 1896,
+      "discountPercent": 50
+    },
+    "stockQuantity": 10,
+    "preparationTimeDays": 3,
+    "returnWording": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "listingPurpose": "Genuine commercial listing"
+  },
+  "valuesSellerMustSupply": [
+    "Shipping weight and package dimensions if Hastabazaar requires shipping-specific values; item/package values above may not be shipping measurements.",
+    "Any safety warning required for this exact product; none was stated on the source page.",
+    "Confirm the manufacturer."
+  ],
+  "legalOrAuthenticityConcerns": [
+    "User states that resale and image-reuse rights are authorized; this has not been independently verified.",
+    "Permanent legal documents and policy identifiers are pending. Do not enable genuine public orders until those controls are complete."
+  ],
+  "images": {
+    "selectedCount": 4,
+    "requestedMaximum": 4,
+    "videoDownloaded": false,
+    "exactDuplicatesExcluded": 0,
+    "order": [
+      "hb-er-b09fpjf5q7-blue-01.jpg",
+      "hb-er-b09fpjf5q7-blue-02.jpg",
+      "hb-er-b09fpjf5q7-blue-03.jpg",
+      "hb-er-b09fpjf5q7-blue-04.jpg"
+    ]
+  },
+  "publication": {
+    "preparedOnly": true,
+    "enteredInHastabazaar": false,
+    "published": false
+  }
+}

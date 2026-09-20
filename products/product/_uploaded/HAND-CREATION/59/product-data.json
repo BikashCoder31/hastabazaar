@@ -1,0 +1,73 @@
+{
+  "productNumber": 59,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0hzLIchd",
+    "canonicalUrl": "https://www.amazon.in/dp/B0DBDZ37KC",
+    "asin": "B0DBDZ37KC",
+    "sourceTitle": "Anekaant Lush Floral Embroidered Cotton Jacquard Tote Bag",
+    "sourcePriceInr": 1250.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Anekaant Lush Natural Multicolour Floral-Embroidered Tote",
+    "brand": "Anekaant",
+    "manufacturer": "A. D. Products Pvt Ltd",
+    "description": "Anekaant Lush Natural Multicolour Floral-Embroidered Tote features cotton-jacquard tote with floral embroidery. It combines zippered main compartment with inner zip pocket and mobile pocket. Two vegan-leather handles with tassel accents.",
+    "keyFeatures": [
+      "Cotton-jacquard tote with floral embroidery",
+      "Zippered main compartment",
+      "Inner zip pocket and mobile pocket",
+      "Two vegan-leather handles with tassel accents"
+    ],
+    "specifications": {
+      "colourAndVariant": "Natural off-white and multicolour",
+      "dimensions": "35 × 12 × 28 cm",
+      "weight": "400 g",
+      "modelOrIdentifier": "ADB5151A; ASIN B0DBDZ37KC",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Cotton jacquard, polyester lining and vegan-leather handles",
+    "packageContents": "1 tote bag",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Totes",
+    "tags": [
+      "floral embroidered tote",
+      "cotton jacquard bag",
+      "natural multicolour tote",
+      "Anekaant Lush",
+      "women's handbag"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Anekaant Lush Natural Multicolour Floral-Embroidered Tote | Hathkriti",
+    "seoDescription": "Anekaant Lush Natural Multicolour Floral-Embroidered Tote from Hathkriti. Cotton-jacquard tote with floral embroidery. Colour/variant: Natural off-white and multicolour."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 2200,
+    "originalPriceNpr": 4400,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p59-b0dbdz37kc-01.jpg",
+      "images/hathkriti-p59-b0dbdz37kc-02.jpg",
+      "images/hathkriti-p59-b0dbdz37kc-03.jpg",
+      "images/hathkriti-p59-b0dbdz37kc-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

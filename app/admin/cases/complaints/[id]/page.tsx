@@ -42,7 +42,7 @@ export default async function AdminComplaintPage({
           {item.status.replaceAll('_', ' ')}
         </span>
       </div>
-      <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_23rem]">
+      <div className="mt-8 grid gap-6 2xl:grid-cols-[minmax(0,1fr)_23rem]">
         <div className="space-y-6">
           <section className="rounded-2xl border bg-card p-6">
             <h2 className="font-heading text-2xl">Complaint</h2>

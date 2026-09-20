@@ -1,0 +1,63 @@
+{
+  "productNumber": 38,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0HHSJ975R",
+  "selectedVariant": "Burgundy/maroon and green with red heart detail (visible gallery); source fact table separately says off-white and burgundy",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HHSJ975R",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71uyrikfeXL._SL1254_.jpg",
+      "filename": "hathkriti-p38-b0hhsj975r-01.jpg",
+      "dimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "byteSize": 195873,
+      "sha256": "fd452492935bc51fd9c15ee811c91f9a9059631b3371a897e820cd83a088dedc",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HHSJ975R",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71o2DZaLKoL._SL1254_.jpg",
+      "filename": "hathkriti-p38-b0hhsj975r-02.jpg",
+      "dimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "byteSize": 201014,
+      "sha256": "923c485da8f9ca3260246ca4c0aa08a54fe4c489897b6854bde36db2ee4c9c67",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HHSJ975R",
+      "originalImageReference": "https://m.media-amazon.com/images/I/613waKsELUL._SL1280_.jpg",
+      "filename": "hathkriti-p38-b0hhsj975r-03.jpg",
+      "dimensions": {
+        "width": 960,
+        "height": 1280
+      },
+      "byteSize": 92228,
+      "sha256": "f795de15d55bd1248b3716bcc4e296076d39c36dcec580fb93d2c2e34572c129",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 3
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HHSJ975R",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61TwKpUyPYL._SL1280_.jpg",
+      "filename": "hathkriti-p38-b0hhsj975r-04.jpg",
+      "dimensions": {
+        "width": 851,
+        "height": 1280
+      },
+      "byteSize": 67148,
+      "sha256": "74aa10245a7fe326de3f7e6e0a7090dfadacb55f9b54fdff1e255aa1b633a427",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 4
+    }
+  ]
+}

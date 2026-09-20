@@ -1,0 +1,84 @@
+{
+  "productNumber": 35,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/09YA4NKh",
+    "canonicalUrl": "https://www.amazon.in/dp/B0GRTW587M",
+    "asin": "B0GRTW587M",
+    "capturedPriceInr": 259,
+    "amazonReturnEligibility": "10 days Returnable"
+  },
+  "verifiedSourceFacts": {
+    "sourceTitle": "Handmade Crochet Rose Earrings",
+    "brand": "Generic",
+    "manufacturer": "Crochet_Woolart",
+    "modelOrIdentifier": "CROCHET-ROSE-EARRING-01",
+    "materials": "Source conflict: product facts list wool; description says mercerized cotton thread",
+    "colourAndVariant": "Requires Seller input.; Source style shown; colour requires Seller confirmation",
+    "dimensions": "2.54 × 1.27 × 2.54 cm",
+    "weight": "10 g",
+    "packageContents": "Net quantity: 1 count",
+    "careInstructions": "Requires Seller input.",
+    "countryOfOrigin": "India",
+    "returnEligibility": "10 days Returnable",
+    "warranty": "Not stated on source; leave blank."
+  },
+  "rewrittenMarketingCopy": {
+    "storefrontTitle": "Handmade Crochet Rose Earrings",
+    "description": "Handmade crochet rose earrings with carefully stitched, three-dimensional petals. The floral design offers an artisanal accent for weddings, garden parties and everyday outfits.",
+    "keyFeatures": [
+      "Hand-stitched crochet rose form",
+      "Three-dimensional floral design",
+      "Lightweight statement style",
+      "Nickel-free findings claimed by source"
+    ],
+    "seoTitle": "Handmade Crochet Rose Earrings | Hastabazaar",
+    "seoDescription": "Handmade Crochet Rose Earrings. Handmade crochet rose earrings with carefully stitched, three-dimensional petals. The floral design offers an artisanal accent"
+  },
+  "suggestedValues": {
+    "category": "Jewellery > Earrings",
+    "tags": [
+      "earrings",
+      "handmade jewellery",
+      "crochet"
+    ],
+    "sku": "HB-ER-B0GRTW587M",
+    "pricing": {
+      "formula": "round(259 × 1.6 + 150)",
+      "sellingPriceNpr": 564,
+      "originalPriceNpr": 1128,
+      "discountPercent": 50
+    },
+    "stockQuantity": 10,
+    "preparationTimeDays": 3,
+    "returnWording": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "listingPurpose": "Genuine commercial listing"
+  },
+  "valuesSellerMustSupply": [
+    "Shipping weight and package dimensions if Hastabazaar requires shipping-specific values; item/package values above may not be shipping measurements.",
+    "Any safety warning required for this exact product; none was stated on the source page.",
+    "Confirm the listing colour."
+  ],
+  "legalOrAuthenticityConcerns": [
+    "The source conflicts on material (wool versus mercerized cotton thread); Seller must verify.",
+    "The nickel-free/hypoallergenic claim was not independently verified and should not be published without evidence.",
+    "User states that resale and image-reuse rights are authorized; this has not been independently verified.",
+    "Permanent legal documents and policy identifiers are pending. Do not enable genuine public orders until those controls are complete."
+  ],
+  "images": {
+    "selectedCount": 4,
+    "requestedMaximum": 4,
+    "videoDownloaded": false,
+    "exactDuplicatesExcluded": 0,
+    "order": [
+      "hb-er-b0grtw587m-01.jpg",
+      "hb-er-b0grtw587m-02.jpg",
+      "hb-er-b0grtw587m-03.jpg",
+      "hb-er-b0grtw587m-04.jpg"
+    ]
+  },
+  "publication": {
+    "preparedOnly": true,
+    "enteredInHastabazaar": false,
+    "published": false
+  }
+}

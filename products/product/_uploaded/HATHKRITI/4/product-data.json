@@ -1,0 +1,71 @@
+{
+  "productNumber": 4,
+  "status": "prepared_not_entered",
+  "source": {
+    "shortUrl": "https://amzn.in/d/075p6Tsi",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HJ5S88QV",
+    "asin": "B0HJ5S88QV",
+    "selectedVariant": "Red",
+    "sourcePriceInr": 499,
+    "sourceReturnStatus": "10 days Returnable"
+  },
+  "listing": {
+    "category": "Gifts",
+    "title": "TIED RIBBONS Handmade Red Crochet Flower Bouquet",
+    "occasions": [
+      "Birthday gifts",
+      "Wedding gifts",
+      "Anniversary",
+      "Mother's Day"
+    ],
+    "description": "A handmade artificial flower bouquet featuring five crochet blooms, decorative leaves, red paper wrapping and ribbon detailing. Made with wool and paper components, this maintenance-free arrangement is designed for desks, shelves, living spaces and gifting. The flowers do not require watering, sunlight or trimming. The package contains one red crochet bouquet.",
+    "dimensions": "17.7 D x 8.9 W x 24.1 H cm",
+    "licenceReference": null,
+    "careInstructions": "No watering, sunlight, trimming or daily plant care is required. Keep dry and remove surface dust gently when needed.",
+    "safetyInformation": null,
+    "warrantyOffered": false,
+    "warrantyYears": null,
+    "warrantyMonths": null,
+    "warrantyDays": null,
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "preparationDays": 3,
+    "manufactureDate": null,
+    "expiryDate": null,
+    "madeToOrder": false,
+    "sellingPriceNpr": 998,
+    "originalPriceNpr": 1996,
+    "discountPercent": 50,
+    "stockQuantity": 10,
+    "returnEligible": true,
+    "suggestedInternalReference": "HB-TR-B0HJ5S88QV-RED",
+    "priceFormula": "round(499 × 1.6 + 200)"
+  },
+  "verifiedFacts": {
+    "brand": "TIED RIBBONS",
+    "manufacturer": "Yiwu Craft Factory",
+    "modelNumber": "TR-26-CrochetFlowerBouquet-RS030904",
+    "materials": [
+      "Wool",
+      "Paper"
+    ],
+    "colour": "Red",
+    "flowerCount": 5,
+    "itemWeightGrams": 200,
+    "countryOfOrigin": "China",
+    "packageContents": "One artificial crochet flower bouquet"
+  },
+  "excludedConflict": "The separate source product-description section describes a different yellow flower-pot product and was not used.",
+  "images": [
+    "images/hb-tr-b0hj5s88qv-red-crochet-bouquet-01.jpg",
+    "images/hb-tr-b0hj5s88qv-red-crochet-bouquet-02.jpg",
+    "images/hb-tr-b0hj5s88qv-red-crochet-bouquet-03.jpg",
+    "images/hb-tr-b0hj5s88qv-red-crochet-bouquet-04.jpg"
+  ],
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 998,
+    "originalPriceNpr": 1996,
+    "discountPercent": 50
+  }
+}

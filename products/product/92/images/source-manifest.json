@@ -1,0 +1,63 @@
+{
+  "productNumber": 92,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0GL3BLW53",
+  "selectedVariant": "Brown natural bamboo with multicolour woven accents",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0GL3BLW53",
+      "originalImageReference": "https://m.media-amazon.com/images/I/516yapurOyL._SL1500_.jpg",
+      "filename": "hathkriti-p92-b0gl3blw53-01.jpg",
+      "dimensions": {
+        "width": 658,
+        "height": 879
+      },
+      "byteSize": 42946,
+      "sha256": "2b66a73e0c990b1b430165a052a5ce3a45a6927bf46300c65c92213f2b6af050",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0GL3BLW53",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51eChzkqvbL._SL1500_.jpg",
+      "filename": "hathkriti-p92-b0gl3blw53-02.jpg",
+      "dimensions": {
+        "width": 679,
+        "height": 382
+      },
+      "byteSize": 48932,
+      "sha256": "316c4da29c5feee99168edc7b77d46aba30ba9584d7846677dca4c5608ad6a73",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0GL3BLW53",
+      "originalImageReference": "https://m.media-amazon.com/images/I/4189mfA+ahL._SL1500_.jpg",
+      "filename": "hathkriti-p92-b0gl3blw53-03.jpg",
+      "dimensions": {
+        "width": 679,
+        "height": 679
+      },
+      "byteSize": 31712,
+      "sha256": "eca7f1be9fbcd4bf7e3c522362051a6a045f55064fd0b5451b0d7ab320945ec4",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 3
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0GL3BLW53",
+      "originalImageReference": "https://m.media-amazon.com/images/I/413gpU+jSbL._SL1500_.jpg",
+      "filename": "hathkriti-p92-b0gl3blw53-04.jpg",
+      "dimensions": {
+        "width": 432,
+        "height": 577
+      },
+      "byteSize": 29277,
+      "sha256": "e8d2706034ada09c883a5a31c68f6ee52e5f349ad98bfa6c93ae62ee92df5781",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 4
+    }
+  ]
+}

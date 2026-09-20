@@ -1,0 +1,50 @@
+{
+  "productNumber": 50,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only three clean unbranded product views remained after rejecting a branded panel and a synthetic-looking lifestyle collage.",
+  "sourcePage": "https://www.amazon.in/dp/B0HD5KZR4M",
+  "selectedVariant": "Yellow and brown sunflower design",
+  "requiredImageCount": 4,
+  "includedImageCount": 3,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HD5KZR4M",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61G6UexPC8L._SL1500_.jpg",
+      "filename": "hathkriti-p50-b0hd5kzr4m-01.jpg",
+      "dimensions": {
+        "width": 844,
+        "height": 1500
+      },
+      "byteSize": 42195,
+      "sha256": "d7684d40fd51400ad71b4af71f8555c9763011195c35d23388d4c4165c176c4a",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HD5KZR4M",
+      "originalImageReference": "https://m.media-amazon.com/images/I/81p1mAwqGpL._SL1500_.jpg",
+      "filename": "hathkriti-p50-b0hd5kzr4m-02.jpg",
+      "dimensions": {
+        "width": 844,
+        "height": 1500
+      },
+      "byteSize": 128641,
+      "sha256": "5c2c9ea2722440378896169c707d654ae31343272987f77a72a734f9b94f043e",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HD5KZR4M",
+      "originalImageReference": "https://m.media-amazon.com/images/I/81La4eXeAHL._SL1500_.jpg",
+      "filename": "hathkriti-p50-b0hd5kzr4m-03.jpg",
+      "dimensions": {
+        "width": 844,
+        "height": 1500
+      },
+      "byteSize": 134274,
+      "sha256": "d235bc069e360389cf2e114e264e81a59ecc4236db97f323fb0696ce84fc4ce0",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 5
+    }
+  ]
+}

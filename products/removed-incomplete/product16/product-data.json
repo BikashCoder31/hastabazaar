@@ -1,0 +1,88 @@
+{
+  "productNumber": 16,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0fv7Dfop",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HFNQK3KT",
+    "asin": "B0HFNQK3KT",
+    "capturedPriceInr": 349,
+    "amazonReturnEligibility": "10 days Returnable"
+  },
+  "verifiedSourceFacts": {
+    "sourceTitle": "Handmade Resin Dangle Earrings – Oatmilk",
+    "brand": "THE STATEMENT P'S",
+    "manufacturer": "Burasuna Private Limited",
+    "modelOrIdentifier": "AE-AMZ-23-TFC-OATMILK",
+    "materials": "Resin; no gemstone",
+    "colourAndVariant": "Oatmilk; Set name: OATMILK",
+    "dimensions": "2.4 × 0.5 × 4.5 cm",
+    "weight": "10 g",
+    "packageContents": "Net quantity: 1 count",
+    "careInstructions": "Requires Seller input.",
+    "countryOfOrigin": "India",
+    "returnEligibility": "10 days Returnable",
+    "warranty": "Not stated on source; leave blank."
+  },
+  "rewrittenMarketingCopy": {
+    "storefrontTitle": "Handmade Resin Dangle Earrings – Oatmilk",
+    "description": "Handcrafted resin dangle earrings in the Oatmilk set style. Their light construction and clean statement shape make them suitable for work, casual outings, celebrations and evening wear.",
+    "keyFeatures": [
+      "Handcrafted resin dangle design",
+      "Lightweight construction",
+      "Suitable for everyday and occasion styling"
+    ],
+    "seoTitle": "Handmade Resin Dangle Earrings – Oatmilk | Hastabazaar",
+    "seoDescription": "Handmade Resin Dangle Earrings – Oatmilk. Handcrafted resin dangle earrings in the Oatmilk set style. Their light construction and clean statement shape make "
+  },
+  "suggestedValues": {
+    "category": "Jewellery > Earrings",
+    "tags": [
+      "earrings",
+      "handmade jewellery",
+      "resin"
+    ],
+    "sku": "HB-ER-B0HFNQK3KT-OATMILK",
+    "pricing": {
+      "formula": "round(349 × 1.6 + 200)",
+      "sellingPriceNpr": 758,
+      "originalPriceNpr": 1516,
+      "discountPercent": 50
+    },
+    "stockQuantity": 10,
+    "preparationTimeDays": 3,
+    "returnWording": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "listingPurpose": "Genuine commercial listing"
+  },
+  "valuesSellerMustSupply": [
+    "Shipping weight and package dimensions if Hastabazaar requires shipping-specific values; item/package values above may not be shipping measurements.",
+    "Any safety warning required for this exact product; none was stated on the source page."
+  ],
+  "legalOrAuthenticityConcerns": [
+    "The source title says “hypoallergenic”, but the source page provides no test or certification; that claim is intentionally omitted.",
+    "Only three distinct gallery images matched this exact design; a different-design promotional image was excluded.",
+    "User states that resale and image-reuse rights are authorized; this has not been independently verified.",
+    "Permanent legal documents and policy identifiers are pending. Do not enable genuine public orders until those controls are complete."
+  ],
+  "images": {
+    "selectedCount": 3,
+    "requestedMaximum": 4,
+    "videoDownloaded": false,
+    "exactDuplicatesExcluded": 0,
+    "order": [
+      "hb-er-b0hfnqk3kt-oatmilk-01.jpg",
+      "hb-er-b0hfnqk3kt-oatmilk-02.jpg",
+      "hb-er-b0hfnqk3kt-oatmilk-03.jpg"
+    ]
+  },
+  "publication": {
+    "preparedOnly": true,
+    "enteredInHastabazaar": false,
+    "published": false
+  },
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 758,
+    "originalPriceNpr": 1516,
+    "discountPercent": 50
+  }
+}

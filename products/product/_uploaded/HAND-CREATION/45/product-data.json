@@ -1,0 +1,73 @@
+{
+  "productNumber": 45,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/05TsVuw5",
+    "canonicalUrl": "https://www.amazon.in/dp/B0GMH7CJB7",
+    "asin": "B0GMH7CJB7",
+    "sourceTitle": "Handcrafted Bird Motif Beaded Drop Earrings for Women | Contemporary Statement Earrings for Everyday and Occasion Wear",
+    "sourcePriceInr": 349.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Madalasa Coral Glow Bird-Motif Beaded Drop Earrings",
+    "brand": "Madalasa",
+    "manufacturer": "Madalasa",
+    "description": "Madalasa Coral Glow Bird-Motif Beaded Drop Earrings features layered bird-motif statement design. It combines beaded texture with coral Glow colourway. Suitable for everyday and occasion styling.",
+    "keyFeatures": [
+      "Layered bird-motif statement design",
+      "Beaded texture",
+      "Coral Glow colourway",
+      "Suitable for everyday and occasion styling"
+    ],
+    "specifications": {
+      "colourAndVariant": "Coral Glow",
+      "dimensions": "7 × 4 × 1 cm",
+      "weight": "24 g",
+      "modelOrIdentifier": "VE001; ASIN B0GMH7CJB7",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Acrylic, fabric and stainless steel",
+    "packageContents": "1 pair of drop earrings",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Jewellery > Women > Earrings",
+    "tags": [
+      "bird earrings",
+      "beaded earrings",
+      "coral earrings",
+      "statement jewellery",
+      "Madalasa earrings"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Madalasa Coral Glow Bird-Motif Beaded Drop Earrings | Hathkriti",
+    "seoDescription": "Madalasa Coral Glow Bird-Motif Beaded Drop Earrings from Hathkriti. Layered bird-motif statement design. Colour/variant: Coral Glow."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 758,
+    "originalPriceNpr": 1516,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p45-b0gmh7cjb7-01.jpg",
+      "images/hathkriti-p45-b0gmh7cjb7-02.jpg",
+      "images/hathkriti-p45-b0gmh7cjb7-03.jpg",
+      "images/hathkriti-p45-b0gmh7cjb7-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

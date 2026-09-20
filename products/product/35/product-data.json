@@ -1,0 +1,71 @@
+{
+  "productNumber": 35,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two clean unbranded product views remained after rejecting branded packaging and synthetic-looking lifestyle scenes.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/02lhJdg4",
+    "canonicalUrl": "https://www.amazon.in/dp/B0H9HT914Z",
+    "asin": "B0H9HT914Z",
+    "sourceTitle": "Handmade Crochet EarPod Pouch Teddy Bear | Cute Coin Purse | Mini Wallet for Coins, Cash, Earbuds & Keys | Small Crochet Pouch Gift for Women & Girls",
+    "sourcePriceInr": 299.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "ParnikaaLuxe Brown Crochet Bear Mini Drawstring Pouch",
+    "brand": "ParnikaaLuxe",
+    "manufacturer": "ParnikaaLuxe",
+    "description": "ParnikaaLuxe Brown Crochet Bear Mini Drawstring Pouch features handmade bear-shaped crochet pouch. It combines drawstring closure with compact storage for earbuds, coins, keys or small cash. Lightweight portable design.",
+    "keyFeatures": [
+      "Handmade bear-shaped crochet pouch",
+      "Drawstring closure",
+      "Compact storage for earbuds, coins, keys or small cash",
+      "Lightweight portable design"
+    ],
+    "specifications": {
+      "colourAndVariant": "Brown bear design",
+      "dimensions": "Not stated on the source page.",
+      "weight": "50 g",
+      "modelOrIdentifier": "Mini Pouch / Bear Mini Pouch; ASIN B0H9HT914Z",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Cotton yarn",
+    "packageContents": "1 mini pouch",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags & Wallets > Coin Purses & Pouches",
+    "tags": [
+      "crochet pouch",
+      "bear coin purse",
+      "earbud pouch",
+      "mini wallet",
+      "brown pouch"
+    ],
+    "safetyInformation": "Keep small loose contents and drawstrings away from young children unless supervised.",
+    "seoTitle": "ParnikaaLuxe Brown Crochet Bear Mini Drawstring Pouch | Hathkriti",
+    "seoDescription": "ParnikaaLuxe Brown Crochet Bear Mini Drawstring Pouch from Hathkriti. Handmade bear-shaped crochet pouch. Colour/variant: Brown bear design."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 678,
+    "originalPriceNpr": 1356,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 2,
+    "files": [
+      "images/hathkriti-p35-b0h9ht914z-01.jpg",
+      "images/hathkriti-p35-b0h9ht914z-02.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

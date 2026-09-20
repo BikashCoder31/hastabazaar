@@ -1,0 +1,82 @@
+{
+  "productNumber": 24,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0bxzYoJk",
+    "canonicalUrl": "https://www.amazon.in/dp/B08TVGMKT8",
+    "asin": "B08TVGMKT8",
+    "capturedPriceInr": 200,
+    "amazonReturnEligibility": "10 days Returnable"
+  },
+  "verifiedSourceFacts": {
+    "sourceTitle": "Light Purple Crochet Circular Earrings",
+    "brand": "Generic",
+    "manufacturer": "Vyoman Studio",
+    "modelOrIdentifier": "ASIN B08TVGMKT8",
+    "materials": "Cotton thread with artificial silver-colour metal hooks",
+    "colourAndVariant": "Light purple; Light purple crochet circular earrings",
+    "dimensions": "3.81 × 3.81 × 0.2 cm (about 1.5 in diameter)",
+    "weight": "100 g",
+    "packageContents": "Net quantity: 1 count",
+    "careInstructions": "Requires Seller input.",
+    "countryOfOrigin": "India",
+    "returnEligibility": "10 days Returnable",
+    "warranty": "Not stated on source; leave blank."
+  },
+  "rewrittenMarketingCopy": {
+    "storefrontTitle": "Light Purple Crochet Circular Earrings",
+    "description": "Light purple circular earrings hand-crocheted from cotton thread and finished with artificial silver-colour hooks. Designed for daily wear, parties and relaxed bohemian styling.",
+    "keyFeatures": [
+      "Hand-crocheted circular design",
+      "Cotton-thread construction",
+      "Artificial silver-colour hooks",
+      "Bohemian styling"
+    ],
+    "seoTitle": "Light Purple Crochet Circular Earrings | Hastabazaar",
+    "seoDescription": "Light Purple Crochet Circular Earrings. Light purple circular earrings hand-crocheted from cotton thread and finished with artificial silver-colour hooks. Des"
+  },
+  "suggestedValues": {
+    "category": "Jewellery > Earrings",
+    "tags": [
+      "earrings",
+      "handmade jewellery",
+      "crochet"
+    ],
+    "sku": "HB-ER-B08TVGMKT8-LIGHT-PURPLE",
+    "pricing": {
+      "formula": "round(200 × 1.6 + 150)",
+      "sellingPriceNpr": 470,
+      "originalPriceNpr": 940,
+      "discountPercent": 50
+    },
+    "stockQuantity": 10,
+    "preparationTimeDays": 3,
+    "returnWording": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "listingPurpose": "Genuine commercial listing"
+  },
+  "valuesSellerMustSupply": [
+    "Shipping weight and package dimensions if Hastabazaar requires shipping-specific values; item/package values above may not be shipping measurements.",
+    "Any safety warning required for this exact product; none was stated on the source page."
+  ],
+  "legalOrAuthenticityConcerns": [
+    "Only three distinct source-gallery product images were available.",
+    "The stated 100 g weight appears high for this item and should be confirmed by the Seller.",
+    "User states that resale and image-reuse rights are authorized; this has not been independently verified.",
+    "Permanent legal documents and policy identifiers are pending. Do not enable genuine public orders until those controls are complete."
+  ],
+  "images": {
+    "selectedCount": 3,
+    "requestedMaximum": 4,
+    "videoDownloaded": false,
+    "exactDuplicatesExcluded": 0,
+    "order": [
+      "hb-er-b08tvgmkt8-light-purple-01.jpg",
+      "hb-er-b08tvgmkt8-light-purple-02.jpg",
+      "hb-er-b08tvgmkt8-light-purple-03.jpg"
+    ]
+  },
+  "publication": {
+    "preparedOnly": true,
+    "enteredInHastabazaar": false,
+    "published": false
+  }
+}

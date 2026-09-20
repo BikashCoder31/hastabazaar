@@ -1,0 +1,72 @@
+{
+  "productNumber": 9,
+  "status": "prepared_not_entered",
+  "source": {
+    "shortUrl": "https://amzn.in/d/0feju22m",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HCTK2G6F",
+    "asin": "B0HCTK2G6F",
+    "selectedVariant": "Pink floral",
+    "sourcePriceInr": 699,
+    "sourceReturnStatus": "10 days Returnable"
+  },
+  "listing": {
+    "category": "Jewelry & accessories",
+    "title": "PREEDAYA Handmade Pink Crochet Floral Pearl Drop Earrings",
+    "occasions": [
+      "Birthday gifts",
+      "Wedding gifts",
+      "Anniversary",
+      "Tihar gifts"
+    ],
+    "description": "Handcrafted floral earrings made with pink crochet thread, small gold-tone bead accents and a pearl-style drop. The lightweight statement pair is designed to complement sarees, kurtis, dresses and Indo-western outfits for festive events, weddings, parties or casual wear. Handmade construction can produce small variations between pairs.",
+    "dimensions": null,
+    "licenceReference": null,
+    "careInstructions": null,
+    "safetyInformation": null,
+    "warrantyOffered": false,
+    "warrantyYears": null,
+    "warrantyMonths": null,
+    "warrantyDays": null,
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "preparationDays": 3,
+    "manufactureDate": null,
+    "expiryDate": null,
+    "madeToOrder": false,
+    "sellingPriceNpr": 1318,
+    "originalPriceNpr": 2636,
+    "discountPercent": 50,
+    "stockQuantity": 10,
+    "returnEligible": true,
+    "suggestedInternalReference": "HB-JA-B0HCTK2G6F-PINK",
+    "priceFormula": "round(699 × 1.6 + 200)"
+  },
+  "verifiedFacts": {
+    "brand": "PREEDAYA",
+    "manufacturer": "PREEDAYA",
+    "manufacturerPartNumber": "PRD-ER-26CHPRM",
+    "materials": [
+      "Crochet/cotton thread",
+      "Pearl bead"
+    ],
+    "colour": "Dual-tone pink with gold-tone accents and white pearl-style drop",
+    "itemWeightGrams": 10,
+    "countryOfOrigin": "India",
+    "packageContents": "One pair / one set of dangle earrings"
+  },
+  "sourceConcerns": [
+    "The source-listed 12 x 8 x 3 cm dimensions appear package-level and were not used as product dimensions.",
+    "Only three distinct legitimate gallery images were available."
+  ],
+  "images": [
+    "images/hb-ja-b0hctk2g6f-pink-01.jpg",
+    "images/hb-ja-b0hctk2g6f-pink-02.jpg",
+    "images/hb-ja-b0hctk2g6f-pink-03.jpg"
+  ],
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 1318,
+    "originalPriceNpr": 2636,
+    "discountPercent": 50
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "productNumber": 89,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/030liqQo",
+    "canonicalUrl": "https://www.amazon.in/dp/B0FQ2YX8PG",
+    "asin": "B0FQ2YX8PG",
+    "sourceTitle": "Craftooba Hand-Painted Bamboo Hand Fan: From a Whisper of Air to a Canvas of Art | Home Decor & Festival | Handmade & Handpainted Beautiful Traditional Hand Fan | Decor |",
+    "sourcePriceInr": 599.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Craftooba Multicolour Hand-Painted Bamboo Folk-Art Fan",
+    "brand": "Craftooba",
+    "manufacturer": "Craftooba",
+    "description": "Craftooba Multicolour Hand-Painted Bamboo Folk-Art Fan features hand-painted bamboo and cane hand fan. It combines two-bird folk-art motif on a bright pink background with suitable for wall or tabletop display. Each handmade piece may have individual variation.",
+    "keyFeatures": [
+      "Hand-painted bamboo and cane hand fan",
+      "Two-bird folk-art motif on a bright pink background",
+      "Suitable for wall or tabletop display",
+      "Each handmade piece may have individual variation"
+    ],
+    "specifications": {
+      "colourAndVariant": "Multicolour; two-bird folk-art design on a pink background",
+      "dimensions": "Not stated on the source page.",
+      "weight": "200 g",
+      "modelOrIdentifier": "ASIN B0FQ2YX8PG",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Cane / bamboo",
+    "packageContents": "1 hand-painted hand fan",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Home Décor > Wall & Tabletop Art",
+    "tags": [
+      "hand-painted fan",
+      "bamboo folk art",
+      "bird wall décor",
+      "multicolour cane art",
+      "Craftooba"
+    ],
+    "giftOccasions": [
+      "Housewarming",
+      "Festival"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Craftooba Multicolour Hand-Painted Bamboo Folk-Art Fan | Hathkriti",
+    "seoDescription": "Craftooba Multicolour Hand-Painted Bamboo Folk-Art Fan from Hathkriti. Hand-painted bamboo and cane hand fan. Colour/variant: Multicolour; two-bird folk-art design on a pink background."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 1158,
+    "originalPriceNpr": 2316,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p89-b0fq2yx8pg-01.jpg",
+      "images/hathkriti-p89-b0fq2yx8pg-02.jpg",
+      "images/hathkriti-p89-b0fq2yx8pg-03.jpg",
+      "images/hathkriti-p89-b0fq2yx8pg-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source states that handmade pieces can vary slightly."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

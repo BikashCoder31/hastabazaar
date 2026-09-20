@@ -1,0 +1,81 @@
+{
+  "productNumber": 86,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/04eheZWg",
+    "canonicalUrl": "https://www.amazon.in/dp/B0FMQ7CJM9",
+    "asin": "B0FMQ7CJM9",
+    "sourceTitle": "Wooden Home Shape Wind Chime with Windmill - 5 Multicolour Bells for Home & Balcony | Gifting & Home Decoration with Melody Sound (Multicolour 5 Bell)",
+    "sourcePriceInr": 315.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "sculpmart Multicolour Five-Bell Wooden House Wind Chime",
+    "brand": "sculpmart",
+    "manufacturer": "sculpmart",
+    "description": "sculpmart Multicolour Five-Bell Wooden House Wind Chime features wooden house-shaped chime with a windmill motif. It combines five multicolour metal bells with lightweight hanging design for doors or balconies. Source describes a soft bell melody.",
+    "keyFeatures": [
+      "Wooden house-shaped chime with a windmill motif",
+      "Five multicolour metal bells",
+      "Lightweight hanging design for doors or balconies",
+      "Source describes a soft bell melody"
+    ],
+    "specifications": {
+      "colourAndVariant": "Rainbow bells; home design; five-bell version",
+      "dimensions": "Not stated on the source page.",
+      "weight": "150 g",
+      "modelOrIdentifier": "SDR-BLJ-SVSE2FC; ASIN B0FMQ7CJM9",
+      "countryOfOrigin": "Not stated on the source page."
+    },
+    "materials": "Wooden chime with metal bells",
+    "packageContents": "1 house-shaped wind chime with five bells",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Home Décor > Wind Chimes",
+    "tags": [
+      "wooden wind chime",
+      "five bell chime",
+      "multicolour bells",
+      "balcony décor",
+      "sculpmart"
+    ],
+    "giftOccasions": [
+      "Housewarming",
+      "Birthday",
+      "Festival"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "sculpmart Multicolour Five-Bell Wooden House Wind Chime | Hathkriti",
+    "seoDescription": "sculpmart Multicolour Five-Bell Wooden House Wind Chime from Hathkriti. Wooden house-shaped chime with a windmill motif. Colour/variant: Rainbow bells; home design; five-bell version."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 704,
+    "originalPriceNpr": 1408,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p86-b0fmq7cjm9-01.jpg",
+      "images/hathkriti-p86-b0fmq7cjm9-02.jpg",
+      "images/hathkriti-p86-b0fmq7cjm9-03.jpg",
+      "images/hathkriti-p86-b0fmq7cjm9-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [
+    "The source states that the windmill colour and decorative charm are supplied at random; the five multicolour-bell design is the selected listing variant.",
+    "Product 77 is also a wooden five-bell wind chime, but it has a different ASIN, brand, design and identifier; this house-shaped sculpmart item is retained as a distinct product."
+  ],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

@@ -1,0 +1,12 @@
+{
+  "sourcePage": "https://www.amazon.in/dp/B0HJ5S88QV",
+  "shortSourcePage": "https://amzn.in/d/075p6Tsi",
+  "videoDownloaded": false,
+  "exactDuplicatesFound": false,
+  "images": [
+    {"sequence":1,"originalImageReference":"https://m.media-amazon.com/images/I/71FSCnZt8jL._SL1254_.jpg","localFilename":"hb-tr-b0hj5s88qv-red-crochet-bouquet-01.jpg","width":1254,"height":1254,"byteSize":140224,"sha256":"c4812cbc52dfab4929f11bfa95acf3f82d35f7510e5e9c98e4be20c04d597579"},
+    {"sequence":2,"originalImageReference":"https://m.media-amazon.com/images/I/61yWBpoX5gL._SL1254_.jpg","localFilename":"hb-tr-b0hj5s88qv-red-crochet-bouquet-02.jpg","width":1254,"height":1254,"byteSize":114095,"sha256":"c9e0832e99ce48310f6b63fd7814d903de954fdfc72e035d6603d60269c15f6a"},
+    {"sequence":3,"originalImageReference":"https://m.media-amazon.com/images/I/71JVp67vidL._SL1254_.jpg","localFilename":"hb-tr-b0hj5s88qv-red-crochet-bouquet-03.jpg","width":1254,"height":1254,"byteSize":160610,"sha256":"cb232ad5ac96bcfd02fded367d9a0d45d9e0cbf18321def40c6ffef8a4105ced"},
+    {"sequence":4,"originalImageReference":"https://m.media-amazon.com/images/I/71nyxJoQHuL._SL1254_.jpg","localFilename":"hb-tr-b0hj5s88qv-red-crochet-bouquet-04.jpg","width":1254,"height":1254,"byteSize":170155,"sha256":"f1deee64e53098bdb819ccc785d229586f7be9d6225c1488483c6aee402dff15"}
+  ]
+}

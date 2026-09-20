@@ -1,0 +1,68 @@
+{
+  "productNumber": 77,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "The gallery states that buyers receive a random colour and random design, so one exact selectable variant and a matching four-image set cannot be verified.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/03sqRLMu",
+    "canonicalUrl": "https://www.amazon.in/dp/B0GLP2XT3P",
+    "asin": "B0GLP2XT3P",
+    "sourceTitle": "Wooden Happy Wind Chime for Home Decor | Hanging Bells Decoration | Balcony Living Room & Garden | 5 Bell Wind Chime for Positive Energy & Protection | Gift for Housewarming | Multi Colour",
+    "sourcePriceInr": 449.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Naruvee Multicolour Wooden Five-Bell Happy Wind Chime",
+    "brand": "Naruvee",
+    "manufacturer": "Not stated on the source page.",
+    "description": "Naruvee Multicolour Wooden Five-Bell Happy Wind Chime features handcrafted wooden hanging decoration. It combines five metal bells with colourful beads and wooden heart, fish, flower and butterfly shapes. Suitable for balcony, garden or indoor hanging décor.",
+    "keyFeatures": [
+      "Handcrafted wooden hanging decoration",
+      "Five metal bells",
+      "Colourful beads and wooden heart, fish, flower and butterfly shapes",
+      "Suitable for balcony, garden or indoor hanging décor"
+    ],
+    "specifications": {
+      "colourAndVariant": "Multicolour",
+      "dimensions": "Not stated on the source page.",
+      "weight": "Not stated on the source page.",
+      "modelOrIdentifier": "ASIN B0GLP2XT3P",
+      "countryOfOrigin": "Not stated on the source page."
+    },
+    "materials": "Wood and metal with decorative beads",
+    "packageContents": "1 five-bell wind chime",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Home Décor > Wind Chimes",
+    "tags": [
+      "wooden wind chime",
+      "five bell hanging",
+      "multicolour décor",
+      "balcony decoration",
+      "Naruvee"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Naruvee Multicolour Wooden Five-Bell Happy Wind Chime | Hathkriti",
+    "seoDescription": "Naruvee Multicolour Wooden Five-Bell Happy Wind Chime from Hathkriti. Handcrafted wooden hanging decoration. Colour/variant: Multicolour."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 918,
+    "originalPriceNpr": 1836,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 0,
+    "files": [],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

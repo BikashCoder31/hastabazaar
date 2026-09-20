@@ -1,0 +1,63 @@
+{
+  "productNumber": 62,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0H63QN6DH",
+  "selectedVariant": "Black with red crochet roses",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H63QN6DH",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61bqOd+PorL._SL1254_.jpg",
+      "filename": "hathkriti-p62-b0h63qn6dh-01.jpg",
+      "dimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "byteSize": 102069,
+      "sha256": "37232b84031841ac6d78f68f3fed8ee8a10f85b6cafea810fb4c2bbf7a12e5c9",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H63QN6DH",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61CfQhrFUDL._SL1024_.jpg",
+      "filename": "hathkriti-p62-b0h63qn6dh-02.jpg",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "byteSize": 101691,
+      "sha256": "dd7c07c1b394f1ae7463ee3e00ae478b3c1c2b65b780f2e8acf06c972a0de5d8",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H63QN6DH",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61Z-TsLnGlL._SL1209_.jpg",
+      "filename": "hathkriti-p62-b0h63qn6dh-03.jpg",
+      "dimensions": {
+        "width": 880,
+        "height": 1209
+      },
+      "byteSize": 66170,
+      "sha256": "37c4a7a64c40c0a06af3f92fe012347950983d7fc92e99b47590c3a86b7aa2e0",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 3
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H63QN6DH",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61AHo9zO3kL._SL1024_.jpg",
+      "filename": "hathkriti-p62-b0h63qn6dh-04.jpg",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "byteSize": 116639,
+      "sha256": "90a1e913d2ece4a22423ff852cca29f39ae24ff95cb239409db42031bcce9d70",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 5
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "productNumber": 75,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0HHSBGMVH",
+  "selectedVariant": "White with magenta flowers and green stems",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HHSBGMVH",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41D2BlE3cNL.jpg",
+      "filename": "hathkriti-p75-b0hhsbgmvh-01.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 26101,
+      "sha256": "aaef0c6ee1c42cabb242608f2f2bc35da14a446bbfacfa0255e39b322efaad9b",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HHSBGMVH",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41cL4DBOONL.jpg",
+      "filename": "hathkriti-p75-b0hhsbgmvh-02.jpg",
+      "dimensions": {
+        "width": 375,
+        "height": 500
+      },
+      "byteSize": 19992,
+      "sha256": "a839c66d24ce1134c38fad46fe2d72b6392eb84bae79db170f46f0b6a9d06817",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HHSBGMVH",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41BEcAfw1kL.jpg",
+      "filename": "hathkriti-p75-b0hhsbgmvh-03.jpg",
+      "dimensions": {
+        "width": 375,
+        "height": 500
+      },
+      "byteSize": 22909,
+      "sha256": "c0f5ef31f146c66034f598b399ef3a1d4eeb969799ea63e5ba9e143bf885380d",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 3
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HHSBGMVH",
+      "originalImageReference": "https://m.media-amazon.com/images/I/413+pioaLRL.jpg",
+      "filename": "hathkriti-p75-b0hhsbgmvh-04.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 27648,
+      "sha256": "51e593e2409f6cab755b0f1171a29d5f778b4cac204cb8fe96f4e31f15b64c46",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 4
+    }
+  ]
+}

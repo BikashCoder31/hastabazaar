@@ -11,12 +11,16 @@ Checkout collects a Nepal delivery address, customer email, and contact number. 
 - Currency: NPR, stored as integer paisa.
 - Buyer platform fee: NPR 0.
 - Tax collected by the platform: NPR 0 while operating under the current PAN policy.
-- Seller commission: 12%, snapshotted on each order item.
+- Seller commission: 9% by default, loaded from the marketplace setting and snapshotted on each order item.
 - Kathmandu Valley provisional delivery: NPR 150, estimated 1–3 days.
 - Terai priority districts provisional delivery: NPR 180, estimated 2–5 days.
 - Other Nepal districts provisional delivery: NPR 250, estimated 3–7 days.
 
 These delivery rates are controlled-launch defaults. Replace them with carrier-issued serviceability and quotes after the Nepal Can Move merchant contract is signed.
+
+Delivery is based on distinct stores, not product quantity. Products from the same store share one destination base fee. Each additional distinct store adds 50% of that same base fee: a Rs. 150 destination is Rs. 150 for one store, Rs. 225 for two, Rs. 300 for three and Rs. 375 for four. The server counts stable seller identities, calculates the authoritative amount, and snapshots the pricing policy, base fee, store count and charged fee on the order. Historical orders keep their recorded delivery policy and amount.
+
+After an eligible whole-store cancellation, new-policy orders recalculate the delivery fee from the distinct stores still present: three stores to two becomes Rs. 300 to Rs. 225, two to one becomes Rs. 225 to Rs. 150, and cancelling all stores removes delivery. Legacy orders without the new snapshot retain their recorded delivery accounting. The above ranges are transit time; product pages, checkout and newly created shipments include product preparation time. The full-order estimate uses the longest preparation time in the cart. Estimates are not guaranteed, and seller shipments may arrive separately. See [product delivery and returns](product-delivery-returns.md) for the shared calculation and current release boundary.
 
 ## Integrity and privacy
 

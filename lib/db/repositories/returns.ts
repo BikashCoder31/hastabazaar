@@ -1,5 +1,8 @@
+import { caseBusinessNotificationStatements } from '../../operations/business-notifications';
 import type { StaffRole } from '@/lib/auth/staff';
+import { splitCreditRefund } from './wallet';
 import type { SupportedLocale } from '@/lib/marketplace/types';
+import { roundHalfUpRatio } from '@/lib/marketplace/policy';
 import {
   evaluateReturnEligibility,
   parseReturnPolicySnapshot,
@@ -54,6 +57,7 @@ export async function createCustomerReturnRequest(
     quantity: number;
     reason: ReturnReason;
     requestedResolution: RequestedResolution;
+    originalSealIntact?: boolean;
     detail: string;
     locale: SupportedLocale;
     idempotencyKey: string;
@@ -94,8 +98,8 @@ export async function createCustomerReturnRequest(
   const item = await database
     .prepare(
       `SELECT orders.id AS orderId, order_items.id AS orderItemId,
-        orders.status AS orderStatus, order_items.fulfillment_status AS fulfillmentStatus,
-        orders.delivered_at AS deliveredAt,
+        CASE WHEN EXISTS(SELECT 1 FROM shipping_jobs j JOIN shipping_parcels p ON p.shipping_job_id=j.id WHERE j.order_id=orders.id AND j.seller_id=order_items.seller_id AND p.delivered_at IS NOT NULL) THEN 'delivered' ELSE orders.status END AS orderStatus, order_items.fulfillment_status AS fulfillmentStatus,
+        COALESCE((SELECT p.delivered_at FROM shipping_jobs j JOIN shipping_parcels p ON p.shipping_job_id=j.id WHERE j.order_id=orders.id AND j.seller_id=order_items.seller_id),orders.delivered_at) AS deliveredAt,
         orders.return_policy_snapshot_json AS policySnapshotJson, orders.locale,
         order_items.quantity AS itemQuantity,
         order_items.line_total_paisa AS lineTotalPaisa,
@@ -160,6 +164,7 @@ export async function createCustomerReturnRequest(
     deliveredAt: item.deliveredAt,
     now: options.now,
     productReturnEligible: Boolean(item.returnEligible),
+    originalSealIntact: Boolean(options.originalSealIntact),
     policy,
   });
   const id = crypto.randomUUID();
@@ -170,16 +175,17 @@ export async function createCustomerReturnRequest(
       .prepare(
         `INSERT INTO return_requests (
           id, reference_number, order_item_id, requested_by, reason, detail,
-          locale, quantity, requested_resolution, status, responsibility,
+          locale, quantity, requested_resolution, original_seal_intact,
+          status, responsibility,
           eligibility_decision, eligibility_reason_en, eligibility_reason_ne,
           policy_snapshot_json, created_request_id, operation_request_id,
           requested_at, updated_at, resolved_at, reviewed_by
-        ) SELECT ?, ?, order_items.id, NULL, ?, ?, ?, ?, ?, 'requested',
+        ) SELECT ?, ?, order_items.id, NULL, ?, ?, ?, ?, ?, ?, 'requested',
           'undetermined', ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL
           FROM order_items INNER JOIN orders ON orders.id = order_items.order_id
           WHERE order_items.id = ? AND orders.order_number = ?
             AND (orders.receipt_token_hash = ? OR orders.customer_id = ?)
-            AND orders.status = 'delivered'
+            AND (orders.status = 'delivered' OR EXISTS(SELECT 1 FROM shipping_jobs j JOIN shipping_parcels p ON p.shipping_job_id=j.id WHERE j.order_id=orders.id AND j.seller_id=order_items.seller_id AND p.delivered_at IS NOT NULL))
             AND order_items.fulfillment_status = 'delivered'
             AND NOT EXISTS (
               SELECT 1 FROM return_requests WHERE order_item_id = order_items.id
@@ -198,6 +204,7 @@ export async function createCustomerReturnRequest(
         options.locale,
         options.quantity,
         options.requestedResolution,
+        options.originalSealIntact ? 1 : 0,
         eligibility.decision,
         eligibility.reasonEn,
         eligibility.reasonNe,
@@ -273,6 +280,7 @@ export async function createCustomerReturnRequest(
           quantity: options.quantity,
           reason: options.reason,
           requestedResolution: options.requestedResolution,
+          originalSealIntact: Boolean(options.originalSealIntact),
           eligibility: eligibility.decision,
         }),
         options.idempotencyKey,
@@ -283,6 +291,16 @@ export async function createCustomerReturnRequest(
   );
 
   try {
+    statements.push(
+      ...(await caseBusinessNotificationStatements(database, {
+        sourceType: 'return_request',
+        sourceId: id,
+        eventId: options.idempotencyKey,
+        actorId: options.customerId,
+        action: 'created',
+        now: options.now,
+      })),
+    );
     const results = await database.batch(statements);
     if ((results[0].meta.changes ?? 0) !== 1) {
       throw new ReturnConflictError(
@@ -332,6 +350,7 @@ export interface ReturnCaseRow {
   detail: string;
   locale: SupportedLocale;
   requestedResolution: string;
+  originalSealIntact: number;
   status: string;
   responsibility: string;
   eligibilityDecision: string;
@@ -348,6 +367,8 @@ export interface ReturnCaseRow {
   refundId: string | null;
   refundStatus: string | null;
   refundAmountPaisa: number | null;
+  refundWalletPaisa: number | null;
+  refundDiscountPaisa: number | null;
   refundProviderReference: string | null;
 }
 
@@ -395,6 +416,7 @@ const returnSelect = `SELECT return_requests.id,
   order_items.seller_name_snapshot AS sellerName, return_requests.quantity,
   return_requests.reason, return_requests.detail, return_requests.locale,
   return_requests.requested_resolution AS requestedResolution,
+  return_requests.original_seal_intact AS originalSealIntact,
   return_requests.status, return_requests.responsibility,
   return_requests.eligibility_decision AS eligibilityDecision,
   return_requests.eligibility_reason_en AS eligibilityReasonEn,
@@ -409,6 +431,8 @@ const returnSelect = `SELECT return_requests.id,
   return_requests.resolved_at AS resolvedAt,
   refunds.id AS refundId, refunds.status AS refundStatus,
   refunds.amount_paisa AS refundAmountPaisa,
+  refunds.wallet_credit_paisa AS refundWalletPaisa,
+  refunds.referral_discount_paisa AS refundDiscountPaisa,
   refunds.provider_reference AS refundProviderReference
   FROM return_requests
   INNER JOIN order_items ON order_items.id = return_requests.order_item_id
@@ -559,6 +583,14 @@ export async function addCustomerReturnClarification(
         options.returnRequestId,
         options.requestId,
       ),
+    ...(await caseBusinessNotificationStatements(database, {
+      sourceType: 'return_request',
+      sourceId: options.returnRequestId,
+      eventId: options.requestId,
+      actorId: options.customerId,
+      action: 'customer_response',
+      now: options.now,
+    })),
   ]);
   if ((results[0].meta.changes ?? 0) !== 1) {
     throw new ReturnConflictError(
@@ -649,7 +681,7 @@ export async function respondToReturnAsSeller(
           actor_type, public_message_en, public_message_ne, internal_note,
           request_id, created_at
         ) SELECT ?, id, 'requested', 'under_investigation', 'seller_responded', ?,
-          'seller', 'Seller response received; Hastabazaar is investigating.',
+          'seller', 'Seller response received; HastaBazaar is investigating.',
           'विक्रेताको जवाफ प्राप्त भयो; हथकृति जाँच गर्दैछ।', ?, ?, ?
           FROM return_requests WHERE id = ? AND operation_request_id = ?`,
       )
@@ -684,6 +716,14 @@ export async function respondToReturnAsSeller(
         options.returnRequestId,
         options.requestId,
       ),
+    ...(await caseBusinessNotificationStatements(database, {
+      sourceType: 'return_request',
+      sourceId: options.returnRequestId,
+      eventId: options.requestId,
+      actorId: options.actorId,
+      action: 'seller_response',
+      now: options.now,
+    })),
   ]);
   if ((results[0].meta.changes ?? 0) !== 1) {
     throw new ReturnConflictError(
@@ -773,7 +813,10 @@ export async function reviewReturnAsAdmin(
         orders.id AS orderId, orders.delivery_charge_paisa AS deliveryChargePaisa,
         order_items.id AS orderItemId, order_items.seller_id AS sellerId,
         order_items.quantity AS itemQuantity, order_items.line_total_paisa AS lineTotalPaisa,
-        order_items.tax_paisa AS taxPaisa, payments.id AS paymentId
+        order_items.tax_paisa AS taxPaisa,
+        COALESCE(order_items.commission_base_paisa,
+          order_items.line_total_paisa - order_items.seller_discount_paisa) AS commissionBasePaisa,
+        payments.id AS paymentId
        FROM return_requests
        INNER JOIN order_items ON order_items.id = return_requests.order_item_id
        INNER JOIN orders ON orders.id = order_items.order_id
@@ -793,6 +836,7 @@ export async function reviewReturnAsAdmin(
       itemQuantity: number;
       lineTotalPaisa: number;
       taxPaisa: number;
+      commissionBasePaisa: number;
       paymentId: string | null;
     }>();
   if (
@@ -823,6 +867,8 @@ export async function reviewReturnAsAdmin(
   let itemRefundPaisa = 0;
   let deliveryRefundPaisa = 0;
   let amountPaisa = 0;
+  let commissionBaseRefundedPaisa = 0;
+  let refundCredit = { walletPaisa: 0, discountPaisa: 0, basePaisa: 0 };
 
   if (options.action === 'approve') {
     if (!options.outcome || !options.responsibility)
@@ -871,11 +917,44 @@ export async function reviewReturnAsAdmin(
         throw new ReturnConflictError(
           'The approved refund must be greater than zero.',
         );
+      const maximumCommissionBaseRefund = roundHalfUpRatio(
+        current.commissionBasePaisa,
+        current.quantity,
+        current.itemQuantity,
+      );
+      commissionBaseRefundedPaisa = Math.min(
+        itemRefundPaisa,
+        maximumCommissionBaseRefund,
+      );
+      const existingCommissionBase = await database
+        .prepare(
+          `SELECT COALESCE(SUM(refunds.commission_base_refunded_paisa), 0) AS amount
+           FROM refunds
+           INNER JOIN return_requests ON return_requests.id = refunds.return_request_id
+           WHERE return_requests.order_item_id = ?
+             AND refunds.status NOT IN ('rejected', 'failed')`,
+        )
+        .bind(current.orderItemId)
+        .first<{ amount: number }>();
+      if (
+        Number(existingCommissionBase?.amount ?? 0) +
+          commissionBaseRefundedPaisa >
+        current.commissionBasePaisa
+      ) {
+        throw new ReturnConflictError(
+          'The cumulative refunded merchandise exceeds the original commission base.',
+        );
+      }
       const policy = parseReturnPolicySnapshot(current.policySnapshotJson);
       isHighValue = amountPaisa >= policy.highValueRefundThresholdPaisa;
       toStatus = isHighValue ? 'pending_high_value_approval' : 'approved';
       refundStatus = isHighValue ? 'pending_high_value_approval' : 'approved';
       refundId = crypto.randomUUID();
+      refundCredit = await splitCreditRefund(
+        database,
+        current.orderId,
+        itemRefundPaisa,
+      );
     }
   }
 
@@ -912,8 +991,10 @@ export async function reviewReturnAsAdmin(
             item_amount_paisa, delivery_amount_paisa, reason, requested_by,
             approved_by, high_value_approved_by, processed_by, liability,
             is_high_value, operation_request_id, provider_reference,
-            requested_at, approved_at, processed_at
-          ) SELECT ?, ?, id, ?, ?, ?, ?, ?, ?, requested_by, ?, NULL, NULL, ?, ?, ?, NULL, ?, ?, NULL
+            requested_at, approved_at, processed_at, wallet_credit_paisa,
+            referral_discount_paisa, credit_base_paisa,
+            commission_base_refunded_paisa, commission_reversal_paisa
+          ) SELECT ?, ?, id, ?, ?, ?, ?, ?, ?, requested_by, ?, NULL, NULL, ?, ?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, 0
             FROM return_requests WHERE id = ? AND operation_request_id = ?`,
         )
         .bind(
@@ -931,6 +1012,10 @@ export async function reviewReturnAsAdmin(
           options.requestId,
           options.now,
           isHighValue ? null : options.now,
+          refundCredit.walletPaisa,
+          refundCredit.discountPaisa,
+          refundCredit.basePaisa,
+          commissionBaseRefundedPaisa,
           options.returnRequestId,
           options.requestId,
         ),
@@ -1004,6 +1089,16 @@ export async function reviewReturnAsAdmin(
         options.returnRequestId,
         options.requestId,
       ),
+  );
+  statements.push(
+    ...(await caseBusinessNotificationStatements(database, {
+      sourceType: 'return_request',
+      sourceId: options.returnRequestId,
+      eventId: options.requestId,
+      actorId: options.actorId,
+      action: options.action,
+      now: options.now,
+    })),
   );
   const results = await database.batch(statements);
   if ((results[0].meta.changes ?? 0) !== 1)
@@ -1128,6 +1223,14 @@ export async function decideHighValueRefund(
         current.refundId,
         options.requestId,
       ),
+    ...(await caseBusinessNotificationStatements(database, {
+      sourceType: 'return_request',
+      sourceId: options.returnRequestId,
+      eventId: options.requestId,
+      actorId: options.actorId,
+      action: 'high_value_decision',
+      now: options.now,
+    })),
   ]);
   if (
     (results[0].meta.changes ?? 0) !== 1 ||
@@ -1180,7 +1283,11 @@ export async function advanceReturnAsAdmin(
         products.inventory_quantity AS inventoryQuantity,
         refunds.id AS refundId, refunds.status AS refundStatus,
         refunds.amount_paisa AS refundAmountPaisa,
-        refunds.liability AS refundLiability
+        refunds.liability AS refundLiability,
+        refunds.commission_base_refunded_paisa AS commissionBaseRefundedPaisa,
+        COALESCE(order_items.commission_base_paisa,
+          order_items.line_total_paisa - order_items.seller_discount_paisa) AS originalCommissionBasePaisa,
+        order_items.commission_paisa AS originalCommissionPaisa
        FROM return_requests
        INNER JOIN order_items ON order_items.id = return_requests.order_item_id
        INNER JOIN orders ON orders.id = order_items.order_id
@@ -1203,6 +1310,9 @@ export async function advanceReturnAsAdmin(
       refundStatus: string | null;
       refundAmountPaisa: number | null;
       refundLiability: string | null;
+      commissionBaseRefundedPaisa: number | null;
+      originalCommissionBasePaisa: number;
+      originalCommissionPaisa: number;
     }>();
   if (!current) throw new ReturnConflictError('Return request not found.');
   const restock = options.restockQuantity ?? 0;
@@ -1447,7 +1557,7 @@ export async function advanceReturnAsAdmin(
       database
         .prepare(
           `UPDATE orders SET payment_status = CASE
-            WHEN (SELECT COALESCE(SUM(amount_paisa), 0) FROM refunds WHERE order_id = orders.id AND status = 'paid') >= grand_total_paisa THEN 'refunded'
+            WHEN (SELECT COALESCE(SUM(amount_paisa), 0) FROM refunds WHERE order_id = orders.id AND status = 'paid') >= COALESCE(current_total_paisa,grand_total_paisa) + COALESCE(current_wallet_paisa,wallet_credit_paisa) + COALESCE(current_discount_paisa,referral_discount_paisa) THEN 'refunded'
             ELSE 'part_refunded' END, updated_at = ? WHERE id = ?`,
         )
         .bind(options.now, current.orderId),
@@ -1457,10 +1567,81 @@ export async function advanceReturnAsAdmin(
       database
         .prepare(
           `UPDATE orders SET payment_status = CASE
-            WHEN (SELECT COALESCE(SUM(amount_paisa), 0) FROM refunds WHERE order_id = orders.id AND status = 'paid') >= grand_total_paisa THEN 'refunded'
+            WHEN (SELECT COALESCE(SUM(amount_paisa), 0) FROM refunds WHERE order_id = orders.id AND status = 'paid') >= COALESCE(current_total_paisa,grand_total_paisa) + COALESCE(current_wallet_paisa,wallet_credit_paisa) + COALESCE(current_discount_paisa,referral_discount_paisa) THEN 'refunded'
             ELSE 'part_refunded' END, updated_at = ? WHERE id = ?`,
         )
         .bind(options.now, current.orderId),
+    );
+  }
+  if (resolvedOutcome === 'refund' && current.refundId) {
+    statements.push(
+      database
+        .prepare(
+          `UPDATE refunds AS current_refund
+           SET commission_reversal_paisa = CASE
+             WHEN (SELECT COALESCE(commission_base_paisa,
+                    line_total_paisa - seller_discount_paisa)
+                   FROM order_items WHERE id = ?) = 0 THEN 0
+             ELSE (
+               (2 * (SELECT commission_paisa FROM order_items WHERE id = ?) *
+                 (SELECT COALESCE(SUM(r.commission_base_refunded_paisa), 0)
+                  FROM refunds r
+                  INNER JOIN return_requests rr ON rr.id = r.return_request_id
+                  WHERE rr.order_item_id = ? AND r.status = 'paid') +
+                 (SELECT COALESCE(commission_base_paisa,
+                    line_total_paisa - seller_discount_paisa)
+                  FROM order_items WHERE id = ?)) /
+               (2 * (SELECT COALESCE(commission_base_paisa,
+                    line_total_paisa - seller_discount_paisa)
+                  FROM order_items WHERE id = ?))
+             ) - (
+               SELECT COALESCE(SUM(r.commission_reversal_paisa), 0)
+               FROM refunds r
+               INNER JOIN return_requests rr ON rr.id = r.return_request_id
+               WHERE rr.order_item_id = ? AND r.status = 'paid'
+                 AND r.id <> current_refund.id
+             )
+           END
+           WHERE current_refund.id = ? AND current_refund.status = 'paid'
+             AND current_refund.operation_request_id = ?`,
+        )
+        .bind(
+          current.orderItemId,
+          current.orderItemId,
+          current.orderItemId,
+          current.orderItemId,
+          current.orderItemId,
+          current.orderItemId,
+          current.refundId,
+          options.requestId,
+        ),
+      database
+        .prepare(
+          `INSERT OR IGNORE INTO seller_ledger_entries (
+            id, seller_id, order_item_id, refund_id, type, amount_paisa,
+            available_at, description, created_at
+          ) SELECT ?, order_items.seller_id, order_items.id, refunds.id,
+            'commission_reversal', refunds.commission_reversal_paisa, ?, ?, ?
+            FROM refunds
+            INNER JOIN return_requests ON return_requests.id = refunds.return_request_id
+            INNER JOIN order_items ON order_items.id = return_requests.order_item_id
+            WHERE refunds.id = ? AND refunds.status = 'paid'
+              AND refunds.operation_request_id = ?
+              AND refunds.commission_reversal_paisa > 0
+              AND EXISTS (
+                SELECT 1 FROM seller_ledger_entries original_commission
+                WHERE original_commission.order_item_id = order_items.id
+                  AND original_commission.type = 'commission'
+              )`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          options.now,
+          `Commission reversal for paid refund ${current.refundId}`,
+          options.now,
+          current.refundId,
+          options.requestId,
+        ),
     );
   }
   statements.push(
@@ -1508,6 +1689,16 @@ export async function advanceReturnAsAdmin(
         options.returnRequestId,
         options.requestId,
       ),
+  );
+  statements.push(
+    ...(await caseBusinessNotificationStatements(database, {
+      sourceType: 'return_request',
+      sourceId: options.returnRequestId,
+      eventId: options.requestId,
+      actorId: options.actorId,
+      action: options.action,
+      now: options.now,
+    })),
   );
   const results = await database.batch(statements);
   if ((results[0].meta.changes ?? 0) !== 1)

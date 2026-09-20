@@ -1,0 +1,84 @@
+{
+  "productNumber": 3,
+  "status": "prepared_not_entered",
+  "source": {
+    "shortUrl": "https://amzn.in/d/09MRdsGw",
+    "canonicalUrl": "https://www.amazon.in/dp/B0CM6LBD6L",
+    "asin": "B0CM6LBD6L",
+    "selectedVariant": "Terracotta Danglers Earrings",
+    "sourcePriceInr": 529,
+    "sourceReturnStatus": "10 days Returnable"
+  },
+  "listing": {
+    "category": "Jewelry & accessories",
+    "title": "AAKRITI ART CREATIONS Handmade Tribal Terracotta Dangle Earrings - Multicolor",
+    "occasions": [
+      "Birthday gifts",
+      "Wedding gifts",
+      "Anniversary"
+    ],
+    "description": "Handcrafted tribal-style dangle earrings made with brass bells, cotton thread, a terracotta pot motif and wooden beads. This multicolor pair has a matte finish and a lightweight hook design suited to ethnic, festive, wedding, office and casual outfits. The package contains one pair of earrings.",
+    "dimensions": null,
+    "licenceReference": null,
+    "careInstructions": null,
+    "safetyInformation": null,
+    "warrantyOffered": true,
+    "warrantyMonths": 1,
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "preparationDays": 3,
+    "manufactureDate": null,
+    "expiryDate": null,
+    "madeToOrder": false,
+    "sellingPriceNpr": 1046,
+    "originalPriceNpr": 2092,
+    "discountPercent": 50,
+    "stockQuantity": 10,
+    "returnEligible": true,
+    "suggestedInternalReference": "HB-AAC-B0CM6LBD6L-TERRACOTTA-DANGLERS",
+    "priceFormula": "round(529 × 1.6 + 200)"
+  },
+  "verifiedFacts": {
+    "brandManufacturer": "Aakriti Art Creations",
+    "itemPartNumber": "AAC-40-02-42-H",
+    "materials": [
+      "Brass bells",
+      "Cotton thread",
+      "Terracotta pot component",
+      "Wooden beads"
+    ],
+    "metal": "Brass",
+    "gemstone": "No gemstone",
+    "colour": "Multicolor",
+    "countryOfOrigin": "India",
+    "packageContents": "One pair of earrings"
+  },
+  "sourceConflicts": [
+    {
+      "field": "dimensions",
+      "textSpecification": "2 x 2 x 6 cm",
+      "dimensionImage": "6.3 x 1.5 cm",
+      "listingValue": null
+    },
+    {
+      "field": "itemWeight",
+      "featureText": "0.024 kg",
+      "technicalDetails": "20 g",
+      "listingValue": null
+    }
+  ],
+  "sourceWarranty": "No Warranty",
+  "sellerWarranty": "1 month",
+  "images": [
+    "images/hb-aac-b0cm6lbd6l-terracotta-danglers-01.jpg",
+    "images/hb-aac-b0cm6lbd6l-terracotta-danglers-02.jpg",
+    "images/hb-aac-b0cm6lbd6l-terracotta-danglers-03.jpg",
+    "images/hb-aac-b0cm6lbd6l-terracotta-danglers-04.jpg"
+  ],
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 1046,
+    "originalPriceNpr": 2092,
+    "discountPercent": 50
+  }
+}

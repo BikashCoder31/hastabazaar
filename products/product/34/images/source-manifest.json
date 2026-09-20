@@ -1,0 +1,37 @@
+{
+  "productNumber": 34,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two distinct exact-variant product-gallery images were available.",
+  "sourcePage": "https://www.amazon.in/dp/B0H6QXPFVV",
+  "selectedVariant": "Beige and brown",
+  "requiredImageCount": 4,
+  "includedImageCount": 2,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H6QXPFVV",
+      "originalImageReference": "https://m.media-amazon.com/images/I/715MuWMWvEL._SL1254_.jpg",
+      "filename": "hathkriti-p34-b0h6qxpfvv-01.jpg",
+      "dimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "byteSize": 181981,
+      "sha256": "30111672e3f36862e328220875b3a6a28bd47923890abf7656c5713c63117baa",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0H6QXPFVV",
+      "originalImageReference": "https://m.media-amazon.com/images/I/715Hp6QovzL._SL1254_.jpg",
+      "filename": "hathkriti-p34-b0h6qxpfvv-02.jpg",
+      "dimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "byteSize": 176718,
+      "sha256": "7101f4932744d7bbee043f3c3610e3f18cbe819a7e8f0abe07315bb1be81bc9c",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "productNumber": 32,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0aYiXHln",
+    "canonicalUrl": "https://www.amazon.in/dp/B0GTZ76F4D",
+    "asin": "B0GTZ76F4D",
+    "capturedPriceInr": 449,
+    "amazonReturnEligibility": "10 days Returnable"
+  },
+  "verifiedSourceFacts": {
+    "sourceTitle": "VENUS MEMSAHAB Multicolour Thread & Beaded Drop Earrings",
+    "brand": "VENUS MEMSAHAB",
+    "manufacturer": "VENUS MEMSAHAB",
+    "modelOrIdentifier": "VMS019",
+    "materials": "Beads and thread; no gemstone",
+    "colourAndVariant": "Multicolour; Single source style",
+    "dimensions": "9.5 × 3.5 × 1 cm",
+    "weight": "200 g",
+    "packageContents": "Net quantity: 1 count",
+    "careInstructions": "Requires Seller input.",
+    "countryOfOrigin": "India",
+    "returnEligibility": "10 days Returnable",
+    "warranty": "Not stated on source; leave blank."
+  },
+  "rewrittenMarketingCopy": {
+    "storefrontTitle": "VENUS MEMSAHAB Multicolour Thread & Beaded Drop Earrings",
+    "description": "Multicolour drop earrings made with wrapped-thread beads and small bead accents. The vibrant handcrafted design suits casual wear, vacations and festive styling.",
+    "keyFeatures": [
+      "Multicolour wrapped-thread beads",
+      "Delicate bead accents",
+      "Playful drop silhouette",
+      "Handmade statement design"
+    ],
+    "seoTitle": "VENUS MEMSAHAB Multicolour Thread & Beaded Drop Earrings | Hastabazaar",
+    "seoDescription": "VENUS MEMSAHAB Multicolour Thread & Beaded Drop Earrings. Multicolour drop earrings made with wrapped-thread beads and small bead accents. The vibrant handcra"
+  },
+  "suggestedValues": {
+    "category": "Jewellery > Earrings",
+    "tags": [
+      "earrings",
+      "handmade jewellery",
+      "thread",
+      "beaded"
+    ],
+    "sku": "HB-ER-B0GTZ76F4D-MULTICOLOUR",
+    "pricing": {
+      "formula": "round(449 × 1.6 + 150)",
+      "sellingPriceNpr": 868,
+      "originalPriceNpr": 1736,
+      "discountPercent": 50
+    },
+    "stockQuantity": 10,
+    "preparationTimeDays": 3,
+    "returnWording": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "listingPurpose": "Genuine commercial listing"
+  },
+  "valuesSellerMustSupply": [
+    "Shipping weight and package dimensions if Hastabazaar requires shipping-specific values; item/package values above may not be shipping measurements.",
+    "Any safety warning required for this exact product; none was stated on the source page."
+  ],
+  "legalOrAuthenticityConcerns": [
+    "The stated 200 g weight appears high for earrings and should be confirmed by the Seller.",
+    "Skin-friendly and durability claims were omitted because the source provided no supporting test information.",
+    "User states that resale and image-reuse rights are authorized; this has not been independently verified.",
+    "Permanent legal documents and policy identifiers are pending. Do not enable genuine public orders until those controls are complete."
+  ],
+  "images": {
+    "selectedCount": 4,
+    "requestedMaximum": 4,
+    "videoDownloaded": false,
+    "exactDuplicatesExcluded": 0,
+    "order": [
+      "hb-er-b0gtz76f4d-multicolour-01.jpg",
+      "hb-er-b0gtz76f4d-multicolour-02.jpg",
+      "hb-er-b0gtz76f4d-multicolour-03.jpg",
+      "hb-er-b0gtz76f4d-multicolour-04.jpg"
+    ]
+  },
+  "publication": {
+    "preparedOnly": true,
+    "enteredInHastabazaar": false,
+    "published": false
+  }
+}

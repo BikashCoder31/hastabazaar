@@ -1,0 +1,73 @@
+{
+  "productNumber": 51,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0bbI4nc7",
+    "canonicalUrl": "https://www.amazon.in/dp/B0F5P8H5D5",
+    "asin": "B0F5P8H5D5",
+    "sourceTitle": "Vibrant Ethnic Dangler Earrings for Women & Girls Stylish | Boho Chic Multi-color Statement Jhumki Earrings | Jhumka for Navratri, Dandiya Garba, Mehendi, Sangeet, Ethnic Parties, Raksha Bandhan, Diwali, Eid.",
+    "sourcePriceInr": 178.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Kailash Creation Multicolour Feather & Thread Jhumki Earrings",
+    "brand": "Kailash Creation",
+    "manufacturer": "Kailash Creation",
+    "description": "Kailash Creation Multicolour Feather & Thread Jhumki Earrings features multicolour feather-and-thread fusion design. It combines boho jhumki silhouette with screw-back finding. Statement length for festive styling.",
+    "keyFeatures": [
+      "Multicolour feather-and-thread fusion design",
+      "Boho jhumki silhouette",
+      "Screw-back finding",
+      "Statement length for festive styling"
+    ],
+    "specifications": {
+      "colourAndVariant": "1 Multicolor",
+      "dimensions": "10 × 4.99 × 2 cm",
+      "weight": "80 g",
+      "modelOrIdentifier": "KC7058_1; ASIN B0F5P8H5D5",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Alloy steel, feather and thread detailing",
+    "packageContents": "1 pack of jhumki earrings",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Jewellery > Women > Earrings",
+    "tags": [
+      "multicolour jhumki",
+      "feather earrings",
+      "thread earrings",
+      "boho jewellery",
+      "festival earrings"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Kailash Creation Multicolour Feather & Thread Jhumki Earrings | Hathkriti",
+    "seoDescription": "Kailash Creation Multicolour Feather & Thread Jhumki Earrings from Hathkriti. Multicolour feather-and-thread fusion design. Colour/variant: 1 Multicolor."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 485,
+    "originalPriceNpr": 970,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p51-b0f5p8h5d5-01.jpg",
+      "images/hathkriti-p51-b0f5p8h5d5-02.jpg",
+      "images/hathkriti-p51-b0f5p8h5d5-03.jpg",
+      "images/hathkriti-p51-b0f5p8h5d5-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

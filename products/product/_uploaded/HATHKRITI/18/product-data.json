@@ -1,0 +1,90 @@
+{
+  "productNumber": 18,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0bW1rdoH",
+    "canonicalUrl": "https://www.amazon.in/dp/B0DKJYCF2B",
+    "asin": "B0DKJYCF2B",
+    "capturedPriceInr": 299,
+    "amazonReturnEligibility": "10 days Returnable"
+  },
+  "verifiedSourceFacts": {
+    "sourceTitle": "KHOJ.CITY Pink Handmade Boho Drop Earrings",
+    "brand": "KHOJ.CITY",
+    "manufacturer": "EKHOJ ENTERPRISES PRIVATE LIMITED",
+    "modelOrIdentifier": "HM-ER-053",
+    "materials": "MDF board, fabric, acrylic colours, beads and thread; no metal; no gemstone",
+    "colourAndVariant": "Pink; Colour: Pink",
+    "dimensions": "6 × 3 × 0.3 cm",
+    "weight": "Source conflict: 22 g in feature text; 25 g in product details",
+    "packageContents": "Net quantity: 1 set",
+    "careInstructions": "Store in a dry place to preserve the colours and fabric texture.",
+    "countryOfOrigin": "Requires Seller input; country of origin was not displayed in the captured facts.",
+    "returnEligibility": "10 days Returnable",
+    "warranty": "Not stated on source; leave blank."
+  },
+  "rewrittenMarketingCopy": {
+    "storefrontTitle": "KHOJ.CITY Pink Handmade Boho Drop Earrings",
+    "description": "Pink handmade statement earrings built on a fabric-covered MDF base and decorated with mirror-style work, silver-tone bead embroidery and white pearl accents. Designed for ethnic and bohemian styling.",
+    "keyFeatures": [
+      "Fabric-over-MDF base",
+      "Mirror-style work and silver-tone bead embroidery",
+      "White pearl accents",
+      "Handmade statement design"
+    ],
+    "seoTitle": "KHOJ.CITY Pink Handmade Boho Drop Earrings | Hastabazaar",
+    "seoDescription": "KHOJ.CITY Pink Handmade Boho Drop Earrings. Pink handmade statement earrings built on a fabric-covered MDF base and decorated with mirror-style work, silver-t"
+  },
+  "suggestedValues": {
+    "category": "Jewellery > Earrings",
+    "tags": [
+      "earrings",
+      "handmade jewellery",
+      "boho"
+    ],
+    "sku": "HB-ER-B0DKJYCF2B-PINK",
+    "pricing": {
+      "formula": "round(299 × 1.6 + 200)",
+      "sellingPriceNpr": 678,
+      "originalPriceNpr": 1356,
+      "discountPercent": 50
+    },
+    "stockQuantity": 10,
+    "preparationTimeDays": 3,
+    "returnWording": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "listingPurpose": "Genuine commercial listing"
+  },
+  "valuesSellerMustSupply": [
+    "Shipping weight and package dimensions if Hastabazaar requires shipping-specific values; item/package values above may not be shipping measurements.",
+    "Any safety warning required for this exact product; none was stated on the source page."
+  ],
+  "legalOrAuthenticityConcerns": [
+    "The source gives two different weights (22 g and 25 g); Seller must verify the correct item weight.",
+    "Four distinct source-gallery images matched this exact pink earring design; unrelated product promotions were excluded.",
+    "User states that resale and image-reuse rights are authorized; this has not been independently verified.",
+    "Permanent legal documents and policy identifiers are pending. Do not enable genuine public orders until those controls are complete."
+  ],
+  "images": {
+    "selectedCount": 4,
+    "requestedMaximum": 4,
+    "videoDownloaded": false,
+    "exactDuplicatesExcluded": 0,
+    "order": [
+      "hb-er-b0dkjycf2b-pink-01.jpg",
+      "hb-er-b0dkjycf2b-pink-02.jpg",
+      "hb-er-b0dkjycf2b-pink-03.jpg",
+      "hb-er-b0dkjycf2b-pink-04.jpg"
+    ]
+  },
+  "publication": {
+    "preparedOnly": true,
+    "enteredInHastabazaar": false,
+    "published": false
+  },
+  "pricingRevision": {
+    "revisedAt": "2026-09-17",
+    "rule": "round(source price INR × 1.6 + 200)",
+    "sellingPriceNpr": 678,
+    "originalPriceNpr": 1356,
+    "discountPercent": 50
+  }
+}

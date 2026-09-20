@@ -1,0 +1,63 @@
+{
+  "productNumber": 64,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0F6K8H2K2",
+  "selectedVariant": "Multicolour bird, flower and butterfly embroidery",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0F6K8H2K2",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41ZBq5U5Y6L.jpg",
+      "filename": "hathkriti-p64-b0f6k8h2k2-01.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 19001,
+      "sha256": "996ff0a7c7de7f842905a5997adcfab6d0a936271d171ef2fffb16b22c8d7ea1",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0F6K8H2K2",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41+KPz9UMSL.jpg",
+      "filename": "hathkriti-p64-b0f6k8h2k2-02.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 17785,
+      "sha256": "32d0fd1af87adeaa33d946676ba6e624ddd9061ce6df639a72a09d4b476833bf",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0F6K8H2K2",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41AoZwx96ZL.jpg",
+      "filename": "hathkriti-p64-b0f6k8h2k2-03.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 24270,
+      "sha256": "43af21987b6b87342d979476c6abc75a29a5eea830140c7cd398d8181ca58f82",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 7
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0F6K8H2K2",
+      "originalImageReference": "https://m.media-amazon.com/images/I/31UNVUkaeHL.jpg",
+      "filename": "hathkriti-p64-b0f6k8h2k2-04.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 9756,
+      "sha256": "7d3534d21b853c415d966e12c5c223d1e876d32010463956e45ceb6a63601ea0",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 8
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "productNumber": 72,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two distinct exact-variant product-gallery images were available.",
+  "sourcePage": "https://www.amazon.in/dp/B0HFPQW1B8",
+  "selectedVariant": "Sky Blue",
+  "requiredImageCount": 4,
+  "includedImageCount": 2,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HFPQW1B8",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41Dp4bUWUOL.jpg",
+      "filename": "hathkriti-p72-b0hfpqw1b8-01.jpg",
+      "dimensions": {
+        "width": 400,
+        "height": 500
+      },
+      "byteSize": 26888,
+      "sha256": "8e779dc305267c704d90e4b379f6fcbe3dade8652990c79882306b5808aee777",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HFPQW1B8",
+      "originalImageReference": "https://m.media-amazon.com/images/I/51AF1K75XFL.jpg",
+      "filename": "hathkriti-p72-b0hfpqw1b8-02.jpg",
+      "dimensions": {
+        "width": 400,
+        "height": 500
+      },
+      "byteSize": 37525,
+      "sha256": "14471bc7450a8f99a08e36c8d1448530f136cff3934bbe006efcff30a8dff39c",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    }
+  ]
+}

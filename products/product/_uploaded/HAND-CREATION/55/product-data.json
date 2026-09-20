@@ -1,0 +1,73 @@
+{
+  "productNumber": 55,
+  "preparationStatus": "uploaded-user-confirmed",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/0csy9Inj",
+    "canonicalUrl": "https://www.amazon.in/dp/B0CYCLDJXV",
+    "asin": "B0CYCLDJXV",
+    "sourceTitle": "Kalankit Gifts For Rakhi For Sister | Rakhi Gift Hampers For Woman, Sling Bag For Women, Travel Crossbody Bags, Stylish Cross Sling Bags for Women | Sister Rakhi Gifts, Rakshabandhan Gifts For Girls",
+    "sourcePriceInr": 1499.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Kalankit Blue Round Vegan-Leather Crossbody Sling Bag",
+    "brand": "Kalankit",
+    "manufacturer": "Kalankit / Simply Unusual Pvt. Ltd.",
+    "description": "Kalankit Blue Round Vegan-Leather Crossbody Sling Bag features round compact crossbody silhouette. It combines zippered centre pocket and side slip pocket with detachable adjustable sling strap. Textured finish with gold-tone detailing.",
+    "keyFeatures": [
+      "Round compact crossbody silhouette",
+      "Zippered centre pocket and side slip pocket",
+      "Detachable adjustable sling strap",
+      "Textured finish with gold-tone detailing"
+    ],
+    "specifications": {
+      "colourAndVariant": "Blue",
+      "dimensions": "19 × 8 × 19 cm; source feature text states 19 × 19 × 10 cm",
+      "weight": "420 g",
+      "modelOrIdentifier": "WBG-SL1-RO08-VLTN-K6S-22004; ASIN B0CYCLDJXV",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Vegan leather",
+    "packageContents": "1 sling bag",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags > Sling & Cross-Body Bags",
+    "tags": [
+      "blue sling bag",
+      "round crossbody bag",
+      "vegan leather bag",
+      "Kalankit bag",
+      "women's handbag"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Kalankit Blue Round Vegan-Leather Crossbody Sling Bag | Hathkriti",
+    "seoDescription": "Kalankit Blue Round Vegan-Leather Crossbody Sling Bag from Hathkriti. Round compact crossbody silhouette. Colour/variant: Blue."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 2598,
+    "originalPriceNpr": 5196,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p55-b0cycldjxv-01.jpg",
+      "images/hathkriti-p55-b0cycldjxv-02.jpg",
+      "images/hathkriti-p55-b0cycldjxv-03.jpg",
+      "images/hathkriti-p55-b0cycldjxv-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

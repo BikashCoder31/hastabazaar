@@ -1,7 +1,11 @@
 import { env } from 'cloudflare:workers';
 import { redirect } from 'next/navigation';
 
-import { getChatGPTUser, requireChatGPTUser, type ChatGPTUser } from '@/app/chatgpt-auth';
+import {
+  getAuthenticatedUser,
+  requireAuthenticatedUser,
+  type AuthenticatedUser,
+} from '@/app/auth';
 import { requireDatabase } from '@/lib/db/d1';
 
 export interface CustomerUser {
@@ -34,7 +38,7 @@ async function findCustomerBySubject(database: D1Database, authSubject: string):
   ).bind(authSubject).first<CustomerUser>()) ?? null;
 }
 
-async function resolveCustomer(database: D1Database, identity: ChatGPTUser): Promise<CustomerUser> {
+async function resolveCustomer(database: D1Database, identity: AuthenticatedUser): Promise<CustomerUser> {
   const bySubject = await findCustomerBySubject(database, identity.userId);
   if (bySubject) return bySubject;
 
@@ -69,13 +73,13 @@ async function resolveCustomer(database: D1Database, identity: ChatGPTUser): Pro
 }
 
 export async function getCustomerUser(): Promise<CustomerUser | null> {
-  const identity = await getChatGPTUser();
+  const identity = await getAuthenticatedUser();
   if (!identity) return null;
   return resolveCustomer(databaseFromEnvironment(), identity);
 }
 
 export async function requireCustomerPage(returnTo: string): Promise<CustomerUser> {
-  const identity = await requireChatGPTUser(returnTo);
+  const identity = await requireAuthenticatedUser(returnTo);
   try {
     return await resolveCustomer(databaseFromEnvironment(), identity);
   } catch (error) {
@@ -85,7 +89,7 @@ export async function requireCustomerPage(returnTo: string): Promise<CustomerUse
 }
 
 export async function requireCustomerApi(): Promise<CustomerUser> {
-  const identity = await getChatGPTUser();
+  const identity = await getAuthenticatedUser();
   if (!identity) throw new CustomerAuthorizationError('Authentication is required.', 401);
   return resolveCustomer(databaseFromEnvironment(), identity);
 }

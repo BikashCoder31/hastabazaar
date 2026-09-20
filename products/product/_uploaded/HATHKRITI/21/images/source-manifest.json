@@ -1,0 +1,58 @@
+{
+  "productNumber": 21,
+  "sourcePage": "https://amzn.in/d/00ah51Bz",
+  "canonicalSourcePage": "https://www.amazon.in/dp/B0DL4MD6BX",
+  "selectionRule": "Up to four distinct ordinary product images from the Amazon product gallery; videos, review images, ads and unrelated media excluded.",
+  "videoDownloaded": false,
+  "exactDuplicatesFoundAndExcluded": [],
+  "images": [
+    {
+      "sourcePage": "https://amzn.in/d/00ah51Bz",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0DL4MD6BX",
+      "originalImageReference": "https://m.media-amazon.com/images/I/71-YqMB1aoL._SL1500_.jpg",
+      "localFilename": "hb-er-b0dl4md6bx-blue-and-green-01.jpg",
+      "dimensions": {
+        "height": 1500,
+        "width": 1061
+      },
+      "byteSize": 67598,
+      "sha256": "aa2b8cb3bb7140b10d1456ae428c2c7507eb81bc911e08f080b0bc48045c4cdb"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/00ah51Bz",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0DL4MD6BX",
+      "originalImageReference": "https://m.media-amazon.com/images/I/81qkj--c5NL._SL1500_.jpg",
+      "localFilename": "hb-er-b0dl4md6bx-blue-and-green-02.jpg",
+      "dimensions": {
+        "height": 1500,
+        "width": 1061
+      },
+      "byteSize": 167375,
+      "sha256": "b9b089216c7ed94c8eb8d7c2ca9dcf6611eac2f3d111b9b98c39aa13449d5acd"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/00ah51Bz",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0DL4MD6BX",
+      "originalImageReference": "https://m.media-amazon.com/images/I/817ICCI-lLL._SL1500_.jpg",
+      "localFilename": "hb-er-b0dl4md6bx-blue-and-green-03.jpg",
+      "dimensions": {
+        "height": 1500,
+        "width": 1061
+      },
+      "byteSize": 126081,
+      "sha256": "98aa80f1acd75491ea09a031af6d37e78dba6c32e5599426d20bb147274b531f"
+    },
+    {
+      "sourcePage": "https://amzn.in/d/00ah51Bz",
+      "canonicalSourcePage": "https://www.amazon.in/dp/B0DL4MD6BX",
+      "originalImageReference": "https://m.media-amazon.com/images/I/81Md3z0kGBL._SL1500_.jpg",
+      "localFilename": "hb-er-b0dl4md6bx-blue-and-green-04.jpg",
+      "dimensions": {
+        "height": 1500,
+        "width": 1061
+      },
+      "byteSize": 254221,
+      "sha256": "15086904c3d6ad79f40c819a5639d86fb591a62b6e58e79cb31eb43513d0ef70"
+    }
+  ]
+}

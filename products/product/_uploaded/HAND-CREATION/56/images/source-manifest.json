@@ -1,0 +1,63 @@
+{
+  "productNumber": 56,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "sourcePage": "https://www.amazon.in/dp/B0HCZGXQ6Z",
+  "selectedVariant": "Royal Red Multicolor",
+  "requiredImageCount": 4,
+  "includedImageCount": 4,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HCZGXQ6Z",
+      "originalImageReference": "https://m.media-amazon.com/images/I/81KbXhHLmQL._SL1500_.jpg",
+      "filename": "hathkriti-p56-b0hczgxq6z-01.jpg",
+      "dimensions": {
+        "width": 1500,
+        "height": 1500
+      },
+      "byteSize": 199983,
+      "sha256": "81e7542ccfb11088d4a321c5951478274e9781853e1fc2603a9b12f91358dc08",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 1
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HCZGXQ6Z",
+      "originalImageReference": "https://m.media-amazon.com/images/I/716CJqd7WzL._SL1146_.jpg",
+      "filename": "hathkriti-p56-b0hczgxq6z-02.jpg",
+      "dimensions": {
+        "width": 922,
+        "height": 1146
+      },
+      "byteSize": 231327,
+      "sha256": "ae8049238ab8dd6b565256fd640de26023c63bd5a947191cab5a1eebd3031edd",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HCZGXQ6Z",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61S-5PllyoL._SL1146_.jpg",
+      "filename": "hathkriti-p56-b0hczgxq6z-03.jpg",
+      "dimensions": {
+        "width": 922,
+        "height": 1146
+      },
+      "byteSize": 109802,
+      "sha256": "e07b8c1d7926ecdb8504dae9d8ea9da6cf44e7793cceeb99bbd7928877a0296b",
+      "selectedOrder": 3,
+      "originalGalleryIndex": 3
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B0HCZGXQ6Z",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61rrnehwpFL._SL1146_.jpg",
+      "filename": "hathkriti-p56-b0hczgxq6z-04.jpg",
+      "dimensions": {
+        "width": 922,
+        "height": 1146
+      },
+      "byteSize": 104537,
+      "sha256": "9a11342671c4ddc48c4b3c3755127425b2247433dc9bcba89c42c1c2ab6f5e49",
+      "selectedOrder": 4,
+      "originalGalleryIndex": 4
+    }
+  ]
+}

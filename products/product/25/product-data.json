@@ -1,0 +1,70 @@
+{
+  "productNumber": 25,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two distinct exact-variant product-gallery images were available.",
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/07A5Qgow",
+    "canonicalUrl": "https://www.amazon.in/dp/B07PB1RY1P",
+    "asin": "B07PB1RY1P",
+    "sourceTitle": "Tia Crafts Silk Thread Base Metal Pearl Earrings For Women & Girls",
+    "sourcePriceInr": 199.0,
+    "sourceReturnable": true
+  },
+  "listing": {
+    "storefrontTitle": "Tia Crafts Bottle Green Silk-Thread Jhumki Earrings",
+    "brand": "Tia Crafts",
+    "manufacturer": "Tia Crafts",
+    "description": "Tia Crafts Bottle Green Silk-Thread Jhumki Earrings features handcrafted silk-thread jhumki design. It combines pearl-style bead detailing with base-metal construction. French-wire hook closure.",
+    "keyFeatures": [
+      "Handcrafted silk-thread jhumki design",
+      "Pearl-style bead detailing",
+      "Base-metal construction",
+      "French-wire hook closure"
+    ],
+    "specifications": {
+      "colourAndVariant": "Bottle Green",
+      "dimensions": "Not stated; source lists package dimensions only (10.1 × 8.1 × 4.9 cm)",
+      "weight": "30 g (source-listed package weight)",
+      "modelOrIdentifier": "ASIN B07PB1RY1P",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Silk thread, base metal and pearl-style beads",
+    "packageContents": "1 pair of earrings",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Jewellery > Women > Earrings",
+    "tags": [
+      "silk thread earrings",
+      "jhumki earrings",
+      "bottle green earrings",
+      "pearl earrings"
+    ],
+    "safetyInformation": "Not stated on the source page.",
+    "seoTitle": "Tia Crafts Bottle Green Silk-Thread Jhumki Earrings | Hathkriti",
+    "seoDescription": "Tia Crafts Bottle Green Silk-Thread Jhumki Earrings from Hathkriti. Handcrafted silk-thread jhumki design. Colour/variant: Bottle Green."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 518,
+    "originalPriceNpr": 1036,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": "Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.",
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 2,
+    "files": [
+      "images/hathkriti-p25-b07pb1ry1p-01.jpg",
+      "images/hathkriti-p25-b07pb1ry1p-02.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

@@ -1,0 +1,115 @@
+{
+  "sellerAccount": "HIMALAYAN CRAFT",
+  "confirmedOn": "2026-09-18",
+  "status": "submitted-user-confirmed",
+  "uniqueProductCount": 12,
+  "dashboardRecordCountBeforeDuplicateRejection": 15,
+  "rejectedDuplicateSubmissionCount": 3,
+  "duplicateCheckRequiredBeforeFutureProcessing": true,
+  "rejectedDuplicateSubmissions": [
+    {
+      "productNumber": 63,
+      "storefrontTitle": "Boho Girl Pink Heart-Embellished Beaded Shoulder Bag",
+      "rejectedDuplicateCount": 1,
+      "note": "One duplicate dashboard submission was rejected by the user. The original submitted record remains the registered product."
+    },
+    {
+      "productNumber": 64,
+      "storefrontTitle": "Boho Girl Feathered Fantasy Embroidered Cane-Handle Tote",
+      "rejectedDuplicateCount": 1,
+      "note": "One duplicate dashboard submission was rejected by the user. The original submitted record remains the registered product."
+    },
+    {
+      "productNumber": 65,
+      "storefrontTitle": "Maresse Brown Mango-Wood Maharani-Embroidered Clutch",
+      "rejectedDuplicateCount": 1,
+      "note": "One duplicate dashboard submission was rejected by the user. The original submitted record remains the registered product."
+    }
+  ],
+  "products": [
+    {
+      "productNumber": 41,
+      "storefrontTitle": "SHILPMART Blue Crochet Nazar Keychains - Pack of 2",
+      "asin": "B0HG7V4H37",
+      "suppliedUrl": "https://amzn.in/d/03CI7pSb",
+      "canonicalUrl": "https://www.amazon.in/dp/B0HG7V4H37"
+    },
+    {
+      "productNumber": 62,
+      "storefrontTitle": "StylizShades Black Crochet Rose Flower-Pot Sling Bag",
+      "asin": "B0H63QN6DH",
+      "suppliedUrl": "https://amzn.in/d/0h83vwcT",
+      "canonicalUrl": "https://www.amazon.in/dp/B0H63QN6DH"
+    },
+    {
+      "productNumber": 63,
+      "storefrontTitle": "Boho Girl Pink Heart-Embellished Beaded Shoulder Bag",
+      "asin": "B0H2YVN43X",
+      "suppliedUrl": "https://amzn.in/d/0b7Pbil4",
+      "canonicalUrl": "https://www.amazon.in/dp/B0H2YVN43X"
+    },
+    {
+      "productNumber": 64,
+      "storefrontTitle": "Boho Girl Feathered Fantasy Embroidered Cane-Handle Tote",
+      "asin": "B0F6K8H2K2",
+      "suppliedUrl": "https://amzn.in/d/03cKlCgx",
+      "canonicalUrl": "https://www.amazon.in/dp/B0F6K8H2K2"
+    },
+    {
+      "productNumber": 65,
+      "storefrontTitle": "Maresse Brown Mango-Wood Maharani-Embroidered Clutch",
+      "asin": "B0GSGD3VWQ",
+      "suppliedUrl": "https://amzn.in/d/02CMmzR5",
+      "canonicalUrl": "https://www.amazon.in/dp/B0GSGD3VWQ"
+    },
+    {
+      "productNumber": 66,
+      "storefrontTitle": "THE TAN CLAN Flora Resham-Embroidered Evening Clutch",
+      "asin": "B0F8RDMX94",
+      "suppliedUrl": "https://amzn.in/d/08MhU0l1",
+      "canonicalUrl": "https://www.amazon.in/dp/B0F8RDMX94"
+    },
+    {
+      "productNumber": 68,
+      "storefrontTitle": "Multicolour Banjara Patchwork Cowrie-Shell Sling Bag",
+      "asin": "B0H9XXNQNF",
+      "suppliedUrl": "https://amzn.in/d/0chiK0ew",
+      "canonicalUrl": "https://www.amazon.in/dp/B0H9XXNQNF"
+    },
+    {
+      "productNumber": 71,
+      "storefrontTitle": "SHAKUNTLA VINTAGE Antique-Brass Stone-Mosaic Bridal Clutch",
+      "asin": "B0C4Y5G5JD",
+      "suppliedUrl": "https://amzn.in/d/00aAMapb",
+      "canonicalUrl": "https://www.amazon.in/dp/B0C4Y5G5JD"
+    },
+    {
+      "productNumber": 75,
+      "storefrontTitle": "White Crochet Bucket Bag with Magenta Floral Appliqués",
+      "asin": "B0HHSBGMVH",
+      "suppliedUrl": "https://amzn.in/d/0c9mkViX",
+      "canonicalUrl": "https://www.amazon.in/dp/B0HHSBGMVH"
+    },
+    {
+      "productNumber": 79,
+      "storefrontTitle": "Divyakosh Peacock Floral Side-Door Hangings - Set of 2",
+      "asin": "B0F5X3751B",
+      "suppliedUrl": "https://amzn.in/d/0dNIcnXl",
+      "canonicalUrl": "https://www.amazon.in/dp/B0F5X3751B"
+    },
+    {
+      "productNumber": 82,
+      "storefrontTitle": "CraftVatika Black-and-Gold Krishna Hand with Flute Showpiece",
+      "asin": "B0GZ7JKBVN",
+      "suppliedUrl": "https://amzn.in/d/0dnneqvf",
+      "canonicalUrl": "https://www.amazon.in/dp/B0GZ7JKBVN"
+    },
+    {
+      "productNumber": 83,
+      "storefrontTitle": "AANKI STORE19 Cherry-Blossom LED Branch Wall Décor",
+      "asin": "B0HFD9PZGH",
+      "suppliedUrl": "https://amzn.in/d/0chCzkc0",
+      "canonicalUrl": "https://www.amazon.in/dp/B0HFD9PZGH"
+    }
+  ]
+}

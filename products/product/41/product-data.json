@@ -1,0 +1,73 @@
+{
+  "productNumber": 41,
+  "preparationStatus": "ready-for-user-review",
+  "exclusionReason": null,
+  "source": {
+    "suppliedUrl": "https://amzn.in/d/03CI7pSb",
+    "canonicalUrl": "https://www.amazon.in/dp/B0HG7V4H37",
+    "asin": "B0HG7V4H37",
+    "sourceTitle": "Handmade Crochet Blue Nazar Keychain Pack of 2, Wallet Charm, Classic Nazar Key Ring, Festive Gift for Loved Ones",
+    "sourcePriceInr": 99.0,
+    "sourceReturnable": false
+  },
+  "listing": {
+    "storefrontTitle": "SHILPMART Blue Crochet Nazar Keychains - Pack of 2",
+    "brand": "SHILPMART",
+    "manufacturer": "Kumar Enterprises",
+    "description": "SHILPMART Blue Crochet Nazar Keychains - Pack of 2 features two handmade crochet Nazar keychains. It combines lobster-claw clasp with suitable for keys, bags or luggage. Blue, white and black motif.",
+    "keyFeatures": [
+      "Two handmade crochet Nazar keychains",
+      "Lobster-claw clasp",
+      "Suitable for keys, bags or luggage",
+      "Blue, white and black motif"
+    ],
+    "specifications": {
+      "colourAndVariant": "Blue, white and black Nazar pattern; pack of 2",
+      "dimensions": "15 × 5 × 2 cm",
+      "weight": "30 g",
+      "modelOrIdentifier": "CROCHET_2_08; ASIN B0HG7V4H37",
+      "countryOfOrigin": "India"
+    },
+    "materials": "Crochet yarn and faux-pearl decoration; source does not identify clasp metal",
+    "packageContents": "2 keychains",
+    "careInstructions": "Not stated on the source page.",
+    "category": "Bags & Accessories > Keyrings & Keychains",
+    "tags": [
+      "Nazar keychain",
+      "evil eye keyring",
+      "crochet charm",
+      "blue keychain",
+      "pack of 2"
+    ],
+    "safetyInformation": "Contains small decorative parts; keep away from young children.",
+    "seoTitle": "SHILPMART Blue Crochet Nazar Keychains - Pack of 2 | Hathkriti",
+    "seoDescription": "SHILPMART Blue Crochet Nazar Keychains - Pack of 2 from Hathkriti. Two handmade crochet Nazar keychains. Colour/variant: Blue, white and black Nazar pattern; pack of 2."
+  },
+  "pricing": {
+    "formula": "round(Amazon INR price × 1.6 + 200)",
+    "sellingPriceNpr": 358,
+    "originalPriceNpr": 716,
+    "displayedDiscountPercent": 50
+  },
+  "defaults": {
+    "stock": 10,
+    "preparationTimeDays": 3,
+    "warranty": "Do not promise a warranty; select 'No' only if the Seller form requires a choice.",
+    "returnConditions": null,
+    "sku": "Let Hastabazaar generate automatically.",
+    "commercialListing": true
+  },
+  "images": {
+    "requiredCount": 4,
+    "selectedCount": 4,
+    "files": [
+      "images/hathkriti-p41-b0hg7v4h37-01.jpg",
+      "images/hathkriti-p41-b0hg7v4h37-02.jpg",
+      "images/hathkriti-p41-b0hg7v4h37-03.jpg",
+      "images/hathkriti-p41-b0hg7v4h37-04.jpg"
+    ],
+    "manifest": "images/source-manifest.json"
+  },
+  "sourceConcerns": [],
+  "legalRisk": "Permanent legal and policy documents remain pending. Do not enable genuine public orders until those controls are completed and approved."
+}

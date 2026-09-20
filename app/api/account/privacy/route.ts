@@ -9,7 +9,7 @@ import {
   OperationsConflictError,
 } from '@/lib/db/repositories/operations';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
+import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 export async function POST(request: Request) {
   if (!isTrustedMutationRequest(request))
     return Response.json(

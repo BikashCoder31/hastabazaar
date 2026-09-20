@@ -1,0 +1,37 @@
+{
+  "productNumber": 85,
+  "preparationStatus": "excluded-from-active-batch",
+  "exclusionReason": "Only two distinct exact-product gallery views were available; the other candidate duplicates the main composition at lower resolution.",
+  "sourcePage": "https://www.amazon.in/dp/B08287KNH2",
+  "selectedVariant": "Multicolour; STRBEL500",
+  "requiredImageCount": 4,
+  "includedImageCount": 2,
+  "images": [
+    {
+      "sourcePage": "https://www.amazon.in/dp/B08287KNH2",
+      "originalImageReference": "https://m.media-amazon.com/images/I/61JXQapvktL._SL1500_.jpg",
+      "filename": "hathkriti-p85-b08287knh2-01.jpg",
+      "dimensions": {
+        "width": 1500,
+        "height": 1500
+      },
+      "byteSize": 122098,
+      "sha256": "3aa21f6fc07975b6729bd8132e688a3e73ef7ccebb3cb082f04f1723c5c7188f",
+      "selectedOrder": 1,
+      "originalGalleryIndex": 2
+    },
+    {
+      "sourcePage": "https://www.amazon.in/dp/B08287KNH2",
+      "originalImageReference": "https://m.media-amazon.com/images/I/41fXbQPXbIL._SL1500_.jpg",
+      "filename": "hathkriti-p85-b08287knh2-02.jpg",
+      "dimensions": {
+        "width": 500,
+        "height": 500
+      },
+      "byteSize": 24292,
+      "sha256": "55e8c2fc75a9029802a8a8a0fc9bf6e319a4e6997dc3846673d079633d3b9269",
+      "selectedOrder": 2,
+      "originalGalleryIndex": 3
+    }
+  ]
+}
