@@ -2,6 +2,7 @@ import {
   getBusinessSettingDefinition,
   validateBusinessSettingValue,
 } from '../../configuration/definitions';
+import { assertBusinessSettingPublicationReady } from '../../configuration/capabilities';
 import type {
   BusinessSettingChangeControl,
   BusinessSettingKey,
@@ -398,6 +399,7 @@ export async function publishBusinessSettingDraft(
       'Controlled settings require submission and independent approval.',
     );
   }
+  assertBusinessSettingPublicationReady(record.key, record.value);
   if (effectiveFrom < now) {
     throw new BusinessSettingConflictError('Effective date cannot be in the past.');
   }
@@ -518,6 +520,7 @@ export async function approveBusinessSettingChange(
       'A different reviewer must approve the current pending version.',
     );
   }
+  assertBusinessSettingPublicationReady(record.key, record.value);
   if (effectiveFrom < now) {
     throw new BusinessSettingConflictError('Effective date cannot be in the past.');
   }

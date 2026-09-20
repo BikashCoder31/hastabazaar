@@ -78,6 +78,20 @@ const destinations: readonly {
     permission: 'commercial_policy.manage',
   },
   {
+    href: '/admin/business-settings',
+    label: 'Business Settings',
+    group: 'Controls',
+    icon: 'settings',
+    permission: 'business_settings.view',
+  },
+  {
+    href: '/admin/programs',
+    label: 'Program Management',
+    group: 'Marketplace',
+    icon: 'programs',
+    permission: 'business_settings.view',
+  },
+  {
     href: '/admin',
     label: 'Overview',
     group: 'Operations',

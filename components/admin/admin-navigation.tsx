@@ -12,11 +12,13 @@ import {
   PackageCheck,
   Percent,
   Scale,
+  Settings2,
   ShieldCheck,
   ShoppingCart,
   Store,
   Truck,
   Users,
+  Workflow,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -46,6 +48,8 @@ const icons: Record<string, LucideIcon> = {
   governance: ShieldCheck,
   team: Users,
   commission: Percent,
+  settings: Settings2,
+  programs: Workflow,
 };
 
 export function AdminNavigation({ role, permissions }: { role: 'admin' | 'super_admin'; permissions?: readonly Permission[] }) {
