@@ -11,6 +11,10 @@ const recoveryOutputPath = resolve(
   'deployment/babal/mariadb-reset-empty-import.sql',
 );
 const snapshot = JSON.parse(await readFile(snapshotPath, 'utf8'));
+const sellerParticipationSql = await readFile(
+  resolve(projectRoot, 'deployment/babal/mariadb-seller-participation.sql'),
+  'utf8',
+);
 
 const quote = (value) => `\`${String(value).replaceAll('`', '``')}\``;
 
@@ -232,6 +236,8 @@ output.push(
   '  CONSTRAINT `business_setting_guards_valid` CHECK (`valid` = 1)',
   ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;',
   '',
+  sellerParticipationSql.trim(),
+  '',
   '-- Babal.Host password authentication and server-side sessions.',
   'CREATE TABLE IF NOT EXISTS `user_credentials` (',
   '  `user_id` VARCHAR(191) NOT NULL,',
@@ -314,6 +320,10 @@ await mkdir(dirname(outputPath), { recursive: true });
 const schemaSql = output.join('\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
+  'seller_profile_media',
+  'seller_operational_addresses',
+  'seller_participation_guards',
+  'seller_participation_profiles',
   'business_setting_guards',
   'business_setting_versions',
   'email_login_challenges',

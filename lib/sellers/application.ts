@@ -1,4 +1,11 @@
 import { SELLER_AGREEMENT_VERSION } from '@/lib/content/legal-policies';
+import {
+  parseCraftExperience,
+  parseMakerSocialLinks,
+  type CraftExperience,
+  type MakerSocialLinks,
+  type ParticipationRoute,
+} from '@/lib/sellers/participation';
 
 export const sellerAgreementVersion = SELLER_AGREEMENT_VERSION;
 
@@ -10,10 +17,29 @@ export type SellerDocumentKind =
   | 'bank_verification';
 export function sellerDocumentsForApplication(input: {
   applicantType: 'individual' | 'company';
-  taxMode: 'PAN' | 'VAT' | 'BOTH';
+  taxMode: 'PAN' | 'VAT' | 'BOTH' | 'NONE';
+  participationRoute?: ParticipationRoute;
+  hasBusinessTaxRegistration?: boolean;
 }) {
+  if (input.participationRoute === 'managed_maker' || input.taxMode === 'NONE') {
+    return [
+      {
+        field: 'representativeIdentity',
+        kind: 'representative_identity' as const,
+        label: 'Identity document (optional during application)',
+        required: false,
+      },
+      {
+        field: 'bankVerification',
+        kind: 'bank_verification' as const,
+        label: 'Payment account evidence (optional during application)',
+        required: false,
+      },
+    ];
+  }
+  const explicitRegisteredRoute = input.participationRoute === 'registered_seller';
   return [
-    ...(input.applicantType === 'company'
+    ...(input.applicantType === 'company' || explicitRegisteredRoute
       ? [
           {
             field: 'businessRegistration',
@@ -59,12 +85,15 @@ export function sellerDocumentsForApplication(input: {
 }
 
 export interface SellerApplicationInput {
+  participationRoute: ParticipationRoute;
+  hasBusinessTaxRegistration: boolean;
   applicantType: 'individual' | 'company';
   legalName: string;
   tradingName: string;
   registrationAuthority: string;
   registrationNumber: string;
-  taxMode: 'PAN' | 'VAT' | 'BOTH';
+  taxMode: 'PAN' | 'VAT' | 'BOTH' | 'NONE';
+  taxStatus: 'business_pan_only' | 'vat_registered' | null;
   taxRegistrationNumber: string;
   representativeName: string;
   email: string;
@@ -76,11 +105,23 @@ export interface SellerApplicationInput {
   locality: string;
   businessDescription: string;
   productCategories: string;
+  publicCity: string;
+  craftExperience: readonly CraftExperience[];
+  socialLinks: MakerSocialLinks;
 }
 
 export interface SellerApplicationDocument {
   id: string;
   kind: SellerDocumentKind;
+  objectKey: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+export interface SellerProfileMediaUpload {
+  id: string;
+  kind: 'profile_image' | 'maker_video';
   objectKey: string;
   originalName: string;
   mimeType: string;
@@ -94,7 +135,7 @@ const acceptedDocumentTypes = new Set([
 ]);
 
 export const maximumDocumentBytes = 5 * 1024 * 1024;
-export const maximumApplicationBytes = 27 * 1024 * 1024;
+export const maximumApplicationBytes = 42 * 1024 * 1024;
 
 function textField(formData: FormData, name: string): string {
   const value = formData.get(name);
@@ -107,31 +148,78 @@ export function parseSellerApplication(formData: FormData): {
 } {
   const errors: string[] = [];
   const taxMode = textField(formData, 'taxMode');
+  const registrationAnswer = textField(formData, 'hasBusinessTaxRegistration');
+  const usesNewRouteQuestion = registrationAnswer.length > 0;
+  const participationRoute: ParticipationRoute = registrationAnswer === 'no'
+    ? 'managed_maker'
+    : 'registered_seller';
+  const taxStatus = textField(formData, 'taxStatus');
   const applicantType = textField(formData, 'applicantType');
   if (!['individual', 'company'].includes(applicantType))
     errors.push('Choose Individual or Company.');
-  if (!['PAN', 'VAT', 'BOTH'].includes(taxMode))
-    errors.push('Choose PAN, VAT or Both.');
+  if (usesNewRouteQuestion && !['yes', 'no'].includes(registrationAnswer)) {
+    errors.push('Answer whether this business has PAN/VAT registration.');
+  }
+  if (participationRoute === 'registered_seller') {
+    if (usesNewRouteQuestion && !['business_pan_only', 'vat_registered'].includes(taxStatus)) {
+      errors.push('Choose business PAN without VAT or VAT registered.');
+    } else if (!usesNewRouteQuestion && !['PAN', 'VAT', 'BOTH'].includes(taxMode)) {
+      errors.push('Choose PAN, VAT or Both.');
+    }
+  }
   const email = textField(formData, 'email').toLowerCase();
   const phone = textField(formData, 'phone').replace(/[\s()-]/g, '');
   const acceptedTerms = textField(formData, 'acceptedTerms');
+  const applicationAcknowledgement = textField(formData, 'applicationAcknowledgement');
+
+  let craftExperience: readonly CraftExperience[] = [];
+  let socialLinks: MakerSocialLinks = {};
+  try {
+    craftExperience = parseCraftExperience(
+      textField(formData, 'experienceCraft'),
+      textField(formData, 'experienceBand'),
+    );
+    socialLinks = parseMakerSocialLinks({
+      facebook: textField(formData, 'facebookUrl'),
+      instagram: textField(formData, 'instagramUrl'),
+      linkedin: textField(formData, 'linkedinUrl'),
+      tiktok: textField(formData, 'tiktokUrl'),
+      x: textField(formData, 'xUrl'),
+      youtube: textField(formData, 'youtubeUrl'),
+    });
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : 'Optional maker profile details are invalid.');
+  }
+
+  const resolvedTaxMode: SellerApplicationInput['taxMode'] = participationRoute === 'managed_maker'
+    ? 'NONE'
+    : usesNewRouteQuestion
+      ? taxStatus === 'vat_registered' ? 'VAT' : 'PAN'
+      : taxMode === 'BOTH' ? 'BOTH' : taxMode === 'VAT' ? 'VAT' : 'PAN';
 
   const input: SellerApplicationInput = {
-    applicantType: applicantType === 'company' ? 'company' : 'individual',
+    participationRoute,
+    hasBusinessTaxRegistration: participationRoute === 'registered_seller',
+    applicantType: participationRoute === 'managed_maker' ? 'individual' : applicantType === 'company' ? 'company' : 'individual',
     legalName: textField(formData, 'legalName'),
     tradingName: textField(formData, 'tradingName'),
     registrationAuthority:
-      applicantType === 'company'
+      participationRoute === 'registered_seller' && applicantType === 'company'
         ? textField(formData, 'registrationAuthority')
         : '',
     registrationNumber:
-      applicantType === 'company'
+      participationRoute === 'registered_seller' && applicantType === 'company'
         ? textField(formData, 'registrationNumber')
         : '',
-    taxMode: taxMode === 'BOTH' ? 'BOTH' : taxMode === 'VAT' ? 'VAT' : 'PAN',
-    taxRegistrationNumber: textField(formData, 'taxRegistrationNumber'),
+    taxMode: resolvedTaxMode,
+    taxStatus: participationRoute === 'managed_maker'
+      ? null
+      : usesNewRouteQuestion
+        ? taxStatus === 'vat_registered' ? 'vat_registered' : 'business_pan_only'
+        : taxMode === 'VAT' || taxMode === 'BOTH' ? 'vat_registered' : 'business_pan_only',
+    taxRegistrationNumber: participationRoute === 'managed_maker' ? '' : textField(formData, 'taxRegistrationNumber'),
     representativeName:
-      applicantType === 'company'
+      participationRoute === 'registered_seller' && applicantType === 'company'
         ? textField(formData, 'representativeName')
         : textField(formData, 'legalName'),
     email,
@@ -143,13 +231,15 @@ export function parseSellerApplication(formData: FormData): {
     locality: textField(formData, 'locality'),
     businessDescription: textField(formData, 'businessDescription'),
     productCategories: textField(formData, 'productCategories'),
+    publicCity: textField(formData, 'publicCity') || textField(formData, 'municipality'),
+    craftExperience,
+    socialLinks,
   };
 
   const requiredFields: Array<[keyof SellerApplicationInput, string]> = [
     ['legalName', 'Legal business name'],
     ['tradingName', 'Trading name'],
 
-    ['taxRegistrationNumber', 'PAN or VAT number'],
     ['representativeName', 'Representative name'],
     ['email', 'Email'],
     ['phone', 'Phone'],
@@ -159,9 +249,14 @@ export function parseSellerApplication(formData: FormData): {
     ['locality', 'Locality'],
     ['businessDescription', 'Business description'],
     ['productCategories', 'Product categories'],
+    ['publicCity', 'Public city or town'],
   ];
 
-  if (applicantType === 'company')
+  if (participationRoute === 'registered_seller') {
+    requiredFields.push(['taxRegistrationNumber', 'PAN or VAT number']);
+  }
+
+  if (participationRoute === 'registered_seller' && applicantType === 'company')
     requiredFields.push(
       ['registrationAuthority', 'Registration authority'],
       ['registrationNumber', 'Registration number'],
@@ -207,12 +302,27 @@ export function parseSellerApplication(formData: FormData): {
     );
   }
 
-  if (!/^[A-Za-z0-9\-/]{5,24}$/.test(input.taxRegistrationNumber)) {
-    errors.push('Enter a valid PAN or VAT registration number.');
+  if (participationRoute === 'registered_seller') {
+    const validTaxIdentifier = usesNewRouteQuestion
+      ? /^\d{9}$/.test(input.taxRegistrationNumber)
+      : /^[A-Za-z0-9\-/]{5,24}$/.test(input.taxRegistrationNumber);
+    if (!validTaxIdentifier) errors.push('Enter a valid 9-digit business PAN/VAT identifier.');
   }
 
-  if (acceptedTerms !== 'yes') {
+  if (participationRoute === 'registered_seller' && acceptedTerms !== 'yes') {
     errors.push('You must accept the seller application terms.');
+  }
+  if (participationRoute === 'managed_maker' && applicationAcknowledgement !== 'yes') {
+    errors.push('You must confirm the Managed Maker application acknowledgement.');
+  }
+
+  if (participationRoute === 'managed_maker') {
+    for (const field of ['taxStatus', 'taxRegistrationNumber', 'registrationAuthority', 'registrationNumber']) {
+      if (textField(formData, field)) {
+        errors.push('Managed Maker applications must not contain business tax or registration placeholders.');
+        break;
+      }
+    }
   }
 
   if (textField(formData, 'website')) {

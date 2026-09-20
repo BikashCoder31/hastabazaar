@@ -23,7 +23,7 @@ void test('notification links require matching audience and safe related records
 
 void test('staff notification destinations and visibility follow current effective permissions',()=>{
  assert.equal(notificationDestination('staff','staff','product','p-1'),'/admin/products/p-1');
- assert.equal(notificationDestination('customer','customer','seller_application','s-1'),'/sell');
+ assert.equal(notificationDestination('customer','customer','seller_application','s-1'),'/sell/application');
  assert.equal(canViewStaffNotification({role:'admin',permissions:[]},'product'),false);
  assert.equal(canViewStaffNotification({role:'admin',permissions:['product.review']},'product'),true);
  assert.equal(canViewStaffNotification({role:'seller'},'product'),false);

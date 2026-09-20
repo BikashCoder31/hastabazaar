@@ -29,6 +29,7 @@ const statuses = new Set([
   'needs_changes',
   'rejected',
   'under_review',
+  'approved_for_activation',
 ]);
 /** Only explicit source transitions opt in; order email templates are deliberately excluded. */
 export async function businessNotificationStatements(
@@ -47,12 +48,15 @@ export async function businessNotificationStatements(
     event.sourceType === 'product'
       ? 'product.review'
       : 'seller.application.review';
-  const sourcePredicate =
-    'EXISTS(SELECT 1 FROM ' +
-    table +
-    ' WHERE id=? AND status=?' +
-    (event.reviewRequestId ? ' AND review_request_id=?' : '') +
-    ')';
+  const participationOutcome = event.sourceType === 'seller_application' && event.status === 'approved_for_activation';
+  const sourcePredicate = participationOutcome
+    ? 'EXISTS(SELECT 1 FROM seller_profiles source_seller INNER JOIN seller_participation_profiles source_participation ON source_participation.seller_id=source_seller.id WHERE source_seller.id=? AND source_participation.application_stage=?' +
+      (event.reviewRequestId ? ' AND source_seller.review_request_id=?' : '') + ')'
+    : 'EXISTS(SELECT 1 FROM ' +
+      table +
+      ' WHERE id=? AND status=?' +
+      (event.reviewRequestId ? ' AND review_request_id=?' : '') +
+      ')';
   const sourceValues = [
     event.sourceId,
     event.status,

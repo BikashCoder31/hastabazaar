@@ -65,6 +65,17 @@ function fixture() {
       updated_at INTEGER NOT NULL
     );
     CREATE TABLE seller_documents (id TEXT PRIMARY KEY, seller_id TEXT NOT NULL);
+    CREATE TABLE seller_participation_profiles (
+      seller_id TEXT PRIMARY KEY,
+      participation_route TEXT NOT NULL,
+      application_stage TEXT NOT NULL,
+      public_maker_name TEXT NOT NULL,
+      public_city TEXT NOT NULL,
+      legal_seller_ref TEXT,
+      invoice_issuer_ref TEXT,
+      payout_beneficiary_ref TEXT,
+      return_destination_mode TEXT NOT NULL
+    );
     CREATE TABLE products (id TEXT PRIMARY KEY, seller_id TEXT NOT NULL);
     CREATE TABLE order_items (id TEXT PRIMARY KEY, order_id TEXT NOT NULL, seller_id TEXT NOT NULL);
 
@@ -81,6 +92,11 @@ function fixture() {
     INSERT INTO seller_documents VALUES
       ('document-1', 'seller-approved'),
       ('document-2', 'seller-approved');
+    INSERT INTO seller_participation_profiles VALUES
+      ('seller-submitted', 'registered_seller', 'submitted', 'Submitted Shop', 'Kathmandu', 'seller-submitted', 'seller-submitted', 'seller-submitted', 'seller_address'),
+      ('seller-approved', 'registered_seller', 'active', 'Approved Shop', 'Lalitpur', 'seller-approved', 'seller-approved', 'seller-approved', 'seller_address'),
+      ('seller-rejected', 'registered_seller', 'rejected', 'Rejected Shop', 'Bhaktapur', 'seller-rejected', 'seller-rejected', 'seller-rejected', 'seller_address'),
+      ('seller-suspended', 'registered_seller', 'suspended', 'Suspended Shop', 'Kaski', 'seller-suspended', 'seller-suspended', 'seller-suspended', 'seller_address');
     INSERT INTO products VALUES
       ('product-1', 'seller-approved'),
       ('product-2', 'seller-approved');

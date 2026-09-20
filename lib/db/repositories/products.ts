@@ -131,10 +131,12 @@ async function insertProductSubmission(
     slug: string;
     input: ProductSubmissionInput;
     images: readonly ProductImageUpload[];
+    intent?: 'draft' | 'submit';
     now: number;
   },
 ): Promise<void> {
   const { productId, sellerId, actorId, slug, input, images, now } = options;
+  const productStatus = options.intent === 'draft' ? 'draft' : 'submitted';
   const statements: D1PreparedStatement[] = [
     database
       .prepare(
@@ -149,7 +151,7 @@ async function insertProductSubmission(
           review_request_id, reviewed_by, published_at, created_at, updated_at
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NP', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, 'submitted', NULL, NULL, NULL, NULL, ?, ?
+          ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?
         )`,
       )
       .bind(
@@ -182,6 +184,7 @@ async function insertProductSubmission(
         input.manufacturedAt,
         input.expiresAt,
         input.licenceReference,
+        productStatus,
         now,
         now,
       ),
@@ -205,14 +208,15 @@ async function insertProductSubmission(
         `INSERT INTO audit_logs (
           id, actor_id, action, subject_type, subject_id, reason,
           previous_json, next_json, request_id, ip_hash, created_at
-        ) VALUES (?, ?, 'product.submitted', 'product', ?,
-          'Seller submitted a product for review', NULL, ?, NULL, NULL, ?)`,
+        ) VALUES (?, ?, ?, 'product', ?, ?, NULL, ?, NULL, NULL, ?)`,
       )
       .bind(
         crypto.randomUUID(),
         actorId,
+        productStatus === 'draft' ? 'product.draft.created' : 'product.submitted',
         productId,
-        JSON.stringify({ status: 'submitted', sku: input.sku }),
+        productStatus === 'draft' ? 'Applicant prepared a private product draft' : 'Seller submitted a product for review',
+        JSON.stringify({ status: productStatus, sku: input.sku }),
         now,
       ),
   ];
@@ -252,7 +256,7 @@ async function insertProductSubmission(
     );
   }
 
-  statements.push(...await businessNotificationStatements(database,{eventId:productId,sourceType:'product',sourceId:productId,status:'submitted',actorId,now,kind:'submitted'}));
+  if (productStatus === 'submitted') statements.push(...await businessNotificationStatements(database,{eventId:productId,sourceType:'product',sourceId:productId,status:'submitted',actorId,now,kind:'submitted'}));
   await database.batch(statements);
 }
 

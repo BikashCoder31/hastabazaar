@@ -73,9 +73,12 @@ export function SellerApplicationForm({
   accountEmail?: string;
 }) {
   const [applicantType, setApplicantType] = useState<'individual' | 'company'>(
-    'individual',
+    'company',
   );
-  const [taxMode, setTaxMode] = useState<'PAN' | 'VAT' | 'BOTH'>('PAN');
+  const [registrationAnswer, setRegistrationAnswer] = useState<'yes' | 'no'>('yes');
+  const [taxStatus, setTaxStatus] = useState<'business_pan_only' | 'vat_registered'>(
+    'business_pan_only',
+  );
   const formRef = useRef<HTMLFormElement>(null);
   const [state, setState] = useState<SubmissionState>({ status: 'idle' });
 
@@ -216,34 +219,51 @@ export function SellerApplicationForm({
       </div>
 
       <FieldSet>
-        <FieldLegend>Seller identity</FieldLegend>
+        <FieldLegend>Choose your participation route</FieldLegend>
         <FieldDescription>
-          Enter the details exactly as they appear on your registration
-          documents.
+          Both routes retain your public maker identity. Selling remains disabled until the applicable program, maker, and product approvals are complete.
         </FieldDescription>
         <FieldGroup className="grid gap-5 md:grid-cols-2">
           <Field>
-            <FieldLabel htmlFor="applicantType">
-              Applicant type <span aria-hidden="true">*</span>
+            <FieldLabel htmlFor="hasBusinessTaxRegistration">
+              Do you have PAN/VAT registration for this business? <span aria-hidden="true">*</span>
             </FieldLabel>
             <NativeSelect
-              id="applicantType"
-              name="applicantType"
-              value={applicantType}
-              onChange={(e) =>
-                setApplicantType(e.target.value as 'individual' | 'company')
-              }
+              id="hasBusinessTaxRegistration"
+              name="hasBusinessTaxRegistration"
+              value={registrationAnswer}
+              onChange={(event) => setRegistrationAnswer(event.target.value as 'yes' | 'no')}
               required
             >
-              <NativeSelectOption value="individual">
-                Individual
-              </NativeSelectOption>
-              <NativeSelectOption value="company">Company</NativeSelectOption>
+              <NativeSelectOption value="yes">Yes</NativeSelectOption>
+              <NativeSelectOption value="no">No</NativeSelectOption>
             </NativeSelect>
+            <FieldDescription>
+              {registrationAnswer === 'yes'
+                ? 'Registered Seller: provide only the registration evidence that applies to the selected status.'
+                : 'Managed Maker application: business PAN/VAT fields are not required. Later identity, supplier, payment, or tax-document requirements will be shown at the stage where they apply.'}
+            </FieldDescription>
           </Field>
+          {registrationAnswer === 'yes' ? (
+            <Field>
+              <FieldLabel htmlFor="applicantType">
+                Registered business form <span aria-hidden="true">*</span>
+              </FieldLabel>
+              <NativeSelect
+                id="applicantType"
+                name="applicantType"
+                value={applicantType}
+                onChange={(event) => setApplicantType(event.target.value as 'individual' | 'company')}
+                required
+              >
+                <NativeSelectOption value="individual">Registered sole proprietor / individual business</NativeSelectOption>
+                <NativeSelectOption value="company">Registered company or organisation</NativeSelectOption>
+              </NativeSelect>
+            </Field>
+          ) : <input type="hidden" name="applicantType" value="individual" />}
           <Field>
             <FieldLabel htmlFor="legalName">
-              Legal name <span aria-hidden="true">*</span>
+              {registrationAnswer === 'yes' ? 'Registered legal business name' : 'Account holder full name'} <span aria-hidden="true">*</span>
             </FieldLabel>
             <Input id="legalName" name="legalName" required maxLength={160} />
           </Field>
@@ -258,7 +278,7 @@ export function SellerApplicationForm({
               maxLength={160}
             />
           </Field>
-          {applicantType === 'company' && (
+          {registrationAnswer === 'yes' && (
             <>
               <Field>
                 <FieldLabel htmlFor="registrationAuthority">
@@ -287,47 +307,37 @@ export function SellerApplicationForm({
               </Field>
             </>
           )}
-          <Field>
-            <FieldLabel htmlFor="taxMode">
-              Tax registration <span aria-hidden="true">*</span>
-            </FieldLabel>
-            <NativeSelect
-              id="taxMode"
-              name="taxMode"
-              value={taxMode}
-              onChange={(e) =>
-                setTaxMode(e.target.value as 'PAN' | 'VAT' | 'BOTH')
-              }
-              required
-              className="w-full"
-            >
-              <NativeSelectOption value="PAN">PAN</NativeSelectOption>
-              <NativeSelectOption value="VAT">VAT</NativeSelectOption>
-              <NativeSelectOption value="BOTH">
-                Both PAN and VAT
-              </NativeSelectOption>
-            </NativeSelect>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="taxRegistrationNumber">
-              PAN / VAT identifier (shared identifier allowed for Both)
-              <span aria-hidden="true">*</span>
-            </FieldLabel>
-            <Input
-              id="taxRegistrationNumber"
-              name="taxRegistrationNumber"
-              required
-              minLength={5}
-              maxLength={24}
-            />
-          </Field>
+          {registrationAnswer === 'yes' && <>
+            <Field>
+              <FieldLabel htmlFor="taxStatus">
+                Tax-registration status <span aria-hidden="true">*</span>
+              </FieldLabel>
+              <NativeSelect
+                id="taxStatus"
+                name="taxStatus"
+                value={taxStatus}
+                onChange={(event) => setTaxStatus(event.target.value as 'business_pan_only' | 'vat_registered')}
+                required
+              >
+                <NativeSelectOption value="business_pan_only">Business PAN — not VAT registered</NativeSelectOption>
+                <NativeSelectOption value="vat_registered">VAT registered</NativeSelectOption>
+              </NativeSelect>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="taxRegistrationNumber">
+                Business PAN/VAT identifier <span aria-hidden="true">*</span>
+              </FieldLabel>
+              <Input id="taxRegistrationNumber" name="taxRegistrationNumber" required inputMode="numeric" pattern="[0-9]{9}" minLength={9} maxLength={9} />
+              <FieldDescription>PAN and VAT may use the same nine-digit identifier; do not enter a personal PAN as proof of business registration.</FieldDescription>
+            </Field>
+          </>}
         </FieldGroup>
       </FieldSet>
 
       <FieldSet>
         <FieldLegend>Representative and contact</FieldLegend>
         <FieldGroup className="grid gap-5 md:grid-cols-2">
-          {applicantType === 'company' && (
+          {registrationAnswer === 'yes' && applicantType === 'company' && (
             <>
               <Field>
                 <FieldLabel htmlFor="representativeName">
@@ -366,7 +376,7 @@ export function SellerApplicationForm({
           </Field>
           <Field>
             <FieldLabel htmlFor="phone">
-              Business phone <span aria-hidden="true">*</span>
+              Contact phone <span aria-hidden="true">*</span>
             </FieldLabel>
             <Input
               id="phone"
@@ -422,6 +432,14 @@ export function SellerApplicationForm({
               Locality or street <span aria-hidden="true">*</span>
             </FieldLabel>
             <Input id="locality" name="locality" required maxLength={180} />
+            <FieldDescription>This verification/operational address stays private. It is not shown as the public maker location.</FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="publicCity">
+              Public city or town <span aria-hidden="true">*</span>
+            </FieldLabel>
+            <Input id="publicCity" name="publicCity" required maxLength={120} placeholder="For example, Birgunj" />
+            <FieldDescription>Only this city/town is displayed publicly.</FieldDescription>
           </Field>
         </FieldGroup>
       </FieldSet>
@@ -459,13 +477,64 @@ export function SellerApplicationForm({
       </FieldSet>
 
       <FieldSet>
+        <FieldLegend>Shared maker profile</FieldLegend>
+        <FieldDescription>
+          These optional details are used by both Registered Sellers and Managed Makers. Empty optional sections are hidden publicly.
+        </FieldDescription>
+        <FieldGroup className="grid gap-5 md:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="experienceCraft">Craft for this experience (optional)</FieldLabel>
+            <Input id="experienceCraft" name="experienceCraft" maxLength={120} placeholder="For example, clay work" />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="experienceBand">Experience in that craft (optional)</FieldLabel>
+            <NativeSelect id="experienceBand" name="experienceBand" defaultValue="">
+              <NativeSelectOption value="">Not provided</NativeSelectOption>
+              <NativeSelectOption value="beginner">Beginner</NativeSelectOption>
+              <NativeSelectOption value="less_than_one_year">Less than one year</NativeSelectOption>
+              <NativeSelectOption value="one_to_three_years">1–3 years</NativeSelectOption>
+              <NativeSelectOption value="four_to_ten_years">4–10 years</NativeSelectOption>
+              <NativeSelectOption value="more_than_ten_years">More than 10 years</NativeSelectOption>
+            </NativeSelect>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="profileImage">Logo or maker photograph (optional)</FieldLabel>
+            <Input id="profileImage" name="profileImage" type="file" accept="image/jpeg,image/png,image/webp" />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="makerVideo">Maker introduction or workshop-process video (optional)</FieldLabel>
+            <Input id="makerVideo" name="makerVideo" type="file" accept="video/mp4" />
+            <FieldDescription>MP4 up to 20 MB and 60 seconds. This general maker video is distinct from an optional product-specific making video.</FieldDescription>
+          </Field>
+          {[
+            ['facebookUrl', 'Facebook'],
+            ['instagramUrl', 'Instagram'],
+            ['linkedinUrl', 'LinkedIn'],
+            ['tiktokUrl', 'TikTok'],
+            ['xUrl', 'X'],
+            ['youtubeUrl', 'YouTube'],
+          ].map(([name, label]) => (
+            <Field key={name}>
+              <FieldLabel htmlFor={name}>{label} link (optional)</FieldLabel>
+              <Input id={name} name={name} type="url" maxLength={500} placeholder="https://" />
+            </Field>
+          ))}
+        </FieldGroup>
+      </FieldSet>
+
+      <FieldSet>
         <FieldLegend>Verification documents</FieldLegend>
         <FieldDescription>
           PDF, JPG, or PNG. Maximum 5 MB per file. Documents remain private and
           are available only to authorised reviewers.
         </FieldDescription>
         <FieldGroup className="grid gap-5 md:grid-cols-2">
-          {sellerDocumentsForApplication({ applicantType, taxMode }).map(
+          {sellerDocumentsForApplication({
+            applicantType: registrationAnswer === 'yes' ? applicantType : 'individual',
+            taxMode: registrationAnswer === 'no' ? 'NONE' : taxStatus === 'vat_registered' ? 'VAT' : 'PAN',
+            participationRoute: registrationAnswer === 'yes' ? 'registered_seller' : 'managed_maker',
+            hasBusinessTaxRegistration: registrationAnswer === 'yes',
+          }).map(
             (document) => (
               <DocumentField
                 key={document.field}
@@ -478,36 +547,21 @@ export function SellerApplicationForm({
         </FieldGroup>
       </FieldSet>
 
-      <Field orientation="horizontal">
-        <Checkbox
-          id="acceptedTerms"
-          name="acceptedTerms"
-          value="yes"
-          required
-        />
-        <FieldLabel htmlFor="acceptedTerms" className="max-w-2xl font-normal">
-          I agree to the{' '}
-          <a
-            href="/seller-agreement"
-            target="_blank"
-            rel="noreferrer"
-            className="font-semibold text-primary underline"
-          >
-            Seller Marketplace Agreement
-          </a>
-          , including the 9% commission on completed, paid product sales, and the{' '}
-          <a
-            href="/prohibited-products"
-            target="_blank"
-            rel="noreferrer"
-            className="font-semibold text-primary underline"
-          >
-            Prohibited & Restricted Products Policy
-          </a>
-          . I confirm that the information provided is accurate.{' '}
-          <span aria-hidden="true">*</span>
-        </FieldLabel>
-      </Field>
+      {registrationAnswer === 'yes' ? (
+        <Field orientation="horizontal">
+          <Checkbox id="acceptedTerms" name="acceptedTerms" value="yes" required />
+          <FieldLabel htmlFor="acceptedTerms" className="max-w-2xl font-normal">
+            I agree to the <a href="/seller-agreement" target="_blank" rel="noreferrer" className="font-semibold text-primary underline">Seller Marketplace Agreement</a>, including the independent-seller 9% commission on completed, paid product sales, and the <a href="/prohibited-products" target="_blank" rel="noreferrer" className="font-semibold text-primary underline">Prohibited & Restricted Products Policy</a>. <span aria-hidden="true">*</span>
+          </FieldLabel>
+        </Field>
+      ) : (
+        <Field orientation="horizontal">
+          <Checkbox id="applicationAcknowledgement" name="applicationAcknowledgement" value="yes" required />
+          <FieldLabel htmlFor="applicationAcknowledgement" className="max-w-2xl font-normal">
+            I confirm this is a Managed Maker application only. I understand that profile and product drafts may be prepared, but publication, orders, invoicing, and payment remain unavailable until the program, maker, product, applicable supplier requirements, and reviewed agreement are ready. <span aria-hidden="true">*</span>
+          </FieldLabel>
+        </Field>
+      )}
       <p className="text-sm leading-6 text-muted-foreground">
         Your application information is handled under our{' '}
         <a

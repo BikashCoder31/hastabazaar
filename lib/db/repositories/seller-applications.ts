@@ -2,11 +2,19 @@ import { businessNotificationStatements } from '../../operations/business-notifi
 import type {
   SellerApplicationDocument,
   SellerApplicationInput,
+  SellerProfileMediaUpload,
 } from '@/lib/sellers/application';
 import { sellerAgreementVersion, sellerDocumentsForApplication } from '@/lib/sellers/application';
 import { SELLER_AGREEMENT_VERSION } from '@/lib/content/legal-policies';
 import { sellerTransitions } from '@/lib/marketplace/workflows';
 import type { SellerStatus } from '@/lib/marketplace/types';
+import type {
+  CraftExperience,
+  MakerSocialLinks,
+  ParticipationApplicationStage,
+  ParticipationRoute,
+} from '@/lib/sellers/participation';
+import { parseCraftExperience, parseMakerSocialLinks } from '@/lib/sellers/participation';
 
 interface CreateSellerApplicationOptions {
   userId: string;
@@ -15,6 +23,7 @@ interface CreateSellerApplicationOptions {
   applicationReference: string;
   input: SellerApplicationInput;
   documents: readonly SellerApplicationDocument[];
+  profileMedia?: readonly SellerProfileMediaUpload[];
   now: number;
 }
 
@@ -24,11 +33,15 @@ export async function createSellerApplication(
 ): Promise<void> {
   const { userId, sellerId, applicationReference, input, documents, now } =
     options;
-  if (!['individual','company'].includes(input.applicantType) || !['PAN','VAT','BOTH'].includes(input.taxMode)) throw new Error('Choose a valid applicant and tax document type.');
+  const profileMedia = options.profileMedia ?? [];
+  if (!['individual','company'].includes(input.applicantType) || !['PAN','VAT','BOTH','NONE'].includes(input.taxMode)) throw new Error('Choose a valid applicant and tax document type.');
+  if (input.participationRoute === 'managed_maker' && (input.taxMode !== 'NONE' || input.taxRegistrationNumber || input.registrationNumber || input.registrationAuthority)) throw new Error('Managed Maker applications cannot store placeholder registration or tax identifiers.');
+  if (input.participationRoute === 'registered_seller' && (input.taxMode === 'NONE' || !input.taxRegistrationNumber)) throw new Error('Registered Seller tax details are required.');
   const definitions=sellerDocumentsForApplication(input);
   for(const definition of definitions.filter(d=>d.required))if(documents.filter(d=>d.kind===definition.kind).length!==1)throw new Error(definition.label+' is required exactly once.');
   if(documents.some(d=>!definitions.some(f=>f.kind===d.kind)||!d.objectKey.startsWith('private/seller-documents/'+sellerId+'/')))throw new Error('Unexpected or non-private application document.');
-  if(input.applicantType==='company'&&(!input.registrationAuthority||!input.registrationNumber))throw new Error('Company registration details are required.');
+  if (profileMedia.some((media) => !['profile_image', 'maker_video'].includes(media.kind) || !media.objectKey.startsWith(`private/seller-profile/${sellerId}/`))) throw new Error('Unexpected or non-private maker profile media.');
+  if(input.participationRoute==='registered_seller'&&input.applicantType==='company'&&(!input.registrationAuthority||!input.registrationNumber))throw new Error('Company registration details are required.');
   if(input.applicantType==='individual'&&(input.registrationAuthority||input.registrationNumber))throw new Error('Individual applications do not use company registration details.');
   if (options.existingAccount) {
     const account = await database.prepare(
@@ -96,8 +109,48 @@ export async function createSellerApplication(
         input.municipality,
         input.ward,
         input.locality,
-        sellerAgreementVersion,
+        input.participationRoute === 'registered_seller' ? sellerAgreementVersion : null,
+        input.participationRoute === 'registered_seller' ? now : null,
         now,
+        now,
+      ),
+    database
+      .prepare(
+        `INSERT INTO seller_participation_profiles (
+          seller_id, participation_route, application_stage, tax_status,
+          public_name, public_city, craft_experience_json, social_links_json,
+          commercial_model, legal_seller_reference, invoice_issuer_reference,
+          payout_beneficiary_reference, return_destination_type, version,
+          created_at, updated_at
+        ) VALUES (?, ?, 'submitted', ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL,
+          'maker_address', 1, ?, ?)`,
+      )
+      .bind(
+        sellerId,
+        input.participationRoute,
+        input.taxStatus,
+        input.tradingName,
+        input.publicCity,
+        JSON.stringify(input.craftExperience),
+        JSON.stringify(input.socialLinks),
+        now,
+        now,
+      ),
+    database
+      .prepare(
+        `INSERT INTO seller_operational_addresses (
+          id, seller_id, purpose, same_as_address_id, province, district,
+          municipality, ward, locality, is_public, created_at, updated_at
+        ) VALUES (?, ?, 'verification', NULL, ?, ?, ?, ?, ?, 0, ?, ?)`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        sellerId,
+        input.province,
+        input.district,
+        input.municipality,
+        input.ward,
+        input.locality,
         now,
         now,
       ),
@@ -134,6 +187,26 @@ export async function createSellerApplication(
     );
   }
 
+  for (const media of profileMedia) {
+    statements.push(
+      database.prepare(
+        `INSERT INTO seller_profile_media (
+          id, seller_id, kind, object_key, original_name, mime_type,
+          size_bytes, moderation_status, uploaded_at, reviewed_at, reviewed_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, NULL)`,
+      ).bind(
+        media.id,
+        sellerId,
+        media.kind,
+        media.objectKey,
+        media.originalName,
+        media.mimeType,
+        media.sizeBytes,
+        now,
+      ),
+    );
+  }
+
   statements.push(...await businessNotificationStatements(database,{eventId:sellerId,sourceType:'seller_application',sourceId:sellerId,status:'submitted',actorId:userId,now,kind:'submitted'}));
   await database.batch(statements);
 }
@@ -147,8 +220,10 @@ export interface SellerReviewQueueRow {
   supportEmail: string;
   supportPhone: string;
   district: string;
-  taxMode: 'PAN' | 'VAT' | 'BOTH';
+  taxMode: 'PAN' | 'VAT' | 'BOTH' | 'NONE';
   applicantType: 'individual' | 'company' | null;
+  participationRoute?: ParticipationRoute | null;
+  applicationStage?: ParticipationApplicationStage | null;
   status: string;
   createdAt: number;
   documentCount: number;
@@ -177,11 +252,14 @@ export async function listSellerApplicationsForReview(
         seller_profiles.district,
         seller_profiles.tax_mode AS taxMode,
         seller_profiles.applicant_type AS applicantType,
+        participation.participation_route AS participationRoute,
+        participation.application_stage AS applicationStage,
         seller_profiles.status,
         seller_profiles.created_at AS createdAt,
         COUNT(seller_documents.id) AS documentCount
       FROM seller_profiles
       LEFT JOIN seller_documents ON seller_documents.seller_id = seller_profiles.id
+      LEFT JOIN seller_participation_profiles participation ON participation.seller_id = seller_profiles.id
       WHERE seller_profiles.status IN ('submitted', 'under_review', 'needs_changes')
       GROUP BY seller_profiles.id
       ORDER BY seller_profiles.created_at ASC
@@ -191,6 +269,158 @@ export async function listSellerApplicationsForReview(
     .all<SellerReviewQueueRow>();
 
   return result.results;
+}
+
+export interface SellerParticipationProfile {
+  sellerId: string;
+  participationRoute: ParticipationRoute;
+  applicationStage: ParticipationApplicationStage;
+  taxStatus: 'business_pan_only' | 'vat_registered' | null;
+  publicName: string;
+  publicCity: string;
+  craftExperience: readonly CraftExperience[];
+  socialLinks: MakerSocialLinks;
+  commercialModel: 'managed_sale_linked_percentage_v1' | 'managed_fixed_supplier_price_v1' | null;
+  legalSellerReference: string | null;
+  invoiceIssuerReference: string | null;
+  payoutBeneficiaryReference: string | null;
+  returnDestinationType: 'maker_address' | 'hastabazaar_collection_point';
+  version: number;
+}
+
+export async function getSellerParticipationProfile(
+  database: D1Database,
+  sellerId: string,
+): Promise<SellerParticipationProfile | null> {
+  const row = await database.prepare(
+    `SELECT seller_id AS sellerId, participation_route AS participationRoute,
+      application_stage AS applicationStage, tax_status AS taxStatus,
+      public_name AS publicName, public_city AS publicCity,
+      craft_experience_json AS craftExperienceJson,
+      social_links_json AS socialLinksJson, commercial_model AS commercialModel,
+      legal_seller_reference AS legalSellerReference,
+      invoice_issuer_reference AS invoiceIssuerReference,
+      payout_beneficiary_reference AS payoutBeneficiaryReference,
+      return_destination_type AS returnDestinationType, version
+     FROM seller_participation_profiles WHERE seller_id = ? LIMIT 1`,
+  ).bind(sellerId).first<Omit<SellerParticipationProfile, 'craftExperience' | 'socialLinks'> & {
+    craftExperienceJson: string;
+    socialLinksJson: string;
+  }>();
+  if (!row) return null;
+  let craftExperience: readonly CraftExperience[];
+  let socialLinks: MakerSocialLinks;
+  try {
+    craftExperience = JSON.parse(row.craftExperienceJson) as CraftExperience[];
+    socialLinks = JSON.parse(row.socialLinksJson) as MakerSocialLinks;
+  } catch {
+    throw new Error('Seller participation profile contains invalid structured data.');
+  }
+  const { craftExperienceJson: _craft, socialLinksJson: _social, ...profile } = row;
+  return { ...profile, craftExperience, socialLinks };
+}
+
+export async function getSellerParticipationForUser(
+  database: D1Database,
+  userId: string,
+): Promise<SellerParticipationProfile | null> {
+  const row = await database.prepare(
+    `SELECT seller_profiles.id FROM seller_profiles
+     INNER JOIN seller_participation_profiles participation
+       ON participation.seller_id = seller_profiles.id
+     WHERE seller_profiles.user_id = ? LIMIT 1`,
+  ).bind(userId).first<{ id: string }>();
+  return row ? getSellerParticipationProfile(database, row.id) : null;
+}
+
+export class SellerParticipationConflictError extends Error {}
+
+export async function updateSellerParticipationPublicProfile(
+  database: D1Database,
+  options: {
+    sellerId: string;
+    actorId: string;
+    expectedVersion: number;
+    publicName: string;
+    publicCity: string;
+    craftExperience: readonly CraftExperience[];
+    socialLinks: MakerSocialLinks;
+    requestId: string;
+    now: number;
+  },
+): Promise<void> {
+  const publicName = options.publicName.trim();
+  const publicCity = options.publicCity.trim();
+  if (!publicName || publicName.length > 160 || !publicCity || publicCity.length > 120) {
+    throw new SellerParticipationConflictError('Public maker name and city are required and must fit their limits.');
+  }
+  if (!Number.isInteger(options.expectedVersion) || options.expectedVersion < 1 || !options.requestId || options.requestId.length > 100) {
+    throw new SellerParticipationConflictError('The profile version or request reference is invalid.');
+  }
+  if (options.craftExperience.length > 10) throw new SellerParticipationConflictError('Use no more than ten craft experience entries.');
+  const craftExperience = options.craftExperience.flatMap((entry) =>
+    parseCraftExperience(entry.craft, entry.band),
+  );
+  const socialLinks = parseMakerSocialLinks(options.socialLinks);
+  if (await database.prepare(
+    `SELECT id FROM audit_logs WHERE request_id = ? AND actor_id = ? LIMIT 1`,
+  ).bind(options.requestId, options.actorId).first()) return;
+
+  const owner = await database.prepare(
+    `SELECT participation.version FROM seller_profiles
+     INNER JOIN seller_participation_profiles participation ON participation.seller_id = seller_profiles.id
+     WHERE seller_profiles.id = ? AND seller_profiles.user_id = ?
+       AND participation.application_stage NOT IN ('rejected','suspended') LIMIT 1`,
+  ).bind(options.sellerId, options.actorId).first<{ version: number }>();
+  if (!owner || owner.version !== options.expectedVersion) {
+    throw new SellerParticipationConflictError('The profile owner or version changed. Refresh and try again.');
+  }
+
+  const guardId = crypto.randomUUID();
+  await database.batch([
+    database.prepare(
+      `INSERT INTO seller_participation_guards(id, valid)
+       VALUES (?, CASE WHEN EXISTS(
+         SELECT 1 FROM seller_profiles
+         INNER JOIN seller_participation_profiles participation ON participation.seller_id = seller_profiles.id
+         WHERE seller_profiles.id = ? AND seller_profiles.user_id = ?
+           AND participation.version = ?
+           AND participation.application_stage NOT IN ('rejected','suspended')
+       ) THEN 1 ELSE 0 END)`,
+    ).bind(guardId, options.sellerId, options.actorId, options.expectedVersion),
+    database.prepare(
+      `UPDATE seller_participation_profiles
+       SET public_name = ?, public_city = ?, craft_experience_json = ?,
+         social_links_json = ?, version = version + 1, updated_at = ?
+       WHERE seller_id = ? AND version = ?`,
+    ).bind(
+      publicName,
+      publicCity,
+      JSON.stringify(craftExperience),
+      JSON.stringify(socialLinks),
+      options.now,
+      options.sellerId,
+      options.expectedVersion,
+    ),
+    database.prepare(
+      `UPDATE seller_profiles SET trading_name = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+    ).bind(publicName, options.now, options.sellerId, options.actorId),
+    database.prepare(
+      `INSERT INTO audit_logs (
+        id, actor_id, action, subject_type, subject_id, reason,
+        previous_json, next_json, request_id, ip_hash, created_at
+      ) VALUES (?, ?, 'seller.participation_profile.updated', 'seller_profile', ?,
+        'Applicant updated shared public maker profile', NULL, ?, ?, NULL, ?)`,
+    ).bind(
+      crypto.randomUUID(),
+      options.actorId,
+      options.sellerId,
+      JSON.stringify({ publicName, publicCity, craftExperience, socialLinks }),
+      options.requestId,
+      options.now,
+    ),
+    database.prepare(`DELETE FROM seller_participation_guards WHERE id = ?`).bind(guardId),
+  ]);
 }
 
 export interface SellerRegistryRow extends SellerReviewQueueRow {
@@ -271,6 +501,8 @@ export async function listSellerRegistry(
         seller_profiles.district,
         seller_profiles.tax_mode AS taxMode,
         seller_profiles.applicant_type AS applicantType,
+        participation.participation_route AS participationRoute,
+        participation.application_stage AS applicationStage,
         seller_profiles.status,
         seller_profiles.created_at AS createdAt,
         seller_profiles.approved_at AS approvedAt,
@@ -286,6 +518,7 @@ export async function listSellerRegistry(
           WHERE order_items.seller_id = seller_profiles.id) AS orderCount
        FROM seller_profiles
        INNER JOIN users AS owner ON owner.id = seller_profiles.user_id
+       LEFT JOIN seller_participation_profiles participation ON participation.seller_id = seller_profiles.id
        ORDER BY seller_profiles.created_at DESC, seller_profiles.id
        LIMIT ? OFFSET ?`,
     )
@@ -302,6 +535,16 @@ export interface SellerApplicationDocumentRow {
   mimeType: string;
   sizeBytes: number;
   status: string;
+  uploadedAt: number;
+}
+
+export interface SellerProfileMediaRow {
+  id: string;
+  kind: 'profile_image' | 'maker_video';
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  moderationStatus: 'pending' | 'approved' | 'rejected';
   uploadedAt: number;
 }
 
@@ -330,16 +573,27 @@ export interface SellerApplicationDetail extends SellerReviewQueueRow {
   sellerAgreementAcceptedAt: number | null;
   payoutAccountReference: string | null;
   settlementTermsReference: string | null;
+  participationRoute: ParticipationRoute | null;
+  applicationStage: ParticipationApplicationStage | null;
+  taxStatus: 'business_pan_only' | 'vat_registered' | null;
+  publicName: string | null;
+  publicCity: string | null;
+  commercialModel: 'managed_sale_linked_percentage_v1' | 'managed_fixed_supplier_price_v1' | null;
+  legalSellerReference: string | null;
+  invoiceIssuerReference: string | null;
+  payoutBeneficiaryReference: string | null;
+  returnDestinationType: 'maker_address' | 'hastabazaar_collection_point' | null;
   reviewNote: string | null;
   reviewedByName: string | null;
   updatedAt: number;
   documents: readonly SellerApplicationDocumentRow[];
+  profileMedia: readonly SellerProfileMediaRow[];
   history: readonly SellerModerationEventRow[];
 }
 
 type SellerApplicationBaseRow = Omit<
   SellerApplicationDetail,
-  'documents' | 'history'
+  'documents' | 'profileMedia' | 'history'
 >;
 
 export async function getSellerApplicationForReview(
@@ -374,6 +628,16 @@ export async function getSellerApplicationForReview(
         seller_profiles.seller_agreement_accepted_at AS sellerAgreementAcceptedAt,
         seller_profiles.payout_account_reference AS payoutAccountReference,
         seller_profiles.settlement_terms_reference AS settlementTermsReference,
+        participation.participation_route AS participationRoute,
+        participation.application_stage AS applicationStage,
+        participation.tax_status AS taxStatus,
+        participation.public_name AS publicName,
+        participation.public_city AS publicCity,
+        participation.commercial_model AS commercialModel,
+        participation.legal_seller_reference AS legalSellerReference,
+        participation.invoice_issuer_reference AS invoiceIssuerReference,
+        participation.payout_beneficiary_reference AS payoutBeneficiaryReference,
+        participation.return_destination_type AS returnDestinationType,
         seller_profiles.review_note AS reviewNote,
         reviewer.display_name AS reviewedByName,
         seller_profiles.created_at AS createdAt,
@@ -381,6 +645,7 @@ export async function getSellerApplicationForReview(
         COUNT(seller_documents.id) AS documentCount
       FROM seller_profiles
       LEFT JOIN seller_documents ON seller_documents.seller_id = seller_profiles.id
+      LEFT JOIN seller_participation_profiles participation ON participation.seller_id = seller_profiles.id
       LEFT JOIN users AS reviewer ON reviewer.id = seller_profiles.reviewed_by
       WHERE seller_profiles.id = ?
       GROUP BY seller_profiles.id
@@ -391,7 +656,7 @@ export async function getSellerApplicationForReview(
 
   if (!application) return null;
 
-  const [documentsResult, historyResult] = await Promise.all([
+  const [documentsResult, profileMediaResult, historyResult] = await Promise.all([
     database
       .prepare(
         `SELECT id, kind, original_name AS originalName, mime_type AS mimeType,
@@ -402,6 +667,17 @@ export async function getSellerApplicationForReview(
       )
       .bind(sellerId)
       .all<SellerApplicationDocumentRow>(),
+    database
+      .prepare(
+        `SELECT id, kind, original_name AS originalName, mime_type AS mimeType,
+          size_bytes AS sizeBytes, moderation_status AS moderationStatus,
+          uploaded_at AS uploadedAt
+         FROM seller_profile_media
+         WHERE seller_id = ?
+         ORDER BY uploaded_at ASC`,
+      )
+      .bind(sellerId)
+      .all<SellerProfileMediaRow>(),
     database
       .prepare(
         `SELECT moderation_events.id,
@@ -424,6 +700,7 @@ export async function getSellerApplicationForReview(
   return {
     ...application,
     documents: documentsResult.results,
+    profileMedia: profileMediaResult.results,
     history: historyResult.results,
   };
 }
@@ -467,13 +744,14 @@ export async function getAdminDashboardStats(
 export type SellerReviewAction =
   | 'start_review'
   | 'request_changes'
+  | 'approve_for_activation'
   | 'approve'
   | 'reject';
 
-const reviewTransitions: Record<
+const reviewTransitions: Partial<Record<
   SellerReviewAction,
   { from: SellerStatus; to: SellerStatus; auditAction: string }
-> = {
+>> = {
   start_review: {
     from: 'submitted',
     to: 'under_review',
@@ -510,16 +788,20 @@ export async function reviewSellerApplication(
     payoutAccountReference?: string;
     settlementTermsReference?: string;
   },
-): Promise<{ from: SellerStatus; to: SellerStatus }> {
+): Promise<{ from: string; to: string }> {
   const transition = reviewTransitions[options.action];
   const current = await database
     .prepare(
       `SELECT user_id AS userId, status,
         seller_agreement_version AS sellerAgreementVersion,
         seller_agreement_accepted_at AS sellerAgreementAcceptedAt,
+        participation.participation_route AS participationRoute,
+        participation.application_stage AS applicationStage,
         EXISTS(SELECT 1 FROM seller_documents
           WHERE seller_id = seller_profiles.id AND kind = 'bank_verification') AS bankEvidence
-       FROM seller_profiles WHERE id = ?`,
+       FROM seller_profiles
+       LEFT JOIN seller_participation_profiles participation ON participation.seller_id = seller_profiles.id
+       WHERE seller_profiles.id = ?`,
     )
     .bind(options.sellerId)
     .first<{
@@ -528,6 +810,8 @@ export async function reviewSellerApplication(
       sellerAgreementVersion: string | null;
       sellerAgreementAcceptedAt: number | null;
       bankEvidence: number;
+      participationRoute: ParticipationRoute | null;
+      applicationStage: ParticipationApplicationStage | null;
     }>();
 
   if (!current) throw new SellerReviewConflictError('Application not found.');
@@ -537,12 +821,64 @@ export async function reviewSellerApplication(
     );
   }
   if (
-    current.status !== transition.from ||
-    !sellerTransitions[current.status].includes(transition.to)
+    options.action !== 'approve_for_activation' &&
+    (current.status !== transition?.from ||
+      !transition ||
+      !sellerTransitions[current.status].includes(transition.to))
   ) {
     throw new SellerReviewConflictError(
       `This action is not available while the application is ${current.status}.`,
     );
+  }
+  if (options.action === 'approve_for_activation') {
+    if (current.participationRoute !== 'managed_maker' || current.status !== 'under_review' || current.applicationStage !== 'under_review') {
+      throw new SellerReviewConflictError('Only a Managed Maker under review can be approved for activation.');
+    }
+    const requestId = options.requestId ?? crypto.randomUUID();
+    const statements: D1PreparedStatement[] = [
+      database.prepare(
+        `UPDATE seller_participation_profiles SET application_stage = 'approved_for_activation',
+          version = version + 1, updated_at = ?
+         WHERE seller_id = ? AND participation_route = 'managed_maker' AND application_stage = 'under_review'`,
+      ).bind(options.now, options.sellerId),
+      database.prepare(
+        `UPDATE seller_profiles SET review_note = ?, review_request_id = ?, reviewed_by = ?, updated_at = ?
+         WHERE id = ? AND status = 'under_review'`,
+      ).bind(options.reason, requestId, options.actorId, options.now, options.sellerId),
+      database.prepare(
+        `INSERT INTO moderation_events(id, subject_type, subject_id, from_status, to_status, reason, actor_id, created_at)
+         VALUES (?, 'seller', ?, 'under_review', 'approved_for_activation', ?, ?, ?)`,
+      ).bind(crypto.randomUUID(), options.sellerId, options.reason, options.actorId, options.now),
+      database.prepare(
+        `INSERT INTO audit_logs(id, actor_id, action, subject_type, subject_id, reason,
+          previous_json, next_json, request_id, ip_hash, created_at)
+         VALUES (?, ?, 'seller.application.approved_for_activation', 'seller', ?, ?, ?, ?, ?, NULL, ?)`,
+      ).bind(
+        crypto.randomUUID(), options.actorId, options.sellerId, options.reason,
+        JSON.stringify({ applicationStage: 'under_review' }),
+        JSON.stringify({ applicationStage: 'approved_for_activation' }),
+        requestId, options.now,
+      ),
+      ...await businessNotificationStatements(database, {
+        eventId: requestId,
+        sourceType: 'seller_application',
+        sourceId: options.sellerId,
+        status: 'approved_for_activation',
+        reviewRequestId: requestId,
+        actorId: options.actorId,
+        now: options.now,
+        kind: 'result',
+      }),
+    ];
+    const results = await database.batch(statements);
+    if ((results[0].meta.changes ?? 0) !== 1 || (results[1].meta.changes ?? 0) !== 1) {
+      throw new SellerReviewConflictError('The application changed while it was being reviewed. Refresh and try again.');
+    }
+    return { from: 'under_review', to: 'approved_for_activation' };
+  }
+  if (!transition) throw new SellerReviewConflictError('Choose a supported review action.');
+  if (current.participationRoute === 'managed_maker' && options.action === 'approve') {
+    throw new SellerReviewConflictError('Managed Makers require approval for activation; Registered Seller approval cannot be used.');
   }
   const payoutAccountReference = options.payoutAccountReference?.trim() ?? '';
   const settlementTermsReference = options.settlementTermsReference?.trim() ?? '';
@@ -604,6 +940,14 @@ export async function reviewSellerApplication(
         options.sellerId,
         transition.from,
       ),
+    database.prepare(
+      `UPDATE seller_participation_profiles SET application_stage = ?, version = version + 1, updated_at = ?
+       WHERE seller_id = ?`,
+    ).bind(
+      options.action === 'request_changes' ? 'changes_requested' : options.action === 'approve' ? 'active' : transition.to,
+      options.now,
+      options.sellerId,
+    ),
     database
       .prepare(
         `INSERT INTO moderation_events (
@@ -712,6 +1056,32 @@ export async function getSellerDocumentForStaff(
          LIMIT 1`,
       )
       .bind(documentId)
+      .first<{
+        objectKey: string;
+        originalName: string;
+        mimeType: string;
+      }>()) ?? null
+  );
+}
+
+export async function getSellerProfileMediaForStaff(
+  database: D1Database,
+  mediaId: string,
+): Promise<{
+  objectKey: string;
+  originalName: string;
+  mimeType: string;
+} | null> {
+  return (
+    (await database
+      .prepare(
+        `SELECT object_key AS objectKey, original_name AS originalName,
+          mime_type AS mimeType
+         FROM seller_profile_media
+         WHERE id = ?
+         LIMIT 1`,
+      )
+      .bind(mediaId)
       .first<{
         objectKey: string;
         originalName: string;

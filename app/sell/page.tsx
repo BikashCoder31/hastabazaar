@@ -17,13 +17,13 @@ export const metadata: Metadata = {
 const steps = [
   {
     icon: Store,
-    title: 'Tell us about your business',
-    body: 'Choose Individual or Company, then share your legal identity, contact details and products.',
+    title: 'Choose the applicable route',
+    body: 'Answer one Yes/No registration question to open either Registered Seller or Hastabazaar Managed Maker onboarding.',
   },
   {
     icon: FileCheck2,
     title: 'Provide verification',
-    body: 'Upload your selected PAN and/or VAT certificates. Companies also provide registration evidence.',
+    body: 'Registered Sellers provide applicable business evidence. Managed Makers can apply without unavailable PAN/VAT fields.',
   },
   {
     icon: ClipboardCheck,
@@ -47,18 +47,17 @@ export default async function SellPage() {
                   Bring your work to HastaBazaar.
                 </h1>
                 <p className="mt-5 max-w-2xl text-lg leading-8 text-muted-foreground">
-                  Apply once with your registered business details. No listing
-                  goes live until the seller and products have been reviewed.
+                  Established businesses and individual makers share one maker-profile foundation. No listing goes live until the applicable program, maker, and product requirements are approved.
                 </p>
               </div>
               <p className="rounded-2xl border border-border bg-background/80 p-5 text-sm leading-6 text-muted-foreground">
-                <strong>9% commission on completed, paid product sales. No joining fee.</strong>{' '}
-                HastaBazaar charges a 9% commission on the product selling value
+                <strong>Registered Seller terms are separate from Managed Maker test arrangements.</strong>{' '}
+                The current independent-seller agreement uses a 9% commission on the product selling value
                 after seller-funded discounts, excluding separately stated
                 product taxes and delivery charges. Discounts funded entirely by
                 HastaBazaar do not reduce the seller&apos;s agreed product value.
                 Taxes legally chargeable on the commission are itemised
-                separately.{' '}
+                separately. Managed Maker live terms are not activated by this application.{' '}
                 <Link href="/seller-agreement" className="font-semibold text-primary underline">
                   Read the Seller Marketplace Agreement
                 </Link>

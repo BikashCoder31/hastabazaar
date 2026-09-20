@@ -46,6 +46,15 @@ const definitions: Record<SellerReviewAction, ActionDefinition> = {
     variant: 'outline',
     icon: FilePenLine,
   },
+  approve_for_activation: {
+    action: 'approve_for_activation',
+    label: 'Approve for activation',
+    title: 'Approve this maker for activation readiness?',
+    description:
+      'This records maker readiness only. It does not enable selling, assign a legal seller or invoice issuer, publish products, or activate an unreviewed commercial model.',
+    variant: 'default',
+    icon: CheckCircle2,
+  },
   approve: {
     action: 'approve',
     label: 'Approve seller',
@@ -69,9 +78,13 @@ const definitions: Record<SellerReviewAction, ActionDefinition> = {
 export function SellerReviewActions({
   sellerId,
   status,
+  participationRoute,
+  applicationStage,
 }: {
   sellerId: string;
   status: string;
+  participationRoute?: 'registered_seller' | 'managed_maker' | null;
+  applicationStage?: string | null;
 }) {
   const router = useRouter();
   const [reason, setReason] = useState('');
@@ -81,11 +94,16 @@ export function SellerReviewActions({
   const [payoutAccountReference, setPayoutAccountReference] = useState('');
   const [settlementTermsReference, setSettlementTermsReference] = useState('');
 
-  const available =
-    status === 'submitted'
+  const available = applicationStage === 'approved_for_activation'
+    ? []
+    : status === 'submitted'
       ? [definitions.start_review]
       : status === 'under_review'
-        ? [
+        ? participationRoute === 'managed_maker' ? [
+            definitions.request_changes,
+            definitions.approve_for_activation,
+            definitions.reject,
+          ] : [
             definitions.request_changes,
             definitions.approve,
             definitions.reject,
@@ -158,7 +176,7 @@ export function SellerReviewActions({
           <p className="text-xs text-muted-foreground">
             This note becomes part of the permanent moderation history.
           </p>
-          <label htmlFor="payout-account-reference" className="block text-sm font-semibold">
+          {participationRoute !== 'managed_maker' ? <><label htmlFor="payout-account-reference" className="block text-sm font-semibold">
             Verified receiving-account reference
           </label>
           <input
@@ -183,6 +201,7 @@ export function SellerReviewActions({
           <p className="text-xs text-muted-foreground">
             Both references and bank evidence are required only when approving a seller. Do not enter full bank credentials here.
           </p>
+          </> : <p className="text-xs text-muted-foreground">Managed Maker approval records maker readiness only. Commercial model, legal seller, invoice issuer, supplier/payment requirements, and the reviewed agreement remain separate activation conditions.</p>}
         </div>
       ) : null}
 

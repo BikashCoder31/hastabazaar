@@ -17,6 +17,7 @@ export const dynamic = 'force-dynamic';
 const allowedActions: readonly SellerReviewAction[] = [
   'start_review',
   'request_changes',
+  'approve_for_activation',
   'approve',
   'reject',
 ];

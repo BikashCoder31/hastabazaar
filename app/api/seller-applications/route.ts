@@ -6,12 +6,18 @@ import { requireDatabase, requireMediaBucket } from '@/lib/db/d1';
 import { createSellerApplication } from '@/lib/db/repositories/seller-applications';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
+import { validateProductVideo } from '@/lib/media/product-video';
+import {
+  validateProductImage,
+  validateProductImageContent,
+} from '@/lib/products/submission';
 import {
   createSellerApplicationReference,
   maximumApplicationBytes,
   parseSellerApplication,
   sellerDocumentsForApplication,
   type SellerApplicationDocument,
+  type SellerProfileMediaUpload,
   validateSellerDocument,
   validateSellerDocumentContent,
 } from '@/lib/sellers/application';
@@ -98,24 +104,63 @@ export async function POST(request: Request): Promise<Response> {
     return json({ error: fileErrors[0], errors: fileErrors }, 400);
   }
 
-  const bucket = requireMediaBucket(bindings);
+  const profileMediaFiles: Array<{
+    file: File;
+    kind: SellerProfileMediaUpload['kind'];
+  }> = [];
+  const profileImage = formData.get('profileImage');
+  if (profileImage instanceof File && profileImage.size > 0) {
+    const error = validateProductImage(profileImage) ?? await validateProductImageContent(profileImage);
+    if (error) fileErrors.push(`Logo or maker photograph: ${error}`);
+    else profileMediaFiles.push({ file: profileImage, kind: 'profile_image' });
+  }
+  const makerVideo = formData.get('makerVideo');
+  if (makerVideo instanceof File && makerVideo.size > 0) {
+    const error = await validateProductVideo(makerVideo);
+    if (error) fileErrors.push(`Maker introduction video: ${error}`);
+    else profileMediaFiles.push({ file: makerVideo, kind: 'maker_video' });
+  }
+  if (fileErrors.length > 0) return json({ error: fileErrors[0], errors: fileErrors }, 400);
+
+  const bucket = files.length > 0 || profileMediaFiles.length > 0
+    ? requireMediaBucket(bindings)
+    : null;
   const userId = customer?.userId ?? crypto.randomUUID();
   const sellerId = crypto.randomUUID();
   const applicationReference = createSellerApplicationReference();
   const uploadedKeys: string[] = [];
   const documents: SellerApplicationDocument[] = [];
+  const profileMedia: SellerProfileMediaUpload[] = [];
 
   try {
     for (const { file, kind } of files) {
       const documentId = crypto.randomUUID();
       const objectKey = `private/seller-documents/${sellerId}/${documentId}`;
-      await bucket.put(objectKey, file.stream(), {
+      await bucket!.put(objectKey, file.stream(), {
         httpMetadata: { contentType: file.type },
         customMetadata: { sellerId, documentKind: kind },
       });
       uploadedKeys.push(objectKey);
       documents.push({
         id: documentId,
+        kind,
+        objectKey,
+        originalName: file.name.slice(0, 180),
+        mimeType: file.type,
+        sizeBytes: file.size,
+      });
+    }
+
+    for (const { file, kind } of profileMediaFiles) {
+      const mediaId = crypto.randomUUID();
+      const objectKey = `private/seller-profile/${sellerId}/${mediaId}`;
+      await bucket!.put(objectKey, file.stream(), {
+        httpMetadata: { contentType: file.type },
+        customMetadata: { sellerId, makerProfileKind: kind },
+      });
+      uploadedKeys.push(objectKey);
+      profileMedia.push({
+        id: mediaId,
         kind,
         objectKey,
         originalName: file.name.slice(0, 180),
@@ -131,10 +176,11 @@ export async function POST(request: Request): Promise<Response> {
       applicationReference,
       input: parsed.input,
       documents,
+      profileMedia,
       now: Date.now(),
     });
   } catch (error) {
-    await Promise.allSettled(uploadedKeys.map((key) => bucket.delete(key)));
+    if (bucket) await Promise.allSettled(uploadedKeys.map((key) => bucket.delete(key)));
     const message = error instanceof Error ? error.message : '';
     if (/UNIQUE constraint failed|Duplicate entry/i.test(message)) {
       return json(

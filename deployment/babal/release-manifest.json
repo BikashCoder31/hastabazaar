@@ -32,7 +32,7 @@
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "0ed1447fb36c492d1b678549b33d70ffb12c7e74bea5c106f609bbc01f3b06a6",
+      "sha256": "f80fccda8e58af74c8e921a1e260f139b5b8d8b4852ff62165d2fd42e25aa3c9",
       "usage": "empty-database-only"
     },
     {
@@ -158,6 +158,11 @@
     {
       "path": "deployment/babal/mariadb-business-configuration.sql",
       "sha256": "256d046feff33c3f32db74ab35bc88e5559ef8466adaf23cabc9ebd21dea6acb",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-seller-participation.sql",
+      "sha256": "a5d1254d86669df7029ec6aa71d171718059bcf6f53c48e1aa3905e096a4b85a",
       "usage": "additive-maintenance"
     }
   ],
@@ -833,6 +838,7 @@
       "support_phone",
       "tax_mode",
       "tax_registration_number",
+      "tax_registration_number_key",
       "trading_name",
       "updated_at",
       "user_id",
@@ -955,6 +961,55 @@
     "business_setting_guards": [
       "id",
       "valid"
+    ],
+    "seller_participation_profiles": [
+      "application_stage",
+      "commercial_model",
+      "craft_experience_json",
+      "created_at",
+      "invoice_issuer_reference",
+      "legal_seller_reference",
+      "participation_route",
+      "payout_beneficiary_reference",
+      "public_city",
+      "public_name",
+      "return_destination_type",
+      "seller_id",
+      "social_links_json",
+      "tax_status",
+      "updated_at",
+      "version"
+    ],
+    "seller_participation_guards": [
+      "id",
+      "valid"
+    ],
+    "seller_operational_addresses": [
+      "created_at",
+      "district",
+      "id",
+      "is_public",
+      "locality",
+      "municipality",
+      "province",
+      "purpose",
+      "same_as_address_id",
+      "seller_id",
+      "updated_at",
+      "ward"
+    ],
+    "seller_profile_media": [
+      "id",
+      "kind",
+      "mime_type",
+      "moderation_status",
+      "object_key",
+      "original_name",
+      "reviewed_at",
+      "reviewed_by",
+      "seller_id",
+      "size_bytes",
+      "uploaded_at"
     ],
     "user_credentials": [
       "created_at",

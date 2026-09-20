@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { getSellerApplicationForReview } from '@/lib/db/repositories/seller-applications';
+import { managedMakerDisplayName } from '@/lib/sellers/participation';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,8 +84,90 @@ export default async function SellerApplicationPage({
         <StatusBadge status={application.status} />
       </div>
 
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader><CardTitle>Selected route</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p className="font-semibold">{application.participationRoute === 'managed_maker' ? 'Hastabazaar Managed Maker' : 'Registered Seller'}</p>
+            <p className="text-muted-foreground">Application stage: {(application.applicationStage ?? application.status).replaceAll('_', ' ')}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>Activation readiness</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p className="font-semibold">Applications Only</p>
+            <p className="text-muted-foreground">Profile and product drafts may continue. Selling stays restricted until program, maker, and product readiness are all satisfied.</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>Outstanding responsibility</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p className="font-semibold">{application.participationRoute === 'managed_maker' ? 'Hastabazaar / external adviser' : 'Reviewer'}</p>
+            <p className="text-muted-foreground">{application.participationRoute === 'managed_maker' ? 'Commercial model, reviewed agreement, legal seller, invoice issuer, supplier requirements, and payout beneficiary remain unassigned.' : 'Verify registration evidence, applicable agreement, payout details, and product review requirements.'}</p>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.4fr)_minmax(20rem,0.6fr)]">
         <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Public maker profile preview</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid gap-5 sm:grid-cols-2">
+                <Detail label="Public identity">{application.participationRoute === 'managed_maker' && application.publicName ? managedMakerDisplayName(application.publicName) : application.publicName ?? application.tradingName}</Detail>
+                <Detail label="Public city/town">{application.publicCity ?? application.municipality}</Detail>
+                <Detail label="Legal seller reference">{application.legalSellerReference ?? 'Not assigned'}</Detail>
+                <Detail label="Invoice issuer reference">{application.invoiceIssuerReference ?? 'Not assigned'}</Detail>
+                <Detail label="Payout beneficiary reference">{application.payoutBeneficiaryReference ?? 'Not assigned'}</Detail>
+                <Detail label="Return destination">{application.returnDestinationType?.replaceAll('_', ' ') ?? 'Not configured'}</Detail>
+              </dl>
+              <p className="mt-4 text-xs leading-5 text-muted-foreground">Private registration, home/workshop address, evidence, commercial terms, and commission values are excluded from this public preview.</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileCheck2 className="size-5 text-primary" /> Maker profile
+                media
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {application.profileMedia.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No optional maker profile media was supplied.
+                </p>
+              ) : application.profileMedia.map((media) => (
+                <div
+                  key={media.id}
+                  className="flex flex-col justify-between gap-3 rounded-lg border p-3 sm:flex-row sm:items-center"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold capitalize">
+                      {media.kind.replaceAll('_', ' ')}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {media.originalName} · {formatBytes(media.sizeBytes)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <StatusBadge status={media.moderationStatus} />
+                    <a
+                      href={`/api/admin/seller-profile-media/${media.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
+                    >
+                      Open <ExternalLink className="size-4" />
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -101,7 +184,7 @@ export default async function SellerApplicationPage({
                 <Detail label="Registration number">
                   {application.registrationNumber}
                 </Detail>
-                <Detail label="Tax mode">{application.taxMode}</Detail>
+                <Detail label="Tax mode">{application.taxMode === 'NONE' ? 'Not supplied for Managed Maker application' : application.taxMode}</Detail>
                 <Detail label="PAN / VAT number">
                   {application.taxRegistrationNumber}
                 </Detail>
@@ -215,6 +298,8 @@ export default async function SellerApplicationPage({
               <SellerReviewActions
                 sellerId={application.id}
                 status={application.status}
+                participationRoute={application.participationRoute}
+                applicationStage={application.applicationStage}
               />
             </CardContent>
           </Card>

@@ -5,7 +5,7 @@ export function notificationDestination(workspace:NotificationAudience,audience:
  if(workspace!==audience||!id||!/^[a-zA-Z0-9_-]{1,160}$/.test(id))return null;
  if(workspace==='customer'&&['rider_profile','rider_report','rider_assignment'].includes(type??''))return '/rider';
  if(workspace==='customer'&&type==='gift_card')return '/account/wallet#credit-activity';
- if(workspace==='customer')return ['order','return_request','complaint'].includes(type??'')?(context?.orderNumber&&/^[a-zA-Z0-9_-]{1,160}$/.test(context.orderNumber)?'/orders/'+encodeURIComponent(context.orderNumber)+(type==='order'?'':'#aftercare-title'):'/account/orders'):type==='seller_application'?'/sell':['account_status','account_status_active','account_status_disabled'].includes(type??'')?'/help':null;
+ if(workspace==='customer')return ['order','return_request','complaint'].includes(type??'')?(context?.orderNumber&&/^[a-zA-Z0-9_-]{1,160}$/.test(context.orderNumber)?'/orders/'+encodeURIComponent(context.orderNumber)+(type==='order'?'':'#aftercare-title'):'/account/orders'):type==='seller_application'?'/sell/application':['account_status','account_status_active','account_status_disabled'].includes(type??'')?'/help':null;
  if(workspace==='staff') {
  if(type==='rider_profile'||type==='rider_report')return '/admin/riders';
  if(type==='gift_card_issued')return '/admin/gift-cards';

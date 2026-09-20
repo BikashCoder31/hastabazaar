@@ -4,7 +4,9 @@ import { readBoundedForm, BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
 
 import { requireSellerApi, SellerAuthorizationError } from '@/lib/auth/seller';
+import { CustomerAuthorizationError, requireCustomerApi } from '@/lib/auth/customer';
 import { requireDatabase, requireMediaBucket } from '@/lib/db/d1';
+import { getSellerParticipationForUser } from '@/lib/db/repositories/seller-applications';
 import {
   areActiveOccasions,
   createProductSubmission,
@@ -21,6 +23,7 @@ import {
   validateProductImageContent,
   type ProductImageUpload,
 } from '@/lib/products/submission';
+import { applicationCapabilities } from '@/lib/sellers/participation';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,9 +46,19 @@ export async function POST(request: Request): Promise<Response> {
   const uploadedKeys: string[] = [];
   let bucket: R2Bucket | null = null;
   try {
-    const seller = await requireSellerApi();
     const bindings = env as unknown as { DB?: D1Database; MEDIA?: R2Bucket };
     const database = requireDatabase(bindings);
+    const draftIntent = new URL(request.url).searchParams.get('intent') === 'draft';
+    const seller = draftIntent
+      ? await (async () => {
+          const customer = await requireCustomerApi();
+          const participation = await getSellerParticipationForUser(database, customer.userId);
+          if (!participation || !applicationCapabilities(participation.applicationStage, 'applications_only').prepareProductDrafts) {
+            throw new CustomerAuthorizationError('This application cannot prepare product drafts.', 403);
+          }
+          return { sellerId: participation.sellerId, userId: customer.userId };
+        })()
+      : await requireSellerApi();
     const rateLimit = await consumeRequestRateLimit(database, request, {
       scope: `seller-product-submission:${seller.sellerId}`,
       limit: 20,
@@ -127,14 +140,15 @@ export async function POST(request: Request): Promise<Response> {
       slug,
       input: parsed.input,
       images,
+      intent: draftIntent ? 'draft' : 'submit',
       now: Date.now(),
     });
     return json(
       {
         id: productId,
         slug,
-        status: 'submitted',
-        message: 'Product submitted for review.',
+        status: draftIntent ? 'draft' : 'submitted',
+        message: draftIntent ? 'Private product draft saved.' : 'Product submitted for review.',
       },
       201,
     );
@@ -146,6 +160,9 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
     if (error instanceof SellerAuthorizationError) {
+      return json({ error: error.message }, error.status);
+    }
+    if (error instanceof CustomerAuthorizationError) {
       return json({ error: error.message }, error.status);
     }
     const message = error instanceof Error ? error.message : '';

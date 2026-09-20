@@ -314,10 +314,12 @@ export function ProductSubmissionForm({
   categories,
   occasions,
   initial,
+  mode = 'submit',
 }: {
   categories: readonly CategoryRow[];
   occasions: readonly OccasionRow[];
   initial?: SellerProductRevision;
+  mode?: 'submit' | 'draft';
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [state, setState] = useState<SubmissionState>({ status: 'idle' });
@@ -424,7 +426,7 @@ export function ProductSubmissionForm({
       const response = await fetch(
         initial
           ? `/api/seller/products/${encodeURIComponent(initial.id)}`
-          : '/api/seller/products',
+          : mode === 'draft' ? '/api/seller/products?intent=draft' : '/api/seller/products',
         {
           method: initial ? 'PATCH' : 'POST',
           body: new FormData(form),
@@ -471,22 +473,23 @@ export function ProductSubmissionForm({
             ? 'Product updated successfully'
             : isRevision
               ? 'Product revised and resubmitted'
-              : 'Product sent for review'}
+              : mode === 'draft' ? 'Private product draft saved' : 'Product sent for review'}
         </h2>
         <p className="mt-3 max-w-xl leading-7 text-muted-foreground">
-          HastaBazaar will verify the listing before it can appear in the public
-          shop.
+          {mode === 'draft'
+            ? 'This draft is available only to you and authorised reviewers. It cannot be published or ordered while activation requirements remain outstanding.'
+            : 'HastaBazaar will verify the listing before it can appear in the public shop.'}
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link
-            href="/seller/products"
+            href={mode === 'draft' ? '/sell/application' : '/seller/products'}
             className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
           >
-            View my products
+            {mode === 'draft' ? 'Back to application' : 'View my products'}
           </Link>
           <Button
             variant="outline"
-            render={<Link href="/seller/products/new" />}
+            render={<Link href={mode === 'draft' ? '/sell/application/products/new' : '/seller/products/new'} />}
             onClick={() => {
               if (!isRevision) setState({ status: 'idle' });
             }}
@@ -1014,7 +1017,7 @@ export function ProductSubmissionForm({
               'Save changes'
             )
           ) : (
-            'Submit product for review'
+            mode === 'draft' ? 'Save private product draft' : 'Submit product for review'
           )}
         </Button>
       </div>

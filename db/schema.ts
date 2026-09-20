@@ -108,7 +108,7 @@ export const sellerProfiles = sqliteTable(
     tradingName: text('trading_name').notNull(),
     registrationAuthority: text('registration_authority').notNull(),
     registrationNumber: text('registration_number').notNull(),
-    taxMode: text('tax_mode', { enum: ['PAN', 'VAT'] }).notNull(),
+    taxMode: text('tax_mode', { enum: ['PAN', 'VAT', 'BOTH', 'NONE'] }).notNull(),
     taxRegistrationNumber: text('tax_registration_number').notNull(),
     representativeName: text('representative_name').notNull(),
     businessDescription: text('business_description'),
@@ -198,6 +198,131 @@ export const sellerDocuments = sqliteTable(
   (table) => [
     uniqueIndex('idx_seller_documents_object_key_unique').on(table.objectKey),
     index('idx_seller_documents_seller_kind').on(table.sellerId, table.kind),
+  ],
+);
+
+export const sellerParticipationProfiles = sqliteTable(
+  'seller_participation_profiles',
+  {
+    sellerId: text('seller_id')
+      .primaryKey()
+      .references(() => sellerProfiles.id, { onDelete: 'cascade' }),
+    participationRoute: text('participation_route', {
+      enum: ['registered_seller', 'managed_maker'],
+    }).notNull(),
+    applicationStage: text('application_stage', {
+      enum: [
+        'draft',
+        'submitted',
+        'under_review',
+        'changes_requested',
+        'approved_for_activation',
+        'active',
+        'rejected',
+        'suspended',
+      ],
+    }).notNull(),
+    taxStatus: text('tax_status', {
+      enum: ['business_pan_only', 'vat_registered'],
+    }),
+    publicName: text('public_name').notNull(),
+    publicCity: text('public_city').notNull(),
+    craftExperienceJson: text('craft_experience_json').notNull().default('[]'),
+    socialLinksJson: text('social_links_json').notNull().default('{}'),
+    commercialModel: text('commercial_model', {
+      enum: [
+        'managed_sale_linked_percentage_v1',
+        'managed_fixed_supplier_price_v1',
+      ],
+    }),
+    legalSellerReference: text('legal_seller_reference'),
+    invoiceIssuerReference: text('invoice_issuer_reference'),
+    payoutBeneficiaryReference: text('payout_beneficiary_reference'),
+    returnDestinationType: text('return_destination_type', {
+      enum: ['maker_address', 'hastabazaar_collection_point'],
+    })
+      .notNull()
+      .default('maker_address'),
+    version: integer('version').notNull().default(1),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
+  },
+  (table) => [
+    index('idx_seller_participation_review').on(
+      table.participationRoute,
+      table.applicationStage,
+      table.createdAt,
+    ),
+    check('seller_participation_version', sql`${table.version} >= 1`),
+  ],
+);
+
+export const sellerParticipationGuards = sqliteTable(
+  'seller_participation_guards',
+  {
+    id: id(),
+    valid: integer('valid').notNull(),
+  },
+  (table) => [
+    check('seller_participation_guard_valid', sql`${table.valid} = 1`),
+  ],
+);
+
+export const sellerOperationalAddresses = sqliteTable(
+  'seller_operational_addresses',
+  {
+    id: id(),
+    sellerId: text('seller_id')
+      .notNull()
+      .references(() => sellerProfiles.id, { onDelete: 'cascade' }),
+    purpose: text('purpose', {
+      enum: ['verification', 'pickup', 'returns', 'invoice'],
+    }).notNull(),
+    sameAsAddressId: text('same_as_address_id').references(
+      (): AnySQLiteColumn => sellerOperationalAddresses.id,
+      { onDelete: 'set null' },
+    ),
+    province: text('province').notNull(),
+    district: text('district').notNull(),
+    municipality: text('municipality').notNull(),
+    ward: text('ward'),
+    locality: text('locality').notNull(),
+    isPublic: integer('is_public', { mode: 'boolean' }).notNull().default(false),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_seller_addresses_purpose').on(table.sellerId, table.purpose),
+    check('seller_address_private', sql`${table.isPublic} = 0`),
+  ],
+);
+
+export const sellerProfileMedia = sqliteTable(
+  'seller_profile_media',
+  {
+    id: id(),
+    sellerId: text('seller_id')
+      .notNull()
+      .references(() => sellerProfiles.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['profile_image', 'maker_video'] }).notNull(),
+    objectKey: text('object_key').notNull(),
+    originalName: text('original_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    moderationStatus: text('moderation_status', {
+      enum: ['pending', 'approved', 'rejected'],
+    })
+      .notNull()
+      .default('pending'),
+    uploadedAt: timestamp('uploaded_at').notNull(),
+    reviewedAt: timestamp('reviewed_at'),
+    reviewedBy: text('reviewed_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+  },
+  (table) => [
+    uniqueIndex('idx_seller_profile_media_kind').on(table.sellerId, table.kind),
+    uniqueIndex('idx_seller_profile_media_object_key').on(table.objectKey),
   ],
 );
 

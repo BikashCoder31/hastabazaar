@@ -69,6 +69,8 @@ export interface PublicReviewRow {
 export interface PublicMakerProfile {
   id: string;
   tradingName: string;
+  participationRoute: 'registered_seller' | 'managed_maker' | null;
+  publicCity: string;
   businessDescription: string | null;
   productCategories: string | null;
   province: string;
@@ -79,13 +81,20 @@ export interface PublicMakerProfile {
 
 export async function getPublicMakerProfile(database: D1Database, sellerId: string): Promise<PublicMakerProfile | null> {
   return (await database.prepare(
-    `SELECT seller_profiles.id, seller_profiles.trading_name AS tradingName,
+    `SELECT seller_profiles.id,
+      COALESCE(participation.public_name, seller_profiles.trading_name) AS tradingName,
+      participation.participation_route AS participationRoute,
+      COALESCE(participation.public_city, seller_profiles.municipality) AS publicCity,
       seller_profiles.business_description AS businessDescription,
       seller_profiles.product_categories AS productCategories,
       seller_profiles.province, seller_profiles.district,
       seller_profiles.approved_at AS approvedAt, COUNT(products.id) AS productCount
-     FROM seller_profiles LEFT JOIN products ON products.seller_id = seller_profiles.id AND ${publicProductEligibility()}
-     WHERE seller_profiles.id = ? AND seller_profiles.status = 'approved' AND EXISTS(SELECT 1 FROM users maker_owner WHERE maker_owner.id=seller_profiles.user_id AND maker_owner.status='active')
+     FROM seller_profiles
+     LEFT JOIN seller_participation_profiles participation ON participation.seller_id = seller_profiles.id
+     LEFT JOIN products ON products.seller_id = seller_profiles.id AND ${publicProductEligibility()}
+     WHERE seller_profiles.id = ?
+       AND (seller_profiles.status = 'approved' OR (participation.participation_route = 'managed_maker' AND participation.application_stage = 'active'))
+       AND EXISTS(SELECT 1 FROM users maker_owner WHERE maker_owner.id=seller_profiles.user_id AND maker_owner.status='active')
      GROUP BY seller_profiles.id LIMIT 1`,
   ).bind(sellerId).first<PublicMakerProfile>()) ?? null;
 }
@@ -94,10 +103,12 @@ export async function listPublishedProductsByMaker(database: D1Database, sellerI
   const result = await database.prepare(
     `SELECT products.id, products.slug, products.name_en AS nameEn, products.name_ne AS nameNe,
       products.price_paisa AS pricePaisa, products.inventory_quantity AS inventoryQuantity,
-      seller_profiles.trading_name AS tradingName, products.published_at AS savedAt,
+      COALESCE(participation.public_name, seller_profiles.trading_name) AS tradingName, products.published_at AS savedAt,
       (SELECT product_media.id FROM product_media WHERE product_media.product_id = products.id ORDER BY product_media.sort_order LIMIT 1) AS primaryMediaId
      FROM products INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
-     WHERE products.seller_id = ? AND ${publicProductEligibility()} AND seller_profiles.status = 'approved'
+     LEFT JOIN seller_participation_profiles participation ON participation.seller_id = seller_profiles.id
+     WHERE products.seller_id = ? AND ${publicProductEligibility()}
+       AND (seller_profiles.status = 'approved' OR (participation.participation_route = 'managed_maker' AND participation.application_stage = 'active'))
      ORDER BY products.published_at DESC`,
   ).bind(sellerId).all<WishlistProductRow>();
   return result.results;
