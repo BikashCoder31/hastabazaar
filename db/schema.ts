@@ -2367,3 +2367,144 @@ export const parcelCashRecords=sqliteTable('parcel_cash_records',{
 },t=>[uniqueIndex('parcel_cash_evidence').on(t.kind,t.evidenceReference),index('idx_parcel_cash_status').on(t.status,t.createdAt),check('parcel_cash_positive',sql`${t.amountPaisa}>0`),check('parcel_cash_kind',sql`${t.kind} IN ('collection','remittance')`),check('parcel_cash_state',sql`${t.status} IN ('pending','posted','rejected')`),check('parcel_cash_checker',sql`${t.kind}<>'remittance' OR ${t.status}<>'posted' OR (${t.approvedBy} IS NOT NULL AND ${t.approvedBy}<>${t.createdBy})`)]);
 export const parcelOperationEvents=sqliteTable('parcel_operation_events',{id:id(),orderId:text('order_id').notNull().references(()=>orders.id),shippingJobId:text('shipping_job_id').references(()=>shippingParcels.shippingJobId),actorId:text('actor_id').notNull().references(()=>users.id),action:text('action').notNull(),payloadJson:text('payload_json').notNull(),note:text('note').notNull(),createdAt:integer('created_at').notNull()});
 export const operationTransactionGuards=sqliteTable('operation_transaction_guards',{id:id(),valid:integer('valid').notNull()},t=>[check('operation_transaction_valid',sql`${t.valid}=1`)]);
+
+export const managedCommercialSnapshots = sqliteTable(
+  'managed_commercial_snapshots',
+  {
+    id: id(),
+    orderItemId: text('order_item_id').notNull().references(() => orderItems.id, { onDelete: 'restrict' }),
+    sellerId: text('seller_id').notNull().references(() => sellerProfiles.id, { onDelete: 'restrict' }),
+    participationRoute: text('participation_route', { enum: ['managed_maker'] }).notNull(),
+    commercialModel: text('commercial_model', { enum: ['managed_sale_linked_percentage_v1', 'managed_fixed_supplier_price_v1'] }).notNull(),
+    legalSellerReference: text('legal_seller_reference').notNull(),
+    invoiceIssuerReference: text('invoice_issuer_reference').notNull(),
+    payoutBeneficiaryReference: text('payout_beneficiary_reference').notNull(),
+    agreementVersion: text('agreement_version').notNull(),
+    agreementLanguage: text('agreement_language', { enum: ['en', 'ne'] }).notNull(),
+    termsSettingVersionId: text('terms_setting_version_id'),
+    productValuePaisa: integer('product_value_paisa').notNull(),
+    makerFundedDiscountPaisa: integer('maker_funded_discount_paisa').notNull().default(0),
+    platformFundedDiscountPaisa: integer('platform_funded_discount_paisa').notNull().default(0),
+    eligibleBasePaisa: integer('eligible_base_paisa').notNull(),
+    platformRetentionBps: integer('platform_retention_bps').notNull().default(0),
+    platformRetainedPaisa: integer('platform_retained_paisa').notNull().default(0),
+    makerEntitlementPaisa: integer('maker_entitlement_paisa').notNull().default(0),
+    agreedSupplierAmountPaisa: integer('agreed_supplier_amount_paisa'),
+    simulationLabel: text('simulation_label').notNull(),
+    createdAt: timestamp('created_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('idx_managed_snapshots_order_item').on(t.orderItemId),
+    index('idx_managed_snapshots_seller_created').on(t.sellerId, t.createdAt),
+    check('managed_snapshot_route', sql`${t.participationRoute}='managed_maker'`),
+    check('managed_snapshot_money', sql`${t.platformRetainedPaisa}+${t.makerEntitlementPaisa}=${t.eligibleBasePaisa}`),
+    check('managed_snapshot_fixed_no_retention', sql`${t.commercialModel}<>'managed_fixed_supplier_price_v1' OR ${t.platformRetainedPaisa}=0`),
+  ],
+);
+
+export const managedEntitlements = sqliteTable(
+  'managed_entitlements',
+  {
+    id: id(),
+    snapshotId: text('snapshot_id').notNull().references(() => managedCommercialSnapshots.id, { onDelete: 'restrict' }),
+    sellerId: text('seller_id').notNull().references(() => sellerProfiles.id, { onDelete: 'restrict' }),
+    status: text('status', { enum: ['calculated', 'earned', 'held', 'eligible', 'part_paid', 'paid', 'reversed'] }).notNull(),
+    calculatedPaisa: integer('calculated_paisa').notNull(),
+    earnedAt: timestamp('earned_at'),
+    holdUntil: timestamp('hold_until'),
+    eligibleAt: timestamp('eligible_at'),
+    paidAt: timestamp('paid_at'),
+    disputeHoldReason: text('dispute_hold_reason'),
+    disputeReviewAt: timestamp('dispute_review_at'),
+    version: integer('version').notNull().default(1),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('idx_managed_entitlements_snapshot').on(t.snapshotId),
+    index('idx_managed_entitlements_status').on(t.status, t.eligibleAt),
+  ],
+);
+
+export const managedSettlementEntries = sqliteTable(
+  'managed_settlement_entries',
+  {
+    id: id(),
+    entitlementId: text('entitlement_id').notNull().references(() => managedEntitlements.id, { onDelete: 'restrict' }),
+    refundId: text('refund_id').references(() => refunds.id, { onDelete: 'restrict' }),
+    type: text('type', { enum: ['earned', 'refund_adjustment', 'dispute_adjustment', 'defect_adjustment', 'payout', 'payout_reversal'] }).notNull(),
+    amountPaisa: integer('amount_paisa').notNull(),
+    reasonCode: text('reason_code').notNull(),
+    requestId: text('request_id').notNull(),
+    createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('idx_managed_settlement_request').on(t.requestId),
+    index('idx_managed_settlement_entitlement').on(t.entitlementId, t.createdAt),
+    check('managed_settlement_nonzero', sql`${t.amountPaisa}<>0`),
+  ],
+);
+
+export const managedPayouts = sqliteTable(
+  'managed_payouts',
+  {
+    id: id(),
+    sellerId: text('seller_id').notNull().references(() => sellerProfiles.id, { onDelete: 'restrict' }),
+    payoutNumber: text('payout_number').notNull(),
+    amountPaisa: integer('amount_paisa').notNull(),
+    status: text('status', { enum: ['prepared', 'approved', 'processing', 'paid', 'failed', 'rejected', 'reversed'] }).notNull(),
+    destinationReference: text('destination_reference').notNull(),
+    simulationLabel: text('simulation_label').notNull(),
+    preparedBy: text('prepared_by').notNull().references(() => users.id, { onDelete: 'restrict' }),
+    approvedBy: text('approved_by').references(() => users.id, { onDelete: 'restrict' }),
+    scheduledFor: timestamp('scheduled_for').notNull(),
+    providerReference: text('provider_reference'),
+    requestId: text('request_id').notNull(),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
+    paidAt: timestamp('paid_at'),
+  },
+  (t) => [
+    uniqueIndex('idx_managed_payouts_number').on(t.payoutNumber),
+    uniqueIndex('idx_managed_payouts_request').on(t.requestId),
+    index('idx_managed_payouts_status').on(t.status, t.scheduledFor),
+    check('managed_payout_positive', sql`${t.amountPaisa}>0`),
+    check('managed_payout_maker_checker', sql`${t.approvedBy} IS NULL OR ${t.approvedBy}<>${t.preparedBy}`),
+  ],
+);
+
+export const managedPayoutEntries = sqliteTable(
+  'managed_payout_entries',
+  {
+    payoutId: text('payout_id').notNull().references(() => managedPayouts.id, { onDelete: 'restrict' }),
+    settlementEntryId: text('settlement_entry_id').notNull().references(() => managedSettlementEntries.id, { onDelete: 'restrict' }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.payoutId, t.settlementEntryId] }),
+    uniqueIndex('idx_managed_payout_entry_unique').on(t.settlementEntryId),
+  ],
+);
+
+export const managedInvoiceGroups = sqliteTable(
+  'managed_invoice_groups',
+  {
+    id: id(),
+    orderId: text('order_id').notNull().references(() => orders.id, { onDelete: 'restrict' }),
+    issuerReference: text('issuer_reference').notNull(),
+    invoiceNumber: text('invoice_number').notNull(),
+    snapshotJson: text('snapshot_json').notNull(),
+    barcodePayload: text('barcode_payload').notNull(),
+    qrPayload: text('qr_payload').notNull(),
+    simulationLabel: text('simulation_label').notNull(),
+    status: text('status', { enum: ['issued', 'voided'] }).notNull().default('issued'),
+    requestId: text('request_id').notNull(),
+    issuedAt: timestamp('issued_at').notNull(),
+    voidedAt: timestamp('voided_at'),
+  },
+  (t) => [
+    uniqueIndex('idx_managed_invoice_number').on(t.invoiceNumber),
+    uniqueIndex('idx_managed_invoice_request').on(t.requestId),
+    uniqueIndex('idx_managed_invoice_order_issuer').on(t.orderId, t.issuerReference),
+  ],
+);

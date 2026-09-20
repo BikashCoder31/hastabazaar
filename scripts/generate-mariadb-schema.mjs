@@ -15,6 +15,10 @@ const sellerParticipationSql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-seller-participation.sql'),
   'utf8',
 );
+const managedCommerceSql = await readFile(
+  resolve(projectRoot, 'deployment/babal/mariadb-managed-commerce.sql'),
+  'utf8',
+);
 
 const quote = (value) => `\`${String(value).replaceAll('`', '``')}\``;
 
@@ -238,6 +242,8 @@ output.push(
   '',
   sellerParticipationSql.trim(),
   '',
+  managedCommerceSql.trim(),
+  '',
   '-- Babal.Host password authentication and server-side sessions.',
   'CREATE TABLE IF NOT EXISTS `user_credentials` (',
   '  `user_id` VARCHAR(191) NOT NULL,',
@@ -320,6 +326,12 @@ await mkdir(dirname(outputPath), { recursive: true });
 const schemaSql = output.join('\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
+  'managed_invoice_groups',
+  'managed_payout_entries',
+  'managed_payouts',
+  'managed_settlement_entries',
+  'managed_entitlements',
+  'managed_commercial_snapshots',
   'seller_profile_media',
   'seller_operational_addresses',
   'seller_participation_guards',

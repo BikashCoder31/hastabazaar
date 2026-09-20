@@ -63,6 +63,47 @@ export function calculateManagedSaleLinkedAmounts(input: {
   });
 }
 
+export function calculateManagedSaleLinkedRefundAmounts(input: {
+  originalEligibleBasePaisa: number;
+  originalPlatformRetainedPaisa: number;
+  refundedEligibleBasePaisa: number;
+}) {
+  const originalEligibleBasePaisa = nonNegativePaisa(
+    'Original eligible base',
+    input.originalEligibleBasePaisa,
+  );
+  const originalPlatformRetainedPaisa = nonNegativePaisa(
+    'Original platform retained amount',
+    input.originalPlatformRetainedPaisa,
+  );
+  const refundedEligibleBasePaisa = nonNegativePaisa(
+    'Refunded eligible base',
+    input.refundedEligibleBasePaisa,
+  );
+  if (originalPlatformRetainedPaisa > originalEligibleBasePaisa) {
+    throw new RangeError('Original platform retained amount cannot exceed the eligible base.');
+  }
+  if (refundedEligibleBasePaisa > originalEligibleBasePaisa) {
+    throw new RangeError('Refunded eligible base cannot exceed the original eligible base.');
+  }
+  const platformRetentionReversalPaisa =
+    refundedEligibleBasePaisa === originalEligibleBasePaisa
+      ? originalPlatformRetainedPaisa
+      : originalEligibleBasePaisa === 0
+        ? 0
+        : roundHalfUpRatio(
+            refundedEligibleBasePaisa,
+            originalPlatformRetainedPaisa,
+            originalEligibleBasePaisa,
+          );
+  return Object.freeze({
+    refundedEligibleBasePaisa,
+    platformRetentionReversalPaisa,
+    makerEntitlementReversalPaisa:
+      refundedEligibleBasePaisa - platformRetentionReversalPaisa,
+  });
+}
+
 export function isManagedEntitlementEarned(input: {
   delivered: boolean;
   customerPaid: boolean;
