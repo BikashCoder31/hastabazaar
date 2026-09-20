@@ -198,6 +198,7 @@ export async function businessNotificationStatements(
   return statements;
 }
 interface BusinessEmailData {
+  template?: string;
   guestOrderId?: string | null;
   orderNumber?: string | null;
   productStatus?: string | null;
@@ -237,8 +238,10 @@ export function buildBusinessEmail(data: BusinessEmailData, origin: string) {
     !/^[-a-zA-Z0-9.!#$%&'*+/=?^_`{|}~]+@[^\s<>@]+\.[^\s<>@]+$/.test(data.email)
   )
     throw new Error('Invalid email recipient.');
-  const destination =
-    data.guestOrderId &&
+  const deliveryAuthorization = data.template === 'delivery.authorization';
+  const destination = deliveryAuthorization
+    ? '/help'
+    : data.guestOrderId &&
     data.orderNumber &&
     /^[A-Za-z0-9_-]{1,160}$/.test(data.orderNumber)
       ? '/track?order=' + encodeURIComponent(data.orderNumber)
@@ -264,7 +267,9 @@ export function buildBusinessEmail(data: BusinessEmailData, origin: string) {
           "'": '&#39;',
         })[c]!,
     );
-  const instructions = data.relatedType?.startsWith('account_status_')
+  const instructions = deliveryAuthorization
+    ? 'This single-use code authorizes only this parcel handover. It does not provide account, invoice, or order-history access. Contact the purchaser or support if the delivery details are wrong.'
+    : data.relatedType?.startsWith('account_status_')
     ? 'Contact support if you have questions about this account update. Opening the support page does not change your account.'
     : data.guestOrderId
       ? 'Use the checkout email to track your order. To review or respond to the case, open your order receipt in the original checkout browser. Contact support if that receipt is unavailable.'
@@ -293,6 +298,7 @@ export function buildBusinessEmail(data: BusinessEmailData, origin: string) {
   };
 }
 const supportedTemplates = [
+  'delivery.authorization',
   'business.cancellation.updated',
   'business.rider.update',
   'business.seller_application.submitted',
@@ -380,10 +386,27 @@ export async function deliverBusinessEmails(
           row.relatedType === 'account_status_' + row.userStatus &&
           ['active', 'disabled'].includes(row.userStatus);
       if (
+        row?.template === 'delivery.authorization' &&
+        row.guestOrderId &&
+        row.audience === 'customer'
+      ) {
+        const order = await db
+          .prepare(
+            row.userId
+              ? 'SELECT order_number AS orderNumber FROM orders WHERE id=? AND customer_id=?'
+              : 'SELECT order_number AS orderNumber FROM orders WHERE id=? AND recipient_email=?',
+          )
+          .bind(row.guestOrderId, row.userId ?? row.email)
+          .first<{ orderNumber: string }>();
+        authorized = !!order;
+        row.orderNumber = order?.orderNumber;
+      }
+      if (
         row &&
         row.guestOrderId &&
         !row.userId &&
-        row.audience === 'customer'
+        row.audience === 'customer' &&
+        row.template !== 'delivery.authorization'
       ) {
         const order = await db
           .prepare(
@@ -559,7 +582,7 @@ export async function deliverBusinessEmails(
         row.audience !== 'staff' &&
         row.relatedType !== 'return_request' &&
         row.relatedType !== 'complaint' &&
-        row.template !== 'business.account.status' && row.template !== 'business.cancellation.updated' &&
+        row.template !== 'business.account.status' && row.template !== 'business.cancellation.updated' && row.template !== 'delivery.authorization' &&
         !['rider_profile', 'rider_report', 'rider_assignment'].includes(
           row.relatedType ?? '',
         )

@@ -23,6 +23,10 @@ const productStoryMaterialsSql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-product-story-materials.sql'),
   'utf8',
 );
+const checkoutRecipientSnapshotsSql = await readFile(
+  resolve(projectRoot, 'deployment/babal/mariadb-checkout-recipient-snapshots.sql'),
+  'utf8',
+);
 
 const quote = (value) => `\`${String(value).replaceAll('`', '``')}\``;
 
@@ -249,6 +253,8 @@ output.push(
   managedCommerceSql.trim(),
   '',
   productStoryMaterialsSql.trim(),
+  '',
+  checkoutRecipientSnapshotsSql.trim(),
   '',
   '-- Babal.Host password authentication and server-side sessions.',
   'CREATE TABLE IF NOT EXISTS `user_credentials` (',

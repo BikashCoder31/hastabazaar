@@ -8,6 +8,11 @@ export {NEPAL_PROVINCES} from './nepal-address';
 export interface CheckoutInput {
   customerEmail: string;
   customerPhone: string;
+  deliveryFor?: 'self' | 'other';
+  recipientEmail?: string;
+  selectedAddressId?: string;
+  saveAddressForFuture?: boolean;
+  saveAddressLabel?: string;
   locale: 'en-NP' | 'ne-NP';
   address: NepalAddress;
   termsAccepted: boolean;
@@ -44,6 +49,14 @@ export function parseCheckoutInput(body: unknown): CheckoutValidationResult {
   const value: CheckoutInput = {
     customerEmail: text(source.customerEmail).toLowerCase(),
     customerPhone: phone(source.customerPhone),
+    deliveryFor: source.deliveryFor === 'other' ? 'other' : 'self',
+    recipientEmail:
+      source.deliveryFor === 'other'
+        ? text(source.recipientEmail).toLowerCase() || undefined
+        : undefined,
+    selectedAddressId: text(source.selectedAddressId) || undefined,
+    saveAddressForFuture: source.saveAddressForFuture === true,
+    saveAddressLabel: text(source.saveAddressLabel) || undefined,
     locale: source.locale === 'ne-NP' ? 'ne-NP' : 'en-NP',
     termsAccepted: source.termsAccepted === true,
     idempotencyKey: text(source.idempotencyKey),
@@ -73,6 +86,20 @@ export function parseCheckoutInput(body: unknown): CheckoutValidationResult {
     errors.push('Enter a valid email address.');
   if (!PHONE_PATTERN.test(value.customerPhone))
     errors.push('Enter a valid Nepal contact number.');
+  if (
+    value.recipientEmail &&
+    (!EMAIL_PATTERN.test(value.recipientEmail) || value.recipientEmail.length > 254)
+  )
+    errors.push('Enter a valid optional recipient email address.');
+  if (value.selectedAddressId && !/^[a-zA-Z0-9_-]{1,100}$/.test(value.selectedAddressId))
+    errors.push('Select a valid saved address.');
+  if (value.saveAddressForFuture && value.selectedAddressId)
+    errors.push('A one-order edit cannot overwrite a saved address. Save it as a new address instead.');
+  if (
+    value.saveAddressForFuture &&
+    (!value.saveAddressLabel || value.saveAddressLabel.length > 80)
+  )
+    errors.push('Add a short label before saving this address for future orders.');
   if (
     value.address.recipientName.length < 2 ||
     value.address.recipientName.length > 100

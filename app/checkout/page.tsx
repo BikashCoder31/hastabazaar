@@ -53,6 +53,7 @@ export default async function CheckoutPage() {
             initialReferralCode={referralCode}
             customerEmail={customer?.email}
             customerPhone={customer?.phone ?? undefined}
+            customerDisplayName={customer?.displayName}
             savedAddresses={addresses}
           />
         </div>

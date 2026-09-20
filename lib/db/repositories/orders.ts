@@ -199,6 +199,32 @@ export async function createCodOrder(
   const items = itemResult.results;
   if (items.length === 0)
     throw new CheckoutConflictError('Your cart is empty.');
+  if ((input.selectedAddressId || input.saveAddressForFuture) && !customerId)
+    throw new CheckoutConflictError('Sign in to use or save a delivery address.');
+  if (input.selectedAddressId) {
+    const ownedAddress = await database
+      .prepare('SELECT 1 AS found FROM addresses WHERE id=? AND user_id=?')
+      .bind(input.selectedAddressId, customerId)
+      .first<{ found: number }>();
+    if (!ownedAddress)
+      throw new CheckoutConflictError(
+        'The selected saved address is not available to this account.',
+      );
+  }
+  if (
+    input.saveAddressForFuture &&
+    !/^(?:\+?977)?9[678]\d{8}$/.test(input.address.phone)
+  )
+    throw new CheckoutConflictError(
+      'Use a valid Nepal mobile number to save this address.',
+    );
+  if (
+    input.saveAddressForFuture &&
+    (!input.saveAddressLabel || input.saveAddressLabel.length > 80)
+  )
+    throw new CheckoutConflictError('Add a short label before saving this address.');
+  const recipientEmail =
+    input.deliveryFor === 'other' ? input.recipientEmail ?? null : null;
   if (
     items.some(
       (item) =>
@@ -272,6 +298,9 @@ export async function createCodOrder(
     credit.walletPaisa -
     credit.discountPaisa;
   const id = crypto.randomUUID();
+  const savedAddressId = input.saveAddressForFuture
+    ? crypto.randomUUID()
+    : input.selectedAddressId ?? null;
   const number = orderNumber(now);
   const termsSnapshot = { ...checkoutTermsSnapshot(sellerCommissionBps), deliveryRate: delivery };
   const platformDiscounts = allocatePlatformDiscountPaisa(
@@ -314,13 +343,14 @@ export async function createCodOrder(
       .prepare(
         `INSERT INTO orders (
           id, order_number, receipt_token_hash, customer_id, customer_email,
-          customer_phone, status, locale, currency, policy_version,
+          customer_phone, delivery_for, recipient_email, source_address_id,
+          address_saved_for_future, status, locale, currency, policy_version,
           return_policy_snapshot_json,
           shipping_address_json, item_subtotal_paisa, seller_discount_paisa,
           delivery_charge_paisa, buyer_platform_fee_paisa, tax_total_paisa,
           grand_total_paisa, payment_mode, payment_status, placed_at,
           delivered_at, cancelled_at, created_at, updated_at, wallet_credit_paisa, referral_discount_paisa
-        ) VALUES (?, ?, ?, ?, ?, ?, 'confirmed', ?, 'NPR', ?, ?, ?, ?, 0, ?, ?, 0, ?, 'cod', 'pending', ?, NULL, NULL, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, 'NPR', ?, ?, ?, ?, 0, ?, ?, 0, ?, 'cod', 'pending', ?, NULL, NULL, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -329,6 +359,10 @@ export async function createCodOrder(
         customerId,
         input.customerEmail,
         input.customerPhone,
+        input.deliveryFor ?? 'self',
+        recipientEmail,
+        savedAddressId,
+        input.saveAddressForFuture ? 1 : 0,
         input.locale,
         CUSTOMER_POLICY_VERSION,
         JSON.stringify(phaseOneMarketplacePolicy.value.returns),
@@ -344,6 +378,65 @@ export async function createCodOrder(
         credit.discountPaisa,
       ),
   ];
+
+  if (customerId && input.saveAddressForFuture && savedAddressId) {
+    statements.push(
+      database
+        .prepare(
+          `INSERT INTO addresses (
+            id,user_id,label,recipient_name,phone,province,district,municipality,
+            ward,locality,landmark,postal_code,is_default,created_at,updated_at
+          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,
+            CASE WHEN EXISTS(SELECT 1 FROM addresses WHERE user_id=?) THEN 0 ELSE 1 END,?,?)`,
+        )
+        .bind(
+          savedAddressId,
+          customerId,
+          input.saveAddressLabel,
+          input.address.recipientName,
+          input.address.phone,
+          input.address.province,
+          input.address.district,
+          input.address.municipality,
+          input.address.ward ?? null,
+          input.address.locality,
+          input.address.landmark ?? null,
+          input.address.postalCode ?? null,
+          customerId,
+          now,
+          now,
+        ),
+    );
+    if (input.address.location)
+      statements.push(
+        database
+          .prepare(
+            'INSERT INTO address_locations(address_id,latitude,longitude) VALUES (?,?,?)',
+          )
+          .bind(
+            savedAddressId,
+            input.address.location.latitude,
+            input.address.location.longitude,
+          ),
+      );
+    statements.push(
+      database
+        .prepare(
+          `INSERT INTO audit_logs (
+            id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at
+          ) VALUES (?,?,'account.address.created','address',?,
+            'Customer chose to save a new delivery address during checkout',?,?,?)`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          customerId,
+          savedAddressId,
+          JSON.stringify({ label: input.saveAddressLabel, source: 'checkout' }),
+          `${input.idempotencyKey}:save-address`,
+          now,
+        ),
+    );
+  }
 
   statements.push(
     database
@@ -688,6 +781,10 @@ export interface OrderReceipt {
   orderNumber: string;
   customerEmail: string;
   customerPhone: string;
+  deliveryFor: 'self' | 'other';
+  recipientEmail: string | null;
+  sourceAddressId: string | null;
+  addressSavedForFuture: number;
   status: string;
   paymentMode: string;
   paymentStatus: string;
@@ -732,7 +829,10 @@ export async function getOrderReceipt(
     .prepare(
       `SELECT COALESCE(orders.current_wallet_paisa,orders.wallet_credit_paisa) AS walletCreditPaisa, COALESCE(orders.current_discount_paisa,orders.referral_discount_paisa) AS referralDiscountPaisa,
         orders.order_number AS orderNumber, orders.customer_email AS customerEmail,
-        orders.customer_phone AS customerPhone, orders.status, orders.payment_mode AS paymentMode,
+        orders.customer_phone AS customerPhone, orders.delivery_for AS deliveryFor,
+        orders.recipient_email AS recipientEmail, orders.source_address_id AS sourceAddressId,
+        orders.address_saved_for_future AS addressSavedForFuture,
+        orders.status, orders.payment_mode AS paymentMode,
         orders.payment_status AS paymentStatus, orders.shipping_address_json AS addressJson,
         COALESCE(orders.current_subtotal_paisa,orders.item_subtotal_paisa) AS itemSubtotalPaisa,
         COALESCE(orders.current_delivery_paisa,orders.delivery_charge_paisa) AS deliveryChargePaisa,

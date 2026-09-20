@@ -838,6 +838,16 @@ export const orders = sqliteTable(
     }),
     customerEmail: text('customer_email').notNull(),
     customerPhone: text('customer_phone').notNull(),
+    deliveryFor: text('delivery_for', { enum: ['self', 'other'] })
+      .notNull()
+      .default('self'),
+    recipientEmail: text('recipient_email'),
+    sourceAddressId: text('source_address_id'),
+    addressSavedForFuture: integer('address_saved_for_future', {
+      mode: 'boolean',
+    })
+      .notNull()
+      .default(false),
     status: text('status', {
       enum: [
         'pending_payment',

@@ -32,7 +32,7 @@
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "2cae29fd0aefcb67e882e80cc71a6b529fe7fc1ce87e2babed03ba23b4eaa7b6",
+      "sha256": "48e27c7fc86b99eccb9152eb7c62deff048827e88b14e67b561fe14b8a658709",
       "usage": "empty-database-only"
     },
     {
@@ -1497,6 +1497,7 @@
     ]
   },
   "requiredTriggers": {
+    "invalidate_delivery_otp_after_destination_change": [],
     "wallet_refund_lock": [],
     "wallet_refund_guard": [],
     "wallet_entry_balance": [],

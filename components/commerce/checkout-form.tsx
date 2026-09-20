@@ -61,6 +61,7 @@ export function CheckoutForm({
   deliveryRates = DEFAULT_DELIVERY_RATES,
   customerEmail,
   customerPhone,
+  customerDisplayName,
   savedAddresses = [],
   walletBalancePaisa = 0,
   referralCampaign,
@@ -69,6 +70,7 @@ export function CheckoutForm({
   deliveryRates?: DeliveryRates;
   customerEmail?: string;
   customerPhone?: string;
+  customerDisplayName?: string;
   savedAddresses?: readonly CustomerAddressRow[];
   walletBalancePaisa?: number;
   referralCampaign?: ReferralCampaign;
@@ -101,6 +103,8 @@ export function CheckoutForm({
   const [selectedAddress, setSelectedAddress] = useState<
     CustomerAddressRow | undefined
   >(initialAddress);
+  const [deliveryFor, setDeliveryFor] = useState<'self' | 'other'>('self');
+  const [saveAddressForFuture, setSaveAddressForFuture] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -154,6 +158,13 @@ export function CheckoutForm({
     const request = {
       customerEmail: data.get('customerEmail'),
       customerPhone: data.get('customerPhone'),
+      deliveryFor,
+      recipientEmail:
+        deliveryFor === 'other' ? data.get('recipientEmail') : undefined,
+      selectedAddressId: selectedAddress?.id,
+      saveAddressForFuture:
+        Boolean(customerEmail) && !selectedAddress && saveAddressForFuture,
+      saveAddressLabel: data.get('saveAddressLabel'),
       locale: 'en-NP',
       termsAccepted: accepted,
       idempotencyKey,
@@ -266,6 +277,21 @@ export function CheckoutForm({
             </span>
             <h2 className="font-heading text-2xl">Where should it go?</h2>
           </div>
+          <fieldset className="mt-5 grid gap-3 sm:grid-cols-2">
+            <legend className="mb-2 text-sm font-medium">Who will receive this order?</legend>
+            {(['self', 'other'] as const).map((value) => (
+              <label key={value} className="flex cursor-pointer items-center gap-3 rounded-xl border p-4 text-sm">
+                <input
+                  type="radio"
+                  name="deliveryFor"
+                  value={value}
+                  checked={deliveryFor === value}
+                  onChange={() => setDeliveryFor(value)}
+                />
+                <span>{value === 'self' ? 'For myself' : 'For someone else'}</span>
+              </label>
+            ))}
+          </fieldset>
           {savedAddresses.length ? (
             <div className="mt-5 space-y-2">
               <Label htmlFor="savedAddress">Saved address</Label>
@@ -298,16 +324,30 @@ export function CheckoutForm({
             </div>
           ) : null}
           <div
-            key={selectedAddress?.id ?? 'new'}
+            key={`${selectedAddress?.id ?? 'new'}:${deliveryFor}`}
             className="mt-6 grid gap-5 sm:grid-cols-2"
           >
             <Field
               id="recipientName"
               label="Recipient name"
               autoComplete="name"
-              defaultValue={selectedAddress?.recipientName}
+              defaultValue={selectedAddress?.recipientName ?? (deliveryFor === 'self' ? customerDisplayName : '')}
               required
             />
+            {deliveryFor === 'other' ? (
+              <div className="space-y-2 sm:col-span-2">
+                <Field
+                  id="recipientEmail"
+                  label="Recipient email (optional)"
+                  type="email"
+                  autoComplete="email"
+                  aria-describedby="recipient-email-help"
+                />
+                <p id="recipient-email-help" className="text-xs leading-5 text-muted-foreground">
+                  Used only for delivery authorization messages. It does not give access to your account, invoice, or order history. A recipient does not need an email account; you can authorize delivery instead.
+                </p>
+              </div>
+            ) : null}
             <Field
               id="recipientPhone"
               label="Recipient phone"
@@ -435,6 +475,30 @@ export function CheckoutForm({
               placeholder="Optional"
               defaultValue={selectedAddress?.postalCode ?? ''}
             />
+            {customerEmail && !selectedAddress ? (
+              <div className="space-y-3 sm:col-span-2 rounded-xl border bg-muted/25 p-4">
+                <label htmlFor="save-address-for-future" className="flex items-start gap-3 text-sm">
+                  <Checkbox
+                    id="save-address-for-future"
+                    checked={saveAddressForFuture}
+                    onCheckedChange={(value) => setSaveAddressForFuture(value === true)}
+                  />
+                  <span>
+                    Save this address for future orders
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      This does not change your profile or any existing saved address.
+                    </span>
+                  </span>
+                </label>
+                {saveAddressForFuture ? (
+                  <Field id="saveAddressLabel" label="Address label" maxLength={80} placeholder="Home, workshop, gift recipient…" required />
+                ) : null}
+              </div>
+            ) : selectedAddress ? (
+              <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
+                Changes made here apply to this order only. Update the saved entry from My account if you want to reuse those changes.
+              </p>
+            ) : null}
           </div>
         </section>
         <section className="rounded-2xl border bg-card p-5 sm:p-7">

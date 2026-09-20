@@ -195,7 +195,9 @@ export default async function OrderReceiptPage({
               </strong>
               <span className="text-muted-foreground">
                 {address.recipientName} · {address.phone}
+                {receipt.deliveryFor === 'other' ? ' · Ordered for someone else' : ''}
                 <br />
+                {receipt.recipientEmail ? <>{receipt.recipientEmail} (delivery messages only)<br /></> : null}
                 {address.locality}
                 {address.landmark ? `, near ${address.landmark}` : ''}
                 <br />
