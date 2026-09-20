@@ -22,7 +22,7 @@ import { ProductGallery } from '@/components/catalog/product-gallery';
 import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
 import { requireDatabase } from '@/lib/db/d1';
-import { getPublishedProductBySlug } from '@/lib/db/repositories/products';
+import { getPublishedProductBySlug, getUnavailablePublishedProductBySlug } from '@/lib/db/repositories/products';
 import { getCustomerUser } from '@/lib/auth/customer';
 import {
   getReviewableOrderItem,
@@ -74,8 +74,28 @@ export default async function ProductPage({
 }) {
   const { slug } = await params;
   const product = await loadProduct(slug);
-  if (!product) notFound();
   const database = requireDatabase(env as unknown as { DB?: D1Database });
+  if (!product) {
+    const unavailable = await getUnavailablePublishedProductBySlug(database, slug);
+    if (!unavailable) notFound();
+    return (
+      <div className="min-h-screen bg-background">
+        <SiteHeader />
+        <main tabIndex={-1} id="main-content" className="shell py-16 sm:py-24">
+          <Link href="/shop" className="section-link">← Back to collection</Link>
+          <section className="mt-8 max-w-2xl rounded-3xl border bg-card p-8 sm:p-12">
+            <p className="eyebrow">Currently unavailable</p>
+            <h1 className="mt-3 font-heading text-4xl tracking-tight">{unavailable.nameEn}</h1>
+            <p className="mt-4 leading-7 text-muted-foreground">
+              This product cannot be purchased right now. Existing buyers can still use their order history for delivery, support, returns, and refunds.
+            </p>
+            <Link href="/shop" className="section-link mt-6">Browse available products →</Link>
+          </section>
+        </main>
+        <SiteFooter />
+      </div>
+    );
+  }
   const deliveryRates=await getDeliveryRates(database);
   const customer = await getCustomerUser();
   const [reviews, saved, reviewable, myReview, rating] = await Promise.all([

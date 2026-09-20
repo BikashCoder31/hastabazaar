@@ -201,6 +201,80 @@ export const sellerDocuments = sqliteTable(
   ],
 );
 
+export const sellerRestrictions = sqliteTable(
+  'seller_restrictions',
+  {
+    sellerId: text('seller_id')
+      .primaryKey()
+      .references(() => sellerProfiles.id, { onDelete: 'restrict' }),
+    mode: text('mode', { enum: ['active', 'suspended', 'disabled'] }).notNull(),
+    suspendedUntil: timestamp('suspended_until'),
+    obligationMode: text('obligation_mode', {
+      enum: ['allow_existing', 'admin_review', 'stop_fulfillment'],
+    }).notNull(),
+    reasonCode: text('reason_code').notNull(),
+    privateReason: text('private_reason').notNull(),
+    version: integer('version').notNull().default(1),
+    appliedBy: text('applied_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    appliedAt: timestamp('applied_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
+  },
+  (table) => [
+    index('idx_seller_restrictions_mode_until').on(table.mode, table.suspendedUntil),
+  ],
+);
+
+export const sellerRestrictionEvents = sqliteTable(
+  'seller_restriction_events',
+  {
+    id: id(),
+    sellerId: text('seller_id')
+      .notNull()
+      .references(() => sellerProfiles.id, { onDelete: 'restrict' }),
+    fromMode: text('from_mode').notNull(),
+    toMode: text('to_mode').notNull(),
+    suspendedUntil: timestamp('suspended_until'),
+    obligationMode: text('obligation_mode').notNull(),
+    reasonCode: text('reason_code').notNull(),
+    privateReason: text('private_reason').notNull(),
+    actorId: text('actor_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    requestId: text('request_id').notNull(),
+    createdAt: timestamp('created_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_seller_restriction_events_request').on(table.requestId),
+    index('idx_seller_restriction_events_seller').on(table.sellerId, table.createdAt),
+  ],
+);
+
+export const sellerDeletionPreflights = sqliteTable(
+  'seller_deletion_preflights',
+  {
+    id: id(),
+    sellerId: text('seller_id')
+      .notNull()
+      .references(() => sellerProfiles.id, { onDelete: 'restrict' }),
+    status: text('status', {
+      enum: ['blocked', 'awaiting_retention_policy'],
+    }).notNull(),
+    outstandingJson: text('outstanding_json').notNull(),
+    retentionCategoriesJson: text('retention_categories_json').notNull(),
+    requestedBy: text('requested_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    requestId: text('request_id').notNull(),
+    createdAt: timestamp('created_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_seller_deletion_preflight_request').on(table.requestId),
+    index('idx_seller_deletion_preflight_seller').on(table.sellerId, table.createdAt),
+  ],
+);
+
 export const sellerParticipationProfiles = sqliteTable(
   'seller_participation_profiles',
   {

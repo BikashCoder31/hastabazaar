@@ -27,6 +27,10 @@ const checkoutRecipientSnapshotsSql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-checkout-recipient-snapshots.sql'),
   'utf8',
 );
+const sellerGovernanceSql = await readFile(
+  resolve(projectRoot, 'deployment/babal/mariadb-seller-governance.sql'),
+  'utf8',
+);
 
 const quote = (value) => `\`${String(value).replaceAll('`', '``')}\``;
 
@@ -256,6 +260,8 @@ output.push(
   '',
   checkoutRecipientSnapshotsSql.trim(),
   '',
+  sellerGovernanceSql.trim(),
+  '',
   '-- Babal.Host password authentication and server-side sessions.',
   'CREATE TABLE IF NOT EXISTS `user_credentials` (',
   '  `user_id` VARCHAR(191) NOT NULL,',
@@ -338,6 +344,9 @@ await mkdir(dirname(outputPath), { recursive: true });
 const schemaSql = output.join('\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
+  'seller_deletion_preflights',
+  'seller_restriction_events',
+  'seller_restrictions',
   'managed_invoice_groups',
   'managed_payout_entries',
   'managed_payouts',

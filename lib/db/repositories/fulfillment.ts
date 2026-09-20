@@ -250,6 +250,21 @@ export async function transitionSellerFulfillment(
     now: number;
   },
 ): Promise<void> {
+  const restriction = await database.prepare(
+    `SELECT mode,suspended_until AS suspendedUntil,obligation_mode AS obligationMode
+     FROM seller_restrictions WHERE seller_id=?`,
+  ).bind(options.sellerId).first<{mode:string;suspendedUntil:number|null;obligationMode:string}>();
+  const restricted = Boolean(
+    restriction &&
+      (restriction.mode === 'disabled' ||
+        (restriction.mode === 'suspended' &&
+          restriction.suspendedUntil !== null &&
+          restriction.suspendedUntil > options.now)),
+  );
+  if (restricted && restriction?.obligationMode !== 'allow_existing')
+    throw new FulfillmentConflictError(
+      'This existing obligation requires an administrative fulfillment decision.',
+    );
   const transition = sellerActions[options.action];
   const note = options.note.trim() || transition.note;
   const aggregateStatusSql = `CASE

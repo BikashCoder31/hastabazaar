@@ -13,11 +13,14 @@ import {
 
 import { SellerReviewActions } from '@/components/admin/seller-review-actions';
 import { ManagedMakerActivationForm } from '@/components/admin/managed-maker-activation-form';
+import { SellerGovernanceActions } from '@/components/admin/seller-governance-actions';
 import { StatusBadge } from '@/components/admin/status-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { getSellerApplicationForReview } from '@/lib/db/repositories/seller-applications';
+import { getSellerGovernance } from '@/lib/db/repositories/seller-governance';
+import { can } from '@/lib/marketplace/permissions';
 import { managedMakerDisplayName } from '@/lib/sellers/participation';
 
 export const dynamic = 'force-dynamic';
@@ -56,12 +59,17 @@ export default async function SellerApplicationPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  await requireStaffPage(`/admin/sellers/${id}`, 'seller.application.review');
+  const staff = await requireStaffPage(
+    `/admin/sellers/${id}`,
+    'seller.application.review',
+  );
+  const database = requireDatabase(env as unknown as { DB?: D1Database });
   const application = await getSellerApplicationForReview(
-    requireDatabase(env as unknown as { DB?: D1Database }),
+    database,
     id,
   );
   if (!application) notFound();
+  const governance = await getSellerGovernance(database, id);
 
   return (
     <div className="space-y-7">
@@ -125,6 +133,64 @@ export default async function SellerApplicationPage({
                 <Detail label="Return destination">{application.returnDestinationType?.replaceAll('_', ' ') ?? 'Not configured'}</Detail>
               </dl>
               <p className="mt-4 text-xs leading-5 text-muted-foreground">Private registration, home/workshop address, evidence, commercial terms, and commission values are excluded from this public preview.</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Seller-role restrictions and deletion safety</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <dl className="grid gap-4 sm:grid-cols-2">
+                <Detail label="Current recorded state">
+                  {governance.restriction?.mode ?? 'Active (no restriction recorded)'}
+                </Detail>
+                <Detail label="Existing obligations">
+                  {governance.restriction?.obligationMode?.replaceAll('_', ' ') ??
+                    'Normal processing'}
+                </Detail>
+                <Detail label="Suspension end">
+                  {governance.restriction?.suspendedUntil
+                    ? dateTimeFormatter.format(
+                        new Date(governance.restriction.suspendedUntil),
+                      )
+                    : '—'}
+                </Detail>
+                <Detail label="Decision version">
+                  {governance.restriction?.version ?? 0}
+                </Detail>
+              </dl>
+
+              {can(staff, 'seller.suspend') ? (
+                <SellerGovernanceActions
+                  sellerId={application.id}
+                  current={governance.restriction}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Restriction changes and deletion preflights require Super
+                  Admin authority. This review remains read-only.
+                </p>
+              )}
+
+              {governance.preflights.length > 0 ? (
+                <div className="space-y-3 border-t pt-4">
+                  <h3 className="text-sm font-semibold">Recent deletion preflights</h3>
+                  {governance.preflights.map((preflight) => (
+                    <div key={preflight.id} className="rounded-lg border p-3 text-sm">
+                      <p className="font-semibold">
+                        {preflight.status.replaceAll('_', ' ')} ·{' '}
+                        {dateTimeFormatter.format(new Date(preflight.createdAt))}
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        Retention periods remain category-specific production
+                        readiness gates. A legal or dispute hold overrides
+                        ordinary deletion eligibility.
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 

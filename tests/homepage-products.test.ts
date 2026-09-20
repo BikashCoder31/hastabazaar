@@ -84,6 +84,18 @@ function homepageFixture() {
       managed_agreement_version TEXT,
       managed_agreement_accepted_at INTEGER
     );
+    CREATE TABLE seller_restrictions (
+      seller_id TEXT PRIMARY KEY,
+      mode TEXT NOT NULL,
+      suspended_until INTEGER,
+      obligation_mode TEXT NOT NULL,
+      reason_code TEXT NOT NULL,
+      private_reason TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      applied_by TEXT NOT NULL,
+      applied_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
     CREATE TABLE categories (
       id TEXT PRIMARY KEY,
       name_en TEXT NOT NULL,

@@ -321,6 +321,7 @@ const supportedTemplates = [
   'business.promotion.result',
   'business.incident.updated',
   'business.account.status',
+  'business.seller.restriction',
 ];
 /** Inject the existing EMAIL transport. Tests supply a fake. No implicit sends or cron activation. */
 export async function deliverBusinessEmails(

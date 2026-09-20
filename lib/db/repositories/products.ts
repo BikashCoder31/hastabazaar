@@ -1854,6 +1854,22 @@ export async function getPublishedProductBySlug(
   return { ...product, media: media.results };
 }
 
+export async function getUnavailablePublishedProductBySlug(
+  database: D1Database,
+  slug: string,
+): Promise<{ slug: string; nameEn: string } | null> {
+  return (
+    (await database.prepare(
+      `SELECT products.slug,products.name_en AS nameEn
+       FROM products
+       WHERE products.slug=? AND products.status='published'
+         AND NOT EXISTS(SELECT 1 FROM product_deletions d WHERE d.product_id=products.id)
+         AND NOT (${publicProductEligibility()})
+       LIMIT 1`,
+    ).bind(slug).first<{ slug: string; nameEn: string }>()) ?? null
+  );
+}
+
 export async function getProductMediaObject(
   database: D1Database,
   mediaId: string,

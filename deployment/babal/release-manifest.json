@@ -32,7 +32,7 @@
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "48e27c7fc86b99eccb9152eb7c62deff048827e88b14e67b561fe14b8a658709",
+      "sha256": "a15b56295cc15a3c72121b3acca119c029bcfd0e744d095b196a0f1f21773293",
       "usage": "empty-database-only"
     },
     {
@@ -163,6 +163,26 @@
     {
       "path": "deployment/babal/mariadb-seller-participation.sql",
       "sha256": "a5d1254d86669df7029ec6aa71d171718059bcf6f53c48e1aa3905e096a4b85a",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-managed-commerce.sql",
+      "sha256": "cd73c07f42494de775342fe959471669843a7bf369d0b435b715012d5b4896be",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-product-story-materials.sql",
+      "sha256": "4a61f45ce687db5907dc3b895c518227de9894efcff051f476ff70ba58e00c51",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-checkout-recipient-snapshots.sql",
+      "sha256": "ac28325ad770a3f0a327e7fb12610cb14a57e034d7bcf639db73a25169fe4ee4",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-seller-governance.sql",
+      "sha256": "548d0f3f9cfd7ad2c77aef70957a8ed493b053d972ae6c18011a25d6a70d9e8f",
       "usage": "additive-maintenance"
     }
   ],
@@ -1100,6 +1120,41 @@
       "status",
       "voided_at"
     ],
+    "seller_restrictions": [
+      "applied_at",
+      "applied_by",
+      "mode",
+      "obligation_mode",
+      "private_reason",
+      "reason_code",
+      "seller_id",
+      "suspended_until",
+      "updated_at",
+      "version"
+    ],
+    "seller_restriction_events": [
+      "actor_id",
+      "created_at",
+      "from_mode",
+      "id",
+      "obligation_mode",
+      "private_reason",
+      "reason_code",
+      "request_id",
+      "seller_id",
+      "suspended_until",
+      "to_mode"
+    ],
+    "seller_deletion_preflights": [
+      "created_at",
+      "id",
+      "outstanding_json",
+      "request_id",
+      "requested_by",
+      "retention_categories_json",
+      "seller_id",
+      "status"
+    ],
     "user_credentials": [
       "created_at",
       "password_hash",
@@ -1498,6 +1553,16 @@
   },
   "requiredTriggers": {
     "invalidate_delivery_otp_after_destination_change": [],
+    "seller_restriction_events_no_update": [],
+    "seller_restriction_events_no_delete": [],
+    "seller_deletion_preflights_no_update": [],
+    "seller_deletion_preflights_no_delete": [],
+    "order_items_require_available_inventory": [
+      "seller_profiles",
+      "users",
+      "product_deletions",
+      "for update"
+    ],
     "wallet_refund_lock": [],
     "wallet_refund_guard": [],
     "wallet_entry_balance": [],
@@ -1506,12 +1571,6 @@
     "wallet_cancel_restore": [],
     "wallet_refund_restore": [],
     "referral_first_order": [],
-    "order_items_require_available_inventory": [
-      "seller_profiles",
-      "users",
-      "product_deletions",
-      "for update"
-    ],
     "queue_order_email_insert": [],
     "queue_order_email_update": [],
     "clear_closed_delivery_location": [],
