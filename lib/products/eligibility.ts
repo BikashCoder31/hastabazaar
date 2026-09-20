@@ -2,7 +2,19 @@
 export function publicProductEligibility(alias = 'products'): string {
  if (!/^[a-z_]+$/.test(alias)) throw new Error('Invalid SQL alias');
  return `${alias}.status='published' AND EXISTS (
-  SELECT 1 FROM seller_profiles eligible_seller JOIN users eligible_owner ON eligible_owner.id=eligible_seller.user_id
-  WHERE eligible_seller.id=${alias}.seller_id AND eligible_seller.status='approved' AND eligible_owner.status='active'
+  SELECT 1 FROM seller_profiles eligible_seller
+  JOIN users eligible_owner ON eligible_owner.id=eligible_seller.user_id
+  LEFT JOIN seller_participation_profiles eligible_participation ON eligible_participation.seller_id=eligible_seller.id
+  WHERE eligible_seller.id=${alias}.seller_id AND eligible_owner.status='active' AND (
+    (eligible_seller.status='approved' AND (eligible_participation.participation_route IS NULL OR eligible_participation.participation_route='registered_seller'))
+    OR (eligible_participation.participation_route='managed_maker'
+      AND eligible_participation.application_stage='active'
+      AND eligible_participation.commercial_model IS NOT NULL
+      AND eligible_participation.legal_seller_reference IS NOT NULL
+      AND eligible_participation.invoice_issuer_reference IS NOT NULL
+      AND eligible_participation.payout_beneficiary_reference IS NOT NULL
+      AND eligible_participation.managed_agreement_version IS NOT NULL
+      AND eligible_participation.managed_agreement_accepted_at IS NOT NULL)
+  )
  ) AND NOT EXISTS(SELECT 1 FROM product_deletions deleted_product WHERE deleted_product.product_id=${alias}.id)`;
 }

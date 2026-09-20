@@ -1,0 +1,100 @@
+import type { ManagedMakerCommercialModel, ManagedMakerProgramMode } from '@/lib/configuration/types';
+import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
+import type { RuntimeEnvironment } from '@/lib/staging/environment';
+import { assertSimulationAllowed, SIMULATED_RECORD_LABEL } from '@/lib/staging/environment';
+
+export interface ManagedActivationAssessment {
+  environment: RuntimeEnvironment;
+  actorId: string;
+  ownerId: string;
+  actorIsSuperAdmin: boolean;
+  programMode: ManagedMakerProgramMode;
+  configuredModel: ManagedMakerCommercialModel | null;
+  makerStage: string;
+  makerModel: ManagedMakerCommercialModel;
+  legalSellerReference: string;
+  invoiceIssuerReference: string;
+  payoutBeneficiaryReference: string;
+  agreementVersion: string;
+  agreementAcceptedAt: number | null;
+  approvedProductCount: number;
+}
+
+export function managedActivationOutstanding(input: ManagedActivationAssessment): readonly string[] {
+  const outstanding: string[] = [];
+  if (!input.environment.simulationAllowed) outstanding.push('Disposable simulation environment');
+  if (!input.actorIsSuperAdmin) outstanding.push('Active Super Admin reviewer');
+  if (input.actorId === input.ownerId) outstanding.push('Independent reviewer');
+  if (input.programMode !== 'activation_enabled') outstanding.push('Program activation mode');
+  if (!input.configuredModel || input.configuredModel !== input.makerModel) outstanding.push('Configured implemented commercial model');
+  if (input.makerStage !== 'approved_for_activation') outstanding.push('Maker approval for activation');
+  if (!input.legalSellerReference.trim()) outstanding.push('Legal seller reference');
+  if (!input.invoiceIssuerReference.trim()) outstanding.push('Invoice issuer reference');
+  if (!input.payoutBeneficiaryReference.trim()) outstanding.push('Payout beneficiary reference');
+  if (!input.agreementVersion.trim() || !input.agreementAcceptedAt) outstanding.push('Simulated managed agreement acceptance');
+  if (input.approvedProductCount < 1) outstanding.push('At least one approved product');
+  return Object.freeze(outstanding);
+}
+
+export class ManagedActivationError extends Error {}
+
+export async function activateManagedMakerForSimulation(
+  database: D1Database,
+  options: {
+    sellerId: string;
+    actorId: string;
+    model: ManagedMakerCommercialModel;
+    legalSellerReference: string;
+    invoiceIssuerReference: string;
+    payoutBeneficiaryReference: string;
+    agreementVersion: string;
+    agreementLanguage: 'en' | 'ne';
+    agreementAcceptedAt: number;
+    requestId: string;
+    now: number;
+    environment: RuntimeEnvironment;
+  },
+): Promise<void> {
+  assertSimulationAllowed(options.environment);
+  const duplicate = await database.prepare('SELECT 1 FROM audit_logs WHERE request_id=?').bind(options.requestId).first();
+  if (duplicate) return;
+  const [program, configuredModel, row] = await Promise.all([
+    getEffectiveBusinessSetting(database, 'managed_maker_program_mode', options.now),
+    getEffectiveBusinessSetting(database, 'managed_maker_active_model', options.now),
+    database.prepare(`SELECT seller_profiles.user_id AS ownerId,
+      participation.application_stage AS makerStage,
+      EXISTS(SELECT 1 FROM users JOIN user_roles ON user_roles.user_id=users.id
+        WHERE users.id=? AND users.status='active' AND user_roles.role='super_admin') AS actorIsSuperAdmin,
+      (SELECT COUNT(*) FROM products WHERE seller_id=seller_profiles.id AND status='approved') AS approvedProductCount
+      FROM seller_profiles JOIN seller_participation_profiles participation ON participation.seller_id=seller_profiles.id
+      WHERE seller_profiles.id=? AND participation.participation_route='managed_maker'`).bind(options.actorId, options.sellerId).first<{ownerId:string;makerStage:string;actorIsSuperAdmin:number;approvedProductCount:number}>(),
+  ]);
+  if (!row) throw new ManagedActivationError('Managed Maker application not found.');
+  const outstanding = managedActivationOutstanding({
+    environment: options.environment, actorId: options.actorId, ownerId: row.ownerId,
+    actorIsSuperAdmin: Boolean(row.actorIsSuperAdmin), programMode: program.value,
+    configuredModel: configuredModel.value, makerStage: row.makerStage, makerModel: options.model,
+    legalSellerReference: options.legalSellerReference, invoiceIssuerReference: options.invoiceIssuerReference,
+    payoutBeneficiaryReference: options.payoutBeneficiaryReference, agreementVersion: options.agreementVersion,
+    agreementAcceptedAt: options.agreementAcceptedAt, approvedProductCount: Number(row.approvedProductCount),
+  });
+  if (outstanding.length) throw new ManagedActivationError(`Activation is not ready: ${outstanding.join(', ')}.`);
+  const results = await database.batch([
+    database.prepare(`UPDATE seller_participation_profiles SET application_stage='active', commercial_model=?,
+      legal_seller_reference=?,invoice_issuer_reference=?,payout_beneficiary_reference=?,
+      managed_agreement_version=?,managed_agreement_language=?,managed_agreement_accepted_at=?,
+      version=version+1,updated_at=? WHERE seller_id=? AND application_stage='approved_for_activation'`).bind(
+      options.model, options.legalSellerReference.trim(), options.invoiceIssuerReference.trim(),
+      options.payoutBeneficiaryReference.trim(), options.agreementVersion.trim(), options.agreementLanguage,
+      options.agreementAcceptedAt, options.now, options.sellerId,
+    ),
+    database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,ip_hash,created_at)
+      VALUES (?,?,'managed_maker.simulation_activated','seller',?,'Activated only in disposable local staging',?,?,?,NULL,?)`).bind(
+      crypto.randomUUID(), options.actorId, options.sellerId,
+      JSON.stringify({applicationStage:'approved_for_activation'}),
+      JSON.stringify({applicationStage:'active',commercialModel:options.model,simulationLabel:SIMULATED_RECORD_LABEL}),
+      options.requestId, options.now,
+    ),
+  ]);
+  if ((results[0].meta.changes ?? 0) !== 1) throw new ManagedActivationError('Application changed before activation.');
+}

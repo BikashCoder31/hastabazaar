@@ -13,6 +13,7 @@ export type ManagedMakerCapability = Readonly<{
   milestone: string;
   description: string;
   selectableForLiveActivation: boolean;
+  selectableForStagingSimulation: boolean;
 }>;
 
 export const managedMakerCapabilities: readonly ManagedMakerCapability[] =
@@ -25,6 +26,7 @@ export const managedMakerCapabilities: readonly ManagedMakerCapability[] =
       description:
         '9% platform retention and the reconciled 91% maker entitlement become earned only after delivered-and-paid conditions.',
       selectableForLiveActivation: false,
+      selectableForStagingSimulation: true,
     }),
     Object.freeze({
       code: 'managed_fixed_supplier_price_v1',
@@ -34,6 +36,7 @@ export const managedMakerCapabilities: readonly ManagedMakerCapability[] =
       description:
         'The accepted supplier amount becomes owed at documented supply acceptance without an automatic percentage deduction.',
       selectableForLiveActivation: false,
+      selectableForStagingSimulation: false,
     }),
   ]);
 
@@ -48,11 +51,14 @@ export function managedMakerModelIsLiveSelectable(
 
 export function assertBusinessSettingPublicationReady<
   K extends BusinessSettingKey,
->(key: K, value: BusinessSettingValue<K>): void {
+>(key: K, value: BusinessSettingValue<K>, context: { simulationAllowed?: boolean } = {}): void {
   if (
     key === 'managed_maker_active_model' &&
     value !== null &&
-    !managedMakerModelIsLiveSelectable(value as ManagedMakerCommercialModel)
+    !managedMakerModelIsLiveSelectable(value as ManagedMakerCommercialModel) &&
+    !(context.simulationAllowed && managedMakerCapabilities.some(
+      (capability) => capability.code === value && capability.selectableForStagingSimulation,
+    ))
   ) {
     throw new RangeError(
       'The selected Managed Maker commercial model is not implemented and tested for live activation.',
@@ -61,8 +67,9 @@ export function assertBusinessSettingPublicationReady<
   if (
     key === 'managed_maker_program_mode' &&
     value === 'activation_enabled' &&
-    !managedMakerCapabilities.some(
-      (capability) => capability.selectableForLiveActivation,
+    !managedMakerCapabilities.some((capability) =>
+      capability.selectableForLiveActivation ||
+      (context.simulationAllowed && capability.selectableForStagingSimulation),
     )
   ) {
     throw new RangeError(

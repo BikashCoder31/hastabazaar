@@ -1,4 +1,8 @@
 -- Additive Managed Maker commercial snapshots and settlement records.
+ALTER TABLE `seller_participation_profiles` ADD COLUMN `managed_agreement_version` VARCHAR(191) NULL;
+ALTER TABLE `seller_participation_profiles` ADD COLUMN `managed_agreement_language` VARCHAR(8) NULL;
+ALTER TABLE `seller_participation_profiles` ADD COLUMN `managed_agreement_accepted_at` BIGINT NULL;
+
 CREATE TABLE IF NOT EXISTS `managed_commercial_snapshots` (
   `id` VARCHAR(191) NOT NULL,
   `order_item_id` VARCHAR(191) NOT NULL,

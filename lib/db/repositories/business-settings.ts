@@ -384,6 +384,7 @@ export async function publishBusinessSettingDraft(
     reason: string;
     requestId: string;
     now: number;
+    simulationAllowed?: boolean;
   },
 ): Promise<void> {
   const record = await getVersionById(database, options.id);
@@ -399,7 +400,7 @@ export async function publishBusinessSettingDraft(
       'Controlled settings require submission and independent approval.',
     );
   }
-  assertBusinessSettingPublicationReady(record.key, record.value);
+  assertBusinessSettingPublicationReady(record.key, record.value, { simulationAllowed: options.simulationAllowed });
   if (effectiveFrom < now) {
     throw new BusinessSettingConflictError('Effective date cannot be in the past.');
   }
@@ -502,6 +503,7 @@ export async function approveBusinessSettingChange(
     reason: string;
     requestId: string;
     now: number;
+    simulationAllowed?: boolean;
   },
 ): Promise<void> {
   const record = await getVersionById(database, options.id);
@@ -520,7 +522,7 @@ export async function approveBusinessSettingChange(
       'A different reviewer must approve the current pending version.',
     );
   }
-  assertBusinessSettingPublicationReady(record.key, record.value);
+  assertBusinessSettingPublicationReady(record.key, record.value, { simulationAllowed: options.simulationAllowed });
   if (effectiveFrom < now) {
     throw new BusinessSettingConflictError('Effective date cannot be in the past.');
   }

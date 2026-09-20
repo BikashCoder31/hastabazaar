@@ -238,6 +238,9 @@ export const sellerParticipationProfiles = sqliteTable(
     legalSellerReference: text('legal_seller_reference'),
     invoiceIssuerReference: text('invoice_issuer_reference'),
     payoutBeneficiaryReference: text('payout_beneficiary_reference'),
+    managedAgreementVersion: text('managed_agreement_version'),
+    managedAgreementLanguage: text('managed_agreement_language', { enum: ['en', 'ne'] }),
+    managedAgreementAcceptedAt: timestamp('managed_agreement_accepted_at'),
     returnDestinationType: text('return_destination_type', {
       enum: ['maker_address', 'hastabazaar_collection_point'],
     })

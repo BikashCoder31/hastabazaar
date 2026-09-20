@@ -12,6 +12,7 @@ import {
 } from '@/lib/db/repositories/business-settings';
 import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { resolveRuntimeEnvironment } from '@/lib/staging/environment';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +60,11 @@ export async function POST(
         : request.headers.get('x-request-id') ?? crypto.randomUUID();
     const now = Date.now();
     const database = requireDatabase(env as unknown as { DB?: D1Database });
+    const runtime = resolveRuntimeEnvironment({
+      runtimeEnvironment: (env as unknown as Record<string, string>).HASTABAZAAR_RUNTIME_ENV,
+      nodeEnvironment: process.env.NODE_ENV,
+      appOrigin: (env as unknown as Record<string, string>).APP_ORIGIN,
+    });
 
     if (action === 'approve' || action === 'reject') {
       const actor = await requireStaffApi('business_settings.approve');
@@ -72,6 +78,7 @@ export async function POST(
           reason,
           requestId,
           now,
+          simulationAllowed: runtime.simulationAllowed,
         });
       } else {
         await rejectBusinessSettingChange(database, {
@@ -107,6 +114,7 @@ export async function POST(
         reason,
         requestId,
         now,
+        simulationAllowed: runtime.simulationAllowed,
       });
       return json({ ok: true, action }, 200);
     }

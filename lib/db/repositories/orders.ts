@@ -20,6 +20,9 @@ import {
 
 import { getCart, getCartId } from './cart';
 import { quoteOrderCredit } from './wallet';
+import { getEffectiveBusinessSetting } from './business-settings';
+import { buildManagedCommercialSnapshot } from '@/lib/managed-commerce/snapshots';
+import type { ManagedMakerCommercialModel } from '@/lib/configuration/types';
 import {
   readDeliveryPricingSnapshot,
   type DeliveryPricingSnapshot,
@@ -66,6 +69,15 @@ interface CheckoutCartItem {
   madeToOrder: number;
   preparationDays: number;
   sellerAgreementVersion: string | null;
+  participationRoute: 'registered_seller' | 'managed_maker' | null;
+  applicationStage: string | null;
+  commercialModel: ManagedMakerCommercialModel | null;
+  legalSellerReference: string | null;
+  invoiceIssuerReference: string | null;
+  payoutBeneficiaryReference: string | null;
+  managedAgreementVersion: string | null;
+  managedAgreementLanguage: 'en' | 'ne' | null;
+  managedAgreementAcceptedAt: number | null;
 }
 
 export interface OrderDocumentSnapshot {
@@ -162,6 +174,15 @@ export async function createCodOrder(
       `SELECT cart_items.id, products.id AS productId, products.seller_id AS sellerId,
         seller_profiles.trading_name AS tradingName,
         seller_profiles.seller_agreement_version AS sellerAgreementVersion,
+        participation.participation_route AS participationRoute,
+        participation.application_stage AS applicationStage,
+        participation.commercial_model AS commercialModel,
+        participation.legal_seller_reference AS legalSellerReference,
+        participation.invoice_issuer_reference AS invoiceIssuerReference,
+        participation.payout_beneficiary_reference AS payoutBeneficiaryReference,
+        participation.managed_agreement_version AS managedAgreementVersion,
+        participation.managed_agreement_language AS managedAgreementLanguage,
+        participation.managed_agreement_accepted_at AS managedAgreementAcceptedAt,
         products.name_en AS nameEn,
         products.sku, products.price_paisa AS pricePaisa, cart_items.quantity,
         products.inventory_quantity AS inventoryQuantity, CASE WHEN ${publicProductEligibility()} THEN 'published' ELSE 'archived' END AS status,
@@ -170,6 +191,7 @@ export async function createCodOrder(
        FROM cart_items
        INNER JOIN products ON products.id = cart_items.product_id
        INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
+       LEFT JOIN seller_participation_profiles participation ON participation.seller_id = seller_profiles.id
        WHERE cart_items.cart_id = ? ORDER BY cart_items.created_at ASC`,
     )
     .bind(cartId)
@@ -187,11 +209,10 @@ export async function createCodOrder(
       'One or more cart items changed availability. Review your cart and try again.',
     );
   }
-  if (
-    items.some(
-      (item) => item.sellerAgreementVersion !== SELLER_AGREEMENT_VERSION,
-    )
-  ) {
+  if (items.some((item) =>
+    item.participationRoute !== 'managed_maker' &&
+    item.sellerAgreementVersion !== SELLER_AGREEMENT_VERSION
+  )) {
     throw new CheckoutConflictError(
       'A seller must accept the current marketplace agreement before receiving a new order.',
     );
@@ -199,6 +220,23 @@ export async function createCodOrder(
 
   const rates = await getDeliveryRates(database);
   const sellerCommissionBps = await getMarketplaceCommissionBps(database);
+  const hasManagedItems = items.some((item) => item.participationRoute === 'managed_maker');
+  const [managedProgram, managedModel, managedRetention] = hasManagedItems
+    ? await Promise.all([
+        getEffectiveBusinessSetting(database, 'managed_maker_program_mode', now),
+        getEffectiveBusinessSetting(database, 'managed_maker_active_model', now),
+        getEffectiveBusinessSetting(database, 'managed_sale_linked_platform_retention_bps', now),
+      ])
+    : [null, null, null];
+  if (hasManagedItems && (
+    managedProgram?.value !== 'activation_enabled' ||
+    managedModel?.value !== 'managed_sale_linked_percentage_v1' ||
+    items.some((item) => item.participationRoute === 'managed_maker' && (
+      item.applicationStage !== 'active' || item.commercialModel !== managedModel.value ||
+      !item.legalSellerReference || !item.invoiceIssuerReference || !item.payoutBeneficiaryReference ||
+      !item.managedAgreementVersion || !item.managedAgreementLanguage || !item.managedAgreementAcceptedAt
+    ))
+  )) throw new CheckoutConflictError('A Managed Maker item is not active under the configured simulated program.');
   if (input.deliveryRateVersion && input.deliveryRateVersion !== rates.version)
     throw new CheckoutConflictError(
       'Delivery rates changed. Reload checkout to review the current total.',
@@ -364,6 +402,7 @@ export async function createCodOrder(
   }
 
   for (const item of items) {
+    const orderItemId = crypto.randomUUID();
     const lineTotalPaisa = item.pricePaisa * item.quantity;
     const sellerDiscountPaisa = 0;
     const platformDiscountPaisa = platformDiscounts.get(item.id) ?? 0;
@@ -372,6 +411,7 @@ export async function createCodOrder(
       sellerFundedDiscountPaisa: sellerDiscountPaisa,
       platformFundedDiscountPaisa: platformDiscountPaisa,
     });
+    const managed = item.participationRoute === 'managed_maker';
     statements.push(
       database
         .prepare(
@@ -385,7 +425,7 @@ export async function createCodOrder(
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
         )
         .bind(
-          crypto.randomUUID(),
+          orderItemId,
           id,
           item.productId,
           item.sellerId,
@@ -397,19 +437,57 @@ export async function createCodOrder(
           sellerDiscountPaisa,
           platformDiscountPaisa,
           commissionBasePaisa,
-          COMMISSION_RULE_VERSION,
-          item.sellerAgreementVersion,
-          sellerCommissionBps,
-          calculateSellerCommissionPaisa(
-            commissionBasePaisa,
-            sellerCommissionBps,
-          ),
+          managed ? 'managed-sale-linked-percentage-v1' : COMMISSION_RULE_VERSION,
+          managed ? item.managedAgreementVersion : item.sellerAgreementVersion,
+          managed ? 0 : sellerCommissionBps,
+          managed ? 0 : calculateSellerCommissionPaisa(commissionBasePaisa, sellerCommissionBps),
           lineTotalPaisa,
           item.returnEligible,
           item.madeToOrder,
           now,
         ),
     );
+    if (managed) {
+      const snapshot = buildManagedCommercialSnapshot({
+        sellerId: item.sellerId,
+        commercialModel: item.commercialModel!,
+        legalSellerReference: item.legalSellerReference!,
+        invoiceIssuerReference: item.invoiceIssuerReference!,
+        payoutBeneficiaryReference: item.payoutBeneficiaryReference!,
+        agreementVersion: item.managedAgreementVersion!,
+        agreementLanguage: item.managedAgreementLanguage!,
+        termsSettingVersionId: managedRetention!.versionId,
+        productValuePaisa: lineTotalPaisa,
+        makerFundedDiscountPaisa: sellerDiscountPaisa,
+        platformFundedDiscountPaisa: platformDiscountPaisa,
+        platformRetentionBps: managedRetention!.value,
+      });
+      const snapshotId = crypto.randomUUID();
+      statements.push(
+        database.prepare(`INSERT INTO managed_commercial_snapshots(
+          id,order_item_id,seller_id,participation_route,commercial_model,
+          legal_seller_reference,invoice_issuer_reference,payout_beneficiary_reference,
+          agreement_version,agreement_language,terms_setting_version_id,product_value_paisa,
+          maker_funded_discount_paisa,platform_funded_discount_paisa,eligible_base_paisa,
+          platform_retention_bps,platform_retained_paisa,maker_entitlement_paisa,
+          agreed_supplier_amount_paisa,simulation_label,created_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+          snapshotId, orderItemId, snapshot.sellerId, snapshot.participationRoute,
+          snapshot.commercialModel, snapshot.legalSellerReference, snapshot.invoiceIssuerReference,
+          snapshot.payoutBeneficiaryReference, snapshot.agreementVersion, snapshot.agreementLanguage,
+          snapshot.termsSettingVersionId, snapshot.productValuePaisa, snapshot.makerFundedDiscountPaisa,
+          snapshot.platformFundedDiscountPaisa, snapshot.eligibleBasePaisa, snapshot.platformRetentionBps,
+          snapshot.platformRetainedPaisa, snapshot.makerEntitlementPaisa,
+          snapshot.agreedSupplierAmountPaisa, snapshot.simulationLabel, now,
+        ),
+        database.prepare(`INSERT INTO managed_entitlements(
+          id,snapshot_id,seller_id,status,calculated_paisa,earned_at,hold_until,eligible_at,
+          paid_at,dispute_hold_reason,dispute_review_at,version,created_at,updated_at
+        ) VALUES (?,?,?,'calculated',?,NULL,NULL,NULL,NULL,NULL,NULL,1,?,?)`).bind(
+          crypto.randomUUID(), snapshotId, item.sellerId, snapshot.makerEntitlementPaisa, now, now,
+        ),
+      );
+    }
   }
 
   statements.push(

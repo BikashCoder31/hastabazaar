@@ -1,3 +1,9 @@
+ALTER TABLE seller_participation_profiles ADD COLUMN managed_agreement_version TEXT;
+--> statement-breakpoint
+ALTER TABLE seller_participation_profiles ADD COLUMN managed_agreement_language TEXT CHECK(managed_agreement_language IS NULL OR managed_agreement_language IN ('en','ne'));
+--> statement-breakpoint
+ALTER TABLE seller_participation_profiles ADD COLUMN managed_agreement_accepted_at INTEGER;
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS managed_commercial_snapshots (
   id TEXT PRIMARY KEY NOT NULL,
   order_item_id TEXT NOT NULL UNIQUE REFERENCES order_items(id) ON DELETE RESTRICT,

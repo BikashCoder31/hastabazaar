@@ -121,6 +121,20 @@ void test('unfinished commercial models cannot be published as live through a co
       ),
     /not implemented and tested/i,
   );
+  assert.doesNotThrow(() =>
+    assertBusinessSettingPublicationReady(
+      'managed_maker_active_model',
+      'managed_sale_linked_percentage_v1',
+      { simulationAllowed: true },
+    ),
+  );
+  assert.throws(() =>
+    assertBusinessSettingPublicationReady(
+      'managed_maker_active_model',
+      'managed_fixed_supplier_price_v1',
+      { simulationAllowed: true },
+    ),
+  );
   assert.throws(
     () =>
       assertBusinessSettingPublicationReady(

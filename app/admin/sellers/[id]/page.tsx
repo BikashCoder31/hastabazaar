@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 
 import { SellerReviewActions } from '@/components/admin/seller-review-actions';
+import { ManagedMakerActivationForm } from '@/components/admin/managed-maker-activation-form';
 import { StatusBadge } from '@/components/admin/status-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { requireStaffPage } from '@/lib/auth/staff';
@@ -301,6 +302,9 @@ export default async function SellerApplicationPage({
                 participationRoute={application.participationRoute}
                 applicationStage={application.applicationStage}
               />
+              {application.participationRoute === 'managed_maker' && application.applicationStage === 'approved_for_activation' ? (
+                <div className="mt-5"><ManagedMakerActivationForm sellerId={application.id}/></div>
+              ) : null}
             </CardContent>
           </Card>
 
