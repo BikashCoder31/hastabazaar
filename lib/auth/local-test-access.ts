@@ -2,6 +2,8 @@ import type { AuthenticatedUser } from '@/app/auth';
 
 export const localTestRoles = [
   'customer',
+  'buyer',
+  'rider',
   'seller',
   'admin',
   'super_admin',
@@ -17,6 +19,18 @@ const identities: Record<LocalTestRole, AuthenticatedUser> = {
     displayName: 'Maya Customer',
     email: 'customer@local.hastabazaar.test',
     fullName: 'Maya Customer',
+  },
+  buyer: {
+    userId: 'local-test-buyer',
+    displayName: 'Bikash Buyer',
+    email: 'buyer@local.hastabazaar.test',
+    fullName: 'Bikash Buyer',
+  },
+  rider: {
+    userId: 'local-test-rider',
+    displayName: 'Rajan Rider',
+    email: 'rider@local.hastabazaar.test',
+    fullName: 'Rajan Rider',
   },
   seller: {
     userId: 'local-test-seller',

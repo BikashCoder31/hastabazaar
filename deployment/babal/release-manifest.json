@@ -25,14 +25,14 @@
       "gift_card_id"
     ]
   },
-  "release": "hastabazaar-release-2026-09-19-094410",
+  "release": "local-unversioned-candidate",
   "startup": "app.cjs",
   "hosting": "Babal.Host",
   "requiredNodeMajor": 22,
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "f80fccda8e58af74c8e921a1e260f139b5b8d8b4852ff62165d2fd42e25aa3c9",
+      "sha256": "48d28464cfd00209b2087a06940ee490f2c4c3b7810a714e1eabbc0b011e4464",
       "usage": "empty-database-only"
     },
     {
@@ -1010,6 +1010,95 @@
       "seller_id",
       "size_bytes",
       "uploaded_at"
+    ],
+    "managed_commercial_snapshots": [
+      "agreed_supplier_amount_paisa",
+      "agreement_language",
+      "agreement_version",
+      "commercial_model",
+      "created_at",
+      "delivery_hold_days",
+      "eligible_base_paisa",
+      "hold_setting_version_id",
+      "id",
+      "invoice_issuer_reference",
+      "legal_seller_reference",
+      "maker_entitlement_paisa",
+      "maker_funded_discount_paisa",
+      "order_item_id",
+      "participation_route",
+      "payout_beneficiary_reference",
+      "platform_funded_discount_paisa",
+      "platform_retained_paisa",
+      "platform_retention_bps",
+      "product_value_paisa",
+      "seller_id",
+      "simulation_label",
+      "terms_setting_version_id"
+    ],
+    "managed_entitlements": [
+      "calculated_paisa",
+      "created_at",
+      "dispute_hold_reason",
+      "dispute_review_at",
+      "earned_at",
+      "eligible_at",
+      "hold_until",
+      "id",
+      "paid_at",
+      "seller_id",
+      "snapshot_id",
+      "status",
+      "updated_at",
+      "version"
+    ],
+    "managed_settlement_entries": [
+      "amount_paisa",
+      "base_amount_paisa",
+      "created_at",
+      "created_by",
+      "entitlement_id",
+      "id",
+      "metadata_json",
+      "reason_code",
+      "refund_id",
+      "request_id",
+      "type"
+    ],
+    "managed_payouts": [
+      "amount_paisa",
+      "approved_by",
+      "created_at",
+      "destination_reference",
+      "id",
+      "paid_at",
+      "payout_number",
+      "prepared_by",
+      "provider_reference",
+      "request_id",
+      "scheduled_for",
+      "seller_id",
+      "simulation_label",
+      "status",
+      "updated_at"
+    ],
+    "managed_payout_entries": [
+      "payout_id",
+      "settlement_entry_id"
+    ],
+    "managed_invoice_groups": [
+      "barcode_payload",
+      "id",
+      "invoice_number",
+      "issued_at",
+      "issuer_reference",
+      "order_id",
+      "qr_payload",
+      "request_id",
+      "simulation_label",
+      "snapshot_json",
+      "status",
+      "voided_at"
     ],
     "user_credentials": [
       "created_at",

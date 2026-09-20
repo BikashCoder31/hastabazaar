@@ -32,7 +32,8 @@ export default async function SellerApplicationProgressPage() {
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const profile = await getSellerParticipationForUser(database, customer.userId);
   if (!profile) redirect('/sell');
-  const program = await getEffectiveBusinessSetting(database, 'managed_maker_program_mode', Date.now());
+  const clock = await database.prepare("SELECT unixepoch('now') * 1000 AS now").first<{ now: number }>();
+  const program = await getEffectiveBusinessSetting(database, 'managed_maker_program_mode', Number(clock?.now ?? 0));
   const capabilities = applicationCapabilities(profile.applicationStage, program.value);
   const finance = profile.participationRoute === 'managed_maker'
     ? await getManagedFinanceSummary(database, profile.sellerId)

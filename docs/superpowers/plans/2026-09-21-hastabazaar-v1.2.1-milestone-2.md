@@ -1,5 +1,7 @@
 # Hastabazaar v1.2.1 Milestone 2 Implementation Plan
 
+**Checkpoint status:** Completed and verified in disposable local staging on 2026-09-21. See `docs/testing/milestone-2-self-test.md` and `docs/testing/r01-r15-traceability.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver one disposable local-staging journey from Managed Maker application through reviewed product, customer order, rider handover, cash reconciliation, immutable maker entitlement, simulated payout, captured email, and issuer-grouped sample invoice records.

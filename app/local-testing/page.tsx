@@ -1,7 +1,7 @@
 import { headers } from 'next/headers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ShieldCheck, Store, UserRound, UsersRound } from 'lucide-react';
+import { Bike, ShieldCheck, ShoppingBag, Store, UserRound, UsersRound } from 'lucide-react';
 
 import { isLocalTestRequest, readLocalTestRole } from '@/lib/auth/local-test-access';
 
@@ -10,9 +10,21 @@ export const dynamic = 'force-dynamic';
 const roles = [
   {
     value: 'customer',
-    label: 'Customer',
-    detail: 'Profile, orders, addresses, wishlist, notifications and privacy requests.',
+    label: 'Managed Maker applicant',
+    detail: 'Maker onboarding, shared profile, product drafts and settlement view.',
     icon: UserRound,
+  },
+  {
+    value: 'buyer',
+    label: 'Buyer',
+    detail: 'Independent fictional purchaser for checkout, inspection and order-history tests.',
+    icon: ShoppingBag,
+  },
+  {
+    value: 'rider',
+    label: 'Rider',
+    detail: 'Approved fictional rider for mobile assignment, proof, OTP and COD tests.',
+    icon: Bike,
   },
   {
     value: 'seller',

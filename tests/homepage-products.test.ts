@@ -73,6 +73,17 @@ function homepageFixture() {
       trading_name TEXT NOT NULL,
       status TEXT NOT NULL
     );
+    CREATE TABLE seller_participation_profiles (
+      seller_id TEXT PRIMARY KEY,
+      participation_route TEXT,
+      application_stage TEXT,
+      commercial_model TEXT,
+      legal_seller_reference TEXT,
+      invoice_issuer_reference TEXT,
+      payout_beneficiary_reference TEXT,
+      managed_agreement_version TEXT,
+      managed_agreement_accepted_at INTEGER
+    );
     CREATE TABLE categories (
       id TEXT PRIMARY KEY,
       name_en TEXT NOT NULL,

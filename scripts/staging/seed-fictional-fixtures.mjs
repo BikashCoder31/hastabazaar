@@ -13,11 +13,27 @@ const origin = new URL(process.env.APP_ORIGIN);
 const health = await fetch(new URL('/health/live', origin), { signal: AbortSignal.timeout(2_000) });
 if (!health.ok) throw new Error(`Local staging health check failed (${health.status}).`);
 
+// Miniflare creates the disposable D1 object lazily. A first local-only account
+// request may fail before the schema exists, but it safely creates the local
+// SQLite object that the guarded migration runner can then initialize.
+const d1Bootstrap = await fetch(new URL('/api/local-testing/session', origin), {
+  method: 'POST',
+  redirect: 'manual',
+  headers: {
+    Origin: origin.origin,
+    'Content-Type': 'application/x-www-form-urlencoded',
+  },
+  body: new URLSearchParams({ role: 'customer' }),
+});
+if (d1Bootstrap.status !== 303 && d1Bootstrap.status !== 500) {
+  throw new Error(`Local D1 bootstrap was rejected (${d1Bootstrap.status}).`);
+}
+
 const migrations = await applyLocalD1Migrations(paths, process.cwd());
 console.log(`Local D1 schema: ${migrations.applied} migration(s) applied; ${migrations.total} tracked.`);
 
 const cookies = new Map();
-for (const role of ['customer', 'seller', 'admin', 'super_admin']) {
+for (const role of ['customer', 'buyer', 'rider', 'seller', 'admin', 'super_admin']) {
   const response = await fetch(new URL('/api/local-testing/session', origin), {
     method: 'POST',
     redirect: 'manual',
@@ -72,6 +88,8 @@ if (applicationResponse.status !== 201 && !isExistingFixture) {
 
 console.log('Seeded or verified fictional local staging identities:');
 console.log('- customer@local.hastabazaar.test — Managed Maker requester');
+console.log('- buyer@local.hastabazaar.test — independent fictional buyer');
+console.log('- rider@local.hastabazaar.test — approved fictional rider');
 console.log('- seller@local.hastabazaar.test — Registered Seller fixture');
 console.log('- admin@local.hastabazaar.test — operational reviewer fixture');
 console.log('- superadmin@local.hastabazaar.test — Super Admin reviewer fixture');

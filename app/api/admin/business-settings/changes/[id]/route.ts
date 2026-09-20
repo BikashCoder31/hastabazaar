@@ -60,10 +60,11 @@ export async function POST(
         : request.headers.get('x-request-id') ?? crypto.randomUUID();
     const now = Date.now();
     const database = requireDatabase(env as unknown as { DB?: D1Database });
+    const runtimeBindings = env as unknown as Record<string, string | undefined>;
     const runtime = resolveRuntimeEnvironment({
-      runtimeEnvironment: (env as unknown as Record<string, string>).HASTABAZAAR_RUNTIME_ENV,
-      nodeEnvironment: process.env.NODE_ENV,
-      appOrigin: (env as unknown as Record<string, string>).APP_ORIGIN,
+      runtimeEnvironment: runtimeBindings.HASTABAZAAR_RUNTIME_ENV,
+      nodeEnvironment: runtimeBindings.NODE_ENV,
+      appOrigin: runtimeBindings.APP_ORIGIN,
     });
 
     if (action === 'approve' || action === 'reject') {

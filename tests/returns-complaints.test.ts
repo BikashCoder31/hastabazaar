@@ -4004,7 +4004,7 @@ void test('two seller parcels separate delivery, collection, remittance, return 
       version: current.version,
       kind: 'delivered',
       note: 'Synthetic proof of customer handover for staff verification.',
-      cashPaisa: 0,
+      cashPaisa: current.codDuePaisa - current.collectedPaisa,
       key: 'synthetic-rider-proof',
       mime: 'image/jpeg',
       requestId: 'synthetic-proof-submit',
@@ -4023,10 +4023,14 @@ void test('two seller parcels separate delivery, collection, remittance, return 
       'pending',
     );
     for (const p of parcels) {
-      await op(p.id, 'collect', {
-        amountPaisa: p.codDuePaisa,
-        reference: 'collection-' + p.id,
-      });
+      const latest = (await listParcels(db, 'order-1')).find((item) => item.id === p.id)!;
+      const remainingCollection = latest.codDuePaisa - latest.collectedPaisa;
+      if (remainingCollection > 0) {
+        await op(p.id, 'collect', {
+          amountPaisa: remainingCollection,
+          reference: 'collection-' + p.id,
+        });
+      }
       await op(p.id, 'propose_remittance', {
         amountPaisa: p.codDuePaisa,
         reference: 'remittance-' + p.id,

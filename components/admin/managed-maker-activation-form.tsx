@@ -9,7 +9,7 @@ export function ManagedMakerActivationForm({ sellerId }: { sellerId: string }) {
   const router = useRouter();
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
+  async function submit(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setMessage('');
     const form = new FormData(event.currentTarget);
     const body = Object.fromEntries(form.entries());

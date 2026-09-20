@@ -114,6 +114,31 @@ export async function ensureLocalTestAccount(
     );
   }
 
+  if (role === 'rider') {
+    statements.push(
+      database
+        .prepare(
+          `INSERT OR IGNORE INTO rider_applications (
+            id,user_id,legal_name,phone,district,identity_type,identity_number,
+            object_key,mime_type,created_at
+          ) VALUES (
+            'local-test-rider-application',?,'SIMULATED Rajan Rider',
+            '+9779800000022','Kathmandu','citizenship','SIMULATED-RIDER-ID',
+            'private/rider-identity/local-test-rider/simulated','image/png',?
+          )`,
+        )
+        .bind(userId, now),
+      database
+        .prepare(
+          `INSERT OR IGNORE INTO rider_profiles (
+            user_id,status,application_id,version,reviewed_by,review_note,updated_at
+          ) VALUES (?,'approved','local-test-rider-application',1,NULL,
+            'Approved fictional local fixture. Not an operational rider.',?)`,
+        )
+        .bind(userId, now),
+    );
+  }
+
   if (role === 'admin' || role === 'super_admin') {
     statements.push(
       database

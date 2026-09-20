@@ -11,6 +11,8 @@ import { requireDatabase } from '@/lib/db/d1';
 
 const destinations: Record<LocalTestRole, string> = {
   customer: '/account',
+  buyer: '/account',
+  rider: '/rider',
   seller: '/seller',
   admin: '/admin',
   super_admin: '/admin',
@@ -59,4 +61,3 @@ export async function DELETE(request: Request): Promise<Response> {
     },
   });
 }
-
