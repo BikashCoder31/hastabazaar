@@ -61,13 +61,7 @@ export async function SiteHeader() {
           </div>
 
           <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
-            <Link
-              href="/account/orders"
-              className="header-action hidden xl:inline-flex"
-            >
-              <Package className="size-5" />
-              <span>Orders</span>
-            </Link>
+            <HeaderOrdersLink authenticated={Boolean(identity)} />
             {identity ? (
               <Link
                 href="/account/wishlist"
@@ -145,6 +139,24 @@ export async function SiteHeader() {
         </div>
       </header>
     </>
+  );
+}
+
+export function HeaderOrdersLink({
+  authenticated,
+}: {
+  authenticated: boolean;
+}) {
+  if (!authenticated) return null;
+
+  return (
+    <Link
+      href="/account/orders"
+      className="header-action hidden xl:inline-flex"
+    >
+      <Package className="size-5" />
+      <span>Orders</span>
+    </Link>
   );
 }
 
