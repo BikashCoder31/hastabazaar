@@ -10,9 +10,11 @@ import type { FeaturedProduct } from '@/lib/catalog/featured-products';
 export function ProductSlider({
   products,
   label,
+  wideDesktop = false,
 }: {
   products: readonly FeaturedProduct[];
   label: string;
+  wideDesktop?: boolean;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
 
@@ -54,12 +56,16 @@ export function ProductSlider({
       <div
         ref={scroller}
         aria-label={label}
-        className="flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth pb-3 sm:gap-6"
+        className="homepage-product-scroller flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth pb-3 sm:gap-6"
       >
         {products.map((product) => (
           <div
             key={product.slug}
-            className="min-w-0 shrink-0 basis-[78%] snap-start sm:basis-[42%] lg:basis-[calc(25%-1.125rem)]"
+            className={
+              wideDesktop
+                ? 'min-w-0 shrink-0 basis-[78%] snap-start sm:basis-[42%] lg:basis-[calc(25%-1.125rem)] 2xl:basis-[calc(20%-1.2rem)]'
+                : 'min-w-0 shrink-0 basis-[78%] snap-start sm:basis-[42%] lg:basis-[calc(25%-1.125rem)]'
+            }
           >
             <ProductCard product={product} />
           </div>

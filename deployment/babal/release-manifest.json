@@ -25,7 +25,7 @@
       "gift_card_id"
     ]
   },
-  "release": "hastabazaar-release-2026-09-21-203859",
+  "release": "hastabazaar-release-2026-09-21-220606",
   "startup": "app.cjs",
   "hosting": "Babal.Host",
   "requiredNodeMajor": 22,

@@ -110,6 +110,20 @@
     @apply mx-auto w-full max-w-[90rem] px-5 sm:px-8 lg:px-12;
   }
 
+  .homepage-product-shell {
+    width: min(94vw, 105rem);
+    max-width: 105rem;
+  }
+
+  .homepage-product-scroller {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .homepage-product-scroller::-webkit-scrollbar {
+    display: none;
+  }
+
   .eyebrow {
     @apply text-sm font-bold uppercase tracking-[0.18em] text-primary;
   }

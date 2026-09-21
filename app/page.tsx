@@ -394,7 +394,7 @@ export default async function Home() {
           id="latest-products"
           className="bg-secondary/45 py-10 sm:py-14"
         >
-          <div className="shell">
+          <div className="homepage-product-shell shell">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <p className="eyebrow">NEW TO HASTABAZAAR</p>
@@ -409,6 +409,7 @@ export default async function Home() {
                 <ProductSlider
                   products={latestProducts}
                   label="Latest seller products"
+                  wideDesktop
                 />
               </div>
             ) : (

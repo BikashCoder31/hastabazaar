@@ -382,6 +382,25 @@ void test('homepage source has no hard-coded product fallback and retains honest
   assert.match(footer, /support@hastabazaar\.com/);
 });
 
+void test('new arrivals uses a wide capped desktop shell without changing the mobile card layout', async () => {
+  const [page, slider, styles] = await Promise.all([
+    readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
+    readFile(
+      new URL('../components/catalog/product-slider.tsx', import.meta.url),
+      'utf8',
+    ),
+    readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(page, /id="latest-products"[\s\S]*?homepage-product-shell/);
+  assert.match(styles, /\.homepage-product-shell\s*\{[\s\S]*?max-width:\s*105rem/);
+  assert.match(slider, /homepage-product-scroller/);
+  assert.match(slider, /2xl:basis-\[calc\(20%-1\.2rem\)\]/);
+  assert.match(slider, /basis-\[78%\]/);
+  assert.match(styles, /\.homepage-product-scroller\s*\{[\s\S]*?scrollbar-width:\s*none/);
+  assert.match(styles, /\.homepage-product-scroller::-webkit-scrollbar/);
+});
+
 void test('Super Admin can hide and restore individual homepage products without unpublishing', async () => {
   const fixture = homepageFixture();
   try {
