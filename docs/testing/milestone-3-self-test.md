@@ -143,6 +143,7 @@ Expected: the current route remains Managed Maker until the approved effective t
 | `npm run schema:babal` | Passed; MariaDB schema and reset import regenerated |
 | `npm run build:babal` | Passed; **123 tables, 57 triggers, 36 migrations** in manifest |
 | `npm run staging:verify` | Isolation, marker, local D1/R2 names, Node, mail capture, simulated payments and loopback application all **Pass** |
+| Initial `npm run staging:seed` before starting the server | Failed with loopback `ECONNREFUSED`, as designed; no remote fallback was attempted. The server was then started with guarded variables. |
 | `npm run staging:seed` | 55/55 local migrations tracked; six fictional accounts seeded; immediate rerun applied **0** migrations |
 | `npm run staging:demo` | Passed: NPR 1,000 → NPR 90 retained → NPR 910 paid simulated entitlement; one issuer group |
 | Production release/hosting | **Not Verified**; no production connection attempted |
