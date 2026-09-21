@@ -6,10 +6,16 @@ import {
   approveBusinessSettingChange,
   BusinessSettingConflictError,
   createBusinessSettingReversalDraft,
+  getBusinessSettingVersionById,
   publishBusinessSettingDraft,
   rejectBusinessSettingChange,
   submitBusinessSettingDraft,
 } from '@/lib/db/repositories/business-settings';
+import { assertHomepageHeroMediaReady } from '@/lib/db/repositories/homepage-hero';
+import {
+  assertHomepageHeroPublicationReady,
+  type HomepageHeroSlides,
+} from '@/lib/homepage/hero-slides';
 import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { resolveRuntimeEnvironment } from '@/lib/staging/environment';
@@ -42,6 +48,18 @@ function requiredEffectiveFrom(value: unknown): number {
   return Number(value);
 }
 
+async function assertHomepageHeroVersionReady(
+  database: D1Database,
+  id: string,
+): Promise<void> {
+  const version = await getBusinessSettingVersionById(database, id);
+  if (!version || version.key !== 'homepage_hero_slides') return;
+  const slides = assertHomepageHeroPublicationReady(
+    version.value as HomepageHeroSlides,
+  );
+  await assertHomepageHeroMediaReady(database, slides);
+}
+
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
@@ -71,6 +89,7 @@ export async function POST(
       const actor = await requireStaffApi('business_settings.approve');
       const expectedRevision = requiredRevision(body.expectedRevision);
       if (action === 'approve') {
+        await assertHomepageHeroVersionReady(database, id);
         await approveBusinessSettingChange(database, {
           id,
           actorId: actor.id,
@@ -107,6 +126,7 @@ export async function POST(
       return json({ ok: true, action }, 200);
     }
     if (action === 'publish') {
+      await assertHomepageHeroVersionReady(database, id);
       await publishBusinessSettingDraft(database, {
         id,
         actorId: actor.id,

@@ -120,6 +120,13 @@ async function getVersionById(
   return row ? parseRow(row) : null;
 }
 
+export async function getBusinessSettingVersionById(
+  database: D1Database,
+  id: string,
+): Promise<BusinessSettingVersion | null> {
+  return getVersionById(database, id);
+}
+
 function guard(
   database: D1Database,
   predicate: string,
