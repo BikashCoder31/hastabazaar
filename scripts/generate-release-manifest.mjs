@@ -44,6 +44,7 @@ const migrationNames = [
   'mariadb-rider-open-box-finance.sql',
   'mariadb-recently-viewed.sql',
   'mariadb-managed-fixed-supply.sql',
+  'mariadb-homepage-hero-carousel.sql',
 ];
 const tables = {},
   triggers = {},

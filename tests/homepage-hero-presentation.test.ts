@@ -90,7 +90,7 @@ void test('two face-free editorial hero assets are project-bound WebP files and 
     assert.ok(metadata.size > 50_000);
     assert.ok(metadata.size < 5 * 1024 * 1024);
   }
-  const [d1, maria] = await Promise.all([
+  const [d1, maria, manifestSource, manifestGenerator] = await Promise.all([
     readFile(
       new URL('../drizzle/0055_homepage_hero_carousel.sql', import.meta.url),
       'utf8',
@@ -102,10 +102,34 @@ void test('two face-free editorial hero assets are project-bound WebP files and 
       ),
       'utf8',
     ),
+    readFile(
+      new URL('../deployment/babal/release-manifest.json', import.meta.url),
+      'utf8',
+    ),
+    readFile(
+      new URL('../scripts/generate-release-manifest.mjs', import.meta.url),
+      'utf8',
+    ),
   ]);
   for (const source of [d1, maria]) {
     assert.match(source, /system-maker-hands-hero/);
     assert.match(source, /system-meaningful-gifts-hero/);
     assert.doesNotMatch(source, /DROP TABLE/i);
   }
+  const manifest = JSON.parse(manifestSource) as {
+    migrations: readonly { path: string; usage: string }[];
+  };
+  assert.deepEqual(
+    manifest.migrations.find(
+      (migration) =>
+        migration.path ===
+        'deployment/babal/mariadb-homepage-hero-carousel.sql',
+    ),
+    {
+      path: 'deployment/babal/mariadb-homepage-hero-carousel.sql',
+      sha256: '905da0ffdfa4233c64662542c168b31115873a70bd21cc19188fd47662322f38',
+      usage: 'additive-maintenance',
+    },
+  );
+  assert.match(manifestGenerator, /'mariadb-homepage-hero-carousel\.sql'/);
 });

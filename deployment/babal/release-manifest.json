@@ -1751,6 +1751,12 @@
       "updated_by",
       "version"
     ],
+    "marketplace_settings": [
+      "key",
+      "updated_at",
+      "updated_by",
+      "value"
+    ],
     "homepage_hero_media": [
       "archived_at",
       "created_at",
@@ -1763,12 +1769,6 @@
       "original_name",
       "size_bytes",
       "width"
-    ],
-    "marketplace_settings": [
-      "key",
-      "updated_at",
-      "updated_by",
-      "value"
     ]
   },
   "requiredTriggers": {
