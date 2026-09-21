@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS `homepage_hero_media` (
   CHECK (`width`>0),
   CHECK (`height`>0),
   CHECK (`duration_seconds` IS NULL OR `duration_seconds`>0)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT IGNORE INTO `homepage_hero_media` (
   `id`,`object_key`,`original_name`,`mime_type`,`size_bytes`,

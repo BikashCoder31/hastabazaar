@@ -25,14 +25,14 @@
       "gift_card_id"
     ]
   },
-  "release": "local-unversioned-candidate",
+  "release": "hastabazaar-release-2026-09-21-203859",
   "startup": "app.cjs",
   "hosting": "Babal.Host",
   "requiredNodeMajor": 22,
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "8b4030123a5c63ad9da3aefe852a8be5d4d7277d136f6980c878aae01d993409",
+      "sha256": "988c0a8351e9d202b8d6920c5ebd9a191943f63003b0a8dff1c78fc899f9d2b8",
       "usage": "empty-database-only"
     },
     {
@@ -207,12 +207,12 @@
     },
     {
       "path": "deployment/babal/mariadb-managed-fixed-supply.sql",
-      "sha256": "9e76982697d28b0fa31b227a562cde8b358699eaf7228c97aece29b7cf8c4a90",
+      "sha256": "0d5db7728bb169ddd792aa5150389f641276abd66b2a4352c7fde0073b5afa58",
       "usage": "additive-maintenance"
     },
     {
       "path": "deployment/babal/mariadb-homepage-hero-carousel.sql",
-      "sha256": "905da0ffdfa4233c64662542c168b31115873a70bd21cc19188fd47662322f38",
+      "sha256": "7016236fcd6fce388b50f2afd8f6dcee6c8b3199e6e15c9d3e6bfb23ece6b4ac",
       "usage": "additive-maintenance"
     }
   ],

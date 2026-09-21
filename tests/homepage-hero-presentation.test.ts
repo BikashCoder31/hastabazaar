@@ -127,7 +127,7 @@ void test('two face-free editorial hero assets are project-bound WebP files and 
     ),
     {
       path: 'deployment/babal/mariadb-homepage-hero-carousel.sql',
-      sha256: '905da0ffdfa4233c64662542c168b31115873a70bd21cc19188fd47662322f38',
+      sha256: '7016236fcd6fce388b50f2afd8f6dcee6c8b3199e6e15c9d3e6bfb23ece6b4ac',
       usage: 'additive-maintenance',
     },
   );
