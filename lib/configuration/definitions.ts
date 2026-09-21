@@ -8,6 +8,7 @@ import {
   type ManagedMakerProgramMode,
   type OfficialSocialLinks,
   type FirstPartyAnalyticsPolicy,
+  type RiderFinancePolicy,
 } from './types';
 
 function integerInRange(
@@ -206,6 +207,106 @@ function firstPartyAnalyticsPolicy(value: unknown): FirstPartyAnalyticsPolicy {
   });
 }
 
+function riderFinancePolicy(value: unknown): RiderFinancePolicy {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError('Rider finance policy must be an object.');
+  }
+  const candidate = value as Record<string, unknown>;
+  const expected = new Set([
+    'cashExposureLimitPaisa',
+    'operatingWeekdays',
+    'holidayDates',
+    'remittanceCutoffLocalTime',
+    'completedTripPaisa',
+    'failedTripPaisa',
+    'returnTripPaisa',
+    'receivingAccountLabel',
+  ]);
+  if (Object.keys(candidate).some((key) => !expected.has(key))) {
+    throw new RangeError('Rider finance policy contains an unknown field.');
+  }
+  const limit = candidate.cashExposureLimitPaisa;
+  if (limit !== null && (!Number.isSafeInteger(limit) || Number(limit) < 1)) {
+    throw new RangeError(
+      'Rider cash exposure limit must be null or positive paisa.',
+    );
+  }
+  if (!Array.isArray(candidate.operatingWeekdays)) {
+    throw new TypeError('Rider operating weekdays must be a list.');
+  }
+  const operatingWeekdays = candidate.operatingWeekdays.map((day) =>
+    oneOf('Rider operating weekday', day, weekdays),
+  );
+  if (new Set(operatingWeekdays).size !== operatingWeekdays.length) {
+    throw new RangeError('Rider operating weekdays cannot contain duplicates.');
+  }
+  if (
+    !Array.isArray(candidate.holidayDates) ||
+    candidate.holidayDates.length > 100
+  ) {
+    throw new TypeError('Rider holidays must be a list of at most 100 dates.');
+  }
+  const holidayDates = candidate.holidayDates.map((date) => {
+    if (
+      typeof date !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      Number.isNaN(Date.parse(`${date}T00:00:00Z`))
+    ) {
+      throw new RangeError('Rider holidays must use valid YYYY-MM-DD dates.');
+    }
+    return date;
+  });
+  if (new Set(holidayDates).size !== holidayDates.length) {
+    throw new RangeError('Rider holidays cannot contain duplicates.');
+  }
+  if (
+    typeof candidate.remittanceCutoffLocalTime !== 'string' ||
+    !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(candidate.remittanceCutoffLocalTime)
+  ) {
+    throw new RangeError(
+      'Rider remittance cutoff must use 24-hour HH:mm format.',
+    );
+  }
+  const receivingAccountLabel =
+    typeof candidate.receivingAccountLabel === 'string'
+      ? candidate.receivingAccountLabel.trim()
+      : '';
+  if (
+    receivingAccountLabel.length < 8 ||
+    receivingAccountLabel.length > 120 ||
+    /[<>]/.test(receivingAccountLabel)
+  ) {
+    throw new RangeError(
+      'Receiving account label must be 8–120 safe characters.',
+    );
+  }
+  return Object.freeze({
+    cashExposureLimitPaisa: limit === null ? null : Number(limit),
+    operatingWeekdays: Object.freeze(operatingWeekdays),
+    holidayDates: Object.freeze(holidayDates),
+    remittanceCutoffLocalTime: candidate.remittanceCutoffLocalTime,
+    completedTripPaisa: integerInRange(
+      'Completed trip rate',
+      candidate.completedTripPaisa,
+      0,
+      100_000_000,
+    ),
+    failedTripPaisa: integerInRange(
+      'Failed trip rate',
+      candidate.failedTripPaisa,
+      0,
+      100_000_000,
+    ),
+    returnTripPaisa: integerInRange(
+      'Return trip rate',
+      candidate.returnTripPaisa,
+      0,
+      100_000_000,
+    ),
+    receivingAccountLabel,
+  });
+}
+
 const weekdays: readonly BusinessWeekday[] = [
   'monday',
   'tuesday',
@@ -397,6 +498,29 @@ const definitions = [
       integerInRange('Remittance business days', value, 0, 30),
   },
   {
+    key: 'rider_finance_policy',
+    label: 'Rider cash exposure, calendar and simulated trip rates',
+    description:
+      'Controlled rider cash limit, operating calendar, remittance cutoff, receiving label and separate simulated trip compensation.',
+    defaultValue: Object.freeze({
+      cashExposureLimitPaisa: null,
+      operatingWeekdays: Object.freeze([]),
+      holidayDates: Object.freeze([]),
+      remittanceCutoffLocalTime: '17:00',
+      completedTripPaisa: 0,
+      failedTripPaisa: 0,
+      returnTripPaisa: 0,
+      receivingAccountLabel: 'Not configured for assignment',
+    }),
+    sensitivity: 'financial',
+    changeControl: 'controlled',
+    effectiveMode: 'effective_dated',
+    snapshotOnTransaction: true,
+    affectedSurfaces: ['rider', 'finance', 'assignments', 'remittance'],
+    requiredCapability: 'rider_cash_reconciliation_v1',
+    validate: riderFinancePolicy,
+  },
+  {
     key: 'open_box_category_codes',
     label: 'Open-box product categories',
     description: 'Approved categories; staging starts with clay products.',
@@ -411,9 +535,9 @@ const definitions = [
   },
   {
     key: 'open_box_service_area_codes',
-    label: 'Open-box service areas',
+    label: 'Open-box service-area district codes',
     description:
-      'Explicit staging service areas where trained rider inspection is available.',
+      'Normalized district codes where trained rider inspection is available; assignments snapshot the value.',
     defaultValue: Object.freeze([]),
     sensitivity: 'operational',
     changeControl: 'simple',

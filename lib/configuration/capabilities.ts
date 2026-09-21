@@ -76,4 +76,16 @@ export function assertBusinessSettingPublicationReady<
       'Managed Maker activation is not implemented and tested for live use.',
     );
   }
+  if (key === 'rider_finance_policy') {
+    const policy = value as BusinessSettingValue<'rider_finance_policy'>;
+    if (
+      policy.cashExposureLimitPaisa === null ||
+      !policy.operatingWeekdays.length ||
+      policy.receivingAccountLabel === 'Not configured for assignment'
+    ) {
+      throw new RangeError(
+        'Rider finance publication requires a positive cash exposure limit, at least one operating weekday, and an approved receiving-account label.',
+      );
+    }
+  }
 }

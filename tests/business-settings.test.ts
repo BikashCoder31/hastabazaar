@@ -137,6 +137,7 @@ void test('only supported, validated controls exist and demonstration defaults r
     'platform_payout_minimum_paisa',
     'new_seller_reserve_bps',
     'rider_remittance_business_days',
+    'rider_finance_policy',
     'open_box_category_codes',
     'open_box_service_area_codes',
     'managed_adjustment_reason_codes',
@@ -203,6 +204,40 @@ void test('first-party analytics policy is disabled by default and strictly boun
         executableFormula: 'collect_everything()',
       }),
     /unknown field/i,
+  );
+});
+
+void test('rider finance is controlled, unconfigured by default, and rejects executable or malformed values', () => {
+  const definition = getBusinessSettingDefinition('rider_finance_policy');
+  assert.equal(definition.changeControl, 'controlled');
+  assert.equal(definition.snapshotOnTransaction, true);
+  assert.equal(definition.defaultValue.cashExposureLimitPaisa, null);
+  const value = validateBusinessSettingValue('rider_finance_policy', {
+    cashExposureLimitPaisa: 500_000,
+    operatingWeekdays: ['sunday', 'monday'],
+    holidayDates: ['2026-09-20'],
+    remittanceCutoffLocalTime: '17:00',
+    completedTripPaisa: 10_000,
+    failedTripPaisa: 5_000,
+    returnTripPaisa: 7_500,
+    receivingAccountLabel: 'SIMULATED CASH DESK — NO REAL FUNDS',
+  });
+  assert.equal(value.cashExposureLimitPaisa, 500_000);
+  assert.throws(
+    () =>
+      validateBusinessSettingValue('rider_finance_policy', {
+        ...value,
+        executableFormula: 'customer_cash - payout()',
+      }),
+    /unknown field/i,
+  );
+  assert.throws(
+    () =>
+      validateBusinessSettingValue('rider_finance_policy', {
+        ...value,
+        operatingWeekdays: ['saturday', 'saturday'],
+      }),
+    /duplicate/i,
   );
 });
 

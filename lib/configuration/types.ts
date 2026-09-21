@@ -10,6 +10,7 @@ export const businessSettingKeys = [
   'platform_payout_minimum_paisa',
   'new_seller_reserve_bps',
   'rider_remittance_business_days',
+  'rider_finance_policy',
   'open_box_category_codes',
   'open_box_service_area_codes',
   'managed_adjustment_reason_codes',
@@ -53,6 +54,17 @@ export type FirstPartyAnalyticsPolicy = Readonly<{
   excludedPathPrefixes: readonly string[];
 }>;
 
+export type RiderFinancePolicy = Readonly<{
+  cashExposureLimitPaisa: number | null;
+  operatingWeekdays: readonly BusinessWeekday[];
+  holidayDates: readonly string[];
+  remittanceCutoffLocalTime: string;
+  completedTripPaisa: number;
+  failedTripPaisa: number;
+  returnTripPaisa: number;
+  receivingAccountLabel: string;
+}>;
+
 export type BusinessSettingValues = Readonly<{
   independent_seller_commission_bps: number;
   managed_sale_linked_platform_retention_bps: number;
@@ -65,6 +77,7 @@ export type BusinessSettingValues = Readonly<{
   platform_payout_minimum_paisa: number;
   new_seller_reserve_bps: number;
   rider_remittance_business_days: number;
+  rider_finance_policy: RiderFinancePolicy;
   open_box_category_codes: readonly string[];
   open_box_service_area_codes: readonly string[];
   managed_adjustment_reason_codes: readonly string[];

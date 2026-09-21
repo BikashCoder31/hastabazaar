@@ -42,6 +42,10 @@ const invoiceAdjustmentsSql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-invoice-adjustments.sql'),
   'utf8',
 );
+const riderOpenBoxFinanceSql = await readFile(
+  resolve(projectRoot, 'deployment/babal/mariadb-rider-open-box-finance.sql'),
+  'utf8',
+);
 
 const quote = (value) => `\`${String(value).replaceAll('`', '``')}\``;
 
@@ -276,6 +280,8 @@ output.push(
   firstPartyAnalyticsSql.trim(),
   '',
   invoiceAdjustmentsSql.trim(),
+  '',
+  riderOpenBoxFinanceSql.trim(),
   '',
   '-- Babal.Host password authentication and server-side sessions.',
   'CREATE TABLE IF NOT EXISTS `user_credentials` (',

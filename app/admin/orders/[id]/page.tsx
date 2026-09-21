@@ -1,10 +1,14 @@
-import {CancellationReviewSection} from '@/components/admin/cancellation-review-section';
-import {ExceptionOrderSection} from '@/components/admin/exception-order-section';
-import {InvoiceAdjustmentForm} from '@/components/admin/invoice-adjustment-form';
-import {ParcelControls} from '@/components/admin/parcel-controls';
-import {listParcels,parcelCashRecords} from '@/lib/operations/parcels';
-import {DeliveryAssignment} from '@/components/delivery/delivery-assignment';
-import {getDelivery} from '@/lib/delivery/repository';
+import { CancellationReviewSection } from '@/components/admin/cancellation-review-section';
+import { ExceptionOrderSection } from '@/components/admin/exception-order-section';
+import { InvoiceAdjustmentForm } from '@/components/admin/invoice-adjustment-form';
+import { ParcelControls } from '@/components/admin/parcel-controls';
+import {
+  listParcels,
+  parcelCashRecords,
+  riderCompensationEntries,
+} from '@/lib/operations/parcels';
+import { DeliveryAssignment } from '@/components/delivery/delivery-assignment';
+import { getDelivery } from '@/lib/delivery/repository';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -15,9 +19,9 @@ import { OrderStatusBadge } from '@/components/commerce/order-status-badge';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { getOperationsOrderDetail } from '@/lib/db/repositories/fulfillment';
-import {listManagedInvoiceGroupsForOrder} from '@/lib/db/repositories/managed-documents';
-import {getEffectiveBusinessSetting} from '@/lib/db/repositories/business-settings';
-import {can} from '@/lib/marketplace/permissions';
+import { listManagedInvoiceGroupsForOrder } from '@/lib/db/repositories/managed-documents';
+import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
+import { can } from '@/lib/marketplace/permissions';
 
 export const dynamic = 'force-dynamic';
 const invoiceSettingsObservedAt = () => Date.now();
@@ -42,13 +46,37 @@ export default async function AdminOrderPage({
   );
   if (!order) notFound();
   const address = order.address;
-  const db = requireDatabase(env as unknown as {DB?:D1Database});
-  const [parcels,cash,invoiceGroups]=await Promise.all([listParcels(db,id),parcelCashRecords(db,id),listManagedInvoiceGroupsForOrder(db,id)]);
-  const adjustmentReasons=can(staff,'tax_policy.manage')?(await getEffectiveBusinessSetting(db,'managed_adjustment_reason_codes',invoiceSettingsObservedAt())).value:[];
-  const assignedRider = await requireDatabase(env as unknown as {DB?:D1Database}).prepare('SELECT users.email FROM delivery_assignments JOIN users ON users.id=delivery_assignments.rider_user_id WHERE delivery_assignments.order_id=?').bind(id).first<{email:string}>();
-  const delivery = await getDelivery(requireDatabase(env as unknown as {DB?:D1Database}),id);
+  const db = requireDatabase(env as unknown as { DB?: D1Database });
+  const [parcels, cash, compensation, invoiceGroups] = await Promise.all([
+    listParcels(db, id),
+    parcelCashRecords(db, id),
+    riderCompensationEntries(db, id),
+    listManagedInvoiceGroupsForOrder(db, id),
+  ]);
+  const adjustmentReasons = can(staff, 'tax_policy.manage')
+    ? (
+        await getEffectiveBusinessSetting(
+          db,
+          'managed_adjustment_reason_codes',
+          invoiceSettingsObservedAt(),
+        )
+      ).value
+    : [];
+  const assignedRider = await requireDatabase(
+    env as unknown as { DB?: D1Database },
+  )
+    .prepare(
+      'SELECT users.email FROM delivery_assignments JOIN users ON users.id=delivery_assignments.rider_user_id WHERE delivery_assignments.order_id=?',
+    )
+    .bind(id)
+    .first<{ email: string }>();
+  const delivery = await getDelivery(
+    requireDatabase(env as unknown as { DB?: D1Database }),
+    id,
+  );
   return (
-    <div><CancellationReviewSection db={db} orderId={id}/>
+    <div>
+      <CancellationReviewSection db={db} orderId={id} />
       <Link
         href="/admin/orders"
         className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
@@ -68,8 +96,19 @@ export default async function AdminOrderPage({
         </div>
         <OrderStatusBadge status={order.status} />
       </div>
-      <div className="mt-6"><ParcelControls orderId={id} parcels={parcels} records={cash} actorId={staff.id} canPrepare={['confirmed','packing','ready_for_pickup'].includes(order.status)}/></div>
-      <ExceptionOrderSection db={db} orderId={id} staff={staff}/>
+      <div className="mt-6">
+        <ParcelControls
+          orderId={id}
+          parcels={parcels}
+          records={cash}
+          compensation={compensation}
+          actorId={staff.id}
+          canPrepare={['confirmed', 'packing', 'ready_for_pickup'].includes(
+            order.status,
+          )}
+        />
+      </div>
+      <ExceptionOrderSection db={db} orderId={id} staff={staff} />
       <div className="mt-8 grid gap-6 2xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-6">
           <section className="rounded-2xl border bg-card p-6">
@@ -120,7 +159,25 @@ export default async function AdminOrderPage({
               <div>
                 <p className="font-semibold">Address</p>
                 <p className="mt-1 leading-6 text-muted-foreground">
-                  {address.location?<a href={'https://www.openstreetmap.org/?mlat='+address.location.latitude+'&mlon='+address.location.longitude+'#map=17/'+address.location.latitude+'/'+address.location.longitude} target="_blank" rel="noopener noreferrer" className="block underline">Open delivery pin</a>:null}
+                  {address.location ? (
+                    <a
+                      href={
+                        'https://www.openstreetmap.org/?mlat=' +
+                        address.location.latitude +
+                        '&mlon=' +
+                        address.location.longitude +
+                        '#map=17/' +
+                        address.location.latitude +
+                        '/' +
+                        address.location.longitude
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block underline"
+                    >
+                      Open delivery pin
+                    </a>
+                  ) : null}
                   {address.locality}
                   {address.landmark ? `, near ${address.landmark}` : ''}
                   <br />
@@ -161,15 +218,37 @@ export default async function AdminOrderPage({
           <section className="rounded-2xl border bg-card p-6">
             <h2 className="font-heading text-2xl">Next action</h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {parcels.length ? 'Dispatch each parcel after its seller marks the items ready. Record customer cash collection and carrier remittance separately.' : 'Legacy whole-order dispatch requires all sellers ready. Legacy delivery includes COD confirmation. Prepare seller parcels before dispatch to use separate cash records.'}
+              {parcels.length
+                ? 'Dispatch each parcel after its seller marks the items ready. Record customer cash collection and carrier remittance separately.'
+                : 'Legacy whole-order dispatch requires all sellers ready. Legacy delivery includes COD confirmation. Prepare seller parcels before dispatch to use separate cash records.'}
             </p>
             <div className="mt-5">
-              {!parcels.length&&['confirmed','packing','ready_for_pickup','dispatched'].includes(order.status)?<DeliveryAssignment orderId={id} current={delivery} riderEmail={assignedRider?.email}/>:null}
-              {!parcels.length ? <AdminOrderFulfillmentActions
-                key={order.trackingCode??'manual'} initialTrackingCode={order.trackingCode}
-                orderId={order.id}
-                status={order.status}
-              /> : <p className="text-sm">Use the parcel controls above. Whole-order actions are disabled for this order.</p>}
+              {!parcels.length &&
+              [
+                'confirmed',
+                'packing',
+                'ready_for_pickup',
+                'dispatched',
+              ].includes(order.status) ? (
+                <DeliveryAssignment
+                  orderId={id}
+                  current={delivery}
+                  riderEmail={assignedRider?.email}
+                />
+              ) : null}
+              {!parcels.length ? (
+                <AdminOrderFulfillmentActions
+                  key={order.trackingCode ?? 'manual'}
+                  initialTrackingCode={order.trackingCode}
+                  orderId={order.id}
+                  status={order.status}
+                />
+              ) : (
+                <p className="text-sm">
+                  Use the parcel controls above. Whole-order actions are
+                  disabled for this order.
+                </p>
+              )}
             </div>
           </section>
           <section className="rounded-2xl border bg-card p-6">
@@ -213,7 +292,41 @@ export default async function AdminOrderPage({
               Estimate: {order.estimatedMinDays}–{order.estimatedMaxDays} days
             </p>
           </section>
-          {invoiceGroups.length?<section className="rounded-2xl border bg-card p-6"><h2 className="font-heading text-2xl">Issuer invoice records</h2><p className="mt-2 text-sm text-muted-foreground">Each issuer remains a separate simulated document group. Corrections append documents and never rewrite the invoice snapshot.</p><ul className="mt-4 space-y-2 text-sm">{invoiceGroups.map(invoice=><li key={invoice.id} className="rounded border p-3"><strong>{invoice.invoiceNumber}</strong><span className="block">{invoice.issuerReference} · {invoice.adjustmentCount} correction documents</span><span className="block text-xs text-amber-800">{invoice.simulationLabel}</span></li>)}</ul>{can(staff,'tax_policy.manage')?<InvoiceAdjustmentForm invoices={invoiceGroups} reasonCodes={adjustmentReasons}/>:<p className="mt-3 text-xs text-muted-foreground">Only a Super Admin with tax-policy authority can issue a simulated correction document.</p>}</section>:null}
+          {invoiceGroups.length ? (
+            <section className="rounded-2xl border bg-card p-6">
+              <h2 className="font-heading text-2xl">Issuer invoice records</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Each issuer remains a separate simulated document group.
+                Corrections append documents and never rewrite the invoice
+                snapshot.
+              </p>
+              <ul className="mt-4 space-y-2 text-sm">
+                {invoiceGroups.map((invoice) => (
+                  <li key={invoice.id} className="rounded border p-3">
+                    <strong>{invoice.invoiceNumber}</strong>
+                    <span className="block">
+                      {invoice.issuerReference} · {invoice.adjustmentCount}{' '}
+                      correction documents
+                    </span>
+                    <span className="block text-xs text-amber-800">
+                      {invoice.simulationLabel}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {can(staff, 'tax_policy.manage') ? (
+                <InvoiceAdjustmentForm
+                  invoices={invoiceGroups}
+                  reasonCodes={adjustmentReasons}
+                />
+              ) : (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Only a Super Admin with tax-policy authority can issue a
+                  simulated correction document.
+                </p>
+              )}
+            </section>
+          ) : null}
         </aside>
       </div>
     </div>

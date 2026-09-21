@@ -3847,6 +3847,35 @@ void test('two seller parcels separate delivery, collection, remittance, return 
       )
       .bind(now, now)
       .run();
+    await db
+      .prepare(
+        `INSERT INTO business_setting_versions(id,setting_key,version,value_json,status,revision,change_control,effective_from,reason,created_by,created_at,submitted_by,submitted_at,approved_by,approved_at,published_by,published_at,decision_note,last_request_id) VALUES ('parcel-finance-v1','rider_finance_policy',1,?,'published',3,'controlled',?,'SIMULATED parcel regression finance policy','super-1',?,'super-1',?,'admin-1',?,'admin-1',?,'SIMULATED approval','parcel-finance-request')`,
+      )
+      .bind(
+        JSON.stringify({
+          cashExposureLimitPaisa: 10_000_000,
+          operatingWeekdays: [
+            'sunday',
+            'monday',
+            'tuesday',
+            'wednesday',
+            'thursday',
+            'friday',
+          ],
+          holidayDates: [],
+          remittanceCutoffLocalTime: '17:00',
+          completedTripPaisa: 0,
+          failedTripPaisa: 0,
+          returnTripPaisa: 0,
+          receivingAccountLabel: 'SIMULATED REGRESSION CASH DESK',
+        }),
+        now - 1,
+        now - 1,
+        now - 1,
+        now - 1,
+        now - 1,
+      )
+      .run();
     const parcels = await listParcels(db, 'order-1');
     assert.equal(parcels.length, 2);
     assert.equal(
@@ -3995,7 +4024,9 @@ void test('two seller parcels separate delivery, collection, remittance, return 
     );
     await op(b.id, 'retry');
     await assert.rejects(() => op(b.id, 'deliver'));
-    const { submitRiderReport } = await import('../lib/riders/repository');
+    const { submitRiderRemittance, submitRiderReport } = await import(
+      '../lib/riders/repository'
+    );
     const current = (await listParcels(db, 'order-1')).find(
       (p) => p.id === b.id,
     )!;
@@ -4032,10 +4063,20 @@ void test('two seller parcels separate delivery, collection, remittance, return 
           reference: 'collection-' + p.id,
         });
       }
-      await op(p.id, 'propose_remittance', {
-        amountPaisa: p.codDuePaisa,
-        reference: 'remittance-' + p.id,
-      });
+      if (latest.method === 'own_rider' && latest.riderUserId)
+        await submitRiderRemittance(db, {
+          riderId: latest.riderUserId,
+          jobId: p.id,
+          requestId: 'rider-remittance-' + p.id,
+          amountPaisa: p.codDuePaisa,
+          reference: 'remittance-' + p.id,
+          now,
+        });
+      else
+        await op(p.id, 'propose_remittance', {
+          amountPaisa: p.codDuePaisa,
+          reference: 'remittance-' + p.id,
+        });
     }
     assert.equal(
       (
@@ -4060,15 +4101,18 @@ void test('two seller parcels separate delivery, collection, remittance, return 
     for (const r of (await parcelCashRecords(db, 'order-1')).filter(
       (r) => r.status === 'pending',
     )) {
-      await assert.rejects(() =>
-        op(r.jobId, 'approve_remittance', { cashRecordId: r.id }),
-      );
-      await op(
-        r.jobId,
-        'approve_remittance',
-        { cashRecordId: r.id },
-        'super-1',
-      );
+      if (r.maker === 'admin-1') {
+        await assert.rejects(() =>
+          op(r.jobId, 'approve_remittance', { cashRecordId: r.id }),
+        );
+        await op(
+          r.jobId,
+          'approve_remittance',
+          { cashRecordId: r.id },
+          'super-1',
+        );
+      } else
+        await op(r.jobId, 'approve_remittance', { cashRecordId: r.id });
     }
     assert.ok(
       ((

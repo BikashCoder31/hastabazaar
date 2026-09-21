@@ -136,6 +136,13 @@ export async function ensureLocalTestAccount(
             'Approved fictional local fixture. Not an operational rider.',?)`,
         )
         .bind(userId, now),
+      database
+        .prepare(
+          `UPDATE rider_profiles
+           SET open_box_eligible=1,open_box_reviewed_at=?,updated_at=?
+           WHERE user_id=? AND application_id='local-test-rider-application'`,
+        )
+        .bind(now, now, userId),
     );
   }
 
@@ -148,6 +155,58 @@ export async function ensureLocalTestAccount(
         )
         .bind(userId, role, now),
     );
+    if (role === 'super_admin') {
+      const riderFinancePolicy = JSON.stringify({
+        cashExposureLimitPaisa: 500_000,
+        operatingWeekdays: [
+          'sunday',
+          'monday',
+          'tuesday',
+          'wednesday',
+          'thursday',
+          'friday',
+        ],
+        holidayDates: [],
+        remittanceCutoffLocalTime: '17:00',
+        completedTripPaisa: 10_000,
+        failedTripPaisa: 5_000,
+        returnTripPaisa: 7_500,
+        receivingAccountLabel: 'SIMULATED CASH DESK — NO REAL FUNDS',
+      });
+      statements.push(
+        database
+          .prepare(
+            `INSERT OR IGNORE INTO business_setting_versions (
+              id,setting_key,version,value_json,status,revision,change_control,
+              effective_from,reason,created_by,created_at,submitted_by,submitted_at,
+              approved_by,approved_at,published_by,published_at,decision_note,last_request_id
+            ) VALUES (
+              'local-staging-rider-finance-v1','rider_finance_policy',1,?,'published',3,'controlled',?,
+              'SIMULATED staging rider cash limit, calendar, rates, and receiving label.',
+              'local-test-admin',?,'local-test-admin',?,'local-test-super-admin',?,
+              'local-test-super-admin',?,'Independent fictional test-account approval.',
+              'local-staging:rider-finance:v1'
+            )`,
+          )
+          .bind(riderFinancePolicy, now, now, now, now, now),
+        database
+          .prepare(
+            `INSERT OR IGNORE INTO business_setting_versions (
+              id,setting_key,version,value_json,status,revision,change_control,
+              effective_from,reason,created_by,created_at,published_by,published_at,
+              decision_note,last_request_id
+            ) VALUES (
+              'local-staging-open-box-area-v1','open_box_service_area_codes',1,
+              '["kathmandu"]','published',2,'simple',?,
+              'SIMULATED Kathmandu district open-box service-area fixture.',
+              'local-test-super-admin',?,'local-test-super-admin',?,
+              'Fictional local staging configuration only.',
+              'local-staging:open-box-area:v1'
+            )`,
+          )
+          .bind(now, now, now),
+      );
+    }
   }
 
   await database.batch(statements);

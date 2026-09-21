@@ -1,8 +1,104 @@
-import {env} from 'cloudflare:workers';
-import {requireStaffApi,StaffAuthorizationError} from '@/lib/auth/staff';
-import {requireDatabase} from '@/lib/db/d1';
-import {readBoundedBody} from '@/lib/http/bounded-body';
-import {isTrustedMutationRequest} from '@/lib/http/request-security';
-import {reviewRider,saveRiderPolicy,rejectRiderReport,reportSelect,type RiderReport,RiderError} from '@/lib/riders/repository';
-import {operateParcel,ParcelConflictError} from '@/lib/operations/parcels';
-export async function POST(request:Request){const reply=(body:unknown,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store'}});if(!isTrustedMutationRequest(request))return reply({error:'Cross-site request rejected.'},403);try{const data=JSON.parse(new TextDecoder().decode(await readBoundedBody(request,8192))) as Record<string,unknown>;const staff=await requireStaffApi(data.action==='review'||data.action==='policy'?'admin.invite':'order.manage');const db=requireDatabase(env as unknown as {DB?:D1Database});const text=(key:string)=>typeof data[key]==='string'?data[key] as string:'';const now=Date.now();if(data.action==='review')await reviewRider(db,{actorId:staff.id,userId:text('userId'),version:Number(data.version),status:text('status'),note:text('note'),now});else if(data.action==='policy')await saveRiderPolicy(db,{actorId:staff.id,version:Number(data.version),openBox:data.openBox===true,otpScope:text('otpScope'),now});else if(data.action==='reject')await rejectRiderReport(db,{actorId:staff.id,reportId:text('reportId'),note:text('note'),now});else if(data.action==='confirm'){const r=await db.prepare(reportSelect+' WHERE r.id=?').bind(text('reportId')).first<RiderReport>();if(!r)throw new RiderError('Report not found.');await operateParcel(db,{jobId:r.jobId,actorId:staff.id,version:Number(data.version),requestId:'rider-confirm:'+r.id,riderReportId:r.id,action:r.kind==='delivered'?'deliver':'fail',note:'Staff reviewed rider evidence and reported COD amount.',now});}else return reply({error:'Choose a supported rider action.'},400);return reply({ok:true});}catch(e){return reply({error:e instanceof StaffAuthorizationError||e instanceof RiderError||e instanceof ParcelConflictError?e.message:'Rider update could not be completed.'},e instanceof StaffAuthorizationError?e.status:e instanceof RiderError||e instanceof ParcelConflictError?409:400);}}
+import { env } from 'cloudflare:workers';
+import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
+import { requireDatabase } from '@/lib/db/d1';
+import { readBoundedBody } from '@/lib/http/bounded-body';
+import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import {
+  reviewRider,
+  saveRiderPolicy,
+  rejectRiderReport,
+  reportSelect,
+  type RiderReport,
+  RiderError,
+  setRiderOpenBoxEligibility,
+} from '@/lib/riders/repository';
+import { operateParcel, ParcelConflictError } from '@/lib/operations/parcels';
+export async function POST(request: Request) {
+  const reply = (body: unknown, status = 200) =>
+    Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
+  if (!isTrustedMutationRequest(request))
+    return reply({ error: 'Cross-site request rejected.' }, 403);
+  try {
+    const data = JSON.parse(
+      new TextDecoder().decode(await readBoundedBody(request, 8192)),
+    ) as Record<string, unknown>;
+    const staff = await requireStaffApi(
+      data.action === 'review' ||
+        data.action === 'policy' ||
+        data.action === 'open_box_eligibility'
+        ? 'admin.invite'
+        : 'order.manage',
+    );
+    const db = requireDatabase(env as unknown as { DB?: D1Database });
+    const text = (key: string) =>
+      typeof data[key] === 'string' ? (data[key] as string) : '';
+    const now = Date.now();
+    if (data.action === 'review')
+      await reviewRider(db, {
+        actorId: staff.id,
+        userId: text('userId'),
+        version: Number(data.version),
+        status: text('status'),
+        note: text('note'),
+        now,
+      });
+    else if (data.action === 'policy')
+      await saveRiderPolicy(db, {
+        actorId: staff.id,
+        version: Number(data.version),
+        openBox: false,
+        otpScope: text('otpScope'),
+        now,
+      });
+    else if (data.action === 'open_box_eligibility')
+      await setRiderOpenBoxEligibility(db, {
+        actorId: staff.id,
+        userId: text('userId'),
+        version: Number(data.version),
+        eligible: data.eligible === true,
+        note: text('note'),
+        now,
+      });
+    else if (data.action === 'reject')
+      await rejectRiderReport(db, {
+        actorId: staff.id,
+        reportId: text('reportId'),
+        note: text('note'),
+        now,
+      });
+    else if (data.action === 'confirm') {
+      const r = await db
+        .prepare(reportSelect + ' WHERE r.id=?')
+        .bind(text('reportId'))
+        .first<RiderReport>();
+      if (!r) throw new RiderError('Report not found.');
+      await operateParcel(db, {
+        jobId: r.jobId,
+        actorId: staff.id,
+        version: Number(data.version),
+        requestId: 'rider-confirm:' + r.id,
+        riderReportId: r.id,
+        action: r.kind === 'delivered' ? 'deliver' : 'fail',
+        note: 'Staff reviewed rider evidence and reported COD amount.',
+        now,
+      });
+    } else return reply({ error: 'Choose a supported rider action.' }, 400);
+    return reply({ ok: true });
+  } catch (e) {
+    return reply(
+      {
+        error:
+          e instanceof StaffAuthorizationError ||
+          e instanceof RiderError ||
+          e instanceof ParcelConflictError
+            ? e.message
+            : 'Rider update could not be completed.',
+      },
+      e instanceof StaffAuthorizationError
+        ? e.status
+        : e instanceof RiderError || e instanceof ParcelConflictError
+          ? 409
+          : 400,
+    );
+  }
+}

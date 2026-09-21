@@ -29,6 +29,7 @@ import type {
   BusinessSettingSensitivity,
   OfficialSocialLinks,
   FirstPartyAnalyticsPolicy,
+  RiderFinancePolicy,
 } from '@/lib/configuration/types';
 
 export type BusinessSettingsAdminItem = Readonly<{
@@ -107,6 +108,12 @@ function displayValue(key: BusinessSettingKey, value: unknown): string {
   ) {
     const policy = value as FirstPartyAnalyticsPolicy;
     return `${policy.enabled ? 'Enabled' : 'Disabled'} · ${policy.retentionDays} day retention`;
+  }
+  if (key === 'rider_finance_policy' && value && typeof value === 'object') {
+    const policy = value as RiderFinancePolicy;
+    return policy.cashExposureLimitPaisa === null
+      ? 'Not configured — own-rider COD assignment remains unavailable'
+      : `NPR ${(policy.cashExposureLimitPaisa / 100).toFixed(2)} exposure limit · ${policy.operatingWeekdays.length} operating days · simulated trip rates configured`;
   }
   return scalarString(value).replaceAll('_', ' ');
 }
@@ -655,6 +662,137 @@ function SettingValueEditor({
             allowlisted event, a path without query parameters, and time. No IP
             address, user agent, checkout fields, advertising ID, replay, or
             cross-site identifier is stored.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  if (settingKey === 'rider_finance_policy') {
+    const policy = value as RiderFinancePolicy;
+    const update = (next: Partial<RiderFinancePolicy>) =>
+      onChange({ ...policy, ...next });
+    const moneyInput = (
+      id: string,
+      label: string,
+      key:
+        | 'cashExposureLimitPaisa'
+        | 'completedTripPaisa'
+        | 'failedTripPaisa'
+        | 'returnTripPaisa',
+      optional = false,
+    ) => (
+      <div className="space-y-2">
+        <Label htmlFor={id}>{label}</Label>
+        <Input
+          id={id}
+          type="number"
+          min={optional ? 0.01 : 0}
+          step="0.01"
+          value={
+            policy?.[key] === null || policy?.[key] === undefined
+              ? ''
+              : Number(policy[key]) / 100
+          }
+          placeholder={
+            optional ? 'Required before own-rider COD assignment' : undefined
+          }
+          onChange={(event) =>
+            update({
+              [key]:
+                event.target.value === '' && optional
+                  ? null
+                  : Math.round(Number(event.target.value) * 100),
+            })
+          }
+        />
+      </div>
+    );
+    return (
+      <div className="grid gap-4 sm:grid-cols-2">
+        {moneyInput(
+          'rider-cash-limit',
+          'Cash exposure limit (NPR)',
+          'cashExposureLimitPaisa',
+          true,
+        )}
+        <div className="space-y-2">
+          <Label htmlFor="rider-remittance-cutoff">
+            Remittance cutoff (Kathmandu time)
+          </Label>
+          <Input
+            id="rider-remittance-cutoff"
+            type="time"
+            value={policy?.remittanceCutoffLocalTime ?? '17:00'}
+            onChange={(event) =>
+              update({ remittanceCutoffLocalTime: event.target.value })
+            }
+          />
+        </div>
+        {moneyInput(
+          'rider-completed-rate',
+          'Simulated completed-trip rate (NPR)',
+          'completedTripPaisa',
+        )}
+        {moneyInput(
+          'rider-failed-rate',
+          'Simulated failed-trip rate (NPR)',
+          'failedTripPaisa',
+        )}
+        {moneyInput(
+          'rider-return-rate',
+          'Simulated return-trip rate (NPR)',
+          'returnTripPaisa',
+        )}
+        <div className="space-y-2">
+          <Label htmlFor="rider-receiving-label">
+            Simulated receiving account / desk label
+          </Label>
+          <Input
+            id="rider-receiving-label"
+            value={policy?.receivingAccountLabel ?? ''}
+            onChange={(event) =>
+              update({ receivingAccountLabel: event.target.value })
+            }
+          />
+        </div>
+        <div className="space-y-2 sm:col-span-2">
+          <Label htmlFor="rider-operating-days">
+            Operating weekdays (comma-separated)
+          </Label>
+          <Input
+            id="rider-operating-days"
+            value={policy?.operatingWeekdays?.join(', ') ?? ''}
+            onChange={(event) =>
+              update({
+                operatingWeekdays: event.target.value
+                  .split(',')
+                  .map((entry) => entry.trim().toLowerCase())
+                  .filter(Boolean) as RiderFinancePolicy['operatingWeekdays'],
+              })
+            }
+          />
+        </div>
+        <div className="space-y-2 sm:col-span-2">
+          <Label htmlFor="rider-holidays">
+            Non-operating dates (YYYY-MM-DD, comma-separated)
+          </Label>
+          <Input
+            id="rider-holidays"
+            value={policy?.holidayDates?.join(', ') ?? ''}
+            onChange={(event) =>
+              update({
+                holidayDates: event.target.value
+                  .split(',')
+                  .map((entry) => entry.trim())
+                  .filter(Boolean),
+              })
+            }
+          />
+          <p className="text-xs leading-5 text-muted-foreground">
+            These amounts are a staging simulation. Rider trip compensation
+            remains separate from customer cash, delivery charges, seller
+            balances, and maker entitlements. A published cash limit is required
+            before assigning a COD parcel to an own rider.
           </p>
         </div>
       </div>

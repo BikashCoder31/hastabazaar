@@ -32,7 +32,7 @@
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "3297bcfdad85df84193f5282b8b09c73ea544fe4bf19e788f314e99db9b460d7",
+      "sha256": "8ea2a484b02428a6024ba2e8950145403999b6fb5198687cf1ce077848780fe2",
       "usage": "empty-database-only"
     },
     {
@@ -1195,6 +1195,47 @@
       "simulation_label",
       "snapshot_json"
     ],
+    "rider_assignment_snapshots": [
+      "assignment_version",
+      "created_at",
+      "created_by",
+      "finance_snapshot_json",
+      "id",
+      "open_box_snapshot_json",
+      "request_id",
+      "rider_user_id",
+      "shipping_job_id"
+    ],
+    "rider_cash_obligations": [
+      "amount_paisa",
+      "collection_record_id",
+      "created_at",
+      "due_at",
+      "id",
+      "policy_snapshot_json",
+      "rider_user_id",
+      "shipping_job_id"
+    ],
+    "rider_remittance_allocations": [
+      "allocated_at",
+      "allocated_by",
+      "amount_paisa",
+      "id",
+      "obligation_id",
+      "remittance_record_id"
+    ],
+    "rider_compensation_entries": [
+      "amount_paisa",
+      "created_at",
+      "id",
+      "outcome",
+      "policy_snapshot_json",
+      "rate_paisa",
+      "request_id",
+      "rider_user_id",
+      "shipping_job_id",
+      "status"
+    ],
     "user_credentials": [
       "created_at",
       "password_hash",
@@ -1605,6 +1646,14 @@
     ],
     "managed_invoice_adjustment_no_update": [],
     "managed_invoice_adjustment_no_delete": [],
+    "rider_assignment_snapshots_no_update": [],
+    "rider_assignment_snapshots_no_delete": [],
+    "rider_cash_obligations_no_update": [],
+    "rider_cash_obligations_no_delete": [],
+    "rider_remittance_allocations_no_update": [],
+    "rider_remittance_allocations_no_delete": [],
+    "rider_compensation_entries_no_update": [],
+    "rider_compensation_entries_no_delete": [],
     "wallet_refund_lock": [],
     "wallet_refund_guard": [],
     "wallet_entry_balance": [],
