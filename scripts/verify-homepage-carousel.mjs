@@ -193,7 +193,7 @@ try {
       pageIdentity: (await page.title()).includes('HastaBazaar'),
       slides: 3,
       imagesDecoded: 3,
-      controls: 'previous, next, numbered selection, keyboard',
+      controls: 'previous, next, dot selection, keyboard',
       noHorizontalOverflow: true,
       noConsoleErrors: true,
     });

@@ -52,3 +52,65 @@
 - Occasion cards rendered: 2 in the current local fixture at both viewports.
 - Internal footer entry points: 0.
 - Remaining P0, P1, or P2 visual issues: none found.
+
+---
+
+# Homepage Hero Carousel Design QA
+
+## Comparison target
+
+- Source visual truth:
+  - `C:\Users\abinash\AppData\Local\Temp\codex-clipboard-4b670045-7fd0-453e-9ddb-e769426ed16d.png` (1044 × 1060 px): reported banding and unreadable caption state.
+  - `C:\Users\abinash\AppData\Local\Temp\codex-clipboard-44063d06-f0ad-4846-bc53-0fa6e77d9616.png` (1679 × 937 px): intended full-bleed image composition.
+  - `C:\Users\abinash\AppData\Local\Temp\codex-clipboard-a77f38f3-2491-475c-8242-c9281b943277.png` (360 × 157 px): existing control arrangement to simplify from numbers to dots.
+- Rendered implementation: `.staging/artifacts/homepage-hero-carousel/homepage-carousel-desktop-slide-1.png` (1536 × 785 px).
+- Combined evidence: `.staging/artifacts/homepage-hero-carousel/design-qa-comparison.png` (1800 × 1320 px).
+- Browser viewport: 1536 × 960 CSS px at device scale factor 1.
+- Compared state: homepage, slide 1 selected, carousel at the top of the category overlap.
+- Normalization: references were proportionally reduced without cropping and placed with the 1536 px implementation capture on one comparison board. The references describe three complementary requirements rather than one pixel-identical full-page mock.
+
+## Full-view comparison
+
+- The implementation removes the top and bottom media bands and fills the complete 36rem desktop hero track.
+- The image remains sharp and uses an intentional muted navy treatment to satisfy the requested lower brightness.
+- The slide caption is positioned in the quiet upper mountain/sky region with a translucent warm panel, dark type, and adequate contrast.
+- Previous, next, dot selection, and pause controls form one compact muted group aligned above the category overlap.
+- The established two-column hero, typography hierarchy, calls to action, category overlap, and brand palette remain intact.
+
+## Focused-region comparison
+
+- Media: the full-bleed treatment is visibly continuous from top to bottom. `object-cover` introduces an expected horizontal crop at the 52% desktop media track; the mountain and primary craft subjects remain visible.
+- Caption: unlike the reported dark/red text over detailed objects, the new caption has a stable readable surface near the mountain and works across all three current photographs.
+- Controls: visible numeric labels are removed. The three selection controls render as dots while retaining descriptive accessible labels and current-slide state.
+- Mobile: the image follows the text stack at an 8:5 ratio, retains full coverage, and the controls do not create horizontal overflow.
+
+## Findings
+
+- No actionable P0, P1, or P2 differences remain.
+- P3 intentional deviation: the caption uses a soft translucent card instead of unsupported free-floating handwritten text. This improves readability across administrator-selected media and can be revisited as optional polish.
+
+## Required fidelity surfaces
+
+- Fonts and typography: existing Hastabazaar heading and body typography is preserved; caption weight, line height, and wrapping remain readable.
+- Spacing and layout rhythm: the 48/52 desktop grid, 36rem hero height, category overlap, CTA spacing, and responsive stack remain stable.
+- Colors and visual tokens: muted warm cream, navy, and restrained red remain consistent; image brightness and saturation are deliberately reduced.
+- Image quality and asset fidelity: existing WebP assets are reused at native quality with no placeholders, decorative substitutes, or duplicate image systems.
+- Copy and content: all administrator-managed slide text, actions, alternative text, and caption content are preserved.
+
+## Comparison history
+
+1. Earlier evidence showed blurred letterbox bands, a caption over busy right-side objects, and numbered selectors.
+2. Fixes applied: full-bleed media, calmer image treatment, upper-image caption placement, and dot navigation.
+3. Post-fix evidence: the combined board and desktop slide captures show all four requested corrections; desktop/mobile browser checks report no console errors or horizontal overflow.
+
+## Implementation checklist
+
+- [x] Remove blurred media backdrop and letterbox bands.
+- [x] Use full-bleed image, poster, and video presentation.
+- [x] Reduce image brightness and saturation.
+- [x] Move captions to a readable quiet image region.
+- [x] Replace visible numbers with accessible dots.
+- [x] Preserve arrows, pause, keyboard behavior, autoplay, and Super Admin slide content.
+- [x] Verify desktop, mobile, all three slides, console health, and overflow.
+
+final result: passed

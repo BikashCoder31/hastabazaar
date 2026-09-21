@@ -193,7 +193,7 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
 
   return (
     <section
-      className="homepage-hero-carousel relative bg-[#f7f0e7]"
+      className="homepage-hero-carousel relative bg-[#f2ebe1]"
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
       onFocusCapture={() => setFocusWithin(true)}
@@ -283,24 +283,13 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
                       ))}
                     </div>
                   </div>
-                  <div className="relative aspect-[8/5] min-h-0 overflow-hidden bg-[#cbbdaa] lg:aspect-auto lg:min-h-[36rem]">
-                    {slide.mediaType === 'image' || posterUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- decorative backdrop reuses guarded effective media.
-                      <img
-                        src={slide.mediaType === 'image' ? mediaUrl : posterUrl}
-                        alt=""
-                        aria-hidden="true"
-                        className="homepage-hero-media-backdrop absolute inset-0 h-full w-full scale-110 object-cover opacity-50 blur-2xl"
-                        loading={index === 0 ? 'eager' : 'lazy'}
-                      />
-                    ) : null}
-                    <div className="pointer-events-none absolute inset-0 bg-[#5b4938]/10" />
+                  <div className="relative aspect-[8/5] min-h-0 overflow-hidden bg-[#75695f] lg:aspect-auto lg:min-h-[36rem]">
                     {slide.mediaType === 'image' ? (
                       // eslint-disable-next-line @next/next/no-img-element -- effective media uses an authorization-aware dynamic route.
                       <img
                         src={mediaUrl}
                         alt={slide.imageAlt ?? ''}
-                        className="absolute inset-0 z-[1] h-full w-full object-contain"
+                        className="homepage-hero-media absolute inset-0 z-[1] h-full w-full object-cover object-center brightness-[0.82] saturate-[0.82] contrast-[0.96]"
                         loading={index === 0 ? 'eager' : 'lazy'}
                       />
                     ) : reducedMotion ? (
@@ -309,7 +298,7 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
                         <img
                           src={posterUrl}
                           alt=""
-                          className="absolute inset-0 z-[1] h-full w-full object-contain"
+                          className="homepage-hero-media absolute inset-0 z-[1] h-full w-full object-cover object-center brightness-[0.82] saturate-[0.82] contrast-[0.96]"
                         />
                       ) : null
                     ) : (
@@ -324,13 +313,13 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
                         playsInline
                         preload={index === current ? 'metadata' : 'none'}
                         aria-label={slide.videoDescription ?? undefined}
-                        className="absolute inset-0 z-[1] h-full w-full object-contain"
+                        className="homepage-hero-media absolute inset-0 z-[1] h-full w-full object-cover object-center brightness-[0.82] saturate-[0.82] contrast-[0.96]"
                         onEnded={advanceAutomatically}
                       />
                     )}
-                    <div className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-t from-[#071d35]/20 via-transparent to-transparent" />
+                    <div className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-tr from-[#071d35]/25 via-[#102b43]/5 to-[#5a3824]/10" />
                     {slide.imageNote ? (
-                      <p className="absolute right-6 top-1/3 z-[3] max-w-56 -rotate-3 whitespace-pre-line text-right font-heading text-xl font-semibold italic leading-tight text-[#0d3154] drop-shadow-[0_1px_0_rgba(255,255,255,0.8)] sm:text-2xl">
+                      <p className="homepage-hero-image-note absolute left-[16%] top-[16%] z-[3] max-w-[14rem] -rotate-2 whitespace-pre-line rounded-2xl border border-white/25 bg-[#eee5d8]/85 px-4 py-3 text-left font-heading text-base font-semibold italic leading-tight text-[#0b3156] shadow-[0_12px_34px_rgba(5,25,43,0.22)] backdrop-blur-md sm:max-w-[17rem] sm:px-5 sm:py-4 sm:text-xl lg:max-w-[19rem] lg:text-2xl">
                         {slide.imageNote}
                       </p>
                     ) : null}
@@ -341,32 +330,36 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
           })}
         </CarouselContent>
 
-        <div className="absolute bottom-8 right-5 z-10 flex items-center gap-2 rounded-full bg-white/90 p-2 shadow-lg backdrop-blur sm:right-10 lg:right-16">
+        <div className="absolute bottom-6 right-5 z-10 flex items-center gap-1 rounded-full border border-[#cbbda9]/80 bg-[#e9e0d4]/95 p-1.5 shadow-[0_12px_30px_rgba(32,41,48,0.16)] backdrop-blur-md sm:right-10 lg:bottom-7 lg:right-14">
           <Button
             type="button"
             size="icon"
             variant="ghost"
-            className="rounded-full"
+            className="size-9 rounded-full text-[#173c5b] hover:bg-[#d8cbb9]/70"
             onClick={() => manualDirection('previous')}
             aria-label="Previous featured story"
           >
             <ChevronLeft />
           </Button>
-          <div className="flex gap-1" aria-label="Choose featured story">
+          <div className="flex items-center gap-1 px-1" aria-label="Choose featured story">
             {enabledSlides.map((slide, index) => (
               <button
                 key={slide.id}
                 type="button"
-                className={
-                  index === current
-                    ? 'grid size-8 place-items-center rounded-full bg-[#0d3154] text-xs font-bold text-white'
-                    : 'grid size-8 place-items-center rounded-full text-xs font-bold text-[#526170] hover:bg-[#e9e1d7]'
-                }
+                className="homepage-hero-dot grid size-8 place-items-center rounded-full transition hover:bg-[#d8cbb9]/70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#0d3154]"
                 aria-label={`Show slide ${index + 1}: ${headingForAnnouncement(enabledSlides, index)}`}
                 aria-current={index === current ? 'true' : undefined}
                 onClick={() => selectManually(index)}
               >
-                {index + 1}
+                <span
+                  aria-hidden="true"
+                  className={
+                    index === current
+                      ? 'size-3 rounded-full bg-[#0d3154] shadow-[0_0_0_3px_rgba(13,49,84,0.12)]'
+                      : 'size-2 rounded-full bg-[#7f8a90]'
+                  }
+                />
+                <span className="sr-only">{index + 1}</span>
               </button>
             ))}
           </div>
@@ -374,26 +367,28 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
             type="button"
             size="icon"
             variant="ghost"
-            className="rounded-full"
+            className="size-9 rounded-full text-[#173c5b] hover:bg-[#d8cbb9]/70"
             onClick={() => manualDirection('next')}
             aria-label="Next featured story"
           >
             <ChevronRight />
           </Button>
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className="rounded-full"
-            aria-pressed={manualPause}
-            aria-label={manualPause ? 'Play featured stories' : 'Pause featured stories'}
-            onClick={() => {
-              setManualPause((value) => !value);
-              setTimerRevision((value) => nextHeroTimerRevision(value, 'manual'));
-            }}
-          >
-            {manualPause ? <Play /> : <Pause />}
-          </Button>
+          <div className="ml-1 border-l border-[#c5b7a4] pl-1">
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="size-9 rounded-full text-[#173c5b] hover:bg-[#d8cbb9]/70"
+              aria-pressed={manualPause}
+              aria-label={manualPause ? 'Play featured stories' : 'Pause featured stories'}
+              onClick={() => {
+                setManualPause((value) => !value);
+                setTimerRevision((value) => nextHeroTimerRevision(value, 'manual'));
+              }}
+            >
+              {manualPause ? <Play /> : <Pause />}
+            </Button>
+          </div>
         </div>
       </Carousel>
       <p className="sr-only" aria-live="polite" aria-atomic="true">

@@ -32,18 +32,25 @@ void test('category overlap and established homepage anchors remain intact', asy
   assert.match(styles, /\.homepage-hero-carousel/);
 });
 
-void test('every carousel image preserves its full editorial composition', async () => {
+void test('hero media is full bleed, calmer, and uses readable captions with dot navigation', async () => {
   const carousel = await readFile(
     new URL('../components/homepage/homepage-hero-carousel.tsx', import.meta.url),
     'utf8',
   );
-  assert.match(carousel, /object-contain/);
+  assert.match(carousel, /homepage-hero-media[^\n]*object-cover/);
+  assert.match(carousel, /brightness-\[0\.82\]/);
+  assert.match(carousel, /saturate-\[0\.82\]/);
   assert.match(carousel, /aspect-\[8\/5\]/);
   assert.match(
     carousel,
-    /alt=\{slide\.imageAlt \?\? ''\}[\s\S]*?className="[^"]*object-contain[^"]*"/,
+    /alt=\{slide\.imageAlt \?\? ''\}[\s\S]*?className="[^"]*object-cover[^"]*"/,
   );
-  assert.match(carousel, /homepage-hero-media-backdrop/);
+  assert.doesNotMatch(carousel, /homepage-hero-media-backdrop/);
+  assert.match(carousel, /homepage-hero-image-note/);
+  assert.match(carousel, /left-\[16%\][^\n]*top-\[16%\]/);
+  assert.match(carousel, /homepage-hero-dot/);
+  assert.match(carousel, /<span className="sr-only">\{index \+ 1\}<\/span>/);
+  assert.doesNotMatch(carousel, />\s*\{index \+ 1\}\s*<\/button>/);
 });
 
 void test('two face-free editorial hero assets are project-bound WebP files and registered additively', async () => {

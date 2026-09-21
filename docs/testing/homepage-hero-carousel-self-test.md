@@ -60,7 +60,7 @@ Latest focused browser run — 21 September 2026:
 
 - `node scripts/verify-homepage-carousel.mjs`: **Pass**.
 - Three initial slides and all three 1800×1125 WebP images decoded at 1536×960 and 390×844.
-- Previous, next, numbered selection, keyboard selection, automatic wrap, hover pause, focus pause, manual pause, hidden-document pause, and reduced-motion pause passed.
+- Previous, next, dot selection, keyboard selection, automatic wrap, hover pause, focus pause, manual pause, hidden-document pause, and reduced-motion pause passed.
 - No horizontal overflow, failed local responses, or browser console errors were observed.
 - Evidence: `.staging/artifacts/homepage-hero-carousel/` (ignored, disposable local output).
 - Video end/reset browser fixture: **Not Verified** for the reason below; automated MP4 validation and carousel-state tests remain required and passing.
