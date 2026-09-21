@@ -37,3 +37,34 @@ INSERT IGNORE INTO `homepage_hero_media` (
   0,
   NULL
 );
+
+INSERT IGNORE INTO `homepage_hero_media` (
+  `id`,`object_key`,`original_name`,`mime_type`,`size_bytes`,
+  `width`,`height`,`duration_seconds`,`created_by`,`created_at`,`archived_at`
+) VALUES
+  (
+    'system-maker-hands-hero',
+    'public/homepage/maker-hands-hero.webp',
+    'maker-hands-hero.webp',
+    'image/webp',
+    209526,
+    1800,
+    1125,
+    NULL,
+    NULL,
+    0,
+    NULL
+  ),
+  (
+    'system-meaningful-gifts-hero',
+    'public/homepage/meaningful-gifts-hero.webp',
+    'meaningful-gifts-hero.webp',
+    'image/webp',
+    233764,
+    1800,
+    1125,
+    NULL,
+    NULL,
+    0,
+    NULL
+  );

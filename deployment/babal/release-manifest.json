@@ -212,7 +212,7 @@
     },
     {
       "path": "deployment/babal/mariadb-homepage-hero-carousel.sql",
-      "sha256": "c105b61900e85d128f8d5500a4f25d2f3057acacec25b6b4fa5f4d960b17a60a",
+      "sha256": "905da0ffdfa4233c64662542c168b31115873a70bd21cc19188fd47662322f38",
       "usage": "additive-maintenance"
     }
   ],

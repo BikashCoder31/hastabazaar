@@ -31,16 +31,17 @@ import {
   ShieldCheck,
   ShoppingBag,
   Sparkles,
-  Sprout,
   Store,
   UserRound,
   type LucideIcon,
 } from 'lucide-react';
 
 import { ProductSlider } from '@/components/catalog/product-slider';
+import { HomepageHeroCarousel } from '@/components/homepage/homepage-hero-carousel';
 import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
 import { requireDatabase } from '@/lib/db/d1';
+import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
 import {
   listActiveOccasions,
   listActiveHomepagePromotions,
@@ -49,6 +50,7 @@ import {
   listHomepageTopProducts,
   listPublicDiscoveryCategories,
 } from '@/lib/db/repositories/products';
+import { CURRENT_HERO_RECOVERY_SLIDES } from '@/lib/homepage/hero-slides';
 
 const homepageCategoryImages: Record<string, { src: string; alt: string }> = {
   gifts: {
@@ -162,6 +164,26 @@ const customerShortcuts = [
 
 export const dynamic = 'force-dynamic';
 
+async function resolveHomepageHero(database: D1Database) {
+  try {
+    const effective = await getEffectiveBusinessSetting(
+      database,
+      'homepage_hero_slides',
+      Date.now(),
+    );
+    if (effective.value.filter((slide) => slide.enabled).length < 3) {
+      throw new RangeError('Published homepage hero has fewer than three enabled slides.');
+    }
+    return { slides: effective.value, source: 'published' as const, warning: null };
+  } catch {
+    return {
+      slides: CURRENT_HERO_RECOVERY_SLIDES,
+      source: 'recovery' as const,
+      warning: 'Published hero configuration could not be used.',
+    };
+  }
+}
+
 export default async function Home() {
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const [
@@ -171,6 +193,7 @@ export default async function Home() {
     activePromotions,
     categories,
     occasions,
+    resolvedHero,
   ] = await Promise.all([
     listHomepagePromotedProducts(database),
     listHomepageLatestProducts(database),
@@ -178,7 +201,9 @@ export default async function Home() {
     listActiveHomepagePromotions(database),
     listPublicDiscoveryCategories(database),
     listActiveOccasions(database),
+    resolveHomepageHero(database),
   ]);
+  const heroSlides = resolvedHero.slides;
   const topSliderProducts =
     topProducts.length > 0
       ? topProducts
@@ -206,65 +231,7 @@ export default async function Home() {
     <div className="min-h-screen bg-background text-foreground">
       <SiteHeader />
       <main tabIndex={-1} id="main-content">
-        <section className="homepage-hero" aria-labelledby="homepage-heading">
-          <div className="homepage-hero-grid">
-            <div className="homepage-hero-copy">
-              <p className="homepage-kicker">
-                <span aria-hidden="true" /> Nepal’s handicraft marketplace
-              </p>
-              <h1 id="homepage-heading" className="homepage-title">
-                Handmade today
-                <br />
-                for a <span>brighter</span>
-                <br />
-                Nepal.
-              </h1>
-              <p className="homepage-intro">
-                Discover authentic handmade products, support independent Nepali
-                artisans, and bring home craft with a human story.
-              </p>
-              <div className="homepage-actions">
-                <Link href="/shop" className="homepage-primary-action">
-                  Explore the collection <ArrowRight className="size-4" />
-                </Link>
-                <Link href="#makers" className="homepage-secondary-action">
-                  Meet our makers <UserRound className="size-4" />
-                </Link>
-              </div>
-              <div
-                className="homepage-principles"
-                aria-label="Why shop with us"
-              >
-                {[
-                  { icon: HandHeart, label: 'Authentic handmade' },
-                  { icon: UserRound, label: 'Support local makers' },
-                  { icon: Sprout, label: 'Thoughtful choices' },
-                  { icon: Heart, label: 'A stronger Nepal' },
-                ].map(({ icon: Icon, label }) => (
-                  <div key={label} className="homepage-principle">
-                    <Icon aria-hidden="true" />
-                    <span>{label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="homepage-hero-media">
-              <Image
-                src="/homepage/nepal-craft-hero.webp"
-                alt="Nepali pottery, carved wood, woven craft and Dhaka textile overlooking temple rooftops and the Himalayas"
-                fill
-                priority
-                sizes="(min-width: 1024px) 58vw, 100vw"
-                className="object-cover"
-              />
-              <div className="homepage-image-note" aria-hidden="true">
-                <span>Small hands</span>
-                <span>Big stories</span>
-                <strong>Brighter tomorrows</strong>
-              </div>
-            </div>
-          </div>
-        </section>
+        <HomepageHeroCarousel slides={heroSlides} />
 
         <div id="categories" className="homepage-category-wrap shell">
           <section className="homepage-category-panel">

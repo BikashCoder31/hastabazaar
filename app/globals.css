@@ -170,6 +170,21 @@
     background: #f8f1e8;
   }
 
+  .homepage-hero-carousel {
+    overflow: hidden;
+    background: #f7f0e7;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .homepage-hero-carousel *,
+    .homepage-hero-carousel *::before,
+    .homepage-hero-carousel *::after {
+      scroll-behavior: auto !important;
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
   .homepage-hero-grid {
     display: grid;
     min-height: 33rem;

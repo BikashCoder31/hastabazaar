@@ -4,8 +4,12 @@ import Link from 'next/link';
 import {
   ChevronLeft,
   ChevronRight,
+  HandHeart,
+  Heart,
   Pause,
   Play,
+  Sprout,
+  UserRound,
 } from 'lucide-react';
 import {
   useCallback,
@@ -39,6 +43,13 @@ function headingForAnnouncement(slides: HomepageHeroSlides, index: number): stri
     .filter(Boolean)
     .join(' ');
 }
+
+const heroPrinciples = [
+  { icon: HandHeart, label: 'Authentic handmade' },
+  { icon: UserRound, label: 'Support local makers' },
+  { icon: Sprout, label: 'Thoughtful choices' },
+  { icon: Heart, label: 'A stronger Nepal' },
+] as const;
 
 export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides }) {
   const enabledSlides = useMemo(
@@ -259,6 +270,17 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
                           {slide.secondaryActionLabel}
                         </Link>
                       ) : null}
+                    </div>
+                    <div
+                      className="mt-8 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-[#d9cbbb] pt-5 text-xs text-[#344255] sm:grid-cols-4"
+                      aria-label="Why shop with us"
+                    >
+                      {heroPrinciples.map(({ icon: Icon, label }) => (
+                        <div key={label} className="flex min-w-0 items-center gap-2">
+                          <Icon aria-hidden="true" className="size-5 shrink-0 text-[#b81925]" />
+                          <span>{label}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                   <div className="relative min-h-[26rem] overflow-hidden bg-[#ded4c7] lg:min-h-[36rem]">

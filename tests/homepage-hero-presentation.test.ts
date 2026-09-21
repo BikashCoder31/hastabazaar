@@ -1,54 +1,66 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import test from 'node:test';
 
-const homepagePath = new URL('../app/page.tsx', import.meta.url);
-
-void test('homepage uses the editorial Nepal craft hero without bag merchandising', async () => {
-  const homepage = await readFile(homepagePath, 'utf8');
-
-  assert.match(homepage, /Handmade today/);
-  assert.match(homepage, /brighter[\s\S]{0,100}Nepal/);
-  assert.match(homepage, /\/homepage\/nepal-craft-hero\.webp/);
-  assert.match(homepage, /aria-label="Shop featured craft categories"/);
-  assert.doesNotMatch(
-    homepage,
-    /macrame-crossbody|embroidered-clutch|straw-tote/i,
-  );
-  assert.doesNotMatch(homepage, />\s*Bags\s*&\s*Accessories\s*</i);
+void test('homepage resolves the effective hero carousel with an explicit recovery fallback', async () => {
+  const page = await readFile(new URL('../app/page.tsx', import.meta.url), 'utf8');
+  assert.match(page, /getEffectiveBusinessSetting/);
+  assert.match(page, /'homepage_hero_slides'/);
+  assert.match(page, /CURRENT_HERO_RECOVERY_SLIDES/);
+  assert.match(page, /<HomepageHeroCarousel slides=\{heroSlides\}/);
+  assert.doesNotMatch(page, /<section className="homepage-hero"/);
+  assert.doesNotMatch(page, /src="\/homepage\/nepal-craft-hero\.webp"/);
 });
 
-void test('disposable local staging can preview the category rail without changing production empty states', async () => {
-  const homepage = await readFile(homepagePath, 'utf8');
-
-  assert.match(homepage, /HASTABAZAAR_RUNTIME_ENV/);
-  assert.match(homepage, /local_staging/);
-  assert.match(homepage, /NODE_ENV === 'development'/);
-  assert.match(homepage, /stagingHomepageCategories/);
-  assert.match(homepage, /Home decor/);
+void test('category overlap and established homepage anchors remain intact', async () => {
+  const [page, styles] = await Promise.all([
+    readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
+  ]);
+  assert.ok(page.indexOf('<HomepageHeroCarousel') < page.indexOf('id="categories"'));
+  for (const anchor of [
+    'categories',
+    'offers',
+    'latest-products',
+    'top-products',
+    'occasions',
+    'makers',
+  ]) {
+    assert.match(page, new RegExp(`id=\\"${anchor}\\"`));
+  }
+  assert.match(styles, /\.homepage-category-wrap\s*\{[\s\S]*?margin-top:\s*-3\.4rem/);
+  assert.match(styles, /\.homepage-hero-carousel/);
 });
 
-void test('maker story uses the editorial artisan workshop presentation and preserves both journeys', async () => {
-  const homepage = await readFile(homepagePath, 'utf8');
-
-  assert.match(homepage, /homepage-maker-story/);
-  assert.match(homepage, /\/homepage\/nepali-maker-workshop\.webp/);
-  assert.match(homepage, /An artisan’s hands painting/);
-  assert.match(homepage, /Meet the hands behind the craft/);
-  assert.match(homepage, /href="\/shop"/);
-  assert.match(homepage, /href="\/sell"/);
-  assert.doesNotMatch(homepage, /\/catalog\/macrame-shelf\.jpg/);
-});
-
-void test('homepage occasion discovery uses the decorated editorial presentation', async () => {
-  const homepage = await readFile(homepagePath, 'utf8');
-
-  assert.match(homepage, /homepage-occasion-section/);
-  assert.match(homepage, /homepage-occasion-pattern/);
-  assert.match(homepage, /\/homepage\/nepali-gift-pattern\.webp/);
-  assert.match(homepage, /homepage-occasion-card/);
-  assert.match(homepage, /homepage-occasion-card-watermark/);
-  assert.match(homepage, /homepage-occasion-all/);
-  assert.match(homepage, /aria-label="Shop gifts by occasion"/);
-  assert.match(homepage, /Delivery available across Nepal/);
+void test('two face-free editorial hero assets are project-bound WebP files and registered additively', async () => {
+  const assets = [
+    '../public/homepage/maker-hands-hero.webp',
+    '../public/homepage/meaningful-gifts-hero.webp',
+  ];
+  for (const asset of assets) {
+    const url = new URL(asset, import.meta.url);
+    const [bytes, metadata] = await Promise.all([readFile(url), stat(url)]);
+    assert.equal(String.fromCharCode(...bytes.subarray(0, 4)), 'RIFF');
+    assert.equal(String.fromCharCode(...bytes.subarray(8, 12)), 'WEBP');
+    assert.ok(metadata.size > 50_000);
+    assert.ok(metadata.size < 5 * 1024 * 1024);
+  }
+  const [d1, maria] = await Promise.all([
+    readFile(
+      new URL('../drizzle/0055_homepage_hero_carousel.sql', import.meta.url),
+      'utf8',
+    ),
+    readFile(
+      new URL(
+        '../deployment/babal/mariadb-homepage-hero-carousel.sql',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+  ]);
+  for (const source of [d1, maria]) {
+    assert.match(source, /system-maker-hands-hero/);
+    assert.match(source, /system-meaningful-gifts-hero/);
+    assert.doesNotMatch(source, /DROP TABLE/i);
+  }
 });

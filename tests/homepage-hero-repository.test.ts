@@ -178,7 +178,12 @@ void test('admin media creation and listing preserve private server-owned metada
     assert.equal(created.objectKey, 'private/homepage-hero/upload-one');
     assert.deepEqual(
       (await listHomepageHeroMediaForAdmin(database)).map((media) => media.id),
-      ['upload-one', 'system-nepal-craft-hero'],
+      [
+        'upload-one',
+        'system-maker-hands-hero',
+        'system-meaningful-gifts-hero',
+        'system-nepal-craft-hero',
+      ],
     );
     assert.equal(
       (await getHomepageHeroMediaForAdmin(database, 'upload-one'))?.createdBy,
