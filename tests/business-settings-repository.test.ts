@@ -13,6 +13,7 @@ import {
   publishBusinessSettingDraft,
   submitBusinessSettingDraft,
 } from '../lib/db/repositories/business-settings';
+import { INITIAL_HOMEPAGE_HERO_SLIDES } from '../lib/homepage/hero-slides';
 
 class PreparedStatement {
   private values: SQLInputValue[] = [];
@@ -437,4 +438,90 @@ void test('migration remains additive and the MariaDB generator includes busines
   assert.doesNotMatch(migration, /DROP TABLE/i);
   assert.match(generator, /business_setting_versions/);
   assert.match(generator, /business_setting_guards/);
+});
+
+void test('scheduled hero versions stay hidden until effective and restoration appends history', async () => {
+  const { sqlite, database } = await fixture();
+  try {
+    const firstValue = INITIAL_HOMEPAGE_HERO_SLIDES.map((slide) => ({ ...slide }));
+    const first = await createBusinessSettingDraft(database, {
+      key: 'homepage_hero_slides',
+      value: firstValue,
+      actorId: 'admin-a',
+      reason: 'Create the first complete staging homepage hero version.',
+      requestId: 'hero-draft-first',
+      now: 1_000,
+    });
+    await publishBusinessSettingDraft(database, {
+      id: first.id,
+      actorId: 'admin-a',
+      expectedRevision: 1,
+      effectiveFrom: 2_000,
+      reason: 'Publish the first complete staging homepage hero version.',
+      requestId: 'hero-publish-first',
+      now: 1_100,
+    });
+    assert.equal(
+      (await getEffectiveBusinessSetting(database, 'homepage_hero_slides', 1_999))
+        .source,
+      'default',
+    );
+
+    const secondValue = firstValue.map((slide, index) =>
+      index === 0 ? { ...slide, headingLead: 'A later staged headline' } : slide,
+    );
+    const second = await createBusinessSettingDraft(database, {
+      key: 'homepage_hero_slides',
+      value: secondValue,
+      actorId: 'admin-a',
+      reason: 'Create a second complete staging homepage hero version.',
+      requestId: 'hero-draft-second',
+      now: 2_100,
+    });
+    await publishBusinessSettingDraft(database, {
+      id: second.id,
+      actorId: 'admin-a',
+      expectedRevision: 1,
+      effectiveFrom: 3_000,
+      reason: 'Schedule the second complete staging homepage hero version.',
+      requestId: 'hero-publish-second',
+      now: 2_200,
+    });
+    assert.equal(
+      (await getEffectiveBusinessSetting(database, 'homepage_hero_slides', 2_999))
+        .value[0]?.headingLead,
+      firstValue[0]?.headingLead,
+    );
+
+    const restoration = await createBusinessSettingReversalDraft(database, {
+      sourceVersionId: first.id,
+      actorId: 'admin-b',
+      reason: 'Restore the earlier hero prospectively without rewriting history.',
+      requestId: 'hero-restore-draft',
+      now: 3_100,
+    });
+    await publishBusinessSettingDraft(database, {
+      id: restoration.id,
+      actorId: 'admin-b',
+      expectedRevision: 1,
+      effectiveFrom: 4_000,
+      reason: 'Publish the prospective hero restoration in staging.',
+      requestId: 'hero-restore-publish',
+      now: 3_200,
+    });
+    const history = await listBusinessSettingHistory(
+      database,
+      'homepage_hero_slides',
+    );
+    assert.deepEqual(history.map((version) => version.version), [3, 2, 1]);
+    assert.equal(history[2]?.value[0]?.headingLead, firstValue[0]?.headingLead);
+    assert.equal(history[1]?.value[0]?.headingLead, 'A later staged headline');
+    assert.equal(
+      (await getEffectiveBusinessSetting(database, 'homepage_hero_slides', 4_000))
+        .value[0]?.headingLead,
+      firstValue[0]?.headingLead,
+    );
+  } finally {
+    sqlite.close();
+  }
 });

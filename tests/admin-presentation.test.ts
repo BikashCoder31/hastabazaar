@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { adminNavigation } from '../lib/admin/navigation';
 import { availablePayoutActions } from '../lib/admin/payout-actions';
+import {
+  addHomepageHeroSlide,
+  moveHomepageHeroSlide,
+  removeHomepageHeroSlide,
+  setHomepageHeroSlideEnabled,
+} from '../lib/homepage/hero-editor';
+import { INITIAL_HOMEPAGE_HERO_SLIDES } from '../lib/homepage/hero-slides';
 import { sendJson } from '../lib/http/client-request';
 
 void test('staff navigation denies unknown roles and limits staff access to Super Admin', () => {
@@ -99,4 +107,83 @@ void test('mutation client reports network, non-JSON and rejected responses and 
   } finally {
     globalThis.fetch = original;
   }
+});
+
+void test('homepage controls present Hero slides first with every approved editable field', async () => {
+  const [page, manager] = await Promise.all([
+    readFile(new URL('../app/admin/homepage/page.tsx', import.meta.url), 'utf8'),
+    readFile(
+      new URL('../components/admin/homepage-hero-manager.tsx', import.meta.url),
+      'utf8',
+    ),
+  ]);
+  assert.match(page, /requireStaffPage\('\/admin\/homepage', 'business_settings\.view'\)/);
+  assert.ok(page.indexOf('<HomepageHeroManager') < page.indexOf('Search products'));
+  const helperFields = new Set([
+    'eyebrow',
+    'headingLead',
+    'highlightedPhrase',
+    'headingTail',
+    'primaryActionLabel',
+    'primaryActionHref',
+    'secondaryActionLabel',
+    'secondaryActionHref',
+    'imageAlt',
+    'videoDescription',
+    'imageNote',
+  ]);
+  for (const field of [
+    'eyebrow',
+    'headingLead',
+    'highlightedPhrase',
+    'headingTail',
+    'body',
+    'primaryActionLabel',
+    'primaryActionHref',
+    'secondaryActionLabel',
+    'secondaryActionHref',
+    'mediaType',
+    'mediaId',
+    'imageAlt',
+    'posterMediaId',
+    'videoDescription',
+    'imageNote',
+  ]) {
+    assert.match(
+      manager,
+      helperFields.has(field)
+        ? new RegExp(`text\\('${field}'`)
+        : new RegExp(`name=\\"${field}\\"`),
+    );
+  }
+  assert.match(manager, /Desktop preview/);
+  assert.match(manager, /Mobile preview/);
+  assert.match(manager, /\/api\/admin\/homepage\/hero-media/);
+  assert.match(manager, /key:\s*'homepage_hero_slides'/);
+  assert.doesNotMatch(manager, /slide 1.*locked|first slide.*locked/i);
+});
+
+void test('hero editor explicitly adds, orders, and protects the three-enabled minimum', () => {
+  const initial = [...INITIAL_HOMEPAGE_HERO_SLIDES];
+  const four = addHomepageHeroSlide(initial, 'new-slide-four');
+  assert.equal(four.length, 4);
+  assert.equal(four[3]?.enabled, false);
+  let eight = four;
+  for (let index = 5; index <= 8; index += 1) {
+    eight = addHomepageHeroSlide(eight, `new-slide-${index}`);
+  }
+  assert.throws(() => addHomepageHeroSlide(eight, 'new-slide-nine'), /at most 8/i);
+
+  const moved = moveHomepageHeroSlide(four, 'new-slide-four', 'up');
+  assert.equal(moved[2]?.id, 'new-slide-four');
+  assert.deepEqual(moved.map((slide) => slide.position), [1, 2, 3, 4]);
+  assert.throws(
+    () => setHomepageHeroSlideEnabled(initial, initial[0]!.id, false),
+    /at least 3 enabled/i,
+  );
+  const enabledFour = setHomepageHeroSlideEnabled(four, 'new-slide-four', true);
+  const withoutFirst = removeHomepageHeroSlide(enabledFour, initial[0]!.id);
+  assert.equal(withoutFirst.length, 3);
+  assert.equal(withoutFirst.some((slide) => slide.id === initial[0]!.id), false);
+  assert.deepEqual(withoutFirst.map((slide) => slide.position), [1, 2, 3]);
 });

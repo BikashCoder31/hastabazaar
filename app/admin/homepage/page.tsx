@@ -3,11 +3,17 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Eye, EyeOff, ImageIcon, PanelsTopLeft, Search } from 'lucide-react';
 
+import { HomepageHeroManager } from '@/components/admin/homepage-hero-manager';
 import { HomepageVisibilityControl } from '@/components/admin/homepage-visibility-control';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
+import {
+  getEffectiveBusinessSetting,
+  listBusinessSettingHistory,
+} from '@/lib/db/repositories/business-settings';
+import { listHomepageHeroMediaForAdmin } from '@/lib/db/repositories/homepage-hero';
 import { listHomepageProductControls } from '@/lib/db/repositories/products';
 
 export const dynamic = 'force-dynamic';
@@ -33,7 +39,7 @@ export default async function HomepageProductControlsPage({
 }: {
   searchParams: Promise<{ q?: string; visibility?: string; page?: string }>;
 }) {
-  await requireStaffPage('/admin/homepage', 'admin.invite');
+  await requireStaffPage('/admin/homepage', 'business_settings.view');
   const params = await searchParams;
   const query = params.q?.trim().slice(0, 100) ?? '';
   const visibility = ['visible', 'hidden'].includes(params.visibility ?? '')
@@ -41,19 +47,35 @@ export default async function HomepageProductControlsPage({
     : 'all';
   const requestedPage = Number.parseInt(params.page ?? '1', 10);
   const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
-  const result = await listHomepageProductControls(
-    requireDatabase(env as unknown as { DB?: D1Database }),
-    { query, visibility, page, pageSize: 30 },
-  );
+  const database = requireDatabase(env as unknown as { DB?: D1Database });
+  const asOf = Date.now();
+  const [result, hero, heroHistory, heroMedia] = await Promise.all([
+    listHomepageProductControls(database, {
+      query,
+      visibility,
+      page,
+      pageSize: 30,
+    }),
+    getEffectiveBusinessSetting(database, 'homepage_hero_slides', asOf),
+    listBusinessSettingHistory(database, 'homepage_hero_slides'),
+    listHomepageHeroMediaForAdmin(database),
+  ]);
   const pageCount = Math.max(1, Math.ceil(result.total / result.pageSize));
 
   return (
     <div className="space-y-7">
-      <div>
-        <p className="eyebrow">Super Admin control</p>
-        <h1 className="mt-2 font-heading text-4xl tracking-tight">
+      <HomepageHeroManager
+        initialSlides={hero.value}
+        initialMedia={heroMedia}
+        history={heroHistory}
+        asOf={asOf}
+      />
+
+      <div className="border-t pt-8">
+        <p className="eyebrow">Product merchandising</p>
+        <h2 className="mt-2 font-heading text-4xl tracking-tight">
           Homepage products
-        </h1>
+        </h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
           Hide or restore individual published products across Offers, Latest,
           and Top Products. This never unpublishes the listing or removes it
