@@ -52,8 +52,10 @@ try {
     });
 
     await page.goto(parsedOrigin.origin, { waitUntil: 'networkidle' });
+    const occasions = page.locator('#occasions');
     const maker = page.locator('#makers');
     const footer = page.locator('footer');
+    await occasions.waitFor({ state: 'visible' });
     await maker.waitFor({ state: 'visible' });
     await footer.waitFor({ state: 'visible' });
     await page.screenshot({
@@ -61,6 +63,19 @@ try {
     });
     await page.addStyleTag({
       content: 'header { position: static !important; }',
+    });
+    await occasions.scrollIntoViewIfNeeded();
+    await occasions.locator('img').waitFor({ state: 'visible' });
+    await page.waitForFunction(() => {
+      const image = document.querySelector('#occasions img');
+      return (
+        image instanceof HTMLImageElement &&
+        image.complete &&
+        image.naturalWidth > 0
+      );
+    });
+    await occasions.screenshot({
+      path: path.join(outputDirectory, `occasion-section-${viewport.name}.png`),
     });
     await maker.scrollIntoViewIfNeeded();
     await maker.locator('img').waitFor({ state: 'visible' });
@@ -90,6 +105,9 @@ try {
       .locator('img[src*="macrame-shelf"]')
       .count();
     const makerAlt = await maker.locator('img').getAttribute('alt');
+    const occasionCards = await occasions
+      .locator('.homepage-occasion-card')
+      .count();
     const internalFooterLinks = await footer
       .locator('a[href="/admin"], a[href="/local-testing"]')
       .count();
@@ -100,6 +118,7 @@ try {
       `${viewport.name} homepage must not overflow horizontally`,
     );
     assert.equal(oldMakerImages, 0);
+    assert.ok(occasionCards >= 1);
     assert.equal(internalFooterLinks, 0);
     assert.match(makerAlt ?? '', /artisan’s hands/i);
     assert.deepEqual(consoleErrors, []);
@@ -111,6 +130,7 @@ try {
       failedResponses,
       internalFooterLinks,
       makerAlt,
+      occasionCards,
       viewport: viewport.name,
     });
     await context.close();

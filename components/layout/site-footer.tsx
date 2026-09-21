@@ -3,7 +3,6 @@ import {
   ArrowRight,
   ArrowUpRight,
   Banknote,
-  ExternalLink,
   Mail,
   MapPin,
   ShieldCheck,
@@ -97,17 +96,24 @@ export async function SiteFooter() {
               aria-label="Official Hastabazaar social media"
               className="site-footer-social"
             >
-              {Object.entries(socialLinks).map(([platform, href]) => (
-                <a
-                  key={platform}
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {platformLabels[platform as keyof OfficialSocialLinks]}
-                  <ExternalLink className="size-3" aria-hidden="true" />
-                </a>
-              ))}
+              {Object.entries(socialLinks).map(([platform, href]) => {
+                const platformKey = platform as keyof OfficialSocialLinks;
+                const label = platformLabels[platformKey];
+                return (
+                  <a
+                    key={platform}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="site-footer-social-icon"
+                    data-platform={platformKey}
+                    aria-label={label}
+                    title={label}
+                  >
+                    <SocialBrandIcon platform={platformKey} />
+                  </a>
+                );
+              })}
             </nav>
           </div>
 
@@ -204,5 +210,59 @@ function FooterLink({
     <Link href={href} className="site-footer-link">
       {children}
     </Link>
+  );
+}
+
+function SocialBrandIcon({
+  platform,
+}: {
+  platform: keyof OfficialSocialLinks;
+}) {
+  if (platform === 'instagram') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3.25" y="3.25" width="17.5" height="17.5" rx="5" />
+        <circle cx="12" cy="12" r="4" />
+        <circle cx="17.4" cy="6.65" r="1" className="fill-current" />
+      </svg>
+    );
+  }
+
+  if (platform === 'youtube') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M21.6 7.1a2.8 2.8 0 0 0-2-2C17.8 4.6 12 4.6 12 4.6s-5.8 0-7.6.5a2.8 2.8 0 0 0-2 2A29 29 0 0 0 2 12a29 29 0 0 0 .4 4.9 2.8 2.8 0 0 0 2 2c1.8.5 7.6.5 7.6.5s5.8 0 7.6-.5a2.8 2.8 0 0 0 2-2A29 29 0 0 0 22 12a29 29 0 0 0-.4-4.9ZM10 15.2V8.8l5.5 3.2-5.5 3.2Z" />
+      </svg>
+    );
+  }
+
+  if (platform === 'linkedin') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6.5 8.4H3.3V19h3.2V8.4ZM4.9 3.1A1.9 1.9 0 1 0 4.9 7a1.9 1.9 0 0 0 0-3.9ZM19.8 12.9c0-3.2-1.7-4.7-4-4.7-1.8 0-2.7 1-3.1 1.7V8.4H9.5V19h3.2v-5.2c0-1.4.3-2.8 2-2.8 1.7 0 1.8 1.6 1.8 2.9V19h3.3v-6.1Z" />
+      </svg>
+    );
+  }
+
+  if (platform === 'tiktok') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M15.7 3c.3 1.8 1.3 3.2 3 3.8V10a8.2 8.2 0 0 1-3-1v5.7a5.7 5.7 0 1 1-5-5.7v3.2a2.5 2.5 0 1 0 1.8 2.4V3h3.2Z" />
+      </svg>
+    );
+  }
+
+  if (platform === 'facebook') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M13.6 21v-8h2.7l.4-3.1h-3.1v-2c0-.9.3-1.5 1.6-1.5h1.7V3.6c-.3 0-1.3-.1-2.5-.1-2.5 0-4.1 1.5-4.1 4.2v2.2H7.5V13h2.8v8h3.3Z" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M18.9 3h3.7l-8.1 9.2L24 21h-7.4l-5.8-7.6L4.2 21H.5l8.6-9.8L0 3h7.6l5.2 6.9L18.9 3Zm-1.3 16.4h2L6.5 4.5H4.4l13.2 14.9Z" />
+    </svg>
   );
 }

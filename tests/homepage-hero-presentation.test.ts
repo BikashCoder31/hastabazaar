@@ -39,3 +39,16 @@ void test('maker story uses the editorial artisan workshop presentation and pres
   assert.match(homepage, /href="\/sell"/);
   assert.doesNotMatch(homepage, /\/catalog\/macrame-shelf\.jpg/);
 });
+
+void test('homepage occasion discovery uses the decorated editorial presentation', async () => {
+  const homepage = await readFile(homepagePath, 'utf8');
+
+  assert.match(homepage, /homepage-occasion-section/);
+  assert.match(homepage, /homepage-occasion-pattern/);
+  assert.match(homepage, /\/homepage\/nepali-gift-pattern\.webp/);
+  assert.match(homepage, /homepage-occasion-card/);
+  assert.match(homepage, /homepage-occasion-card-watermark/);
+  assert.match(homepage, /homepage-occasion-all/);
+  assert.match(homepage, /aria-label="Shop gifts by occasion"/);
+  assert.match(homepage, /Delivery available across Nepal/);
+});

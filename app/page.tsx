@@ -501,30 +501,42 @@ export default async function Home() {
 
         <section
           id="occasions"
-          className="my-8 bg-[#142d56] text-white sm:my-12"
+          className="homepage-occasion-section"
+          aria-labelledby="occasion-heading"
         >
-          <div className="shell grid gap-9 py-12 lg:grid-cols-[0.75fr_1.25fr] lg:gap-14 lg:py-16">
-            <div className="self-center">
-              <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#f4c46b]">
+          <div className="homepage-occasion-pattern" aria-hidden="true">
+            <Image
+              src="/homepage/nepali-gift-pattern.webp"
+              alt=""
+              fill
+              sizes="100vw"
+              className="object-cover"
+            />
+          </div>
+          <div className="shell homepage-occasion-layout">
+            <div className="homepage-occasion-copy">
+              <p className="homepage-occasion-kicker">
                 For their kind of special
               </p>
-              <h2 className="section-heading mt-4 max-w-md">
+              <h2 id="occasion-heading" className="homepage-occasion-title">
                 Big moments.
                 <br />
-                <span className="italic text-[#f4c46b]">Little surprises.</span>
+                <span>Little surprises.</span>
               </h2>
-              <p className="mt-5 max-w-md text-base leading-7 text-white/75">
+              <p className="homepage-occasion-intro">
                 Birthdays, festivals, thank-yous, or just because. Start with
                 the occasion and find something that feels like them.
               </p>
-              <p className="mt-6 flex items-start gap-2 text-sm leading-6 text-white/70">
-                <MapPin className="mt-1 size-4 shrink-0" />
-                Delivery is currently within Nepal.
+              <p className="homepage-occasion-delivery">
+                <span className="homepage-occasion-delivery-icon">
+                  <MapPin aria-hidden="true" />
+                </span>
+                Delivery available across Nepal.
               </p>
             </div>
             <nav
               aria-label="Shop gifts by occasion"
-              className="grid grid-cols-2 gap-3 sm:grid-cols-3"
+              className="homepage-occasion-grid"
             >
               {occasions.map((occasion) => {
                 const Icon = occasionIcons[occasion.slug] ?? Gift;
@@ -532,23 +544,48 @@ export default async function Home() {
                   <Link
                     key={occasion.id}
                     href={'/shop?occasion=' + encodeURIComponent(occasion.slug)}
-                    className="group flex min-h-28 flex-col items-start justify-between gap-4 rounded-xl border border-white/20 bg-white/5 p-4 transition-colors hover:border-[#f4c46b]/70 hover:bg-white/10 focus-visible:outline-[#f4c46b]"
+                    className="homepage-occasion-card"
                   >
-                    <Icon className="size-5 text-[#f4c46b]" strokeWidth={1.5} />
-                    <span className="flex w-full items-center justify-between gap-2 text-sm font-semibold">
-                      {occasion.nameEn}
-                      <ArrowUpRight className="size-3.5 shrink-0 text-white/60" />
+                    <Icon
+                      className="homepage-occasion-card-watermark"
+                      aria-hidden="true"
+                    />
+                    <span className="homepage-occasion-card-icon">
+                      <Icon aria-hidden="true" />
+                    </span>
+                    <span className="homepage-occasion-card-copy">
+                      <span>Thoughtful gifting</span>
+                      <strong>{occasion.nameEn}</strong>
+                    </span>
+                    <span
+                      className="homepage-occasion-card-action"
+                      aria-hidden="true"
+                    >
+                      <ArrowUpRight />
                     </span>
                   </Link>
                 );
               })}
               <Link
                 href="/shop?category=gifts"
-                className="flex min-h-28 flex-col items-start justify-between gap-4 rounded-xl bg-[#f4c46b] p-4 font-semibold text-[#332608] transition-colors hover:bg-[#ffda97]"
+                className="homepage-occasion-card homepage-occasion-all"
               >
-                <Gift className="size-5" />
-                <span className="flex w-full items-center justify-between gap-2 text-sm">
-                  Explore all gifts <ArrowRight className="size-4" />
+                <Gift
+                  className="homepage-occasion-card-watermark"
+                  aria-hidden="true"
+                />
+                <span className="homepage-occasion-card-icon">
+                  <Gift aria-hidden="true" />
+                </span>
+                <span className="homepage-occasion-card-copy">
+                  <span>The complete collection</span>
+                  <strong>Explore all gifts</strong>
+                </span>
+                <span
+                  className="homepage-occasion-card-action"
+                  aria-hidden="true"
+                >
+                  <ArrowRight />
                 </span>
               </Link>
             </nav>
