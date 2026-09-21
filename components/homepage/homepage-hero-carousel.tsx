@@ -341,6 +341,7 @@ export function HomepageHeroCarousel({
                           src={posterUrl}
                           alt=""
                           className={heroMediaClass}
+                          loading={index === 0 ? 'eager' : 'lazy'}
                         />
                       ) : null
                     ) : (
