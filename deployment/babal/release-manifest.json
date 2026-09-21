@@ -209,6 +209,11 @@
       "path": "deployment/babal/mariadb-managed-fixed-supply.sql",
       "sha256": "9e76982697d28b0fa31b227a562cde8b358699eaf7228c97aece29b7cf8c4a90",
       "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-homepage-hero-carousel.sql",
+      "sha256": "c105b61900e85d128f8d5500a4f25d2f3057acacec25b6b4fa5f4d960b17a60a",
+      "usage": "additive-maintenance"
     }
   ],
   "requiredTables": {
@@ -1745,6 +1750,19 @@
       "updated_at",
       "updated_by",
       "version"
+    ],
+    "homepage_hero_media": [
+      "archived_at",
+      "created_at",
+      "created_by",
+      "duration_seconds",
+      "height",
+      "id",
+      "mime_type",
+      "object_key",
+      "original_name",
+      "size_bytes",
+      "width"
     ],
     "marketplace_settings": [
       "key",
