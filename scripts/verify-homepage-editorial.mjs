@@ -52,6 +52,25 @@ try {
     });
 
     await page.goto(parsedOrigin.origin, { waitUntil: 'networkidle' });
+    const hero = page.locator('.homepage-hero-carousel');
+    await hero.waitFor({ state: 'visible' });
+    assert.equal(await hero.locator('[aria-label^="Slide "]').count(), 3);
+    for (let slide = 1; slide <= 3; slide += 1) {
+      await page
+        .locator(`[aria-label="Choose featured story"] button:nth-child(${slide})`)
+        .click();
+      await page.waitForFunction(
+        (selector) => {
+          const image = document.querySelector(selector);
+          return (
+            image instanceof HTMLImageElement &&
+            image.complete &&
+            image.naturalWidth > 0
+          );
+        },
+        `[aria-label="Slide ${slide} of 3"] img`,
+      );
+    }
     const occasions = page.locator('#occasions');
     const maker = page.locator('#makers');
     const footer = page.locator('footer');
