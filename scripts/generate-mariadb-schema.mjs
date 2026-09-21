@@ -38,6 +38,10 @@ const firstPartyAnalyticsSql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-first-party-analytics.sql'),
   'utf8',
 );
+const invoiceAdjustmentsSql = await readFile(
+  resolve(projectRoot, 'deployment/babal/mariadb-invoice-adjustments.sql'),
+  'utf8',
+);
 
 const quote = (value) => `\`${String(value).replaceAll('`', '``')}\``;
 
@@ -271,6 +275,8 @@ output.push(
   '',
   firstPartyAnalyticsSql.trim(),
   '',
+  invoiceAdjustmentsSql.trim(),
+  '',
   '-- Babal.Host password authentication and server-side sessions.',
   'CREATE TABLE IF NOT EXISTS `user_credentials` (',
   '  `user_id` VARCHAR(191) NOT NULL,',
@@ -353,6 +359,7 @@ await mkdir(dirname(outputPath), { recursive: true });
 const schemaSql = output.join('\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
+  'managed_invoice_adjustments',
   'traffic_events',
   'traffic_sessions',
   'seller_deletion_preflights',

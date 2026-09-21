@@ -2858,6 +2858,31 @@ export const managedInvoiceGroups = sqliteTable(
   ],
 );
 
+export const managedInvoiceAdjustments = sqliteTable(
+  'managed_invoice_adjustments',
+  {
+    id: id(),
+    invoiceGroupId: text('invoice_group_id').notNull().references(() => managedInvoiceGroups.id, { onDelete: 'restrict' }),
+    adjustmentNumber: text('adjustment_number').notNull(),
+    kind: text('kind', { enum: ['credit_note', 'debit_note'] }).notNull(),
+    amountPaisa: integer('amount_paisa').notNull(),
+    reasonCode: text('reason_code').notNull(),
+    note: text('note').notNull(),
+    snapshotJson: text('snapshot_json').notNull(),
+    simulationLabel: text('simulation_label').notNull(),
+    requestId: text('request_id').notNull(),
+    createdBy: text('created_by').notNull().references(() => users.id, { onDelete: 'restrict' }),
+    issuedAt: timestamp('issued_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('idx_managed_invoice_adjustments_number').on(t.adjustmentNumber),
+    uniqueIndex('idx_managed_invoice_adjustments_request').on(t.requestId),
+    index('idx_managed_invoice_adjustments_invoice').on(t.invoiceGroupId, t.issuedAt),
+    check('managed_invoice_adjustments_kind', sql`${t.kind} IN ('credit_note','debit_note')`),
+    check('managed_invoice_adjustments_amount', sql`${t.amountPaisa}>0`),
+  ],
+);
+
 export const trafficSessions = sqliteTable(
   'traffic_sessions',
   {

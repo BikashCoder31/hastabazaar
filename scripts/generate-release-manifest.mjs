@@ -40,6 +40,7 @@ const migrationNames = [
   'mariadb-checkout-recipient-snapshots.sql',
   'mariadb-seller-governance.sql',
   'mariadb-first-party-analytics.sql',
+  'mariadb-invoice-adjustments.sql',
 ];
 const tables = {},
   triggers = {},

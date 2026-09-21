@@ -1,5 +1,6 @@
 import {CancellationReviewSection} from '@/components/admin/cancellation-review-section';
 import {ExceptionOrderSection} from '@/components/admin/exception-order-section';
+import {InvoiceAdjustmentForm} from '@/components/admin/invoice-adjustment-form';
 import {ParcelControls} from '@/components/admin/parcel-controls';
 import {listParcels,parcelCashRecords} from '@/lib/operations/parcels';
 import {DeliveryAssignment} from '@/components/delivery/delivery-assignment';
@@ -14,8 +15,12 @@ import { OrderStatusBadge } from '@/components/commerce/order-status-badge';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { getOperationsOrderDetail } from '@/lib/db/repositories/fulfillment';
+import {listManagedInvoiceGroupsForOrder} from '@/lib/db/repositories/managed-documents';
+import {getEffectiveBusinessSetting} from '@/lib/db/repositories/business-settings';
+import {can} from '@/lib/marketplace/permissions';
 
 export const dynamic = 'force-dynamic';
+const invoiceSettingsObservedAt = () => Date.now();
 
 function money(paisa: number): string {
   return new Intl.NumberFormat('en-NP', {
@@ -38,7 +43,8 @@ export default async function AdminOrderPage({
   if (!order) notFound();
   const address = order.address;
   const db = requireDatabase(env as unknown as {DB?:D1Database});
-  const [parcels,cash]=await Promise.all([listParcels(db,id),parcelCashRecords(db,id)]);
+  const [parcels,cash,invoiceGroups]=await Promise.all([listParcels(db,id),parcelCashRecords(db,id),listManagedInvoiceGroupsForOrder(db,id)]);
+  const adjustmentReasons=can(staff,'tax_policy.manage')?(await getEffectiveBusinessSetting(db,'managed_adjustment_reason_codes',invoiceSettingsObservedAt())).value:[];
   const assignedRider = await requireDatabase(env as unknown as {DB?:D1Database}).prepare('SELECT users.email FROM delivery_assignments JOIN users ON users.id=delivery_assignments.rider_user_id WHERE delivery_assignments.order_id=?').bind(id).first<{email:string}>();
   const delivery = await getDelivery(requireDatabase(env as unknown as {DB?:D1Database}),id);
   return (
@@ -207,6 +213,7 @@ export default async function AdminOrderPage({
               Estimate: {order.estimatedMinDays}–{order.estimatedMaxDays} days
             </p>
           </section>
+          {invoiceGroups.length?<section className="rounded-2xl border bg-card p-6"><h2 className="font-heading text-2xl">Issuer invoice records</h2><p className="mt-2 text-sm text-muted-foreground">Each issuer remains a separate simulated document group. Corrections append documents and never rewrite the invoice snapshot.</p><ul className="mt-4 space-y-2 text-sm">{invoiceGroups.map(invoice=><li key={invoice.id} className="rounded border p-3"><strong>{invoice.invoiceNumber}</strong><span className="block">{invoice.issuerReference} · {invoice.adjustmentCount} correction documents</span><span className="block text-xs text-amber-800">{invoice.simulationLabel}</span></li>)}</ul>{can(staff,'tax_policy.manage')?<InvoiceAdjustmentForm invoices={invoiceGroups} reasonCodes={adjustmentReasons}/>:<p className="mt-3 text-xs text-muted-foreground">Only a Super Admin with tax-policy authority can issue a simulated correction document.</p>}</section>:null}
         </aside>
       </div>
     </div>

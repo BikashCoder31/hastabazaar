@@ -32,7 +32,7 @@
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "7482311ef9b4a924f4cd48c5f1eca386b319b208dd7bdac37f8d5c61f0c1f1f1",
+      "sha256": "3297bcfdad85df84193f5282b8b09c73ea544fe4bf19e788f314e99db9b460d7",
       "usage": "empty-database-only"
     },
     {
@@ -188,6 +188,11 @@
     {
       "path": "deployment/babal/mariadb-first-party-analytics.sql",
       "sha256": "013552fb68da952c4daa3402a057684a670d9181e01914f06d163006021eac7d",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-invoice-adjustments.sql",
+      "sha256": "32ca22f8ac9c557dac80aa81b30fd81198dad71757c232aebf7e4b5321bfbfcc",
       "usage": "additive-maintenance"
     }
   ],
@@ -1176,6 +1181,20 @@
       "path",
       "session_id"
     ],
+    "managed_invoice_adjustments": [
+      "adjustment_number",
+      "amount_paisa",
+      "created_by",
+      "id",
+      "invoice_group_id",
+      "issued_at",
+      "kind",
+      "note",
+      "reason_code",
+      "request_id",
+      "simulation_label",
+      "snapshot_json"
+    ],
     "user_credentials": [
       "created_at",
       "password_hash",
@@ -1584,6 +1603,8 @@
       "product_deletions",
       "for update"
     ],
+    "managed_invoice_adjustment_no_update": [],
+    "managed_invoice_adjustment_no_delete": [],
     "wallet_refund_lock": [],
     "wallet_refund_guard": [],
     "wallet_entry_balance": [],
