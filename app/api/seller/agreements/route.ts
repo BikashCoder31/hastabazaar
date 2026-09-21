@@ -7,6 +7,7 @@ import {
 import { SELLER_AGREEMENT_VERSION } from '@/lib/content/legal-policies';
 import { requireDatabase } from '@/lib/db/d1';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { getCommissionSetting, sellerAcceptedCommissionVersion } from '@/lib/db/repositories/marketplace-settings';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,14 +22,16 @@ export async function POST(request: Request): Promise<Response> {
   if (!isTrustedMutationRequest(request))
     return json({ error: 'Cross-site requests are not allowed.' }, 403);
   try {
-    const body = (await request.json()) as { accepted?: unknown };
+    const body = (await request.json()) as { accepted?: unknown; language?: unknown };
     if (body.accepted !== true)
       return json({ error: 'Confirm the current seller agreement.' }, 400);
     const seller = await requireSellerApi();
-    if (seller.sellerAgreementVersion === SELLER_AGREEMENT_VERSION)
-      return json({ status: 'already_accepted' }, 200);
     const database = requireDatabase(env as unknown as { DB?: D1Database });
     const now = Date.now();
+    const commission = await getCommissionSetting(database, now);
+    if (seller.sellerAgreementVersion === SELLER_AGREEMENT_VERSION && await sellerAcceptedCommissionVersion(database,seller.sellerId,commission.versionId))
+      return json({ status: 'already_accepted' }, 200);
+    const language = body.language === 'en' ? 'en' : 'ne';
     const requestId =
       request.headers.get('cf-ray') ??
       request.headers.get('x-request-id') ??
@@ -41,6 +44,9 @@ export async function POST(request: Request): Promise<Response> {
            WHERE id = ? AND status = 'approved'`,
         )
         .bind(SELLER_AGREEMENT_VERSION, now, now, seller.sellerId),
+      database.prepare(`INSERT OR IGNORE INTO seller_agreement_acceptance_history(id,seller_id,agreement_version,language_presented,commission_setting_version_id,commission_bps,acceptance_request_id,accepted_by,accepted_at,simulation_label) VALUES (?,?,?,?,?,?,?,?,?,NULL)`).bind(
+        crypto.randomUUID(),seller.sellerId,SELLER_AGREEMENT_VERSION,language,commission.versionId,commission.basisPoints,requestId,seller.userId,now,
+      ),
       database
         .prepare(
           `INSERT INTO audit_logs (
@@ -55,7 +61,7 @@ export async function POST(request: Request): Promise<Response> {
           seller.userId,
           seller.sellerId,
           JSON.stringify({ version: seller.sellerAgreementVersion }),
-          JSON.stringify({ version: SELLER_AGREEMENT_VERSION, acceptedAt: now }),
+          JSON.stringify({ version: SELLER_AGREEMENT_VERSION, languagePresented:language, commissionBps:commission.basisPoints, commissionSettingVersionId:commission.versionId, acceptedAt: now }),
           requestId,
           now,
         ),

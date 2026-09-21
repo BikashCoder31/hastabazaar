@@ -195,6 +195,20 @@ void test('controlled financial changes require submission and a different appro
   }
 });
 
+void test('independent seller commission requires 15 days notice before taking effect', async () => {
+  const { sqlite, database } = await fixture();
+  try {
+    const draft = await createBusinessSettingDraft(database, {
+      key: 'independent_seller_commission_bps', value: 800, actorId: 'admin-a',
+      reason: 'Prepare a future independent seller commission version.', requestId: 'seller-fee-draft', now: 1_000,
+    });
+    await submitBusinessSettingDraft(database, { id: draft.id, actorId: 'admin-a', expectedRevision: 1, reason: 'Submit future seller commission for review.', requestId: 'seller-fee-submit', now: 2_000 });
+    await assert.rejects(approveBusinessSettingChange(database, { id: draft.id, actorId: 'admin-b', expectedRevision: 2, effectiveFrom: 14 * 86_400_000, reason: 'Attempt insufficient notice.', requestId: 'seller-fee-too-soon', now: 3_000 }), /15 calendar days notice/i);
+    await approveBusinessSettingChange(database, { id: draft.id, actorId: 'admin-b', expectedRevision: 2, effectiveFrom: 16 * 86_400_000, reason: 'Approve with more than fifteen days notice.', requestId: 'seller-fee-approved', now: 3_000 });
+    assert.equal((await getEffectiveBusinessSetting(database, 'independent_seller_commission_bps', 16 * 86_400_000)).value, 800);
+  } finally { sqlite.close(); }
+});
+
 void test('effective versions append chronologically, close the prior interval, and prevent overlap', async () => {
   const { sqlite, database } = await fixture();
   try {

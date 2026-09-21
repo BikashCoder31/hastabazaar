@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:workers';
+import Link from 'next/link';
 import { CommissionSettings } from '@/components/admin/commission-settings';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
@@ -32,6 +33,19 @@ export default async function CommissionPage() {
         ) : null}
       </div>
       <CommissionSettings percent={setting.percent} />
+      <div className="max-w-2xl rounded-2xl border border-amber-300 bg-amber-50 p-5 text-sm leading-6 dark:bg-amber-950/20">
+        <p className="font-semibold">One authoritative configuration source</p>
+        <p className="mt-2">
+          Rate changes are created, reviewed, future-dated, and audited in
+          Business Settings. This page no longer provides a second editor.
+        </p>
+        <Link
+          href="/admin/business-settings"
+          className="mt-3 inline-flex font-semibold text-primary underline"
+        >
+          Open controlled Business Settings
+        </Link>
+      </div>
     </div>
   );
 }

@@ -404,6 +404,14 @@ export async function publishBusinessSettingDraft(
   if (effectiveFrom < now) {
     throw new BusinessSettingConflictError('Effective date cannot be in the past.');
   }
+  if (
+    record.key === 'independent_seller_commission_bps' &&
+    effectiveFrom < now + 15 * 86_400_000
+  ) {
+    throw new BusinessSettingConflictError(
+      'Independent seller commission changes require at least 15 calendar days notice and renewed acceptance.',
+    );
+  }
   await assertChronologicalPublication(database, record.key, effectiveFrom);
   await atomic(
     database,
@@ -525,6 +533,14 @@ export async function approveBusinessSettingChange(
   assertBusinessSettingPublicationReady(record.key, record.value, { simulationAllowed: options.simulationAllowed });
   if (effectiveFrom < now) {
     throw new BusinessSettingConflictError('Effective date cannot be in the past.');
+  }
+  if (
+    record.key === 'independent_seller_commission_bps' &&
+    effectiveFrom < now + 15 * 86_400_000
+  ) {
+    throw new BusinessSettingConflictError(
+      'Independent seller commission changes require at least 15 calendar days notice and renewed acceptance.',
+    );
   }
   await assertChronologicalPublication(database, record.key, effectiveFrom);
   await atomic(

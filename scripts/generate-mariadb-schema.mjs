@@ -50,6 +50,10 @@ const recentlyViewedSql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-recently-viewed.sql'),
   'utf8',
 );
+const managedFixedSupplySql = await readFile(
+  resolve(projectRoot, 'deployment/babal/mariadb-managed-fixed-supply.sql'),
+  'utf8',
+);
 
 const quote = (value) => `\`${String(value).replaceAll('`', '``')}\``;
 
@@ -289,6 +293,8 @@ output.push(
   '',
   recentlyViewedSql.trim(),
   '',
+  managedFixedSupplySql.trim(),
+  '',
   '-- Babal.Host password authentication and server-side sessions.',
   'CREATE TABLE IF NOT EXISTS `user_credentials` (',
   '  `user_id` VARCHAR(191) NOT NULL,',
@@ -371,6 +377,12 @@ await mkdir(dirname(outputPath), { recursive: true });
 const schemaSql = output.join('\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
+  'seller_agreement_acceptance_history',
+  'seller_route_transition_applications',
+  'managed_supplier_payments',
+  'managed_supplier_adjustments',
+  'managed_supplier_obligations',
+  'managed_supply_records',
   'recently_viewed_products',
   'managed_invoice_adjustments',
   'traffic_events',

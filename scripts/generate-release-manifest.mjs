@@ -43,6 +43,7 @@ const migrationNames = [
   'mariadb-invoice-adjustments.sql',
   'mariadb-rider-open-box-finance.sql',
   'mariadb-recently-viewed.sql',
+  'mariadb-managed-fixed-supply.sql',
 ];
 const tables = {},
   triggers = {},

@@ -1,6 +1,5 @@
 import type { ManagedMakerCommercialModel } from '@/lib/configuration/types';
 import {
-  calculateFixedSupplierPurchaseAmounts,
   calculateManagedEligibleBasePaisa,
   calculateManagedSaleLinkedAmounts,
 } from '@/lib/managed-makers/settlement';
@@ -51,16 +50,15 @@ export function buildManagedCommercialSnapshot(input: ManagedCommercialTerms) {
     simulationLabel: SIMULATED_RECORD_LABEL,
   };
   if (input.commercialModel === 'managed_fixed_supplier_price_v1') {
-    const fixed = calculateFixedSupplierPurchaseAmounts({
-      agreedSupplierAmountPaisa: input.agreedSupplierAmountPaisa ?? -1,
-    });
+    // Customer resale does not create or change a supplier obligation. Fixed
+    // supplier money is recorded only by documented supply acceptance.
     return Object.freeze({
       ...shared,
-      eligibleBasePaisa: fixed.agreedSupplierAmountPaisa,
+      eligibleBasePaisa: 0,
       platformRetentionBps: 0,
       platformRetainedPaisa: 0,
-      makerEntitlementPaisa: fixed.supplierAmountOwedPaisa,
-      agreedSupplierAmountPaisa: fixed.agreedSupplierAmountPaisa,
+      makerEntitlementPaisa: 0,
+      agreedSupplierAmountPaisa: null,
     });
   }
   const eligibleBasePaisa = calculateManagedEligibleBasePaisa({

@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 
-export function SellerAgreementAcceptance() {
+export function SellerAgreementAcceptance({ commissionPercent }: { commissionPercent: number }) {
   const router = useRouter();
   const [accepted, setAccepted] = useState(false);
   const [pending, setPending] = useState(false);
@@ -21,7 +21,7 @@ export function SellerAgreementAcceptance() {
       const response = await fetch('/api/seller/agreements', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accepted: true }),
+        body: JSON.stringify({ accepted: true, language: 'ne' }),
       });
       const result = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(result.error || 'Acceptance could not be recorded.');
@@ -50,7 +50,7 @@ export function SellerAgreementAcceptance() {
           <Link href="/seller-agreement" target="_blank" className="font-semibold underline">
             Seller Marketplace Agreement
           </Link>
-          , including the 9% commission on completed, paid product sales, and the{' '}
+          , including the {commissionPercent}% commission presented for future independent-seller orders, and the{' '}
           <Link href="/prohibited-products" target="_blank" className="font-semibold underline">
             Prohibited & Restricted Products Policy
           </Link>

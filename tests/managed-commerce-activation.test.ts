@@ -56,7 +56,7 @@ void test('checkout snapshot uses 9% platform retention and preserves all simula
   assert.equal(snapshot.invoiceIssuerReference, 'SIM-INVOICE-ISSUER');
 });
 
-void test('fixed-price snapshots require a supplier amount and apply no percentage retention', () => {
+void test('fixed-price customer-sale snapshots never create a second supplier obligation', () => {
   const snapshot = buildManagedCommercialSnapshot({
     sellerId: 'maker-seller', commercialModel: 'managed_fixed_supplier_price_v1',
     legalSellerReference: 'SIM-LEGAL-SELLER', invoiceIssuerReference: 'SIM-INVOICE-ISSUER',
@@ -64,9 +64,10 @@ void test('fixed-price snapshots require a supplier amount and apply no percenta
     agreementLanguage: 'en', termsSettingVersionId: 'setting-v2', productValuePaisa: 150_000,
     deliveryHoldDays: 7, holdSettingVersionId: 'hold-v1',
     makerFundedDiscountPaisa: 0, platformFundedDiscountPaisa: 0, platformRetentionBps: 900,
-    agreedSupplierAmountPaisa: 100_000,
   });
   assert.equal(snapshot.platformRetentionBps, 0);
   assert.equal(snapshot.platformRetainedPaisa, 0);
-  assert.equal(snapshot.makerEntitlementPaisa, 100_000);
+  assert.equal(snapshot.makerEntitlementPaisa, 0);
+  assert.equal(snapshot.eligibleBasePaisa, 0);
+  assert.equal(snapshot.agreedSupplierAmountPaisa, null);
 });

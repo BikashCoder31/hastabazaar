@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 import test from 'node:test';
 
 import {
   getCommissionSetting,
-  getMarketplaceCommissionBps,
-  sellerCommissionSettingKey,
+  sellerAcceptedCommissionVersion,
   setMarketplaceCommission,
 } from '../lib/db/repositories/marketplace-settings';
 import {
@@ -52,25 +52,10 @@ class TestDatabase {
   }
 }
 
-void test('commission lookup qualifies the MariaDB reserved key column', async () => {
-  let preparedSql = '';
-  const database = {
-    prepare(sql: string) {
-      preparedSql = sql;
-      return {
-        bind() {
-          return this;
-        },
-        async first() {
-          return { value: '900' };
-        },
-      };
-    },
-  } as unknown as D1Database;
-
-  assert.equal(await getMarketplaceCommissionBps(database), 900);
-  assert.match(preparedSql, /WHERE marketplace_settings\.key = \?/);
-  assert.doesNotMatch(preparedSql, /WHERE key = \?/);
+void test('commission lookup uses the centralized versioned Business Settings source', async () => {
+  const source = await readFile('lib/db/repositories/marketplace-settings.ts', 'utf8');
+  assert.match(source, /getEffectiveBusinessSetting\(database,'independent_seller_commission_bps'/);
+  assert.doesNotMatch(source, /FROM marketplace_settings/);
 });
 
 void test('9% commission fixtures use exact half-up minor-unit arithmetic', () => {
@@ -201,14 +186,12 @@ void test('platform discounts allocate deterministically across mixed sellers wi
   assert.equal(calculateSellerCommissionPaisa(300), 27);
 });
 
-void test('versioned 9% setting ignores a stale 12% key and preserves historical snapshots', async () => {
+void test('versioned commission preserves historical snapshots and requires acceptance of a new version', async () => {
   const sqlite = new DatabaseSync(':memory:');
   try {
     sqlite.exec(`
       CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT);
-      CREATE TABLE marketplace_settings (
-        key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_by TEXT, updated_at INTEGER NOT NULL
-      );
+      CREATE TABLE business_setting_versions (id TEXT PRIMARY KEY,setting_key TEXT,version INTEGER,value_json TEXT,status TEXT,revision INTEGER,change_control TEXT,effective_from INTEGER,effective_until INTEGER,reason TEXT,created_by TEXT,created_at INTEGER,submitted_by TEXT,submitted_at INTEGER,approved_by TEXT,approved_at INTEGER,published_by TEXT,published_at INTEGER,decision_note TEXT,supersedes_id TEXT,last_request_id TEXT);
       CREATE TABLE audit_logs (
         id TEXT PRIMARY KEY, actor_id TEXT, action TEXT, subject_type TEXT,
         subject_id TEXT, reason TEXT, previous_json TEXT, next_json TEXT,
@@ -218,31 +201,33 @@ void test('versioned 9% setting ignores a stale 12% key and preserves historical
         id TEXT PRIMARY KEY, unit_price_paisa INTEGER NOT NULL,
         commission_bps INTEGER NOT NULL, commission_paisa INTEGER NOT NULL
       );
+      CREATE TABLE seller_agreement_acceptance_history (
+        id TEXT PRIMARY KEY, seller_id TEXT, agreement_version TEXT,
+        language_presented TEXT, commission_setting_version_id TEXT,
+        commission_bps INTEGER, acceptance_request_id TEXT,
+        accepted_by TEXT, accepted_at INTEGER, simulation_label TEXT
+      );
       INSERT INTO users VALUES ('admin-1', 'Super Admin');
-      INSERT INTO marketplace_settings VALUES ('seller_commission_bps', '1200', NULL, 1);
+      INSERT INTO business_setting_versions VALUES ('commission-v1','independent_seller_commission_bps',1,'900','published',3,'controlled',1,NULL,'Approved test rate','admin-1',1,'admin-1',1,'admin-1',1,'admin-1',1,'Approved',NULL,'commission-v1-request');
       INSERT INTO order_items VALUES ('historical-item', 150000, 1200, 18000);
     `);
     const database = new TestDatabase(sqlite) as unknown as D1Database;
     assert.equal((await getCommissionSetting(database)).basisPoints, 900);
-    sqlite
-      .prepare('INSERT INTO marketplace_settings VALUES (?, ?, NULL, 0)')
-      .run(sellerCommissionSettingKey, '900');
-    await setMarketplaceCommission(database, {
-      basisPoints: 900,
-      actorId: 'admin-1',
-      requestId: 'commission-test-1',
-      reason: 'Activate the current policy-bound rate.',
-      now: 1_800_000_000_000,
-    });
+    assert.equal(await sellerAcceptedCommissionVersion(database, 'seller-1', 'commission-v1'), false);
+    sqlite.prepare(`INSERT INTO seller_agreement_acceptance_history VALUES (?,?,?,?,?,?,?,?,?,NULL)`).run(
+      'acceptance-1', 'seller-1', 'SELLER-AGREEMENT-V1', 'ne',
+      'commission-v1', 900, 'acceptance-request-1', 'seller-user-1', 2,
+    );
+    assert.equal(await sellerAcceptedCommissionVersion(database, 'seller-1', 'commission-v1'), true);
     await assert.rejects(
       setMarketplaceCommission(database, {
-        basisPoints: 750,
+        basisPoints: 900,
         actorId: 'admin-1',
         requestId: 'commission-test-2',
         reason: 'Unsupported policy rate.',
         now: 1_800_000_000_001,
       }),
-      RangeError,
+      /controlled Business Settings/i,
     );
     const historical = sqlite
       .prepare('SELECT commission_bps, commission_paisa FROM order_items WHERE id = ?')

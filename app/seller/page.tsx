@@ -19,27 +19,31 @@ import {
 } from '@/components/seller/workspace-ui';
 import { SellerOrderList } from '@/components/seller/seller-order-list';
 import { SellerAgreementAcceptance } from '@/components/seller/seller-agreement-acceptance';
+import { SellerManagedProgramWorkspace } from '@/components/seller/managed-program-workspace';
 import { requireSellerPage } from '@/lib/auth/seller';
 import { requireDatabase } from '@/lib/db/d1';
 import { getSellerProductStats } from '@/lib/db/repositories/products';
-import { getCommissionSetting } from '@/lib/db/repositories/marketplace-settings';
+import { getCommissionSetting, sellerAcceptedCommissionVersion } from '@/lib/db/repositories/marketplace-settings';
 import { listOrdersForSeller } from '@/lib/db/repositories/orders';
 import { getSellerFinanceSummary } from '@/lib/db/repositories/payouts';
 import { getSellerWorkSummary } from '@/lib/db/repositories/seller-workspace';
 import { sellerMoney } from '@/lib/seller/presentation';
 import { SELLER_AGREEMENT_VERSION } from '@/lib/content/legal-policies';
+import { getManagedProgramWorkspace } from '@/lib/managed-commerce/program-workspace';
 
 export const dynamic = 'force-dynamic';
 export default async function SellerDashboardPage() {
   const seller = await requireSellerPage('/seller');
   const db = requireDatabase(env as unknown as { DB?: D1Database });
-  const [products, work, finance, orders, commission] = await Promise.all([
+  const [products, work, finance, orders, commission, managedProgram] = await Promise.all([
     getSellerProductStats(db, seller.sellerId),
     getSellerWorkSummary(db, seller.sellerId),
     getSellerFinanceSummary(db, seller.sellerId),
     listOrdersForSeller(db, seller.sellerId, 4),
     getCommissionSetting(db),
+    getManagedProgramWorkspace(db, seller.sellerId),
   ]);
+  const currentCommissionAccepted = await sellerAcceptedCommissionVersion(db,seller.sellerId,commission.versionId);
   return (
     <div className="space-y-7">
       <SellerHeading
@@ -47,9 +51,10 @@ export default async function SellerDashboardPage() {
         title={seller.tradingName}
         description="Prepare your orders, manage listings, and keep track of earnings."
       />
-      {seller.sellerAgreementVersion !== SELLER_AGREEMENT_VERSION ? (
-        <SellerAgreementAcceptance />
+      {seller.sellerAgreementVersion !== SELLER_AGREEMENT_VERSION || !currentCommissionAccepted ? (
+        <SellerAgreementAcceptance commissionPercent={commission.percent} />
       ) : null}
+      <SellerManagedProgramWorkspace workspace={managedProgram} />
       <section>
         <h2 className="font-heading text-2xl">Product overview</h2>
         <p className="mt-2 text-sm text-muted-foreground">

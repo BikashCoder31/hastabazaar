@@ -13,6 +13,7 @@ import {
 
 import { SellerReviewActions } from '@/components/admin/seller-review-actions';
 import { ManagedMakerActivationForm } from '@/components/admin/managed-maker-activation-form';
+import { ManagedProgramReview } from '@/components/admin/managed-program-review';
 import { SellerGovernanceActions } from '@/components/admin/seller-governance-actions';
 import { StatusBadge } from '@/components/admin/status-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,6 +23,7 @@ import { getSellerApplicationForReview } from '@/lib/db/repositories/seller-appl
 import { getSellerGovernance } from '@/lib/db/repositories/seller-governance';
 import { can } from '@/lib/marketplace/permissions';
 import { managedMakerDisplayName } from '@/lib/sellers/participation';
+import { getManagedProgramWorkspace } from '@/lib/managed-commerce/program-workspace';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,6 +72,7 @@ export default async function SellerApplicationPage({
   );
   if (!application) notFound();
   const governance = await getSellerGovernance(database, id);
+  const managedProgram = await getManagedProgramWorkspace(database, id);
 
   return (
     <div className="space-y-7">
@@ -119,6 +122,7 @@ export default async function SellerApplicationPage({
 
       <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.4fr)_minmax(20rem,0.6fr)]">
         <div className="space-y-6">
+          <ManagedProgramReview sellerId={application.id} workspace={managedProgram} />
           <Card>
             <CardHeader>
               <CardTitle>Public maker profile preview</CardTitle>

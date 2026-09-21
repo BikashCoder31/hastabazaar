@@ -1,5 +1,5 @@
 import { getDeliveryRates, rateVersionGuard } from './delivery-rates';
-import { getMarketplaceCommissionBps } from './marketplace-settings';
+import { getCommissionSetting, sellerAcceptedCommissionVersion } from './marketplace-settings';
 import { publicProductEligibility } from '@/lib/products/eligibility';
 import {
   getDeliveryEstimate,
@@ -245,7 +245,15 @@ export async function createCodOrder(
   }
 
   const rates = await getDeliveryRates(database);
-  const sellerCommissionBps = await getMarketplaceCommissionBps(database);
+  const commissionSetting = await getCommissionSetting(database, now);
+  const sellerCommissionBps = commissionSetting.basisPoints;
+  if (commissionSetting.versionId) {
+    for (const sellerId of new Set(items.filter((item)=>item.participationRoute!=='managed_maker').map((item)=>item.sellerId))) {
+      if (!await sellerAcceptedCommissionVersion(database,sellerId,commissionSetting.versionId)) {
+        throw new CheckoutConflictError('A seller must accept the current commission and agreement version before receiving a new order.');
+      }
+    }
+  }
   const hasManagedItems = items.some((item) => item.participationRoute === 'managed_maker');
   const [managedProgram, managedModel, managedRetention, managedHold] = hasManagedItems
     ? await Promise.all([
@@ -257,7 +265,7 @@ export async function createCodOrder(
     : [null, null, null, null];
   if (hasManagedItems && (
     managedProgram?.value !== 'activation_enabled' ||
-    managedModel?.value !== 'managed_sale_linked_percentage_v1' ||
+    !managedModel?.value ||
     items.some((item) => item.participationRoute === 'managed_maker' && (
       item.applicationStage !== 'active' || item.commercialModel !== managedModel.value ||
       !item.legalSellerReference || !item.invoiceIssuerReference || !item.payoutBeneficiaryReference ||
@@ -531,7 +539,7 @@ export async function createCodOrder(
           sellerDiscountPaisa,
           platformDiscountPaisa,
           commissionBasePaisa,
-          managed ? 'managed-sale-linked-percentage-v1' : COMMISSION_RULE_VERSION,
+          managed ? `managed-${item.commercialModel ?? 'unconfigured'}` : (commissionSetting.versionId ?? COMMISSION_RULE_VERSION),
           managed ? item.managedAgreementVersion : item.sellerAgreementVersion,
           managed ? 0 : sellerCommissionBps,
           managed ? 0 : calculateSellerCommissionPaisa(commissionBasePaisa, sellerCommissionBps),
@@ -550,13 +558,17 @@ export async function createCodOrder(
         payoutBeneficiaryReference: item.payoutBeneficiaryReference!,
         agreementVersion: item.managedAgreementVersion!,
         agreementLanguage: item.managedAgreementLanguage!,
-        termsSettingVersionId: managedRetention!.versionId,
+        termsSettingVersionId: item.commercialModel === 'managed_sale_linked_percentage_v1'
+          ? managedRetention!.versionId
+          : managedModel!.versionId,
         deliveryHoldDays: managedHold!.value,
         holdSettingVersionId: managedHold!.versionId,
         productValuePaisa: lineTotalPaisa,
         makerFundedDiscountPaisa: sellerDiscountPaisa,
         platformFundedDiscountPaisa: platformDiscountPaisa,
-        platformRetentionBps: managedRetention!.value,
+        platformRetentionBps: item.commercialModel === 'managed_sale_linked_percentage_v1'
+          ? managedRetention!.value
+          : 0,
       });
       const snapshotId = crypto.randomUUID();
       statements.push(
@@ -578,6 +590,8 @@ export async function createCodOrder(
           snapshot.platformRetainedPaisa, snapshot.makerEntitlementPaisa,
           snapshot.agreedSupplierAmountPaisa, snapshot.simulationLabel, now,
         ),
+      );
+      if (snapshot.commercialModel === 'managed_sale_linked_percentage_v1') statements.push(
         database.prepare(`INSERT INTO managed_entitlements(
           id,snapshot_id,seller_id,status,calculated_paisa,earned_at,hold_until,eligible_at,
           paid_at,dispute_hold_reason,dispute_review_at,version,created_at,updated_at

@@ -22,8 +22,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       appOrigin: bindings.APP_ORIGIN,
     });
     const { id } = await context.params;
+    const model = body.model === 'managed_fixed_supplier_price_v1'
+      ? 'managed_fixed_supplier_price_v1'
+      : body.model === 'managed_sale_linked_percentage_v1'
+        ? 'managed_sale_linked_percentage_v1'
+        : null;
+    if (!model) return Response.json({error:'Select an implemented Managed Maker model.'},{status:400});
     await activateManagedMakerForSimulation(requireDatabase(env as unknown as {DB?:D1Database}), {
-      sellerId: id, actorId: actor.id, model: 'managed_sale_linked_percentage_v1',
+      sellerId: id, actorId: actor.id, model,
       legalSellerReference: value('legalSellerReference'), invoiceIssuerReference: value('invoiceIssuerReference'),
       payoutBeneficiaryReference: value('payoutBeneficiaryReference'), agreementVersion: value('agreementVersion'),
       agreementLanguage: body.agreementLanguage === 'ne' ? 'ne' : 'en',

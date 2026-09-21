@@ -104,7 +104,7 @@ void test('Program Management honestly keeps both Managed Maker models in Applic
   assert.doesNotMatch(html, /Activate now/i);
 });
 
-void test('unfinished commercial models cannot be published as live through a configured dropdown', () => {
+void test('implemented commercial models are staging-selectable but remain blocked for live use', () => {
   assert.equal(
     managedMakerModelIsLiveSelectable('managed_sale_linked_percentage_v1'),
     false,
@@ -128,7 +128,7 @@ void test('unfinished commercial models cannot be published as live through a co
       { simulationAllowed: true },
     ),
   );
-  assert.throws(() =>
+  assert.doesNotThrow(() =>
     assertBusinessSettingPublicationReady(
       'managed_maker_active_model',
       'managed_fixed_supplier_price_v1',

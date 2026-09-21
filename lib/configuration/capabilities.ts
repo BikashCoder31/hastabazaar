@@ -21,7 +21,7 @@ export const managedMakerCapabilities: readonly ManagedMakerCapability[] =
     Object.freeze({
       code: 'managed_sale_linked_percentage_v1',
       label: 'Sale-linked percentage settlement',
-      readiness: 'in_development',
+      readiness: 'implemented',
       milestone: 'Milestone 2 demonstration',
       description:
         '9% platform retention and the reconciled 91% maker entitlement become earned only after delivered-and-paid conditions.',
@@ -31,12 +31,12 @@ export const managedMakerCapabilities: readonly ManagedMakerCapability[] =
     Object.freeze({
       code: 'managed_fixed_supplier_price_v1',
       label: 'Fixed supplier-price purchasing',
-      readiness: 'in_development',
+      readiness: 'implemented',
       milestone: 'Milestone 3 verification',
       description:
         'The accepted supplier amount becomes owed at documented supply acceptance without an automatic percentage deduction.',
       selectableForLiveActivation: false,
-      selectableForStagingSimulation: false,
+      selectableForStagingSimulation: true,
     }),
   ]);
 
