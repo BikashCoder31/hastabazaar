@@ -12,6 +12,9 @@ void test('public footer uses the editorial customer-facing presentation', async
   const footer = await readFile(footerPath, 'utf8');
 
   assert.match(footer, /site-footer-cta/);
+  assert.match(footer, /hastabazaar-logo-lockup-640\.webp/);
+  assert.match(footer, /alt="Hastabazaar — Handmade Nepal\. For a Sustainable World\."/);
+  assert.doesNotMatch(footer, /HastaBazaar<span>\.<\/span>/);
   assert.match(footer, /Crafted in Nepal\. Connected to the world\./);
   assert.match(footer, /Shop & discover/);
   assert.match(footer, /Official Hastabazaar social media/);

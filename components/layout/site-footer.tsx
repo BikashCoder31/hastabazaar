@@ -9,6 +9,7 @@ import {
   ShoppingBag,
   Store,
 } from 'lucide-react';
+import Image from 'next/image';
 import Link from 'next/link';
 
 import { getBusinessSettingDefinition } from '@/lib/configuration/definitions';
@@ -78,8 +79,18 @@ export async function SiteFooter() {
       <div className="shell site-footer-main">
         <div className="site-footer-grid">
           <div className="site-footer-brand">
-            <Link href="/" className="site-footer-wordmark">
-              HastaBazaar<span>.</span>
+            <Link
+              href="/"
+              aria-label="Hastabazaar home"
+              className="site-footer-wordmark"
+            >
+              <Image
+                src="/brand/hastabazaar-logo-lockup-640.webp"
+                alt="Hastabazaar — Handmade Nepal. For a Sustainable World."
+                width={640}
+                height={640}
+                className="site-footer-logo"
+              />
             </Link>
             <p className="site-footer-tagline">
               Handmade finds. Human stories. A little piece of Nepal, chosen
