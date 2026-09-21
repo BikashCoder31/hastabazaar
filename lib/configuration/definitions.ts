@@ -9,6 +9,7 @@ import {
   type OfficialSocialLinks,
   type FirstPartyAnalyticsPolicy,
   type RiderFinancePolicy,
+  type RecentlyViewedPolicy,
 } from './types';
 
 function integerInRange(
@@ -204,6 +205,21 @@ function firstPartyAnalyticsPolicy(value: unknown): FirstPartyAnalyticsPolicy {
     retentionDays,
     excludedEmailDomains: Object.freeze(excludedEmailDomains),
     excludedPathPrefixes: Object.freeze(excludedPathPrefixes),
+  });
+}
+
+function recentlyViewedPolicy(value: unknown): RecentlyViewedPolicy {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError('Recently Viewed policy must be an object.');
+  }
+  const candidate = value as Record<string, unknown>;
+  const expected = new Set(['maxItems', 'retentionDays']);
+  if (Object.keys(candidate).some((key) => !expected.has(key))) {
+    throw new RangeError('Recently Viewed policy contains an unknown field.');
+  }
+  return Object.freeze({
+    maxItems: integerInRange('Recently Viewed item limit', candidate.maxItems, 1, 24),
+    retentionDays: integerInRange('Recently Viewed retention days', candidate.retentionDays, 1, 365),
   });
 }
 
@@ -643,6 +659,20 @@ const definitions = [
     ],
     requiredCapability: 'first_party_analytics_v1',
     validate: firstPartyAnalyticsPolicy,
+  },
+  {
+    key: 'recently_viewed_policy',
+    label: 'Recently Viewed history',
+    description:
+      'Controls the bounded customer convenience list. Guest history remains browser-local and is never merged into an account.',
+    defaultValue: Object.freeze({ maxItems: 12, retentionDays: 90 }),
+    sensitivity: 'operational',
+    changeControl: 'simple',
+    effectiveMode: 'immediate',
+    snapshotOnTransaction: false,
+    affectedSurfaces: ['product_detail', 'customer_history', 'guest_browser_storage'],
+    requiredCapability: 'recently_viewed_v1',
+    validate: recentlyViewedPolicy,
   },
 ] as const satisfies readonly BusinessSettingDefinition[];
 

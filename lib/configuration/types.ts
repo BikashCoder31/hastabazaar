@@ -17,6 +17,7 @@ export const businessSettingKeys = [
   'product_material_suggestions',
   'official_social_links',
   'first_party_analytics_policy',
+  'recently_viewed_policy',
 ] as const;
 
 export type BusinessSettingKey = (typeof businessSettingKeys)[number];
@@ -54,6 +55,11 @@ export type FirstPartyAnalyticsPolicy = Readonly<{
   excludedPathPrefixes: readonly string[];
 }>;
 
+export type RecentlyViewedPolicy = Readonly<{
+  maxItems: number;
+  retentionDays: number;
+}>;
+
 export type RiderFinancePolicy = Readonly<{
   cashExposureLimitPaisa: number | null;
   operatingWeekdays: readonly BusinessWeekday[];
@@ -84,6 +90,7 @@ export type BusinessSettingValues = Readonly<{
   product_material_suggestions: readonly string[];
   official_social_links: OfficialSocialLinks;
   first_party_analytics_policy: FirstPartyAnalyticsPolicy;
+  recently_viewed_policy: RecentlyViewedPolicy;
 }>;
 
 export type BusinessSettingValue<K extends BusinessSettingKey> =

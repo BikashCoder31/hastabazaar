@@ -32,7 +32,7 @@
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "8ea2a484b02428a6024ba2e8950145403999b6fb5198687cf1ce077848780fe2",
+      "sha256": "0e9f0ad6c047131d1adaec55515d9e4d5ebe7ce15cb0889a1a7b8faf2a2f5dae",
       "usage": "empty-database-only"
     },
     {
@@ -193,6 +193,16 @@
     {
       "path": "deployment/babal/mariadb-invoice-adjustments.sql",
       "sha256": "32ca22f8ac9c557dac80aa81b30fd81198dad71757c232aebf7e4b5321bfbfcc",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-rider-open-box-finance.sql",
+      "sha256": "b48fde6b945b98bb8feb15b923f76ff5dd087a0b062856a803a343a61053f200",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-recently-viewed.sql",
+      "sha256": "80f47b314840385645ab6e1d62d109844f2b353ec63ec3b7010f0d6b97f9f6e3",
       "usage": "additive-maintenance"
     }
   ],
@@ -1235,6 +1245,11 @@
       "rider_user_id",
       "shipping_job_id",
       "status"
+    ],
+    "recently_viewed_products": [
+      "last_viewed_at",
+      "product_id",
+      "user_id"
     ],
     "user_credentials": [
       "created_at",

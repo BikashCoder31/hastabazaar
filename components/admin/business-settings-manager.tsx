@@ -30,6 +30,7 @@ import type {
   OfficialSocialLinks,
   FirstPartyAnalyticsPolicy,
   RiderFinancePolicy,
+  RecentlyViewedPolicy,
 } from '@/lib/configuration/types';
 
 export type BusinessSettingsAdminItem = Readonly<{
@@ -108,6 +109,10 @@ function displayValue(key: BusinessSettingKey, value: unknown): string {
   ) {
     const policy = value as FirstPartyAnalyticsPolicy;
     return `${policy.enabled ? 'Enabled' : 'Disabled'} · ${policy.retentionDays} day retention`;
+  }
+  if (key === 'recently_viewed_policy' && value && typeof value === 'object') {
+    const policy = value as RecentlyViewedPolicy;
+    return `${policy.maxItems} products · ${policy.retentionDays} day per-entry retention`;
   }
   if (key === 'rider_finance_policy' && value && typeof value === 'object') {
     const policy = value as RiderFinancePolicy;
@@ -666,6 +671,15 @@ function SettingValueEditor({
         </div>
       </div>
     );
+  }
+  if (settingKey === 'recently_viewed_policy') {
+    const policy = value as RecentlyViewedPolicy;
+    const update = (next: Partial<RecentlyViewedPolicy>) => onChange({ ...policy, ...next });
+    return <div className="grid gap-4 sm:grid-cols-2">
+      <div className="space-y-2"><Label htmlFor="recent-limit">Maximum products (1–24)</Label><Input id="recent-limit" type="number" min={1} max={24} step={1} value={policy?.maxItems ?? 12} onChange={(event) => update({ maxItems: Number(event.target.value) })} /></div>
+      <div className="space-y-2"><Label htmlFor="recent-retention">Per-entry retention days (1–365)</Label><Input id="recent-retention" type="number" min={1} max={365} step={1} value={policy?.retentionDays ?? 90} onChange={(event) => update({ retentionDays: Number(event.target.value) })} /></div>
+      <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">Guest history remains only in that browser. Signed-in history is account-scoped. The two are never automatically merged, and customers can clear either list.</p>
+    </div>;
   }
   if (settingKey === 'rider_finance_policy') {
     const policy = value as RiderFinancePolicy;

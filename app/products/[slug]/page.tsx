@@ -34,6 +34,7 @@ import { ReviewForm } from '@/components/account/review-form';
 import {ReviewPhotos,PublicSellerReply} from '@/components/commerce/review-attachments';
 import {getReviewExtras} from '@/lib/db/repositories/review-extras';
 import { signInPath } from '@/app/auth';
+import { RecentlyViewed } from '@/components/catalog/recently-viewed';
 
 export const dynamic = 'force-dynamic';
 
@@ -378,6 +379,7 @@ export default async function ProductPage({
             </div>
           </div>
         </section>
+        <RecentlyViewed currentProductId={product.id} authenticated={Boolean(customer)} />
       </main>
       <SiteFooter />
     </div>

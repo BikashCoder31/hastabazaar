@@ -46,6 +46,10 @@ const riderOpenBoxFinanceSql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-rider-open-box-finance.sql'),
   'utf8',
 );
+const recentlyViewedSql = await readFile(
+  resolve(projectRoot, 'deployment/babal/mariadb-recently-viewed.sql'),
+  'utf8',
+);
 
 const quote = (value) => `\`${String(value).replaceAll('`', '``')}\``;
 
@@ -283,6 +287,8 @@ output.push(
   '',
   riderOpenBoxFinanceSql.trim(),
   '',
+  recentlyViewedSql.trim(),
+  '',
   '-- Babal.Host password authentication and server-side sessions.',
   'CREATE TABLE IF NOT EXISTS `user_credentials` (',
   '  `user_id` VARCHAR(191) NOT NULL,',
@@ -365,6 +371,7 @@ await mkdir(dirname(outputPath), { recursive: true });
 const schemaSql = output.join('\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
+  'recently_viewed_products',
   'managed_invoice_adjustments',
   'traffic_events',
   'traffic_sessions',
