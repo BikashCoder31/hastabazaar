@@ -66,3 +66,79 @@ void test('policy rejects every unsupported render shape', () => {
     [],
   );
 });
+
+void test('policy requires positive numeric intrinsic dimensions', () => {
+  for (const source of [
+    '<img data-media-mode="natural" src={url} alt="x" width="100%" height="auto" />',
+    '<img data-media-mode="natural" src={url} alt="x" width={0} height={0} />',
+  ]) {
+    assert.deepEqual(auditResponsiveMediaSource('fixture.tsx', source), [
+      { file: 'fixture.tsx', line: 1, rule: 'missing-frame' },
+    ]);
+  }
+
+  assert.deepEqual(
+    auditResponsiveMediaSource(
+      'fixture.tsx',
+      '<img data-media-mode="natural" src={url} alt="x" width={640} height={480} />',
+    ),
+    [],
+  );
+});
+
+void test('policy rejects every oversized arbitrary pixel width form', () => {
+  for (const className of ['w-[640px]', 'size-[640px]', '[width:640px]']) {
+    assert.deepEqual(
+      auditResponsiveMediaSource(
+        'fixture.tsx',
+        `<img data-media-mode="natural" src={url} alt="x" width={640} height={480} className="${className}" />`,
+      ),
+      [{ file: 'fixture.tsx', line: 1, rule: 'unbounded-fixed-width' }],
+    );
+  }
+});
+
+void test('policy requires media-shrink to be unconditionally present', () => {
+  assert.deepEqual(
+    auditResponsiveMediaSource(
+      'fixture.tsx',
+      '<img data-media-mode="natural" src={url} alt="x" width={640} height={480} className={cn(\'w-[640px]\', enabled && \'media-shrink\')} />',
+    ),
+    [{ file: 'fixture.tsx', line: 1, rule: 'unbounded-fixed-width' }],
+  );
+  assert.deepEqual(
+    auditResponsiveMediaSource(
+      'fixture.tsx',
+      '<img data-media-mode="natural" src={url} alt="x" width={640} height={480} className={cn(\'w-[640px]\', \'media-shrink\')} />',
+    ),
+    [],
+  );
+});
+
+void test('policy reports exact rules and ignores non-media icon components', () => {
+  assert.deepEqual(
+    auditResponsiveMediaSource(
+      'fixture.tsx',
+      '\n<Image src="/x.jpg" alt="x" fill />',
+    ),
+    [
+      { file: 'fixture.tsx', line: 2, rule: 'missing-mode' },
+      { file: 'fixture.tsx', line: 2, rule: 'missing-frame' },
+      { file: 'fixture.tsx', line: 2, rule: 'fill-image-missing-sizes' },
+    ],
+  );
+  assert.deepEqual(
+    auditResponsiveMediaSource(
+      'fixture.tsx',
+      '<div data-media-frame="cover"><Image data-media-mode="contain" src="/x.jpg" alt="x" fill sizes="100vw" /></div>',
+    ),
+    [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+  );
+  assert.deepEqual(
+    auditResponsiveMediaSource(
+      'fixture.tsx',
+      '<ImageIcon className="size-[640px]" />',
+    ),
+    [],
+  );
+});

@@ -112,9 +112,28 @@ function hasNonEmptyAttribute(
   return true;
 }
 
+function isPositiveNumericAttribute(
+  attributeNode: ts.JsxAttribute | undefined,
+): boolean {
+  const initializer = attributeNode?.initializer;
+  if (!initializer) return false;
+  if (ts.isStringLiteral(initializer)) {
+    return (
+      /^\d+(?:\.\d+)?$/.test(initializer.text) && Number(initializer.text) > 0
+    );
+  }
+  if (!ts.isJsxExpression(initializer) || !initializer.expression) return false;
+
+  let expression = initializer.expression;
+  while (ts.isParenthesizedExpression(expression))
+    expression = expression.expression;
+  return ts.isNumericLiteral(expression) && Number(expression.text) > 0;
+}
+
 function hasIntrinsicDimensions(attributes: ts.JsxAttributes): boolean {
-  return Boolean(
-    attribute(attributes, 'width') && attribute(attributes, 'height'),
+  return (
+    isPositiveNumericAttribute(attribute(attributes, 'width')) &&
+    isPositiveNumericAttribute(attribute(attributes, 'height'))
   );
 }
 
@@ -144,19 +163,84 @@ function containsBackgroundImage(style: ts.JsxAttribute): boolean {
   return found;
 }
 
-function hasMediaShrink(attributes: ts.JsxAttributes): boolean {
+function classTextHasToken(text: string, token: string): boolean {
+  return text.split(/\s+/).includes(token);
+}
+
+function expressionGuaranteesClassToken(
+  expression: ts.Expression,
+  token: string,
+): boolean {
+  if (ts.isParenthesizedExpression(expression)) {
+    return expressionGuaranteesClassToken(expression.expression, token);
+  }
+  if (
+    ts.isStringLiteral(expression) ||
+    ts.isNoSubstitutionTemplateLiteral(expression)
+  ) {
+    return classTextHasToken(expression.text, token);
+  }
+  if (ts.isTemplateExpression(expression)) {
+    return (
+      classTextHasToken(expression.head.text, token) ||
+      expression.templateSpans.some((span) =>
+        classTextHasToken(span.literal.text, token),
+      )
+    );
+  }
+  if (ts.isConditionalExpression(expression)) {
+    return (
+      expressionGuaranteesClassToken(expression.whenTrue, token) &&
+      expressionGuaranteesClassToken(expression.whenFalse, token)
+    );
+  }
+  if (ts.isBinaryExpression(expression)) {
+    return (
+      expression.operatorToken.kind === ts.SyntaxKind.PlusToken &&
+      (expressionGuaranteesClassToken(expression.left, token) ||
+        expressionGuaranteesClassToken(expression.right, token))
+    );
+  }
+  if (ts.isCallExpression(expression)) {
+    const classCombiner = expression.expression.getText();
+    return (
+      ['cn', 'clsx', 'twMerge', 'mediaFrameClass', 'mediaObjectClass'].includes(
+        classCombiner,
+      ) &&
+      expression.arguments.some((argument) =>
+        expressionGuaranteesClassToken(argument, token),
+      )
+    );
+  }
+  return false;
+}
+
+function hasUnconditionalMediaShrink(attributes: ts.JsxAttributes): boolean {
   const className = attribute(attributes, 'className');
-  return Boolean(className?.initializer?.getText().match(/\bmedia-shrink\b/));
+  const initializer = className?.initializer;
+  if (!initializer) return false;
+  if (ts.isStringLiteral(initializer)) {
+    return classTextHasToken(initializer.text, 'media-shrink');
+  }
+  return Boolean(
+    ts.isJsxExpression(initializer) &&
+    initializer.expression &&
+    expressionGuaranteesClassToken(initializer.expression, 'media-shrink'),
+  );
 }
 
 function isOversizedPixelWidth(attributes: ts.JsxAttributes): boolean {
   const className = attribute(attributes, 'className');
   if (className?.initializer) {
-    const arbitraryWidths = className.initializer
-      .getText()
-      .matchAll(/(?:^|[^\w-])(?:w|min-w|max-w)-\[(\d+(?:\.\d+)?)px\]/g);
-    for (const match of arbitraryWidths) {
-      if (Number(match[1]) > 320) return true;
+    const classSource = className.initializer.getText();
+    const widthPatterns = [
+      /(?:^|[^\w-])(?:w|min-w|max-w|size)-\[(\d+(?:\.\d+)?)px\]/g,
+      /\[(?:width|min-width|max-width|inline-size|min-inline-size|max-inline-size):(\d+(?:\.\d+)?)px\]/g,
+    ];
+    for (const pattern of widthPatterns) {
+      for (const match of classSource.matchAll(pattern)) {
+        if (Number(match[1]) > 320) return true;
+      }
     }
   }
 
@@ -259,7 +343,7 @@ export function auditResponsiveMediaSource(
         if (
           isOversizedPixelWidth(attributes) &&
           !frame?.mode &&
-          !hasMediaShrink(attributes)
+          !hasUnconditionalMediaShrink(attributes)
         ) {
           report(node, 'unbounded-fixed-width');
         }
