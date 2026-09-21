@@ -24,11 +24,18 @@ const productStoryMaterialsSql = await readFile(
   'utf8',
 );
 const checkoutRecipientSnapshotsSql = await readFile(
-  resolve(projectRoot, 'deployment/babal/mariadb-checkout-recipient-snapshots.sql'),
+  resolve(
+    projectRoot,
+    'deployment/babal/mariadb-checkout-recipient-snapshots.sql',
+  ),
   'utf8',
 );
 const sellerGovernanceSql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-seller-governance.sql'),
+  'utf8',
+);
+const firstPartyAnalyticsSql = await readFile(
+  resolve(projectRoot, 'deployment/babal/mariadb-first-party-analytics.sql'),
   'utf8',
 );
 
@@ -262,6 +269,8 @@ output.push(
   '',
   sellerGovernanceSql.trim(),
   '',
+  firstPartyAnalyticsSql.trim(),
+  '',
   '-- Babal.Host password authentication and server-side sessions.',
   'CREATE TABLE IF NOT EXISTS `user_credentials` (',
   '  `user_id` VARCHAR(191) NOT NULL,',
@@ -344,6 +353,8 @@ await mkdir(dirname(outputPath), { recursive: true });
 const schemaSql = output.join('\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
+  'traffic_events',
+  'traffic_sessions',
   'seller_deletion_preflights',
   'seller_restriction_events',
   'seller_restrictions',

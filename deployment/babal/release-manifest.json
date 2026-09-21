@@ -32,7 +32,7 @@
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "a15b56295cc15a3c72121b3acca119c029bcfd0e744d095b196a0f1f21773293",
+      "sha256": "7482311ef9b4a924f4cd48c5f1eca386b319b208dd7bdac37f8d5c61f0c1f1f1",
       "usage": "empty-database-only"
     },
     {
@@ -183,6 +183,11 @@
     {
       "path": "deployment/babal/mariadb-seller-governance.sql",
       "sha256": "548d0f3f9cfd7ad2c77aef70957a8ed493b053d972ae6c18011a25d6a70d9e8f",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-first-party-analytics.sql",
+      "sha256": "013552fb68da952c4daa3402a057684a670d9181e01914f06d163006021eac7d",
       "usage": "additive-maintenance"
     }
   ],
@@ -1154,6 +1159,22 @@
       "retention_categories_json",
       "seller_id",
       "status"
+    ],
+    "traffic_sessions": [
+      "expires_at",
+      "first_seen_at",
+      "id",
+      "last_seen_at",
+      "token_hash"
+    ],
+    "traffic_events": [
+      "created_at",
+      "entity_key",
+      "event_key",
+      "event_type",
+      "id",
+      "path",
+      "session_id"
     ],
     "user_credentials": [
       "created_at",

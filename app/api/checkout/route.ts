@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { sendPendingOrderUpdates } from '@/lib/email/send-order-updates';
+import { recordRequestTrafficEvent } from '@/lib/analytics/request';
 
 import {
   CART_COOKIE,
@@ -14,7 +15,10 @@ import {
   createCodOrder,
 } from '@/lib/db/repositories/orders';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
+import {
+  consumePublicRequestRateLimit as consumeRequestRateLimit,
+  rateLimitJson,
+} from '@/lib/http/rate-limit';
 import { getCustomerUser } from '@/lib/auth/customer';
 import { WalletConflictError } from '@/lib/db/repositories/wallet';
 
@@ -45,7 +49,11 @@ export async function POST(request: Request): Promise<Response> {
     const parsed = parseCheckoutInput(await request.json());
     if (!parsed.value)
       return json({ error: parsed.errors[0], errors: parsed.errors }, 400);
-    if(!parsed.value.deliveryRateVersion)return json({error:'Reload checkout to review current delivery rates.'},409);
+    if (!parsed.value.deliveryRateVersion)
+      return json(
+        { error: 'Reload checkout to review current delivery rates.' },
+        409,
+      );
     const customer = await getCustomerUser();
     if (customer) parsed.value.customerEmail = customer.email;
     const [cartHash, receiptHash] = await Promise.all([
@@ -70,6 +78,16 @@ export async function POST(request: Request): Promise<Response> {
       'Set-Cookie',
       'hastabazaar_referral=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure',
     );
+    try {
+      const analytics = await recordRequestTrafficEvent(database, request, {
+        eventType: 'order_completed',
+        path: '/checkout',
+      });
+      if (analytics.cookie)
+        response.headers.append('set-cookie', analytics.cookie);
+    } catch (error) {
+      console.error('Order-completion analytics failed', error);
+    }
     return response;
   } catch (error) {
     if (

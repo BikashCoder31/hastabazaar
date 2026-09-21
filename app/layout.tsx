@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { TrafficBeacon } from '@/components/analytics/traffic-beacon';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -22,7 +23,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body><a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:rounded-lg focus:bg-background focus:p-3 focus:text-primary">Skip to main content</a>{children}</body>
+      <body>
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:rounded-lg focus:bg-background focus:p-3 focus:text-primary"
+        >
+          Skip to main content
+        </a>
+        {children}
+        <TrafficBeacon />
+      </body>
     </html>
   );
 }

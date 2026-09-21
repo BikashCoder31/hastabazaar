@@ -15,6 +15,7 @@ export const businessSettingKeys = [
   'managed_adjustment_reason_codes',
   'product_material_suggestions',
   'official_social_links',
+  'first_party_analytics_policy',
 ] as const;
 
 export type BusinessSettingKey = (typeof businessSettingKeys)[number];
@@ -45,6 +46,13 @@ export type OfficialSocialLinks = Readonly<{
   youtube: string;
 }>;
 
+export type FirstPartyAnalyticsPolicy = Readonly<{
+  enabled: boolean;
+  retentionDays: number;
+  excludedEmailDomains: readonly string[];
+  excludedPathPrefixes: readonly string[];
+}>;
+
 export type BusinessSettingValues = Readonly<{
   independent_seller_commission_bps: number;
   managed_sale_linked_platform_retention_bps: number;
@@ -62,6 +70,7 @@ export type BusinessSettingValues = Readonly<{
   managed_adjustment_reason_codes: readonly string[];
   product_material_suggestions: readonly string[];
   official_social_links: OfficialSocialLinks;
+  first_party_analytics_policy: FirstPartyAnalyticsPolicy;
 }>;
 
 export type BusinessSettingValue<K extends BusinessSettingKey> =
@@ -75,17 +84,18 @@ export type BusinessSettingSensitivity =
   | 'contractual';
 export type BusinessSettingEffectiveMode = 'immediate' | 'effective_dated';
 
-export type BusinessSettingDefinition<K extends BusinessSettingKey = BusinessSettingKey> =
-  Readonly<{
-    key: K;
-    label: string;
-    description: string;
-    defaultValue: BusinessSettingValue<K>;
-    sensitivity: BusinessSettingSensitivity;
-    changeControl: BusinessSettingChangeControl;
-    effectiveMode: BusinessSettingEffectiveMode;
-    snapshotOnTransaction: boolean;
-    affectedSurfaces: readonly string[];
-    requiredCapability: string | null;
-    validate: (value: unknown) => BusinessSettingValue<K>;
-  }>;
+export type BusinessSettingDefinition<
+  K extends BusinessSettingKey = BusinessSettingKey,
+> = Readonly<{
+  key: K;
+  label: string;
+  description: string;
+  defaultValue: BusinessSettingValue<K>;
+  sensitivity: BusinessSettingSensitivity;
+  changeControl: BusinessSettingChangeControl;
+  effectiveMode: BusinessSettingEffectiveMode;
+  snapshotOnTransaction: boolean;
+  affectedSurfaces: readonly string[];
+  requiredCapability: string | null;
+  validate: (value: unknown) => BusinessSettingValue<K>;
+}>;

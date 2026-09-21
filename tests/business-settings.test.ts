@@ -110,7 +110,9 @@ void test('expected sale-linked entitlement is earned only after delivered and p
 
 void test('fixed supplier-price purchasing never receives the sale-linked 9% deduction', () => {
   assert.deepEqual(
-    calculateFixedSupplierPurchaseAmounts({ agreedSupplierAmountPaisa: 100_000 }),
+    calculateFixedSupplierPurchaseAmounts({
+      agreedSupplierAmountPaisa: 100_000,
+    }),
     {
       agreedSupplierAmountPaisa: 100_000,
       platformRetainedPaisa: 0,
@@ -140,6 +142,7 @@ void test('only supported, validated controls exist and demonstration defaults r
     'managed_adjustment_reason_codes',
     'product_material_suggestions',
     'official_social_links',
+    'first_party_analytics_policy',
   ];
   assert.deepEqual([...keys].sort(), [...requiredKeys].sort());
   assert.equal(
@@ -157,6 +160,49 @@ void test('only supported, validated controls exist and demonstration defaults r
   assert.equal(
     getBusinessSettingDefinition('new_seller_reserve_bps').defaultValue,
     0,
+  );
+});
+
+void test('first-party analytics policy is disabled by default and strictly bounded', () => {
+  const definition = getBusinessSettingDefinition(
+    'first_party_analytics_policy',
+  );
+  assert.equal(definition.defaultValue.enabled, false);
+  assert.equal(definition.defaultValue.retentionDays, 90);
+  assert.deepEqual(
+    validateBusinessSettingValue('first_party_analytics_policy', {
+      enabled: true,
+      retentionDays: 30,
+      excludedEmailDomains: ['EXAMPLE.TEST'],
+      excludedPathPrefixes: ['/admin/'],
+    }),
+    {
+      enabled: true,
+      retentionDays: 30,
+      excludedEmailDomains: ['example.test'],
+      excludedPathPrefixes: ['/admin'],
+    },
+  );
+  assert.throws(
+    () =>
+      validateBusinessSettingValue('first_party_analytics_policy', {
+        enabled: true,
+        retentionDays: 366,
+        excludedEmailDomains: [],
+        excludedPathPrefixes: [],
+      }),
+    /retention/i,
+  );
+  assert.throws(
+    () =>
+      validateBusinessSettingValue('first_party_analytics_policy', {
+        enabled: true,
+        retentionDays: 30,
+        excludedEmailDomains: [],
+        excludedPathPrefixes: [],
+        executableFormula: 'collect_everything()',
+      }),
+    /unknown field/i,
   );
 });
 

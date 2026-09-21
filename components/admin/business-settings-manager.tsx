@@ -28,6 +28,7 @@ import type {
   BusinessSettingKey,
   BusinessSettingSensitivity,
   OfficialSocialLinks,
+  FirstPartyAnalyticsPolicy,
 } from '@/lib/configuration/types';
 
 export type BusinessSettingsAdminItem = Readonly<{
@@ -70,7 +71,8 @@ function scalarString(value: unknown): string {
     typeof value === 'number' ||
     typeof value === 'boolean' ||
     typeof value === 'bigint'
-  ) return String(value);
+  )
+    return String(value);
   return '';
 }
 
@@ -89,11 +91,23 @@ function displayValue(key: BusinessSettingKey, value: unknown): string {
     return `${value / 100}% platform retention · ${(10_000 - value) / 100}% maker entitlement`;
   }
   if (key === 'platform_payout_minimum_paisa' && typeof value === 'number') {
-    return value === 0 ? 'No platform minimum' : `NPR ${(value / 100).toFixed(2)}`;
+    return value === 0
+      ? 'No platform minimum'
+      : `NPR ${(value / 100).toFixed(2)}`;
   }
-  if (Array.isArray(value)) return value.length ? value.join(', ') : 'None configured';
+  if (Array.isArray(value))
+    return value.length ? value.join(', ') : 'None configured';
   if (value === null) return 'Not selected';
-  if (typeof value === 'object') return 'Six validated official links';
+  if (key === 'official_social_links' && typeof value === 'object')
+    return 'Six validated official links';
+  if (
+    key === 'first_party_analytics_policy' &&
+    value &&
+    typeof value === 'object'
+  ) {
+    const policy = value as FirstPartyAnalyticsPolicy;
+    return `${policy.enabled ? 'Enabled' : 'Disabled'} · ${policy.retentionDays} day retention`;
+  }
   return scalarString(value).replaceAll('_', ' ');
 }
 
@@ -148,7 +162,11 @@ export function BusinessSettingsManager({
   const [busy, setBusy] = useState(false);
 
   if (!selected) {
-    return <p className="rounded-xl border p-6">No business settings are registered.</p>;
+    return (
+      <p className="rounded-xl border p-6">
+        No business settings are registered.
+      </p>
+    );
   }
 
   const drafts = selected.history.filter((item) => item.status === 'draft');
@@ -179,11 +197,14 @@ export function BusinessSettingsManager({
         }),
       });
       const result = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(result.error || 'Draft could not be saved.');
+      if (!response.ok)
+        throw new Error(result.error || 'Draft could not be saved.');
       setMessage('Draft saved. Refreshing the authoritative history…');
       window.location.reload();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Draft could not be saved.');
+      setMessage(
+        error instanceof Error ? error.message : 'Draft could not be saved.',
+      );
     } finally {
       setBusy(false);
     }
@@ -204,18 +225,25 @@ export function BusinessSettingsManager({
           body: JSON.stringify({
             action,
             expectedRevision: version.revision,
-            effectiveFrom: effectiveFrom ? new Date(effectiveFrom).getTime() : undefined,
+            effectiveFrom: effectiveFrom
+              ? new Date(effectiveFrom).getTime()
+              : undefined,
             reason,
             requestId: crypto.randomUUID(),
           }),
         },
       );
       const result = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(result.error || 'Change could not be completed.');
+      if (!response.ok)
+        throw new Error(result.error || 'Change could not be completed.');
       setMessage('Change recorded. Refreshing the authoritative history…');
       window.location.reload();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Change could not be completed.');
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Change could not be completed.',
+      );
     } finally {
       setBusy(false);
     }
@@ -250,8 +278,16 @@ export function BusinessSettingsManager({
         <Card>
           <CardHeader>
             <div className="flex flex-wrap gap-2">
-              <Badge variant="outline">{selected.sensitivity.replaceAll('_', ' ')}</Badge>
-              <Badge variant={selected.changeControl === 'controlled' ? 'destructive' : 'secondary'}>
+              <Badge variant="outline">
+                {selected.sensitivity.replaceAll('_', ' ')}
+              </Badge>
+              <Badge
+                variant={
+                  selected.changeControl === 'controlled'
+                    ? 'destructive'
+                    : 'secondary'
+                }
+              >
                 {selected.changeControl === 'controlled'
                   ? 'Different Super Admin approval required'
                   : 'Simple publication'}
@@ -261,7 +297,10 @@ export function BusinessSettingsManager({
             <CardDescription>{selected.description}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-3">
-            <Summary title="Current value" value={displayValue(selected.key, selected.effective.value)} />
+            <Summary
+              title="Current value"
+              value={displayValue(selected.key, selected.effective.value)}
+            />
             <Summary title="Draft" value={`${drafts.length} open`} />
             <Summary title="Scheduled" value={`${scheduled.length} future`} />
           </CardContent>
@@ -292,7 +331,9 @@ export function BusinessSettingsManager({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="setting-effective-from">Effective date for publication</Label>
+              <Label htmlFor="setting-effective-from">
+                Effective date for publication
+              </Label>
               <Input
                 id="setting-effective-from"
                 type="datetime-local"
@@ -307,15 +348,24 @@ export function BusinessSettingsManager({
             <div className="rounded-xl border bg-muted/40 p-4">
               <p className="text-sm font-semibold">Preview</p>
               <p className="mt-1 text-lg font-medium">
-                {displayValue(selected.key, parseEditorValue(selected.key, editorValue))}
+                {displayValue(
+                  selected.key,
+                  parseEditorValue(selected.key, editorValue),
+                )}
               </p>
               <p className="mt-3 text-sm font-semibold">Affected areas</p>
               <p className="mt-1 text-sm text-muted-foreground">
                 {selected.affectedSurfaces.join(', ')}
               </p>
             </div>
-            {message ? <output className="block text-sm font-medium">{message}</output> : null}
-            <Button type="button" disabled={busy || reason.trim().length < 8} onClick={saveDraft}>
+            {message ? (
+              <output className="block text-sm font-medium">{message}</output>
+            ) : null}
+            <Button
+              type="button"
+              disabled={busy || reason.trim().length < 8}
+              onClick={saveDraft}
+            >
               Save draft
             </Button>
           </CardContent>
@@ -336,12 +386,15 @@ export function BusinessSettingsManager({
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="font-semibold">
-                        Version {version.version} · {versionPresentation(version, asOf)}
+                        Version {version.version} ·{' '}
+                        {versionPresentation(version, asOf)}
                       </p>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {displayValue(selected.key, version.value)}
                       </p>
-                      <p className="mt-1 text-xs text-muted-foreground">{version.reason}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {version.reason}
+                      </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {version.status === 'draft' ? (
@@ -352,7 +405,9 @@ export function BusinessSettingsManager({
                           onClick={() =>
                             changeVersion(
                               version,
-                              version.changeControl === 'controlled' ? 'submit' : 'publish',
+                              version.changeControl === 'controlled'
+                                ? 'submit'
+                                : 'publish',
                             )
                           }
                         >
@@ -363,16 +418,33 @@ export function BusinessSettingsManager({
                       ) : null}
                       {version.status === 'pending_approval' ? (
                         <>
-                          <Button size="sm" type="button" disabled={busy} onClick={() => changeVersion(version, 'approve')}>
+                          <Button
+                            size="sm"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => changeVersion(version, 'approve')}
+                          >
                             Approve / schedule
                           </Button>
-                          <Button size="sm" variant="outline" type="button" disabled={busy} onClick={() => changeVersion(version, 'reject')}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => changeVersion(version, 'reject')}
+                          >
                             Reject
                           </Button>
                         </>
                       ) : null}
                       {version.status === 'published' ? (
-                        <Button size="sm" variant="outline" type="button" disabled={busy} onClick={() => changeVersion(version, 'reverse')}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          type="button"
+                          disabled={busy}
+                          onClick={() => changeVersion(version, 'reverse')}
+                        >
                           Create reversal draft
                         </Button>
                       ) : null}
@@ -382,7 +454,8 @@ export function BusinessSettingsManager({
               ))
             ) : (
               <p className="text-sm text-muted-foreground">
-                No saved versions. The displayed current value is the tested code default.
+                No saved versions. The displayed current value is the tested
+                code default.
               </p>
             )}
           </CardContent>
@@ -395,7 +468,9 @@ export function BusinessSettingsManager({
 function Summary({ title, value }: { title: string; value: string }) {
   return (
     <div className="rounded-xl border bg-background p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {title}
+      </p>
       <p className="mt-2 font-heading text-lg">{value}</p>
     </div>
   );
@@ -414,14 +489,18 @@ function SettingValueEditor({
     return (
       <div className="space-y-2">
         <Label htmlFor="setting-value">
-          {settingKey.endsWith('_bps') ? 'Basis points (900 = 9%)' : 'Numeric value'}
+          {settingKey.endsWith('_bps')
+            ? 'Basis points (900 = 9%)'
+            : 'Numeric value'}
         </Label>
         <Input
           id="setting-value"
           type="number"
           min={0}
           step={1}
-          value={typeof value === 'number' || typeof value === 'string' ? value : ''}
+          value={
+            typeof value === 'number' || typeof value === 'string' ? value : ''
+          }
           onChange={(event) => onChange(event.target.value)}
         />
       </div>
@@ -446,8 +525,14 @@ function SettingValueEditor({
         onChange={onChange}
         options={[
           ['', 'No active model'],
-          ['managed_sale_linked_percentage_v1', 'Sale-linked percentage settlement'],
-          ['managed_fixed_supplier_price_v1', 'Fixed supplier-price purchasing'],
+          [
+            'managed_sale_linked_percentage_v1',
+            'Sale-linked percentage settlement',
+          ],
+          [
+            'managed_fixed_supplier_price_v1',
+            'Fixed supplier-price purchasing',
+          ],
         ]}
       />
     );
@@ -457,7 +542,15 @@ function SettingValueEditor({
       <SelectEditor
         value={scalarString(value)}
         onChange={onChange}
-        options={['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day) => [day, day] as const)}
+        options={[
+          'monday',
+          'tuesday',
+          'wednesday',
+          'thursday',
+          'friday',
+          'saturday',
+          'sunday',
+        ].map((day) => [day, day] as const)}
       />
     );
   }
@@ -465,30 +558,131 @@ function SettingValueEditor({
     const links = value as OfficialSocialLinks;
     return (
       <div className="grid gap-3 sm:grid-cols-2">
-        {(['linkedin', 'x', 'tiktok', 'instagram', 'facebook', 'youtube'] as const).map((platform) => (
+        {(
+          [
+            'linkedin',
+            'x',
+            'tiktok',
+            'instagram',
+            'facebook',
+            'youtube',
+          ] as const
+        ).map((platform) => (
           <div key={platform} className="space-y-2">
             <Label htmlFor={`social-${platform}`}>{platform}</Label>
             <Input
               id={`social-${platform}`}
               type="url"
               value={links?.[platform] ?? ''}
-              onChange={(event) => onChange({ ...links, [platform]: event.target.value })}
+              onChange={(event) =>
+                onChange({ ...links, [platform]: event.target.value })
+              }
             />
           </div>
         ))}
       </div>
     );
   }
+  if (settingKey === 'first_party_analytics_policy') {
+    const policy = value as FirstPartyAnalyticsPolicy;
+    const update = (next: Partial<FirstPartyAnalyticsPolicy>) =>
+      onChange({ ...policy, ...next });
+    return (
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="analytics-enabled">Collection state</Label>
+          <NativeSelect
+            id="analytics-enabled"
+            className="w-full"
+            value={policy?.enabled ? 'enabled' : 'disabled'}
+            onChange={(event) =>
+              update({ enabled: event.target.value === 'enabled' })
+            }
+          >
+            <NativeSelectOption value="disabled">Disabled</NativeSelectOption>
+            <NativeSelectOption value="enabled">Enabled</NativeSelectOption>
+          </NativeSelect>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="analytics-retention">Retention days (1–365)</Label>
+          <Input
+            id="analytics-retention"
+            type="number"
+            min={1}
+            max={365}
+            step={1}
+            value={policy?.retentionDays ?? 90}
+            onChange={(event) =>
+              update({ retentionDays: Number(event.target.value) })
+            }
+          />
+        </div>
+        <div className="space-y-2 sm:col-span-2">
+          <Label htmlFor="analytics-email-domains">
+            Excluded test email domains
+          </Label>
+          <Input
+            id="analytics-email-domains"
+            value={policy?.excludedEmailDomains?.join(', ') ?? ''}
+            onChange={(event) =>
+              update({
+                excludedEmailDomains: event.target.value
+                  .split(',')
+                  .map((item) => item.trim())
+                  .filter(Boolean),
+              })
+            }
+          />
+        </div>
+        <div className="space-y-2 sm:col-span-2">
+          <Label htmlFor="analytics-path-prefixes">
+            Excluded path prefixes
+          </Label>
+          <Input
+            id="analytics-path-prefixes"
+            value={policy?.excludedPathPrefixes?.join(', ') ?? ''}
+            onChange={(event) =>
+              update({
+                excludedPathPrefixes: event.target.value
+                  .split(',')
+                  .map((item) => item.trim())
+                  .filter(Boolean),
+              })
+            }
+          />
+          <p className="text-xs leading-5 text-muted-foreground">
+            Events store only an opaque first-party browser-session hash, an
+            allowlisted event, a path without query parameters, and time. No IP
+            address, user agent, checkout fields, advertising ID, replay, or
+            cross-site identifier is stored.
+          </p>
+        </div>
+      </div>
+    );
+  }
   if (settingKey === 'payout_cutoff_local_time') {
-    return <Input aria-label="Payout cutoff" type="time" value={scalarString(value)} onChange={(event) => onChange(event.target.value)} />;
+    return (
+      <Input
+        aria-label="Payout cutoff"
+        type="time"
+        value={scalarString(value)}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    );
   }
   if (settingKey === 'payout_timezone') {
-    return <Input aria-label="Payout timezone" value="Asia/Kathmandu" readOnly />;
+    return (
+      <Input aria-label="Payout timezone" value="Asia/Kathmandu" readOnly />
+    );
   }
   return (
     <div className="space-y-2">
       <Label htmlFor="setting-value">Comma-separated approved values</Label>
-      <Input id="setting-value" value={scalarString(value)} onChange={(event) => onChange(event.target.value)} />
+      <Input
+        id="setting-value"
+        value={scalarString(value)}
+        onChange={(event) => onChange(event.target.value)}
+      />
     </div>
   );
 }
@@ -505,7 +699,12 @@ function SelectEditor({
   return (
     <div className="space-y-2">
       <Label htmlFor="setting-value">Configured value</Label>
-      <NativeSelect className="w-full" id="setting-value" value={value} onChange={(event) => onChange(event.target.value)}>
+      <NativeSelect
+        className="w-full"
+        id="setting-value"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
         {options.map(([optionValue, label]) => (
           <NativeSelectOption key={optionValue || 'none'} value={optionValue}>
             {label}

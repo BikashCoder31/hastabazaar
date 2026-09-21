@@ -7,6 +7,7 @@ import {
   type ManagedMakerCommercialModel,
   type ManagedMakerProgramMode,
   type OfficialSocialLinks,
+  type FirstPartyAnalyticsPolicy,
 } from './types';
 
 function integerInRange(
@@ -15,7 +16,11 @@ function integerInRange(
   minimum: number,
   maximum: number,
 ): number {
-  if (!Number.isSafeInteger(value) || Number(value) < minimum || Number(value) > maximum) {
+  if (
+    !Number.isSafeInteger(value) ||
+    Number(value) < minimum ||
+    Number(value) > maximum
+  ) {
     throw new RangeError(
       `${label} must be a safe integer from ${minimum.toLocaleString('en-US')} through ${maximum.toLocaleString('en-US')}.`,
     );
@@ -41,7 +46,10 @@ function oneOf<T extends string>(
 function codeList(label: string, value: unknown): readonly string[] {
   if (!Array.isArray(value)) throw new TypeError(`${label} must be a list.`);
   const normalized = value.map((entry) => {
-    if (typeof entry !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(entry)) {
+    if (
+      typeof entry !== 'string' ||
+      !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(entry)
+    ) {
       throw new RangeError(`${label} contains an invalid code.`);
     }
     return entry;
@@ -53,16 +61,27 @@ function codeList(label: string, value: unknown): readonly string[] {
 }
 
 function displayTextList(label: string, value: unknown): readonly string[] {
-  if (!Array.isArray(value) || value.length > 100) throw new TypeError(`${label} must be a list of at most 100 items.`);
-  const result: string[]=[];
-  const seen=new Set<string>();
-  for(const entry of value){
-    if(typeof entry!=='string')throw new RangeError(`${label} contains an invalid value.`);
-    const normalized=entry.trim().replace(/\s+/g,' ');
-    if(!normalized||normalized.length>80||normalized.includes('<')||normalized.includes('>')||/\p{Cc}/u.test(normalized))throw new RangeError(`${label} contains an invalid value.`);
-    const key=normalized.toLocaleLowerCase('en');
-    if(seen.has(key))throw new RangeError(`${label} cannot contain duplicate values.`);
-    seen.add(key);result.push(normalized);
+  if (!Array.isArray(value) || value.length > 100)
+    throw new TypeError(`${label} must be a list of at most 100 items.`);
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== 'string')
+      throw new RangeError(`${label} contains an invalid value.`);
+    const normalized = entry.trim().replace(/\s+/g, ' ');
+    if (
+      !normalized ||
+      normalized.length > 80 ||
+      normalized.includes('<') ||
+      normalized.includes('>') ||
+      /\p{Cc}/u.test(normalized)
+    )
+      throw new RangeError(`${label} contains an invalid value.`);
+    const key = normalized.toLocaleLowerCase('en');
+    if (seen.has(key))
+      throw new RangeError(`${label} cannot contain duplicate values.`);
+    seen.add(key);
+    result.push(normalized);
   }
   return Object.freeze(result);
 }
@@ -109,6 +128,84 @@ function officialSocialLinks(value: unknown): OfficialSocialLinks {
   return Object.freeze(result) as OfficialSocialLinks;
 }
 
+function firstPartyAnalyticsPolicy(value: unknown): FirstPartyAnalyticsPolicy {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError('First-party analytics policy must be an object.');
+  }
+  const candidate = value as Record<string, unknown>;
+  const expected = new Set([
+    'enabled',
+    'retentionDays',
+    'excludedEmailDomains',
+    'excludedPathPrefixes',
+  ]);
+  if (Object.keys(candidate).some((key) => !expected.has(key))) {
+    throw new RangeError(
+      'First-party analytics policy contains an unknown field.',
+    );
+  }
+  if (typeof candidate.enabled !== 'boolean') {
+    throw new TypeError('Analytics enabled must be true or false.');
+  }
+  const retentionDays = integerInRange(
+    'Analytics retention days',
+    candidate.retentionDays,
+    1,
+    365,
+  );
+  if (
+    !Array.isArray(candidate.excludedEmailDomains) ||
+    candidate.excludedEmailDomains.length > 50
+  ) {
+    throw new TypeError(
+      'Excluded email domains must be a list of at most 50 domains.',
+    );
+  }
+  const excludedEmailDomains = candidate.excludedEmailDomains.map((entry) => {
+    if (typeof entry !== 'string')
+      throw new TypeError('Excluded email domains must be text.');
+    const domain = entry.trim().toLowerCase();
+    if (
+      !/^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/.test(domain) ||
+      !domain.includes('.')
+    ) {
+      throw new RangeError('Excluded email domains contain an invalid domain.');
+    }
+    return domain;
+  });
+  if (new Set(excludedEmailDomains).size !== excludedEmailDomains.length) {
+    throw new RangeError('Excluded email domains cannot contain duplicates.');
+  }
+  if (
+    !Array.isArray(candidate.excludedPathPrefixes) ||
+    candidate.excludedPathPrefixes.length > 50
+  ) {
+    throw new TypeError(
+      'Excluded path prefixes must be a list of at most 50 paths.',
+    );
+  }
+  const excludedPathPrefixes = candidate.excludedPathPrefixes.map((entry) => {
+    if (
+      typeof entry !== 'string' ||
+      !/^\/[a-z0-9/_-]*$/i.test(entry) ||
+      entry.length > 100 ||
+      entry.includes('//')
+    ) {
+      throw new RangeError('Excluded path prefixes contain an invalid path.');
+    }
+    return entry.length > 1 ? entry.replace(/\/$/, '') : entry;
+  });
+  if (new Set(excludedPathPrefixes).size !== excludedPathPrefixes.length) {
+    throw new RangeError('Excluded path prefixes cannot contain duplicates.');
+  }
+  return Object.freeze({
+    enabled: candidate.enabled,
+    retentionDays,
+    excludedEmailDomains: Object.freeze(excludedEmailDomains),
+    excludedPathPrefixes: Object.freeze(excludedPathPrefixes),
+  });
+}
+
 const weekdays: readonly BusinessWeekday[] = [
   'monday',
   'tuesday',
@@ -141,12 +238,14 @@ const definitions = [
     snapshotOnTransaction: true,
     affectedSurfaces: ['seller', 'orders', 'settlements'],
     requiredCapability: 'independent_seller_commission_v1',
-    validate: (value: unknown) => basisPoints('Independent seller commission', value),
+    validate: (value: unknown) =>
+      basisPoints('Independent seller commission', value),
   },
   {
     key: 'managed_sale_linked_platform_retention_bps',
     label: 'Managed Maker sale-linked platform retention',
-    description: 'Platform-retained share; maker entitlement is the reconciled remainder.',
+    description:
+      'Platform-retained share; maker entitlement is the reconciled remainder.',
     defaultValue: 900,
     sensitivity: 'financial',
     changeControl: 'controlled',
@@ -154,12 +253,14 @@ const definitions = [
     snapshotOnTransaction: true,
     affectedSurfaces: ['managed_makers', 'orders', 'settlements'],
     requiredCapability: 'managed_sale_linked_percentage_v1',
-    validate: (value: unknown) => basisPoints('Managed Maker platform retention', value),
+    validate: (value: unknown) =>
+      basisPoints('Managed Maker platform retention', value),
   },
   {
     key: 'managed_maker_program_mode',
     label: 'Managed Maker program mode',
-    description: 'Accept applications without implying that live selling is available.',
+    description:
+      'Accept applications without implying that live selling is available.',
     defaultValue: 'applications_only',
     sensitivity: 'contractual',
     changeControl: 'controlled',
@@ -167,12 +268,14 @@ const definitions = [
     snapshotOnTransaction: false,
     affectedSurfaces: ['maker_onboarding', 'admin_review', 'catalogue'],
     requiredCapability: 'managed_maker_activation_v1',
-    validate: (value: unknown) => oneOf('Managed Maker program mode', value, programModes),
+    validate: (value: unknown) =>
+      oneOf('Managed Maker program mode', value, programModes),
   },
   {
     key: 'managed_maker_active_model',
     label: 'Managed Maker active commercial model',
-    description: 'Selects one implemented model; null keeps live commercial activation disabled.',
+    description:
+      'Selects one implemented model; null keeps live commercial activation disabled.',
     defaultValue: null,
     sensitivity: 'contractual',
     changeControl: 'controlled',
@@ -210,7 +313,10 @@ const definitions = [
     affectedSurfaces: ['seller', 'maker', 'settlements'],
     requiredCapability: 'scheduled_payouts_v1',
     validate: (value: unknown) => {
-      if (typeof value !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) {
+      if (
+        typeof value !== 'string' ||
+        !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)
+      ) {
         throw new RangeError('Payout cutoff must use 24-hour HH:mm format.');
       }
       return value;
@@ -219,7 +325,8 @@ const definitions = [
   {
     key: 'payout_timezone',
     label: 'Payout timezone',
-    description: 'Timezone used for payout schedules and displayed eligibility dates.',
+    description:
+      'Timezone used for payout schedules and displayed eligibility dates.',
     defaultValue: 'Asia/Kathmandu',
     sensitivity: 'operational',
     changeControl: 'controlled',
@@ -233,7 +340,8 @@ const definitions = [
   {
     key: 'seller_delivery_hold_days',
     label: 'Delivery hold before payout eligibility',
-    description: 'Initial eligibility period; it is not a universal return-right cutoff.',
+    description:
+      'Initial eligibility period; it is not a universal return-right cutoff.',
     defaultValue: 7,
     sensitivity: 'financial',
     changeControl: 'controlled',
@@ -241,12 +349,14 @@ const definitions = [
     snapshotOnTransaction: true,
     affectedSurfaces: ['seller', 'maker', 'settlements'],
     requiredCapability: 'scheduled_payouts_v1',
-    validate: (value: unknown) => integerInRange('Delivery hold days', value, 0, 365),
+    validate: (value: unknown) =>
+      integerInRange('Delivery hold days', value, 0, 365),
   },
   {
     key: 'platform_payout_minimum_paisa',
     label: 'Platform payout minimum',
-    description: 'Zero means positive eligible balances are payable where the channel permits.',
+    description:
+      'Zero means positive eligible balances are payable where the channel permits.',
     defaultValue: 0,
     sensitivity: 'financial',
     changeControl: 'controlled',
@@ -254,12 +364,14 @@ const definitions = [
     snapshotOnTransaction: false,
     affectedSurfaces: ['seller', 'maker', 'settlements'],
     requiredCapability: 'scheduled_payouts_v1',
-    validate: (value: unknown) => integerInRange('Payout minimum paisa', value, 0, Number.MAX_SAFE_INTEGER),
+    validate: (value: unknown) =>
+      integerInRange('Payout minimum paisa', value, 0, Number.MAX_SAFE_INTEGER),
   },
   {
     key: 'new_seller_reserve_bps',
     label: 'New seller reserve',
-    description: 'Disabled at zero; non-zero use requires an approved reserve policy.',
+    description:
+      'Disabled at zero; non-zero use requires an approved reserve policy.',
     defaultValue: 0,
     sensitivity: 'financial',
     changeControl: 'controlled',
@@ -272,7 +384,8 @@ const definitions = [
   {
     key: 'rider_remittance_business_days',
     label: 'Rider remittance period',
-    description: 'Business days from collection to the expected remittance date.',
+    description:
+      'Business days from collection to the expected remittance date.',
     defaultValue: 1,
     sensitivity: 'financial',
     changeControl: 'controlled',
@@ -280,7 +393,8 @@ const definitions = [
     snapshotOnTransaction: true,
     affectedSurfaces: ['rider', 'finance', 'assignments'],
     requiredCapability: 'rider_cash_reconciliation_v1',
-    validate: (value: unknown) => integerInRange('Remittance business days', value, 0, 30),
+    validate: (value: unknown) =>
+      integerInRange('Remittance business days', value, 0, 30),
   },
   {
     key: 'open_box_category_codes',
@@ -298,7 +412,8 @@ const definitions = [
   {
     key: 'open_box_service_area_codes',
     label: 'Open-box service areas',
-    description: 'Explicit staging service areas where trained rider inspection is available.',
+    description:
+      'Explicit staging service areas where trained rider inspection is available.',
     defaultValue: Object.freeze([]),
     sensitivity: 'operational',
     changeControl: 'simple',
@@ -311,7 +426,8 @@ const definitions = [
   {
     key: 'managed_adjustment_reason_codes',
     label: 'Managed Maker adjustment reasons',
-    description: 'Approved reason codes for linked, reviewable settlement adjustments.',
+    description:
+      'Approved reason codes for linked, reviewable settlement adjustments.',
     defaultValue: Object.freeze(['refund', 'dispute', 'accepted_defect']),
     sensitivity: 'financial',
     changeControl: 'controlled',
@@ -324,20 +440,38 @@ const definitions = [
   {
     key: 'product_material_suggestions',
     label: 'Product material suggestions',
-    description: 'Searchable optional material suggestions. Sellers may add another accurate material.',
-    defaultValue: Object.freeze(['clay','cotton','jute','wood','bamboo','wool','metal','glass','paper','Wooden beads']),
+    description:
+      'Searchable optional material suggestions. Sellers may add another accurate material.',
+    defaultValue: Object.freeze([
+      'clay',
+      'cotton',
+      'jute',
+      'wood',
+      'bamboo',
+      'wool',
+      'metal',
+      'glass',
+      'paper',
+      'Wooden beads',
+    ]),
     sensitivity: 'public_content',
     changeControl: 'simple',
     effectiveMode: 'immediate',
     snapshotOnTransaction: false,
-    affectedSurfaces: ['seller_product_editor','managed_maker_product_drafts','catalogue'],
+    affectedSurfaces: [
+      'seller_product_editor',
+      'managed_maker_product_drafts',
+      'catalogue',
+    ],
     requiredCapability: null,
-    validate: (value: unknown) => displayTextList('Product material suggestions', value),
+    validate: (value: unknown) =>
+      displayTextList('Product material suggestions', value),
   },
   {
     key: 'official_social_links',
     label: 'Official Hastabazaar social links',
-    description: 'Validated public links managed centrally without a code deployment.',
+    description:
+      'Validated public links managed centrally without a code deployment.',
     defaultValue: Object.freeze({
       linkedin: 'https://linkedin.com/company/hastabazaar',
       x: 'https://x.com/Hastabazaar',
@@ -353,6 +487,38 @@ const definitions = [
     affectedSurfaces: ['public_footer', 'public_content'],
     requiredCapability: null,
     validate: officialSocialLinks,
+  },
+  {
+    key: 'first_party_analytics_policy',
+    label: 'First-party analytics policy',
+    description:
+      'Controls privacy-limited browser-session estimates and retention. It never enables advertising, cross-site tracking, session replay, or checkout-detail capture.',
+    defaultValue: Object.freeze({
+      enabled: false,
+      retentionDays: 90,
+      excludedEmailDomains: Object.freeze([
+        'local.hastabazaar.test',
+        'example.test',
+      ]),
+      excludedPathPrefixes: Object.freeze([
+        '/admin',
+        '/seller',
+        '/rider',
+        '/local-testing',
+        '/api',
+      ]),
+    }),
+    sensitivity: 'operational',
+    changeControl: 'simple',
+    effectiveMode: 'immediate',
+    snapshotOnTransaction: false,
+    affectedSurfaces: [
+      'public_storefront',
+      'admin_analytics',
+      'privacy_operations',
+    ],
+    requiredCapability: 'first_party_analytics_v1',
+    validate: firstPartyAnalyticsPolicy,
   },
 ] as const satisfies readonly BusinessSettingDefinition[];
 
