@@ -1,135 +1,176 @@
 import { env } from 'cloudflare:workers';
-import Link from 'next/link';
 import {
+  ArrowRight,
   ArrowUpRight,
   Banknote,
-  HandHeart,
+  ExternalLink,
   Mail,
   MapPin,
   ShieldCheck,
-  ExternalLink,
+  ShoppingBag,
+  Store,
 } from 'lucide-react';
+import Link from 'next/link';
+
 import { getBusinessSettingDefinition } from '@/lib/configuration/definitions';
+import type { OfficialSocialLinks } from '@/lib/configuration/types';
 import { requireDatabase } from '@/lib/db/d1';
 import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
-import type { OfficialSocialLinks } from '@/lib/configuration/types';
 
-async function officialLinks():Promise<OfficialSocialLinks>{
-  const fallback=getBusinessSettingDefinition('official_social_links').defaultValue;
-  try{
-    const db=requireDatabase(env as unknown as {DB?:D1Database});
-    const clock=await db.prepare("SELECT unixepoch('now') * 1000 AS now").first<{now:number}>();
-    return (await getEffectiveBusinessSetting(db,'official_social_links',Number(clock?.now??0))).value;
-  }catch{return fallback;}
+const platformLabels: Record<keyof OfficialSocialLinks, string> = {
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  linkedin: 'LinkedIn',
+  tiktok: 'TikTok',
+  x: 'X',
+  youtube: 'YouTube',
+};
+
+async function officialLinks(): Promise<OfficialSocialLinks> {
+  const fallback = getBusinessSettingDefinition(
+    'official_social_links',
+  ).defaultValue;
+  try {
+    const database = requireDatabase(env as unknown as { DB?: D1Database });
+    const clock = await database
+      .prepare("SELECT unixepoch('now') * 1000 AS now")
+      .first<{ now: number }>();
+    return (
+      await getEffectiveBusinessSetting(
+        database,
+        'official_social_links',
+        Number(clock?.now ?? 0),
+      )
+    ).value;
+  } catch {
+    return fallback;
+  }
 }
 
 export async function SiteFooter() {
-  const socialLinks=await officialLinks();
+  const socialLinks = await officialLinks();
+
   return (
-    <footer className="bg-[#101f39] text-white">
-      <div className="shell py-12 sm:py-16">
-        <div className="grid grid-cols-2 gap-x-6 gap-y-10 sm:gap-x-8 lg:grid-cols-[1.45fr_1fr_1fr_1fr_1fr]">
-          <div className="col-span-2 lg:col-span-1">
-            <Link
-              href="/"
-              className="inline-block rounded-md font-heading text-4xl tracking-tight"
-            >
-              HastaBazaar<span className="text-[#f4c46b]">.</span>
+    <footer className="site-footer">
+      <div className="shell site-footer-cta-shell">
+        <div className="site-footer-cta">
+          <div>
+            <p className="site-footer-kicker">Handmade with purpose</p>
+            <h2>Crafted in Nepal. Connected to the world.</h2>
+            <p>
+              Discover meaningful pieces and the independent makers behind them.
+            </p>
+          </div>
+          <div className="site-footer-cta-actions">
+            <Link href="/shop" className="site-footer-cta-primary">
+              <ShoppingBag className="size-4" aria-hidden="true" />
+              Shop the collection
+              <ArrowRight className="size-4" aria-hidden="true" />
             </Link>
-            <nav aria-label="Official Hastabazaar social media" className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm text-white/75">
-              {Object.entries(socialLinks).map(([platform,href])=><a key={platform} href={href} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center gap-1 rounded-sm py-1 capitalize transition-colors hover:text-[#f4c46b]">{platform}<ExternalLink className="size-3" aria-hidden="true"/></a>)}
-            </nav>
-            <p className="mt-4 max-w-xs text-base leading-7 text-white/70">
+            <Link href="/sell" className="site-footer-cta-secondary">
+              <Store className="size-4" aria-hidden="true" />
+              Share your craft
+              <ArrowUpRight className="size-4" aria-hidden="true" />
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      <div className="shell site-footer-main">
+        <div className="site-footer-grid">
+          <div className="site-footer-brand">
+            <Link href="/" className="site-footer-wordmark">
+              HastaBazaar<span>.</span>
+            </Link>
+            <p className="site-footer-tagline">
               Handmade finds. Human stories. A little piece of Nepal, chosen
               with heart.
             </p>
-            <p className="mt-6 flex items-center gap-2 text-sm text-white/75">
-              <HandHeart className="size-4 text-[#f4c46b]" />
-              Made for a community of makers.
-            </p>
             <a
               href="mailto:support@hastabazaar.com"
-              className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-sm text-sm font-semibold text-white transition-colors hover:text-[#f4c46b]"
+              className="site-footer-email"
             >
-              <Mail className="size-4 text-[#f4c46b]" />
+              <Mail className="size-4" aria-hidden="true" />
               support@hastabazaar.com
             </a>
-            <Link
-              href="/sell"
-              className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full border border-white/25 px-5 text-sm font-semibold transition-colors hover:bg-white/10"
+            <nav
+              aria-label="Official Hastabazaar social media"
+              className="site-footer-social"
             >
-              Sell on HastaBazaar <ArrowUpRight className="size-4" />
-            </Link>
+              {Object.entries(socialLinks).map(([platform, href]) => (
+                <a
+                  key={platform}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {platformLabels[platform as keyof OfficialSocialLinks]}
+                  <ExternalLink className="size-3" aria-hidden="true" />
+                </a>
+              ))}
+            </nav>
           </div>
-          <FooterGroup title="About">
-            <FooterLink href="/about">About Us</FooterLink>
-            <FooterLink href="/about">Our Story</FooterLink>
-            <FooterLink href="/careers">Careers</FooterLink>
+
+          <FooterGroup title="Shop & discover">
+            <FooterLink href="/shop">Shop all</FooterLink>
+            <FooterLink href="/#categories">Categories</FooterLink>
+            <FooterLink href="/#occasions">Gifts by occasion</FooterLink>
+            <FooterLink href="/#makers">Our makers</FooterLink>
+            <FooterLink href="/#our-standard">Our standard</FooterLink>
           </FooterGroup>
-          <FooterGroup title="Customer Service">
-            <FooterLink href="/contact-us">Contact Us</FooterLink>
-            <FooterLink href="/feedback">Feedback</FooterLink>
-            <FooterLink href="/help">Help Centre</FooterLink>
-            <FooterLink href="/returns">Returns & Refunds</FooterLink>
-            <FooterLink href="/help">FAQs</FooterLink>
+          <FooterGroup title="Customer care">
+            <FooterLink href="/account/orders">Orders & tracking</FooterLink>
+            <FooterLink href="/account/wishlist">Wishlist</FooterLink>
+            <FooterLink href="/help">Help centre</FooterLink>
+            <FooterLink href="/returns">Returns & refunds</FooterLink>
+            <FooterLink href="/contact-us">Contact us</FooterLink>
           </FooterGroup>
-          <FooterGroup title="For Sellers">
-            <FooterLink href="/sell">Become a Seller</FooterLink>
-            <FooterLink href="/seller">Seller Login</FooterLink>
-            <FooterLink href="/help">Seller Help</FooterLink>
-            <FooterLink href="/prohibited-products">Prohibited & Restricted Products</FooterLink>
-            <FooterLink href="/seller-agreement">Seller Marketplace Agreement</FooterLink>
-          </FooterGroup>
-          <FooterGroup title="Policies">
-            <FooterLink href="/terms">Terms & Conditions</FooterLink>
-            <FooterLink href="/privacy">Privacy Policy</FooterLink>
-            <FooterLink href="/returns">Return Policy</FooterLink>
-            <FooterLink href="/shipping">Shipping & Delivery Policy</FooterLink>
-            <FooterLink href="/cookies">Cookie Policy</FooterLink>
-          </FooterGroup>
-        </div>
-        <div className="mt-10 border-t border-white/15 pt-7">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="size-4 text-[#f4c46b]" />
-            <h2 className="text-sm font-semibold text-white/85">
-              Legal & business information
-            </h2>
-          </div>
-          <nav
-            aria-label="Legal and policies"
-            className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-white/70"
-          >
-            <FooterLink href="/legal">Legal & Policies</FooterLink>
-            <FooterLink href="/terms">Terms & conditions</FooterLink>
-            <FooterLink href="/privacy">Privacy policy</FooterLink>
-            <FooterLink href="/returns">Return & refund policy</FooterLink>
-            <FooterLink href="/shipping">Shipping policy</FooterLink>
-            <FooterLink href="/cookies">Cookie policy</FooterLink>
+          <FooterGroup title="Sell with us">
+            <FooterLink href="/sell">Become a seller</FooterLink>
+            <FooterLink href="/seller">Seller dashboard</FooterLink>
+            <FooterLink href="/help">Seller help</FooterLink>
             <FooterLink href="/prohibited-products">
               Prohibited products
             </FooterLink>
             <FooterLink href="/seller-agreement">Seller agreement</FooterLink>
-            <FooterLink href="/contact-us">Contact</FooterLink>
-            <FooterLink href="/feedback">Feedback</FooterLink>
+          </FooterGroup>
+          <FooterGroup title="About Hastabazaar">
+            <FooterLink href="/about">About us</FooterLink>
+            <FooterLink href="/about">Our story</FooterLink>
+            <FooterLink href="/careers">Careers</FooterLink>
+            <FooterLink href="/feedback">Share feedback</FooterLink>
+            <FooterLink href="/legal">Legal information</FooterLink>
+          </FooterGroup>
+        </div>
+
+        <div className="site-footer-legal">
+          <div>
+            <ShieldCheck className="size-5" aria-hidden="true" />
+            <div>
+              <h2>Policies and buyer information</h2>
+              <p>Clear guidance before and after every purchase.</p>
+            </div>
+          </div>
+          <nav aria-label="Legal and policies">
+            <FooterLink href="/terms">Terms</FooterLink>
+            <FooterLink href="/privacy">Privacy</FooterLink>
+            <FooterLink href="/returns">Returns</FooterLink>
+            <FooterLink href="/shipping">Shipping</FooterLink>
+            <FooterLink href="/cookies">Cookies</FooterLink>
           </nav>
         </div>
-        <div className="mt-7 flex flex-wrap items-center justify-between gap-x-6 gap-y-4 border-t border-white/15 pt-6 text-sm text-white/70">
-          <p>© {new Date().getFullYear()} HastaBazaar. All Rights Reserved.</p>
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-            <span className="flex items-center gap-1.5">
-              <MapPin className="size-4" />
+
+        <div className="site-footer-bottom">
+          <p>© {new Date().getFullYear()} HastaBazaar. All rights reserved.</p>
+          <div>
+            <span>
+              <MapPin className="size-4" aria-hidden="true" />
               Nepal · NPR
             </span>
-            <span className="flex items-center gap-1.5">
-              <Banknote className="size-4" />
+            <span>
+              <Banknote className="size-4" aria-hidden="true" />
               Cash on delivery
             </span>
-          </div>
-          <div className="flex flex-wrap gap-x-5 gap-y-3">
-            <FooterLink href="/admin">Staff sign in</FooterLink>
-            {process.env.NODE_ENV !== 'production' ? (
-              <FooterLink href="/local-testing">Local role testing</FooterLink>
-            ) : null}
           </div>
         </div>
       </div>
@@ -145,16 +186,9 @@ function FooterGroup({
   children: React.ReactNode;
 }) {
   return (
-    <div>
-      <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-white">
-        {title}
-      </h2>
-      <nav
-        aria-label={title}
-        className="mt-4 flex flex-col items-start gap-1 text-sm text-white/70"
-      >
-        {children}
-      </nav>
+    <div className="site-footer-group">
+      <h2>{title}</h2>
+      <nav aria-label={title}>{children}</nav>
     </div>
   );
 }
@@ -167,10 +201,7 @@ function FooterLink({
   children: React.ReactNode;
 }) {
   return (
-    <Link
-      href={href}
-      className="inline-flex min-h-9 items-center rounded-sm py-1 leading-6 transition-colors hover:text-[#f4c46b] focus-visible:outline-[#f4c46b]"
-    >
+    <Link href={href} className="site-footer-link">
       {children}
     </Link>
   );

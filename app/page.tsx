@@ -22,22 +22,18 @@ import {
   HandHeart,
   Heart,
   House,
-  Lamp,
   MapPin,
   MessageCircle,
   Package,
   Paintbrush,
-  Palette,
   Plane,
   RotateCcw,
   ShieldCheck,
-  Shirt,
   ShoppingBag,
   Sparkles,
   Sprout,
   Store,
   UserRound,
-  Gem,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -54,18 +50,52 @@ import {
   listPublicDiscoveryCategories,
 } from '@/lib/db/repositories/products';
 
-const categoryIcons: Record<string, LucideIcon> = {
-  gifts: Gift,
-  'home-decor': Lamp,
-  'jewelry-accessories': Gem,
-  'traditional-textiles': Shirt,
-  lifestyle: ShoppingBag,
-  'art-paintings': Palette,
-  pottery: HandHeart,
-  'wood-bamboo-craft': Sprout,
-  'personalized-gifts': Paintbrush,
-  'corporate-gifting': BriefcaseBusiness,
+const homepageCategoryImages: Record<string, { src: string; alt: string }> = {
+  gifts: {
+    src: '/homepage/category-gifts.webp',
+    alt: 'Handmade crimson Lokta paper gift box',
+  },
+  'home-decor': {
+    src: '/homepage/category-home-living.webp',
+    alt: 'Hand-carved wooden table lamp',
+  },
+  'jewelry-accessories': {
+    src: '/homepage/category-jewellery.webp',
+    alt: 'Handmade silver and turquoise earrings',
+  },
+  'traditional-textiles': {
+    src: '/homepage/category-textiles.webp',
+    alt: 'Folded crimson and indigo Dhaka textile',
+  },
+  'art-paintings': {
+    src: '/homepage/category-art-decor.webp',
+    alt: 'Framed Nepali mountain landscape painting',
+  },
+  pottery: {
+    src: '/homepage/category-pottery.webp',
+    alt: 'Hand-thrown engraved terracotta vase',
+  },
 };
+const stagingHomepageCategories = [
+  { id: 'staging-home-decor', slug: 'home-decor', nameEn: 'Home decor' },
+  {
+    id: 'staging-jewellery',
+    slug: 'jewelry-accessories',
+    nameEn: 'Jewellery',
+  },
+  {
+    id: 'staging-textiles',
+    slug: 'traditional-textiles',
+    nameEn: 'Traditional textiles',
+  },
+  {
+    id: 'staging-art',
+    slug: 'art-paintings',
+    nameEn: 'Art & decor',
+  },
+  { id: 'staging-pottery', slug: 'pottery', nameEn: 'Pottery & ceramics' },
+  { id: 'staging-gifts', slug: 'gifts', nameEn: 'Gifts' },
+];
 const occasionIcons: Record<string, LucideIcon> = {
   'birthday-gifts': Cake,
   'wedding-gifts': Heart,
@@ -159,94 +189,134 @@ export default async function Home() {
     year: 'numeric',
     timeZone: 'Asia/Kathmandu',
   });
+  const configuredHomepageCategories = categories
+    .filter((category) => homepageCategoryImages[category.slug])
+    .slice(0, 6);
+  const runtimeEnvironment = process.env.HASTABAZAAR_RUNTIME_ENV;
+  const showLocalPreviewCategories =
+    runtimeEnvironment === 'local_staging' ||
+    process.env.NODE_ENV === 'development';
+  const homepageCategories =
+    configuredHomepageCategories.length > 0
+      ? configuredHomepageCategories
+      : showLocalPreviewCategories
+        ? stagingHomepageCategories
+        : [];
   return (
     <div className="min-h-screen bg-background text-foreground">
       <SiteHeader />
       <main tabIndex={-1} id="main-content">
-        <section className="shell py-6 sm:py-8">
-          <div className="grid overflow-hidden rounded-[2rem] bg-secondary lg:grid-cols-[1.05fr_1fr]">
-            <div className="flex flex-col justify-center px-6 py-10 sm:px-10 sm:py-12 lg:p-12">
-              <p className="eyebrow flex items-center gap-2">
-                <span className="h-px w-7 bg-primary" /> Handmade. Heartfelt.
-                Nepali.
+        <section className="homepage-hero" aria-labelledby="homepage-heading">
+          <div className="homepage-hero-grid">
+            <div className="homepage-hero-copy">
+              <p className="homepage-kicker">
+                <span aria-hidden="true" /> Nepal’s handicraft marketplace
               </p>
-              <h1 className="mt-5 max-w-xl font-heading text-[clamp(2.8rem,5.3vw,5rem)] leading-[1.03] tracking-[-0.045em]">
-                A little craft.
-                <br />A lot of{' '}
-                <span className="italic text-primary">heart.</span>
+              <h1 id="homepage-heading" className="homepage-title">
+                Handmade today
+                <br />
+                for a <span>brighter</span>
+                <br />
+                Nepal.
               </h1>
-              <p className="mt-5 max-w-md text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8">
-                Find a gift with meaning, a piece for your home, and a story
-                worth keeping. Made by independent hands in Nepal.
+              <p className="homepage-intro">
+                Discover authentic handmade products, support independent Nepali
+                artisans, and bring home craft with a human story.
               </p>
-              <div className="mt-7 flex flex-wrap items-center gap-3">
-                <Link href="/shop" className="storefront-button">
+              <div className="homepage-actions">
+                <Link href="/shop" className="homepage-primary-action">
                   Explore the collection <ArrowRight className="size-4" />
                 </Link>
-                <Link
-                  href={
-                    activePromotions.length > 0 ? '#offers' : '#latest-products'
-                  }
-                  className="inline-flex min-h-12 items-center gap-2 rounded-full border border-primary/25 px-5 py-3 font-semibold text-secondary-foreground transition-colors hover:bg-card"
-                >
-                  {activePromotions.length > 0
-                    ? 'See current offers'
-                    : 'See new products'}{' '}
-                  <Sparkles className="size-4" />
+                <Link href="#makers" className="homepage-secondary-action">
+                  Meet our makers <UserRound className="size-4" />
                 </Link>
               </div>
-              <Link
-                href="#categories"
-                className="mt-9 inline-flex w-fit items-center gap-2 rounded-md text-sm font-medium text-muted-foreground hover:text-primary"
+              <div
+                className="homepage-principles"
+                aria-label="Why shop with us"
               >
-                Discover something you’ll love <ArrowDown className="size-4" />
-              </Link>
-            </div>
-            <div className="grid min-h-80 grid-cols-[1.15fr_0.85fr] gap-3 p-4 pt-0 sm:min-h-[27rem] lg:min-h-[31rem] lg:p-5 lg:pl-0">
-              <div className="hero-photo">
-                <Image
-                  src="/catalog/macrame-crossbody.jpg"
-                  alt="Hand-knotted cream macrame crossbody bag"
-                  fill
-                  priority
-                  sizes="(min-width: 1024px) 28vw, 55vw"
-                  className="object-cover"
-                />
-                <div className="absolute inset-x-3 bottom-3 rounded-xl bg-white/95 p-4 text-[#172746] backdrop-blur-sm">
-                  <p className="text-xs font-bold uppercase tracking-widest text-[#2457b9]">
-                    The beauty of handmade
-                  </p>
-                  <p className="mt-1 font-heading text-xl">
-                    Every knot has a story.
-                  </p>
-                </div>
+                {[
+                  { icon: HandHeart, label: 'Authentic handmade' },
+                  { icon: UserRound, label: 'Support local makers' },
+                  { icon: Sprout, label: 'Thoughtful choices' },
+                  { icon: Heart, label: 'A stronger Nepal' },
+                ].map(({ icon: Icon, label }) => (
+                  <div key={label} className="homepage-principle">
+                    <Icon aria-hidden="true" />
+                    <span>{label}</span>
+                  </div>
+                ))}
               </div>
-              <div className="grid grid-rows-[1fr_auto] gap-3">
-                <div className="hero-photo">
-                  <Image
-                    src="/catalog/embroidered-clutch.jpg"
-                    alt="Colourful embroidered clutch with traditional mirror-work detailing"
-                    fill
-                    priority
-                    sizes="(min-width: 1024px) 20vw, 40vw"
-                    className="object-cover"
-                  />
-                </div>
-                <div className="min-w-0 rounded-2xl bg-[#183567] p-3 text-white sm:p-6">
-                  <HandHeart className="size-7 text-[#f4c46b]" />
-                  <p className="mt-3 font-heading text-xl leading-tight sm:text-2xl">
-                    Made with
-                    <br />
-                    heart.
-                  </p>
-                  <p className="mt-3 text-sm leading-6 text-white/75">
-                    Craft, colour & a human touch.
-                  </p>
-                </div>
+            </div>
+            <div className="homepage-hero-media">
+              <Image
+                src="/homepage/nepal-craft-hero.webp"
+                alt="Nepali pottery, carved wood, woven craft and Dhaka textile overlooking temple rooftops and the Himalayas"
+                fill
+                priority
+                sizes="(min-width: 1024px) 58vw, 100vw"
+                className="object-cover"
+              />
+              <div className="homepage-image-note" aria-hidden="true">
+                <span>Small hands</span>
+                <span>Big stories</span>
+                <strong>Brighter tomorrows</strong>
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-1 divide-y border-b py-3 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+        </section>
+
+        <div id="categories" className="homepage-category-wrap shell">
+          <section className="homepage-category-panel">
+            <div className="homepage-category-heading">
+              <h2>Shop by category</h2>
+              <Link href="/shop" className="homepage-category-all">
+                View all categories <ArrowRight className="size-4" />
+              </Link>
+            </div>
+            <nav
+              aria-label="Shop featured craft categories"
+              className="homepage-category-list"
+            >
+              {homepageCategories.map((category) => {
+                const categoryImage = homepageCategoryImages[category.slug];
+                return (
+                  <Link
+                    key={category.id}
+                    href={'/shop?category=' + encodeURIComponent(category.slug)}
+                    className="homepage-category-item"
+                  >
+                    <span className="homepage-category-image">
+                      <Image
+                        src={categoryImage.src}
+                        alt={categoryImage.alt}
+                        fill
+                        sizes="112px"
+                        className="object-cover"
+                      />
+                    </span>
+                    <span>{category.nameEn}</span>
+                  </Link>
+                );
+              })}
+              <Link href="/shop" className="homepage-category-item">
+                <span className="homepage-category-more">
+                  <Sparkles aria-hidden="true" />
+                </span>
+                <span>All categories</span>
+              </Link>
+            </nav>
+            {homepageCategories.length === 0 ? (
+              <p className="mt-5 text-muted-foreground">
+                Our craft collections are being prepared. Browse all available
+                products in the shop.
+              </p>
+            ) : null}
+          </section>
+        </div>
+
+        <section className="shell py-4 sm:py-6">
+          <div className="grid grid-cols-1 divide-y border-b sm:grid-cols-3 sm:divide-x sm:divide-y-0">
             {[
               {
                 icon: HandHeart,
@@ -268,7 +338,7 @@ export default async function Home() {
                 key={label}
                 className="flex items-center gap-3 px-4 py-4 lg:px-7"
               >
-                <Icon className="size-6 shrink-0 text-primary" />
+                <Icon className="size-6 shrink-0 text-[#b5121b]" />
                 <div>
                   <p className="text-sm font-semibold">{label}</p>
                   <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
@@ -429,62 +499,6 @@ export default async function Home() {
           )}
         </section>
 
-        <section id="categories" className="shell py-10 sm:py-14">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="eyebrow">Follow your curiosity</p>
-              <h2 className="section-heading mt-3">Find your kind of craft.</h2>
-            </div>
-            <Link href="/shop" className="section-link">
-              Shop everything <ArrowUpRight className="size-4" />
-            </Link>
-          </div>
-          <nav
-            aria-label="Shop by category"
-            className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
-          >
-            {categories.map((category, index) => {
-              const Icon = categoryIcons[category.slug] ?? Gift;
-              return (
-                <Link
-                  key={category.id}
-                  href={'/shop?category=' + encodeURIComponent(category.slug)}
-                  className="discovery-tile group"
-                >
-                  <span
-                    className={
-                      'flex size-11 items-center justify-center rounded-xl ' +
-                      (index % 3 === 0
-                        ? 'bg-secondary text-primary'
-                        : index % 3 === 1
-                          ? 'bg-accent/25 text-accent-foreground'
-                          : 'bg-muted text-secondary-foreground')
-                    }
-                  >
-                    <Icon className="size-6" strokeWidth={1.5} />
-                  </span>
-                  <span className="flex w-full items-center justify-between gap-2 text-sm font-semibold leading-5">
-                    {category.nameEn}
-                    <ArrowUpRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-                  </span>
-                </Link>
-              );
-            })}
-          </nav>
-          {categories.length === 0 ? (
-            <p className="mt-5 text-muted-foreground">
-              Our craft collections are being prepared.{' '}
-              <Link
-                href="/shop"
-                className="font-semibold text-primary underline"
-              >
-                Browse the shop
-              </Link>
-              .
-            </p>
-          ) : null}
-        </section>
-
         <section
           id="occasions"
           className="my-8 bg-[#142d56] text-white sm:my-12"
@@ -541,37 +555,47 @@ export default async function Home() {
           </div>
         </section>
 
-        <section id="makers" className="shell py-10 sm:py-14">
-          <div className="grid overflow-hidden rounded-3xl border bg-card md:grid-cols-2">
-            <div className="relative min-h-72 md:min-h-96">
+        <section id="makers" className="shell py-10 sm:py-16">
+          <div className="homepage-maker-story">
+            <div className="homepage-maker-media">
               <Image
-                src="/catalog/macrame-shelf.jpg"
-                alt="Handmade macrame and wood shelf showing the texture of the knotted cotton"
+                src="/homepage/nepali-maker-workshop.webp"
+                alt="An artisan’s hands painting a geometric pattern onto a terracotta vase in a Nepali workshop"
                 fill
-                sizes="(min-width: 768px) 45vw, 100vw"
-                className="object-cover object-[center_72%]"
+                sizes="(min-width: 1024px) 52vw, 100vw"
+                className="object-cover"
               />
+              <div className="homepage-maker-caption">
+                <span>Made by hand</span>
+                <strong>Remembered by name</strong>
+              </div>
             </div>
-            <div className="flex flex-col justify-center p-7 sm:p-10 lg:p-12">
-              <p className="eyebrow">Meet the spirit of HastaBazaar</p>
-              <h2 className="section-heading mt-4">
-                Behind every piece,
-                <br />
-                there’s a person.
-              </h2>
-              <p className="mt-5 text-base leading-8 text-muted-foreground">
-                From a carefully tied knot to a final hand-stitched detail, the
-                maker is part of what makes it special. Discover their story on
-                each product’s maker profile.
+            <div className="homepage-maker-content">
+              <p className="homepage-kicker">
+                <span aria-hidden="true" />
+                Meet the hands behind the craft
               </p>
-              <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2">
-                <Link href="/shop" className="section-link">
+              <h2 className="homepage-maker-title">
+                Every craft begins
+                <br />
+                with a pair of hands.
+              </h2>
+              <p className="homepage-maker-copy">
+                Meet the people shaping Nepal’s clay, wood, metal and textile
+                traditions. Their process, place and perspective are part of
+                every piece they create.
+              </p>
+              <div className="homepage-maker-actions">
+                <Link href="/shop" className="homepage-primary-action">
                   Discover their work <ArrowRight className="size-4" />
                 </Link>
-                <Link href="/sell" className="section-link">
+                <Link href="/sell" className="homepage-secondary-action">
                   Share your craft <ArrowUpRight className="size-4" />
                 </Link>
               </div>
+              <p className="homepage-maker-note">
+                Maker stories stay connected to the work they create.
+              </p>
             </div>
           </div>
         </section>

@@ -136,7 +136,7 @@ export async function SiteHeader() {
             </nav>
             <Link
               href="/sell"
-              className="inline-flex min-h-12 shrink-0 items-center gap-2 rounded-md text-sm font-semibold text-primary"
+              className="inline-flex min-h-12 shrink-0 items-center gap-2 rounded-md text-sm font-semibold text-[#b5121b]"
             >
               <Store className="size-4" />
               Sell with us
@@ -173,7 +173,7 @@ function HeaderSearch({ id }: { id: string }) {
         />
         <button
           type="submit"
-          className="inline-flex min-h-9 items-center justify-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+          className="inline-flex min-h-9 items-center justify-center rounded-full bg-[#b5121b] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#921018]"
         >
           Search
         </button>
