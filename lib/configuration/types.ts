@@ -1,4 +1,5 @@
 import type { HomepageHeroSlides } from '../homepage/hero-slides';
+import type { HomepageOccasionSlides } from '../homepage/occasion-slides';
 
 export const businessSettingKeys = [
   'independent_seller_commission_bps',
@@ -21,6 +22,7 @@ export const businessSettingKeys = [
   'first_party_analytics_policy',
   'recently_viewed_policy',
   'homepage_hero_slides',
+  'homepage_occasion_slides',
 ] as const;
 
 export type BusinessSettingKey = (typeof businessSettingKeys)[number];
@@ -95,6 +97,7 @@ export type BusinessSettingValues = Readonly<{
   first_party_analytics_policy: FirstPartyAnalyticsPolicy;
   recently_viewed_policy: RecentlyViewedPolicy;
   homepage_hero_slides: HomepageHeroSlides;
+  homepage_occasion_slides: HomepageOccasionSlides;
 }>;
 
 export type BusinessSettingValue<K extends BusinessSettingKey> =

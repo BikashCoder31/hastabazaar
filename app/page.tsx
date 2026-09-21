@@ -15,35 +15,27 @@ import {
   ArrowUpRight,
   Banknote,
   Bell,
-  BriefcaseBusiness,
-  Cake,
-  Flower2,
-  Gift,
   HandHeart,
   Heart,
-  House,
   MapPin,
   MessageCircle,
   Package,
-  Paintbrush,
-  Plane,
   RotateCcw,
   ShieldCheck,
   ShoppingBag,
   Sparkles,
   Store,
   UserRound,
-  type LucideIcon,
 } from 'lucide-react';
 
 import { ProductSlider } from '@/components/catalog/product-slider';
 import { HomepageHeroCarousel } from '@/components/homepage/homepage-hero-carousel';
+import { HomepageOccasionCarousel } from '@/components/homepage/homepage-occasion-carousel';
 import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
 import { requireDatabase } from '@/lib/db/d1';
 import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
 import {
-  listActiveOccasions,
   listActiveHomepagePromotions,
   listHomepageLatestProducts,
   listHomepagePromotedProducts,
@@ -51,6 +43,7 @@ import {
   listPublicDiscoveryCategories,
 } from '@/lib/db/repositories/products';
 import { CURRENT_HERO_RECOVERY_SLIDES } from '@/lib/homepage/hero-slides';
+import { CURRENT_OCCASION_RECOVERY_SLIDES } from '@/lib/homepage/occasion-slides';
 
 const homepageCategoryImages: Record<string, { src: string; alt: string }> = {
   gifts: {
@@ -98,19 +91,6 @@ const stagingHomepageCategories = [
   { id: 'staging-pottery', slug: 'pottery', nameEn: 'Pottery & ceramics' },
   { id: 'staging-gifts', slug: 'gifts', nameEn: 'Gifts' },
 ];
-const occasionIcons: Record<string, LucideIcon> = {
-  'birthday-gifts': Cake,
-  'wedding-gifts': Heart,
-  'dashain-gifts': Flower2,
-  'tihar-gifts': Sparkles,
-  'mothers-day': Flower2,
-  'fathers-day': Gift,
-  anniversary: Heart,
-  'corporate-gifts': BriefcaseBusiness,
-  'nepali-gifts-abroad': Plane,
-  housewarming: House,
-  'personalized-gifts': Paintbrush,
-};
 const customerShortcuts = [
   {
     title: 'My orders',
@@ -172,15 +152,39 @@ async function resolveHomepageHero(database: D1Database) {
       Date.now(),
     );
     if (effective.value.filter((slide) => slide.enabled).length < 3) {
-      throw new RangeError('Published homepage hero has fewer than three enabled slides.');
+      throw new RangeError(
+        'Published homepage hero has fewer than three enabled slides.',
+      );
     }
-    return { slides: effective.value, source: 'published' as const, warning: null };
+    return {
+      slides: effective.value,
+      source: 'published' as const,
+      warning: null,
+    };
   } catch {
     return {
       slides: CURRENT_HERO_RECOVERY_SLIDES,
       source: 'recovery' as const,
       warning: 'Published hero configuration could not be used.',
     };
+  }
+}
+
+async function resolveHomepageOccasions(database: D1Database) {
+  try {
+    const effective = await getEffectiveBusinessSetting(
+      database,
+      'homepage_occasion_slides',
+      Date.now(),
+    );
+    if (effective.value.filter((slide) => slide.enabled).length < 2) {
+      throw new RangeError(
+        'Published homepage occasion carousel has fewer than two enabled slides.',
+      );
+    }
+    return effective.value;
+  } catch {
+    return CURRENT_OCCASION_RECOVERY_SLIDES;
   }
 }
 
@@ -192,16 +196,16 @@ export default async function Home() {
     topProducts,
     activePromotions,
     categories,
-    occasions,
     resolvedHero,
+    occasionSlides,
   ] = await Promise.all([
     listHomepagePromotedProducts(database),
     listHomepageLatestProducts(database),
     listHomepageTopProducts(database),
     listActiveHomepagePromotions(database),
     listPublicDiscoveryCategories(database),
-    listActiveOccasions(database),
     resolveHomepageHero(database),
+    resolveHomepageOccasions(database),
   ]);
   const heroSlides = resolvedHero.slides;
   const topSliderProducts =
@@ -393,10 +397,8 @@ export default async function Home() {
           <div className="shell">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
-                <p className="eyebrow">Updated from approved listings</p>
-                <h2 className="section-heading mt-3">
-                  Just added by our sellers.
-                </h2>
+                <p className="eyebrow">NEW TO HASTABAZAAR</p>
+                <h2 className="section-heading mt-3">New arrivals.</h2>
               </div>
               <Link href="/shop?sort=newest" className="section-link">
                 Shop all new arrivals <ArrowRight className="size-4" />
@@ -412,14 +414,14 @@ export default async function Home() {
             ) : (
               <div className="mt-8 rounded-3xl border bg-card p-7 sm:p-9">
                 <h3 className="font-heading text-2xl">
-                  New products are coming soon.
+                  Fresh finds are on the way.
                 </h3>
                 <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">
-                  This space will update automatically when an approved seller
-                  product with available stock and a product photo is published.
+                  New handmade pieces will appear here as soon as they’re ready
+                  to shop.
                 </p>
                 <Link href="#categories" className="section-link mt-5">
-                  Browse craft categories <ArrowDown className="size-4" />
+                  Explore craft categories <ArrowDown className="size-4" />
                 </Link>
               </div>
             )}
@@ -466,98 +468,7 @@ export default async function Home() {
           )}
         </section>
 
-        <section
-          id="occasions"
-          className="homepage-occasion-section"
-          aria-labelledby="occasion-heading"
-        >
-          <div className="homepage-occasion-pattern" aria-hidden="true">
-            <Image
-              src="/homepage/nepali-gift-pattern.webp"
-              alt=""
-              fill
-              sizes="100vw"
-              className="object-cover"
-            />
-          </div>
-          <div className="shell homepage-occasion-layout">
-            <div className="homepage-occasion-copy">
-              <p className="homepage-occasion-kicker">
-                For their kind of special
-              </p>
-              <h2 id="occasion-heading" className="homepage-occasion-title">
-                Big moments.
-                <br />
-                <span>Little surprises.</span>
-              </h2>
-              <p className="homepage-occasion-intro">
-                Birthdays, festivals, thank-yous, or just because. Start with
-                the occasion and find something that feels like them.
-              </p>
-              <p className="homepage-occasion-delivery">
-                <span className="homepage-occasion-delivery-icon">
-                  <MapPin aria-hidden="true" />
-                </span>
-                Delivery available across Nepal.
-              </p>
-            </div>
-            <nav
-              aria-label="Shop gifts by occasion"
-              className="homepage-occasion-grid"
-            >
-              {occasions.map((occasion) => {
-                const Icon = occasionIcons[occasion.slug] ?? Gift;
-                return (
-                  <Link
-                    key={occasion.id}
-                    href={'/shop?occasion=' + encodeURIComponent(occasion.slug)}
-                    className="homepage-occasion-card"
-                  >
-                    <Icon
-                      className="homepage-occasion-card-watermark"
-                      aria-hidden="true"
-                    />
-                    <span className="homepage-occasion-card-icon">
-                      <Icon aria-hidden="true" />
-                    </span>
-                    <span className="homepage-occasion-card-copy">
-                      <span>Thoughtful gifting</span>
-                      <strong>{occasion.nameEn}</strong>
-                    </span>
-                    <span
-                      className="homepage-occasion-card-action"
-                      aria-hidden="true"
-                    >
-                      <ArrowUpRight />
-                    </span>
-                  </Link>
-                );
-              })}
-              <Link
-                href="/shop?category=gifts"
-                className="homepage-occasion-card homepage-occasion-all"
-              >
-                <Gift
-                  className="homepage-occasion-card-watermark"
-                  aria-hidden="true"
-                />
-                <span className="homepage-occasion-card-icon">
-                  <Gift aria-hidden="true" />
-                </span>
-                <span className="homepage-occasion-card-copy">
-                  <span>The complete collection</span>
-                  <strong>Explore all gifts</strong>
-                </span>
-                <span
-                  className="homepage-occasion-card-action"
-                  aria-hidden="true"
-                >
-                  <ArrowRight />
-                </span>
-              </Link>
-            </nav>
-          </div>
-        </section>
+        <HomepageOccasionCarousel slides={occasionSlides} />
 
         <section id="makers" className="shell py-10 sm:py-16">
           <div className="homepage-maker-story">

@@ -19,6 +19,8 @@ Use the isolated `codex/hastabazaar-v1-2-1-staging` worktree. Do not provide rem
 
 Run `node scripts/verify-homepage-carousel.mjs`. Expected: exit code 0, three decoded images at desktop and mobile widths, no failed local responses, no console errors, no horizontal overflow, working previous/next/dot/keyboard controls, automatic wrap, and pause on hover, focus, manual pause, hidden document, and reduced motion. Evidence is written only to ignored `.staging/artifacts/homepage-hero-carousel/`.
 
+The same guarded command now also verifies both gifting slides at 1536 × 960 and 390 × 844, side-by-side/stacked card layout, stable section height, arrows, dots, keyboard navigation, drag/swipe, seven-second wrap, every required pause condition, and the real Super Admin desktop/mobile preview. Pass `--save-admin-draft` once to persist a fictional private gifting draft and prove that the public effective configuration remains unchanged; later runs reuse that draft rather than creating duplicates.
+
 Manual confirmation:
 
 - Slide 1 retains the approved Nepal craft image, copy, two actions, four trust principles, note, and category overlap.
@@ -26,6 +28,9 @@ Manual confirmation:
 - Slide 3 shows a face-free gift still life.
 - Resize to 390 px and 1536 px. Text, controls, image, category panel, and focus rings remain usable.
 - Pause, reload, and use arrow keys. Automatic changes remain silent to assistive technology; manual changes announce the selected slide.
+- Confirm the New Arrivals eyebrow, heading, empty heading, empty description, empty action, and populated “Shop all new arrivals” action match the approved copy exactly. The product records and eligibility must remain unchanged.
+- Confirm the hero caption uses the same light warm glass surface on image slides, image posters, and playing videos. The photograph must remain visible through it and no second caption layer may appear.
+- Confirm gifting slide 1 retains “Big moments. Little surprises.” and its existing destinations. Slide 2 must show “Made by hand. Chosen with heart.” with `/shop?sort=newest` and `/#makers` actions.
 
 ## Super Admin checks
 
@@ -41,6 +46,9 @@ Use the fictional Super Admin at `/admin/homepage`. For each mutation, use a spe
 8. Restore a prior published version. The system must create a later version; the restored source and earlier history remain unchanged.
 9. Confirm media referenced by any retained version cannot be archived. Unreferenced media may be archived but not hard-deleted.
 10. In disposable test data only, corrupt the effective hero value or leave fewer than three enabled slides. The current original slide must render as recovery content, the customer page must not crash, and no draft media may become public.
+11. In Gifting slides, add a disabled draft, edit every supported field, reorder it, enable it, and remove it. IDs must remain stable and only approved themes/icons and safe internal destinations are available.
+12. Disable or remove down to fewer than two enabled slides and save the incomplete private draft. Publication must fail server-side until 2–8 slides are enabled. Then publish a complete version, schedule another, and restore an older version through a new version; retained history must not change.
+13. Use the actual-layout desktop and mobile preview. Changing the private draft must update the preview without a code edit or redeploy and must not change the customer homepage until its published effective time.
 
 ## Automated commands and latest results
 
@@ -63,6 +71,13 @@ Latest focused browser run — 21 September 2026:
 - Previous, next, dot selection, keyboard selection, automatic wrap, hover pause, focus pause, manual pause, hidden-document pause, and reduced-motion pause passed.
 - No horizontal overflow, failed local responses, or browser console errors were observed.
 - Evidence: `.staging/artifacts/homepage-hero-carousel/` (ignored, disposable local output).
+- New Arrivals, light-glass caption, and centralized gifting regression set: **Pass** (35 focused tests in the combined homepage/configuration run).
+- Full `npm test`: **Pass**, 401 tests, 0 failures, 0 skipped.
+- `npx tsc --noEmit`: **Pass**.
+- `npm run lint`: **Pass**.
+- `npm run build`: **Pass**. Vinext reported its existing middleware-to-proxy deprecation notice; no build failure occurred.
+- Gifting browser coverage: **Pass** for both initial slides, desktop/mobile layout, stable height, arrows, dots, keyboard, swipe, wrap, approximately seven-second autoplay, hover/focus/manual/hidden-document/reduced-motion pauses, and zero console errors, failed responses, or horizontal overflow.
+- Super Admin browser coverage: **Pass** for actual-layout desktop/mobile preview and one fictional private draft saved through the UI without code edits or redeployment. The public homepage retained the unchanged effective content.
 - Video end/reset browser fixture: **Not Verified** for the reason below; automated MP4 validation and carousel-state tests remain required and passing.
 
 Current browser limitation: the initial published fixture contains images only. The component, upload validation, publication preflight, and automated tests cover MP4 behavior, but the end-of-video browser scenario must be marked **Not Verified** until step 6 above is performed with a disposable short MP4.

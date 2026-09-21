@@ -11,13 +11,7 @@ import {
   Sprout,
   UserRound,
 } from 'lucide-react';
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -37,7 +31,10 @@ import {
 } from '@/lib/homepage/hero-autoplay';
 import type { HomepageHeroSlides } from '@/lib/homepage/hero-slides';
 
-function headingForAnnouncement(slides: HomepageHeroSlides, index: number): string {
+function headingForAnnouncement(
+  slides: HomepageHeroSlides,
+  index: number,
+): string {
   const slide = slides[index];
   return [slide?.headingLead, slide?.highlightedPhrase, slide?.headingTail]
     .filter(Boolean)
@@ -51,9 +48,16 @@ const heroPrinciples = [
   { icon: Heart, label: 'A stronger Nepal' },
 ] as const;
 
-export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides }) {
+export function HomepageHeroCarousel({
+  slides,
+}: {
+  slides: HomepageHeroSlides;
+}) {
   const enabledSlides = useMemo(
-    () => [...slides].filter((slide) => slide.enabled).sort((a, b) => a.position - b.position),
+    () =>
+      [...slides]
+        .filter((slide) => slide.enabled)
+        .sort((a, b) => a.position - b.position),
     [slides],
   );
   const [api, setApi] = useState<CarouselApi>();
@@ -91,7 +95,8 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
   }, []);
 
   useEffect(() => {
-    const update = () => setDocumentHidden(document.visibilityState === 'hidden');
+    const update = () =>
+      setDocumentHidden(document.visibilityState === 'hidden');
     update();
     document.addEventListener('visibilitychange', update);
     return () => document.removeEventListener('visibilitychange', update);
@@ -103,7 +108,7 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
       const index = api.selectedScrollSnap();
       const kind = pointerSelection.current
         ? 'manual'
-        : selectionKind.current ?? 'automatic';
+        : (selectionKind.current ?? 'automatic');
       setCurrent(index);
       setAnnouncement(
         heroSelectionAnnouncement(
@@ -163,7 +168,14 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
       heroAdvanceDelayMs(enabledSlides[current]?.mediaType ?? 'image'),
     );
     return () => window.clearTimeout(timeout);
-  }, [advanceAutomatically, api, autoplay, current, enabledSlides, timerRevision]);
+  }, [
+    advanceAutomatically,
+    api,
+    autoplay,
+    current,
+    enabledSlides,
+    timerRevision,
+  ]);
 
   useEffect(() => {
     videos.current.forEach((video, index) => {
@@ -198,7 +210,8 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
       onPointerLeave={() => setHovered(false)}
       onFocusCapture={() => setFocusWithin(true)}
       onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setFocusWithin(false);
+        if (!event.currentTarget.contains(event.relatedTarget))
+          setFocusWithin(false);
       }}
     >
       <Carousel
@@ -208,7 +221,8 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
         aria-roledescription="carousel"
         onPointerDown={() => {
           pointerSelection.current = true;
-          if (pointerClearTimer.current) clearTimeout(pointerClearTimer.current);
+          if (pointerClearTimer.current)
+            clearTimeout(pointerClearTimer.current);
         }}
         onPointerUp={() => {
           pointerClearTimer.current = setTimeout(() => {
@@ -248,7 +262,9 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
                     <h2 className="mt-5 max-w-3xl font-heading text-[clamp(3rem,6vw,6.8rem)] leading-[0.9] tracking-[-0.04em] text-[#0b3156]">
                       {slide.headingLead}{' '}
                       {slide.highlightedPhrase ? (
-                        <em className="text-[#b61d2a]">{slide.highlightedPhrase}</em>
+                        <em className="text-[#b61d2a]">
+                          {slide.highlightedPhrase}
+                        </em>
                       ) : null}{' '}
                       {slide.headingTail}
                     </h2>
@@ -260,9 +276,13 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
                         href={slide.primaryActionHref}
                         className="inline-flex min-h-12 items-center rounded-full bg-[#b81925] px-6 text-sm font-bold text-white transition hover:bg-[#971620] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#b81925]"
                       >
-                        {slide.primaryActionLabel} <span aria-hidden="true" className="ml-2">→</span>
+                        {slide.primaryActionLabel}{' '}
+                        <span aria-hidden="true" className="ml-2">
+                          →
+                        </span>
                       </Link>
-                      {slide.secondaryActionLabel && slide.secondaryActionHref ? (
+                      {slide.secondaryActionLabel &&
+                      slide.secondaryActionHref ? (
                         <Link
                           href={slide.secondaryActionHref}
                           className="inline-flex min-h-12 items-center rounded-full border border-[#b81925] px-6 text-sm font-bold text-[#9d1721] transition hover:bg-white/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#b81925]"
@@ -276,8 +296,14 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
                       aria-label="Why shop with us"
                     >
                       {heroPrinciples.map(({ icon: Icon, label }) => (
-                        <div key={label} className="flex min-w-0 items-center gap-2">
-                          <Icon aria-hidden="true" className="size-5 shrink-0 text-[#b81925]" />
+                        <div
+                          key={label}
+                          className="flex min-w-0 items-center gap-2"
+                        >
+                          <Icon
+                            aria-hidden="true"
+                            className="size-5 shrink-0 text-[#b81925]"
+                          />
                           <span>{label}</span>
                         </div>
                       ))}
@@ -319,7 +345,7 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
                     )}
                     <div className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-tr from-[#071d35]/25 via-[#102b43]/5 to-[#5a3824]/10" />
                     {slide.imageNote ? (
-                      <p className="homepage-hero-image-note absolute left-[16%] top-[16%] z-[3] max-w-[14rem] -rotate-2 whitespace-pre-line rounded-2xl border border-white/25 bg-[#eee5d8]/85 px-4 py-3 text-left font-heading text-base font-semibold italic leading-tight text-[#0b3156] shadow-[0_12px_34px_rgba(5,25,43,0.22)] backdrop-blur-md sm:max-w-[17rem] sm:px-5 sm:py-4 sm:text-xl lg:max-w-[19rem] lg:text-2xl">
+                      <p className="homepage-hero-image-note absolute left-[16%] top-[16%] z-[3] max-w-[14rem] -rotate-2 whitespace-pre-line rounded-2xl border border-white/35 bg-[#eee5d8]/20 px-4 py-3 text-left font-heading text-base font-semibold italic leading-tight text-[#0b3156] drop-shadow-[0_2px_10px_rgba(255,255,255,0.75)] shadow-[0_12px_34px_rgba(5,25,43,0.2)] backdrop-blur-sm sm:max-w-[17rem] sm:px-5 sm:py-4 sm:text-xl lg:max-w-[19rem] lg:text-2xl">
                         {slide.imageNote}
                       </p>
                     ) : null}
@@ -341,7 +367,10 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
           >
             <ChevronLeft />
           </Button>
-          <div className="flex items-center gap-1 px-1" aria-label="Choose featured story">
+          <div
+            className="flex items-center gap-1 px-1"
+            aria-label="Choose featured story"
+          >
             {enabledSlides.map((slide, index) => (
               <button
                 key={slide.id}
@@ -380,10 +409,14 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
               variant="ghost"
               className="size-9 rounded-full text-[#173c5b] hover:bg-[#d8cbb9]/70"
               aria-pressed={manualPause}
-              aria-label={manualPause ? 'Play featured stories' : 'Pause featured stories'}
+              aria-label={
+                manualPause ? 'Play featured stories' : 'Pause featured stories'
+              }
               onClick={() => {
                 setManualPause((value) => !value);
-                setTimerRevision((value) => nextHeroTimerRevision(value, 'manual'));
+                setTimerRevision((value) =>
+                  nextHeroTimerRevision(value, 'manual'),
+                );
               }}
             >
               {manualPause ? <Play /> : <Pause />}

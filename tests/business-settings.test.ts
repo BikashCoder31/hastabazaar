@@ -146,6 +146,7 @@ void test('only supported, validated controls exist and demonstration defaults r
     'first_party_analytics_policy',
     'recently_viewed_policy',
     'homepage_hero_slides',
+    'homepage_occasion_slides',
   ];
   assert.deepEqual([...keys].sort(), [...requiredKeys].sort());
   assert.equal(
@@ -168,17 +169,32 @@ void test('only supported, validated controls exist and demonstration defaults r
 
 void test('Recently Viewed defaults are configurable and strictly bounded', () => {
   const definition = getBusinessSettingDefinition('recently_viewed_policy');
-  assert.deepEqual(definition.defaultValue, { maxItems: 12, retentionDays: 90 });
+  assert.deepEqual(definition.defaultValue, {
+    maxItems: 12,
+    retentionDays: 90,
+  });
   assert.deepEqual(
-    validateBusinessSettingValue('recently_viewed_policy', { maxItems: 8, retentionDays: 30 }),
+    validateBusinessSettingValue('recently_viewed_policy', {
+      maxItems: 8,
+      retentionDays: 30,
+    }),
     { maxItems: 8, retentionDays: 30 },
   );
   assert.throws(
-    () => validateBusinessSettingValue('recently_viewed_policy', { maxItems: 25, retentionDays: 90 }),
+    () =>
+      validateBusinessSettingValue('recently_viewed_policy', {
+        maxItems: 25,
+        retentionDays: 90,
+      }),
     /item limit/i,
   );
   assert.throws(
-    () => validateBusinessSettingValue('recently_viewed_policy', { maxItems: 12, retentionDays: 90, rawSql: 'SELECT 1' }),
+    () =>
+      validateBusinessSettingValue('recently_viewed_policy', {
+        maxItems: 12,
+        retentionDays: 90,
+        rawSql: 'SELECT 1',
+      }),
     /unknown field/i,
   );
 });

@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
+import {
+  DatabaseSync,
+  type SQLInputValue,
+  type StatementSync,
+} from 'node:sqlite';
 import test from 'node:test';
 
 import {
@@ -14,6 +18,7 @@ import {
   submitBusinessSettingDraft,
 } from '../lib/db/repositories/business-settings';
 import { INITIAL_HOMEPAGE_HERO_SLIDES } from '../lib/homepage/hero-slides';
+import { INITIAL_HOMEPAGE_OCCASION_SLIDES } from '../lib/homepage/occasion-slides';
 
 class PreparedStatement {
   private values: SQLInputValue[] = [];
@@ -30,7 +35,11 @@ class PreparedStatement {
   }
   async run() {
     const result = this.statement.run(...this.values);
-    return { success: true, meta: { changes: Number(result.changes) }, results: [] };
+    return {
+      success: true,
+      meta: { changes: Number(result.changes) },
+      results: [],
+    };
   }
 }
 
@@ -200,14 +209,55 @@ void test('independent seller commission requires 15 days notice before taking e
   const { sqlite, database } = await fixture();
   try {
     const draft = await createBusinessSettingDraft(database, {
-      key: 'independent_seller_commission_bps', value: 800, actorId: 'admin-a',
-      reason: 'Prepare a future independent seller commission version.', requestId: 'seller-fee-draft', now: 1_000,
+      key: 'independent_seller_commission_bps',
+      value: 800,
+      actorId: 'admin-a',
+      reason: 'Prepare a future independent seller commission version.',
+      requestId: 'seller-fee-draft',
+      now: 1_000,
     });
-    await submitBusinessSettingDraft(database, { id: draft.id, actorId: 'admin-a', expectedRevision: 1, reason: 'Submit future seller commission for review.', requestId: 'seller-fee-submit', now: 2_000 });
-    await assert.rejects(approveBusinessSettingChange(database, { id: draft.id, actorId: 'admin-b', expectedRevision: 2, effectiveFrom: 14 * 86_400_000, reason: 'Attempt insufficient notice.', requestId: 'seller-fee-too-soon', now: 3_000 }), /15 calendar days notice/i);
-    await approveBusinessSettingChange(database, { id: draft.id, actorId: 'admin-b', expectedRevision: 2, effectiveFrom: 16 * 86_400_000, reason: 'Approve with more than fifteen days notice.', requestId: 'seller-fee-approved', now: 3_000 });
-    assert.equal((await getEffectiveBusinessSetting(database, 'independent_seller_commission_bps', 16 * 86_400_000)).value, 800);
-  } finally { sqlite.close(); }
+    await submitBusinessSettingDraft(database, {
+      id: draft.id,
+      actorId: 'admin-a',
+      expectedRevision: 1,
+      reason: 'Submit future seller commission for review.',
+      requestId: 'seller-fee-submit',
+      now: 2_000,
+    });
+    await assert.rejects(
+      approveBusinessSettingChange(database, {
+        id: draft.id,
+        actorId: 'admin-b',
+        expectedRevision: 2,
+        effectiveFrom: 14 * 86_400_000,
+        reason: 'Attempt insufficient notice.',
+        requestId: 'seller-fee-too-soon',
+        now: 3_000,
+      }),
+      /15 calendar days notice/i,
+    );
+    await approveBusinessSettingChange(database, {
+      id: draft.id,
+      actorId: 'admin-b',
+      expectedRevision: 2,
+      effectiveFrom: 16 * 86_400_000,
+      reason: 'Approve with more than fifteen days notice.',
+      requestId: 'seller-fee-approved',
+      now: 3_000,
+    });
+    assert.equal(
+      (
+        await getEffectiveBusinessSetting(
+          database,
+          'independent_seller_commission_bps',
+          16 * 86_400_000,
+        )
+      ).value,
+      800,
+    );
+  } finally {
+    sqlite.close();
+  }
 });
 
 void test('effective versions append chronologically, close the prior interval, and prevent overlap', async () => {
@@ -366,7 +416,10 @@ void test('reversal is a new version and leaves published history immutable', as
       database,
       'open_box_category_codes',
     );
-    assert.deepEqual(history.map((item) => item.version), [3, 2, 1]);
+    assert.deepEqual(
+      history.map((item) => item.version),
+      [3, 2, 1],
+    );
     assert.deepEqual(history[2]?.value, ['clay']);
     assert.deepEqual(history[1]?.value, ['clay', 'wood']);
   } finally {
@@ -433,8 +486,14 @@ void test('migration remains additive and the MariaDB generator includes busines
     new URL('../scripts/generate-mariadb-schema.mjs', import.meta.url),
     'utf8',
   );
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS business_setting_versions/i);
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS business_setting_guards/i);
+  assert.match(
+    migration,
+    /CREATE TABLE IF NOT EXISTS business_setting_versions/i,
+  );
+  assert.match(
+    migration,
+    /CREATE TABLE IF NOT EXISTS business_setting_guards/i,
+  );
   assert.doesNotMatch(migration, /DROP TABLE/i);
   assert.match(generator, /business_setting_versions/);
   assert.match(generator, /business_setting_guards/);
@@ -443,7 +502,9 @@ void test('migration remains additive and the MariaDB generator includes busines
 void test('scheduled hero versions stay hidden until effective and restoration appends history', async () => {
   const { sqlite, database } = await fixture();
   try {
-    const firstValue = INITIAL_HOMEPAGE_HERO_SLIDES.map((slide) => ({ ...slide }));
+    const firstValue = INITIAL_HOMEPAGE_HERO_SLIDES.map((slide) => ({
+      ...slide,
+    }));
     const first = await createBusinessSettingDraft(database, {
       key: 'homepage_hero_slides',
       value: firstValue,
@@ -462,13 +523,20 @@ void test('scheduled hero versions stay hidden until effective and restoration a
       now: 1_100,
     });
     assert.equal(
-      (await getEffectiveBusinessSetting(database, 'homepage_hero_slides', 1_999))
-        .source,
+      (
+        await getEffectiveBusinessSetting(
+          database,
+          'homepage_hero_slides',
+          1_999,
+        )
+      ).source,
       'default',
     );
 
     const secondValue = firstValue.map((slide, index) =>
-      index === 0 ? { ...slide, headingLead: 'A later staged headline' } : slide,
+      index === 0
+        ? { ...slide, headingLead: 'A later staged headline' }
+        : slide,
     );
     const second = await createBusinessSettingDraft(database, {
       key: 'homepage_hero_slides',
@@ -488,15 +556,21 @@ void test('scheduled hero versions stay hidden until effective and restoration a
       now: 2_200,
     });
     assert.equal(
-      (await getEffectiveBusinessSetting(database, 'homepage_hero_slides', 2_999))
-        .value[0]?.headingLead,
+      (
+        await getEffectiveBusinessSetting(
+          database,
+          'homepage_hero_slides',
+          2_999,
+        )
+      ).value[0]?.headingLead,
       firstValue[0]?.headingLead,
     );
 
     const restoration = await createBusinessSettingReversalDraft(database, {
       sourceVersionId: first.id,
       actorId: 'admin-b',
-      reason: 'Restore the earlier hero prospectively without rewriting history.',
+      reason:
+        'Restore the earlier hero prospectively without rewriting history.',
       requestId: 'hero-restore-draft',
       now: 3_100,
     });
@@ -513,13 +587,141 @@ void test('scheduled hero versions stay hidden until effective and restoration a
       database,
       'homepage_hero_slides',
     );
-    assert.deepEqual(history.map((version) => version.version), [3, 2, 1]);
+    assert.deepEqual(
+      history.map((version) => version.version),
+      [3, 2, 1],
+    );
     assert.equal(history[2]?.value[0]?.headingLead, firstValue[0]?.headingLead);
     assert.equal(history[1]?.value[0]?.headingLead, 'A later staged headline');
     assert.equal(
-      (await getEffectiveBusinessSetting(database, 'homepage_hero_slides', 4_000))
-        .value[0]?.headingLead,
+      (
+        await getEffectiveBusinessSetting(
+          database,
+          'homepage_hero_slides',
+          4_000,
+        )
+      ).value[0]?.headingLead,
       firstValue[0]?.headingLead,
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
+void test('occasion drafts, schedules, history, and restoration never mutate the current or older published versions', async () => {
+  const { sqlite, database } = await fixture();
+  try {
+    const firstValue = INITIAL_HOMEPAGE_OCCASION_SLIDES.map((slide) => ({
+      ...slide,
+      cards: [{ ...slide.cards[0] }, { ...slide.cards[1] }] as const,
+    }));
+    const first = await createBusinessSettingDraft(database, {
+      key: 'homepage_occasion_slides',
+      value: firstValue,
+      actorId: 'admin-a',
+      reason: 'Create the initial gifting carousel version.',
+      requestId: 'occasion-first-draft',
+      now: 1_000,
+    });
+    await publishBusinessSettingDraft(database, {
+      id: first.id,
+      actorId: 'admin-a',
+      expectedRevision: 1,
+      effectiveFrom: 1_100,
+      reason: 'Publish the initial gifting carousel version.',
+      requestId: 'occasion-first-publish',
+      now: 1_050,
+    });
+
+    const secondValue = firstValue.map((slide, index) =>
+      index === 1
+        ? { ...slide, headingLead: 'A private draft heading.' }
+        : slide,
+    );
+    const second = await createBusinessSettingDraft(database, {
+      key: 'homepage_occasion_slides',
+      value: secondValue,
+      actorId: 'admin-a',
+      reason: 'Edit a private future gifting version.',
+      requestId: 'occasion-second-draft',
+      now: 1_200,
+    });
+    assert.equal(
+      (
+        await getEffectiveBusinessSetting(
+          database,
+          'homepage_occasion_slides',
+          2_000,
+        )
+      ).value[1]?.headingLead,
+      firstValue[1]?.headingLead,
+      'editing a draft must not alter the current published carousel',
+    );
+    await publishBusinessSettingDraft(database, {
+      id: second.id,
+      actorId: 'admin-a',
+      expectedRevision: 1,
+      effectiveFrom: 3_000,
+      reason: 'Schedule the edited gifting carousel.',
+      requestId: 'occasion-second-publish',
+      now: 1_300,
+    });
+    assert.equal(
+      (
+        await getEffectiveBusinessSetting(
+          database,
+          'homepage_occasion_slides',
+          2_999,
+        )
+      ).value[1]?.headingLead,
+      firstValue[1]?.headingLead,
+    );
+    assert.equal(
+      (
+        await getEffectiveBusinessSetting(
+          database,
+          'homepage_occasion_slides',
+          3_000,
+        )
+      ).value[1]?.headingLead,
+      'A private draft heading.',
+    );
+
+    const restoration = await createBusinessSettingReversalDraft(database, {
+      sourceVersionId: first.id,
+      actorId: 'admin-b',
+      reason: 'Restore the original gifting layout prospectively.',
+      requestId: 'occasion-restore-draft',
+      now: 3_100,
+    });
+    await publishBusinessSettingDraft(database, {
+      id: restoration.id,
+      actorId: 'admin-b',
+      expectedRevision: 1,
+      effectiveFrom: 4_000,
+      reason: 'Publish the prospective gifting restoration.',
+      requestId: 'occasion-restore-publish',
+      now: 3_200,
+    });
+    const history = await listBusinessSettingHistory(
+      database,
+      'homepage_occasion_slides',
+    );
+    assert.deepEqual(
+      history.map((version) => version.version),
+      [3, 2, 1],
+    );
+    assert.equal(history[2]?.value[1]?.headingLead, firstValue[1]?.headingLead);
+    assert.equal(history[1]?.value[1]?.headingLead, 'A private draft heading.');
+    assert.equal(
+      (
+        await getEffectiveBusinessSetting(
+          database,
+          'homepage_occasion_slides',
+          4_000,
+        )
+      ).value[1]?.headingLead,
+      firstValue[1]?.headingLead,
     );
   } finally {
     sqlite.close();

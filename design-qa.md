@@ -114,3 +114,32 @@
 - [x] Verify desktop, mobile, all three slides, console health, and overflow.
 
 final result: passed
+
+---
+
+# Hastabazaar v1.2.1 homepage follow-up — design QA
+
+## Evidence and comparison target
+
+- Existing supplied hero references remain the visual truth for full-bleed photography, quiet caption placement, and calmer controls.
+- Existing supplied occasion reference: `C:/Users/abinash/AppData/Local/Temp/codex-clipboard-c9dfa658-77fe-4656-86d1-7be2564ab90a.png`.
+- Current desktop hero slides: `.staging/artifacts/homepage-hero-carousel/homepage-carousel-desktop-slide-1.png` through `-3.png`.
+- Current mobile hero slides: `.staging/artifacts/homepage-hero-carousel/homepage-carousel-mobile-slide-1.png` through `-3.png`.
+- Current occasion slides: `.staging/artifacts/homepage-hero-carousel/homepage-occasion-{desktop,mobile}-slide-{1,2}.png`.
+- Super Admin actual-layout preview: `.staging/artifacts/homepage-hero-carousel/homepage-occasion-admin-mobile-preview.png`.
+- Machine-readable run: `.staging/artifacts/homepage-hero-carousel/homepage-carousel-results.json`.
+
+## Review
+
+1. Hero captions now use a 20% warm tint, restrained blur, navy italic text, a light text shadow, and a subtle edge. The Nepal photograph remains plainly visible through the caption on slide 1, including the mountain/sky region. The single caption element remains outside the image/video media branches, so images, video posters, and video playback share one treatment.
+2. The supplied occasion reference's navy field, left editorial copy, paired action cards, warm highlight, and restrained controls remain intact. Slide 1 preserves the current content; slide 2 uses the same structure and visual hierarchy rather than introducing a second design system.
+3. Desktop cards stay side by side and both slide layouts hold the same section height. Mobile stacks copy and cards in one column with reachable controls and no horizontal overflow.
+4. All three hero slides and both occasion slides were inspected at 1536 × 960 and 390 × 844. Browser assertions found zero console errors, failed responses, overflow, or carousel-induced layout shift.
+5. The Super Admin preview renders the real customer component. A fictional private draft changed the preview without code editing or redeployment while the effective customer page stayed unchanged.
+
+## Known limitations
+
+- The initial published hero fixture contains images only. Image, video-poster, and video caption consistency is structurally shared and covered by regression tests, while an actual disposable video playback fixture remains a documented manual self-test.
+- Production rendering, data, configuration, migration state, storage, and publication remain unverified and unapproved. No production resource was accessed.
+
+Final result: passed in disposable local staging.

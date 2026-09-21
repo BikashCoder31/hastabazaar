@@ -15,6 +15,10 @@ import {
   INITIAL_HOMEPAGE_HERO_SLIDES,
   validateHomepageHeroDraft,
 } from '../homepage/hero-slides';
+import {
+  INITIAL_HOMEPAGE_OCCASION_SLIDES,
+  validateHomepageOccasionDraft,
+} from '../homepage/occasion-slides';
 
 function integerInRange(
   label: string,
@@ -222,8 +226,18 @@ function recentlyViewedPolicy(value: unknown): RecentlyViewedPolicy {
     throw new RangeError('Recently Viewed policy contains an unknown field.');
   }
   return Object.freeze({
-    maxItems: integerInRange('Recently Viewed item limit', candidate.maxItems, 1, 24),
-    retentionDays: integerInRange('Recently Viewed retention days', candidate.retentionDays, 1, 365),
+    maxItems: integerInRange(
+      'Recently Viewed item limit',
+      candidate.maxItems,
+      1,
+      24,
+    ),
+    retentionDays: integerInRange(
+      'Recently Viewed retention days',
+      candidate.retentionDays,
+      1,
+      365,
+    ),
   });
 }
 
@@ -674,7 +688,11 @@ const definitions = [
     changeControl: 'simple',
     effectiveMode: 'immediate',
     snapshotOnTransaction: false,
-    affectedSurfaces: ['product_detail', 'customer_history', 'guest_browser_storage'],
+    affectedSurfaces: [
+      'product_detail',
+      'customer_history',
+      'guest_browser_storage',
+    ],
     requiredCapability: 'recently_viewed_v1',
     validate: recentlyViewedPolicy,
   },
@@ -691,6 +709,20 @@ const definitions = [
     affectedSurfaces: ['public_homepage', 'admin_homepage'],
     requiredCapability: 'homepage_hero_carousel_v1',
     validate: validateHomepageHeroDraft,
+  },
+  {
+    key: 'homepage_occasion_slides',
+    label: 'Homepage gifting slides',
+    description:
+      'Versioned gifting stories and two safe internal action cards per slide.',
+    defaultValue: INITIAL_HOMEPAGE_OCCASION_SLIDES,
+    sensitivity: 'public_content',
+    changeControl: 'simple',
+    effectiveMode: 'effective_dated',
+    snapshotOnTransaction: false,
+    affectedSurfaces: ['public_homepage', 'admin_homepage'],
+    requiredCapability: 'homepage_occasion_carousel_v1',
+    validate: validateHomepageOccasionDraft,
   },
 ] as const satisfies readonly BusinessSettingDefinition[];
 

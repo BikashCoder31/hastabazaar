@@ -456,6 +456,8 @@
   .homepage-occasion-section {
     position: relative;
     isolation: isolate;
+    container-name: homepage-occasion;
+    container-type: inline-size;
     overflow: hidden;
     margin-block: 3rem;
     border-block: 1px solid rgb(224 180 100 / 38%);
@@ -481,6 +483,7 @@
     gap: clamp(2.5rem, 5vw, 5rem);
     padding-block: clamp(4rem, 7vw, 6rem);
     grid-template-columns: minmax(18rem, 0.7fr) minmax(0, 1.3fr);
+    min-height: 42rem;
   }
 
   .homepage-occasion-copy {
@@ -663,6 +666,94 @@
     width: 1.1rem;
     height: 1.1rem;
     stroke-width: 1.8;
+  }
+
+  .homepage-occasion-card[data-theme='warm'] {
+    border-color: #f0d7ae;
+    background: #f0d7ae;
+    color: #102f54;
+  }
+
+  .homepage-occasion-card[data-theme='warm'] .homepage-occasion-card-icon {
+    background: #102f54;
+    color: #f2c46f;
+  }
+
+  .homepage-occasion-card[data-theme='warm'] .homepage-occasion-card-watermark,
+  .homepage-occasion-card[data-theme='warm']
+    .homepage-occasion-card-copy
+    > span {
+    color: #102f54;
+  }
+
+  .homepage-occasion-card[data-theme='warm'] .homepage-occasion-card-watermark {
+    opacity: 0.065;
+  }
+
+  .homepage-occasion-card[data-theme='warm']
+    .homepage-occasion-card-copy
+    > span {
+    opacity: 0.64;
+  }
+
+  .homepage-occasion-card[data-theme='crimson'] {
+    background: #8f2331;
+  }
+
+  .homepage-occasion-card[data-theme='navy'] {
+    background: #24446f;
+  }
+
+  .homepage-occasion-card[data-theme='sage'] {
+    background: #365b55;
+  }
+
+  .homepage-occasion-controls {
+    position: absolute;
+    z-index: 4;
+    right: max(1.25rem, calc((100vw - 80rem) / 2));
+    bottom: 1.2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    border: 1px solid rgb(242 196 111 / 38%);
+    border-radius: 999px;
+    background: rgb(8 34 66 / 76%);
+    padding: 0.3rem;
+    box-shadow: 0 14px 36px -24px rgb(0 0 0 / 80%);
+    backdrop-filter: blur(8px);
+  }
+
+  .homepage-occasion-controls button {
+    color: #f7ead8;
+  }
+
+  .homepage-occasion-dots {
+    display: flex;
+    align-items: center;
+    gap: 0.1rem;
+  }
+
+  .homepage-occasion-dots button {
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+    border-radius: 999px;
+  }
+
+  .homepage-occasion-dots button > span {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 48%);
+  }
+
+  .homepage-occasion-dots button[aria-current='true'] > span {
+    width: 0.72rem;
+    height: 0.72rem;
+    background: #f2c46f;
+    box-shadow: 0 0 0 3px rgb(242 196 111 / 16%);
   }
 
   .homepage-occasion-all {
@@ -1184,18 +1275,6 @@
     margin-top: -2rem;
   }
 
-  .homepage-occasion-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .homepage-occasion-copy {
-    max-width: 42rem;
-  }
-
-  .homepage-occasion-card {
-    min-height: 14rem;
-  }
-
   .homepage-maker-story {
     grid-template-columns: 1fr;
   }
@@ -1222,6 +1301,79 @@
 
   .site-footer-brand {
     grid-column: 1 / -1;
+  }
+}
+
+@container homepage-occasion (max-width: 1023px) {
+  .homepage-occasion-layout {
+    grid-template-columns: 1fr;
+    min-height: 0;
+    padding-bottom: 6.5rem;
+  }
+
+  .homepage-occasion-copy {
+    max-width: 42rem;
+  }
+
+  .homepage-occasion-card {
+    min-height: 14rem;
+  }
+
+  .homepage-occasion-controls {
+    right: 50%;
+    transform: translateX(50%);
+  }
+}
+
+@container homepage-occasion (max-width: 639px) {
+  .homepage-occasion-pattern {
+    opacity: 0.3;
+  }
+
+  .homepage-occasion-pattern img {
+    object-position: 58% center;
+  }
+
+  .homepage-occasion-layout {
+    gap: 2.25rem;
+    padding-block: 3.25rem 6.75rem;
+  }
+
+  .homepage-occasion-kicker {
+    font-size: 0.66rem;
+    letter-spacing: 0.16em;
+  }
+
+  .homepage-occasion-title {
+    font-size: clamp(3rem, 15cqi, 4rem);
+  }
+
+  .homepage-occasion-delivery {
+    align-items: flex-start;
+    border-radius: 1.1rem;
+    line-height: 1.5;
+  }
+
+  .homepage-occasion-delivery-icon {
+    flex: none;
+  }
+
+  .homepage-occasion-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .homepage-occasion-card {
+    min-height: 12.5rem;
+    border-radius: 1.4rem;
+  }
+
+  .homepage-occasion-card-copy strong {
+    font-size: 1.75rem;
+  }
+
+  .homepage-occasion-controls {
+    bottom: 1.35rem;
+    max-width: calc(100cqi - 1.5rem);
   }
 }
 
@@ -1285,51 +1437,6 @@
 
   .homepage-occasion-section {
     margin-block: 2rem;
-  }
-
-  .homepage-occasion-pattern {
-    opacity: 0.3;
-  }
-
-  .homepage-occasion-pattern img {
-    object-position: 58% center;
-  }
-
-  .homepage-occasion-layout {
-    gap: 2.25rem;
-    padding-block: 3.25rem;
-  }
-
-  .homepage-occasion-kicker {
-    font-size: 0.66rem;
-    letter-spacing: 0.16em;
-  }
-
-  .homepage-occasion-title {
-    font-size: clamp(3rem, 15vw, 4rem);
-  }
-
-  .homepage-occasion-delivery {
-    align-items: flex-start;
-    border-radius: 1.1rem;
-    line-height: 1.5;
-  }
-
-  .homepage-occasion-delivery-icon {
-    flex: none;
-  }
-
-  .homepage-occasion-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .homepage-occasion-card {
-    min-height: 12.5rem;
-    border-radius: 1.4rem;
-  }
-
-  .homepage-occasion-card-copy strong {
-    font-size: 1.75rem;
   }
 
   .homepage-maker-story {

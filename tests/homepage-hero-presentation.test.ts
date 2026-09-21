@@ -3,7 +3,10 @@ import { readFile, stat } from 'node:fs/promises';
 import test from 'node:test';
 
 void test('homepage resolves the effective hero carousel with an explicit recovery fallback', async () => {
-  const page = await readFile(new URL('../app/page.tsx', import.meta.url), 'utf8');
+  const page = await readFile(
+    new URL('../app/page.tsx', import.meta.url),
+    'utf8',
+  );
   assert.match(page, /getEffectiveBusinessSetting/);
   assert.match(page, /'homepage_hero_slides'/);
   assert.match(page, /CURRENT_HERO_RECOVERY_SLIDES/);
@@ -13,11 +16,21 @@ void test('homepage resolves the effective hero carousel with an explicit recove
 });
 
 void test('category overlap and established homepage anchors remain intact', async () => {
-  const [page, styles] = await Promise.all([
+  const [page, occasionCarousel, styles] = await Promise.all([
     readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
+    readFile(
+      new URL(
+        '../components/homepage/homepage-occasion-carousel.tsx',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
     readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
   ]);
-  assert.ok(page.indexOf('<HomepageHeroCarousel') < page.indexOf('id="categories"'));
+  const homepageSources = `${page}\n${occasionCarousel}`;
+  assert.ok(
+    page.indexOf('<HomepageHeroCarousel') < page.indexOf('id="categories"'),
+  );
   for (const anchor of [
     'categories',
     'offers',
@@ -26,15 +39,21 @@ void test('category overlap and established homepage anchors remain intact', asy
     'occasions',
     'makers',
   ]) {
-    assert.match(page, new RegExp(`id=\\"${anchor}\\"`));
+    assert.match(homepageSources, new RegExp(`id=\\"${anchor}\\"`));
   }
-  assert.match(styles, /\.homepage-category-wrap\s*\{[\s\S]*?margin-top:\s*-3\.4rem/);
+  assert.match(
+    styles,
+    /\.homepage-category-wrap\s*\{[\s\S]*?margin-top:\s*-3\.4rem/,
+  );
   assert.match(styles, /\.homepage-hero-carousel/);
 });
 
 void test('hero media is full bleed, calmer, and uses readable captions with dot navigation', async () => {
   const carousel = await readFile(
-    new URL('../components/homepage/homepage-hero-carousel.tsx', import.meta.url),
+    new URL(
+      '../components/homepage/homepage-hero-carousel.tsx',
+      import.meta.url,
+    ),
     'utf8',
   );
   assert.match(carousel, /homepage-hero-media[^\n]*object-cover/);
@@ -48,6 +67,11 @@ void test('hero media is full bleed, calmer, and uses readable captions with dot
   assert.doesNotMatch(carousel, /homepage-hero-media-backdrop/);
   assert.match(carousel, /homepage-hero-image-note/);
   assert.match(carousel, /left-\[16%\][^\n]*top-\[16%\]/);
+  assert.match(carousel, /bg-\[#eee5d8\]\/2[05]/);
+  assert.match(carousel, /backdrop-blur-(?:sm|\[\d+px\])/);
+  assert.match(carousel, /drop-shadow/);
+  assert.doesNotMatch(carousel, /bg-\[#eee5d8\]\/85/);
+  assert.equal((carousel.match(/homepage-hero-image-note/g) ?? []).length, 1);
   assert.match(carousel, /homepage-hero-dot/);
   assert.match(carousel, /<span className="sr-only">\{index \+ 1\}<\/span>/);
   assert.doesNotMatch(carousel, />\s*\{index \+ 1\}\s*<\/button>/);

@@ -359,7 +359,24 @@ void test('homepage source has no hard-coded product fallback and retains honest
     fallback,
     /Handmade Macrame Crossbody Bag|Handwoven Straw Tote/,
   );
-  assert.match(page, /New products are coming soon/);
+  const renderedCopy = page.replace(/\s+/g, ' ');
+  for (const approvedCopy of [
+    'NEW TO HASTABAZAAR',
+    'New arrivals.',
+    'Fresh finds are on the way.',
+    'New handmade pieces will appear here as soon as they’re ready to shop.',
+    'Explore craft categories',
+    'Shop all new arrivals',
+  ]) {
+    assert.ok(
+      renderedCopy.includes(approvedCopy),
+      `missing approved copy: ${approvedCopy}`,
+    );
+  }
+  assert.doesNotMatch(
+    page,
+    /Just added by our sellers|approved seller product/i,
+  );
   assert.match(page, /successfully delivered, non-cancelled purchases/);
   assert.match(page, /ProductSlider/);
   assert.match(footer, /support@hastabazaar\.com/);
@@ -529,12 +546,15 @@ void test('homepage control has ordered SQLite and MariaDB migrations', async ()
   };
   assert.deepEqual(
     manifest.migrations.find(
-      (migration) => migration.path === 'deployment/babal/mariadb-homepage-product-controls.sql',
+      (migration) =>
+        migration.path ===
+        'deployment/babal/mariadb-homepage-product-controls.sql',
     ),
     {
-    path: 'deployment/babal/mariadb-homepage-product-controls.sql',
-    sha256: 'eb7fc0085a51965b4ee89e6767e588faf5105be9470fe80e57a525c9637835ba',
-    usage: 'additive-maintenance',
+      path: 'deployment/babal/mariadb-homepage-product-controls.sql',
+      sha256:
+        'eb7fc0085a51965b4ee89e6767e588faf5105be9470fe80e57a525c9637835ba',
+      usage: 'additive-maintenance',
     },
   );
   assert.deepEqual(manifest.requiredTables.homepage_product_controls, [

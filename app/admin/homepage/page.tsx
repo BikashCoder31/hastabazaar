@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Eye, EyeOff, ImageIcon, PanelsTopLeft, Search } from 'lucide-react';
 
 import { HomepageHeroManager } from '@/components/admin/homepage-hero-manager';
+import { HomepageOccasionManager } from '@/components/admin/homepage-occasion-manager';
 import { HomepageVisibilityControl } from '@/components/admin/homepage-visibility-control';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -48,10 +49,18 @@ export default async function HomepageProductControlsPage({
     ? (params.visibility as 'visible' | 'hidden')
     : 'all';
   const requestedPage = Number.parseInt(params.page ?? '1', 10);
-  const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const page =
+    Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const asOf = homepageObservedAt();
-  const [result, hero, heroHistory, heroMedia] = await Promise.all([
+  const [
+    result,
+    hero,
+    heroHistory,
+    heroMedia,
+    occasionSlides,
+    occasionHistory,
+  ] = await Promise.all([
     listHomepageProductControls(database, {
       query,
       visibility,
@@ -61,6 +70,8 @@ export default async function HomepageProductControlsPage({
     getEffectiveBusinessSetting(database, 'homepage_hero_slides', asOf),
     listBusinessSettingHistory(database, 'homepage_hero_slides'),
     listHomepageHeroMediaForAdmin(database),
+    getEffectiveBusinessSetting(database, 'homepage_occasion_slides', asOf),
+    listBusinessSettingHistory(database, 'homepage_occasion_slides'),
   ]);
   const pageCount = Math.max(1, Math.ceil(result.total / result.pageSize));
 
@@ -70,6 +81,12 @@ export default async function HomepageProductControlsPage({
         initialSlides={hero.value}
         initialMedia={heroMedia}
         history={heroHistory}
+        asOf={asOf}
+      />
+
+      <HomepageOccasionManager
+        initialSlides={occasionSlides.value}
+        history={occasionHistory}
         asOf={asOf}
       />
 
@@ -87,7 +104,10 @@ export default async function HomepageProductControlsPage({
 
       <Card>
         <CardContent className="space-y-4 p-4">
-          <form className="grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem_auto]" action="/admin/homepage">
+          <form
+            className="grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem_auto]"
+            action="/admin/homepage"
+          >
             <label className="relative">
               <span className="sr-only">Search products</span>
               <Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" />
@@ -112,7 +132,10 @@ export default async function HomepageProductControlsPage({
             <Button type="submit">Apply filters</Button>
           </form>
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
-            <p>{result.total} published product{result.total === 1 ? '' : 's'} found</p>
+            <p>
+              {result.total} published product{result.total === 1 ? '' : 's'}{' '}
+              found
+            </p>
             <Link href="/" target="_blank" className="section-link">
               Open customer homepage
             </Link>
@@ -124,7 +147,9 @@ export default async function HomepageProductControlsPage({
         <Card>
           <CardContent className="flex flex-col items-center py-14 text-center">
             <PanelsTopLeft className="size-9 text-muted-foreground" />
-            <h2 className="mt-4 font-heading text-xl">No matching published products</h2>
+            <h2 className="mt-4 font-heading text-xl">
+              No matching published products
+            </h2>
             <p className="mt-2 text-sm text-muted-foreground">
               Clear the filters or publish an approved product first.
             </p>
@@ -171,7 +196,8 @@ export default async function HomepageProductControlsPage({
                     {product.tradingName} · {product.categoryName}
                   </p>
                   <p className="text-sm">
-                    {money(product.pricePaisa)} · Stock {product.inventoryQuantity}
+                    {money(product.pricePaisa)} · Stock{' '}
+                    {product.inventoryQuantity}
                   </p>
                   <HomepageVisibilityControl
                     productId={product.id}
@@ -188,9 +214,15 @@ export default async function HomepageProductControlsPage({
       )}
 
       {pageCount > 1 ? (
-        <nav aria-label="Homepage product pages" className="flex items-center justify-center gap-3">
+        <nav
+          aria-label="Homepage product pages"
+          className="flex items-center justify-center gap-3"
+        >
           {page > 1 ? (
-            <Button variant="outline" render={<Link href={pageHref(page - 1, query, visibility)} />}>
+            <Button
+              variant="outline"
+              render={<Link href={pageHref(page - 1, query, visibility)} />}
+            >
               Previous
             </Button>
           ) : null}
@@ -198,7 +230,10 @@ export default async function HomepageProductControlsPage({
             Page {page} of {pageCount}
           </span>
           {page < pageCount ? (
-            <Button variant="outline" render={<Link href={pageHref(page + 1, query, visibility)} />}>
+            <Button
+              variant="outline"
+              render={<Link href={pageHref(page + 1, query, visibility)} />}
+            >
               Next
             </Button>
           ) : null}

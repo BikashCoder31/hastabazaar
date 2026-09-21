@@ -4,8 +4,12 @@ import type {
   ManagedMakerCommercialModel,
 } from './types';
 import { assertHomepageHeroPublicationReady } from '../homepage/hero-slides';
+import { assertHomepageOccasionPublicationReady } from '../homepage/occasion-slides';
 
-export type CapabilityReadiness = 'implemented' | 'in_development' | 'live_blocked';
+export type CapabilityReadiness =
+  | 'implemented'
+  | 'in_development'
+  | 'live_blocked';
 
 export type ManagedMakerCapability = Readonly<{
   code: ManagedMakerCommercialModel;
@@ -52,14 +56,23 @@ export function managedMakerModelIsLiveSelectable(
 
 export function assertBusinessSettingPublicationReady<
   K extends BusinessSettingKey,
->(key: K, value: BusinessSettingValue<K>, context: { simulationAllowed?: boolean } = {}): void {
+>(
+  key: K,
+  value: BusinessSettingValue<K>,
+  context: { simulationAllowed?: boolean } = {},
+): void {
   if (
     key === 'managed_maker_active_model' &&
     value !== null &&
     !managedMakerModelIsLiveSelectable(value as ManagedMakerCommercialModel) &&
-    !(context.simulationAllowed && managedMakerCapabilities.some(
-      (capability) => capability.code === value && capability.selectableForStagingSimulation,
-    ))
+    !(
+      context.simulationAllowed &&
+      managedMakerCapabilities.some(
+        (capability) =>
+          capability.code === value &&
+          capability.selectableForStagingSimulation,
+      )
+    )
   ) {
     throw new RangeError(
       'The selected Managed Maker commercial model is not implemented and tested for live activation.',
@@ -68,9 +81,11 @@ export function assertBusinessSettingPublicationReady<
   if (
     key === 'managed_maker_program_mode' &&
     value === 'activation_enabled' &&
-    !managedMakerCapabilities.some((capability) =>
-      capability.selectableForLiveActivation ||
-      (context.simulationAllowed && capability.selectableForStagingSimulation),
+    !managedMakerCapabilities.some(
+      (capability) =>
+        capability.selectableForLiveActivation ||
+        (context.simulationAllowed &&
+          capability.selectableForStagingSimulation),
     )
   ) {
     throw new RangeError(
@@ -92,6 +107,11 @@ export function assertBusinessSettingPublicationReady<
   if (key === 'homepage_hero_slides') {
     assertHomepageHeroPublicationReady(
       value as BusinessSettingValue<'homepage_hero_slides'>,
+    );
+  }
+  if (key === 'homepage_occasion_slides') {
+    assertHomepageOccasionPublicationReady(
+      value as BusinessSettingValue<'homepage_occasion_slides'>,
     );
   }
 }

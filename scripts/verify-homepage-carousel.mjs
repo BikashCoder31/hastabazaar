@@ -4,9 +4,16 @@ import path from 'node:path';
 
 import { chromium } from 'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
 
-const origin = new URL(process.env.HOMEPAGE_QA_ORIGIN ?? 'http://localhost:3000');
+const origin = new URL(
+  process.env.HOMEPAGE_QA_ORIGIN ?? 'http://localhost:3000',
+);
+const arguments_ = process.argv.slice(2);
+const saveAdminDraft = arguments_.includes('--save-admin-draft');
+const outputArgument = arguments_.find(
+  (argument) => !argument.startsWith('--'),
+);
 const outputDirectory = path.resolve(
-  process.argv[2] ??
+  outputArgument ??
     process.env.HOMEPAGE_QA_OUTPUT ??
     '.staging/artifacts/homepage-hero-carousel',
 );
@@ -28,10 +35,13 @@ for (const id of [
   'system-maker-hands-hero',
   'system-meaningful-gifts-hero',
 ]) {
-  const response = await fetch(new URL(`/api/homepage/hero-media/${id}`, origin), {
-    redirect: 'follow',
-    signal: AbortSignal.timeout(5_000),
-  });
+  const response = await fetch(
+    new URL(`/api/homepage/hero-media/${id}`, origin),
+    {
+      redirect: 'follow',
+      signal: AbortSignal.timeout(5_000),
+    },
+  );
   assert.equal(
     response.status,
     200,
@@ -58,6 +68,12 @@ function currentSlide(page) {
     .getAttribute('aria-label');
 }
 
+function currentOccasionSlide(page) {
+  return page
+    .locator('[aria-label="Choose gifting story"] [aria-current="true"]')
+    .getAttribute('aria-label');
+}
+
 async function expectSlide(page, number) {
   await page
     .locator(`[aria-label="Choose featured story"] button:nth-child(${number})`)
@@ -65,7 +81,25 @@ async function expectSlide(page, number) {
   await page.waitForFunction(
     (expected) =>
       document
-        .querySelector('[aria-label="Choose featured story"] [aria-current="true"]')
+        .querySelector(
+          '[aria-label="Choose featured story"] [aria-current="true"]',
+        )
+        ?.getAttribute('aria-label')
+        ?.startsWith(`Show slide ${expected}:`) ?? false,
+    number,
+  );
+}
+
+async function expectOccasionSlide(page, number) {
+  await page
+    .locator(`[aria-label="Choose gifting story"] button:nth-child(${number})`)
+    .waitFor({ state: 'visible' });
+  await page.waitForFunction(
+    (expected) =>
+      document
+        .querySelector(
+          '[aria-label="Choose gifting story"] [aria-current="true"]',
+        )
         ?.getAttribute('aria-label')
         ?.startsWith(`Show slide ${expected}:`) ?? false,
     number,
@@ -126,33 +160,30 @@ try {
       .evaluate((element) => element.getBoundingClientRect().top + scrollY);
     for (let slide = 1; slide <= 3; slide += 1) {
       await page
-        .locator(`[aria-label="Choose featured story"] button:nth-child(${slide})`)
+        .locator(
+          `[aria-label="Choose featured story"] button:nth-child(${slide})`,
+        )
         .click();
       await expectSlide(page, slide);
       const image = carousel
         .locator(`[aria-label="Slide ${slide} of 3"] img`)
         .first();
       await image.waitFor({ state: 'visible' });
-      await page.waitForFunction(
-        (selector) => {
-          const candidate = document.querySelector(selector);
-          return (
-            candidate instanceof HTMLImageElement &&
-            candidate.complete &&
-            candidate.naturalWidth > 0
-          );
-        },
-        `[aria-label="Slide ${slide} of 3"] img`,
-      );
-      if (viewport.name === 'desktop') {
-        await page.waitForTimeout(500);
-        const slideScreenshot = path.join(
-          outputDirectory,
-          `homepage-carousel-desktop-slide-${slide}.png`,
+      await page.waitForFunction((selector) => {
+        const candidate = document.querySelector(selector);
+        return (
+          candidate instanceof HTMLImageElement &&
+          candidate.complete &&
+          candidate.naturalWidth > 0
         );
-        await carousel.screenshot({ path: slideScreenshot });
-        results.screenshots.push(slideScreenshot);
-      }
+      }, `[aria-label="Slide ${slide} of 3"] img`);
+      await page.waitForTimeout(500);
+      const slideScreenshot = path.join(
+        outputDirectory,
+        `homepage-carousel-${viewport.name}-slide-${slide}.png`,
+      );
+      await carousel.screenshot({ path: slideScreenshot });
+      results.screenshots.push(slideScreenshot);
     }
     assert.equal(
       Math.round(
@@ -168,8 +199,132 @@ try {
     await expectSlide(page, 2);
     await page.getByRole('button', { name: 'Next featured story' }).click();
     await expectSlide(page, 3);
-    await page.getByRole('button', { name: 'Next featured story' }).press('ArrowRight');
+    await page
+      .getByRole('button', { name: 'Next featured story' })
+      .press('ArrowRight');
     await expectSlide(page, 1);
+
+    const occasion = page.locator('#occasions');
+    await occasion.scrollIntoViewIfNeeded();
+    await page.evaluate(() => {
+      const section = document.querySelector('#occasions');
+      const header = document.querySelector('header');
+      if (!section) return;
+      const headerHeight = header?.getBoundingClientRect().height ?? 0;
+      window.scrollTo({
+        top:
+          window.scrollY +
+          section.getBoundingClientRect().top -
+          headerHeight -
+          16,
+      });
+    });
+    await occasion.waitFor({ state: 'visible' });
+    assert.equal(
+      await occasion.locator('[aria-label^="Slide "]').count(),
+      2,
+      `${viewport.name} must show exactly two initial occasion slides`,
+    );
+    assert.equal(
+      await occasion.locator('[aria-hidden="true"][inert]').count(),
+      1,
+      'Exactly one inactive occasion slide must be hidden and inert',
+    );
+    const occasionHeight = await occasion.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    );
+    for (let slide = 1; slide <= 2; slide += 1) {
+      await page
+        .locator(
+          `[aria-label="Choose gifting story"] button:nth-child(${slide})`,
+        )
+        .click();
+      await expectOccasionSlide(page, slide);
+      await page.waitForTimeout(600);
+      const occasionScreenshot = path.join(
+        outputDirectory,
+        `homepage-occasion-${viewport.name}-slide-${slide}.png`,
+      );
+      if (viewport.name === 'mobile') {
+        await page
+          .locator('header')
+          .evaluate((element) => (element.style.position = 'relative'));
+      }
+      await occasion.screenshot({ path: occasionScreenshot });
+      if (viewport.name === 'mobile') {
+        await page
+          .locator('header')
+          .evaluate((element) => element.style.removeProperty('position'));
+      }
+      results.screenshots.push(occasionScreenshot);
+    }
+    assert.equal(
+      Math.round(
+        await occasion.evaluate(
+          (element) => element.getBoundingClientRect().height,
+        ),
+      ),
+      Math.round(occasionHeight),
+      'Changing gifting slides must not change the section height',
+    );
+    await page.getByRole('button', { name: 'Previous gifting story' }).click();
+    await expectOccasionSlide(page, 1);
+    await page.waitForTimeout(600);
+    await page
+      .getByRole('button', { name: 'Previous gifting story' })
+      .press('ArrowLeft');
+    await expectOccasionSlide(page, 2);
+    await page.waitForTimeout(600);
+    assert.equal(
+      (await occasion.getByText('Big moments.', { exact: false }).count()) > 0,
+      true,
+      'The current gifting section must remain slide 1',
+    );
+    assert.equal(
+      (await occasion.getByText('Made by hand.', { exact: false }).count()) > 0,
+      true,
+      'The approved human-story content must be slide 2',
+    );
+    const cardBoxes = await occasion
+      .locator('.homepage-occasion-card')
+      .evaluateAll((cards) =>
+        cards.slice(0, 2).map((card) => {
+          const box = card.getBoundingClientRect();
+          return { left: Math.round(box.left), top: Math.round(box.top) };
+        }),
+      );
+    if (viewport.name === 'mobile') {
+      assert.ok(
+        cardBoxes[1].top > cardBoxes[0].top,
+        'Mobile occasion cards must stack',
+      );
+    } else {
+      assert.ok(
+        Math.abs(cardBoxes[1].top - cardBoxes[0].top) <= 2 &&
+          cardBoxes[1].left > cardBoxes[0].left,
+        'Desktop occasion cards must remain side by side',
+      );
+    }
+
+    await page
+      .locator('[aria-label="Choose gifting story"] button:nth-child(1)')
+      .click();
+    await expectOccasionSlide(page, 1);
+    const swipeBox = await occasion.boundingBox();
+    assert.ok(swipeBox, 'Occasion carousel must have a swipe target');
+    await page.mouse.move(
+      swipeBox.x + swipeBox.width * 0.75,
+      swipeBox.y + swipeBox.height * 0.45,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      swipeBox.x + swipeBox.width * 0.2,
+      swipeBox.y + swipeBox.height * 0.45,
+      { steps: 12 },
+    );
+    await page.mouse.up();
+    await expectOccasionSlide(page, 2);
+    await page.waitForTimeout(600);
     await page.waitForTimeout(500);
     await page.evaluate(() => window.scrollTo(0, 0));
 
@@ -194,6 +349,9 @@ try {
       slides: 3,
       imagesDecoded: 3,
       controls: 'previous, next, dot selection, keyboard',
+      occasionSlides: 2,
+      occasionControls: 'previous, next, dots, keyboard, swipe',
+      stableOccasionHeight: true,
       noHorizontalOverflow: true,
       noConsoleErrors: true,
     });
@@ -209,7 +367,11 @@ try {
       await carousel.hover();
       const hoverStart = await currentSlide(page);
       await page.waitForTimeout(6_500);
-      assert.equal(await currentSlide(page), hoverStart, 'hover must pause rotation');
+      assert.equal(
+        await currentSlide(page),
+        hoverStart,
+        'hover must pause rotation',
+      );
       await page.mouse.move(2, 2);
 
       const nextButton = page.getByRole('button', {
@@ -218,14 +380,24 @@ try {
       await nextButton.focus();
       const focusStart = await currentSlide(page);
       await page.waitForTimeout(6_500);
-      assert.equal(await currentSlide(page), focusStart, 'focus must pause rotation');
+      assert.equal(
+        await currentSlide(page),
+        focusStart,
+        'focus must pause rotation',
+      );
 
-      const pause = page.getByRole('button', { name: 'Pause featured stories' });
+      const pause = page.getByRole('button', {
+        name: 'Pause featured stories',
+      });
       await pause.click();
       await leaveCarouselFocus(page);
       const pauseStart = await currentSlide(page);
       await page.waitForTimeout(6_500);
-      assert.equal(await currentSlide(page), pauseStart, 'manual pause must stop rotation');
+      assert.equal(
+        await currentSlide(page),
+        pauseStart,
+        'manual pause must stop rotation',
+      );
       await page.getByRole('button', { name: 'Play featured stories' }).click();
 
       await leaveCarouselFocus(page);
@@ -255,6 +427,75 @@ try {
         wrap: 'slide 3 to slide 1',
         pausedBy: ['hover', 'focus', 'manual control', 'document hidden'],
       });
+
+      await page
+        .locator('[aria-label="Choose gifting story"] button:nth-child(2)')
+        .click();
+      await leaveCarouselFocus(page);
+      await page.waitForTimeout(7_500);
+      await expectOccasionSlide(page, 1);
+
+      await occasion.hover();
+      const occasionHoverStart = await currentOccasionSlide(page);
+      await page.waitForTimeout(7_500);
+      assert.equal(
+        await currentOccasionSlide(page),
+        occasionHoverStart,
+        'occasion hover must pause rotation',
+      );
+      await page.mouse.move(2, 2);
+
+      const occasionNext = page.getByRole('button', {
+        name: 'Next gifting story',
+      });
+      await occasionNext.focus();
+      const occasionFocusStart = await currentOccasionSlide(page);
+      await page.waitForTimeout(7_500);
+      assert.equal(
+        await currentOccasionSlide(page),
+        occasionFocusStart,
+        'occasion focus must pause rotation',
+      );
+
+      await page.getByRole('button', { name: 'Pause gifting stories' }).click();
+      await leaveCarouselFocus(page);
+      const occasionPauseStart = await currentOccasionSlide(page);
+      await page.waitForTimeout(7_500);
+      assert.equal(
+        await currentOccasionSlide(page),
+        occasionPauseStart,
+        'occasion manual pause must stop rotation',
+      );
+      await page.getByRole('button', { name: 'Play gifting stories' }).click();
+
+      await leaveCarouselFocus(page);
+      await page.evaluate(() => {
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true,
+          value: 'hidden',
+        });
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      const occasionHiddenStart = await currentOccasionSlide(page);
+      await page.waitForTimeout(7_500);
+      assert.equal(
+        await currentOccasionSlide(page),
+        occasionHiddenStart,
+        'hidden document must pause occasion rotation',
+      );
+      await page.evaluate(() => {
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true,
+          value: 'visible',
+        });
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      results.checks.push({
+        behavior: 'occasion autoplay',
+        interval: 'approximately 7 seconds',
+        wrap: 'slide 2 to slide 1',
+        pausedBy: ['hover', 'focus', 'manual control', 'document hidden'],
+      });
     }
     await context.close();
   }
@@ -278,8 +519,150 @@ try {
     reducedStart,
     'reduced motion must disable automatic rotation',
   );
-  results.checks.push({ behavior: 'reduced motion', autoplay: false });
+  const reducedOccasionStart = await currentOccasionSlide(reducedPage);
+  await reducedPage.waitForTimeout(7_500);
+  assert.equal(
+    await currentOccasionSlide(reducedPage),
+    reducedOccasionStart,
+    'reduced motion must disable occasion rotation',
+  );
+  results.checks.push({
+    behavior: 'reduced motion',
+    heroAutoplay: false,
+    occasionAutoplay: false,
+  });
   await reducedContext.close();
+
+  const adminContext = await browser.newContext({
+    viewport: { width: 1440, height: 960 },
+  });
+  await adminContext.route('**/*', (route) =>
+    new URL(route.request().url()).origin === origin.origin
+      ? route.continue()
+      : route.abort(),
+  );
+  const adminPage = await adminContext.newPage();
+  const adminObserved = observe(adminPage);
+  await adminPage.goto(new URL('/local-testing', origin).href, {
+    waitUntil: 'networkidle',
+  });
+  await adminPage
+    .getByRole('button', { name: 'Open Super Admin interface' })
+    .click();
+  await adminPage.waitForURL(/\/admin(?:\/)?$/);
+  await adminPage.goto(
+    new URL('/admin/homepage#occasion-slides', origin).href,
+    {
+      waitUntil: 'networkidle',
+    },
+  );
+  const occasionEditor = adminPage.locator('#occasion-slides');
+  await occasionEditor.waitFor({ state: 'visible' });
+  assert.equal(
+    await occasionEditor.locator('code').count(),
+    2,
+    'The Super Admin editor must load both initial occasion slides',
+  );
+  const existingQaDraft =
+    (await occasionEditor.getByText(/Version \d+ · Draft/).count()) > 0;
+  await occasionEditor
+    .getByRole('button', { name: 'Preview', exact: true })
+    .nth(1)
+    .click();
+  await occasionEditor
+    .locator('[aria-label="Choose gifting story"]')
+    .waitFor({ state: 'visible' });
+  await occasionEditor.getByRole('button', { name: 'Mobile preview' }).click();
+  const mobilePreview = occasionEditor.locator(
+    '[data-occasion-preview="mobile"]',
+  );
+  const previewCardBoxes = await mobilePreview
+    .locator('.homepage-occasion-card')
+    .evaluateAll((cards) =>
+      cards.slice(0, 2).map((card) => {
+        const box = card.getBoundingClientRect();
+        return { left: Math.round(box.left), top: Math.round(box.top) };
+      }),
+    );
+  assert.ok(
+    previewCardBoxes[1].top > previewCardBoxes[0].top,
+    'Super Admin mobile preview cards must use the actual stacked mobile layout',
+  );
+  assert.equal(
+    await mobilePreview.evaluate(
+      (element) => element.scrollWidth > element.clientWidth,
+    ),
+    false,
+    'Super Admin mobile preview must not overflow horizontally',
+  );
+  const supportingNote = occasionEditor.locator(
+    '#occasion-human-story-supportingNote',
+  );
+  assert.equal(
+    await supportingNote.inputValue(),
+    'Thoughtful gifts, delivered across Nepal.',
+  );
+  const qaDraftNote =
+    'Thoughtful gifts, delivered across Nepal. (Local QA draft)';
+  await supportingNote.fill(qaDraftNote);
+  await occasionEditor
+    .getByRole('button', { name: 'Preview', exact: true })
+    .nth(1)
+    .click();
+  assert.equal(
+    (await occasionEditor.getByText(qaDraftNote).count()) > 0,
+    true,
+    'The private editor must preview changed configuration in the real public layout',
+  );
+  const adminScreenshot = path.join(
+    outputDirectory,
+    'homepage-occasion-admin-mobile-preview.png',
+  );
+  await occasionEditor.screenshot({ path: adminScreenshot });
+  results.screenshots.push(adminScreenshot);
+
+  if (saveAdminDraft && !existingQaDraft) {
+    await occasionEditor
+      .locator('#occasion-change-reason')
+      .fill('Local staging browser QA of editable gifting configuration.');
+    await occasionEditor
+      .getByRole('button', { name: 'Save private draft' })
+      .click();
+    await adminPage.waitForLoadState('networkidle');
+    await adminPage
+      .getByText(/Version \d+ · Draft/)
+      .first()
+      .waitFor();
+  }
+  const qaDraftRecorded = saveAdminDraft || existingQaDraft;
+  if (qaDraftRecorded) {
+    const publicPage = await adminContext.newPage();
+    await publicPage.goto(origin.origin, { waitUntil: 'networkidle' });
+    assert.equal(
+      await publicPage.getByText(qaDraftNote).count(),
+      0,
+      'Editing a private draft must not change the current public homepage',
+    );
+    assert.equal(
+      await publicPage
+        .getByText('Thoughtful gifts, delivered across Nepal.', { exact: true })
+        .count(),
+      1,
+      'The effective published/default configuration must remain public',
+    );
+    await publicPage.close();
+  }
+  assert.deepEqual(adminObserved.consoleErrors, []);
+  assert.deepEqual(adminObserved.failedResponses, []);
+  results.checks.push({
+    behavior: 'Super Admin configuration',
+    actualPublicLayoutPreview: true,
+    desktopAndMobilePreview: true,
+    privateDraftSaved: qaDraftRecorded,
+    publicConfigurationUnchangedByDraft: qaDraftRecorded,
+    codeEditOrRedeployRequired: false,
+  });
+  await adminContext.close();
 } finally {
   await browser.close();
 }
