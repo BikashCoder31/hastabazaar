@@ -32,6 +32,20 @@ void test('category overlap and established homepage anchors remain intact', asy
   assert.match(styles, /\.homepage-hero-carousel/);
 });
 
+void test('every carousel image preserves its full editorial composition', async () => {
+  const carousel = await readFile(
+    new URL('../components/homepage/homepage-hero-carousel.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(carousel, /object-contain/);
+  assert.match(carousel, /aspect-\[8\/5\]/);
+  assert.match(
+    carousel,
+    /alt=\{slide\.imageAlt \?\? ''\}[\s\S]*?className="[^"]*object-contain[^"]*"/,
+  );
+  assert.match(carousel, /homepage-hero-media-backdrop/);
+});
+
 void test('two face-free editorial hero assets are project-bound WebP files and registered additively', async () => {
   const assets = [
     '../public/homepage/maker-hands-hero.webp',

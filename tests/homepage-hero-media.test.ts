@@ -94,7 +94,9 @@ async function imageFile(
       background: { r: 172, g: 104, b: 48 },
     },
   });
-  if (options.metadata) pipeline = pipeline.withMetadata({ exif: { IFD0: { Artist: 'Private Artist' } } });
+  if (options.metadata) {
+    pipeline = pipeline.withExif({ IFD0: { Artist: 'Private Artist' } });
+  }
   const bytes = await pipeline[format]().toBuffer();
   return new File([blobBytes(bytes)], `hero.${format === 'jpeg' ? 'jpg' : format}`, {
     type,

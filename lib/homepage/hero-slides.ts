@@ -152,10 +152,13 @@ function boundedText(
   if (value.length > maximum) {
     throw new RangeError(`${label} must be at most ${maximum} characters.`);
   }
-  const disallowedControls = options.allowNewline
-    ? /[\u0000-\u0009\u000b-\u001f\u007f]/u
-    : /\p{Cc}/u;
-  if (disallowedControls.test(value)) {
+  const hasDisallowedControl = Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    const isControl =
+      codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f);
+    return isControl && (!options.allowNewline || codePoint !== 0x0a);
+  });
+  if (hasDisallowedControl) {
     throw new RangeError(`${label} cannot contain control characters.`);
   }
   if (value.includes('<') || value.includes('>')) {

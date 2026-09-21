@@ -18,6 +18,8 @@ import { listHomepageProductControls } from '@/lib/db/repositories/products';
 
 export const dynamic = 'force-dynamic';
 
+const homepageObservedAt = () => Date.now();
+
 function money(paisa: number): string {
   return new Intl.NumberFormat('en-NP', {
     style: 'currency',
@@ -48,7 +50,7 @@ export default async function HomepageProductControlsPage({
   const requestedPage = Number.parseInt(params.page ?? '1', 10);
   const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const asOf = Date.now();
+  const asOf = homepageObservedAt();
   const [result, hero, heroHistory, heroMedia] = await Promise.all([
     listHomepageProductControls(database, {
       query,

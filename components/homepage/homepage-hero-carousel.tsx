@@ -283,13 +283,24 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
                       ))}
                     </div>
                   </div>
-                  <div className="relative min-h-[26rem] overflow-hidden bg-[#ded4c7] lg:min-h-[36rem]">
+                  <div className="relative aspect-[8/5] min-h-0 overflow-hidden bg-[#cbbdaa] lg:aspect-auto lg:min-h-[36rem]">
+                    {slide.mediaType === 'image' || posterUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- decorative backdrop reuses guarded effective media.
+                      <img
+                        src={slide.mediaType === 'image' ? mediaUrl : posterUrl}
+                        alt=""
+                        aria-hidden="true"
+                        className="homepage-hero-media-backdrop absolute inset-0 h-full w-full scale-110 object-cover opacity-50 blur-2xl"
+                        loading={index === 0 ? 'eager' : 'lazy'}
+                      />
+                    ) : null}
+                    <div className="pointer-events-none absolute inset-0 bg-[#5b4938]/10" />
                     {slide.mediaType === 'image' ? (
                       // eslint-disable-next-line @next/next/no-img-element -- effective media uses an authorization-aware dynamic route.
                       <img
                         src={mediaUrl}
                         alt={slide.imageAlt ?? ''}
-                        className="absolute inset-0 h-full w-full object-cover"
+                        className="absolute inset-0 z-[1] h-full w-full object-contain"
                         loading={index === 0 ? 'eager' : 'lazy'}
                       />
                     ) : reducedMotion ? (
@@ -298,7 +309,7 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
                         <img
                           src={posterUrl}
                           alt=""
-                          className="absolute inset-0 h-full w-full object-cover"
+                          className="absolute inset-0 z-[1] h-full w-full object-contain"
                         />
                       ) : null
                     ) : (
@@ -313,13 +324,13 @@ export function HomepageHeroCarousel({ slides }: { slides: HomepageHeroSlides })
                         playsInline
                         preload={index === current ? 'metadata' : 'none'}
                         aria-label={slide.videoDescription ?? undefined}
-                        className="absolute inset-0 h-full w-full object-cover"
+                        className="absolute inset-0 z-[1] h-full w-full object-contain"
                         onEnded={advanceAutomatically}
                       />
                     )}
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#071d35]/20 via-transparent to-transparent" />
+                    <div className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-t from-[#071d35]/20 via-transparent to-transparent" />
                     {slide.imageNote ? (
-                      <p className="absolute right-6 top-1/3 max-w-56 -rotate-3 whitespace-pre-line text-right font-heading text-xl font-semibold italic leading-tight text-[#0d3154] drop-shadow-[0_1px_0_rgba(255,255,255,0.8)] sm:text-2xl">
+                      <p className="absolute right-6 top-1/3 z-[3] max-w-56 -rotate-3 whitespace-pre-line text-right font-heading text-xl font-semibold italic leading-tight text-[#0d3154] drop-shadow-[0_1px_0_rgba(255,255,255,0.8)] sm:text-2xl">
                         {slide.imageNote}
                       </p>
                     ) : null}

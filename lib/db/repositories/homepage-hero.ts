@@ -310,7 +310,7 @@ export async function archiveHomepageHeroMedia(
     try {
       slides = validateHomepageHeroDraft(JSON.parse(version.valueJson));
     } catch {
-      if (version.valueJson.includes(`\"${id}\"`)) {
+      if (version.valueJson.includes(`"${id}"`)) {
         throw new Error('Media referenced by a retained version cannot be archived.');
       }
       continue;
@@ -331,7 +331,7 @@ export async function archiveHomepageHeroMedia(
              WHERE setting_key='homepage_hero_slides' AND value_json LIKE ?
            ) THEN 1 ELSE 0 END`,
         )
-        .bind(guardId, `%\"${id}\"%`),
+        .bind(guardId, `%"${id}"%`),
       database
         .prepare(
           `UPDATE homepage_hero_media SET archived_at=?
