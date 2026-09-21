@@ -1,3 +1,5 @@
+import type { HomepageHeroSlides } from '../homepage/hero-slides';
+
 export const businessSettingKeys = [
   'independent_seller_commission_bps',
   'managed_sale_linked_platform_retention_bps',
@@ -18,6 +20,7 @@ export const businessSettingKeys = [
   'official_social_links',
   'first_party_analytics_policy',
   'recently_viewed_policy',
+  'homepage_hero_slides',
 ] as const;
 
 export type BusinessSettingKey = (typeof businessSettingKeys)[number];
@@ -91,6 +94,7 @@ export type BusinessSettingValues = Readonly<{
   official_social_links: OfficialSocialLinks;
   first_party_analytics_policy: FirstPartyAnalyticsPolicy;
   recently_viewed_policy: RecentlyViewedPolicy;
+  homepage_hero_slides: HomepageHeroSlides;
 }>;
 
 export type BusinessSettingValue<K extends BusinessSettingKey> =

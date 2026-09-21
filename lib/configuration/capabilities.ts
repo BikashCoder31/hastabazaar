@@ -3,6 +3,7 @@ import type {
   BusinessSettingValue,
   ManagedMakerCommercialModel,
 } from './types';
+import { assertHomepageHeroPublicationReady } from '../homepage/hero-slides';
 
 export type CapabilityReadiness = 'implemented' | 'in_development' | 'live_blocked';
 
@@ -87,5 +88,10 @@ export function assertBusinessSettingPublicationReady<
         'Rider finance publication requires a positive cash exposure limit, at least one operating weekday, and an approved receiving-account label.',
       );
     }
+  }
+  if (key === 'homepage_hero_slides') {
+    assertHomepageHeroPublicationReady(
+      value as BusinessSettingValue<'homepage_hero_slides'>,
+    );
   }
 }

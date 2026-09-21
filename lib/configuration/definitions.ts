@@ -11,6 +11,10 @@ import {
   type RiderFinancePolicy,
   type RecentlyViewedPolicy,
 } from './types';
+import {
+  INITIAL_HOMEPAGE_HERO_SLIDES,
+  validateHomepageHeroDraft,
+} from '../homepage/hero-slides';
 
 function integerInRange(
   label: string,
@@ -673,6 +677,20 @@ const definitions = [
     affectedSurfaces: ['product_detail', 'customer_history', 'guest_browser_storage'],
     requiredCapability: 'recently_viewed_v1',
     validate: recentlyViewedPolicy,
+  },
+  {
+    key: 'homepage_hero_slides',
+    label: 'Homepage hero slides',
+    description:
+      'Versioned public hero content, order, actions, and media references.',
+    defaultValue: INITIAL_HOMEPAGE_HERO_SLIDES,
+    sensitivity: 'public_content',
+    changeControl: 'simple',
+    effectiveMode: 'effective_dated',
+    snapshotOnTransaction: false,
+    affectedSurfaces: ['public_homepage', 'admin_homepage'],
+    requiredCapability: 'homepage_hero_carousel_v1',
+    validate: validateHomepageHeroDraft,
   },
 ] as const satisfies readonly BusinessSettingDefinition[];
 

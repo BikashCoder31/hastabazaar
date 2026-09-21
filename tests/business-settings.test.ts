@@ -145,6 +145,7 @@ void test('only supported, validated controls exist and demonstration defaults r
     'official_social_links',
     'first_party_analytics_policy',
     'recently_viewed_policy',
+    'homepage_hero_slides',
   ];
   assert.deepEqual([...keys].sort(), [...requiredKeys].sort());
   assert.equal(
