@@ -1,14 +1,19 @@
 import { env } from 'cloudflare:workers';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
-import { businessEmailQueue } from '@/lib/operations/business-notifications';
+import {
+  businessEmailQueue,
+  businessEmailQueueSummary,
+} from '@/lib/operations/business-notifications';
 import { BusinessEmailProcessor } from '@/components/admin/business-email-processor';
 export const dynamic = 'force-dynamic';
 export default async function BusinessEmails() {
   await requireStaffPage('/admin/business-emails', 'admin.invite');
-  const rows = await businessEmailQueue(
-    requireDatabase(env as unknown as { DB?: D1Database }),
-  );
+  const database = requireDatabase(env as unknown as { DB?: D1Database });
+  const [rows, summary] = await Promise.all([
+    businessEmailQueue(database),
+    businessEmailQueueSummary(database),
+  ]);
   return (
     <div className="space-y-6">
       <h1 className="font-heading text-3xl">Business emails</h1>
@@ -18,9 +23,23 @@ export default async function BusinessEmails() {
         to act receive them.
       </p>
       <BusinessEmailProcessor />
+      <section className="rounded-xl border p-4" aria-label="Business email queue attention">
+        <h2 className="font-semibold">Operations queue attention</h2>
+        <p className="mt-2">
+          Pending: {summary.pending}. Due now: {summary.due}. Oldest pending:{' '}
+          {summary.oldestAgeMinutes} minutes. Failed: {summary.failures}.
+          Exhausted and needing review: {summary.exhausted}. Active sending
+          leases: {summary.activeLeases}.
+        </p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Delivery authorization emails are claimed first. Expired codes and
+          obsolete or unauthorized messages are suppressed with a retained
+          reason instead of being replayed.
+        </p>
+      </section>
       <p className="text-sm text-muted-foreground">
-        Sending has a 15-minute lock. Failed attempts become eligible after five
-        minutes, with at most five attempts. Mail server accepted does not
+        Sending has a 15-minute lock. Failed attempts use bounded backoff, with
+        at most five attempts. Mail server accepted does not
         confirm inbox placement or reading. A connection failure after mail
         acceptance may cause a duplicate on retry. Exhausted attempts require
         staff review; no automatic reset is performed.

@@ -11,6 +11,7 @@ const emailStatusLabel: Record<string, string> = {
   sending: 'Sending',
   retry: 'Retry waiting',
   sent: 'Mail server accepted',
+  cancelled: 'Obsolete update suppressed',
 };
 const queueObservedAt = () => Date.now();
 const emailTime = (value: number) => new Date(value).toLocaleString('en-NP', { timeZone: 'Asia/Kathmandu' });
@@ -63,7 +64,7 @@ export default async function OrderEmails() {
       </div>
       <section className="rounded-xl border p-4" aria-label="Email queue attention">
         <h2 className="font-semibold">Operations staff: queue attention</h2>
-        <p className="mt-2">Oldest pending update: {summary.oldestAgeMinutes} minutes. Due now: {summary.due ?? 0}. Failed email attempts awaiting retry: {summary.failures ?? 0}. Expired sending locks: {summary.expiredLeases ?? 0}.</p>
+        <p className="mt-2">Oldest pending update: {summary.oldestAgeMinutes} minutes. Due now: {summary.due ?? 0}. Failed email attempts awaiting retry: {summary.failures ?? 0}. Exhausted messages needing review: {summary.exhausted ?? 0}. Expired sending locks: {summary.expiredLeases ?? 0}.</p>
         <p className="mt-2 text-sm text-muted-foreground">Check delays above 15 minutes and recurring failures. If the queue does not move, verify the scheduled sender and email settings. An expired lock means the previous sender did not finish recording a result; the email can be picked up by the next eligible attempt.</p>
       </section>
       <section className="rounded-xl border p-4" aria-label="Email status definitions">
@@ -73,6 +74,7 @@ export default async function OrderEmails() {
           <div><dt className="font-semibold">Sending</dt><dd>A sender has claimed the email for up to 15 minutes. Wait while the lock is active.</dd></div>
           <div><dt className="font-semibold">Retry waiting</dt><dd>The last email attempt failed. It becomes eligible again after five minutes.</dd></div>
           <div><dt className="font-semibold">Mail server accepted</dt><dd>The mail server accepted the email. This does not confirm inbox placement or that the customer read it.</dd></div>
+          <div><dt className="font-semibold">Obsolete update suppressed</dt><dd>The order moved to a newer state before this queued message was sent. The retained record explains why it was not replayed.</dd></div>
         </dl>
       </section>
       <OrderEmailRetry />
@@ -101,8 +103,8 @@ export default async function OrderEmails() {
                 <td className="p-4">{orderProgress(j.orderStatus).label}</td>
                 <td className="p-4">{emailStatusLabel[j.status] ?? j.status}</td>
                 <td className="p-4">{j.attempts}</td>
-                <td className="p-4">{j.failureCode === 'delivery_failed' ? 'Email attempt failed' : '—'}</td>
-                <td className="p-4">{j.status === 'sent' ? 'No send action needed' : j.status === 'sending' && j.leaseUntil > now ? 'Wait for active sender until ' + emailTime(j.leaseUntil) : Math.max(j.nextAttemptAt, j.leaseUntil) > now ? 'Eligible after ' + emailTime(Math.max(j.nextAttemptAt, j.leaseUntil)) : j.status === 'sending' ? 'Lock expired; eligible for another attempt' : 'Eligible for the next sender run'}</td>
+                <td className="p-4">{j.failureCode === 'delivery_failed' ? 'Email attempt failed' : j.failureCode === 'obsolete_order_state' ? 'A newer order state made this message obsolete' : '—'}</td>
+                <td className="p-4">{j.status === 'sent' || j.status === 'cancelled' ? 'No send action needed' : j.attempts >= 5 ? 'Automatic attempts exhausted; staff must review configuration or provider health' : j.status === 'sending' && j.leaseUntil > now ? 'Wait for active sender until ' + emailTime(j.leaseUntil) : Math.max(j.nextAttemptAt, j.leaseUntil) > now ? 'Eligible after ' + emailTime(Math.max(j.nextAttemptAt, j.leaseUntil)) : j.status === 'sending' ? 'Lock expired; eligible for another attempt' : 'Eligible for the next sender run'}</td>
               </tr>
             ))}
           </tbody>

@@ -1,4 +1,5 @@
 import { orderProgress } from '../orders/progress';
+import { emailRetryDelayMs, maximumEmailAttempts } from './retry-policy';
 export interface OrderEmailData {
   orderNumber: string;
   eventStatus: string;
@@ -10,6 +11,7 @@ export interface OrderEmailData {
   discountPaisa: number;
   trackingCode: string | null;
   occurredAt: number;
+  attempts?: number;
 }
 export interface OrderMailService {
   send(message: {
@@ -101,34 +103,44 @@ export async function deliverOrderEmails(
   const now = options.now ?? Date.now();
   const limit = Math.max(1, Math.min(options.limit ?? 6, 20));
   const jobs = await db
-    .prepare(`SELECT j.id FROM order_email_jobs j INNER JOIN orders o ON o.id=j.order_id
+    .prepare(`SELECT j.id,j.attempts FROM order_email_jobs j INNER JOIN orders o ON o.id=j.order_id
  WHERE j.status IN ('queued','retry','sending') AND j.next_attempt_at<=? AND j.lease_until<=?
+ AND j.attempts<?
  AND (? IS NULL OR o.id=?) AND (? IS NULL OR o.order_number=?) ORDER BY j.created_at,j.id LIMIT ?`)
     .bind(
       now,
       now,
+      maximumEmailAttempts,
       options.orderId ?? null,
       options.orderId ?? null,
       options.orderNumber ?? null,
       options.orderNumber ?? null,
       limit,
     )
-    .all<{ id: string }>();
+    .all<{ id: string; attempts: number }>();
   let sent = 0,
-    failed = 0;
+    failed = 0,
+    cancelled = 0;
   for (const job of jobs.results) {
     const claim = crypto.randomUUID();
     const claimedAt = options.now ?? Date.now();
     const claimed = await db
       .prepare(`UPDATE order_email_jobs SET status='sending',claim_token=?,lease_until=?,attempts=attempts+1
-   WHERE id=? AND status IN ('queued','retry','sending') AND next_attempt_at<=? AND lease_until<=?`)
-      .bind(claim, claimedAt + 15 * 60000, job.id, claimedAt, claimedAt)
+   WHERE id=? AND status IN ('queued','retry','sending') AND attempts<? AND next_attempt_at<=? AND lease_until<=?`)
+      .bind(
+        claim,
+        claimedAt + 15 * 60000,
+        job.id,
+        maximumEmailAttempts,
+        claimedAt,
+        claimedAt,
+      )
       .run();
     if (!claimed.meta.changes) continue;
     try {
       const data = await db
         .prepare(`SELECT o.order_number AS orderNumber,o.customer_email AS email,o.status AS currentStatus,
-    j.order_status AS eventStatus,j.created_at AS occurredAt,COALESCE(o.current_total_paisa,o.grand_total_paisa) AS cashPaisa,
+    j.order_status AS eventStatus,j.attempts,j.created_at AS occurredAt,COALESCE(o.current_total_paisa,o.grand_total_paisa) AS cashPaisa,
     CASE WHEN EXISTS(SELECT 1 FROM shipping_jobs pj JOIN shipping_parcels pp ON pp.shipping_job_id=pj.id WHERE pj.order_id=o.id) THEN (SELECT SUM(pp.collected_paisa) FROM shipping_jobs pj JOIN shipping_parcels pp ON pp.shipping_job_id=pj.id WHERE pj.order_id=o.id) ELSE NULL END AS collectedPaisa,
     COALESCE(o.current_wallet_paisa,o.wallet_credit_paisa) AS walletPaisa,COALESCE(o.current_discount_paisa,o.referral_discount_paisa) AS discountPaisa,s.tracking_code AS trackingCode
     FROM order_email_jobs j INNER JOIN orders o ON o.id=j.order_id
@@ -136,12 +148,22 @@ export async function deliverOrderEmails(
         .bind(job.id, claim)
         .first<OrderEmailData>();
       if (!data) throw new Error('Order email unavailable');
+      if (data.currentStatus !== data.eventStatus) {
+        await db
+          .prepare(
+            "UPDATE order_email_jobs SET status='cancelled',failure_code='obsolete_order_state',lease_until=0,claim_token=NULL WHERE id=? AND claim_token=?",
+          )
+          .bind(job.id, claim)
+          .run();
+        cancelled++;
+        continue;
+      }
       await mail.send(buildOrderEmail(data, origin));
       await db
         .prepare(
           "UPDATE order_email_jobs SET status='sent',sent_at=?,lease_until=0,claim_token=NULL,failure_code=NULL WHERE id=? AND claim_token=?",
         )
-        .bind(Date.now(), job.id, claim)
+        .bind(options.now ?? Date.now(), job.id, claim)
         .run();
       sent++;
     } catch {
@@ -150,10 +172,15 @@ export async function deliverOrderEmails(
         .prepare(
           "UPDATE order_email_jobs SET status='retry',next_attempt_at=?,lease_until=0,claim_token=NULL,failure_code='delivery_failed' WHERE id=? AND claim_token=?",
         )
-        .bind(Date.now() + 5 * 60000, job.id, claim)
+        .bind(
+          (options.now ?? Date.now()) +
+            emailRetryDelayMs(job.attempts + 1),
+          job.id,
+          claim,
+        )
         .run();
       failed++;
     }
   }
-  return { sent, failed };
+  return { sent, failed, cancelled };
 }

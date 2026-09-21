@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { sendPendingOrderUpdates } from '@/lib/email/send-order-updates';
+import { runScheduledEmailOutbox } from '@/lib/email/outbox-runner';
 
 // Scheduler-only endpoint. Never put the bearer credential in a URL.
 export async function POST(request: Request) {
@@ -20,9 +20,13 @@ export async function POST(request: Request) {
   for (let i = 0; i < a.length; i++) difference |= a[i] ^ b[i];
   if (difference)
     return Response.json({ error: 'Unauthorized' }, { status: 401, headers });
-  const result = await sendPendingOrderUpdates({ limit: 6 });
+  const result = await runScheduledEmailOutbox({ limit: 12 });
+  const failed =
+    'business' in result
+      ? result.business.failed + result.orders.failed
+      : 0;
   return Response.json(result, {
-    status: 'pending' in result || result.failed ? 503 : 200,
+    status: 'pending' in result || failed ? 503 : 200,
     headers,
   });
 }

@@ -18,7 +18,7 @@ export function OrderEmailRetry() {
       setMessage(
         r.pending
           ? 'Email sending is unavailable. Ask the site administrator to check email settings and queue readiness.'
-          : `${r.sent} accepted by the mail server; ${r.failed} email attempts failed and will be eligible for retry after five minutes. Any other pending updates stay in the queue.`,
+          : `${r.sent} accepted by the mail server; ${r.failed} email attempts failed and will retry with bounded backoff. Obsolete updates are suppressed and retained. Any other pending updates stay in the queue.`,
       );
       router.refresh();
     } catch (e) {
@@ -29,7 +29,7 @@ export function OrderEmailRetry() {
   }
   return (
     <div>
-      <p className="mb-3 text-sm text-muted-foreground">This button attempts to send up to six eligible queued or retry emails, including emails with expired sending locks. It can contact customers immediately. It skips emails already recorded as accepted by the mail server. If a send was interrupted after acceptance but before that result was recorded, a retry can send the email again.</p>
+      <p className="mb-3 text-sm text-muted-foreground">This button attempts to send up to six eligible queued or retry emails, including emails with expired sending locks. It can contact customers immediately. It skips accepted and obsolete records. Failed attempts use bounded backoff and stop automatically after five attempts. If a send was interrupted after acceptance but before that result was recorded, a retry can send the email again.</p>
       <button
         disabled={busy}
         onClick={retry}

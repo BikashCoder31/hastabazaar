@@ -341,7 +341,7 @@ void test('order emails queue once per status, retry failures and claim concurre
     };
     assert.deepEqual(
       await deliverOrderEmails(db, broken, 'https://hastabazaar.com'),
-      { sent: 0, failed: 1 },
+      { sent: 0, failed: 1, cancelled: 0 },
     );
     assert.equal(
       (
@@ -381,6 +381,44 @@ void test('order emails queue once per status, retry failures and claim concurre
           .first<{ status: string }>()
       )?.status,
       'packing',
+    );
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+void test('order outbox suppresses obsolete states and preserves the decision', async () => {
+  const fixture = await databaseFixture();
+  const db = fixture.database as unknown as D1Database;
+  try {
+    await db.prepare('DELETE FROM order_email_jobs').run();
+    await db
+      .prepare("UPDATE orders SET status='packing',updated_at=100 WHERE id='order-1'")
+      .run();
+    await db
+      .prepare("UPDATE orders SET status='delivered',updated_at=200 WHERE id='order-1'")
+      .run();
+    const subjects: string[] = [];
+    assert.deepEqual(
+      await deliverOrderEmails(
+        db,
+        { send: async (message) => void subjects.push(message.subject) },
+        'https://hastabazaar.com',
+        { now: 300 },
+      ),
+      { sent: 1, failed: 0, cancelled: 1 },
+    );
+    assert.equal(subjects.length, 1);
+    assert.match(subjects[0], /delivered/i);
+    assert.equal(
+      (
+        await db
+          .prepare(
+            "SELECT failure_code AS code FROM order_email_jobs WHERE order_status='packing'",
+          )
+          .first<{ code: string }>()
+      )?.code,
+      'obsolete_order_state',
     );
   } finally {
     await fixture.dispose();
@@ -4270,6 +4308,7 @@ void test('queue attention identifies delayed retries and expired leases without
     assert.equal(s.failures, 1);
     assert.equal(s.expiredLeases, 1);
     assert.equal(s.due, 2);
+    assert.equal(s.exhausted, 0);
     assert.equal(s.oldestAgeMinutes, 16);
   } finally {
     await f.dispose();

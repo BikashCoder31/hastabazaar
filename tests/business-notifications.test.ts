@@ -34,6 +34,14 @@ import {
   businessNotificationStatements,
   deliverBusinessEmails,
 } from '../lib/operations/business-notifications';
+import { emailRetryDelayMs } from '../lib/email/retry-policy';
+
+void test('email retry backoff grows and remains bounded', () => {
+  assert.deepEqual(
+    [1, 2, 3, 4, 5, 99].map(emailRetryDelayMs),
+    [300_000, 600_000, 1_200_000, 2_400_000, 3_600_000, 3_600_000],
+  );
+});
 function fixture() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec(
@@ -266,7 +274,7 @@ void test('fake delivery retries with redacted failure, bounded attempts, and re
     assert.equal(attempts, 2);
     for (let i = 1; i < 6; i++)
       await deliverBusinessEmails(db, broken, 'https://example.test', {
-        now: 1000 + i * 300001,
+        now: 1000 + i * 4_000_000,
       });
     assert.equal(attempts, 10);
     assert.equal(
@@ -276,6 +284,52 @@ void test('fake delivery retries with redacted failure, bounded attempts, and re
         )
         .get()?.n,
       5,
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
+void test('delivery authorization is prioritized and an expired code is suppressed with a reason', async () => {
+  const { sqlite, db } = fixture();
+  try {
+    sqlite.exec(
+      "CREATE TABLE orders(id TEXT PRIMARY KEY,customer_id TEXT,recipient_email TEXT,order_number TEXT);CREATE TABLE shipping_jobs(id TEXT PRIMARY KEY,order_id TEXT,status TEXT);CREATE TABLE shipping_parcels(shipping_job_id TEXT PRIMARY KEY,rider_user_id TEXT,version INTEGER,method TEXT);CREATE TABLE rider_otp_challenges(shipping_job_id TEXT,rider_user_id TEXT,assignment_version INTEGER,expires_at INTEGER,consumed_at INTEGER);INSERT INTO orders VALUES ('order-otp','other',NULL,'HB-OTP');INSERT INTO shipping_jobs VALUES ('job-otp','order-otp','dispatched');INSERT INTO shipping_parcels VALUES ('job-otp','owner',1,'own_rider');INSERT INTO rider_otp_challenges VALUES ('job-otp','owner',1,500,NULL)",
+    );
+    await db.batch(await businessNotificationStatements(db, event));
+    sqlite
+      .prepare(
+        "INSERT INTO notification_messages(id,recipient_user_id,audience_role,channel,template_key,subject_en,subject_ne,body_en,body_ne,related_type,related_id,status,request_id,created_at,business_event_key,guest_order_id) VALUES ('otp-live','other','customer','email','delivery.authorization','Live delivery code','Live delivery code','Code','Code','order','order-otp','queued','delivery-otp:job-otp:500',200,'delivery.authorization','order-otp')",
+      )
+      .run();
+    const sent: string[] = [];
+    const prioritized = await deliverBusinessEmails(
+      db,
+      { send: async (message) => void sent.push(message.subject) },
+      'https://example.test',
+      { now: 300, limit: 1 },
+    );
+    assert.equal(prioritized.accepted, 1);
+    assert.deepEqual(sent, ['HastaBazaar · Live delivery code']);
+    sqlite
+      .prepare(
+        "INSERT INTO notification_messages(id,recipient_user_id,audience_role,channel,template_key,subject_en,subject_ne,body_en,body_ne,related_type,related_id,status,request_id,created_at,business_event_key,guest_order_id) VALUES ('otp-expired','other','customer','email','delivery.authorization','Expired delivery code','Expired delivery code','Code','Code','order','order-otp','queued','delivery-otp:job-otp:250',201,'delivery.authorization','order-otp')",
+      )
+      .run();
+    const expired = await deliverBusinessEmails(
+      db,
+      { send: async () => assert.fail('expired OTP must not be sent') },
+      'https://example.test',
+      { now: 300, limit: 1 },
+    );
+    assert.equal(expired.cancelled, 1);
+    assert.equal(
+      sqlite
+        .prepare(
+          "SELECT failure_reason AS reason FROM notification_messages WHERE id='otp-expired'",
+        )
+        .get()?.reason,
+      'expired_or_obsolete_otp',
     );
   } finally {
     sqlite.close();

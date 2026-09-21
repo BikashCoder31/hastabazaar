@@ -9,6 +9,10 @@ import {
 import { hasStaffPermissionBySubject } from '../db/repositories/staff-permissions';
 import type { OrderMailService } from '../email/order-updates';
 import {
+  emailRetryDelayMs,
+  maximumEmailAttempts,
+} from '../email/retry-policy';
+import {
   notificationDestination,
   type NotificationAudience,
 } from './notification-links';
@@ -339,26 +343,28 @@ export async function deliverBusinessEmails(
     .prepare(
       "SELECT id FROM notification_messages WHERE channel='email' AND business_event_key=template_key AND template_key IN (" +
         allowed +
-        ") AND status IN ('queued','failed') AND delivery_attempts<5 AND delivery_next_attempt_at<=? AND delivery_lease_until<=? ORDER BY created_at,id LIMIT ?",
+        ") AND status IN ('queued','failed') AND delivery_attempts<? AND delivery_next_attempt_at<=? AND delivery_lease_until<=? ORDER BY CASE WHEN template_key='delivery.authorization' THEN 0 ELSE 1 END,created_at,id LIMIT ?",
     )
-    .bind(...supportedTemplates, now, now, limit)
+    .bind(...supportedTemplates, maximumEmailAttempts, now, now, limit)
     .all<{ id: string }>();
   let accepted = 0,
     failed = 0,
     cancelled = 0;
   for (const job of jobs.results) {
     const token = crypto.randomUUID();
+    let attemptNumber = 1;
     const claimed = await db
       .prepare(
         "UPDATE notification_messages SET delivery_claim_token=?,delivery_lease_until=?,delivery_attempts=delivery_attempts+1 WHERE id=? AND channel='email' AND business_event_key=template_key AND template_key IN (" +
           allowed +
-          ") AND status IN ('queued','failed') AND delivery_attempts<5 AND delivery_next_attempt_at<=? AND delivery_lease_until<=?",
+          ") AND status IN ('queued','failed') AND delivery_attempts<? AND delivery_next_attempt_at<=? AND delivery_lease_until<=?",
       )
       .bind(
         token,
         clock() + 15 * 60000,
         job.id,
         ...supportedTemplates,
+        maximumEmailAttempts,
         clock(),
         clock(),
       )
@@ -367,7 +373,7 @@ export async function deliverBusinessEmails(
     try {
       const row = await db
         .prepare(
-          'SELECT n.recipient_user_id AS userId,u.auth_subject AS authSubject,u.status AS userStatus,COALESCE(u.email,n.guest_email) AS email,n.guest_order_id AS guestOrderId,n.subject_en AS subject,n.body_en AS body,n.audience_role AS audience,n.related_type AS relatedType,n.related_id AS relatedId,n.required_permission AS requiredPermission,n.template_key AS template,n.delivery_attempts AS attempts FROM notification_messages n LEFT JOIN users u ON u.id=n.recipient_user_id WHERE n.id=? AND n.delivery_claim_token=?',
+          'SELECT n.recipient_user_id AS userId,u.auth_subject AS authSubject,u.status AS userStatus,COALESCE(u.email,n.guest_email) AS email,n.guest_order_id AS guestOrderId,n.subject_en AS subject,n.body_en AS body,n.audience_role AS audience,n.related_type AS relatedType,n.related_id AS relatedId,n.required_permission AS requiredPermission,n.template_key AS template,n.request_id AS requestId,n.delivery_attempts AS attempts FROM notification_messages n LEFT JOIN users u ON u.id=n.recipient_user_id WHERE n.id=? AND n.delivery_claim_token=?',
         )
         .bind(job.id, token)
         .first<
@@ -377,10 +383,12 @@ export async function deliverBusinessEmails(
             authSubject: string | null;
             userStatus: string;
             requiredPermission: Permission | null;
+            requestId: string;
             attempts: number;
           }
         >();
       let authorized = !!row && row.userStatus === 'active';
+      attemptNumber = row?.attempts ?? attemptNumber;
       if (row?.template === 'business.account.status')
         authorized =
           row.userId === row.relatedId &&
@@ -401,6 +409,19 @@ export async function deliverBusinessEmails(
           .first<{ orderNumber: string }>();
         authorized = !!order;
         row.orderNumber = order?.orderNumber;
+        const match = /^delivery-otp:([^:]+):(\d+)$/.exec(row.requestId);
+        const expiresAt = Number(match?.[2] ?? 0);
+        authorized =
+          authorized &&
+          !!match &&
+          Number.isSafeInteger(expiresAt) &&
+          expiresAt > clock() &&
+          !!(await db
+            .prepare(
+              'SELECT 1 FROM rider_otp_challenges c JOIN shipping_jobs j ON j.id=c.shipping_job_id JOIN shipping_parcels p ON p.shipping_job_id=j.id WHERE c.shipping_job_id=? AND j.order_id=? AND c.expires_at=? AND c.expires_at>? AND c.consumed_at IS NULL AND p.rider_user_id=c.rider_user_id AND p.version=c.assignment_version',
+            )
+            .bind(match[1], row.guestOrderId, expiresAt, clock())
+            .first());
       }
       if (
         row &&
@@ -605,11 +626,15 @@ export async function deliverBusinessEmails(
       }
       if(row&&authorized&&row.template==='business.cancellation.updated'){const current=await db.prepare('SELECT customer_id AS customerId,customer_email AS email,order_number AS number FROM orders WHERE id=?').bind(row.relatedId).first<{customerId:string|null;email:string;number:string}>();authorized=!!current&&((row.audience==='staff'&&!!await db.prepare("SELECT 1 FROM order_cancellation_reviews WHERE order_id=? AND status='pending'").bind(row.relatedId).first())||(row.audience==='customer'?(row.userId?current.customerId===row.userId:!current.customerId&&current.email===row.email):!!await db.prepare('SELECT 1 FROM order_items i JOIN seller_profiles s ON s.id=i.seller_id WHERE i.order_id=? AND s.user_id=?').bind(row.relatedId,row.userId).first()));row.orderNumber=current?.number;}
       if (!row || !authorized) {
+        const cancellationReason =
+          row?.template === 'delivery.authorization'
+            ? 'expired_or_obsolete_otp'
+            : 'obsolete_or_access_changed';
         await db
           .prepare(
-            "UPDATE notification_messages SET status='cancelled',failure_reason='recipient_access_changed',delivery_claim_token=NULL,delivery_lease_until=0 WHERE id=? AND delivery_claim_token=?",
+            'UPDATE notification_messages SET status=\'cancelled\',failure_reason=?,delivery_claim_token=NULL,delivery_lease_until=0 WHERE id=? AND delivery_claim_token=?',
           )
-          .bind(job.id, token)
+          .bind(cancellationReason, job.id, token)
           .run();
         cancelled++;
         continue;
@@ -628,7 +653,11 @@ export async function deliverBusinessEmails(
         .prepare(
           "UPDATE notification_messages SET status='failed',failure_reason='delivery_failed',delivery_next_attempt_at=?,delivery_claim_token=NULL,delivery_lease_until=0 WHERE id=? AND delivery_claim_token=?",
         )
-        .bind(clock() + 5 * 60000, job.id, token)
+        .bind(
+          clock() + emailRetryDelayMs(attemptNumber),
+          job.id,
+          token,
+        )
         .run();
       failed++;
     }
@@ -636,10 +665,14 @@ export async function deliverBusinessEmails(
   return { accepted, failed, cancelled };
 }
 export async function businessEmailQueue(db: D1Database, now = Date.now()) {
+  const allowed = supportedTemplates.map(() => '?').join(',');
   const rows = await db
     .prepare(
-      "SELECT id,subject_en AS subject,audience_role AS audience,status,delivery_attempts AS attempts,delivery_lease_until AS leaseUntil,delivery_next_attempt_at AS nextAt,failure_reason AS failure,created_at AS createdAt FROM notification_messages WHERE channel='email' AND business_event_key=template_key AND business_event_key LIKE 'business.%' ORDER BY created_at DESC LIMIT 100",
+      "SELECT id,subject_en AS subject,audience_role AS audience,status,delivery_attempts AS attempts,delivery_lease_until AS leaseUntil,delivery_next_attempt_at AS nextAt,failure_reason AS failure,created_at AS createdAt FROM notification_messages WHERE channel='email' AND business_event_key=template_key AND template_key IN (" +
+        allowed +
+        ') ORDER BY created_at DESC LIMIT 100',
     )
+    .bind(...supportedTemplates)
     .all<{
       id: string;
       subject: string;
@@ -657,8 +690,10 @@ export async function businessEmailQueue(db: D1Database, now = Date.now()) {
       row.status === 'sent'
         ? 'Mail server accepted'
         : row.status === 'cancelled'
-          ? 'Recipient access changed'
-          : row.attempts >= 5 && row.leaseUntil <= now
+          ? row.failure === 'expired_or_obsolete_otp'
+            ? 'Expired or obsolete delivery code suppressed'
+            : 'Obsolete or unauthorized message suppressed'
+          : row.attempts >= maximumEmailAttempts && row.leaseUntil <= now
             ? 'Needs staff review'
             : row.leaseUntil > now
               ? 'Sending'
@@ -666,6 +701,46 @@ export async function businessEmailQueue(db: D1Database, now = Date.now()) {
                 ? 'Retry waiting'
                 : 'Queued',
   }));
+}
+
+export async function businessEmailQueueSummary(
+  db: D1Database,
+  now = Date.now(),
+) {
+  const allowed = supportedTemplates.map(() => '?').join(',');
+  const row = await db
+    .prepare(
+      "SELECT COUNT(*) AS pending,COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),0) AS failures,COALESCE(SUM(CASE WHEN status='failed' AND delivery_attempts>=? THEN 1 ELSE 0 END),0) AS exhausted,COALESCE(SUM(CASE WHEN delivery_lease_until>? THEN 1 ELSE 0 END),0) AS activeLeases,COALESCE(SUM(CASE WHEN status IN ('queued','failed') AND delivery_attempts<? AND delivery_next_attempt_at<=? AND delivery_lease_until<=? THEN 1 ELSE 0 END),0) AS due,MIN(created_at) AS oldestAt FROM notification_messages WHERE channel='email' AND business_event_key=template_key AND template_key IN (" +
+        allowed +
+        ") AND status IN ('queued','failed')",
+    )
+    .bind(
+      maximumEmailAttempts,
+      now,
+      maximumEmailAttempts,
+      now,
+      now,
+      ...supportedTemplates,
+    )
+    .first<{
+      pending: number;
+      failures: number;
+      exhausted: number;
+      activeLeases: number;
+      due: number;
+      oldestAt: number | null;
+    }>();
+  return Object.freeze({
+    pending: Number(row?.pending ?? 0),
+    failures: Number(row?.failures ?? 0),
+    exhausted: Number(row?.exhausted ?? 0),
+    activeLeases: Number(row?.activeLeases ?? 0),
+    due: Number(row?.due ?? 0),
+    oldestAgeMinutes:
+      row?.oldestAt == null
+        ? 0
+        : Math.max(0, Math.floor((now - row.oldestAt) / 60_000)),
+  });
 }
 export interface OperationalBusinessEvent {
   kind:
