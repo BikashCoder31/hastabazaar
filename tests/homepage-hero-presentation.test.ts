@@ -49,21 +49,29 @@ void test('category overlap and established homepage anchors remain intact', asy
 });
 
 void test('hero media is full bleed, calmer, and uses readable captions with dot navigation', async () => {
-  const carousel = await readFile(
-    new URL(
-      '../components/homepage/homepage-hero-carousel.tsx',
-      import.meta.url,
+  const [carousel, styles] = await Promise.all([
+    readFile(
+      new URL(
+        '../components/homepage/homepage-hero-carousel.tsx',
+        import.meta.url,
+      ),
+      'utf8',
     ),
-    'utf8',
-  );
-  assert.match(carousel, /homepage-hero-media[^\n]*object-cover/);
+    readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
+  ]);
+  assert.match(carousel, /data-media-frame="cover"/);
+  assert.equal((carousel.match(/data-media-mode="cover"/g) ?? []).length, 3);
+  assert.match(carousel, /mediaFrameClass\(\s*'cover'/);
+  assert.match(carousel, /mediaObjectClass\('cover'/);
+  assert.match(carousel, /aspect-\[4\/3\]/);
+  assert.match(carousel, /sm:aspect-\[8\/5\]/);
+  assert.match(carousel, /lg:min-h-\[clamp\(32rem,42vw,40rem\)\]/);
+  assert.match(carousel, /min-h-0[^"]*lg:min-h-\[36rem\]/);
   assert.match(carousel, /brightness-\[0\.82\]/);
   assert.match(carousel, /saturate-\[0\.82\]/);
-  assert.match(carousel, /aspect-\[8\/5\]/);
-  assert.match(
-    carousel,
-    /alt=\{slide\.imageAlt \?\? ''\}[\s\S]*?className="[^"]*object-cover[^"]*"/,
-  );
+  assert.match(carousel, /alt=\{slide\.imageAlt \?\? ''\}/);
+  assert.match(styles, /\.homepage-hero-media\s*\{[\s\S]*?object-position:/);
+  assert.doesNotMatch(styles, /\.homepage-hero-media img/);
   assert.doesNotMatch(carousel, /homepage-hero-media-backdrop/);
   assert.match(carousel, /homepage-hero-image-note/);
   assert.match(carousel, /left-\[16%\][^\n]*top-\[16%\]/);

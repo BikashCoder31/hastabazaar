@@ -33,6 +33,11 @@ import { HomepageHeroCarousel } from '@/components/homepage/homepage-hero-carous
 import { HomepageOccasionCarousel } from '@/components/homepage/homepage-occasion-carousel';
 import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
+import {
+  mediaFrameClass,
+  mediaObjectClass,
+  mediaSizes,
+} from '@/lib/media/responsive-media';
 import { requireDatabase } from '@/lib/db/d1';
 import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
 import {
@@ -257,13 +262,20 @@ export default async function Home() {
                     href={'/shop?category=' + encodeURIComponent(category.slug)}
                     className="homepage-category-item"
                   >
-                    <span className="homepage-category-image">
+                    <span
+                      data-media-frame="cover"
+                      className={mediaFrameClass(
+                        'cover',
+                        'homepage-category-image',
+                      )}
+                    >
                       <Image
+                        data-media-mode="cover"
                         src={categoryImage.src}
                         alt={categoryImage.alt}
                         fill
                         sizes="112px"
-                        className="object-cover"
+                        className={mediaObjectClass('cover')}
                       />
                     </span>
                     <span>{category.nameEn}</span>
@@ -473,13 +485,17 @@ export default async function Home() {
 
         <section id="makers" className="shell py-10 sm:py-16">
           <div className="homepage-maker-story">
-            <div className="homepage-maker-media">
+            <div
+              data-media-frame="cover"
+              className={mediaFrameClass('cover', 'homepage-maker-media')}
+            >
               <Image
+                data-media-mode="cover"
                 src="/homepage/nepali-maker-workshop.webp"
                 alt="An artisan’s hands painting a geometric pattern onto a terracotta vase in a Nepali workshop"
                 fill
-                sizes="(min-width: 1024px) 52vw, 100vw"
-                className="object-cover"
+                sizes={mediaSizes.editorial}
+                className={mediaObjectClass('cover')}
               />
               <div className="homepage-maker-caption">
                 <span>Made by hand</span>

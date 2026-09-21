@@ -43,6 +43,11 @@ import type {
   HomepageOccasionIcon,
   HomepageOccasionSlides,
 } from '@/lib/homepage/occasion-slides';
+import {
+  mediaFrameClass,
+  mediaObjectClass,
+  mediaSizes,
+} from '@/lib/media/responsive-media';
 
 const icons: Record<HomepageOccasionIcon, LucideIcon> = {
   gift: Gift,
@@ -221,13 +226,18 @@ export function HomepageOccasionCarousel({
           setFocusWithin(false);
       }}
     >
-      <div className="homepage-occasion-pattern" aria-hidden="true">
+      <div
+        data-media-frame="cover"
+        className={mediaFrameClass('cover', 'homepage-occasion-pattern')}
+        aria-hidden="true"
+      >
         <Image
+          data-media-mode="cover"
           src="/homepage/nepali-gift-pattern.webp"
           alt=""
           fill
-          sizes="100vw"
-          className="object-cover"
+          sizes={mediaSizes.occasion}
+          className={mediaObjectClass('cover')}
         />
       </div>
       <Carousel

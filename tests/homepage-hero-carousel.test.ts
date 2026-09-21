@@ -70,7 +70,19 @@ void test('carousel presentation wires accessibility, video safety, and all paus
   assert.match(source, /video\.currentTime = 0/);
   assert.match(source, /muted/);
   assert.match(source, /playsInline/);
+  assert.match(source, /loading=\{index === 0 \? 'eager' : 'lazy'\}/);
+  assert.match(source, /poster=\{posterUrl\}/);
   assert.match(source, /preload=\{index === current \? 'metadata' : 'none'\}/);
   assert.match(source, /onEnded=\{advanceAutomatically\}/);
+  assert.match(source, /data-media-frame="cover"/);
+  assert.equal((source.match(/data-media-mode="cover"/g) ?? []).length, 3);
+  assert.match(
+    source,
+    /const mediaUrl = `\/api\/homepage\/hero-media\/\$\{encodeURIComponent\(slide\.mediaId\)\}`;/,
+  );
+  assert.match(
+    source,
+    /`\/api\/homepage\/hero-media\/\$\{encodeURIComponent\(slide\.posterMediaId\)\}`/,
+  );
   assert.doesNotMatch(source, /<video[\s\S]{0,500}\scontrols(?:=|\s|>)/);
 });

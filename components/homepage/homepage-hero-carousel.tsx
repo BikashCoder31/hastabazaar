@@ -30,6 +30,10 @@ import {
   type HeroSelectionKind,
 } from '@/lib/homepage/hero-autoplay';
 import type { HomepageHeroSlides } from '@/lib/homepage/hero-slides';
+import {
+  mediaFrameClass,
+  mediaObjectClass,
+} from '@/lib/media/responsive-media';
 
 function headingForAnnouncement(
   slides: HomepageHeroSlides,
@@ -47,6 +51,10 @@ const heroPrinciples = [
   { icon: Sprout, label: 'Thoughtful choices' },
   { icon: Heart, label: 'A stronger Nepal' },
 ] as const;
+
+const heroMediaVisualClass =
+  'homepage-hero-media absolute inset-0 z-[1] object-center brightness-[0.82] saturate-[0.82] contrast-[0.96]';
+const heroMediaClass = mediaObjectClass('cover', heroMediaVisualClass);
 
 export function HomepageHeroCarousel({
   slides,
@@ -254,7 +262,7 @@ export function HomepageHeroCarousel({
                 className="!pl-0"
                 aria-label={`Slide ${index + 1} of ${enabledSlides.length}`}
               >
-                <div className="mx-auto grid min-h-[36rem] max-w-[1600px] lg:grid-cols-[48%_52%]">
+                <div className="mx-auto grid min-h-0 max-w-[1600px] lg:min-h-[36rem] lg:grid-cols-[48%_52%]">
                   <div className="flex flex-col justify-center px-6 pb-28 pt-14 sm:px-10 lg:px-16 lg:pb-24 lg:pt-16 xl:px-24">
                     <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#996020] sm:text-sm">
                       {slide.eyebrow}
@@ -309,26 +317,35 @@ export function HomepageHeroCarousel({
                       ))}
                     </div>
                   </div>
-                  <div className="relative aspect-[8/5] min-h-0 overflow-hidden bg-[#75695f] lg:aspect-auto lg:min-h-[36rem]">
+                  <div
+                    data-media-frame="cover"
+                    className={mediaFrameClass(
+                      'cover',
+                      'aspect-[4/3] min-h-0 bg-[#75695f] sm:aspect-[8/5] lg:aspect-auto lg:min-h-[clamp(32rem,42vw,40rem)]',
+                    )}
+                  >
                     {slide.mediaType === 'image' ? (
                       // eslint-disable-next-line @next/next/no-img-element -- effective media uses an authorization-aware dynamic route.
                       <img
+                        data-media-mode="cover"
                         src={mediaUrl}
                         alt={slide.imageAlt ?? ''}
-                        className="homepage-hero-media absolute inset-0 z-[1] h-full w-full object-cover object-center brightness-[0.82] saturate-[0.82] contrast-[0.96]"
+                        className={heroMediaClass}
                         loading={index === 0 ? 'eager' : 'lazy'}
                       />
                     ) : reducedMotion ? (
                       posterUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element -- dynamic poster route.
                         <img
+                          data-media-mode="cover"
                           src={posterUrl}
                           alt=""
-                          className="homepage-hero-media absolute inset-0 z-[1] h-full w-full object-cover object-center brightness-[0.82] saturate-[0.82] contrast-[0.96]"
+                          className={heroMediaClass}
                         />
                       ) : null
                     ) : (
                       <video
+                        data-media-mode="cover"
                         ref={(element) => {
                           if (element) videos.current.set(index, element);
                           else videos.current.delete(index);
@@ -339,7 +356,7 @@ export function HomepageHeroCarousel({
                         playsInline
                         preload={index === current ? 'metadata' : 'none'}
                         aria-label={slide.videoDescription ?? undefined}
-                        className="homepage-hero-media absolute inset-0 z-[1] h-full w-full object-cover object-center brightness-[0.82] saturate-[0.82] contrast-[0.96]"
+                        className={heroMediaClass}
                         onEnded={advanceAutomatically}
                       />
                     )}
