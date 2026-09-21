@@ -91,6 +91,10 @@
     @apply bg-background text-foreground antialiased;
   }
 
+  :where(img, video) {
+    max-inline-size: 100%;
+  }
+
   :where(a, button, input, select, textarea):focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 4px;
@@ -106,6 +110,46 @@
 }
 
 @layer components {
+  .media-frame {
+    position: relative;
+    min-inline-size: 0;
+    overflow: hidden;
+    background: var(--muted);
+  }
+
+  .media-object {
+    display: block;
+    max-inline-size: 100%;
+  }
+
+  .media-object-cover,
+  .media-object-contain {
+    width: 100%;
+    height: 100%;
+  }
+
+  .media-object-cover {
+    object-fit: cover;
+  }
+
+  .media-object-contain {
+    object-fit: contain;
+  }
+
+  .media-object-natural {
+    width: auto;
+    height: auto;
+  }
+
+  .media-shrink {
+    max-inline-size: 100%;
+    height: auto;
+  }
+
+  .media-loading {
+    background: var(--muted);
+  }
+
   .shell {
     @apply mx-auto w-full max-w-[90rem] px-5 sm:px-8 lg:px-12;
   }
