@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import sharp from 'sharp';
 import type { SharpConstructor } from '../node_modules/sharp/dist/index.d.mts';
@@ -98,18 +99,25 @@ async function imageFile(
     pipeline = pipeline.withExif({ IFD0: { Artist: 'Private Artist' } });
   }
   const bytes = await pipeline[format]().toBuffer();
-  return new File([blobBytes(bytes)], `hero.${format === 'jpeg' ? 'jpg' : format}`, {
-    type,
-  });
+  return new File(
+    [blobBytes(bytes)],
+    `hero.${format === 'jpeg' ? 'jpg' : format}`,
+    {
+      type,
+    },
+  );
 }
 
 void test('MP4 metadata accepts bounded 32-bit and 64-bit boxes', () => {
   assert.equal(readMp4DurationSeconds(clip(12)), 12);
-  assert.deepEqual(readMp4Metadata(clip(10, { largeMovie: true, durationVersion: 1 })), {
-    durationSeconds: 10,
-    width: 1920,
-    height: 1080,
-  });
+  assert.deepEqual(
+    readMp4Metadata(clip(10, { largeMovie: true, durationVersion: 1 })),
+    {
+      durationSeconds: 10,
+      width: 1920,
+      height: 1080,
+    },
+  );
 });
 
 void test('MP4 metadata rejects malformed, overflowing, incomplete, and overlong movies', () => {
@@ -118,7 +126,10 @@ void test('MP4 metadata rejects malformed, overflowing, incomplete, and overlong
   overflow.write('ftyp', 4, 4, 'ascii');
   overflow.writeBigUInt64BE(BigInt('4294967296'), 8);
   assert.throws(() => readMp4DurationSeconds(overflow), /invalid MP4/i);
-  assert.throws(() => readMp4DurationSeconds(Buffer.from('not a movie')), /invalid MP4/i);
+  assert.throws(
+    () => readMp4DurationSeconds(Buffer.from('not a movie')),
+    /invalid MP4/i,
+  );
   assert.throws(
     () =>
       readMp4DurationSeconds(
@@ -160,7 +171,9 @@ void test('image validation rejects spoofed malformed oversized and excessive in
   );
   await assert.rejects(
     prepareHomepageHeroUpload(
-      new File([Buffer.from('not an image')], 'fake.png', { type: 'image/png' }),
+      new File([Buffer.from('not an image')], 'fake.png', {
+        type: 'image/png',
+      }),
     ),
     /safely read/i,
   );
@@ -196,6 +209,35 @@ void test('bounded MP4 upload preserves bytes and reports trusted metadata', asy
   assert.equal(prepared.width, 1920);
   assert.equal(prepared.height, 1080);
   assert.deepEqual(Buffer.from(prepared.bytes), bytes);
+});
+
+void test('MP4 validation remains usable when the native image decoder cannot load', () => {
+  const bytes = btoa(String.fromCharCode(...clip(2)));
+  const result = spawnSync(
+    process.execPath,
+    [
+      '--import',
+      'tsx',
+      '--input-type=module',
+      '-e',
+      `
+    import assert from 'node:assert/strict';
+    import { registerHooks } from 'node:module';
+    registerHooks({ resolve(specifier, context, nextResolve) {
+      if (specifier === 'sharp') throw new Error('Native image decoder unavailable');
+      return nextResolve(specifier, context);
+    }});
+    const { prepareHomepageHeroUpload } = await import('./lib/homepage/hero-media.ts');
+    const bytes = Buffer.from('${bytes}', 'base64');
+    const prepared = await prepareHomepageHeroUpload(new File([bytes], 'qa.mp4', {type:'video/mp4'}));
+    assert.equal(prepared.durationSeconds, 2);
+    assert.deepEqual(Buffer.from(prepared.bytes), bytes);
+    await assert.rejects(prepareHomepageHeroUpload(new File(['invalid'], 'qa.png', {type:'image/png'})), /safely read/);
+  `,
+    ],
+    { cwd: new URL('..', import.meta.url), encoding: 'utf8' },
+  );
+  assert.equal(result.status, 0, result.stderr);
 });
 
 void test('video validation rejects spoofed malformed overlong and oversized uploads', async () => {

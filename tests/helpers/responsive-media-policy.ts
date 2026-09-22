@@ -77,6 +77,8 @@ interface StylesheetClasses {
   positioned: ReadonlySet<string>;
   possiblyPositioned: ReadonlySet<string>;
   possiblyStatic: ReadonlySet<string>;
+  importantPossiblyPositioned: ReadonlySet<string>;
+  importantPossiblyStatic: ReadonlySet<string>;
   inset: ReadonlySet<string>;
   unsafeWidth: ReadonlySet<string>;
 }
@@ -129,6 +131,14 @@ function hasContainingBlockGeometry(
               /(?:^|:)static$/.test(token) || classes.possiblyStatic.has(token),
           ),
       },
+    );
+    // Stylesheet !important declarations outrank normal inline styles. Keep
+    // their possible outcomes even when an inline branch says `static`.
+    positioning.possible ||= hasPossibleClass(attributes, (token) =>
+      classes.importantPossiblyPositioned.has(token),
+    );
+    positioning.guaranteed &&= !hasPossibleClass(attributes, (token) =>
+      classes.importantPossiblyStatic.has(token),
     );
     if (positioning.possible) {
       if (
@@ -477,6 +487,8 @@ function stylesheetGeometryClasses(stylesheet: string): StylesheetClasses {
   const declarations = new Map<string, Map<string, string>>();
   const possiblyPositioned = new Set<string>();
   const possiblyStatic = new Set<string>();
+  const importantPossiblyPositioned = new Set<string>();
+  const importantPossiblyStatic = new Set<string>();
   const unsafeWidth = new Set<string>();
   let segmentStart = 0;
   for (const brace of css.matchAll(/[{}]/g)) {
@@ -521,21 +533,31 @@ function stylesheetGeometryClasses(stylesheet: string): StylesheetClasses {
             selector.trim(),
           )?.[1];
           const className = /^\.([\w-]+)$/.exec(selector.trim())?.[1];
-          if (possibleClass && (!unconditional || !className)) {
+          // Merge possible outcomes before collapsing unconditional values.
+          // Source order alone cannot discard earlier !important or unlayered
+          // positioning. Conservatively retain CSS alternatives across layers
+          // and selectors; a guarantee requires all alternatives to position.
+          if (possibleClass) {
             for (const [, name, value] of properties) {
               if (name !== 'position') continue;
               if (
                 !/^(?:static|initial|unset)(?:\s*!important)?$/.test(
                   value.trim(),
                 )
-              )
+              ) {
                 possiblyPositioned.add(possibleClass);
+                if (/!important\s*$/.test(value))
+                  importantPossiblyPositioned.add(possibleClass);
+              }
               if (
                 !/^(?:relative|absolute|fixed|sticky)(?:\s*!important)?$/.test(
                   value.trim(),
                 )
-              )
+              ) {
                 possiblyStatic.add(possibleClass);
+                if (/!important\s*$/.test(value))
+                  importantPossiblyStatic.add(possibleClass);
+              }
             }
           }
           if (!className) continue;
@@ -600,6 +622,8 @@ function stylesheetGeometryClasses(stylesheet: string): StylesheetClasses {
     geometry,
     possiblyPositioned,
     possiblyStatic,
+    importantPossiblyPositioned,
+    importantPossiblyStatic,
     positioned,
     inset: new Set(
       [...declarations]

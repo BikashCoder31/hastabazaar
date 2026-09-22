@@ -422,6 +422,46 @@ void test('CSS static alternatives require reserved farther containing blocks', 
   }
 });
 
+for (const [name, css, style] of [
+  [
+    'important relative beats inline static',
+    '.nearer {position:relative!important}',
+    'style={{position: "static"}}',
+  ],
+  [
+    'important relative beats later normal static',
+    '.nearer {position:relative!important} .nearer {position:static}',
+    '',
+  ],
+  [
+    'unlayered relative beats later layered static',
+    '.nearer {position:relative} @layer components {.nearer {position:static}}',
+    '',
+  ],
+] as const) {
+  void test(`cascade preserves nearer containing block: ${name}`, () => {
+    const frame =
+      '<div data-media-frame="cover" className={mediaFrameClass("cover", "test-frame")}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>';
+    const stylesheet = `.test-frame {position:absolute; inset:0} ${css}`;
+    assert.deepEqual(
+      auditResponsiveMediaSource(
+        'fixture.tsx',
+        `<div className="relative h-64"><div className="nearer" ${style}>${frame}</div></div>`,
+        stylesheet,
+      ),
+      [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+    );
+    assert.deepEqual(
+      auditResponsiveMediaSource(
+        'fixture.tsx',
+        `<div className="relative h-64"><div className="nearer h-32" ${style}>${frame}</div></div>`,
+        stylesheet,
+      ),
+      [],
+    );
+  });
+}
+
 void test('identifier class object keys can introduce a nearer containing block', () => {
   const frame =
     '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'test-frame\')}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>';

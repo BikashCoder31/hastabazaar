@@ -157,6 +157,36 @@ void test('admin review keeps full product images and MP4 videos visible through
   assert.match(image!, /alt=\{media\.altEn\}/);
 });
 
+void test('admin product review wraps generated SKU text at the 320px boundary', async () => {
+  const review = await readFile(
+    new URL('../app/admin/products/[id]/page.tsx', import.meta.url),
+    'utf8',
+  );
+  const sku = review.match(/<p\b[^>]*>SKU \{product\.sku\}<\/p>/)?.[0];
+  assert.ok(sku, 'The product identifier remains visible for reviewers.');
+  assert.match(
+    sku,
+    /break-all|\[overflow-wrap:anywhere\]/,
+    'Long generated SKU text must wrap inside the phone viewport.',
+  );
+});
+
+void test('seller product scroll container also contains absolute accessible labels', async () => {
+  const source = await readFile(
+    new URL('../app/seller/products/page.tsx', import.meta.url),
+    'utf8',
+  );
+  const scroller = source.match(
+    /<div className="([^"]*overflow-x-auto[^"]*)">/,
+  )?.[1];
+  assert.ok(scroller);
+  assert.match(
+    scroller,
+    /\brelative\b/,
+    'Absolute screen-reader labels must not escape the local table scroller into page overflow.',
+  );
+});
+
 void test('admin thumbnails crop in bounded cover frames and operations branding stays contained', async () => {
   for (const file of [
     '../app/admin/products/page.tsx',

@@ -86,7 +86,7 @@ export default async function ProductReviewPage({
       </Link>
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <p className="eyebrow">SKU {product.sku}</p>
+          <p className="eyebrow break-all">SKU {product.sku}</p>
           <h1 className="mt-2 font-heading text-4xl tracking-tight">
             {product.nameEn}
           </h1>

@@ -1,9 +1,6 @@
-import implementation from 'sharp';
 import type { SharpConstructor } from '../../node_modules/sharp/dist/index.d.mts';
 
 import { readMp4Metadata } from './mp4-metadata';
-
-const sharp = implementation as SharpConstructor;
 
 const imageMimeByFormat = {
   jpeg: 'image/jpeg',
@@ -38,6 +35,7 @@ async function prepareImage(file: File, name: string): Promise<PreparedHeroMedia
   }
   const input = new Uint8Array(await file.arrayBuffer());
   try {
+    const sharp = (await import('sharp')).default as SharpConstructor;
     const image = sharp(input, { limitInputPixels: 20_000_000, animated: false });
     const metadata = await image.metadata();
     if (!metadata.width || !metadata.height || (metadata.pages ?? 1) !== 1) {

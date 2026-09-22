@@ -147,7 +147,7 @@ export default async function SellerProductsPage({
       </section>
 
       {products.length ? (
-        <div className="overflow-x-auto rounded-2xl border bg-card">
+        <div className="relative overflow-x-auto rounded-2xl border bg-card">
           <table className="w-full min-w-[980px] text-left text-sm">
             <thead className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
