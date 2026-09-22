@@ -69,9 +69,13 @@ function mediaMode(attributes: ts.JsxAttributes): MediaMode | undefined {
 
 interface FrameMarker {
   mode?: MediaMode;
+  bounded: boolean;
 }
 
-function frameMarker(attributes: ts.JsxAttributes): FrameMarker | undefined {
+function frameMarker(
+  attributes: ts.JsxAttributes,
+  isMediaElement = false,
+): FrameMarker | undefined {
   if (!attribute(attributes, 'data-media-frame')) return undefined;
   const value = literalAttributeValue(attributes, 'data-media-frame');
   return {
@@ -79,6 +83,16 @@ function frameMarker(attributes: ts.JsxAttributes): FrameMarker | undefined {
       value && MEDIA_MODES.has(value as MediaMode)
         ? (value as MediaMode)
         : undefined,
+    bounded: Boolean(
+      value &&
+      MEDIA_MODES.has(value as MediaMode) &&
+      !isOversizedPixelWidth(attributes) &&
+      (hasSharedMediaClass(attributes, 'mediaFrameClass', value) ||
+        (hasUnconditionalClass(attributes, isGeometryToken) &&
+          (hasUnconditionalClass(attributes, 'overflow-hidden') ||
+            (isMediaElement &&
+              hasSharedMediaClass(attributes, 'mediaObjectClass', value))))),
+    ),
   };
 }
 
@@ -163,13 +177,19 @@ function containsBackgroundImage(style: ts.JsxAttribute): boolean {
   return found;
 }
 
-function classTextHasToken(text: string, token: string): boolean {
-  return text.split(/\s+/).includes(token);
+type ClassTokenTest = string | ((token: string) => boolean);
+
+function classTextHasToken(text: string, token: ClassTokenTest): boolean {
+  return text
+    .split(/\s+/)
+    .some(
+      typeof token === 'string' ? (candidate) => candidate === token : token,
+    );
 }
 
 function expressionGuaranteesClassToken(
   expression: ts.Expression,
-  token: string,
+  token: ClassTokenTest,
 ): boolean {
   if (ts.isParenthesizedExpression(expression)) {
     return expressionGuaranteesClassToken(expression.expression, token);
@@ -215,18 +235,67 @@ function expressionGuaranteesClassToken(
   return false;
 }
 
-function hasUnconditionalMediaShrink(attributes: ts.JsxAttributes): boolean {
+function hasUnconditionalClass(
+  attributes: ts.JsxAttributes,
+  token: ClassTokenTest,
+): boolean {
   const className = attribute(attributes, 'className');
   const initializer = className?.initializer;
   if (!initializer) return false;
   if (ts.isStringLiteral(initializer)) {
-    return classTextHasToken(initializer.text, 'media-shrink');
+    return classTextHasToken(initializer.text, token);
   }
   return Boolean(
     ts.isJsxExpression(initializer) &&
     initializer.expression &&
-    expressionGuaranteesClassToken(initializer.expression, 'media-shrink'),
+    expressionGuaranteesClassToken(initializer.expression, token),
   );
+}
+
+function isGeometryToken(token: string): boolean {
+  if (/^aspect-(square|video)$/.test(token)) return true;
+  const ratio = /^aspect-\[(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)\]$/.exec(token);
+  if (ratio) return Number(ratio[1]) > 0 && Number(ratio[2]) > 0;
+  const size = /^(?:size|h|min-h)-(\d+(?:\.\d+)?)$/.exec(token);
+  return Boolean(size && Number(size[1]) > 0);
+}
+
+function hasSharedMediaClass(
+  attributes: ts.JsxAttributes,
+  helper: 'mediaFrameClass' | 'mediaObjectClass',
+  mode: string,
+): boolean {
+  const initializer = attribute(attributes, 'className')?.initializer;
+  if (
+    !initializer ||
+    !ts.isJsxExpression(initializer) ||
+    !initializer.expression
+  )
+    return false;
+
+  const guaranteesHelper = (expression: ts.Expression): boolean => {
+    if (ts.isParenthesizedExpression(expression))
+      return guaranteesHelper(expression.expression);
+    if (ts.isConditionalExpression(expression)) {
+      return (
+        guaranteesHelper(expression.whenTrue) &&
+        guaranteesHelper(expression.whenFalse)
+      );
+    }
+    if (!ts.isCallExpression(expression)) return false;
+    const name = expression.expression.getText();
+    const first = expression.arguments[0];
+    if (name === helper) {
+      return Boolean(first && ts.isStringLiteral(first) && first.text === mode);
+    }
+    return (
+      ['cn', 'clsx', 'twMerge'].includes(name) &&
+      expression.arguments.some(guaranteesHelper)
+    );
+  };
+  // These helpers establish the shared clipping/shrinking boundary. A marker
+  // or a conditional helper call does not establish that boundary on its own.
+  return guaranteesHelper(initializer.expression);
 }
 
 function isOversizedPixelWidth(attributes: ts.JsxAttributes): boolean {
@@ -322,12 +391,13 @@ export function auditResponsiveMediaSource(
         const mode = mediaMode(attributes);
         if (!mode) report(node, 'missing-mode');
 
-        const ownFrame = frameMarker(attributes);
+        const ownFrame = frameMarker(attributes, true);
         const ancestorFrame = nearestAncestorFrame(node);
         const frame = ownFrame ?? ancestorFrame;
+        const usableFrame = frame?.bounded && frame.mode === mode;
         if (
-          (!hasIntrinsicDimensions(attributes) && !frame?.mode) ||
-          (frame && (!frame.mode || frame.mode !== mode))
+          (!hasIntrinsicDimensions(attributes) && !usableFrame) ||
+          (frame && !usableFrame)
         ) {
           report(node, 'missing-frame');
         }
@@ -342,8 +412,8 @@ export function auditResponsiveMediaSource(
 
         if (
           isOversizedPixelWidth(attributes) &&
-          !frame?.mode &&
-          !hasUnconditionalMediaShrink(attributes)
+          !usableFrame &&
+          !hasUnconditionalClass(attributes, 'media-shrink')
         ) {
           report(node, 'unbounded-fixed-width');
         }

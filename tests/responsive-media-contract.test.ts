@@ -61,10 +61,69 @@ void test('policy rejects every unsupported render shape', () => {
   assert.deepEqual(
     auditResponsiveMediaSource(
       'fixture.tsx',
-      '<div data-media-frame="cover"><Image data-media-mode="cover" src="/x.jpg" alt="x" fill sizes="100vw" className={mediaObjectClass(\'cover\')} /></div>',
+      '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'aspect-square\')}><Image data-media-mode="cover" src="/x.jpg" alt="x" fill sizes="100vw" className={mediaObjectClass(\'cover\')} /></div>',
     ),
     [],
   );
+});
+
+void test('a bare frame marker cannot reserve geometry or hide an oversized media width', () => {
+  assert.deepEqual(
+    auditResponsiveMediaSource(
+      'fixture.tsx',
+      '<div data-media-frame="cover"><img data-media-mode="cover" className="w-[900px]" src="/test.jpg" /></div>',
+    ),
+    [
+      { file: 'fixture.tsx', line: 1, rule: 'missing-frame' },
+      { file: 'fixture.tsx', line: 1, rule: 'unbounded-fixed-width' },
+    ],
+  );
+});
+
+void test('frame markers require an unconditional bounded shared or local frame', () => {
+  for (const className of [
+    '"rounded-xl"',
+    '"relative aspect-square"',
+    '"overflow-hidden"',
+    '"overflow-hidden aspect-square w-[900px]"',
+    "{enabled ? mediaFrameClass('cover', 'aspect-square') : ''}",
+    "{cn('aspect-square', enabled && 'overflow-hidden')}",
+    "{mediaFrameClass('contain', 'aspect-square')}",
+    "{mediaFrameClass('cover', 'w-[900px] aspect-square')}",
+  ]) {
+    assert.deepEqual(
+      auditResponsiveMediaSource(
+        'fixture.tsx',
+        `<div data-media-frame="cover" className=${className}><img data-media-mode="cover" src="/test.jpg" /></div>`,
+      ),
+      [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+      className,
+    );
+  }
+  assert.deepEqual(
+    auditResponsiveMediaSource(
+      'fixture.tsx',
+      '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'aspect-square\')}><div data-media-frame="cover"><img data-media-mode="cover" src="/test.jpg" /></div></div>',
+    ),
+    [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+  );
+});
+
+void test('valid shared, local and self frames keep the media policy contract', () => {
+  for (const source of [
+    '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'aspect-square\')}><Image data-media-mode="cover" fill sizes="100vw" src="/test.jpg" /></div>',
+    '<div data-media-frame="cover" className="relative min-w-0 aspect-square overflow-hidden"><img data-media-mode="cover" src="/test.jpg" /></div>',
+    '<div data-media-frame="cover" className="size-16 overflow-hidden"><img data-media-mode="cover" src="/test.jpg" /></div>',
+    '<div data-media-frame="cover" className={cn(\'overflow-hidden\', enabled ? \'aspect-square\' : \'aspect-video\')}><img data-media-mode="cover" src="/test.jpg" /></div>',
+    '<video data-media-frame="contain" data-media-mode="contain" className={mediaObjectClass(\'contain\', \'aspect-video max-h-96\')} src="/test.mp4" />',
+    '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'aspect-square\')}><img data-media-mode="cover" className="w-[900px]" src="/test.jpg" /></div>',
+  ]) {
+    assert.deepEqual(
+      auditResponsiveMediaSource('fixture.tsx', source),
+      [],
+      source,
+    );
+  }
 });
 
 void test('policy requires positive numeric intrinsic dimensions', () => {
