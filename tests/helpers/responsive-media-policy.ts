@@ -75,6 +75,7 @@ interface FrameMarker {
 interface StylesheetClasses {
   geometry: ReadonlySet<string>;
   positioned: ReadonlySet<string>;
+  possiblyPositioned: ReadonlySet<string>;
   inset: ReadonlySet<string>;
   unsafeWidth: ReadonlySet<string>;
 }
@@ -97,6 +98,9 @@ function hasContainingBlockGeometry(
     if (!ts.isJsxElement(parent) && !ts.isJsxSelfClosingElement(parent))
       continue;
     const attributes = jsxAttributes(parent);
+    const inlinePosition = inlinePositioning(
+      attribute(attributes, 'style')?.initializer,
+    );
     const positioned =
       hasUnconditionalClass(
         attributes,
@@ -106,13 +110,30 @@ function hasContainingBlockGeometry(
       ) ||
       [...MEDIA_MODES].some((mode) =>
         hasSharedMediaClass(attributes, 'mediaFrameClass', mode),
+      ) ||
+      inlinePosition.guaranteed;
+    const possiblyPositioned =
+      positioned ||
+      inlinePosition.possible ||
+      hasPossibleClass(
+        attributes,
+        (token) =>
+          /(?:^|:)(?:relative|absolute|fixed|sticky)$/.test(token) ||
+          classes.possiblyPositioned.has(token),
+        'mediaFrameClass',
       );
-    if (positioned) {
-      return (
-        hasReservedGeometry(attributes, classes) &&
-        !isOversizedPixelWidth(attributes) &&
-        !hasUnsafeCssWidth(attributes, classes)
-      );
+    if (possiblyPositioned) {
+      if (
+        !(
+          hasReservedGeometry(attributes, classes) &&
+          !isOversizedPixelWidth(attributes) &&
+          !hasUnsafeCssWidth(attributes, classes)
+        )
+      )
+        return false;
+      // Conditional positioning must be safe both when this ancestor is the
+      // containing block and when the frame still depends on a farther one.
+      if (positioned) return true;
     }
   }
   return false;
@@ -122,9 +143,19 @@ function hasUnsafeCssWidth(
   attributes: ts.JsxAttributes,
   classes: StylesheetClasses,
 ): boolean {
+  return hasPossibleClass(attributes, (token) =>
+    classes.unsafeWidth.has(token),
+  );
+}
+
+function hasPossibleClass(
+  attributes: ts.JsxAttributes,
+  token: ClassTokenTest,
+  helper?: string,
+): boolean {
   const initializer = attribute(attributes, 'className')?.initializer;
   if (!initializer) return false;
-  let unsafe = false;
+  let found = false;
   const visit = (node: ts.Node): void => {
     if (
       ts.isStringLiteralLike(node) ||
@@ -132,14 +163,69 @@ function hasUnsafeCssWidth(
       ts.isTemplateMiddle(node) ||
       ts.isTemplateTail(node)
     ) {
-      unsafe ||= classTextHasToken(node.text, (token) =>
-        classes.unsafeWidth.has(token),
-      );
+      found ||= classTextHasToken(node.text, token);
     }
+    if (
+      helper &&
+      ts.isCallExpression(node) &&
+      node.expression.getText() === helper
+    )
+      found = true;
     ts.forEachChild(node, visit);
   };
   visit(initializer);
-  return unsafe;
+  return found;
+}
+
+interface Positioning {
+  possible: boolean;
+  guaranteed: boolean;
+}
+
+function inlinePositioning(node: ts.Node | undefined): Positioning {
+  const absent = { possible: false, guaranteed: false };
+  if (!node) return absent;
+  if (ts.isJsxExpression(node) || ts.isParenthesizedExpression(node))
+    return inlinePositioning(node.expression);
+  if (ts.isConditionalExpression(node)) {
+    const whenTrue = inlinePositioning(node.whenTrue);
+    const whenFalse = inlinePositioning(node.whenFalse);
+    return {
+      possible: whenTrue.possible || whenFalse.possible,
+      guaranteed: whenTrue.guaranteed && whenFalse.guaranteed,
+    };
+  }
+  if (ts.isObjectLiteralExpression(node)) {
+    let result = absent;
+    for (const property of node.properties) {
+      if (ts.isSpreadAssignment(property)) {
+        result = { possible: true, guaranteed: false };
+      } else if (
+        property.name?.getText().replaceAll(/["']/g, '') === 'position'
+      ) {
+        result = ts.isPropertyAssignment(property)
+          ? inlinePositioning(property.initializer)
+          : { possible: true, guaranteed: false };
+      }
+    }
+    return result;
+  }
+  if (ts.isStringLiteralLike(node)) {
+    const guaranteed = ['relative', 'absolute', 'fixed', 'sticky'].includes(
+      node.text,
+    );
+    return {
+      possible:
+        guaranteed || !['static', 'initial', 'unset'].includes(node.text),
+      guaranteed,
+    };
+  }
+  if (
+    node.kind === ts.SyntaxKind.NullKeyword ||
+    node.kind === ts.SyntaxKind.FalseKeyword
+  )
+    return absent;
+  return { possible: true, guaranteed: false };
 }
 
 function frameMarker(
@@ -358,6 +444,7 @@ function stylesheetGeometryClasses(stylesheet: string): StylesheetClasses {
   const css = stylesheet.replace(/\/\*[\s\S]*?\*\//g, '');
   const stack: { selector: string; direct: string }[] = [];
   const declarations = new Map<string, Map<string, string>>();
+  const possiblyPositioned = new Set<string>();
   const unsafeWidth = new Set<string>();
   let segmentStart = 0;
   for (const brace of css.matchAll(/[{}]/g)) {
@@ -386,6 +473,22 @@ function stylesheetGeometryClasses(stylesheet: string): StylesheetClasses {
               ?.selector ?? '')
           : rule.selector;
         for (const selector of selectorSource.split(',')) {
+          // Conditional rules and pseudo states can introduce a nearer
+          // containing block even though they cannot prove base geometry.
+          const possibleClass = /^\.([\w-]+)(?::[^\s>+~]+)?$/.exec(
+            selector.trim(),
+          )?.[1];
+          if (
+            possibleClass &&
+            properties.some(
+              (property) =>
+                property[1] === 'position' &&
+                /^(?:relative|absolute|fixed|sticky)(?:\s*!important)?$/.test(
+                  property[2].trim(),
+                ),
+            )
+          )
+            possiblyPositioned.add(possibleClass);
           const className = /^\.([\w-]+)$/.exec(selector.trim())?.[1];
           if (!className) continue;
           if (
@@ -436,6 +539,7 @@ function stylesheetGeometryClasses(stylesheet: string): StylesheetClasses {
   );
   return {
     geometry,
+    possiblyPositioned,
     positioned: new Set(
       [...declarations]
         .filter(([, values]) =>

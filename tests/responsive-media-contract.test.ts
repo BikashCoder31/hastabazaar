@@ -267,6 +267,109 @@ void test('absolute inset frames depend on the nearest positioned container geom
   }
 });
 
+void test('possibly positioned class ancestors cannot borrow farther container geometry', () => {
+  const frame =
+    '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'test-frame\')}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>';
+  const css = '.test-frame { position:absolute; inset:0; }';
+  for (const className of [
+    "{active ? 'relative' : ''}",
+    "{active && 'relative'}",
+    '"md:relative"',
+    '"hover:relative"',
+    "{active ? mediaFrameClass('cover') : ''}",
+  ]) {
+    assert.deepEqual(
+      auditResponsiveMediaSource(
+        'fixture.tsx',
+        `<div className="relative h-64"><div className=${className}>${frame}</div></div>`,
+        css,
+      ),
+      [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+      className,
+    );
+  }
+  assert.deepEqual(
+    auditResponsiveMediaSource(
+      'fixture.tsx',
+      `<div className="relative h-64"><div className={cn('h-32', active && 'relative')}>${frame}</div></div>`,
+      css,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    auditResponsiveMediaSource(
+      'fixture.tsx',
+      `<div className="relative"><div className={cn('h-32', active && 'relative')}>${frame}</div></div>`,
+      css,
+    ),
+    [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+  );
+});
+
+void test('inline positioned ancestors must reserve their own geometry', () => {
+  const frame =
+    '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'test-frame\')}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>';
+  const css = '.test-frame { position:absolute; inset:0; }';
+  for (const style of [
+    "{{position: 'relative'}}",
+    "{{position: active ? 'relative' : 'static'}}",
+    "{active ? {position: 'relative'} : {}}",
+  ]) {
+    assert.deepEqual(
+      auditResponsiveMediaSource(
+        'fixture.tsx',
+        `<div className="relative h-64"><div style=${style}>${frame}</div></div>`,
+        css,
+      ),
+      [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+      style,
+    );
+  }
+  for (const source of [
+    `<div className="h-64" style={{position: 'relative'}}>${frame}</div>`,
+    `<div className="relative h-64"><div style={{position: 'static'}}>${frame}</div></div>`,
+  ]) {
+    assert.deepEqual(
+      auditResponsiveMediaSource('fixture.tsx', source, css),
+      [],
+    );
+  }
+});
+
+void test('conditional CSS positioning blocks borrowing farther container geometry', () => {
+  const frame =
+    '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'test-frame\')}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>';
+  for (const positioning of [
+    '@media (min-width:640px) { .conditional { position:relative; } }',
+    '.conditional { @media (min-width:640px) { position:relative; } }',
+    '@supports (display:grid) { .conditional { position:relative; } }',
+    '@container (min-width:640px) { .conditional { position:relative; } }',
+    '.conditional:hover { position:relative; }',
+  ]) {
+    const css = `.test-frame { position:absolute; inset:0; } ${positioning}`;
+    for (const className of ['conditional', 'conditional md:h-32']) {
+      assert.deepEqual(
+        auditResponsiveMediaSource(
+          'fixture.tsx',
+          `<div className="relative h-64"><div className="${className}">${frame}</div></div>`,
+          css,
+        ),
+        [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+        positioning,
+      );
+    }
+    assert.deepEqual(
+      auditResponsiveMediaSource(
+        'fixture.tsx',
+        `<div className="relative h-64"><div className="conditional h-32">${frame}</div></div>`,
+        css,
+      ),
+      [],
+      positioning,
+    );
+  }
+});
+
 void test('nested conditional CSS cannot establish base frame geometry', () => {
   const source =
     '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'test-frame\')}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>';
