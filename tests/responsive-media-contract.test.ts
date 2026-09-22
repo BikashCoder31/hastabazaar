@@ -145,6 +145,100 @@ void test('policy requires positive numeric intrinsic dimensions', () => {
   );
 });
 
+void test('shared frame helpers require unconditional reserved geometry', () => {
+  for (const className of [
+    "{mediaFrameClass('cover')}",
+    "{mediaFrameClass('cover', enabled ? 'aspect-square' : '')}",
+    "{mediaFrameClass('cover', 'sm:aspect-square')}",
+  ]) {
+    assert.deepEqual(
+      auditResponsiveMediaSource(
+        'fixture.tsx',
+        `<div data-media-frame="cover" className=${className}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>`,
+      ),
+      [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+      className,
+    );
+  }
+  for (const className of [
+    "{mediaFrameClass('cover', 'aspect-square')}",
+    "{mediaFrameClass('cover', enabled ? 'aspect-square' : 'aspect-video')}",
+    "{mediaFrameClass('cover', 'min-h-[clamp(18rem,72vw,29rem)]')}",
+  ]) {
+    assert.deepEqual(
+      auditResponsiveMediaSource(
+        'fixture.tsx',
+        `<div data-media-frame="cover" className=${className}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>`,
+      ),
+      [],
+      className,
+    );
+  }
+});
+
+void test('maximum width caps preserve responsive frames without excusing fixed or minimum widths', () => {
+  for (const attributes of [
+    'className="relative overflow-hidden aspect-square w-full max-w-[900px]"',
+    'className="relative overflow-hidden aspect-square w-full [max-inline-size:900px]"',
+    'className="relative overflow-hidden aspect-square" style={{width: "100%", maxWidth: 900}}',
+    'className="relative overflow-hidden aspect-square" style={{maxInlineSize: "900px"}}',
+  ]) {
+    assert.deepEqual(
+      auditResponsiveMediaSource(
+        'fixture.tsx',
+        `<div data-media-frame="cover" ${attributes}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>`,
+      ),
+      [],
+      attributes,
+    );
+  }
+  for (const attributes of [
+    'className="overflow-hidden aspect-square w-[900px]"',
+    'className="overflow-hidden aspect-square min-w-[900px]"',
+    'className="overflow-hidden aspect-square size-[900px]"',
+    'className="overflow-hidden aspect-square [min-inline-size:900px]"',
+    'className="overflow-hidden aspect-square" style={{width: 900}}',
+    'className="overflow-hidden aspect-square" style={{minWidth: "900px"}}',
+  ]) {
+    assert.deepEqual(
+      auditResponsiveMediaSource(
+        'fixture.tsx',
+        `<div data-media-frame="cover" ${attributes}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>`,
+      ),
+      [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+      attributes,
+    );
+  }
+});
+
+void test('named frame geometry is derived from unconditional stylesheet rules, never a class allowlist', () => {
+  const source =
+    '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'test-frame\')}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>';
+  for (const css of [
+    '',
+    '.test-frame { color: red; }',
+    '@media (min-width: 640px) { .test-frame { height: 200px; } }',
+    '.test-frame img { height: 200px; }',
+  ]) {
+    assert.deepEqual(
+      auditResponsiveMediaSource('fixture.tsx', source, css),
+      [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+      css,
+    );
+  }
+  for (const css of [
+    '.test-frame { aspect-ratio: 4 / 3; }',
+    '@layer components { .other, .test-frame { height: clamp(10rem,30vw,20rem); } }',
+    '.test-frame { position: absolute; inset: 0; }',
+  ]) {
+    assert.deepEqual(
+      auditResponsiveMediaSource('fixture.tsx', source, css),
+      [],
+      css,
+    );
+  }
+});
+
 void test('policy rejects every oversized arbitrary pixel width form', () => {
   for (const className of ['w-[640px]', 'size-[640px]', '[width:640px]']) {
     assert.deepEqual(

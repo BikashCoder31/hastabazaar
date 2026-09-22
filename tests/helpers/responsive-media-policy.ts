@@ -74,6 +74,7 @@ interface FrameMarker {
 
 function frameMarker(
   attributes: ts.JsxAttributes,
+  geometryClasses: ReadonlySet<string>,
   isMediaElement = false,
 ): FrameMarker | undefined {
   if (!attribute(attributes, 'data-media-frame')) return undefined;
@@ -87,19 +88,25 @@ function frameMarker(
       value &&
       MEDIA_MODES.has(value as MediaMode) &&
       !isOversizedPixelWidth(attributes) &&
+      hasUnconditionalClass(
+        attributes,
+        (token) => isGeometryToken(token) || geometryClasses.has(token),
+      ) &&
       (hasSharedMediaClass(attributes, 'mediaFrameClass', value) ||
-        (hasUnconditionalClass(attributes, isGeometryToken) &&
-          (hasUnconditionalClass(attributes, 'overflow-hidden') ||
-            (isMediaElement &&
-              hasSharedMediaClass(attributes, 'mediaObjectClass', value))))),
+        hasUnconditionalClass(attributes, 'overflow-hidden') ||
+        (isMediaElement &&
+          hasSharedMediaClass(attributes, 'mediaObjectClass', value))),
     ),
   };
 }
 
-function nearestAncestorFrame(node: ts.Node): FrameMarker | undefined {
+function nearestAncestorFrame(
+  node: ts.Node,
+  geometryClasses: ReadonlySet<string>,
+): FrameMarker | undefined {
   for (let parent = node.parent; parent; parent = parent.parent) {
     if (ts.isJsxElement(parent) || ts.isJsxSelfClosingElement(parent)) {
-      const marker = frameMarker(jsxAttributes(parent));
+      const marker = frameMarker(jsxAttributes(parent), geometryClasses);
       if (marker) return marker;
     }
   }
@@ -257,7 +264,72 @@ function isGeometryToken(token: string): boolean {
   const ratio = /^aspect-\[(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)\]$/.exec(token);
   if (ratio) return Number(ratio[1]) > 0 && Number(ratio[2]) > 0;
   const size = /^(?:size|h|min-h)-(\d+(?:\.\d+)?)$/.exec(token);
-  return Boolean(size && Number(size[1]) > 0);
+  if (size) return Number(size[1]) > 0;
+  const arbitrary = /^(?:size|h|min-h)-\[(.+)\]$/.exec(token);
+  return Boolean(arbitrary && isPositiveLength(arbitrary[1]));
+}
+
+function isPositiveLength(value: string): boolean {
+  const length = /^(\d+(?:\.\d+)?)(?:px|rem|em|vw|vh|svh|dvh)$/.exec(
+    value.trim(),
+  );
+  if (length) return Number(length[1]) > 0;
+  const clamp = /^clamp\(([^()]+)\)$/.exec(value.trim());
+  const parts = clamp?.[1].split(',');
+  return Boolean(parts?.length === 3 && parts.every(isPositiveLength));
+}
+
+function stylesheetGeometryClasses(stylesheet: string): ReadonlySet<string> {
+  // Inspect simple class rules in unconditional CSS/layers. Conditional rules,
+  // descendant selectors and pseudo selectors cannot establish base geometry.
+  const css = stylesheet.replace(/\/\*[\s\S]*?\*\//g, '');
+  const stack: { selector: string; bodyStart: number }[] = [];
+  const declarations = new Map<string, Map<string, string>>();
+  let segmentStart = 0;
+  for (const brace of css.matchAll(/[{}]/g)) {
+    const index = brace.index;
+    if (brace[0] === '{') {
+      stack.push({
+        selector: css.slice(segmentStart, index).trim(),
+        bodyStart: index + 1,
+      });
+    } else {
+      const rule = stack.pop();
+      if (rule && stack.every((parent) => /^@layer\b/.test(parent.selector))) {
+        const properties = [
+          ...css
+            .slice(rule.bodyStart, index)
+            .matchAll(/(?:^|;)\s*([\w-]+)\s*:\s*([^;{}]+)/g),
+        ];
+        for (const selector of rule.selector.split(',')) {
+          const className = /^\.([\w-]+)$/.exec(selector.trim())?.[1];
+          if (!className) continue;
+          const values =
+            declarations.get(className) ?? new Map<string, string>();
+          for (const property of properties)
+            values.set(property[1], property[2].trim());
+          declarations.set(className, values);
+        }
+      }
+    }
+    segmentStart = index + 1;
+  }
+  return new Set(
+    [...declarations]
+      .filter(([, values]) => {
+        const ratio = values
+          .get('aspect-ratio')
+          ?.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
+        return (
+          ['height', 'min-height', 'block-size', 'min-block-size'].some(
+            (name) => isPositiveLength(values.get(name) ?? ''),
+          ) ||
+          Boolean(ratio && Number(ratio[1]) > 0 && Number(ratio[2]) > 0) ||
+          (values.get('position') === 'absolute' && values.get('inset') === '0')
+        );
+      })
+      .map(([name]) => name),
+  );
 }
 
 function hasSharedMediaClass(
@@ -303,8 +375,8 @@ function isOversizedPixelWidth(attributes: ts.JsxAttributes): boolean {
   if (className?.initializer) {
     const classSource = className.initializer.getText();
     const widthPatterns = [
-      /(?:^|[^\w-])(?:w|min-w|max-w|size)-\[(\d+(?:\.\d+)?)px\]/g,
-      /\[(?:width|min-width|max-width|inline-size|min-inline-size|max-inline-size):(\d+(?:\.\d+)?)px\]/g,
+      /(?:^|[^\w-])(?:w|min-w|size)-\[(\d+(?:\.\d+)?)px\]/g,
+      /\[(?:width|min-width|inline-size|min-inline-size):(\d+(?:\.\d+)?)px\]/g,
     ];
     for (const pattern of widthPatterns) {
       for (const match of classSource.matchAll(pattern)) {
@@ -323,16 +395,7 @@ function isOversizedPixelWidth(attributes: ts.JsxAttributes): boolean {
       return;
     }
     const name = node.name.getText().replaceAll(/["']/g, '');
-    if (
-      ![
-        'width',
-        'minWidth',
-        'maxWidth',
-        'inlineSize',
-        'minInlineSize',
-        'maxInlineSize',
-      ].includes(name)
-    ) {
+    if (!['width', 'minWidth', 'inlineSize', 'minInlineSize'].includes(name)) {
       ts.forEachChild(node, visit);
       return;
     }
@@ -357,7 +420,9 @@ function isOversizedPixelWidth(attributes: ts.JsxAttributes): boolean {
 export function auditResponsiveMediaSource(
   file: string,
   source: string,
+  stylesheet = '',
 ): MediaPolicyViolation[] {
+  const geometryClasses = stylesheetGeometryClasses(stylesheet);
   const sourceFile = ts.createSourceFile(
     file,
     source,
@@ -391,8 +456,8 @@ export function auditResponsiveMediaSource(
         const mode = mediaMode(attributes);
         if (!mode) report(node, 'missing-mode');
 
-        const ownFrame = frameMarker(attributes, true);
-        const ancestorFrame = nearestAncestorFrame(node);
+        const ownFrame = frameMarker(attributes, geometryClasses, true);
+        const ancestorFrame = nearestAncestorFrame(node, geometryClasses);
         const frame = ownFrame ?? ancestorFrame;
         const usableFrame = frame?.bounded && frame.mode === mode;
         if (
@@ -445,12 +510,18 @@ export async function scanResponsiveMediaRenderSites(
   root: string,
 ): Promise<MediaPolicyViolation[]> {
   const violations: MediaPolicyViolation[] = [];
+  const stylesheet = await readFile(
+    path.join(root, 'app', 'globals.css'),
+    'utf8',
+  );
   for (const sourceDirectory of ['app', 'components']) {
     const directory = path.join(root, sourceDirectory);
     for (const file of await collectTsxFiles(directory)) {
       const source = await readFile(file, 'utf8');
       const displayFile = path.relative(root, file).replaceAll(path.sep, '/');
-      violations.push(...auditResponsiveMediaSource(displayFile, source));
+      violations.push(
+        ...auditResponsiveMediaSource(displayFile, source, stylesheet),
+      );
     }
   }
   return violations;
