@@ -507,6 +507,7 @@
 
   .homepage-occasion-section {
     position: relative;
+    min-height: 20rem;
     isolation: isolate;
     container-name: homepage-occasion;
     container-type: inline-size;

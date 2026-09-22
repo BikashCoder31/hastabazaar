@@ -219,6 +219,7 @@ void test('named frame geometry is derived from unconditional stylesheet rules, 
     '.test-frame { color: red; }',
     '@media (min-width: 640px) { .test-frame { height: 200px; } }',
     '.test-frame img { height: 200px; }',
+    '.test-frame { position: absolute; inset: 0; }',
   ]) {
     assert.deepEqual(
       auditResponsiveMediaSource('fixture.tsx', source, css),
@@ -229,12 +230,102 @@ void test('named frame geometry is derived from unconditional stylesheet rules, 
   for (const css of [
     '.test-frame { aspect-ratio: 4 / 3; }',
     '@layer components { .other, .test-frame { height: clamp(10rem,30vw,20rem); } }',
-    '.test-frame { position: absolute; inset: 0; }',
   ]) {
     assert.deepEqual(
       auditResponsiveMediaSource('fixture.tsx', source, css),
       [],
       css,
+    );
+  }
+});
+
+void test('absolute inset frames depend on the nearest positioned container geometry', () => {
+  const frame =
+    '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'test-frame\')}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>';
+  const css =
+    '.test-frame { position:absolute; inset:0; } .container { position:relative; height:200px; }';
+  for (const source of [
+    frame,
+    `<div className="relative">${frame}</div>`,
+    `<div className="relative h-64"><div className="relative">${frame}</div></div>`,
+  ]) {
+    assert.deepEqual(
+      auditResponsiveMediaSource('fixture.tsx', source, css),
+      [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+      source,
+    );
+  }
+  for (const source of [
+    `<div className="relative h-64">${frame}</div>`,
+    `<div className="container">${frame}</div>`,
+  ]) {
+    assert.deepEqual(
+      auditResponsiveMediaSource('fixture.tsx', source, css),
+      [],
+      source,
+    );
+  }
+});
+
+void test('nested conditional CSS cannot establish base frame geometry', () => {
+  const source =
+    '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'test-frame\')}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>';
+  for (const condition of [
+    '@media (min-width:640px)',
+    '@supports (display:grid)',
+    '@container (min-width:640px)',
+  ]) {
+    for (const layer of [false, true]) {
+      const nested = `.test-frame { ${condition} { color:red; height:200px; } }`;
+      const css = layer ? `@layer components { ${nested} }` : nested;
+      assert.deepEqual(
+        auditResponsiveMediaSource('fixture.tsx', source, css),
+        [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+        css,
+      );
+      for (const direct of [
+        `.test-frame { height:200px; ${condition} { color:red; } }`,
+        `.test-frame { ${condition} { color:red; } height:200px; }`,
+      ]) {
+        assert.deepEqual(
+          auditResponsiveMediaSource(
+            'fixture.tsx',
+            source,
+            layer ? `@layer components { ${direct} }` : direct,
+          ),
+          [],
+          direct,
+        );
+      }
+    }
+  }
+});
+
+void test('CSS geometry does not excuse fixed or minimum widths but permits maximum caps', () => {
+  const source =
+    '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'test-frame\')}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>';
+  for (const property of [
+    'width',
+    'min-width',
+    'inline-size',
+    'min-inline-size',
+    'size',
+  ]) {
+    const css = `.test-frame { height:200px; ${property}:900px; }`;
+    assert.deepEqual(
+      auditResponsiveMediaSource('fixture.tsx', source, css),
+      [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+      css,
+    );
+  }
+  for (const property of ['max-width', 'max-inline-size']) {
+    assert.deepEqual(
+      auditResponsiveMediaSource(
+        'fixture.tsx',
+        source,
+        `.test-frame { height:200px; width:100%; ${property}:900px; }`,
+      ),
+      [],
     );
   }
 });

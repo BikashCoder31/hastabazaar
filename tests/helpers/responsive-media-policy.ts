@@ -72,11 +72,82 @@ interface FrameMarker {
   bounded: boolean;
 }
 
-function frameMarker(
+interface StylesheetClasses {
+  geometry: ReadonlySet<string>;
+  positioned: ReadonlySet<string>;
+  inset: ReadonlySet<string>;
+  unsafeWidth: ReadonlySet<string>;
+}
+
+function hasReservedGeometry(
   attributes: ts.JsxAttributes,
-  geometryClasses: ReadonlySet<string>,
+  classes: StylesheetClasses,
+): boolean {
+  return hasUnconditionalClass(
+    attributes,
+    (token) => isGeometryToken(token) || classes.geometry.has(token),
+  );
+}
+
+function hasContainingBlockGeometry(
+  node: ts.Node,
+  classes: StylesheetClasses,
+): boolean {
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    if (!ts.isJsxElement(parent) && !ts.isJsxSelfClosingElement(parent))
+      continue;
+    const attributes = jsxAttributes(parent);
+    const positioned =
+      hasUnconditionalClass(
+        attributes,
+        (token) =>
+          ['relative', 'absolute', 'fixed', 'sticky'].includes(token) ||
+          classes.positioned.has(token),
+      ) ||
+      [...MEDIA_MODES].some((mode) =>
+        hasSharedMediaClass(attributes, 'mediaFrameClass', mode),
+      );
+    if (positioned) {
+      return (
+        hasReservedGeometry(attributes, classes) &&
+        !isOversizedPixelWidth(attributes) &&
+        !hasUnsafeCssWidth(attributes, classes)
+      );
+    }
+  }
+  return false;
+}
+
+function hasUnsafeCssWidth(
+  attributes: ts.JsxAttributes,
+  classes: StylesheetClasses,
+): boolean {
+  const initializer = attribute(attributes, 'className')?.initializer;
+  if (!initializer) return false;
+  let unsafe = false;
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isStringLiteralLike(node) ||
+      ts.isTemplateHead(node) ||
+      ts.isTemplateMiddle(node) ||
+      ts.isTemplateTail(node)
+    ) {
+      unsafe ||= classTextHasToken(node.text, (token) =>
+        classes.unsafeWidth.has(token),
+      );
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(initializer);
+  return unsafe;
+}
+
+function frameMarker(
+  node: ts.JsxElement | ts.JsxSelfClosingElement,
+  classes: StylesheetClasses,
   isMediaElement = false,
 ): FrameMarker | undefined {
+  const attributes = jsxAttributes(node);
   if (!attribute(attributes, 'data-media-frame')) return undefined;
   const value = literalAttributeValue(attributes, 'data-media-frame');
   return {
@@ -88,10 +159,12 @@ function frameMarker(
       value &&
       MEDIA_MODES.has(value as MediaMode) &&
       !isOversizedPixelWidth(attributes) &&
-      hasUnconditionalClass(
-        attributes,
-        (token) => isGeometryToken(token) || geometryClasses.has(token),
-      ) &&
+      !hasUnsafeCssWidth(attributes, classes) &&
+      (hasReservedGeometry(attributes, classes) ||
+        (hasUnconditionalClass(attributes, (token) =>
+          classes.inset.has(token),
+        ) &&
+          hasContainingBlockGeometry(node, classes))) &&
       (hasSharedMediaClass(attributes, 'mediaFrameClass', value) ||
         hasUnconditionalClass(attributes, 'overflow-hidden') ||
         (isMediaElement &&
@@ -102,11 +175,11 @@ function frameMarker(
 
 function nearestAncestorFrame(
   node: ts.Node,
-  geometryClasses: ReadonlySet<string>,
+  classes: StylesheetClasses,
 ): FrameMarker | undefined {
   for (let parent = node.parent; parent; parent = parent.parent) {
     if (ts.isJsxElement(parent) || ts.isJsxSelfClosingElement(parent)) {
-      const marker = frameMarker(jsxAttributes(parent), geometryClasses);
+      const marker = frameMarker(parent, classes);
       if (marker) return marker;
     }
   }
@@ -279,31 +352,64 @@ function isPositiveLength(value: string): boolean {
   return Boolean(parts?.length === 3 && parts.every(isPositiveLength));
 }
 
-function stylesheetGeometryClasses(stylesheet: string): ReadonlySet<string> {
+function stylesheetGeometryClasses(stylesheet: string): StylesheetClasses {
   // Inspect simple class rules in unconditional CSS/layers. Conditional rules,
   // descendant selectors and pseudo selectors cannot establish base geometry.
   const css = stylesheet.replace(/\/\*[\s\S]*?\*\//g, '');
-  const stack: { selector: string; bodyStart: number }[] = [];
+  const stack: { selector: string; direct: string }[] = [];
   const declarations = new Map<string, Map<string, string>>();
+  const unsafeWidth = new Set<string>();
   let segmentStart = 0;
   for (const brace of css.matchAll(/[{}]/g)) {
     const index = brace.index;
     if (brace[0] === '{') {
+      const segment = css.slice(segmentStart, index);
+      const lastDeclaration = segment.lastIndexOf(';');
+      const parent = stack.at(-1);
+      if (parent && lastDeclaration >= 0)
+        parent.direct += segment.slice(0, lastDeclaration + 1);
       stack.push({
-        selector: css.slice(segmentStart, index).trim(),
-        bodyStart: index + 1,
+        selector: segment.slice(lastDeclaration + 1).trim(),
+        direct: '',
       });
     } else {
       const rule = stack.pop();
-      if (rule && stack.every((parent) => /^@layer\b/.test(parent.selector))) {
+      if (rule) {
+        rule.direct += css.slice(segmentStart, index);
         const properties = [
-          ...css
-            .slice(rule.bodyStart, index)
-            .matchAll(/(?:^|;)\s*([\w-]+)\s*:\s*([^;{}]+)/g),
+          ...rule.direct.matchAll(/(?:^|;)\s*([\w-]+)\s*:\s*([^;{}]+)/g),
         ];
-        for (const selector of rule.selector.split(',')) {
+        const selectorSource = /^@(?:media|supports|container)\b/.test(
+          rule.selector,
+        )
+          ? (stack.findLast((parent) => !parent.selector.startsWith('@'))
+              ?.selector ?? '')
+          : rule.selector;
+        for (const selector of selectorSource.split(',')) {
           const className = /^\.([\w-]+)$/.exec(selector.trim())?.[1];
           if (!className) continue;
+          if (
+            properties.some(
+              (property) =>
+                [
+                  'width',
+                  'min-width',
+                  'inline-size',
+                  'min-inline-size',
+                  'size',
+                ].includes(property[1]) &&
+                /^\d+(?:\.\d+)?px(?:\s*!important)?$/.test(
+                  property[2].trim(),
+                ) &&
+                Number.parseFloat(property[2]) > 320,
+            )
+          )
+            unsafeWidth.add(className);
+          if (
+            selectorSource !== rule.selector ||
+            !stack.every((parent) => /^@layer\b/.test(parent.selector))
+          )
+            continue;
           const values =
             declarations.get(className) ?? new Map<string, string>();
           for (const property of properties)
@@ -314,7 +420,7 @@ function stylesheetGeometryClasses(stylesheet: string): ReadonlySet<string> {
     }
     segmentStart = index + 1;
   }
-  return new Set(
+  const geometry = new Set(
     [...declarations]
       .filter(([, values]) => {
         const ratio = values
@@ -323,13 +429,33 @@ function stylesheetGeometryClasses(stylesheet: string): ReadonlySet<string> {
         return (
           ['height', 'min-height', 'block-size', 'min-block-size'].some(
             (name) => isPositiveLength(values.get(name) ?? ''),
-          ) ||
-          Boolean(ratio && Number(ratio[1]) > 0 && Number(ratio[2]) > 0) ||
-          (values.get('position') === 'absolute' && values.get('inset') === '0')
+          ) || Boolean(ratio && Number(ratio[1]) > 0 && Number(ratio[2]) > 0)
         );
       })
       .map(([name]) => name),
   );
+  return {
+    geometry,
+    positioned: new Set(
+      [...declarations]
+        .filter(([, values]) =>
+          ['relative', 'absolute', 'fixed', 'sticky'].includes(
+            values.get('position') ?? '',
+          ),
+        )
+        .map(([name]) => name),
+    ),
+    inset: new Set(
+      [...declarations]
+        .filter(
+          ([, values]) =>
+            values.get('position') === 'absolute' &&
+            values.get('inset') === '0',
+        )
+        .map(([name]) => name),
+    ),
+    unsafeWidth,
+  };
 }
 
 function hasSharedMediaClass(
@@ -456,7 +582,7 @@ export function auditResponsiveMediaSource(
         const mode = mediaMode(attributes);
         if (!mode) report(node, 'missing-mode');
 
-        const ownFrame = frameMarker(attributes, geometryClasses, true);
+        const ownFrame = frameMarker(node, geometryClasses, true);
         const ancestorFrame = nearestAncestorFrame(node, geometryClasses);
         const frame = ownFrame ?? ancestorFrame;
         const usableFrame = frame?.bounded && frame.mode === mode;
