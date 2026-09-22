@@ -16,6 +16,11 @@ import {
   listPublicDiscoveryCategories,
   listPublishedProducts,
 } from '@/lib/db/repositories/products';
+import {
+  mediaFrameClass,
+  mediaObjectClass,
+  mediaSizes,
+} from '@/lib/media/responsive-media';
 
 export const dynamic = 'force-dynamic';
 
@@ -188,15 +193,26 @@ export default async function ShopPage({
                     href={`/products/${product.slug}`}
                     className="group rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <div className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-muted">
+                    <div
+                      data-media-frame="cover"
+                      className={mediaFrameClass(
+                        'cover',
+                        'aspect-[4/5] rounded-2xl bg-muted',
+                      )}
+                    >
                       {product.primaryMediaId ? (
                         <Image
                           src={`/api/product-media/${product.primaryMediaId}`}
                           alt={product.nameEn}
+                          data-media-mode="cover"
                           width={720}
                           height={900}
                           unoptimized
-                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.035]"
+                          sizes={mediaSizes.shopGrid}
+                          className={mediaObjectClass(
+                            'cover',
+                            'transition-transform duration-500 group-hover:scale-[1.035]',
+                          )}
                         />
                       ) : (
                         <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center text-muted-foreground">

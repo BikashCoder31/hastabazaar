@@ -4,6 +4,12 @@ import Image from 'next/image';
 import { useState } from 'react';
 import { ImageIcon } from 'lucide-react';
 
+import {
+  mediaFrameClass,
+  mediaObjectClass,
+  mediaSizes,
+} from '@/lib/media/responsive-media';
+
 export function ProductGallery({
   media: allMedia,
   productName,
@@ -17,16 +23,20 @@ export function ProductGallery({
   const active = media[activeIndex] ?? media[0];
   return (
     <div className="min-w-0">
-      {active ? <div className="relative aspect-square overflow-hidden rounded-3xl border bg-card">
+      {active ? <div
+        data-media-frame="contain"
+        className={mediaFrameClass('contain', 'aspect-square rounded-3xl border bg-card')}
+      >
         <Image
           key={active.id}
           src={'/api/product-media/' + active.id}
           alt={active.altEn || productName}
+          data-media-mode="contain"
           fill
           priority
           unoptimized
-          sizes="(min-width: 1024px) 48vw, 100vw"
-          className="object-contain"
+          sizes={mediaSizes.productGallery}
+          className={mediaObjectClass('contain')}
         />
         <span
           className="absolute bottom-4 right-4 rounded-full border bg-background/95 px-3 py-1.5 text-xs font-semibold"
@@ -45,30 +55,33 @@ export function ProductGallery({
             <button
               key={photo.id}
               type="button"
+              data-media-frame="cover"
               onClick={() => setActiveIndex(index)}
               aria-label={'Show photo ' + (index + 1) + ' of ' + productName}
               aria-pressed={active.id === photo.id}
-              className={
-                'relative aspect-square overflow-hidden rounded-xl border-2 bg-card transition-colors ' +
+              className={mediaFrameClass(
+                'cover',
+                'aspect-square rounded-xl border-2 bg-card transition-colors ' +
                 (active.id === photo.id
                   ? 'border-primary'
-                  : 'border-transparent hover:border-primary/40')
-              }
+                  : 'border-transparent hover:border-primary/40'),
+              )}
             >
               <Image
                 src={'/api/product-media/' + photo.id}
                 alt=""
+                data-media-mode="cover"
                 fill
                 unoptimized
-                sizes="15vw"
-                className="object-cover"
+                sizes={mediaSizes.galleryThumbnail}
+                className={mediaObjectClass('cover')}
               />
             </button>
           ))}
         </div>
       ) : null}
       {videos.map(video => <figure key={video.id} className="mt-5">
-        <video controls muted playsInline preload="metadata" className="max-h-96 w-full rounded-2xl border" aria-label={'Product demonstration of ' + productName} src={'/api/product-media/' + video.id}>
+        <video data-media-frame="contain" data-media-mode="contain" controls muted playsInline preload="metadata" className={mediaObjectClass('contain', 'aspect-video max-h-96 rounded-2xl border bg-black')} aria-label={'Product demonstration of ' + productName} src={'/api/product-media/' + video.id}>
           Your browser cannot play this product video.
         </video>
         <figcaption className="mt-2 text-sm text-muted-foreground">Product demonstration. If playback is unavailable, use the product photos and description.</figcaption>

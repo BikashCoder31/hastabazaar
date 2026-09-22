@@ -6,6 +6,7 @@ import { useRef } from 'react';
 import { ProductCard } from '@/components/catalog/product-card';
 import { Button } from '@/components/ui/button';
 import type { FeaturedProduct } from '@/lib/catalog/featured-products';
+import { mediaSizes } from '@/lib/media/responsive-media';
 
 export function ProductSlider({
   products,
@@ -67,7 +68,7 @@ export function ProductSlider({
                 : 'min-w-0 shrink-0 basis-[78%] snap-start sm:basis-[42%] lg:basis-[calc(25%-1.125rem)]'
             }
           >
-            <ProductCard product={product} />
+            <ProductCard product={product} sizes={mediaSizes.productSlider} />
           </div>
         ))}
       </div>

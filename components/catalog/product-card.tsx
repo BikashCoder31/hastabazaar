@@ -4,23 +4,40 @@ import Link from 'next/link';
 import { ArrowUpRight } from 'lucide-react';
 
 import type { FeaturedProduct } from '@/lib/catalog/featured-products';
+import {
+  mediaFrameClass,
+  mediaObjectClass,
+  mediaSizes,
+} from '@/lib/media/responsive-media';
 
 export function ProductCard({
   product,
+  sizes = mediaSizes.productGrid,
 }: {
   product: FeaturedProduct;
+  sizes?: string;
 }) {
   const href = `/products/${encodeURIComponent(product.slug)}`;
   return (
     <Link href={href} className="group block min-w-0 rounded-2xl">
-      <div className="relative aspect-[4/5] overflow-hidden rounded-[1.4rem] bg-muted">
+      <div
+        data-media-frame="cover"
+        className={mediaFrameClass(
+          'cover',
+          'aspect-[4/5] rounded-[1.4rem] bg-muted',
+        )}
+      >
         <Image
           src={product.image}
           alt={product.imageAlt}
+          data-media-mode="cover"
           fill
           unoptimized={product.image.startsWith('/api/')}
-          sizes="(min-width: 1024px) 24vw, 50vw"
-          className="object-cover transition-transform duration-500 group-hover:scale-[1.035]"
+          sizes={sizes}
+          className={mediaObjectClass(
+            'cover',
+            'transition-transform duration-500 group-hover:scale-[1.035]',
+          )}
         />
         <span className="absolute left-2 top-2 max-w-[calc(100%-1rem)] rounded-full bg-background/95 px-3 py-1.5 text-xs font-semibold backdrop-blur sm:left-3 sm:top-3">
           {product.label ?? product.category}

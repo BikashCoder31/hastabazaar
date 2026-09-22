@@ -11,6 +11,12 @@ void test('gallery renders photos with correct count and retains video even when
  const photo={id:'photo-one',altEn:'Useful photo',mimeType:'image/jpeg'},video={id:'video-one',altEn:'Demonstration',mimeType:'video/mp4'};
  const render=(media:typeof photo[])=>renderToStaticMarkup(createElement(renderedModule.exports.ProductGallery,{media,productName:'Handmade bowl'}));
  const mixed=render([photo,video]);assert.match(mixed,/Photo 1 of 1/);assert.match(mixed,/<video/);assert.match(mixed,/Useful photo/);
+ assert.match(mixed,/<div[^>]*data-media-frame="contain"[^>]*>/);
+ assert.match(mixed,/<img[^>]*src="\/api\/product-media\/photo-one"[^>]*alt="Useful photo"[^>]*data-media-mode="contain"[^>]*>/);
+ assert.match(mixed,/<video[^>]*data-media-mode="contain"[^>]*controls=""[^>]*muted=""[^>]*playsInline=""[^>]*preload="metadata"[^>]*class="[^"]*aspect-video[^"]*"[^>]*src="\/api\/product-media\/video-one"[^>]*>/);
+ const multiple=render([photo,{...photo,id:'photo-two',altEn:'Second photo'}]);
+ assert.match(multiple,/<button[^>]*data-media-frame="cover"[^>]*aria-label="Show photo 1 of Handmade bowl"[^>]*>/);
+ assert.match(multiple,/<img[^>]*src="\/api\/product-media\/photo-one"[^>]*alt=""[^>]*data-media-mode="cover"[^>]*>/);
  const videoOnly=render([video]);assert.match(videoOnly,/<video/);assert.match(videoOnly,/Photos coming soon/);assert.doesNotMatch(videoOnly,/Photo 1 of/);
  const empty=render([]);assert.match(empty,/Photos coming soon/);assert.doesNotMatch(empty,/<video/);
 });

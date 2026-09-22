@@ -6,6 +6,7 @@ import { ProductCard } from '@/components/catalog/product-card';
 import { Button } from '@/components/ui/button';
 import type { RecentlyViewedPolicy } from '@/lib/configuration/types';
 import type { RecentlyViewedProduct } from '@/lib/db/repositories/recently-viewed';
+import { mediaSizes } from '@/lib/media/responsive-media';
 import { normalizeGuestHistory, recordGuestProductView } from '@/lib/recently-viewed/history';
 
 const storageKey = 'hastabazaar.recently-viewed.v1';
@@ -79,7 +80,7 @@ export function RecentlyViewed({
       </div>
       {message ? <output className="mt-3 block text-sm text-muted-foreground">{message}</output> : null}
       {visible.length ? <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        {visible.map((product) => <div key={product.id}><ProductCard product={product} />{!product.available ? <p className="mt-2 text-sm font-semibold text-muted-foreground">Currently unavailable</p> : null}</div>)}
+        {visible.map((product) => <div key={product.id}><ProductCard product={product} sizes={mediaSizes.productGrid} />{!product.available ? <p className="mt-2 text-sm font-semibold text-muted-foreground">Currently unavailable</p> : null}</div>)}
       </div> : <p className="mt-5 text-sm text-muted-foreground">This is the first product in this history.</p>}
     </section>
   );
