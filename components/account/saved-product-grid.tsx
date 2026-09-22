@@ -22,7 +22,10 @@ export function SavedProductGrid({
           className="overflow-hidden rounded-2xl border bg-card"
         >
           <Link href={`/products/${item.slug}`} className="group block">
-            <div className={mediaFrameClass('cover', 'aspect-[4/3] bg-muted')}>
+            <div
+              data-media-frame="cover"
+              className={mediaFrameClass('cover', 'aspect-[4/3] bg-muted')}
+            >
               {item.primaryMediaId ? (
                 <Image
                   src={`/api/product-media/${item.primaryMediaId}`}

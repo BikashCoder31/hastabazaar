@@ -71,6 +71,7 @@ export function NotFoundContent() {
 
         <div
           aria-hidden="true"
+          data-media-frame="cover"
           className={mediaFrameClass(
             'cover',
             'min-h-[clamp(18rem,72vw,29rem)] rounded-[2rem] border border-[#f4c46b]/35 bg-[#102f54] shadow-[0_32px_80px_-48px_rgb(16_47_84/85%)] lg:min-h-[clamp(29rem,36vw,34rem)]',

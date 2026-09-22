@@ -20,6 +20,7 @@ void test('customer commerce thumbnails declare their responsive purpose', async
   assert.match(cart, /alt=""/);
 
   assert.match(saved, /data-media-mode="cover"/);
+  assert.match(saved, /data-media-frame="cover"/);
   assert.match(saved, /sizes=\{mediaSizes\.savedProduct\}/);
   assert.match(
     saved,
@@ -83,6 +84,7 @@ void test('404 artwork declares the shared responsive image contract', async () 
   const notFound = await source('app/not-found.tsx');
 
   assert.match(notFound, /sizes=\{mediaSizes\.notFound\}/);
+  assert.match(notFound, /data-media-frame="cover"/);
   assert.match(notFound, /mediaFrameClass\(\s*'cover'/);
   assert.match(notFound, /mediaObjectClass\('cover', 'opacity-35'\)/);
 });
