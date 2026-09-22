@@ -5,6 +5,7 @@ import { signOutPath } from '@/app/auth';
 import { BrandWordmark } from '@/components/layout/brand-wordmark';
 import { SellerNavigation } from '@/components/seller/seller-navigation';
 import { requireSellerPage } from '@/lib/auth/seller';
+import { mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,11 +25,13 @@ export default async function SellerLayout({
         <div className="shell flex min-h-20 flex-wrap items-center justify-between gap-4 py-3">
           <Link href="/seller" className="flex items-center gap-3 rounded-xl">
             <Image
+              data-media-mode="contain"
               src="/brand/hastabazaar-mark-96.png"
               alt=""
               width={44}
               height={44}
-              className="size-11 object-contain"
+              sizes={mediaSizes.brandMark}
+              className={mediaObjectClass('contain', 'size-11')}
             />
             <span>
               <BrandWordmark className="block text-xl" />

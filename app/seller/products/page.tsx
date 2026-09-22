@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { requireSellerPage } from '@/lib/auth/seller';
 import { requireDatabase } from '@/lib/db/d1';
 import { listSellerProducts } from '@/lib/db/repositories/products';
+import { mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
 import {
   canEditSellerInventory,
   sellerDate,
@@ -205,15 +206,20 @@ function ProductRow({
       <tr id={`product-${product.id}`} className="align-top">
         <td aria-label={`${product.nameEn} product details`} className="px-4 py-4">
           <div className="flex min-w-64 items-start gap-3">
-            <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
+            <div
+              data-media-frame="cover"
+              className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted"
+            >
               {product.primaryMediaId ? (
                 <Image
+                  data-media-mode="cover"
                   src={`/api/product-media/${product.primaryMediaId}`}
                   alt={product.nameEn}
                   width={64}
                   height={64}
+                  sizes={mediaSizes.adminThumbnail}
                   unoptimized
-                  className="size-full object-cover"
+                  className={mediaObjectClass('cover')}
                 />
               ) : (
                 <ImageIcon

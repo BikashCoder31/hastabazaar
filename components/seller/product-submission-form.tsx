@@ -36,6 +36,10 @@ import type {
   OccasionRow,
   SellerProductRevision,
 } from '@/lib/db/repositories/products';
+import {
+  mediaFrameClass,
+  mediaObjectClass,
+} from '@/lib/media/responsive-media';
 
 type SubmissionState =
   | { status: 'idle' }
@@ -127,12 +131,21 @@ function ImageUploadSlot({
   const preview = useFilePreview(file);
   return (
     <div className="rounded-xl border p-4">
-      <div className="aspect-[4/3] overflow-hidden rounded-lg bg-muted">
+      <div
+        data-media-frame="cover"
+        className={mediaFrameClass(
+          'cover',
+          'aspect-[4/3] overflow-hidden rounded-lg bg-muted',
+        )}
+      >
         {preview ? (
-          <div
+          // eslint-disable-next-line @next/next/no-img-element -- browser object URLs cannot use the Next image optimizer.
+          <img
+            data-media-mode="cover"
+            src={preview}
+            alt="Selected product preview"
             title="Selected product preview"
-            className="size-full bg-cover bg-center"
-            style={{ backgroundImage: `url(${preview})` }}
+            className={mediaObjectClass('cover')}
           />
         ) : (
           <div className="grid size-full place-items-center text-sm text-muted-foreground">
@@ -189,13 +202,24 @@ function ExistingImageEditor({
   const preview = useFilePreview(replacement);
   return (
     <div className={`rounded-xl border p-4 ${removed ? 'opacity-60' : ''}`}>
-      <div className="aspect-[4/3] overflow-hidden rounded-lg bg-muted">
-        <div
+      <div
+        data-media-frame="cover"
+        className={mediaFrameClass(
+          'cover',
+          'aspect-[4/3] overflow-hidden rounded-lg bg-muted',
+        )}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element -- browser object URLs and authenticated media routes cannot use the Next image optimizer. */}
+        <img
+          data-media-mode="cover"
+          src={preview ?? `/api/product-media/${media.id}`}
+          alt={
+            preview
+              ? 'Replacement product preview'
+              : `Saved product image: ${media.originalName}`
+          }
           title={preview ? 'Replacement image preview' : media.originalName}
-          className="size-full bg-cover bg-center"
-          style={{
-            backgroundImage: `url(${preview ?? `/api/product-media/${media.id}`})`,
-          }}
+          className={mediaObjectClass('cover')}
         />
       </div>
       <p className="mt-2 truncate text-xs text-muted-foreground">
@@ -258,13 +282,22 @@ function VideoUploadControl({
   return (
     <div className="rounded-xl border p-4">
       {source ? (
-        <video
-          controls
-          muted
-          preload="metadata"
-          src={source}
-          className="max-h-80 w-full rounded-lg bg-black"
-        />
+        <div
+          data-media-frame="contain"
+          className={mediaFrameClass(
+            'contain',
+            'aspect-video max-h-80 rounded-lg bg-black',
+          )}
+        >
+          <video
+            data-media-mode="contain"
+            controls
+            muted
+            preload="metadata"
+            src={source}
+            className={mediaObjectClass('contain')}
+          />
+        </div>
       ) : (
         <div className="grid min-h-40 place-items-center rounded-lg bg-muted text-sm text-muted-foreground">
           <Video className="mb-2 size-8" /> No video uploaded
