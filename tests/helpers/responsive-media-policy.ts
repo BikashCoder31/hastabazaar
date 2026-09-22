@@ -76,6 +76,7 @@ interface StylesheetClasses {
   geometry: ReadonlySet<string>;
   positioned: ReadonlySet<string>;
   possiblyPositioned: ReadonlySet<string>;
+  possiblyStatic: ReadonlySet<string>;
   inset: ReadonlySet<string>;
   unsafeWidth: ReadonlySet<string>;
 }
@@ -98,10 +99,7 @@ function hasContainingBlockGeometry(
     if (!ts.isJsxElement(parent) && !ts.isJsxSelfClosingElement(parent))
       continue;
     const attributes = jsxAttributes(parent);
-    const inlinePosition = inlinePositioning(
-      attribute(attributes, 'style')?.initializer,
-    );
-    const positioned =
+    const classPositioned =
       hasUnconditionalClass(
         attributes,
         (token) =>
@@ -110,19 +108,29 @@ function hasContainingBlockGeometry(
       ) ||
       [...MEDIA_MODES].some((mode) =>
         hasSharedMediaClass(attributes, 'mediaFrameClass', mode),
-      ) ||
-      inlinePosition.guaranteed;
-    const possiblyPositioned =
-      positioned ||
-      inlinePosition.possible ||
-      hasPossibleClass(
-        attributes,
-        (token) =>
-          /(?:^|:)(?:relative|absolute|fixed|sticky)$/.test(token) ||
-          classes.possiblyPositioned.has(token),
-        'mediaFrameClass',
       );
-    if (possiblyPositioned) {
+    const positioning = inlinePositioning(
+      attribute(attributes, 'style')?.initializer,
+      {
+        possible:
+          classPositioned ||
+          hasPossibleClass(
+            attributes,
+            (token) =>
+              /(?:^|:)(?:relative|absolute|fixed|sticky)$/.test(token) ||
+              classes.possiblyPositioned.has(token),
+            'mediaFrameClass',
+          ),
+        guaranteed:
+          classPositioned &&
+          !hasPossibleClass(
+            attributes,
+            (token) =>
+              /(?:^|:)static$/.test(token) || classes.possiblyStatic.has(token),
+          ),
+      },
+    );
+    if (positioning.possible) {
       if (
         !(
           hasReservedGeometry(attributes, classes) &&
@@ -133,7 +141,7 @@ function hasContainingBlockGeometry(
         return false;
       // Conditional positioning must be safe both when this ancestor is the
       // containing block and when the frame still depends on a farther one.
-      if (positioned) return true;
+      if (positioning.guaranteed) return true;
     }
   }
   return false;
@@ -157,6 +165,12 @@ function hasPossibleClass(
   if (!initializer) return false;
   let found = false;
   const visit = (node: ts.Node): void => {
+    if (
+      ts.isPropertyAssignment(node) ||
+      ts.isShorthandPropertyAssignment(node)
+    ) {
+      found ||= classTextHasToken(literalPropertyName(node.name) ?? '', token);
+    }
     if (
       ts.isStringLiteralLike(node) ||
       ts.isTemplateHead(node) ||
@@ -182,30 +196,47 @@ interface Positioning {
   guaranteed: boolean;
 }
 
-function inlinePositioning(node: ts.Node | undefined): Positioning {
-  const absent = { possible: false, guaranteed: false };
-  if (!node) return absent;
+function literalPropertyName(name: ts.PropertyName): string | undefined {
+  if (ts.isIdentifier(name) || ts.isStringLiteralLike(name)) return name.text;
+  if (
+    ts.isComputedPropertyName(name) &&
+    ts.isStringLiteralLike(name.expression)
+  )
+    return name.expression.text;
+  return undefined;
+}
+
+function inlinePositioning(
+  node: ts.Node | undefined,
+  fallback: Positioning,
+): Positioning {
+  // Missing inline declarations retain class positioning; explicit static
+  // alternatives replace it and require checking a farther containing block.
+  if (!node) return fallback;
   if (ts.isJsxExpression(node) || ts.isParenthesizedExpression(node))
-    return inlinePositioning(node.expression);
+    return inlinePositioning(node.expression, fallback);
   if (ts.isConditionalExpression(node)) {
-    const whenTrue = inlinePositioning(node.whenTrue);
-    const whenFalse = inlinePositioning(node.whenFalse);
+    const whenTrue = inlinePositioning(node.whenTrue, fallback);
+    const whenFalse = inlinePositioning(node.whenFalse, fallback);
     return {
       possible: whenTrue.possible || whenFalse.possible,
       guaranteed: whenTrue.guaranteed && whenFalse.guaranteed,
     };
   }
   if (ts.isObjectLiteralExpression(node)) {
-    let result = absent;
+    let result = fallback;
     for (const property of node.properties) {
       if (ts.isSpreadAssignment(property)) {
         result = { possible: true, guaranteed: false };
-      } else if (
-        property.name?.getText().replaceAll(/["']/g, '') === 'position'
-      ) {
+      } else if (literalPropertyName(property.name) === 'position') {
         result = ts.isPropertyAssignment(property)
-          ? inlinePositioning(property.initializer)
+          ? inlinePositioning(property.initializer, fallback)
           : { possible: true, guaranteed: false };
+      } else if (
+        ts.isComputedPropertyName(property.name) &&
+        literalPropertyName(property.name) === undefined
+      ) {
+        result = { possible: true, guaranteed: false };
       }
     }
     return result;
@@ -224,7 +255,7 @@ function inlinePositioning(node: ts.Node | undefined): Positioning {
     node.kind === ts.SyntaxKind.NullKeyword ||
     node.kind === ts.SyntaxKind.FalseKeyword
   )
-    return absent;
+    return fallback;
   return { possible: true, guaranteed: false };
 }
 
@@ -442,9 +473,10 @@ function stylesheetGeometryClasses(stylesheet: string): StylesheetClasses {
   // Inspect simple class rules in unconditional CSS/layers. Conditional rules,
   // descendant selectors and pseudo selectors cannot establish base geometry.
   const css = stylesheet.replace(/\/\*[\s\S]*?\*\//g, '');
-  const stack: { selector: string; direct: string }[] = [];
+  const stack: { selector: string; selectors: string[]; direct: string }[] = [];
   const declarations = new Map<string, Map<string, string>>();
   const possiblyPositioned = new Set<string>();
+  const possiblyStatic = new Set<string>();
   const unsafeWidth = new Set<string>();
   let segmentStart = 0;
   for (const brace of css.matchAll(/[{}]/g)) {
@@ -455,8 +487,21 @@ function stylesheetGeometryClasses(stylesheet: string): StylesheetClasses {
       const parent = stack.at(-1);
       if (parent && lastDeclaration >= 0)
         parent.direct += segment.slice(0, lastDeclaration + 1);
+      const selector = segment.slice(lastDeclaration + 1).trim();
       stack.push({
-        selector: segment.slice(lastDeclaration + 1).trim(),
+        selector,
+        // At-rules retain their enclosing selector; a nested pseudo state
+        // changes that selector without making its declarations unconditional.
+        selectors: selector.startsWith('@')
+          ? (parent?.selectors ?? [])
+          : selector.split(',').flatMap((item) => {
+              const nested = item.trim();
+              return nested.startsWith('&')
+                ? (parent?.selectors ?? []).map((outer) =>
+                    nested.replaceAll('&', outer),
+                  )
+                : [nested];
+            }),
         direct: '',
       });
     } else {
@@ -466,30 +511,33 @@ function stylesheetGeometryClasses(stylesheet: string): StylesheetClasses {
         const properties = [
           ...rule.direct.matchAll(/(?:^|;)\s*([\w-]+)\s*:\s*([^;{}]+)/g),
         ];
-        const selectorSource = /^@(?:media|supports|container)\b/.test(
-          rule.selector,
-        )
-          ? (stack.findLast((parent) => !parent.selector.startsWith('@'))
-              ?.selector ?? '')
-          : rule.selector;
-        for (const selector of selectorSource.split(',')) {
+        const unconditional =
+          !rule.selector.startsWith('@') &&
+          stack.every((parent) => /^@layer\b/.test(parent.selector));
+        for (const selector of rule.selectors) {
           // Conditional rules and pseudo states can introduce a nearer
           // containing block even though they cannot prove base geometry.
           const possibleClass = /^\.([\w-]+)(?::[^\s>+~]+)?$/.exec(
             selector.trim(),
           )?.[1];
-          if (
-            possibleClass &&
-            properties.some(
-              (property) =>
-                property[1] === 'position' &&
-                /^(?:relative|absolute|fixed|sticky)(?:\s*!important)?$/.test(
-                  property[2].trim(),
-                ),
-            )
-          )
-            possiblyPositioned.add(possibleClass);
           const className = /^\.([\w-]+)$/.exec(selector.trim())?.[1];
+          if (possibleClass && (!unconditional || !className)) {
+            for (const [, name, value] of properties) {
+              if (name !== 'position') continue;
+              if (
+                !/^(?:static|initial|unset)(?:\s*!important)?$/.test(
+                  value.trim(),
+                )
+              )
+                possiblyPositioned.add(possibleClass);
+              if (
+                !/^(?:relative|absolute|fixed|sticky)(?:\s*!important)?$/.test(
+                  value.trim(),
+                )
+              )
+                possiblyStatic.add(possibleClass);
+            }
+          }
           if (!className) continue;
           if (
             properties.some(
@@ -508,11 +556,7 @@ function stylesheetGeometryClasses(stylesheet: string): StylesheetClasses {
             )
           )
             unsafeWidth.add(className);
-          if (
-            selectorSource !== rule.selector ||
-            !stack.every((parent) => /^@layer\b/.test(parent.selector))
-          )
-            continue;
+          if (!unconditional) continue;
           const values =
             declarations.get(className) ?? new Map<string, string>();
           for (const property of properties)
@@ -537,18 +581,26 @@ function stylesheetGeometryClasses(stylesheet: string): StylesheetClasses {
       })
       .map(([name]) => name),
   );
+  const positioned = new Set<string>();
+  for (const [name, values] of declarations) {
+    const position = values.get('position');
+    if (!position) continue;
+    if (
+      /^(?:relative|absolute|fixed|sticky)(?:\s*!important)?$/.test(position)
+    ) {
+      positioned.add(name);
+      possiblyPositioned.add(name);
+    } else {
+      possiblyStatic.add(name);
+      if (!/^(?:static|initial|unset)(?:\s*!important)?$/.test(position))
+        possiblyPositioned.add(name);
+    }
+  }
   return {
     geometry,
     possiblyPositioned,
-    positioned: new Set(
-      [...declarations]
-        .filter(([, values]) =>
-          ['relative', 'absolute', 'fixed', 'sticky'].includes(
-            values.get('position') ?? '',
-          ),
-        )
-        .map(([name]) => name),
-    ),
+    possiblyStatic,
+    positioned,
     inset: new Set(
       [...declarations]
         .filter(

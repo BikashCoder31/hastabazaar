@@ -370,6 +370,145 @@ void test('conditional CSS positioning blocks borrowing farther container geomet
   }
 });
 
+void test('inline static alternatives override otherwise guaranteed class positioning', () => {
+  const frame =
+    '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'test-frame\')}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>';
+  const css = '.test-frame { position:absolute; inset:0; }';
+  const nearer = `<div className="relative h-32" style={{position: active ? 'relative' : 'static'}}>${frame}</div>`;
+  assert.deepEqual(
+    auditResponsiveMediaSource(
+      'fixture.tsx',
+      `<div className="relative">${nearer}</div>`,
+      css,
+    ),
+    [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+  );
+  for (const source of [
+    `<div className="relative h-64">${nearer}</div>`,
+    `<div className="relative h-32" style={{position: 'relative'}}>${frame}</div>`,
+    `<div className="relative h-32" style={active ? {position: 'relative'} : {}}>${frame}</div>`,
+    `<div className="relative h-64"><div className="relative" style={{position: 'static'}}>${frame}</div></div>`,
+  ]) {
+    assert.deepEqual(
+      auditResponsiveMediaSource('fixture.tsx', source, css),
+      [],
+      source,
+    );
+  }
+});
+
+void test('CSS static alternatives require reserved farther containing blocks', () => {
+  const frame =
+    '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'test-frame\')}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>';
+  for (const positioning of [
+    '.conditional {position:relative} @media (min-width:640px) {.conditional {position:static}}',
+    '.conditional {position:relative; @media (min-width:640px) {position:static}}',
+    '.conditional {position:relative} .conditional:hover {position:static}',
+  ]) {
+    const css = `.test-frame {position:absolute; inset:0} ${positioning}`;
+    for (const outer of ['relative', 'relative h-64']) {
+      assert.deepEqual(
+        auditResponsiveMediaSource(
+          'fixture.tsx',
+          `<div className="${outer}"><div className="conditional h-32">${frame}</div></div>`,
+          css,
+        ),
+        outer === 'relative'
+          ? [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }]
+          : [],
+        positioning,
+      );
+    }
+  }
+});
+
+void test('identifier class object keys can introduce a nearer containing block', () => {
+  const frame =
+    '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'test-frame\')}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>';
+  const css = '.test-frame {position:absolute; inset:0}';
+  assert.deepEqual(
+    auditResponsiveMediaSource(
+      'fixture.tsx',
+      `<div className="relative h-64"><div className={cn({relative: active})}>${frame}</div></div>`,
+      css,
+    ),
+    [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+  );
+  for (const outer of ['relative', 'relative h-64']) {
+    assert.deepEqual(
+      auditResponsiveMediaSource(
+        'fixture.tsx',
+        `<div className="${outer}"><div className={cn('h-32', {relative: active})}>${frame}</div></div>`,
+        css,
+      ),
+      outer === 'relative'
+        ? [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }]
+        : [],
+    );
+  }
+});
+
+void test('computed literal style keys preserve possible and guaranteed positioning', () => {
+  const frame =
+    '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'test-frame\')}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>';
+  const css = '.test-frame {position:absolute; inset:0}';
+  assert.deepEqual(
+    auditResponsiveMediaSource(
+      'fixture.tsx',
+      `<div className="relative h-64"><div style={{['position']: active ? 'relative' : 'static'}}>${frame}</div></div>`,
+      css,
+    ),
+    [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+  );
+  for (const source of [
+    `<div className="h-32" style={{['position']: 'relative'}}>${frame}</div>`,
+    `<div className="relative h-64"><div className="h-32" style={{['position']: active ? 'relative' : 'static'}}>${frame}</div></div>`,
+  ]) {
+    assert.deepEqual(
+      auditResponsiveMediaSource('fixture.tsx', source, css),
+      [],
+      source,
+    );
+  }
+});
+
+void test('nested CSS pseudo states can change the nearest containing block', () => {
+  const frame =
+    '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'test-frame\')}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>';
+  for (const positioning of [
+    '.conditional { &:hover {position:relative} }',
+    '.conditional { @media (min-width:640px) { &:hover {position:relative} } }',
+  ]) {
+    const css = `.test-frame {position:absolute; inset:0} ${positioning}`;
+    assert.deepEqual(
+      auditResponsiveMediaSource(
+        'fixture.tsx',
+        `<div className="relative h-64"><div className="conditional">${frame}</div></div>`,
+        css,
+      ),
+      [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+      positioning,
+    );
+    assert.deepEqual(
+      auditResponsiveMediaSource(
+        'fixture.tsx',
+        `<div className="relative h-64"><div className="conditional h-32">${frame}</div></div>`,
+        css,
+      ),
+      [],
+      positioning,
+    );
+  }
+  assert.deepEqual(
+    auditResponsiveMediaSource(
+      'fixture.tsx',
+      `<div className="relative"><div className="conditional h-32">${frame}</div></div>`,
+      '.test-frame {position:absolute; inset:0} .conditional {position:relative; &:hover {position:static}}',
+    ),
+    [{ file: 'fixture.tsx', line: 1, rule: 'missing-frame' }],
+  );
+});
+
 void test('nested conditional CSS cannot establish base frame geometry', () => {
   const source =
     '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'test-frame\')}><Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" /></div>';
