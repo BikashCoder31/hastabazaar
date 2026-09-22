@@ -14,6 +14,11 @@ import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  mediaFrameClass,
+  mediaObjectClass,
+  mediaSizes,
+} from '@/lib/media/responsive-media';
 
 interface CartItem {
   id: string;
@@ -152,7 +157,10 @@ export function CartView() {
               <Link
                 href={`/products/${item.slug}`}
                 aria-label={`View ${item.nameEn}`}
-                className="overflow-hidden rounded-xl bg-muted"
+                className={mediaFrameClass(
+                  'cover',
+                  'aspect-[4/5] rounded-xl bg-muted',
+                )}
               >
                 {item.primaryMediaId ? (
                   <Image
@@ -161,7 +169,9 @@ export function CartView() {
                     width={240}
                     height={300}
                     unoptimized
-                    className="aspect-[4/5] h-full w-full object-cover"
+                    data-media-mode="cover"
+                    sizes={mediaSizes.cartThumbnail}
+                    className={mediaObjectClass('cover')}
                   />
                 ) : null}
               </Link>

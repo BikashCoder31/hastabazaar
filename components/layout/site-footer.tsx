@@ -16,6 +16,7 @@ import { getBusinessSettingDefinition } from '@/lib/configuration/definitions';
 import type { OfficialSocialLinks } from '@/lib/configuration/types';
 import { requireDatabase } from '@/lib/db/d1';
 import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
+import { mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
 
 const platformLabels: Record<keyof OfficialSocialLinks, string> = {
   facebook: 'Facebook',
@@ -89,7 +90,9 @@ export async function SiteFooter() {
                 alt="Hastabazaar — Handmade Nepal. For a Sustainable World."
                 width={640}
                 height={640}
-                className="site-footer-logo"
+                data-media-mode="natural"
+                sizes={mediaSizes.footerLogo}
+                className={mediaObjectClass('natural', 'site-footer-logo')}
               />
             </Link>
             <p className="site-footer-tagline">

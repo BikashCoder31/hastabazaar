@@ -38,7 +38,7 @@ void test('custom 404 provides privacy-safe recovery navigation', async () => {
               if (path === 'next/image') {
                 return {
                   contents:
-                    "const React=require('react');module.exports=function Image({fill,priority,...props}){return React.createElement('img',props);};",
+                    "const React=require('react');module.exports=function Image({fill,priority,...props}){return React.createElement('img',{...props,'data-fill':fill?'true':undefined,'data-priority':priority?'true':undefined});};",
                   loader: 'js',
                 };
               }
@@ -84,5 +84,9 @@ void test('custom 404 provides privacy-safe recovery navigation', async () => {
   );
   assert.match(html, /href="\/"[^>]*>[^<]*Back to home/);
   assert.match(html, /href="\/shop"[^>]*>[^<]*Explore the collection/);
+  assert.match(
+    html,
+    /<img[^>]*alt=""[^>]*data-media-mode="cover"[^>]*data-priority="true"/,
+  );
   assert.doesNotMatch(html, /sign in|owns this order/i);
 });

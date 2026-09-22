@@ -15,6 +15,7 @@ import { BrandWordmark } from '@/components/layout/brand-wordmark';
 import { MobileNavigation } from '@/components/layout/mobile-navigation';
 import { Input } from '@/components/ui/input';
 import { storefrontNavigation } from '@/lib/catalog/storefront-navigation';
+import { mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
 
 export async function SiteHeader() {
   const identity = await getAuthenticatedUser();
@@ -45,7 +46,12 @@ export async function SiteHeader() {
                 width={48}
                 height={48}
                 priority
-                className="hidden size-11 object-contain sm:block"
+                data-media-mode="contain"
+                sizes={mediaSizes.brandMark}
+                className={mediaObjectClass(
+                  'contain',
+                  'hidden size-11 sm:block',
+                )}
               />
               <div>
                 <BrandWordmark className="text-[1.35rem] sm:text-3xl" />

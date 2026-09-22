@@ -4,6 +4,11 @@ import { ArrowRight, Home, MapPin, Search } from 'lucide-react';
 
 import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
+import {
+  mediaFrameClass,
+  mediaObjectClass,
+  mediaSizes,
+} from '@/lib/media/responsive-media';
 
 export default function NotFound() {
   return (
@@ -66,15 +71,19 @@ export function NotFoundContent() {
 
         <div
           aria-hidden="true"
-          className="relative min-h-[23rem] overflow-hidden rounded-[2rem] border border-[#f4c46b]/35 bg-[#102f54] shadow-[0_32px_80px_-48px_rgb(16_47_84/85%)] sm:min-h-[29rem] lg:min-h-[34rem]"
+          className={mediaFrameClass(
+            'cover',
+            'min-h-[clamp(18rem,72vw,29rem)] rounded-[2rem] border border-[#f4c46b]/35 bg-[#102f54] shadow-[0_32px_80px_-48px_rgb(16_47_84/85%)] lg:min-h-[clamp(29rem,36vw,34rem)]',
+          )}
         >
           <Image
             src="/homepage/nepali-gift-pattern.webp"
             alt=""
+            data-media-mode="cover"
             fill
             priority
-            sizes="(min-width: 1024px) 52vw, 100vw"
-            className="object-cover opacity-35"
+            sizes={mediaSizes.notFound}
+            className={mediaObjectClass('cover', 'opacity-35')}
           />
           <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(16,47,84,0.18),rgba(7,28,54,0.82))]" />
 

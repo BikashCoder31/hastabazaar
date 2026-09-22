@@ -3,6 +3,12 @@ import type {
   ReviewPhoto,
   SellerReply,
 } from '@/lib/db/repositories/review-extras';
+import {
+  mediaFrameClass,
+  mediaObjectClass,
+  mediaSizes,
+} from '@/lib/media/responsive-media';
+
 export function ReviewPhotos({ photos }: { photos: readonly ReviewPhoto[] }) {
   return photos.length ? (
     <div className="mt-4 flex flex-wrap gap-3" aria-label="Customer photos">
@@ -13,7 +19,10 @@ export function ReviewPhotos({ photos }: { photos: readonly ReviewPhoto[] }) {
           target="_blank"
           rel="noopener noreferrer"
           aria-label={`Open customer photo ${index + 1} in a new tab`}
-          className="block overflow-hidden rounded-xl border focus-visible:outline-2 focus-visible:outline-primary"
+          className={mediaFrameClass(
+            'contain',
+            'block size-24 rounded-xl border focus-visible:outline-2 focus-visible:outline-primary',
+          )}
         >
           <Image
             unoptimized
@@ -22,7 +31,9 @@ export function ReviewPhotos({ photos }: { photos: readonly ReviewPhoto[] }) {
             width={96}
             height={96}
             loading="lazy"
-            className="h-24 w-24 object-cover"
+            data-media-mode="contain"
+            sizes={mediaSizes.reviewAttachment}
+            className={mediaObjectClass('contain')}
           />
         </a>
       ))}

@@ -3,6 +3,11 @@ import Link from 'next/link';
 import { ArrowUpRight, Package } from 'lucide-react';
 import { WishlistButton } from '@/components/account/wishlist-button';
 import type { WishlistProductRow } from '@/lib/db/repositories/customers';
+import {
+  mediaFrameClass,
+  mediaObjectClass,
+  mediaSizes,
+} from '@/lib/media/responsive-media';
 
 export function SavedProductGrid({
   items,
@@ -17,15 +22,19 @@ export function SavedProductGrid({
           className="overflow-hidden rounded-2xl border bg-card"
         >
           <Link href={`/products/${item.slug}`} className="group block">
-            <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+            <div className={mediaFrameClass('cover', 'aspect-[4/3] bg-muted')}>
               {item.primaryMediaId ? (
                 <Image
                   src={`/api/product-media/${item.primaryMediaId}`}
                   alt={item.nameEn}
                   fill
                   unoptimized
-                  sizes="(min-width: 1280px) 25vw, (min-width: 640px) 40vw, 100vw"
-                  className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                  data-media-mode="cover"
+                  sizes={mediaSizes.savedProduct}
+                  className={mediaObjectClass(
+                    'cover',
+                    'transition-transform duration-300 group-hover:scale-[1.03]',
+                  )}
                 />
               ) : (
                 <Package className="absolute left-1/2 top-1/2 size-10 -translate-x-1/2 -translate-y-1/2 text-muted-foreground" />
