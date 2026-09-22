@@ -1,4 +1,8 @@
 import type { HomepageHeroSlide } from '@/lib/homepage/hero-slides';
+import {
+  mediaFrameClass,
+  mediaObjectClass,
+} from '@/lib/media/responsive-media';
 
 export function HomepageHeroPreview({
   slide,
@@ -17,8 +21,8 @@ export function HomepageHeroPreview({
     <div
       className={
         mode === 'mobile'
-          ? 'mx-auto grid max-w-sm overflow-hidden rounded-2xl border bg-[#f7f0e7] shadow-sm'
-          : 'grid min-h-80 overflow-hidden rounded-2xl border bg-[#f7f0e7] shadow-sm lg:grid-cols-[48%_52%]'
+          ? 'mx-auto grid w-full min-w-0 max-w-sm overflow-hidden rounded-2xl border bg-[#f7f0e7] shadow-sm'
+          : 'grid min-w-0 overflow-hidden rounded-2xl border bg-[#f7f0e7] shadow-sm lg:grid-cols-[minmax(0,48%)_minmax(0,52%)]'
       }
     >
       <div className="flex flex-col justify-center p-6 lg:p-8">
@@ -46,17 +50,27 @@ export function HomepageHeroPreview({
           ) : null}
         </div>
       </div>
-      <div className="relative min-h-64 overflow-hidden bg-[#e7dccd]">
+      <div
+        data-media-frame="cover"
+        className={mediaFrameClass(
+          'cover',
+          mode === 'mobile'
+            ? 'aspect-[4/3] min-h-0 bg-[#e7dccd]'
+            : 'aspect-[4/3] min-h-0 bg-[#e7dccd] sm:aspect-[8/5] lg:aspect-auto lg:min-h-[clamp(32rem,42vw,40rem)]',
+        )}
+      >
         {mediaUrl && slide.mediaType === 'image' ? (
           // eslint-disable-next-line @next/next/no-img-element -- authenticated preview URL is dynamic.
           <img
+            data-media-mode="cover"
             src={mediaUrl}
             alt={slide.imageAlt || ''}
-            className="absolute inset-0 h-full w-full object-cover"
+            className={mediaObjectClass('cover', 'absolute inset-0')}
           />
         ) : null}
         {mediaUrl && slide.mediaType === 'video' ? (
           <video
+            data-media-mode="cover"
             src={mediaUrl}
             poster={posterUrl}
             muted
@@ -64,7 +78,7 @@ export function HomepageHeroPreview({
             autoPlay
             playsInline
             aria-label={slide.videoDescription || 'Homepage hero video preview'}
-            className="absolute inset-0 h-full w-full object-cover"
+            className={mediaObjectClass('cover', 'absolute inset-0')}
           />
         ) : null}
         {!mediaUrl ? (

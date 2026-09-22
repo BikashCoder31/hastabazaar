@@ -20,6 +20,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import {
+  mediaFrameClass,
+  mediaObjectClass,
+} from '@/lib/media/responsive-media';
+import {
   getProductForReview,
   listActiveCategories,
   listActiveOccasions,
@@ -61,7 +65,10 @@ export default async function ProductReviewPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const staff = await requireStaffPage(`/admin/products/${id}`, 'product.review');
+  const staff = await requireStaffPage(
+    `/admin/products/${id}`,
+    'product.review',
+  );
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const [product, categories, occasions] = await Promise.all([
     getProductForReview(database, id),
@@ -99,16 +106,44 @@ export default async function ProductReviewPage({
                 {product.media.map((media) => (
                   <figure
                     key={media.id}
-                    className="overflow-hidden rounded-xl border bg-muted"
+                    className="min-w-0 overflow-hidden rounded-xl border bg-muted"
                   >
-                    <Image
-                      src={`/api/product-media/${media.id}`}
-                      alt={media.altEn}
-                      width={800}
-                      height={800}
-                      unoptimized
-                      className="aspect-square w-full object-cover"
-                    />
+                    <div
+                      data-media-frame="contain"
+                      className={mediaFrameClass('contain', 'aspect-square')}
+                    >
+                      {media.mimeType === 'video/mp4' ? (
+                        <video
+                          data-media-mode="contain"
+                          src={`/api/product-media/${media.id}`}
+                          controls
+                          muted
+                          playsInline
+                          preload="metadata"
+                          aria-label={
+                            media.altEn ||
+                            `Product demonstration of ${product.nameEn}`
+                          }
+                          className={mediaObjectClass(
+                            'contain',
+                            'absolute inset-0 bg-black',
+                          )}
+                        />
+                      ) : (
+                        <Image
+                          data-media-mode="contain"
+                          src={`/api/product-media/${media.id}`}
+                          alt={media.altEn}
+                          width={800}
+                          height={800}
+                          unoptimized
+                          className={mediaObjectClass(
+                            'contain',
+                            'absolute inset-0',
+                          )}
+                        />
+                      )}
+                    </div>
                     <figcaption className="truncate p-2 text-xs text-muted-foreground">
                       {media.originalName}
                     </figcaption>
@@ -138,7 +173,9 @@ export default async function ProductReviewPage({
                 <Detail label="Producer">{product.producer}</Detail>
                 <Detail label="Origin">Nepal</Detail>
                 <Detail label="Materials">{product.materials}</Detail>
-                <Detail label="Product-origin story">{product.originStory}</Detail>
+                <Detail label="Product-origin story">
+                  {product.originStory}
+                </Detail>
                 <Detail label="Dimensions">{product.dimensions}</Detail>
                 <Detail label="Size">{product.size}</Detail>
                 <Detail label="Colour">{product.colour}</Detail>
@@ -238,15 +275,17 @@ export default async function ProductReviewPage({
               <CardTitle>Discovery classification</CardTitle>
             </CardHeader>
             <CardContent>
-              {can(staff, 'catalog.manage') && <ProductClassificationForm
-                productId={product.id}
-                categoryId={product.categoryId}
-                occasionIds={
-                  product.occasionIds?.split(',').filter(Boolean) ?? []
-                }
-                categories={categories}
-                occasions={occasions}
-              />}
+              {can(staff, 'catalog.manage') && (
+                <ProductClassificationForm
+                  productId={product.id}
+                  categoryId={product.categoryId}
+                  occasionIds={
+                    product.occasionIds?.split(',').filter(Boolean) ?? []
+                  }
+                  categories={categories}
+                  occasions={occasions}
+                />
+              )}
             </CardContent>
           </Card>
           <Card>

@@ -16,6 +16,11 @@ import {
 } from '@/lib/db/repositories/business-settings';
 import { listHomepageHeroMediaForAdmin } from '@/lib/db/repositories/homepage-hero';
 import { listHomepageProductControls } from '@/lib/db/repositories/products';
+import {
+  mediaFrameClass,
+  mediaObjectClass,
+  mediaSizes,
+} from '@/lib/media/responsive-media';
 
 export const dynamic = 'force-dynamic';
 
@@ -160,15 +165,23 @@ export default async function HomepageProductControlsPage({
           {result.items.map((product) => (
             <Card key={product.id} className="py-0">
               <CardContent className="flex gap-4 p-4">
-                <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
+                <div
+                  data-media-frame="cover"
+                  className={mediaFrameClass(
+                    'cover',
+                    'flex size-24 shrink-0 items-center justify-center rounded-xl bg-muted',
+                  )}
+                >
                   {product.primaryMediaId ? (
                     <Image
+                      data-media-mode="cover"
                       src={`/api/product-media/${product.primaryMediaId}`}
                       alt=""
                       width={96}
                       height={96}
+                      sizes={mediaSizes.adminThumbnail}
                       unoptimized
-                      className="h-full w-full object-cover"
+                      className={mediaObjectClass('cover')}
                     />
                   ) : (
                     <ImageIcon className="size-7 text-muted-foreground" />

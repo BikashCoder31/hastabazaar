@@ -5,6 +5,7 @@ import { signOutPath } from '@/app/auth';
 import { AdminNavigation } from '@/components/admin/admin-navigation';
 import { BrandWordmark } from '@/components/layout/brand-wordmark';
 import { requireStaffPage } from '@/lib/auth/staff';
+import { mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
 
 export const dynamic = 'force-dynamic';
 export default async function AdminLayout({
@@ -23,11 +24,13 @@ export default async function AdminLayout({
         <div className="shell flex min-h-20 flex-wrap items-center justify-between gap-4 py-3">
           <Link href="/admin" className="flex items-center gap-3 rounded-xl">
             <Image
+              data-media-mode="contain"
               src="/brand/hastabazaar-mark-96.png"
               alt=""
               width={44}
               height={44}
-              className="size-11 object-contain"
+              sizes={mediaSizes.brandMark}
+              className={mediaObjectClass('contain', 'media-shrink size-11')}
             />
             <span>
               <BrandWordmark className="block text-xl" />
@@ -69,7 +72,11 @@ export default async function AdminLayout({
         <aside className="min-w-0 xl:sticky xl:top-28">
           <AdminNavigation role={staff.role} permissions={staff.permissions} />
         </aside>
-        <main tabIndex={-1} id="main-content" className="admin-workspace min-w-0 pb-10">
+        <main
+          tabIndex={-1}
+          id="main-content"
+          className="admin-workspace min-w-0 pb-10"
+        >
           {children}
         </main>
       </div>

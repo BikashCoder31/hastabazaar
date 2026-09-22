@@ -15,16 +15,36 @@ import { sendJson } from '../lib/http/client-request';
 void test('staff navigation denies unknown roles and limits staff access to Super Admin', () => {
   for (const role of ['customer', 'seller', 'guest', 'unknown', ''])
     assert.deepEqual(adminNavigation(role), []);
-  for (const href of ['/admin/team', '/admin/referrals', '/admin/delivery-rates', '/admin/activity']) {
-    assert.equal(adminNavigation('admin').some(item => item.href === href), false);
-    assert.equal(adminNavigation('super_admin').some(item => item.href === href), true);
+  for (const href of [
+    '/admin/team',
+    '/admin/referrals',
+    '/admin/delivery-rates',
+    '/admin/activity',
+  ]) {
+    assert.equal(
+      adminNavigation('admin').some((item) => item.href === href),
+      false,
+    );
+    assert.equal(
+      adminNavigation('super_admin').some((item) => item.href === href),
+      true,
+    );
   }
-  assert.deepEqual(adminNavigation('admin', []).map(item => item.href), ['/admin/notifications']);
+  assert.deepEqual(
+    adminNavigation('admin', []).map((item) => item.href),
+    ['/admin/notifications'],
+  );
   const orderDesk = adminNavigation('admin', ['order.manage']);
-  assert.ok(orderDesk.some(item => item.href === '/admin/orders'));
-  assert.ok(orderDesk.some(item => item.href === '/admin/order-emails'));
-  assert.equal(orderDesk.some(item => item.href === '/admin/cases'), false);
-  assert.equal(orderDesk.some(item => item.href === '/admin/products'), false);
+  assert.ok(orderDesk.some((item) => item.href === '/admin/orders'));
+  assert.ok(orderDesk.some((item) => item.href === '/admin/order-emails'));
+  assert.equal(
+    orderDesk.some((item) => item.href === '/admin/cases'),
+    false,
+  );
+  assert.equal(
+    orderDesk.some((item) => item.href === '/admin/products'),
+    false,
+  );
   assert.ok(
     adminNavigation('admin').some(
       (item) => item.href === '/admin/order-emails',
@@ -111,14 +131,22 @@ void test('mutation client reports network, non-JSON and rejected responses and 
 
 void test('homepage controls present Hero slides first with every approved editable field', async () => {
   const [page, manager] = await Promise.all([
-    readFile(new URL('../app/admin/homepage/page.tsx', import.meta.url), 'utf8'),
+    readFile(
+      new URL('../app/admin/homepage/page.tsx', import.meta.url),
+      'utf8',
+    ),
     readFile(
       new URL('../components/admin/homepage-hero-manager.tsx', import.meta.url),
       'utf8',
     ),
   ]);
-  assert.match(page, /requireStaffPage\('\/admin\/homepage', 'business_settings\.view'\)/);
-  assert.ok(page.indexOf('<HomepageHeroManager') < page.indexOf('Search products'));
+  assert.match(
+    page,
+    /requireStaffPage\('\/admin\/homepage', 'business_settings\.view'\)/,
+  );
+  assert.ok(
+    page.indexOf('<HomepageHeroManager') < page.indexOf('Search products'),
+  );
   const helperFields = new Set([
     'eyebrow',
     'headingLead',
@@ -172,11 +200,17 @@ void test('hero editor explicitly adds, orders, and protects the three-enabled m
   for (let index = 5; index <= 8; index += 1) {
     eight = addHomepageHeroSlide(eight, `new-slide-${index}`);
   }
-  assert.throws(() => addHomepageHeroSlide(eight, 'new-slide-nine'), /at most 8/i);
+  assert.throws(
+    () => addHomepageHeroSlide(eight, 'new-slide-nine'),
+    /at most 8/i,
+  );
 
   const moved = moveHomepageHeroSlide(four, 'new-slide-four', 'up');
   assert.equal(moved[2]?.id, 'new-slide-four');
-  assert.deepEqual(moved.map((slide) => slide.position), [1, 2, 3, 4]);
+  assert.deepEqual(
+    moved.map((slide) => slide.position),
+    [1, 2, 3, 4],
+  );
   assert.throws(
     () => setHomepageHeroSlideEnabled(initial, initial[0]!.id, false),
     /at least 3 enabled/i,
@@ -184,6 +218,44 @@ void test('hero editor explicitly adds, orders, and protects the three-enabled m
   const enabledFour = setHomepageHeroSlideEnabled(four, 'new-slide-four', true);
   const withoutFirst = removeHomepageHeroSlide(enabledFour, initial[0]!.id);
   assert.equal(withoutFirst.length, 3);
-  assert.equal(withoutFirst.some((slide) => slide.id === initial[0]!.id), false);
-  assert.deepEqual(withoutFirst.map((slide) => slide.position), [1, 2, 3]);
+  assert.equal(
+    withoutFirst.some((slide) => slide.id === initial[0]!.id),
+    false,
+  );
+  assert.deepEqual(
+    withoutFirst.map((slide) => slide.position),
+    [1, 2, 3],
+  );
+});
+
+void test('responsive admin media preserves moderation and homepage authority and controls', async () => {
+  const [review, homepage, layout] = await Promise.all([
+    readFile(
+      new URL('../app/admin/products/[id]/page.tsx', import.meta.url),
+      'utf8',
+    ),
+    readFile(
+      new URL('../app/admin/homepage/page.tsx', import.meta.url),
+      'utf8',
+    ),
+    readFile(new URL('../app/admin/layout.tsx', import.meta.url), 'utf8'),
+  ]);
+  assert.match(
+    review,
+    /requireStaffPage\(\s*`\/admin\/products\/\$\{id\}`,\s*'product\.review',?\s*\)/,
+  );
+  assert.match(review, /canUnpublish=\{staff\.role === 'super_admin'\}/);
+  assert.match(review, /canPublish=\{can\(staff, 'product\.publish'\)\}/);
+  assert.match(review, /can\(staff, 'catalog\.manage'\)/);
+  assert.match(review, /<figcaption[\s\S]*?\{media\.originalName\}/);
+  assert.match(
+    homepage,
+    /requireStaffPage\('\/admin\/homepage', 'business_settings\.view'\)/,
+  );
+  assert.match(homepage, /<HomepageVisibilityControl/);
+  assert.match(layout, /requireStaffPage\('\/admin'\)/);
+  assert.match(
+    layout,
+    /<AdminNavigation role=\{staff\.role\} permissions=\{staff\.permissions\}/,
+  );
 });

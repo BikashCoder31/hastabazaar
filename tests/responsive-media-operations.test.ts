@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { HomepageHeroPreview } from '../components/admin/homepage-hero-preview';
+import { INITIAL_HOMEPAGE_HERO_SLIDES } from '../lib/homepage/hero-slides';
 
 void test('seller product previews use explicit responsive media modes', async () => {
   const [form, sellerProducts, sellerLayout] = await Promise.all([
@@ -77,4 +81,98 @@ void test('seller media routes retain upload type and content validation', async
     assert.match(route, /validateProductImageContent\(.*\)/);
     assert.match(route, /validateProductVideo\(.*\)/);
   }
+});
+
+void test('admin hero image and poster-bearing video preserve public cover geometry and authenticated URLs', () => {
+  for (const mode of ['mobile', 'desktop'] as const) {
+    for (const mediaType of ['image', 'video'] as const) {
+      const html = renderToStaticMarkup(
+        createElement(HomepageHeroPreview, {
+          mode,
+          slide: {
+            ...INITIAL_HOMEPAGE_HERO_SLIDES[0]!,
+            mediaType,
+            mediaId: 'private hero/image',
+            posterMediaId: 'private poster/image',
+            imageAlt: 'Woven basket',
+            videoDescription: 'A maker weaving a basket',
+          },
+        }),
+      );
+      assert.match(html, /data-media-frame="cover"/);
+      assert.match(html, /media-frame-cover/);
+      assert.match(html, /aspect-\[4\/3\]/);
+      if (mode === 'mobile') {
+        assert.doesNotMatch(html, /sm:aspect-\[8\/5\]|lg:aspect-auto/);
+      } else {
+        assert.match(html, /sm:aspect-\[8\/5\]/);
+        assert.match(html, /lg:aspect-auto/);
+        assert.match(html, /lg:min-h-\[clamp\(32rem,42vw,40rem\)\]/);
+      }
+      const tag = html.match(
+        new RegExp(`<${mediaType === 'image' ? 'img' : 'video'}\\b[^>]*>`),
+      )?.[0];
+      assert.ok(tag);
+      assert.match(tag, /data-media-mode="cover"/);
+      assert.match(tag, /media-object-cover/);
+      assert.match(
+        tag,
+        /src="\/api\/admin\/homepage\/hero-media\/private%20hero%2Fimage"/,
+      );
+      if (mediaType === 'image') {
+        assert.match(tag, /alt="Woven basket"/);
+      } else {
+        assert.match(
+          tag,
+          /poster="\/api\/admin\/homepage\/hero-media\/private%20poster%2Fimage"/,
+        );
+        for (const attribute of ['muted', 'loop', 'autoPlay', 'playsInline']) {
+          assert.match(tag, new RegExp(`${attribute}=""`, 'i'));
+        }
+        assert.match(tag, /aria-label="A maker weaving a basket"/);
+      }
+    }
+  }
+});
+
+void test('admin review keeps full product images and MP4 videos visible through the product media route', async () => {
+  const review = await readFile(
+    new URL('../app/admin/products/[id]/page.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(review, /media\.mimeType === 'video\/mp4'\s*\?\s*\(/);
+  const video = review.match(/<video\b[^>]*\/>/)?.[0];
+  const image = review.match(/<Image\b[^>]*\/>/)?.[0];
+  for (const tag of [video, image]) {
+    assert.ok(tag);
+    assert.match(tag, /data-media-mode="contain"/);
+    assert.match(tag, /mediaObjectClass\(\s*'contain'/);
+    assert.match(tag, /src=\{`\/api\/product-media\/\$\{media\.id\}`\}/);
+  }
+  assert.match(review, /data-media-frame="contain"/);
+  assert.match(video!, /\bcontrols\b/);
+  assert.match(video!, /\bmuted\b/);
+  assert.match(video!, /\bplaysInline\b/);
+  assert.match(video!, /preload="metadata"/);
+  assert.match(image!, /alt=\{media\.altEn\}/);
+});
+
+void test('admin thumbnails crop in bounded cover frames and operations branding stays contained', async () => {
+  for (const file of [
+    '../app/admin/products/page.tsx',
+    '../app/admin/homepage/page.tsx',
+  ]) {
+    const source = await readFile(new URL(file, import.meta.url), 'utf8');
+    assert.match(source, /data-media-frame="cover"/);
+    assert.match(source, /data-media-mode="cover"/);
+    assert.match(source, /sizes=\{mediaSizes\.adminThumbnail\}/);
+    assert.match(source, /mediaObjectClass\('cover'/);
+  }
+  const layout = await readFile(
+    new URL('../app/admin/layout.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(layout, /data-media-mode="contain"/);
+  assert.match(layout, /mediaObjectClass\('contain'/);
+  assert.match(layout, /media-shrink/);
 });
