@@ -1456,10 +1456,6 @@
     padding-left: 0;
   }
 
-  .homepage-hero-media {
-    object-position: 63% center;
-  }
-
   .homepage-image-note {
     display: none;
   }
@@ -1565,6 +1561,12 @@
 
   .site-footer-legal nav {
     justify-content: flex-start;
+  }
+}
+
+@container hero (max-width: 639px) {
+  .homepage-hero-media {
+    object-position: 63% center;
   }
 }
 

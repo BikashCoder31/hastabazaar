@@ -84,10 +84,7 @@ void test('catalogue media keeps authenticated sources and uses purpose-specific
         'utf8',
       ),
       readFile(new URL('../app/shop/page.tsx', import.meta.url), 'utf8'),
-      readFile(
-        new URL('../app/makers/[id]/page.tsx', import.meta.url),
-        'utf8',
-      ),
+      readFile(new URL('../app/makers/[id]/page.tsx', import.meta.url), 'utf8'),
       readFile(
         new URL('../components/catalog/product-gallery.tsx', import.meta.url),
         'utf8',
@@ -99,7 +96,10 @@ void test('catalogue media keeps authenticated sources and uses purpose-specific
   assert.match(productCard, /data-media-mode="cover"/);
   assert.match(productCard, /src=\{product\.image\}/);
   assert.match(productCard, /alt=\{product\.imageAlt\}/);
-  assert.match(productSlider, /sizes=\{mediaSizes\.productSlider\}/);
+  assert.match(
+    productSlider,
+    /wideDesktop\s*\?\s*mediaSizes\.productSliderWide\s*:\s*mediaSizes\.productSlider/,
+  );
   assert.match(recentlyViewed, /sizes=\{mediaSizes\.productGrid\}/);
 
   assert.match(shop, /sizes=\{mediaSizes\.shopGrid\}/);
@@ -124,17 +124,8 @@ void test('catalogue media keeps authenticated sources and uses purpose-specific
   assert.match(gallery, /sizes=\{mediaSizes\.galleryThumbnail\}/);
   assert.match(gallery, /data-media-frame="contain"/);
   assert.match(gallery, /data-media-frame="cover"/);
-  assert.match(
-    gallery,
-    /src=\{'\/api\/product-media\/' \+ active\.id\}/,
-  );
-  assert.match(
-    gallery,
-    /src=\{'\/api\/product-media\/' \+ photo\.id\}/,
-  );
-  assert.match(
-    gallery,
-    /src=\{'\/api\/product-media\/' \+ video\.id\}/,
-  );
+  assert.match(gallery, /src=\{'\/api\/product-media\/' \+ active\.id\}/);
+  assert.match(gallery, /src=\{'\/api\/product-media\/' \+ photo\.id\}/);
+  assert.match(gallery, /src=\{'\/api\/product-media\/' \+ video\.id\}/);
   assert.match(gallery, /alt=\{active\.altEn \|\| productName\}/);
 });

@@ -68,7 +68,14 @@ export function ProductSlider({
                 : 'min-w-0 shrink-0 basis-[78%] snap-start sm:basis-[42%] lg:basis-[calc(25%-1.125rem)]'
             }
           >
-            <ProductCard product={product} sizes={mediaSizes.productSlider} />
+            <ProductCard
+              product={product}
+              sizes={
+                wideDesktop
+                  ? mediaSizes.productSliderWide
+                  : mediaSizes.productSlider
+              }
+            />
           </div>
         ))}
       </div>

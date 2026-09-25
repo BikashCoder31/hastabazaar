@@ -17,6 +17,7 @@ void test('responsive media exposes explicit modes and bounded size purposes', (
     'editorial',
     'occasion',
     'productSlider',
+    'productSliderWide',
     'productGrid',
     'shopGrid',
     'productGallery',
@@ -112,11 +113,11 @@ void test('frame markers require an unconditional bounded shared or local frame'
 void test('valid shared, local and self frames keep the media policy contract', () => {
   for (const source of [
     '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'aspect-square\')}><Image data-media-mode="cover" fill sizes="100vw" src="/test.jpg" /></div>',
-    '<div data-media-frame="cover" className="relative min-w-0 aspect-square overflow-hidden"><img data-media-mode="cover" src="/test.jpg" /></div>',
-    '<div data-media-frame="cover" className="size-16 overflow-hidden"><img data-media-mode="cover" src="/test.jpg" /></div>',
-    '<div data-media-frame="cover" className={cn(\'overflow-hidden\', enabled ? \'aspect-square\' : \'aspect-video\')}><img data-media-mode="cover" src="/test.jpg" /></div>',
+    '<div data-media-frame="cover" className="relative min-w-0 aspect-square overflow-hidden"><img data-media-mode="cover" className="object-cover" src="/test.jpg" /></div>',
+    '<div data-media-frame="cover" className="size-16 overflow-hidden"><img data-media-mode="cover" className="object-cover" src="/test.jpg" /></div>',
+    '<div data-media-frame="cover" className={cn(\'overflow-hidden\', enabled ? \'aspect-square\' : \'aspect-video\')}><img data-media-mode="cover" className="object-cover" src="/test.jpg" /></div>',
     '<video data-media-frame="contain" data-media-mode="contain" className={mediaObjectClass(\'contain\', \'aspect-video max-h-96\')} src="/test.mp4" />',
-    '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'aspect-square\')}><img data-media-mode="cover" className="w-[900px]" src="/test.jpg" /></div>',
+    '<div data-media-frame="cover" className={mediaFrameClass(\'cover\', \'aspect-square\')}><img data-media-mode="cover" className="object-cover w-[900px]" src="/test.jpg" /></div>',
   ]) {
     assert.deepEqual(
       auditResponsiveMediaSource('fixture.tsx', source),
@@ -619,7 +620,12 @@ void test('policy rejects every oversized arbitrary pixel width form', () => {
         'fixture.tsx',
         `<img data-media-mode="natural" src={url} alt="x" width={640} height={480} className="${className}" />`,
       ),
-      [{ file: 'fixture.tsx', line: 1, rule: 'unbounded-fixed-width' }],
+      [
+        ...(className.startsWith('size-')
+          ? [{ file: 'fixture.tsx', line: 1, rule: 'invalid-fit' }]
+          : []),
+        { file: 'fixture.tsx', line: 1, rule: 'unbounded-fixed-width' },
+      ],
     );
   }
 });

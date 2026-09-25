@@ -102,13 +102,26 @@ void test('admin hero image and poster-bearing video preserve public cover geome
       assert.match(html, /data-media-frame="cover"/);
       assert.match(html, /media-frame-cover/);
       assert.match(html, /aspect-\[4\/3\]/);
-      if (mode === 'mobile') {
-        assert.doesNotMatch(html, /sm:aspect-\[8\/5\]|lg:aspect-auto/);
-      } else {
-        assert.match(html, /sm:aspect-\[8\/5\]/);
-        assert.match(html, /lg:aspect-auto/);
-        assert.match(html, /lg:min-h-\[clamp\(32rem,42vw,40rem\)\]/);
-      }
+      assert.match(
+        html,
+        new RegExp(
+          `data-hero-preview-viewport="${mode === 'mobile' ? 390 : 1440}"`,
+        ),
+      );
+      assert.match(html, /@\[640px\]\/hero:aspect-\[8\/5\]/);
+      assert.match(html, /@\[1024px\]\/hero:aspect-auto/);
+      assert.match(
+        html,
+        /@\[1024px\]\/hero:min-h-\[clamp\(32rem,42cqw,40rem\)\]/,
+      );
+      for (const text of [
+        'Authentic handmade',
+        'Support local makers',
+        'Thoughtful choices',
+        'A stronger Nepal',
+      ])
+        assert.ok(html.includes(text));
+      assert.doesNotMatch(html, /<a\b/); // Scaled draft actions cannot navigate away from the editor.
       const tag = html.match(
         new RegExp(`<${mediaType === 'image' ? 'img' : 'video'}\\b[^>]*>`),
       )?.[0];

@@ -8,6 +8,7 @@ export interface MediaPolicyViolation {
   rule:
     | 'missing-mode'
     | 'missing-frame'
+    | 'invalid-fit'
     | 'fill-image-missing-sizes'
     | 'unbounded-fixed-width'
     | 'dynamic-background-image';
@@ -74,22 +75,31 @@ interface FrameMarker {
 
 interface StylesheetClasses {
   geometry: ReadonlySet<string>;
+  collapsingGeometry: ReadonlySet<string>;
   positioned: ReadonlySet<string>;
   possiblyPositioned: ReadonlySet<string>;
   possiblyStatic: ReadonlySet<string>;
   importantPossiblyPositioned: ReadonlySet<string>;
   importantPossiblyStatic: ReadonlySet<string>;
+  possiblyOutOfFlow: ReadonlySet<string>;
   inset: ReadonlySet<string>;
   unsafeWidth: ReadonlySet<string>;
+  fit: ReadonlyMap<string, ReadonlySet<string>>;
+  unconditionalFit: ReadonlySet<string>;
 }
 
 function hasReservedGeometry(
   attributes: ts.JsxAttributes,
   classes: StylesheetClasses,
 ): boolean {
-  return hasUnconditionalClass(
-    attributes,
-    (token) => isGeometryToken(token) || classes.geometry.has(token),
+  return (
+    !hasPossibleClass(attributes, (token) =>
+      classes.collapsingGeometry.has(token),
+    ) &&
+    hasUnconditionalClass(
+      attributes,
+      (token) => isGeometryToken(token) || classes.geometry.has(token),
+    )
   );
 }
 
@@ -143,7 +153,11 @@ function hasContainingBlockGeometry(
     if (positioning.possible) {
       if (
         !(
-          hasReservedGeometry(attributes, classes) &&
+          (hasReservedGeometry(attributes, classes) ||
+            (hasUnconditionalClass(attributes, (token) =>
+              classes.inset.has(token),
+            ) &&
+              hasContainingBlockGeometry(parent, classes))) &&
           !isOversizedPixelWidth(attributes) &&
           !hasUnsafeCssWidth(attributes, classes)
         )
@@ -175,6 +189,10 @@ function hasPossibleClass(
   if (!initializer) return false;
   let found = false;
   const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node)) {
+      const resolved = localConstant(node);
+      if (resolved) visit(resolved);
+    }
     if (
       ts.isPropertyAssignment(node) ||
       ts.isShorthandPropertyAssignment(node)
@@ -386,6 +404,49 @@ function containsBackgroundImage(style: ts.JsxAttribute): boolean {
 
 type ClassTokenTest = string | ((token: string) => boolean);
 
+// Resolve only a source-wide unshadowed, earlier const in an enclosing scope.
+// Unknown expressions cannot certify a contract. Never recurse into a const's
+// own initializer or borrow an unrelated function's binding.
+function localConstant(node: ts.Identifier): ts.Expression | undefined {
+  const declarations: ts.Node[] = [];
+  const visit = (candidate: ts.Node): void => {
+    if (
+      (ts.isVariableDeclaration(candidate) ||
+        ts.isParameter(candidate) ||
+        ts.isBindingElement(candidate) ||
+        ts.isFunctionDeclaration(candidate) ||
+        ts.isClassDeclaration(candidate) ||
+        ts.isImportSpecifier(candidate) ||
+        ts.isImportClause(candidate) ||
+        ts.isNamespaceImport(candidate)) &&
+      candidate.name &&
+      ts.isIdentifier(candidate.name) &&
+      candidate.name.text === node.text
+    )
+      declarations.push(candidate);
+    ts.forEachChild(candidate, visit);
+  };
+  visit(node.getSourceFile());
+  const declaration = declarations[0];
+  if (
+    declarations.length !== 1 ||
+    !ts.isVariableDeclaration(declaration) ||
+    declaration.end >= node.pos ||
+    !ts.isVariableDeclarationList(declaration.parent) ||
+    !(declaration.parent.flags & ts.NodeFlags.Const) ||
+    !ts.isVariableStatement(declaration.parent.parent)
+  )
+    return undefined;
+  const scope = declaration.parent.parent.parent;
+  for (
+    let parent: ts.Node | undefined = node.parent;
+    parent;
+    parent = parent.parent
+  )
+    if (parent === scope) return declaration.initializer;
+  return undefined;
+}
+
 function classTextHasToken(text: string, token: ClassTokenTest): boolean {
   return text
     .split(/\s+/)
@@ -398,6 +459,10 @@ function expressionGuaranteesClassToken(
   expression: ts.Expression,
   token: ClassTokenTest,
 ): boolean {
+  if (ts.isIdentifier(expression)) {
+    const resolved = localConstant(expression);
+    return resolved ? expressionGuaranteesClassToken(resolved, token) : false;
+  }
   if (ts.isParenthesizedExpression(expression)) {
     return expressionGuaranteesClassToken(expression.expression, token);
   }
@@ -485,11 +550,16 @@ function stylesheetGeometryClasses(stylesheet: string): StylesheetClasses {
   const css = stylesheet.replace(/\/\*[\s\S]*?\*\//g, '');
   const stack: { selector: string; selectors: string[]; direct: string }[] = [];
   const declarations = new Map<string, Map<string, string>>();
+  const geometryAlternatives = new Map<string, Map<string, Set<string>>>();
+  const collapsingGeometry = new Set<string>();
   const possiblyPositioned = new Set<string>();
   const possiblyStatic = new Set<string>();
   const importantPossiblyPositioned = new Set<string>();
   const importantPossiblyStatic = new Set<string>();
+  const possiblyOutOfFlow = new Set<string>();
   const unsafeWidth = new Set<string>();
+  const fit = new Map<string, Set<string>>();
+  const unconditionalFit = new Set<string>();
   let segmentStart = 0;
   for (const brace of css.matchAll(/[{}]/g)) {
     const index = brace.index;
@@ -539,7 +609,46 @@ function stylesheetGeometryClasses(stylesheet: string): StylesheetClasses {
           // and selectors; a guarantee requires all alternatives to position.
           if (possibleClass) {
             for (const [, name, value] of properties) {
+              if (name === 'object-fit') {
+                const values = fit.get(possibleClass) ?? new Set<string>();
+                values.add(value.trim().replace(/\s*!important$/, ''));
+                fit.set(possibleClass, values);
+                if (unconditional && className) unconditionalFit.add(className);
+              }
+              if (
+                [
+                  'height',
+                  'min-height',
+                  'block-size',
+                  'min-block-size',
+                  'aspect-ratio',
+                ].includes(name)
+              ) {
+                const alternatives =
+                  geometryAlternatives.get(possibleClass) ??
+                  new Map<string, Set<string>>();
+                const values = alternatives.get(name) ?? new Set<string>();
+                values.add(value.trim().replace(/\s*!important$/, ''));
+                alternatives.set(name, values);
+                geometryAlternatives.set(possibleClass, alternatives);
+              }
+              if (
+                [
+                  'height',
+                  'block-size',
+                  'max-height',
+                  'max-block-size',
+                ].includes(name) &&
+                /^0(?:px|rem|em|%)?(?:\s*!important)?$/.test(value.trim())
+              )
+                collapsingGeometry.add(possibleClass);
               if (name !== 'position') continue;
+              if (
+                !/^(?:relative|sticky|static|initial|unset)(?:\s*!important)?$/.test(
+                  value.trim(),
+                )
+              )
+                possiblyOutOfFlow.add(possibleClass);
               if (
                 !/^(?:static|initial|unset)(?:\s*!important)?$/.test(
                   value.trim(),
@@ -591,14 +700,22 @@ function stylesheetGeometryClasses(stylesheet: string): StylesheetClasses {
   }
   const geometry = new Set(
     [...declarations]
-      .filter(([, values]) => {
-        const ratio = values
-          .get('aspect-ratio')
-          ?.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
+      .filter(([className, values]) => {
+        const alternatives = geometryAlternatives.get(className);
+        const guaranteed = (name: string, valid: (value: string) => boolean) =>
+          values.has(name) && [...(alternatives?.get(name) ?? [])].every(valid);
         return (
           ['height', 'min-height', 'block-size', 'min-block-size'].some(
-            (name) => isPositiveLength(values.get(name) ?? ''),
-          ) || Boolean(ratio && Number(ratio[1]) > 0 && Number(ratio[2]) > 0)
+            (name) => guaranteed(name, isPositiveLength),
+          ) ||
+          guaranteed('aspect-ratio', (value) => {
+            const ratio = value.match(
+              /^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/,
+            );
+            return Boolean(
+              ratio && Number(ratio[1]) > 0 && Number(ratio[2]) > 0,
+            );
+          })
         );
       })
       .map(([name]) => name),
@@ -620,10 +737,12 @@ function stylesheetGeometryClasses(stylesheet: string): StylesheetClasses {
   }
   return {
     geometry,
+    collapsingGeometry,
     possiblyPositioned,
     possiblyStatic,
     importantPossiblyPositioned,
     importantPossiblyStatic,
+    possiblyOutOfFlow,
     positioned,
     inset: new Set(
       [...declarations]
@@ -635,6 +754,8 @@ function stylesheetGeometryClasses(stylesheet: string): StylesheetClasses {
         .map(([name]) => name),
     ),
     unsafeWidth,
+    fit,
+    unconditionalFit,
   };
 }
 
@@ -652,6 +773,10 @@ function hasSharedMediaClass(
     return false;
 
   const guaranteesHelper = (expression: ts.Expression): boolean => {
+    if (ts.isIdentifier(expression)) {
+      const resolved = localConstant(expression);
+      return resolved ? guaranteesHelper(resolved) : false;
+    }
     if (ts.isParenthesizedExpression(expression))
       return guaranteesHelper(expression.expression);
     if (ts.isConditionalExpression(expression)) {
@@ -674,6 +799,110 @@ function hasSharedMediaClass(
   // These helpers establish the shared clipping/shrinking boundary. A marker
   // or a conditional helper call does not establish that boundary on its own.
   return guaranteesHelper(initializer.expression);
+}
+
+function inlineStyleValues(
+  node: ts.Node | undefined,
+  propertyName: string,
+  fallback: ReadonlySet<string>,
+): ReadonlySet<string> {
+  if (!node) return fallback;
+  if (ts.isJsxExpression(node) || ts.isParenthesizedExpression(node))
+    return inlineStyleValues(node.expression, propertyName, fallback);
+  if (ts.isIdentifier(node)) {
+    const resolved = localConstant(node);
+    return resolved
+      ? inlineStyleValues(resolved, propertyName, fallback)
+      : new Set(['unknown']);
+  }
+  if (ts.isConditionalExpression(node))
+    return new Set([
+      ...inlineStyleValues(node.whenTrue, propertyName, fallback),
+      ...inlineStyleValues(node.whenFalse, propertyName, fallback),
+    ]);
+  if (ts.isObjectLiteralExpression(node)) {
+    let result = fallback;
+    for (const property of node.properties) {
+      if (ts.isSpreadAssignment(property))
+        result = inlineStyleValues(property.expression, propertyName, result);
+      else if (literalPropertyName(property.name) === propertyName)
+        result = ts.isPropertyAssignment(property)
+          ? inlineStyleValues(property.initializer, propertyName, fallback)
+          : new Set(['unknown']);
+      else if (
+        ts.isComputedPropertyName(property.name) &&
+        literalPropertyName(property.name) === undefined
+      )
+        result = new Set(['unknown']);
+    }
+    return result;
+  }
+  if (ts.isStringLiteralLike(node)) return new Set([node.text]);
+  if (node.kind === ts.SyntaxKind.NullKeyword) return fallback;
+  return new Set(['unknown']);
+}
+
+function hasOperativeFit(
+  attributes: ts.JsxAttributes,
+  tag: string,
+  mode: MediaMode,
+  classes: StylesheetClasses,
+): boolean {
+  const fitToken = (token: string) =>
+    /(?:^|:)(?:object|media-object)-(cover|contain|fill|none|scale-down|natural)!?$/.exec(
+      token,
+    )?.[1];
+  const conflictingClass = hasPossibleClass(attributes, (token) => {
+    const value = fitToken(token);
+    return (
+      Boolean(value && value !== mode) ||
+      [...(classes.fit.get(token) ?? [])].some((fit) => fit !== mode)
+    );
+  });
+  if (
+    conflictingClass ||
+    [...MEDIA_MODES].some(
+      (other) =>
+        other !== mode &&
+        hasSharedMediaClass(attributes, 'mediaObjectClass', other),
+    )
+  )
+    return false;
+  if (
+    mode === 'natural' &&
+    hasPossibleClass(attributes, (token) =>
+      /(?:^|:)(?:h|size)-(?!auto$|fit$|min$|max$)/.test(token),
+    )
+  )
+    return false;
+  const shared = hasSharedMediaClass(attributes, 'mediaObjectClass', mode);
+  const matchingClass =
+    shared ||
+    hasUnconditionalClass(
+      attributes,
+      (token) =>
+        fitToken(token) === mode ||
+        (classes.unconditionalFit.has(token) &&
+          classes.fit.get(token)?.size === 1 &&
+          classes.fit.get(token)?.has(mode) === true),
+    );
+  // Vinext emits inline cover for fill images. Only its style prop can
+  // override that default; object-contain classes alone do not change it.
+  const fallback = new Set([
+    tag === 'Image' && isFillImage(attributes)
+      ? 'cover'
+      : matchingClass
+        ? mode
+        : mode === 'natural' && hasIntrinsicDimensions(attributes)
+          ? 'natural'
+          : 'unknown',
+  ]);
+  const fits = inlineStyleValues(
+    attribute(attributes, 'style')?.initializer,
+    'objectFit',
+    fallback,
+  );
+  return fits.size === 1 && fits.has(mode);
 }
 
 function isOversizedPixelWidth(attributes: ts.JsxAttributes): boolean {
@@ -765,13 +994,43 @@ export function auditResponsiveMediaSource(
         const ownFrame = frameMarker(node, geometryClasses, true);
         const ancestorFrame = nearestAncestorFrame(node, geometryClasses);
         const frame = ownFrame ?? ancestorFrame;
-        const usableFrame = frame?.bounded && frame.mode === mode;
+        const outOfFlow =
+          (tagName === 'Image' && isFillImage(attributes)) ||
+          hasPossibleClass(
+            attributes,
+            (token) =>
+              /(?:^|:)(?:absolute|fixed)$/.test(token) ||
+              geometryClasses.possiblyOutOfFlow.has(token),
+          ) ||
+          [
+            ...inlineStyleValues(
+              style?.initializer,
+              'position',
+              new Set(['static']),
+            ),
+          ].some(
+            (position) =>
+              !['relative', 'sticky', 'static', 'initial', 'unset'].includes(
+                position,
+              ),
+          );
+        const usableFrame =
+          frame?.bounded &&
+          frame.mode === mode &&
+          (!outOfFlow || hasContainingBlockGeometry(node, geometryClasses));
         if (
           (!hasIntrinsicDimensions(attributes) && !usableFrame) ||
           (frame && !usableFrame)
         ) {
           report(node, 'missing-frame');
         }
+
+        if (
+          mode &&
+          (usableFrame || hasIntrinsicDimensions(attributes)) &&
+          !hasOperativeFit(attributes, tagName, mode, geometryClasses)
+        )
+          report(node, 'invalid-fit');
 
         if (
           tagName === 'Image' &&

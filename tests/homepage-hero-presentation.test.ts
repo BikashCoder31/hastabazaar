@@ -49,7 +49,7 @@ void test('category overlap and established homepage anchors remain intact', asy
 });
 
 void test('hero media is full bleed, calmer, and uses readable captions with dot navigation', async () => {
-  const [carousel, styles] = await Promise.all([
+  const [carouselSource, styles, presentation] = await Promise.all([
     readFile(
       new URL(
         '../components/homepage/homepage-hero-carousel.tsx',
@@ -58,15 +58,23 @@ void test('hero media is full bleed, calmer, and uses readable captions with dot
       'utf8',
     ),
     readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
+    readFile(
+      new URL('../lib/homepage/hero-presentation.ts', import.meta.url),
+      'utf8',
+    ),
   ]);
+  const carousel = `${carouselSource}\n${presentation}`;
   assert.match(carousel, /data-media-frame="cover"/);
   assert.equal((carousel.match(/data-media-mode="cover"/g) ?? []).length, 3);
   assert.match(carousel, /mediaFrameClass\(\s*'cover'/);
   assert.match(carousel, /mediaObjectClass\('cover'/);
   assert.match(carousel, /aspect-\[4\/3\]/);
-  assert.match(carousel, /sm:aspect-\[8\/5\]/);
-  assert.match(carousel, /lg:min-h-\[clamp\(32rem,42vw,40rem\)\]/);
-  assert.match(carousel, /min-h-0[^"]*lg:min-h-\[36rem\]/);
+  assert.match(carousel, /@\[640px\]\/hero:aspect-\[8\/5\]/);
+  assert.match(
+    carousel,
+    /@\[1024px\]\/hero:min-h-\[clamp\(32rem,42cqw,40rem\)\]/,
+  );
+  assert.match(carousel, /min-h-0[^"]*@\[1024px\]\/hero:min-h-\[36rem\]/);
   assert.match(carousel, /brightness-\[0\.82\]/);
   assert.match(carousel, /saturate-\[0\.82\]/);
   assert.match(carousel, /alt=\{slide\.imageAlt \?\? ''\}/);
@@ -135,7 +143,8 @@ void test('two face-free editorial hero assets are project-bound WebP files and 
     ),
     {
       path: 'deployment/babal/mariadb-homepage-hero-carousel.sql',
-      sha256: '7016236fcd6fce388b50f2afd8f6dcee6c8b3199e6e15c9d3e6bfb23ece6b4ac',
+      sha256:
+        '7016236fcd6fce388b50f2afd8f6dcee6c8b3199e6e15c9d3e6bfb23ece6b4ac',
       usage: 'additive-maintenance',
     },
   );

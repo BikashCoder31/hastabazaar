@@ -1,16 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import {
-  ChevronLeft,
-  ChevronRight,
-  HandHeart,
-  Heart,
-  Pause,
-  Play,
-  Sprout,
-  UserRound,
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -30,6 +21,12 @@ import {
   type HeroSelectionKind,
 } from '@/lib/homepage/hero-autoplay';
 import type { HomepageHeroSlides } from '@/lib/homepage/hero-slides';
+import { HomepageHeroCopy } from '@/components/homepage/homepage-hero-copy';
+import {
+  heroLayoutClass,
+  heroMediaVisualClass,
+  heroNoteClass,
+} from '@/lib/homepage/hero-presentation';
 import {
   mediaFrameClass,
   mediaObjectClass,
@@ -45,15 +42,6 @@ function headingForAnnouncement(
     .join(' ');
 }
 
-const heroPrinciples = [
-  { icon: HandHeart, label: 'Authentic handmade' },
-  { icon: UserRound, label: 'Support local makers' },
-  { icon: Sprout, label: 'Thoughtful choices' },
-  { icon: Heart, label: 'A stronger Nepal' },
-] as const;
-
-const heroMediaVisualClass =
-  'homepage-hero-media absolute inset-0 z-[1] object-center brightness-[0.82] saturate-[0.82] contrast-[0.96]';
 const heroMediaClass = mediaObjectClass('cover', heroMediaVisualClass);
 
 export function HomepageHeroCarousel({
@@ -262,111 +250,58 @@ export function HomepageHeroCarousel({
                 className="!pl-0"
                 aria-label={`Slide ${index + 1} of ${enabledSlides.length}`}
               >
-                <div className="mx-auto grid min-h-0 max-w-[1600px] lg:min-h-[36rem] lg:grid-cols-[48%_52%]">
-                  <div className="flex flex-col justify-center px-6 pb-28 pt-14 sm:px-10 lg:px-16 lg:pb-24 lg:pt-16 xl:px-24">
-                    <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#996020] sm:text-sm">
-                      {slide.eyebrow}
-                    </p>
-                    <h2 className="mt-5 max-w-3xl font-heading text-[clamp(3rem,6vw,6.8rem)] leading-[0.9] tracking-[-0.04em] text-[#0b3156]">
-                      {slide.headingLead}{' '}
-                      {slide.highlightedPhrase ? (
-                        <em className="text-[#b61d2a]">
-                          {slide.highlightedPhrase}
-                        </em>
-                      ) : null}{' '}
-                      {slide.headingTail}
-                    </h2>
-                    <p className="mt-7 max-w-2xl text-base leading-7 text-[#536170] sm:text-lg sm:leading-8">
-                      {slide.body}
-                    </p>
-                    <div className="mt-7 flex flex-wrap gap-3">
-                      <Link
-                        href={slide.primaryActionHref}
-                        className="inline-flex min-h-12 items-center rounded-full bg-[#b81925] px-6 text-sm font-bold text-white transition hover:bg-[#971620] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#b81925]"
-                      >
-                        {slide.primaryActionLabel}{' '}
-                        <span aria-hidden="true" className="ml-2">
-                          →
-                        </span>
-                      </Link>
-                      {slide.secondaryActionLabel &&
-                      slide.secondaryActionHref ? (
-                        <Link
-                          href={slide.secondaryActionHref}
-                          className="inline-flex min-h-12 items-center rounded-full border border-[#b81925] px-6 text-sm font-bold text-[#9d1721] transition hover:bg-white/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#b81925]"
-                        >
-                          {slide.secondaryActionLabel}
-                        </Link>
-                      ) : null}
-                    </div>
+                <div className="@container/hero w-full">
+                  <div className={heroLayoutClass}>
+                    <HomepageHeroCopy slide={slide} LinkComponent={Link} />
                     <div
-                      className="mt-8 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-[#d9cbbb] pt-5 text-xs text-[#344255] sm:grid-cols-4"
-                      aria-label="Why shop with us"
+                      data-media-frame="cover"
+                      className={mediaFrameClass(
+                        'cover',
+                        'aspect-[4/3] min-h-0 bg-[#75695f] @[640px]/hero:aspect-[8/5] @[1024px]/hero:aspect-auto @[1024px]/hero:min-h-[clamp(32rem,42cqw,40rem)]',
+                      )}
                     >
-                      {heroPrinciples.map(({ icon: Icon, label }) => (
-                        <div
-                          key={label}
-                          className="flex min-w-0 items-center gap-2"
-                        >
-                          <Icon
-                            aria-hidden="true"
-                            className="size-5 shrink-0 text-[#b81925]"
-                          />
-                          <span>{label}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div
-                    data-media-frame="cover"
-                    className={mediaFrameClass(
-                      'cover',
-                      'aspect-[4/3] min-h-0 bg-[#75695f] sm:aspect-[8/5] lg:aspect-auto lg:min-h-[clamp(32rem,42vw,40rem)]',
-                    )}
-                  >
-                    {slide.mediaType === 'image' ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- effective media uses an authorization-aware dynamic route.
-                      <img
-                        data-media-mode="cover"
-                        src={mediaUrl}
-                        alt={slide.imageAlt ?? ''}
-                        className={heroMediaClass}
-                        loading={index === 0 ? 'eager' : 'lazy'}
-                      />
-                    ) : reducedMotion ? (
-                      posterUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- dynamic poster route.
+                      {slide.mediaType === 'image' ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- effective media uses an authorization-aware dynamic route.
                         <img
                           data-media-mode="cover"
-                          src={posterUrl}
-                          alt=""
+                          src={mediaUrl}
+                          alt={slide.imageAlt ?? ''}
                           className={heroMediaClass}
                           loading={index === 0 ? 'eager' : 'lazy'}
                         />
-                      ) : null
-                    ) : (
-                      <video
-                        data-media-mode="cover"
-                        ref={(element) => {
-                          if (element) videos.current.set(index, element);
-                          else videos.current.delete(index);
-                        }}
-                        src={mediaUrl}
-                        poster={posterUrl}
-                        muted
-                        playsInline
-                        preload={index === current ? 'metadata' : 'none'}
-                        aria-label={slide.videoDescription ?? undefined}
-                        className={heroMediaClass}
-                        onEnded={advanceAutomatically}
-                      />
-                    )}
-                    <div className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-tr from-[#071d35]/25 via-[#102b43]/5 to-[#5a3824]/10" />
-                    {slide.imageNote ? (
-                      <p className="homepage-hero-image-note absolute left-[16%] top-[16%] z-[3] max-w-[14rem] -rotate-2 whitespace-pre-line rounded-2xl border border-white/35 bg-[#eee5d8]/20 px-4 py-3 text-left font-heading text-base font-semibold italic leading-tight text-[#0b3156] drop-shadow-[0_2px_10px_rgba(255,255,255,0.75)] shadow-[0_12px_34px_rgba(5,25,43,0.2)] backdrop-blur-sm sm:max-w-[17rem] sm:px-5 sm:py-4 sm:text-xl lg:max-w-[19rem] lg:text-2xl">
-                        {slide.imageNote}
-                      </p>
-                    ) : null}
+                      ) : reducedMotion ? (
+                        posterUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- dynamic poster route.
+                          <img
+                            data-media-mode="cover"
+                            src={posterUrl}
+                            alt=""
+                            className={heroMediaClass}
+                            loading={index === 0 ? 'eager' : 'lazy'}
+                          />
+                        ) : null
+                      ) : (
+                        <video
+                          data-media-mode="cover"
+                          ref={(element) => {
+                            if (element) videos.current.set(index, element);
+                            else videos.current.delete(index);
+                          }}
+                          src={mediaUrl}
+                          poster={posterUrl}
+                          muted
+                          playsInline
+                          preload={index === current ? 'metadata' : 'none'}
+                          aria-label={slide.videoDescription ?? undefined}
+                          className={heroMediaClass}
+                          onEnded={advanceAutomatically}
+                        />
+                      )}
+                      <div className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-tr from-[#071d35]/25 via-[#102b43]/5 to-[#5a3824]/10" />
+                      {slide.imageNote ? (
+                        <p className={heroNoteClass}>{slide.imageNote}</p>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               </CarouselItem>
