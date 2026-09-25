@@ -154,9 +154,12 @@ function hasContainingBlockGeometry(
       if (
         !(
           (hasReservedGeometry(attributes, classes) ||
-            (hasUnconditionalClass(attributes, (token) =>
-              classes.inset.has(token),
+            (!hasPossibleClass(attributes, (token) =>
+              classes.collapsingGeometry.has(token),
             ) &&
+              hasUnconditionalClass(attributes, (token) =>
+                classes.inset.has(token),
+              ) &&
               hasContainingBlockGeometry(parent, classes))) &&
           !isOversizedPixelWidth(attributes) &&
           !hasUnsafeCssWidth(attributes, classes)
@@ -306,9 +309,12 @@ function frameMarker(
       !isOversizedPixelWidth(attributes) &&
       !hasUnsafeCssWidth(attributes, classes) &&
       (hasReservedGeometry(attributes, classes) ||
-        (hasUnconditionalClass(attributes, (token) =>
-          classes.inset.has(token),
+        (!hasPossibleClass(attributes, (token) =>
+          classes.collapsingGeometry.has(token),
         ) &&
+          hasUnconditionalClass(attributes, (token) =>
+            classes.inset.has(token),
+          ) &&
           hasContainingBlockGeometry(node, classes))) &&
       (hasSharedMediaClass(attributes, 'mediaFrameClass', value) ||
         hasUnconditionalClass(attributes, 'overflow-hidden') ||

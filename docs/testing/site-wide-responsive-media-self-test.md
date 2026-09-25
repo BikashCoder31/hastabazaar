@@ -2,6 +2,24 @@
 
 Initial verification: 22 September 2026. Final-review corrections and affected-row rerun: 26 September 2026, in the same disposable local staging worktree only. Production remains unverified and unapproved for deployment.
 
+## Scoped rereview follow-up — 26 September 2026
+
+Rereview of `7530ced` identified one additional P2 policy false negative: the inset fallback paths in both `hasContainingBlockGeometry` and `frameMarker` could bypass `collapsingGeometry`. An absolute `inset: 0` inner class with `max-height: 0!important` incorrectly borrowed a valid outer frame's geometry. Both fallbacks now require no possible collapsing geometry before borrowing that space. Only the policy helper, regression tests and this ledger changed; production source/browser behavior and local business state are untouched.
+
+TDD: `npx tsx --test tests/responsive-media-final-regressions.test.ts` ran RED with 4 pass / 2 intended failures, each returning `[]` instead of `missing-frame`. The two regressions cover an intervening inset wrapper and a marked inset frame, each containing a fill Image. An additional in-flow image in the marked frame isolates `frameMarker`'s fallback independently of the out-of-flow check. Plain inset and positive `max-height: 12rem!important` counterparts remain valid. After the two guards, focused GREEN and all gates below passed.
+
+| Fresh follow-up command | Result |
+| --- | --- |
+| `npx tsx --test tests/responsive-media-final-regressions.test.ts tests/responsive-media-contract.test.ts tests/responsive-media-policy.test.ts` | 34/34 pass; repository policy zero violations |
+| `npx tsx --test tests/responsive-media-*.test.ts tests/product-gallery.test.ts tests/homepage-hero-presentation.test.ts tests/homepage-hero-carousel.test.ts` | 62/62 pass |
+| `npm test` | 459/459 pass; zero failed/skipped |
+| `npx tsc --noEmit` | exit 0 |
+| `npm run lint` | exit 0 |
+| `npm run build` | exit 0; local build only; existing notices unchanged |
+| `git diff --check` | exit 0 |
+
+The existing 56-row/28-crop browser evidence below remains applicable to unchanged production source; it was not rerun for this test-helper-only correction. No server was restarted, no fixture version was changed, and no second review wave was initiated. All previously documented limitations and retained-history boundaries remain unchanged.
+
 ## Final-review fix wave — 26 September 2026
 
 This section supersedes the original product-photo fit and admin/public crop conclusions below. The original product photos were marked `contain` but Vinext rendered inline `object-fit: cover`; the original admin preview checks verified cover mode, not crop parity. Those observations were insufficient and are not treated as passing evidence for the corrected behavior. Unaffected original rows remain historical evidence, not newly rerun certification.

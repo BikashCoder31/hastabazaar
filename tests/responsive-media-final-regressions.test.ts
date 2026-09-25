@@ -89,6 +89,36 @@ void test('collapsing CSS geometry survives importance, layers and conditional o
     assert.deepEqual(audit(source, css), [], css);
 });
 
+for (const marked of [false, true]) {
+  void test(`collapsing inset ${marked ? 'marked frame' : 'intervening wrapper'} cannot borrow outer geometry`, () => {
+    const media = [
+      '<Image data-media-mode="cover" fill sizes="100vw" src="/x.jpg" />',
+      // In-flow media isolates frameMarker's inset fallback from the separate
+      // out-of-flow containing-block check exercised by the fill image.
+      ...(marked
+        ? [
+            '<img data-media-mode="cover" className="w-full h-full object-cover" src="/x.jpg" />',
+          ]
+        : []),
+    ];
+    for (const child of media) {
+      const source = `<div data-media-frame="cover" className={mediaFrameClass('cover', 'aspect-square')}><div ${marked ? 'data-media-frame="cover"' : ''} className="inner overflow-hidden">${child}</div></div>`;
+      assert.deepEqual(
+        audit(
+          source,
+          '.inner {position:absolute; inset:0; max-height:0!important}',
+        ),
+        missingFrame,
+      );
+      for (const css of [
+        '.inner {position:absolute; inset:0}',
+        '.inner {position:absolute; inset:0; max-height:12rem!important}',
+      ])
+        assert.deepEqual(audit(source, css), [], css);
+    }
+  });
+}
+
 void test('declared fit rejects operative contradictions and requires a matching contract', () => {
   const frame = (mode: string, media: string) =>
     `<div data-media-frame="${mode}" className={mediaFrameClass('${mode}', 'aspect-square')}>${media}</div>`;
