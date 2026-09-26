@@ -242,6 +242,47 @@ void test('answer insert is deferred, atomic with parent write, unique per form/
   } finally { sqlite.close(); }
 });
 
+void test('required built-in fields stay in the parent record and need no answer snapshot entry', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    seedPublished(sqlite, 'built-in-v1', 1, [{ ...field('name', 'short_text', 'Your name'), required: true }]);
+    sqlite.exec('CREATE TABLE parent_actions(id TEXT PRIMARY KEY)');
+    const insert = buildFormAnswerInsert(db, { formId, requestId: 'built-in-answer', versionId: 'built-in-v1',
+      subjectType: 'customer_profile', subjectId: 'profile-1', actorId: 'customer',
+      answers: { formId, version: 1, answers: [] }, now: 40 });
+    await db.batch([db.prepare('INSERT INTO parent_actions(id) VALUES (?)').bind('profile-1'), insert]);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM parent_actions WHERE id='profile-1'").get()?.count, 1);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE request_id='built-in-answer'").get()?.count, 1);
+  } finally { sqlite.close(); }
+});
+
+void test('required custom fields still need a snapshot entry', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    seedPublished(sqlite, 'custom-required-v1', 1, [{ ...field('public_note', 'short_text'), required: true }]);
+    sqlite.exec('CREATE TABLE parent_actions(id TEXT PRIMARY KEY)');
+    const insert = buildFormAnswerInsert(db, { formId, requestId: 'custom-required-answer', versionId: 'custom-required-v1',
+      subjectType: 'customer_profile', subjectId: 'profile-1', actorId: 'customer',
+      answers: { formId, version: 1, answers: [] }, now: 40 });
+    await assert.rejects(() => db.batch([db.prepare('INSERT INTO parent_actions(id) VALUES (?)').bind('profile-1'), insert]));
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM parent_actions').get()?.count, 0);
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM form_answer_sets').get()?.count, 0);
+  } finally { sqlite.close(); }
+});
+
+void test('non-choice answers reject choice-label metadata', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    seedPublished(sqlite, 'text-v1', 1, [field('public_note', 'short_text')]);
+    const answers = { formId, version: 1, answers: [{ fieldId: 'public_note', label: 'Original question',
+      type: 'short_text' as const, value: 'A note', choiceLabels: ['Not a choice'] }] };
+    assert.throws(() => buildFormAnswerInsert(db, { formId, requestId: 'text-with-choice-labels', versionId: 'text-v1',
+      subjectType: 'customer_profile', subjectId: 'profile-1', actorId: 'customer',
+      answers, now: 40 }));
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM form_answer_sets').get()?.count, 0);
+  } finally { sqlite.close(); }
+});
+
 void test('answer boundary rejects cross-form, unpublished, mismatched and sensitive snapshots', async () => {
   const { sqlite, db } = await fixture();
   try {

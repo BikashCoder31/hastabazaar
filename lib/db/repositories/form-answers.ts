@@ -53,12 +53,13 @@ function validateInput(formId: FormId, raw: unknown): FormAnswerSnapshot {
         typeof entry.label !== 'string' || !entry.label.trim() || entry.label.length > 200 || unsafeName(entry.label) ||
         !FIELD_TYPES.includes(entry.type as CustomFieldType)) throw new FormAnswerRepositoryError();
     seen.add(entry.fieldId);
-    if (entry.choiceLabels !== undefined && (!Array.isArray(entry.choiceLabels) ||
+    const type = entry.type as CustomFieldType;
+    if (entry.choiceLabels !== undefined && ((type !== 'single_choice' && type !== 'multiple_choice') ||
+        !Array.isArray(entry.choiceLabels) ||
         !entry.choiceLabels.every((item) => typeof item === 'string' && item.length <= 200 && !unsafeName(item)))) {
       throw new FormAnswerRepositoryError();
     }
     const value = entry.value;
-    const type = entry.type as CustomFieldType;
     if (type === 'checkbox' ? typeof value !== 'boolean' :
         type === 'number' ? typeof value !== 'number' || !Number.isFinite(value) :
         type === 'multiple_choice' ? !Array.isArray(value) || value.length < 1 || value.length > 100 ||
@@ -134,6 +135,8 @@ const validAgainstVersion = `EXISTS (
       SELECT 1 FROM json_each(v.config_json, '$.fields') required_field
       WHERE json_extract(required_field.value, '$.status') = 'active'
         AND json_extract(required_field.value, '$.required') = 1
+        AND NOT EXISTS (SELECT 1 FROM json_each(?) built_in
+          WHERE built_in.value = lower(replace(json_extract(required_field.value, '$.key'), '_', '')))
         AND NOT EXISTS (SELECT 1 FROM json_each(?, '$.answers') given
           WHERE json_extract(given.value, '$.fieldId') = json_extract(required_field.value, '$.id'))
     )
@@ -152,13 +155,15 @@ export function buildFormAnswerInsert(db: D1Database, input: {
   const actorId = input.actorId === null ? null : required(input.actorId, 'Actor ID', 191);
   if (!Number.isSafeInteger(input.now) || input.now < 0) throw new FormAnswerRepositoryError('Timestamp is invalid.');
   const snapshot = validateInput(formId, input.answers);
+  const builtInKeys = JSON.stringify(FORM_REGISTRY[formId].baseFields.map((field) =>
+    field.key.replace(/[^a-z0-9]/gi, '').toLowerCase()));
   const json = JSON.stringify(snapshot);
   if (new TextEncoder().encode(json).length > 131072) throw new FormAnswerRepositoryError('Answer snapshot is too large.');
   return db.prepare(`INSERT INTO form_answer_sets
     (id,form_id,request_id,config_version_id,subject_type,subject_id,actor_id,answers_json,created_at)
     VALUES (?,?,?,?,?,?,?,CASE WHEN ${validAgainstVersion} THEN ? ELSE json_extract('invalid', '$') END,?)`)
     .bind(crypto.randomUUID(), formId, requestId, versionId, subjectType, subjectId, actorId,
-      versionId, formId, snapshot.version, json, json, json, input.now);
+      versionId, formId, snapshot.version, json, builtInKeys, json, json, input.now);
 }
 
 export async function listFormAnswersForSubject(db: D1Database, subjectType: string, subjectId: string): Promise<StoredFormAnswer[]> {
