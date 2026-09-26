@@ -32,14 +32,21 @@ function canonicalName(value: string): string {
   return value.replace(/[^a-z0-9]/gi, '').toLowerCase();
 }
 
-const SENSITIVE_PHRASES = new Set([
+const SENSITIVE_PHRASES = [
   'password', 'passcode', 'credential', 'secret', 'token', 'otp', 'onetime', 'pin', 'pincode',
   'verificationcode', 'securitycode', 'recoverycode', 'backupcode', 'resetcode',
   'confirmationcode', 'authcode', 'accesscode', 'emailcode', 'smscode', 'mfacode', '2facode',
   'apikey', 'privatekey', 'bankaccount', 'bankacct', 'accountnumber', 'routingnumber',
   'iban', 'swift', 'creditcard', 'debitcard', 'cardnumber', 'cardexpiry', 'cardcvv',
   'cardcvc', 'cvv', 'cvc', 'payment', 'captcha', 'recaptcha', 'turnstile', 'honeypot', 'csrf',
-]);
+];
+
+// Joined identifiers have no lexical boundary to split on. Recognize them only
+// as a complete sensitive phrase with explicit identifier qualifiers, never as
+// an arbitrary substring (pin in shipping/spin, secret in secretariat).
+const SENSITIVE_PREFIXES = ['user', 'admin', 'customer', 'account', 'login', 'session', 'access', 'refresh', 'new', 'old', 'current', 'confirm', 'confirmation', 'hashed', 'encrypted'];
+const SENSITIVE_SUFFIXES = ['hash', 'digest', 'value', 'id', 'key', 'code', 'number', 'reference', 'response', 'challenge', 'answer', 'expiry', 'expiration', 'data', 'details', 'info', 'method', 'amount', 'status', 'field', 's'];
+const SENSITIVE_IDENTIFIER = new RegExp(`^(?:${SENSITIVE_PREFIXES.join('|')})*(?:${SENSITIVE_PHRASES.join('|')})+(?:${SENSITIVE_SUFFIXES.join('|')})*[0-9]*$`);
 
 function isUnsafeName(value: string): boolean {
   const tokens = value
@@ -49,8 +56,10 @@ function isUnsafeName(value: string): boolean {
     .split(/[^a-z0-9]+/)
     .filter(Boolean);
   for (let start = 0; start < tokens.length; start++) {
-    for (let length = 1; length <= 3 && start + length <= tokens.length; length++) {
-      if (SENSITIVE_PHRASES.has(tokens.slice(start, start + length).join(''))) return true;
+    let compound = '';
+    for (let end = start; end < tokens.length; end++) {
+      compound += tokens[end];
+      if (SENSITIVE_IDENTIFIER.test(compound)) return true;
     }
   }
   return false;

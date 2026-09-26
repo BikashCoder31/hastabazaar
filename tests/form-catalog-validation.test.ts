@@ -125,6 +125,48 @@ void test('spin code remains a safe snapshot key', () => {
   assert.equal(validateAnswersForDefinition(definition, configWithKey, answer('public_note', 'SPIN-7')).answers[0]?.value, 'SPIN-7');
 });
 
+// These are observable draft/snapshot boundaries, including defensive checks
+// against a configuration that bypassed draft validation.
+for (const words of [
+  ['password', 'hash'], ['payment', 'reference'], ['credit', 'card', 'number'],
+  ['credential', 'value'], ['access', 'token', 'value'], ['security', 'code', 'value'],
+  ['pin', 'code', 'value'], ['bank', 'account', 'number'], ['csrf', 'token', 'value'],
+  ['captcha', 'response'], ['one', 'time', 'code'], ['user', 'password', 'hash'],
+  ['encrypted', 'private', 'key', 'value'], ['refresh', 'token', '2'],
+]) {
+  const variants = new Set([
+    words.join(''), words.join('_'), words.join(' '), words.join('-'),
+    words.map((word, i) => i ? word[0].toUpperCase() + word.slice(1) : word).join(''),
+  ]);
+  for (const name of variants) {
+    if (/^[a-z][a-z0-9_]*$/.test(name)) {
+      void test(`draft rejects sensitive compound ID ${name}`, () => {
+        assert.throws(() => validateFormDraftForDefinition(definition, draft([field(name, 'short_text', { label: 'Public note' })])), errorCode('invalid_draft'));
+      });
+    }
+    void test(`draft rejects sensitive compound label ${name}`, () => {
+      assert.throws(() => validateFormDraftForDefinition(definition, draft([field('public_note', 'short_text', { label: name })])), errorCode('invalid_draft'));
+    });
+    for (const property of ['id', 'key', 'label'] as const) {
+      void test(`snapshot rejects sensitive compound ${property} ${name}`, () => {
+        const safeConfig = validateFormDraftForDefinition(definition, draft([field('public_note', 'short_text')]));
+        const config = { ...safeConfig, version: 1, publishedAt: 1, fields: [{ ...safeConfig.fields[0], [property]: name }] };
+        assert.throws(() => validateAnswersForDefinition(definition, config, answer(config.fields[0].id, 'value')), errorCode('invalid_answer'));
+      });
+    }
+  }
+}
+
+for (const name of ['spin_code', 'spincode', 'shipping_note', 'shippingcode', 'opinion', 'secretariat', 'swiftly', 'honey_pottery', 'cardnumbering']) {
+  void test(`unrelated word ${name} remains safe in draft and snapshot names`, () => {
+    const config = { ...validateFormDraftForDefinition(definition, draft([field(name, 'short_text')])), version: 1, publishedAt: 1 };
+    assert.deepEqual(validateAnswersForDefinition(definition, config, answer(name, 'value')).answers,
+      [{ fieldId: name, label: name, type: 'short_text', value: 'value' }]);
+    const keyConfig = { ...config, fields: [{ ...config.fields[0], id: 'public_note', label: 'Public note' }] };
+    assert.equal(validateAnswersForDefinition(definition, keyConfig, answer('public_note', 'value')).answers[0]?.value, 'value');
+  });
+}
+
 void test('display edits need an adapter and cannot change protected fields', () => {
   const edit = draft([field('heading', 'short_text')]);
   assert.throws(() => validateFormDraftForDefinition(definition, edit), errorCode('invalid_draft'));
