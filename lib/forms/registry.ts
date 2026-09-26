@@ -1,5 +1,15 @@
 import type { BaseFieldCapability, FormAudience, FormCapabilities, FormDefinition, FormId, FormMode } from './types';
 
+export interface ImplementedFormAdapter {
+  readonly formId: FormId;
+  readonly route: string;
+  readonly mode: FormMode;
+}
+
+// Integrations add an entry here only when their server adapter exists and is
+// tested. None of the inventory-only definitions below is implemented yet.
+export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormAdapter>> = Object.freeze({});
+
 // Inventory rows are ordered to match the 69 JSX sites in the frozen policy baseline.
 // A pending adapter is deliberately not a live configuration adapter.
 const SOURCE_ROWS = `

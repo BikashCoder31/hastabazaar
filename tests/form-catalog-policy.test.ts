@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -28,6 +28,23 @@ void test('a new JSX form cannot inherit a pre-existing exception', async () => 
   }
 });
 
+void test('replacing a frozen form body while preserving its opening tag is rejected', async () => {
+  const fixture = await mkdtemp(join(tmpdir(), 'form-policy-'));
+  try {
+    const path = 'components/account/profile-form.tsx';
+    const original = await readFile(join(root, path), 'utf8');
+    assert.match(original, /<form\s+onSubmit=\{submit\}\s+className="customer-form mt-6 grid gap-5 sm:grid-cols-2"\s*>/);
+    assert.match(original, /name="displayName"/);
+    const replacement = original.replace('name="displayName"', 'name="newUnapprovedField"');
+    await mkdir(join(fixture, 'components', 'account'), { recursive: true });
+    await writeFile(join(fixture, path), replacement);
+    const violations = await scanFormSites(fixture);
+    assert.ok(violations.some((violation) => violation.path === path && /unregistered/i.test(violation.reason)));
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 void test('registry definitions require a server adapter and capability explanation', async () => {
   const broken = {
     ...FORM_REGISTRY,
@@ -51,6 +68,27 @@ void test('a future site cannot borrow a pending adapter from the frozen invento
     await mkdir(join(fixture, 'components'), { recursive: true });
     await writeFile(join(fixture, 'components', 'new-form.tsx'), 'export const NewForm = () => <form data-form-id="account.profile"><input name="name" /></form>;');
     assert.ok((await scanFormSites(fixture)).some((violation) => violation.reason.includes('pending adapter')));
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+void test('a future query form with an invented nonpending adapter is rejected', async () => {
+  const fixture = await mkdtemp(join(tmpdir(), 'form-policy-'));
+  try {
+    await mkdir(join(fixture, 'app', 'shop'), { recursive: true });
+    await writeFile(join(fixture, 'app', 'shop', 'page.tsx'), 'export default function Shop() { return <form data-form-id="future.price-filter"><input name="min" /></form>; }');
+    const invented = {
+      ...FORM_REGISTRY,
+      'future.price-filter': {
+        ...FORM_REGISTRY['catalog.filters'],
+        id: 'future.price-filter',
+        adapterId: 'invented-price-filter',
+        capabilities: { ...FORM_REGISTRY['catalog.filters'].capabilities, explanation: 'Filter by price in server results.' },
+      },
+    };
+    const violations = await scanFormSites(fixture, invented);
+    assert.ok(violations.some((violation) => violation.path === 'app/shop/page.tsx' && /adapter/i.test(violation.reason)));
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }
