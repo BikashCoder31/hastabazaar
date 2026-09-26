@@ -370,3 +370,51 @@ void test('admin detail rejects parseable but invalid stored configuration as un
     assert.equal(response.status, 503);
   } finally { sqlite.close(); }
 });
+
+void test('parseable invalid stored config blocks draft and restore with 503 and no audit', async () => {
+  for (const action of ['draft', 'restore'] as const) {
+    const sqlite = await fixture();
+    try {
+      actor('sa', 'super_admin');
+      seedPublishedForm(sqlite, formId, { formId: 'wrong.form', fields: [] });
+      const response = action === 'draft'
+        ? await (await import('../app/api/admin/forms/[formId]/draft/route')).POST(
+          request('/api/admin/forms/account.profile/draft', { config, expectedPublishedVersion: 1,
+            reason: 'Draft with corrupt history', requestId: 'bad-history-draft' }), params)
+        : await (await import('../app/api/admin/forms/[formId]/restore/route')).POST(
+          request('/api/admin/forms/account.profile/restore', { sourceVersion: 1, expectedPublishedVersion: 1,
+            reason: 'Restore corrupt source', requestId: 'bad-source-restore' }), params);
+      assert.equal(response.status, 503, action);
+      assert.equal(count(sqlite, 'form_config_versions'), 1);
+      assert.equal(count(sqlite, 'audit_logs'), 0);
+    } finally { sqlite.close(); }
+  }
+});
+
+void test('parseable invalid stored draft blocks publish with 503 and no audit', async () => {
+  const sqlite = await fixture();
+  try {
+    actor('sa', 'super_admin');
+    sqlite.prepare(`INSERT INTO form_config_versions
+      (id,form_id,version,revision,status,config_json,reason,created_by,created_at,
+       updated_by,updated_at,last_request_id)
+      VALUES ('invalid-draft',?,1,1,'draft',?,'Seed','sa',1,'sa',1,'seed-invalid-draft')`)
+      .run(formId, JSON.stringify({ formId: 'wrong.form', fields: [] }));
+    const route = await import('../app/api/admin/forms/[formId]/publish/route');
+    const response = await route.POST(request('/api/admin/forms/account.profile/publish', {
+      draftId: 'invalid-draft', expectedDraftRevision: 1, expectedPublishedVersion: 0,
+      reason: 'Publish corrupt draft', requestId: 'invalid-draft-publish',
+    }), params);
+    assert.equal(response.status, 503);
+    assert.equal(sqlite.prepare('SELECT status FROM form_config_versions WHERE id = ?').get('invalid-draft')?.status, 'draft');
+    assert.equal(count(sqlite, 'audit_logs'), 0);
+  } finally { sqlite.close(); }
+});
+
+void test('well-formed draft conflicting with historical field identity remains a 409 client conflict', async () => {
+  const { catalogError } = await import('../app/api/admin/forms/route');
+  const { FormCatalogConflictError } = await import('../lib/db/repositories/form-catalog');
+  const response = catalogError(new FormCatalogConflictError(
+    'Historical fields must retain their identity and type; archive them to stop collection.'));
+  assert.equal(response.status, 409);
+});

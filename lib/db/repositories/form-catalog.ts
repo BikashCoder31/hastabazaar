@@ -8,6 +8,13 @@ export class FormCatalogConflictError extends Error {
   }
 }
 
+export class FormCatalogStoredConfigError extends Error {
+  constructor(message = 'Stored form configuration is invalid.') {
+    super(message);
+    this.name = 'FormCatalogStoredConfigError';
+  }
+}
+
 type Status = 'draft' | 'published';
 type Row = {
   id: string; formId: FormId; version: number; revision: number; status: Status;
@@ -23,9 +30,17 @@ const columns = `id, form_id AS formId, version, revision, status,
   updated_by AS updatedBy, updated_at AS updatedAt, published_by AS publishedBy,
   published_at AS publishedAt, last_request_id AS lastRequestId`;
 
+function storedConfig(formId: FormId, value: unknown): FormConfigDraft {
+  try { return validateFormDraft(formId, value); }
+  catch { throw new FormCatalogStoredConfigError(); }
+}
+
 function parse(row: Row): FormConfigVersion {
   const { configJson, ...metadata } = row;
-  return { ...metadata, config: JSON.parse(configJson) as FormConfigDraft };
+  let candidate: unknown;
+  try { candidate = JSON.parse(configJson); }
+  catch { throw new FormCatalogStoredConfigError(); }
+  return { ...metadata, config: storedConfig(row.formId, candidate) };
 }
 
 function required(value: string, label: string, max: number): string {
@@ -117,16 +132,17 @@ function audit(db: D1Database, input: { actorId: string; action: string; formId:
 async function historicalFields(db: D1Database, formId: FormId): Promise<ConfiguredField[]> {
   const rows = await db.prepare('SELECT config_json AS configJson FROM form_config_versions WHERE form_id = ? ORDER BY version, revision')
     .bind(formId).all<{ configJson: string }>();
+  const configs = rows.results.map((row) => {
+    try { return storedConfig(formId, JSON.parse(row.configJson) as unknown); }
+    catch { throw new FormCatalogStoredConfigError(); }
+  });
   const fields = new Map<string, ConfiguredField>();
-  for (const row of rows.results) {
-    const config = JSON.parse(row.configJson) as FormConfigDraft;
-    if (!Array.isArray(config.fields)) throw new FormCatalogConflictError('Stored form history is invalid.');
+  for (const config of configs) {
     for (const field of config.fields) {
-      if (typeof field.id !== 'string' || typeof field.key !== 'string' || typeof field.type !== 'string') throw new FormCatalogConflictError('Stored form history is invalid.');
       const old = fields.get(field.id);
-      if (old && (old.key !== field.key || old.type !== field.type)) throw new FormCatalogConflictError('Stored field identity changed.');
+      if (old && (old.key !== field.key || old.type !== field.type)) throw new FormCatalogStoredConfigError('Stored field identity changed.');
       for (const prior of fields.values()) {
-        if (prior.key === field.key && prior.id !== field.id) throw new FormCatalogConflictError('Stored field key was reused.');
+        if (prior.key === field.key && prior.id !== field.id) throw new FormCatalogStoredConfigError('Stored field key was reused.');
       }
       fields.set(field.id, field);
     }

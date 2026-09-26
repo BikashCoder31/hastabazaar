@@ -4,7 +4,7 @@ import { requireDatabase } from '@/lib/db/d1';
 import { FORM_REGISTRY } from '@/lib/forms/registry';
 import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { FormCatalogConflictError } from '@/lib/db/repositories/form-catalog';
+import { FormCatalogConflictError, FormCatalogStoredConfigError } from '@/lib/db/repositories/form-catalog';
 
 export class CatalogClientInputError extends Error {
   constructor(message = 'Invalid request.') { super(message); this.name = 'CatalogClientInputError'; }
@@ -58,7 +58,7 @@ export function catalogError(error: unknown): Response {
   if (error instanceof StaffAuthorizationError) return catalogJson({ error: error.message }, error.status);
   if (error instanceof BodyTooLargeError) return catalogJson({ error: error.message }, 413);
   if (error instanceof CatalogClientInputError) return catalogJson({ error: error.message }, 400);
-  if (error instanceof FormCatalogConflictError && /^(Stored |Historical fields)/.test(error.message)) {
+  if (error instanceof FormCatalogStoredConfigError) {
     return catalogJson({ error: 'Stored form configuration is unavailable.' }, 503);
   }
   if (error instanceof FormCatalogConflictError) return catalogJson({ error: error.message }, 409);

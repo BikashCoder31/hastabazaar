@@ -82,6 +82,54 @@ function seedDraft(sqlite: DatabaseSync, id: string, version: number, fields: un
     .run(id, formId, version, JSON.stringify({ formId, fields }), `seed-${id}`);
 }
 
+function seedRawConfig(sqlite: DatabaseSync, id: string, version: number, status: 'draft' | 'published', config: unknown) {
+  sqlite.prepare(`INSERT INTO form_config_versions
+    (id,form_id,version,revision,status,config_json,reason,created_by,created_at,
+     updated_by,updated_at,published_by,published_at,last_request_id)
+    VALUES (?,?,?,?,?,?,'Seed config','admin',1,'admin',1,?,?,?)`)
+    .run(id, formId, version, 1, status, JSON.stringify(config),
+      status === 'published' ? 'admin' : null, status === 'published' ? 1 : null, `seed-${id}`);
+}
+
+const storedFailure = (error: unknown) => error instanceof Error && error.name === 'FormCatalogStoredConfigError';
+
+void test('draft creation rejects parseable invalid published history before writing version or audit', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    seedRawConfig(sqlite, 'wrong-history', 1, 'published', { formId: 'wrong.form', fields: [] });
+    await assert.rejects(() => saveFormDraft(db, { formId, ...actor, expectedPublishedVersion: 1,
+      config: emptyConfig, reason: 'New draft', requestId: 'wrong-history-draft', now: 10 }), storedFailure);
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM form_config_versions').get()?.count, 1);
+    assert.equal(auditCount(sqlite), 0);
+  } finally { sqlite.close(); }
+});
+
+void test('publish rejects a parseable invalid stored draft before changing status or auditing', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    seedRawConfig(sqlite, 'wrong-draft', 1, 'draft', { formId: 'wrong.form', fields: [] });
+    await assert.rejects(() => publishFormDraft(db, { formId, ...actor, draftId: 'wrong-draft',
+      expectedDraftRevision: 1, expectedPublishedVersion: 0, reason: 'Publish draft',
+      requestId: 'wrong-draft-publish', now: 11 }), storedFailure);
+    assert.equal(sqlite.prepare('SELECT status FROM form_config_versions WHERE id = ?').get('wrong-draft')?.status, 'draft');
+    assert.equal(auditCount(sqlite), 0);
+  } finally { sqlite.close(); }
+});
+
+void test('restore rejects an invalid source or historical config without publishing or auditing', async () => {
+  for (const badVersion of [1, 2]) {
+    const { sqlite, db } = await fixture();
+    try {
+      seedRawConfig(sqlite, 'source', 1, 'published', badVersion === 1 ? { formId: 'wrong.form', fields: [] } : emptyConfig);
+      seedRawConfig(sqlite, 'history', 2, 'published', badVersion === 2 ? { formId: 'wrong.form', fields: [] } : emptyConfig);
+      await assert.rejects(() => restoreFormVersion(db, { formId, ...actor, sourceVersion: 1,
+        expectedPublishedVersion: 2, reason: 'Restore', requestId: `bad-restore-${badVersion}`, now: 12 }), storedFailure);
+      assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM form_config_versions').get()?.count, 2);
+      assert.equal(auditCount(sqlite), 0);
+    } finally { sqlite.close(); }
+  }
+});
+
 function field(id: string, type = 'single_choice', label = 'Original question', status = 'active') {
   return { id, key: id, type, label, required: false, order: 0, status,
     ...(type === 'single_choice' ? { choices: [{ value: 'yes', label: 'Original yes' }, { value: 'no', label: 'Original no' }] } : {}) };
@@ -190,7 +238,7 @@ void test('historical field identity cannot be repurposed by restored publicatio
     seedPublished(sqlite, 'history-2', 2, [field('review_answer', 'number')]);
     await assert.rejects(() => restoreFormVersion(db, { formId, ...actor, sourceVersion: 1,
       expectedPublishedVersion: 2, reason: 'Conflicting identity', requestId: 'identity-restore', now: 20 }),
-    /Stored field identity changed/);
+    storedFailure);
     assert.equal(auditCount(sqlite), 0);
   } finally { sqlite.close(); }
 });
