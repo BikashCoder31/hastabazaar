@@ -44,6 +44,8 @@ async function fixture() {
   sqlite.exec(`PRAGMA foreign_keys = ON;
     CREATE TABLE users(id TEXT PRIMARY KEY, auth_subject TEXT, status TEXT NOT NULL);
     CREATE TABLE user_roles(user_id TEXT NOT NULL, role TEXT NOT NULL);
+    CREATE TABLE staff_permission_profiles(user_id TEXT PRIMARY KEY,permissions_json TEXT NOT NULL,
+      version INTEGER NOT NULL,updated_by TEXT,updated_at INTEGER);
     CREATE TABLE audit_logs(id TEXT PRIMARY KEY, actor_id TEXT, action TEXT, subject_type TEXT,
       subject_id TEXT, reason TEXT, previous_json TEXT, next_json TEXT, request_id TEXT,
       ip_hash TEXT, created_at INTEGER);
@@ -174,5 +176,77 @@ void test('public config read reveals no protected IDs and published-only data h
     assert.equal(await protectedId.text(), unknownBody);
     actor('sa', 'super_admin');
     assert.equal((await publicRoute.GET(request('/api/forms/staff.staff-permission-1'), protectedParams)).status, 200);
+  } finally { sqlite.close(); }
+});
+
+void test('ordinary Admin cannot read Super Admin staff forms but retains permitted catalog form access', async () => {
+  const sqlite = await fixture();
+  try {
+    const publicRoute = await import('../app/api/forms/[formId]/route');
+    for (const formId of ['staff.activity-filter', 'staff.homepage-filter', 'staff.catalog']) {
+      sqlite.prepare(`INSERT INTO form_config_versions
+        (id,form_id,version,revision,status,config_json,reason,created_by,created_at,
+         updated_by,updated_at,published_by,published_at,last_request_id)
+        VALUES (?, ?, 1, 1, 'published', ?, 'Seed', 'sa', 1, 'sa', 1, 'sa', 1, ?)`)
+        .run(`published-${formId}`, formId, JSON.stringify({ formId, fields: [] }), `seed-${formId}`);
+    }
+    actor('admin', 'admin');
+    for (const formId of ['staff.activity-filter', 'staff.homepage-filter']) {
+      const response = await publicRoute.GET(request(`/api/forms/${formId}`), { params: Promise.resolve({ formId }) });
+      assert.equal(response.status, 404, formId);
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+    }
+    const catalog = await publicRoute.GET(request('/api/forms/staff.catalog'), { params: Promise.resolve({ formId: 'staff.catalog' }) });
+    assert.equal(catalog.status, 200);
+    sqlite.prepare(`INSERT INTO staff_permission_profiles VALUES ('admin','[]',1,'sa',2)`).run();
+    assert.equal((await publicRoute.GET(request('/api/forms/staff.catalog'), { params: Promise.resolve({ formId: 'staff.catalog' }) })).status, 404);
+    actor('sa', 'super_admin');
+    for (const formId of ['staff.activity-filter', 'staff.homepage-filter']) {
+      assert.equal((await publicRoute.GET(request(`/api/forms/${formId}`), { params: Promise.resolve({ formId }) })).status, 200, formId);
+    }
+  } finally { sqlite.close(); }
+});
+
+void test('corrupt stored admin detail config is a service failure, not a bad client request', async () => {
+  const sqlite = await fixture();
+  try {
+    actor('sa', 'super_admin');
+    // The current schema rejects malformed JSON. Simulate a corrupt/legacy store
+    // response at the D1 boundary to exercise the route's failure classification.
+    const realDb = globalThis.formCatalogRouteDb;
+    globalThis.formCatalogRouteDb = {
+      prepare(sql: string) {
+        if (sql.includes('config_json AS configJson')) return {
+          bind() { return this; },
+          async all() { return { results: [{ configJson: '{broken' }] }; },
+        };
+        return realDb.prepare(sql);
+      },
+    } as D1Database;
+    const item = await import('../app/api/admin/forms/[formId]/route');
+    const response = await item.GET(request('/api/admin/forms/account.profile'), params);
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+  } finally { sqlite.close(); }
+});
+
+void test('protected form IDs match unknown IDs during missing binding or authorization read failure', async () => {
+  const sqlite = await fixture();
+  try {
+    const publicRoute = await import('../app/api/forms/[formId]/route');
+    const protectedId = 'staff.activity-filter';
+    const protectedParams = { params: Promise.resolve({ formId: protectedId }) };
+    const unknownParams = { params: Promise.resolve({ formId: 'unknown.form' }) };
+    for (const brokenDb of [undefined, { prepare() { throw new Error('DB read failed'); } }]) {
+      globalThis.formCatalogRouteDb = brokenDb as unknown as D1Database;
+      actor('admin', 'admin');
+      const denied = await publicRoute.GET(request(`/api/forms/${protectedId}`), protectedParams);
+      const unknown = await publicRoute.GET(request('/api/forms/unknown.form'), unknownParams);
+      assert.equal(denied.status, 404);
+      assert.equal(unknown.status, 404);
+      assert.equal(await denied.text(), await unknown.text());
+      assert.equal(denied.headers.get('cache-control'), 'no-store');
+      assert.equal(unknown.headers.get('cache-control'), 'no-store');
+    }
   } finally { sqlite.close(); }
 });

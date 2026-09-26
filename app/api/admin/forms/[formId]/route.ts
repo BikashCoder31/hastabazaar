@@ -13,8 +13,12 @@ export async function GET(_request: Request, context: { params: Promise<{ formId
       updated_at AS updatedAt,published_by AS publishedBy,published_at AS publishedAt
       FROM form_config_versions WHERE form_id = ? ORDER BY version DESC,revision DESC`)
       .bind(formId).all<{ configJson: string; [key: string]: unknown }>();
-    return catalogJson({ form: FORM_REGISTRY[formId], versions: rows.results.map(({ configJson, ...row }) => ({
-      ...row, config: JSON.parse(configJson),
-    })) });
+    let versions: { config: unknown; [key: string]: unknown }[];
+    try {
+      versions = rows.results.map(({ configJson, ...row }) => ({ ...row, config: JSON.parse(configJson) as unknown }));
+    } catch {
+      return catalogJson({ error: 'Stored form configuration is unavailable.' }, 503);
+    }
+    return catalogJson({ form: FORM_REGISTRY[formId], versions });
   } catch (error) { return catalogError(error); }
 }
