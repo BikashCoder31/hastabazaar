@@ -11,7 +11,7 @@ export class FormValidationError extends Error {
 }
 
 const FIELD_TYPES: readonly CustomFieldType[] = ['short_text', 'long_text', 'number', 'date', 'single_choice', 'multiple_choice', 'checkbox', 'email', 'phone'];
-const FIELD_KEYS = new Set(['id', 'key', 'type', 'label', 'helpText', 'placeholder', 'required', 'order', 'choices', 'status']);
+const FIELD_KEYS = new Set(['id', 'key', 'type', 'label', 'helpText', 'placeholder', 'required', 'order', 'choices', 'status', 'min', 'max', 'integerOnly']);
 const MAX_FIELDS = 64;
 const MAX_CONFIG_BYTES = 65536;
 const MAX_ANSWER_BYTES = 131072;
@@ -28,9 +28,13 @@ function boundedString(value: unknown, max: number, optional = false): value is 
   return typeof value === 'string' && (optional && value.length === 0 || value.trim().length > 0) && value.length <= max;
 }
 
+function canonicalName(value: string): string {
+  return value.replace(/[^a-z0-9]/gi, '').toLowerCase();
+}
+
 function isUnsafeName(value: string): boolean {
-  const name = value.replace(/[^a-z0-9]/gi, '').toLowerCase();
-  return /password|passcode|credential|secret|token|otp|onetime|verificationcode|authcode|apikey|privatekey|cardnumber|cardcvv|cardcvc|cvv|cvc|payment|captcha|recaptcha|turnstile|honeypot|csrf/.test(name);
+  const name = canonicalName(value);
+  return name === 'pin' || /password|passcode|credential|secret|token|otp|onetime|verificationcode|securitycode|recoverycode|backupcode|resetcode|confirmationcode|authcode|accesscode|emailcode|smscode|mfacode|2facode|apikey|privatekey|bankaccount|bankacct|accountnumber|routingnumber|iban|swift|cardnumber|cardexpiry|cardcvv|cardcvc|cvv|cvc|payment|captcha|recaptcha|turnstile|honeypot|csrf/.test(name);
 }
 
 function hasOnlyKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
@@ -41,20 +45,40 @@ function validChoice(value: unknown): value is { value: string; label: string } 
   return record(value) && hasOnlyKeys(value, new Set(['value', 'label'])) && boundedString(value.value, 100) && boundedString(value.label, 200);
 }
 
+function validNumberBound(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1_000_000_000_000;
+}
+
+function sameChoices(a: unknown, b: unknown): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 function validField(value: unknown, definition: FormDefinition, adapterGrantsBuiltInEdits: boolean): value is ConfiguredField {
   if (!record(value) || !hasOnlyKeys(value, FIELD_KEYS)) return false;
-  const { id, key, type, label, helpText, placeholder, required, order, choices, status } = value;
+  const { id, key, type, label, helpText, placeholder, required, order, choices, status, min, max, integerOnly } = value;
   if (!boundedString(id, 100) || !/^[a-z][a-z0-9_]*$/.test(id) || key !== id || isUnsafeName(id)) return false;
   if (!FIELD_TYPES.includes(type as CustomFieldType) || !definition.capabilities.customFieldTypes.includes(type as CustomFieldType)) return false;
   if (!boundedString(label, 200) || isUnsafeName(label) || (helpText !== undefined && !boundedString(helpText, 1000, true)) || (placeholder !== undefined && !boundedString(placeholder, 200, true))) return false;
   if (required !== true && required !== false || !Number.isSafeInteger(order) || (order as number) < 0 || (order as number) >= MAX_FIELDS) return false;
   if (status !== 'active' && status !== 'archived') return false;
-  const base = definition.baseFields.find((item) => item.key.toLowerCase() === id.toLowerCase());
-  if (base && (!adapterGrantsBuiltInEdits || base.capability === 'protected')) return false;
+  const base = definition.baseFields.find((item) => canonicalName(item.key) === canonicalName(id));
+  if (base) {
+    if (!adapterGrantsBuiltInEdits || base.capability === 'protected') return false;
+    // An adapter alone grants no semantic edit. Legacy inventory definitions
+    // have type "existing" and no baseline, so they remain uneditable.
+    if (!FIELD_TYPES.includes(base.type as CustomFieldType) || typeof base.required !== 'boolean' || (base.status !== 'active' && base.status !== 'archived')) return false;
+    if (type !== base.type || required !== base.required || status !== base.status || !sameChoices(choices, base.choices) || min !== base.min || max !== base.max || integerOnly !== base.integerOnly) return false;
+  }
   if (type === 'single_choice' || type === 'multiple_choice') {
     if (!Array.isArray(choices) || choices.length < 2 || choices.length > 100 || !choices.every(validChoice)) return false;
     if (new Set(choices.map((choice: { value: string }) => choice.value)).size !== choices.length) return false;
   } else if (choices !== undefined) return false;
+  if (type === 'number') {
+    if (min !== undefined && !validNumberBound(min) || max !== undefined && !validNumberBound(max) || integerOnly !== undefined && typeof integerOnly !== 'boolean') return false;
+    if (min !== undefined && max !== undefined && (min as number) > (max as number)) return false;
+    if (integerOnly === true && min !== undefined && max !== undefined && Math.ceil(min as number) > Math.floor(max as number)) return false;
+  } else if (min !== undefined || max !== undefined || integerOnly !== undefined) return false;
   return true;
 }
 
@@ -65,7 +89,7 @@ export function validateFormDraftForDefinition(definition: FormDefinition, candi
   }
   if (candidate.fields.some((item) => !validField(item, definition, adapterGrantsBuiltInEdits))) return fail('invalid_draft', 'Invalid form field');
   const fields = candidate.fields as ConfiguredField[];
-  if (new Set(fields.map((item) => item.id)).size !== fields.length || new Set(fields.map((item) => item.key.toLowerCase())).size !== fields.length) return fail('invalid_draft', 'Duplicate field');
+  if (new Set(fields.map((item) => canonicalName(item.id))).size !== fields.length || new Set(fields.map((item) => canonicalName(item.key))).size !== fields.length) return fail('invalid_draft', 'Duplicate field');
   const encoded = JSON.stringify(candidate);
   if (new TextEncoder().encode(encoded).length > MAX_CONFIG_BYTES) return fail('invalid_draft', 'Form draft exceeds storage limit');
   return { formId: definition.id, fields: fields.map((item) => ({ ...item, ...(item.choices ? { choices: item.choices.map((choice) => ({ ...choice })) } : {}) })) };
@@ -87,17 +111,33 @@ function validDate(value: string): boolean {
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
+function validEmail(value: string): boolean {
+  if (value.length > 254 || /\s/.test(value)) return false;
+  const parts = value.split('@');
+  if (parts.length !== 2) return false;
+  const [local, domain] = parts;
+  if (!local || local.length > 64 || local.startsWith('.') || local.endsWith('.') || local.includes('..') || !/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+$/.test(local)) return false;
+  const labels = domain.split('.');
+  return labels.length >= 2 && labels.every((label) => /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label)) && /^[A-Za-z]{2,63}$/.test(labels.at(-1) ?? '');
+}
+
+function validPhone(value: string): boolean {
+  if (!/^\+?[0-9][0-9 ()-]{5,30}$/.test(value)) return false;
+  const digits = value.replace(/\D/g, '');
+  return digits.length >= 7 && digits.length <= 15 && (value.match(/\(/g)?.length ?? 0) === (value.match(/\)/g)?.length ?? 0);
+}
+
 function validAnswer(field: ConfiguredField, value: unknown): boolean {
   switch (field.type) {
     case 'short_text': return boundedString(value, 500);
     case 'long_text': return boundedString(value, 5000);
-    case 'number': return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1_000_000_000_000;
+    case 'number': return validNumberBound(value) && (field.min === undefined || value >= field.min) && (field.max === undefined || value <= field.max) && (!field.integerOnly || Number.isInteger(value));
     case 'date': return typeof value === 'string' && validDate(value);
     case 'single_choice': return typeof value === 'string' && Boolean(field.choices?.some((choice) => choice.value === value));
     case 'multiple_choice': return Array.isArray(value) && value.length > 0 && value.length <= 100 && new Set(value).size === value.length && value.every((choice) => typeof choice === 'string' && field.choices?.some((item) => item.value === choice));
     case 'checkbox': return typeof value === 'boolean';
-    case 'email': return typeof value === 'string' && value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-    case 'phone': return typeof value === 'string' && /^\+?[0-9][0-9 ()-]{5,24}$/.test(value);
+    case 'email': return typeof value === 'string' && validEmail(value);
+    case 'phone': return typeof value === 'string' && validPhone(value);
   }
 }
 
@@ -121,8 +161,8 @@ export function validateAnswersForDefinition(definition: FormDefinition, config:
     }
     if (!validAnswer(field, value)) return fail('invalid_answer', 'Invalid answer value');
     // Built-in values belong to the domain record; only safe custom fields enter snapshots.
-    if (definition.baseFields.some((base) => base.key.toLowerCase() === field.key.toLowerCase())) continue;
-    if (isUnsafeName(field.id) || isUnsafeName(field.key)) return fail('invalid_answer', 'Unsafe answer field');
+    if (definition.baseFields.some((base) => canonicalName(base.key) === canonicalName(field.key))) continue;
+    if (isUnsafeName(field.id) || isUnsafeName(field.key) || isUnsafeName(field.label)) return fail('invalid_answer', 'Unsafe answer field');
     answers.push({ fieldId: field.id, label: field.label, type: field.type, value });
   }
   const snapshot = { formId: definition.id, version: config.version, answers };

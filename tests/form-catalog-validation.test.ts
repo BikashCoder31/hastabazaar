@@ -8,7 +8,9 @@ import { resolvePublishedForm, validateSubmittedForm, FormRuntimeError } from '.
 const definition: FormDefinition = {
   id: 'test.safe', audience: 'public', mode: 'collection', route: '/test', adapterId: 'test-safe',
   baseFields: [{ key: 'password', type: 'existing', label: 'Password', capability: 'protected', explanation: 'Credential' },
-    { key: 'heading', type: 'existing', label: 'Heading', capability: 'display_editable', explanation: 'Display only' }],
+    { key: 'deliveryAddress', type: 'existing', label: 'Delivery address', capability: 'protected', explanation: 'Address' },
+    { key: 'heading', type: 'short_text', label: 'Heading', capability: 'display_editable', explanation: 'Display only', required: true, status: 'active' },
+    { key: 'rating', type: 'existing', label: 'Rating', capability: 'configurable', explanation: 'Not yet bounded' }],
   capabilities: { explanation: 'Test adapter records safe answers.', customFieldTypes: ['short_text', 'long_text', 'number', 'date', 'single_choice', 'multiple_choice', 'checkbox', 'email', 'phone'], answerBehavior: 'record' },
 };
 const field = (id: string, type: ConfiguredField['type'], extra: Record<string, unknown> = {}) => ({ id, key: id, type, label: id, required: true, order: 0, status: 'active', ...extra });
@@ -36,13 +38,23 @@ for (const [name, fields] of [
   ['mutable key', draft([{ ...field('x', 'short_text'), key: 'renamed' }])],
   ['protected name', draft([field('password', 'short_text')])],
   ['credential alias', draft([field('accessToken', 'short_text')])],
+  ['PIN alias', draft([field('pin', 'short_text')])],
+  ['security code alias', draft([field('security_code', 'short_text')])],
+  ['bank account alias', draft([field('bank_account', 'short_text')])],
+  ['recovery code alias', draft([field('recovery_code', 'short_text')])],
+  ['CSRF alias', draft([field('csrf_token', 'short_text')])],
   ['credential label', draft([field('public_note', 'short_text', { label: 'Password' })])],
   ['otp alias', draft([field('one_time_code', 'short_text')])],
   ['payment alias', draft([field('cardCvv', 'short_text')])],
   ['anti abuse alias', draft([field('captchaResponse', 'short_text')])],
+  ['separator variant of protected built in', draft([field('delivery_address', 'short_text')])],
   ['duplicate choice', draft([field('x', 'single_choice', { choices: [{ value: 'a', label: 'A' }, { value: 'a', label: 'Again' }] })])],
   ['oversized label', draft([field('x', 'short_text', { label: 'x'.repeat(201) })])],
   ['too many fields', draft(Array.from({ length: 65 }, (_, i) => field(`f${i}`, 'short_text')))],
+  ['inverted numeric range', draft([field('amount', 'number', { min: 10, max: 5 })])],
+  ['nonfinite numeric bound', draft([field('amount', 'number', { min: Number.POSITIVE_INFINITY })])],
+  ['nonboolean integer flag', draft([field('amount', 'number', { integerOnly: 'yes' })])],
+  ['numeric bound on text', draft([field('note', 'short_text', { min: 1 })])],
 ] as const) {
   void test(`draft rejects ${name}`, () => assert.throws(() => validateFormDraftForDefinition(definition, fields), errorCode('invalid_draft')));
 }
@@ -68,6 +80,7 @@ for (const [type, value] of [
   ['number', Number.POSITIVE_INFINITY], ['date', '2026-02-30'], ['single_choice', 'three'],
   ['multiple_choice', ['one', 'one']], ['multiple_choice', []], ['checkbox', 'yes'],
   ['email', 'invalid'], ['phone', 'not-a-phone'],
+  ['email', 'a@b..c'], ['phone', '1-----'],
 ] as const) {
   void test(`${type} rejects invalid value`, () => {
     const options = type.includes('choice') ? { choices: [{ value: 'one', label: 'One' }, { value: 'two', label: 'Two' }] } : {};
@@ -86,6 +99,39 @@ void test('display edits need an adapter and cannot change protected fields', ()
   assert.throws(() => validateFormDraftForDefinition(definition, edit), errorCode('invalid_draft'));
   assert.throws(() => validateFormDraftForDefinition(definition, draft([field('password', 'short_text')])), errorCode('invalid_draft'));
 });
+
+for (const [name, edit] of [
+  ['type', { type: 'number' }], ['required', { required: false }],
+  ['choices', { choices: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }] }],
+  ['status', { status: 'archived' }], ['numeric bounds', { min: 1 }],
+] as const) {
+  void test(`display edit cannot change ${name} with an adapter grant`, () => {
+    assert.throws(() => validateFormDraftForDefinition(definition, draft([field('heading', 'short_text', edit)]), true), errorCode('invalid_draft'));
+  });
+}
+
+void test('configurable built in without a semantic baseline remains protected', () => {
+  assert.throws(() => validateFormDraftForDefinition(definition, draft([field('rating', 'number')]), true), errorCode('invalid_draft'));
+});
+
+void test('numeric range and integer-only constraints accept an in-range whole number', () => {
+  const config = { ...validateFormDraftForDefinition(definition, draft([field('quantity', 'number', { min: 1, max: 12, integerOnly: true })])), version: 1, publishedAt: 1 };
+  assert.deepEqual(validateAnswersForDefinition(definition, config, answer('quantity', 5)).answers[0]?.value, 5);
+});
+
+for (const value of [0, 13, 1.5]) {
+  void test(`numeric range rejects ${value}`, () => {
+    const config = { ...validateFormDraftForDefinition(definition, draft([field('quantity', 'number', { min: 1, max: 12, integerOnly: true })])), version: 1, publishedAt: 1 };
+    assert.throws(() => validateAnswersForDefinition(definition, config, answer('quantity', value)), errorCode('invalid_answer'));
+  });
+}
+
+for (const [type, value] of [['email', 'ada.smith+shop@example.co.uk'], ['phone', '+1 (415) 555-0100']] as const) {
+  void test(`${type} accepts a realistic valid value`, () => {
+    const config = { ...validateFormDraftForDefinition(definition, draft([field('contact', type)])), version: 1, publishedAt: 1 };
+    assert.equal(validateAnswersForDefinition(definition, config, answer('contact', value)).answers[0]?.value, value);
+  });
+}
 
 void test('an adapter grant permits a display edit but never snapshots its value', () => {
   const config = { ...validateFormDraftForDefinition(definition, draft([field('heading', 'short_text')]), true), version: 1, publishedAt: 1 };

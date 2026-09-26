@@ -10,6 +10,14 @@ export interface BaseFieldDefinition {
   readonly label: string;
   readonly capability: BaseFieldCapability;
   readonly explanation: string;
+  // A built-in can be presented through the catalog only when its adapter
+  // declares the existing semantics to preserve.
+  readonly required?: boolean;
+  readonly status?: 'active' | 'archived';
+  readonly choices?: readonly { readonly value: string; readonly label: string }[];
+  readonly min?: number;
+  readonly max?: number;
+  readonly integerOnly?: boolean;
 }
 
 export interface FormCapabilities {
@@ -38,6 +46,9 @@ export interface ConfiguredField {
   readonly required: boolean;
   readonly order: number;
   readonly choices?: readonly { readonly value: string; readonly label: string }[];
+  readonly min?: number;
+  readonly max?: number;
+  readonly integerOnly?: boolean;
   readonly status: 'active' | 'archived';
 }
 
