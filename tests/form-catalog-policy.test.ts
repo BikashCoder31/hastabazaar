@@ -1,0 +1,95 @@
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import test from 'node:test';
+import { FORM_REGISTRY, PROGRAMMATIC_FORM_SITES } from '../lib/forms/registry';
+import { collectFormSites, scanFormSites } from './helpers/form-policy';
+
+const root = resolve(import.meta.dirname, '..');
+
+void test('the frozen source inventory contains exactly 69 form elements in 51 files', async () => {
+  const sites = await collectFormSites(root);
+  assert.equal(sites.length, 69);
+  assert.equal(new Set(sites.map((site) => site.path)).size, 51);
+  assert.deepEqual(await scanFormSites(root), []);
+});
+
+void test('a new JSX form cannot inherit a pre-existing exception', async () => {
+  const fixture = await mkdtemp(join(tmpdir(), 'form-policy-'));
+  try {
+    await mkdir(join(fixture, 'components'), { recursive: true });
+    await writeFile(join(fixture, 'components', 'new-form.tsx'), 'export const NewForm = () => <form><input name="new" /></form>;');
+    const violations = await scanFormSites(fixture);
+    assert.equal(violations.length, 1);
+    assert.match(violations[0].reason, /unregistered/i);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+void test('registry definitions require a server adapter and capability explanation', async () => {
+  const broken = {
+    ...FORM_REGISTRY,
+    'future.unexplained': {
+      id: 'future.unexplained', audience: 'customer', mode: 'collection', route: '/api/future',
+      baseFields: [], capabilities: { explanation: '', customFieldTypes: [], answerBehavior: 'record' }, adapterId: '',
+    },
+  } as typeof FORM_REGISTRY;
+  const violations = await scanFormSites(root, broken);
+  assert.ok(violations.some((violation) => violation.reason.includes('future.unexplained') && violation.reason.includes('adapter')));
+  const noExplanation = {
+    ...FORM_REGISTRY,
+    'future.unexplained': { ...FORM_REGISTRY['account.profile'], id: 'future.unexplained', capabilities: { ...FORM_REGISTRY['account.profile'].capabilities, explanation: '' } },
+  };
+  assert.ok((await scanFormSites(root, noExplanation)).some((violation) => violation.reason.includes('future.unexplained')));
+});
+
+void test('a future site cannot borrow a pending adapter from the frozen inventory', async () => {
+  const fixture = await mkdtemp(join(tmpdir(), 'form-policy-'));
+  try {
+    await mkdir(join(fixture, 'components'), { recursive: true });
+    await writeFile(join(fixture, 'components', 'new-form.tsx'), 'export const NewForm = () => <form data-form-id="account.profile"><input name="name" /></form>;');
+    assert.ok((await scanFormSites(fixture)).some((violation) => violation.reason.includes('pending adapter')));
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+void test('click-driven data entry has a separate audited inventory including seller case responses', () => {
+  const caseResponse = PROGRAMMATIC_FORM_SITES.find((site) => site.path === 'components/seller/case-response-form.tsx');
+  assert.deepEqual(caseResponse?.formIds, ['seller.case-return-response', 'seller.case-complaint-response']);
+  for (const site of PROGRAMMATIC_FORM_SITES) {
+    assert.ok(site.explanation.length > 0);
+    for (const id of site.formIds) assert.ok(FORM_REGISTRY[id], `${id} missing from registry`);
+  }
+});
+
+void test('one rendered site may have separate receiving adapters for conditional modes', () => {
+  assert.equal(FORM_REGISTRY['commerce.gift-card-redeem'].route, '/api/account/gift-cards');
+  assert.equal(FORM_REGISTRY['commerce.gift-card-issue'].route, '/api/admin/gift-cards');
+  assert.equal(FORM_REGISTRY['shipping.console-action-seller'].route, '/api/seller/shipping/:id');
+  assert.equal(FORM_REGISTRY['shipping.console-action-staff'].route, '/api/admin/shipping/:id');
+});
+
+void test('a new JSX form in a .jsx file is subject to the same policy', async () => {
+  const fixture = await mkdtemp(join(tmpdir(), 'form-policy-'));
+  try {
+    await mkdir(join(fixture, 'app'), { recursive: true });
+    await writeFile(join(fixture, 'app', 'page.jsx'), 'export default function Page() { return <form><input name="term" /></form>; }');
+    assert.equal((await scanFormSites(fixture)).length, 1);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+void test('JSX parsing ignores text and comments that merely contain form markup', async () => {
+  const fixture = await mkdtemp(join(tmpdir(), 'form-policy-'));
+  try {
+    await mkdir(join(fixture, 'app'), { recursive: true });
+    await writeFile(join(fixture, 'app', 'page.tsx'), 'const prose = "<form></form>"; // <form>\nexport default function Page() { return <p>Not a form</p>; }');
+    assert.deepEqual(await collectFormSites(fixture), []);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
