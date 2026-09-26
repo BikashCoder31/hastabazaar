@@ -39,11 +39,15 @@ for (const [name, fields] of [
   ['protected name', draft([field('password', 'short_text')])],
   ['credential alias', draft([field('accessToken', 'short_text')])],
   ['PIN alias', draft([field('pin', 'short_text')])],
+  ['PIN code alias', draft([field('pin_code', 'short_text')])],
   ['security code alias', draft([field('security_code', 'short_text')])],
   ['bank account alias', draft([field('bank_account', 'short_text')])],
+  ['credit card alias', draft([field('credit_card', 'short_text')])],
   ['recovery code alias', draft([field('recovery_code', 'short_text')])],
   ['CSRF alias', draft([field('csrf_token', 'short_text')])],
   ['credential label', draft([field('public_note', 'short_text', { label: 'Password' })])],
+  ['PIN code label', draft([field('public_note', 'short_text', { label: 'PIN code' })])],
+  ['credit card label', draft([field('public_note', 'short_text', { label: 'Credit card' })])],
   ['otp alias', draft([field('one_time_code', 'short_text')])],
   ['payment alias', draft([field('cardCvv', 'short_text')])],
   ['anti abuse alias', draft([field('captchaResponse', 'short_text')])],
@@ -80,7 +84,7 @@ for (const [type, value] of [
   ['number', Number.POSITIVE_INFINITY], ['date', '2026-02-30'], ['single_choice', 'three'],
   ['multiple_choice', ['one', 'one']], ['multiple_choice', []], ['checkbox', 'yes'],
   ['email', 'invalid'], ['phone', 'not-a-phone'],
-  ['email', 'a@b..c'], ['phone', '1-----'],
+  ['email', 'a@b..c'], ['phone', '1-----'], ['phone', '1234567)('],
 ] as const) {
   void test(`${type} rejects invalid value`, () => {
     const options = type.includes('choice') ? { choices: [{ value: 'one', label: 'One' }, { value: 'two', label: 'Two' }] } : {};
@@ -92,6 +96,19 @@ for (const [type, value] of [
 void test('optional empty values stay out of the snapshot', () => {
   const config = { ...validateFormDraftForDefinition(definition, draft([field('safe', 'short_text', { required: false })])), version: 1, publishedAt: 1 };
   assert.deepEqual(validateAnswersForDefinition(definition, config, answer('safe', '')), { formId: 'test.safe', version: 1, answers: [] });
+});
+
+for (const unsafeKey of ['pin_code', 'credit_card']) {
+  void test(`snapshot rejects unsafe key ${unsafeKey} even when the field ID is safe`, () => {
+    const config = { ...validateFormDraftForDefinition(definition, draft([field('public_note', 'short_text')])), version: 1, publishedAt: 1 };
+    const malformedConfig = { ...config, fields: [{ ...config.fields[0], key: unsafeKey }] };
+    assert.throws(() => validateAnswersForDefinition(definition, malformedConfig, answer('public_note', 'value')), errorCode('invalid_answer'));
+  });
+}
+
+void test('a legitimate shipping field remains configurable', () => {
+  const config = { ...validateFormDraftForDefinition(definition, draft([field('shipping_note', 'short_text')])), version: 1, publishedAt: 1 };
+  assert.equal(validateAnswersForDefinition(definition, config, answer('shipping_note', 'Leave at gate')).answers[0]?.value, 'Leave at gate');
 });
 
 void test('display edits need an adapter and cannot change protected fields', () => {

@@ -34,7 +34,7 @@ function canonicalName(value: string): string {
 
 function isUnsafeName(value: string): boolean {
   const name = canonicalName(value);
-  return name === 'pin' || /password|passcode|credential|secret|token|otp|onetime|verificationcode|securitycode|recoverycode|backupcode|resetcode|confirmationcode|authcode|accesscode|emailcode|smscode|mfacode|2facode|apikey|privatekey|bankaccount|bankacct|accountnumber|routingnumber|iban|swift|cardnumber|cardexpiry|cardcvv|cardcvc|cvv|cvc|payment|captcha|recaptcha|turnstile|honeypot|csrf/.test(name);
+  return name === 'pin' || /password|passcode|credential|secret|token|otp|onetime|verificationcode|securitycode|recoverycode|backupcode|resetcode|confirmationcode|authcode|accesscode|emailcode|smscode|mfacode|2facode|pincode|apikey|privatekey|bankaccount|bankacct|accountnumber|routingnumber|iban|swift|creditcard|debitcard|cardnumber|cardexpiry|cardcvv|cardcvc|cvv|cvc|payment|captcha|recaptcha|turnstile|honeypot|csrf/.test(name);
 }
 
 function hasOnlyKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
@@ -124,7 +124,20 @@ function validEmail(value: string): boolean {
 function validPhone(value: string): boolean {
   if (!/^\+?[0-9][0-9 ()-]{5,30}$/.test(value)) return false;
   const digits = value.replace(/\D/g, '');
-  return digits.length >= 7 && digits.length <= 15 && (value.match(/\(/g)?.length ?? 0) === (value.match(/\)/g)?.length ?? 0);
+  if (digits.length < 7 || digits.length > 15) return false;
+  let inside = false;
+  let groupDigits = 0;
+  for (const char of value) {
+    if (char === '(') {
+      if (inside) return false;
+      inside = true;
+      groupDigits = 0;
+    } else if (char === ')') {
+      if (!inside || groupDigits === 0) return false;
+      inside = false;
+    } else if (inside && /\d/.test(char)) groupDigits++;
+  }
+  return !inside;
 }
 
 function validAnswer(field: ConfiguredField, value: unknown): boolean {
