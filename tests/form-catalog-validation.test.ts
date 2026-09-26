@@ -40,6 +40,7 @@ for (const [name, fields] of [
   ['credential alias', draft([field('accessToken', 'short_text')])],
   ['PIN alias', draft([field('pin', 'short_text')])],
   ['PIN code alias', draft([field('pin_code', 'short_text')])],
+  ['debit card alias', draft([field('debit_card', 'short_text')])],
   ['security code alias', draft([field('security_code', 'short_text')])],
   ['bank account alias', draft([field('bank_account', 'short_text')])],
   ['credit card alias', draft([field('credit_card', 'short_text')])],
@@ -48,6 +49,7 @@ for (const [name, fields] of [
   ['credential label', draft([field('public_note', 'short_text', { label: 'Password' })])],
   ['PIN code label', draft([field('public_note', 'short_text', { label: 'PIN code' })])],
   ['credit card label', draft([field('public_note', 'short_text', { label: 'Credit card' })])],
+  ['debit card label', draft([field('public_note', 'short_text', { label: 'Debit card' })])],
   ['otp alias', draft([field('one_time_code', 'short_text')])],
   ['payment alias', draft([field('cardCvv', 'short_text')])],
   ['anti abuse alias', draft([field('captchaResponse', 'short_text')])],
@@ -98,7 +100,7 @@ void test('optional empty values stay out of the snapshot', () => {
   assert.deepEqual(validateAnswersForDefinition(definition, config, answer('safe', '')), { formId: 'test.safe', version: 1, answers: [] });
 });
 
-for (const unsafeKey of ['pin_code', 'credit_card']) {
+for (const unsafeKey of ['pin', 'pin_code', 'credit_card', 'debit_card']) {
   void test(`snapshot rejects unsafe key ${unsafeKey} even when the field ID is safe`, () => {
     const config = { ...validateFormDraftForDefinition(definition, draft([field('public_note', 'short_text')])), version: 1, publishedAt: 1 };
     const malformedConfig = { ...config, fields: [{ ...config.fields[0], key: unsafeKey }] };
@@ -109,6 +111,18 @@ for (const unsafeKey of ['pin_code', 'credit_card']) {
 void test('a legitimate shipping field remains configurable', () => {
   const config = { ...validateFormDraftForDefinition(definition, draft([field('shipping_note', 'short_text')])), version: 1, publishedAt: 1 };
   assert.equal(validateAnswersForDefinition(definition, config, answer('shipping_note', 'Leave at gate')).answers[0]?.value, 'Leave at gate');
+});
+
+void test('spin code is a safe custom field ID and label', () => {
+  const config = { ...validateFormDraftForDefinition(definition, draft([field('spin_code', 'short_text', { label: 'Spin code' })])), version: 1, publishedAt: 1 };
+  assert.deepEqual(validateAnswersForDefinition(definition, config, answer('spin_code', 'SPIN-7')).answers,
+    [{ fieldId: 'spin_code', label: 'Spin code', type: 'short_text', value: 'SPIN-7' }]);
+});
+
+void test('spin code remains a safe snapshot key', () => {
+  const config = { ...validateFormDraftForDefinition(definition, draft([field('public_note', 'short_text')])), version: 1, publishedAt: 1 };
+  const configWithKey = { ...config, fields: [{ ...config.fields[0], key: 'spin_code' }] };
+  assert.equal(validateAnswersForDefinition(definition, configWithKey, answer('public_note', 'SPIN-7')).answers[0]?.value, 'SPIN-7');
 });
 
 void test('display edits need an adapter and cannot change protected fields', () => {

@@ -32,9 +32,28 @@ function canonicalName(value: string): string {
   return value.replace(/[^a-z0-9]/gi, '').toLowerCase();
 }
 
+const SENSITIVE_PHRASES = new Set([
+  'password', 'passcode', 'credential', 'secret', 'token', 'otp', 'onetime', 'pin', 'pincode',
+  'verificationcode', 'securitycode', 'recoverycode', 'backupcode', 'resetcode',
+  'confirmationcode', 'authcode', 'accesscode', 'emailcode', 'smscode', 'mfacode', '2facode',
+  'apikey', 'privatekey', 'bankaccount', 'bankacct', 'accountnumber', 'routingnumber',
+  'iban', 'swift', 'creditcard', 'debitcard', 'cardnumber', 'cardexpiry', 'cardcvv',
+  'cardcvc', 'cvv', 'cvc', 'payment', 'captcha', 'recaptcha', 'turnstile', 'honeypot', 'csrf',
+]);
+
 function isUnsafeName(value: string): boolean {
-  const name = canonicalName(value);
-  return name === 'pin' || /password|passcode|credential|secret|token|otp|onetime|verificationcode|securitycode|recoverycode|backupcode|resetcode|confirmationcode|authcode|accesscode|emailcode|smscode|mfacode|2facode|pincode|apikey|privatekey|bankaccount|bankacct|accountnumber|routingnumber|iban|swift|creditcard|debitcard|cardnumber|cardexpiry|cardcvv|cardcvc|cvv|cvc|payment|captcha|recaptcha|turnstile|honeypot|csrf/.test(name);
+  const tokens = value
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  for (let start = 0; start < tokens.length; start++) {
+    for (let length = 1; length <= 3 && start + length <= tokens.length; length++) {
+      if (SENSITIVE_PHRASES.has(tokens.slice(start, start + length).join(''))) return true;
+    }
+  }
+  return false;
 }
 
 function hasOnlyKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
