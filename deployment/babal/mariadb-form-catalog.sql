@@ -1,10 +1,12 @@
 -- Additive form catalog. Published rows are frozen; restore publishes a new version.
+-- Catalog-owned identifiers use NO PAD binary collation to match D1 TEXT equality.
+-- Actor IDs retain the users.id collation required by their foreign keys.
 CREATE TABLE IF NOT EXISTS `form_config_versions` (
-  `id` VARCHAR(191) NOT NULL,
-  `form_id` VARCHAR(191) NOT NULL,
+  `id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `form_id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
   `version` BIGINT NOT NULL,
   `revision` BIGINT NOT NULL DEFAULT 1,
-  `status` VARCHAR(32) NOT NULL DEFAULT 'draft',
+  `status` VARCHAR(32) COLLATE utf8mb4_nopad_bin NOT NULL DEFAULT 'draft',
   `config_json` LONGTEXT NOT NULL,
   `reason` LONGTEXT NOT NULL,
   `created_by` VARCHAR(191) NOT NULL,
@@ -13,7 +15,7 @@ CREATE TABLE IF NOT EXISTS `form_config_versions` (
   `updated_at` BIGINT NOT NULL,
   `published_by` VARCHAR(191) NULL,
   `published_at` BIGINT NULL,
-  `last_request_id` VARCHAR(191) NOT NULL,
+  `last_request_id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_form_config_versions_form_version` (`form_id`,`version`),
   UNIQUE KEY `idx_form_config_versions_form_id` (`form_id`,`id`),
@@ -45,12 +47,12 @@ END$$
 DELIMITER ;
 
 CREATE TABLE IF NOT EXISTS `form_answer_sets` (
-  `id` VARCHAR(191) NOT NULL,
-  `form_id` VARCHAR(191) NOT NULL,
-  `request_id` VARCHAR(191) NOT NULL,
-  `config_version_id` VARCHAR(191) NOT NULL,
-  `subject_type` VARCHAR(64) NOT NULL,
-  `subject_id` VARCHAR(191) NOT NULL,
+  `id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `form_id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `request_id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `config_version_id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `subject_type` VARCHAR(64) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `subject_id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
   `actor_id` VARCHAR(191) NULL,
   `answers_json` LONGTEXT NOT NULL,
   `created_at` BIGINT NOT NULL,

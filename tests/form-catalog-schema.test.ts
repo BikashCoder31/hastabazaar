@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 async function fixture() {
@@ -90,5 +93,51 @@ void test('answer sets enforce same-form version references, request idempotency
     assert.deepEqual({ ...old }, { config_version_id: 'profile-v1', answers_json: '{"answers":[{"fieldId":"old","label":"Original label","value":"yes"}]}' });
   } finally {
     sqlite.close();
+  }
+});
+
+void test('identifier equality stays case and trailing-space sensitive in D1 and generated MariaDB DDL', async () => {
+  const sqlite = await fixture();
+  const reviewRoot = await mkdtemp(join(tmpdir(), 'form-catalog-collation-'));
+  try {
+    insertVersion(sqlite, 'Cfg', 'Case.Form', 1, 'published');
+    insertVersion(sqlite, 'cfg', 'case.form', 1, 'published');
+    insertVersion(sqlite, 'Cfg ', 'Case.Form ', 1, 'published');
+    insertAnswer(sqlite, 'Answer', 'Case.Form', 'Submit', 'Cfg');
+    insertAnswer(sqlite, 'answer', 'Case.Form', 'submit', 'Cfg');
+    insertAnswer(sqlite, 'Answer ', 'Case.Form', 'Submit ', 'Cfg');
+    assert.throws(() => insertAnswer(sqlite, 'wrong-case-reference', 'Case.Form', 'different', 'cfg'));
+    sqlite.exec("UPDATE form_answer_sets SET subject_id='Profile-1' WHERE id='Answer'");
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE subject_id='profile-1'").get()?.count, 2);
+
+    const projectRoot = new URL('../', import.meta.url);
+    const folders = ['scripts', 'drizzle/meta', 'deployment/babal'];
+    for (const folder of folders) await mkdir(join(reviewRoot, folder), { recursive: true });
+    await copyFile(new URL('../scripts/generate-mariadb-schema.mjs', import.meta.url), join(reviewRoot, 'scripts/generate-mariadb-schema.mjs'));
+    await copyFile(new URL('../drizzle/meta/0020_snapshot.json', import.meta.url), join(reviewRoot, 'drizzle/meta/0020_snapshot.json'));
+    for (const name of await readdir(new URL('deployment/babal/', projectRoot))) {
+      if (name.startsWith('mariadb-') && name.endsWith('.sql')) {
+        await copyFile(new URL(`deployment/babal/${name}`, projectRoot), join(reviewRoot, 'deployment/babal', name));
+      }
+    }
+    execFileSync(process.execPath, [join(reviewRoot, 'scripts/generate-mariadb-schema.mjs')]);
+    const generated = await readFile(join(reviewRoot, 'deployment/babal/mariadb-schema.sql'), 'utf8');
+    for (const [table, columns] of [
+      ['form_config_versions', ['id', 'form_id', 'last_request_id', 'status']],
+      ['form_answer_sets', ['id', 'form_id', 'request_id', 'config_version_id', 'subject_type', 'subject_id']],
+    ] as const) {
+      const start = generated.indexOf('CREATE TABLE IF NOT EXISTS `' + table + '` (');
+      assert.ok(start >= 0, `generated schema creates ${table}`);
+      const end = generated.indexOf(') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;', start);
+      assert.ok(end > start, `generated schema completes ${table}`);
+      const ddl = generated.slice(start, end);
+      for (const column of columns) {
+        const line = ddl.split('\n').find((part) => part.trimStart().startsWith(`\`${column}\` `));
+        assert.match(line ?? '', /COLLATE utf8mb4_nopad_bin/, `${table}.${column} must preserve D1 identifier equality`);
+      }
+    }
+  } finally {
+    sqlite.close();
+    await rm(reviewRoot, { recursive: true, force: true });
   }
 });
