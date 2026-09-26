@@ -2,7 +2,7 @@
 
 **Date:** 27 September 2026
 
-**Status:** Written design for review; implementation has not started
+**Status:** Approved design; implementation has not started
 
 **Branch:** `codex/hastabazaar-v1-2-1-staging`
 
@@ -12,7 +12,7 @@
 
 Super Admin can manage the fields presented by every Hastabazaar form: add a field, edit its display details, choose whether it is required, reorder it, and remove it from future submissions. Published changes apply to existing render sites and future visits without a code deployment for each field change. A removed custom field is archived; answers already submitted remain available under the access and retention rules of their parent record.
 
-The catalog covers customer, account, seller, rider, staff, and Super Admin surfaces, including authentication, checkout, search/filter, upload, and operational decision forms. The repository currently has 68 rendered `<form>` instances across 51 files. The implementation inventory must identify each distinct form and its receiving route or action; repeated instances of one form share a stable form ID. A repository policy test must fail when a future form is added without registration and a server adapter.
+The catalog covers customer, account, seller, rider, staff, and Super Admin surfaces, including authentication, checkout, search/filter, upload, and operational decision forms. The repository currently has 69 rendered `<form>` elements across 51 files. The implementation inventory must identify each distinct form and its receiving route or action; repeated instances of one form share a stable form ID. A repository policy test must fail when a future form is added without registration and a server adapter.
 
 The Super Admin may edit safe built-in labels, help text, placeholder text, ordering, visibility, and required status where the receiving operation explicitly supports the change. Protected system fields remain visible in the editor with a lock explanation. The Super Admin may add and archive custom fields. This does not let a form setting rewrite checkout calculations, authentication rules, consent, authorization, fraud controls, upload validation, financial state machines, or audit requirements.
 
@@ -53,6 +53,8 @@ Successful submissions store a versioned answer set containing the form ID, fiel
 Answers display in the authorized owner/staff view of the corresponding record. A submission without a long-lived domain record has a restricted form-submission detail view. Visibility follows the parent record's permission and privacy boundary; no global answer endpoint exposes private seller, rider, customer, or staff information. Archived field answers remain readable to authorized viewers until the applicable privacy deletion or legal retention process removes them. Exports and privacy requests include applicable custom answers; legal hold remains respected.
 
 Search/filter forms do not persist answers as personal records. New query fields need a named server-side filter adapter and tests for their result behavior before publication. This is an intentional protection against decorative controls that appear functional but do nothing.
+
+Public feedback is a special adapter because its current endpoint sends email without creating a saved feedback record. It needs an idempotent delivery job tied to the answer set so retrying after uncertain delivery neither loses the submission nor sends duplicate messages. This dedicated mail job is separate from the two shared form-catalog tables; honeypot and rejected submissions create neither a job nor answers.
 
 ## 5. Super Admin experience
 
