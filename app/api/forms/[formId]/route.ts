@@ -5,6 +5,7 @@ import { getStaffPermissionProfile } from '@/lib/db/repositories/staff-permissio
 import { FORM_REGISTRY } from '@/lib/forms/registry';
 import { resolvePublishedForm } from '@/lib/forms/runtime';
 import { can, type Permission } from '@/lib/marketplace/permissions';
+import { applicationCapabilities, type ParticipationApplicationStage } from '@/lib/sellers/participation';
 import type { FormAudience } from '@/lib/forms/types';
 
 export const dynamic = 'force-dynamic';
@@ -27,8 +28,10 @@ const STAFF_FORM_PERMISSIONS: Readonly<Partial<Record<string, Permission>>> = {
   'staff.privacy-action': 'support.manage',
   'staff.product-classification': 'catalog.manage',
   'staff.recorded-progress-filter': 'audit_log.view',
+  'staff.rider-control-1': 'order.manage',
   'staff.delivery-assignment': 'order.manage',
   'shipping.console-action-staff': 'order.manage',
+  'staff.return-case-action': 'refund.approve.standard',
   'staff.complaint-case-action': 'support.manage',
   'staff.cancellation-review': 'order.manage',
   'staff.seller-review-action': 'seller.application.review',
@@ -37,8 +40,42 @@ const STAFF_FORM_PERMISSIONS: Readonly<Partial<Record<string, Permission>>> = {
   'staff.product-review': 'product.review',
 };
 
+const applicationStages = new Set<ParticipationApplicationStage>([
+  'draft', 'submitted', 'under_review', 'changes_requested',
+  'approved_for_activation', 'active', 'rejected', 'suspended',
+]);
+
+async function sellerAudienceAllowed(db: D1Database, userId: string, roles: ReadonlySet<string>, formId: string): Promise<boolean> {
+  if (formId === 'seller.maker-profile' || formId === 'seller.product-submission') {
+    if (roles.has('customer')) {
+      const participation = await db.prepare(`SELECT p.application_stage AS applicationStage
+        FROM seller_profiles s JOIN seller_participation_profiles p ON p.seller_id = s.id
+        WHERE s.user_id = ? LIMIT 1`).bind(userId).first<{ applicationStage: string }>();
+      const stage = participation?.applicationStage;
+      if (stage && applicationStages.has(stage as ParticipationApplicationStage)) {
+        const capabilities = applicationCapabilities(stage as ParticipationApplicationStage, 'applications_only');
+        if (formId === 'seller.maker-profile' ? capabilities.editProfile : capabilities.prepareProductDrafts) return true;
+      }
+    }
+    if (formId === 'seller.maker-profile') return false;
+  }
+  if (!roles.has('seller')) return false;
+  const approved = await db.prepare(`SELECT 1 AS allowed FROM seller_profiles
+    WHERE user_id = ? AND status = 'approved' LIMIT 1`).bind(userId).first<{ allowed: number }>();
+  return Boolean(approved);
+}
+
+async function riderAudienceAllowed(db: D1Database, userId: string, roles: ReadonlySet<string>, formId: string): Promise<boolean> {
+  if (!roles.has('customer')) return false;
+  const profile = await db.prepare('SELECT status FROM rider_profiles WHERE user_id = ?')
+    .bind(userId).first<{ status: string }>();
+  return formId === 'rider.application'
+    ? !profile || profile.status === 'rejected'
+    : profile?.status === 'approved';
+}
+
 async function audienceAllowed(audience: FormAudience, formId: string): Promise<boolean> {
-  if (audience === 'public') return true;
+  if (audience === 'public' || formId === 'seller.application') return true;
   try {
     const identity = await getAuthenticatedUser();
     if (!identity) return false;
@@ -46,17 +83,19 @@ async function audienceAllowed(audience: FormAudience, formId: string): Promise<
     const rows = await db.prepare(`SELECT u.id, r.role FROM users u JOIN user_roles r ON r.user_id = u.id
       WHERE u.auth_subject = ? AND u.status = 'active'`).bind(identity.userId).all<{ id: string; role: string }>();
     const roles = new Set(rows.results.map((row) => row.role));
+    const userId = rows.results[0]?.id;
+    if (!userId) return false;
     if (audience === 'super_admin') return roles.has('super_admin');
     if (audience === 'staff') {
       if (roles.has('super_admin')) return true;
       if (!roles.has('admin')) return false;
       const permission = STAFF_FORM_PERMISSIONS[formId];
       if (!permission) return false;
-      const profile = await getStaffPermissionProfile(db, rows.results[0].id);
+      const profile = await getStaffPermissionProfile(db, userId);
       return can({ role: 'admin', permissions: profile.permissions }, permission);
     }
-    if (audience === 'seller') return roles.has('seller');
-    if (audience === 'rider') return roles.has('rider');
+    if (audience === 'seller') return sellerAudienceAllowed(db, userId, roles, formId);
+    if (audience === 'rider') return riderAudienceAllowed(db, userId, roles, formId);
     return roles.has('customer');
   } catch { return false; }
 }

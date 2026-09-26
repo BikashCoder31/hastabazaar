@@ -1,4 +1,5 @@
 import { FORM_REGISTRY } from '@/lib/forms/registry';
+import { validateFormDraft } from '@/lib/forms/validation';
 import { catalogAdmin, catalogError, catalogFormId, catalogJson } from '../route';
 
 export const dynamic = 'force-dynamic';
@@ -15,7 +16,9 @@ export async function GET(_request: Request, context: { params: Promise<{ formId
       .bind(formId).all<{ configJson: string; [key: string]: unknown }>();
     let versions: { config: unknown; [key: string]: unknown }[];
     try {
-      versions = rows.results.map(({ configJson, ...row }) => ({ ...row, config: JSON.parse(configJson) as unknown }));
+      versions = rows.results.map(({ configJson, ...row }) => ({ ...row,
+        config: validateFormDraft(formId, JSON.parse(configJson) as unknown),
+      }));
     } catch {
       return catalogJson({ error: 'Stored form configuration is unavailable.' }, 503);
     }

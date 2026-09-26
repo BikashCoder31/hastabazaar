@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { registerHooks } from 'node:module';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 import test from 'node:test';
+import { FORM_REGISTRY } from '../lib/forms/registry';
 
 type Actor = { id: string; role: 'customer' | 'admin' | 'super_admin' } | null;
 declare global {
@@ -46,12 +47,18 @@ async function fixture() {
     CREATE TABLE user_roles(user_id TEXT NOT NULL, role TEXT NOT NULL);
     CREATE TABLE staff_permission_profiles(user_id TEXT PRIMARY KEY,permissions_json TEXT NOT NULL,
       version INTEGER NOT NULL,updated_by TEXT,updated_at INTEGER);
+    CREATE TABLE seller_profiles(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,status TEXT NOT NULL);
+    CREATE TABLE seller_participation_profiles(seller_id TEXT PRIMARY KEY,application_stage TEXT NOT NULL);
+    CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY,status TEXT NOT NULL);
     CREATE TABLE audit_logs(id TEXT PRIMARY KEY, actor_id TEXT, action TEXT, subject_type TEXT,
       subject_id TEXT, reason TEXT, previous_json TEXT, next_json TEXT, request_id TEXT,
       ip_hash TEXT, created_at INTEGER);
     INSERT INTO users VALUES ('sa','sa-subject','active'),('admin','admin-subject','active'),
-      ('customer','customer-subject','active'),('disabled','disabled-subject','disabled');
-    INSERT INTO user_roles VALUES ('sa','super_admin'),('admin','admin'),('customer','customer'),('disabled','super_admin');`);
+      ('customer','customer-subject','active'),('disabled','disabled-subject','disabled'),
+      ('pending','pending-subject','active'),('seller','seller-subject','active'),('rider','rider-subject','active');
+    INSERT INTO user_roles VALUES ('sa','super_admin'),('admin','admin'),('customer','customer'),
+      ('disabled','super_admin'),('pending','customer'),('seller','customer'),('seller','seller'),
+      ('rider','customer');`);
   const migration = await readFile(new URL('../drizzle/0056_form_catalog.sql', import.meta.url), 'utf8');
   for (const statement of migration.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
   globalThis.formCatalogRouteDb = new Database(sqlite) as unknown as D1Database;
@@ -68,6 +75,13 @@ function request(path: string, body?: unknown, origin = 'http://localhost:3000')
 }
 const actor = (id: string, role: 'customer' | 'admin' | 'super_admin') => { globalThis.formCatalogRouteActor = { id, role }; };
 const count = (sqlite: DatabaseSync, table: string) => Number((sqlite.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count);
+function seedPublishedForm(sqlite: DatabaseSync, id: string, config: unknown = { formId: id, fields: [] }) {
+  sqlite.prepare(`INSERT INTO form_config_versions
+    (id,form_id,version,revision,status,config_json,reason,created_by,created_at,
+     updated_by,updated_at,published_by,published_at,last_request_id)
+    VALUES (?, ?, 1, 1, 'published', ?, 'Seed', 'sa', 1, 'sa', 1, 'sa', 1, ?)`)
+    .run(`published-${id}`, id, JSON.stringify(config), `seed-${id}`);
+}
 
 void test('guest, Customer, Admin, and disabled claimed Super Admin cannot manage the catalog', async () => {
   const sqlite = await fixture();
@@ -248,5 +262,111 @@ void test('protected form IDs match unknown IDs during missing binding or author
       assert.equal(denied.headers.get('cache-control'), 'no-store');
       assert.equal(unknown.headers.get('cache-control'), 'no-store');
     }
+  } finally { sqlite.close(); }
+});
+
+void test('every staff form keeps its page or receiver permission, including return review and mixed rider actions', async () => {
+  const sqlite = await fixture();
+  try {
+    const adminForms = [
+      'staff.catalog', 'staff.exception-work', 'staff.governance-rule-create',
+      'staff.governance-promotion-create', 'staff.managed-supply-decision',
+      'staff.managed-payment-preparation', 'staff.managed-transition-decision',
+      'staff.parcel-control', 'staff.payout-1', 'staff.payout-request-action',
+      'staff.privacy-action', 'staff.product-classification', 'staff.recorded-progress-filter',
+      'staff.rider-control-1', 'staff.delivery-assignment', 'shipping.console-action-staff',
+      'staff.return-case-action', 'staff.complaint-case-action', 'staff.cancellation-review',
+      'staff.seller-review-action', 'staff.order-fulfillment', 'staff.review-moderation',
+      'staff.product-review',
+    ];
+    const superAdminForms = [
+      'staff.activity-filter', 'staff.homepage-filter', 'staff.delivery-rate',
+      'staff.governance-incident-create', 'staff.governance-incident-update',
+      'staff.governance-backup-verify', 'staff.invoice-adjustment',
+      'staff.managed-maker-activation', 'staff.managed-adjustment', 'staff.payout-2',
+      'staff.referral-settings', 'staff.rider-control-2', 'commerce.gift-card-issue',
+      'staff.homepage-visibility', 'staff.seller-governance',
+    ];
+    const registered = Object.values(FORM_REGISTRY).filter((form) => form.audience === 'staff').map((form) => form.id).sort();
+    assert.deepEqual([...adminForms, ...superAdminForms].sort(), registered);
+    for (const formId of registered) seedPublishedForm(sqlite, formId);
+    const publicRoute = await import('../app/api/forms/[formId]/route');
+    actor('admin', 'admin');
+    for (const formId of adminForms) {
+      assert.equal((await publicRoute.GET(request(`/api/forms/${formId}`), { params: Promise.resolve({ formId }) })).status, 200, formId);
+    }
+    for (const formId of superAdminForms) {
+      assert.equal((await publicRoute.GET(request(`/api/forms/${formId}`), { params: Promise.resolve({ formId }) })).status, 404, formId);
+    }
+    actor('sa', 'super_admin');
+    for (const formId of superAdminForms) {
+      assert.equal((await publicRoute.GET(request(`/api/forms/${formId}`), { params: Promise.resolve({ formId }) })).status, 200, formId);
+    }
+  } finally { sqlite.close(); }
+});
+
+void test('application configs follow guest, customer, and pending participant flows without opening operations', async () => {
+  const sqlite = await fixture();
+  try {
+    for (const formId of ['seller.application', 'seller.maker-profile', 'seller.product-submission',
+      'seller.product-filter', 'rider.application', 'rider.report', 'rider.code-verify']) seedPublishedForm(sqlite, formId);
+    sqlite.exec(`INSERT INTO seller_profiles VALUES ('pending-seller','pending','submitted');
+      INSERT INTO seller_participation_profiles VALUES ('pending-seller','submitted');
+      INSERT INTO rider_profiles VALUES ('rider','approved');`);
+    const publicRoute = await import('../app/api/forms/[formId]/route');
+    const status = async (formId: string) => (await publicRoute.GET(request(`/api/forms/${formId}`), { params: Promise.resolve({ formId }) })).status;
+    globalThis.formCatalogRouteActor = null;
+    assert.equal(await status('seller.application'), 200);
+    assert.equal(await status('rider.application'), 404);
+    actor('customer', 'customer');
+    assert.equal(await status('rider.application'), 200);
+    assert.equal(await status('seller.maker-profile'), 404);
+    assert.equal(await status('seller.product-submission'), 404);
+    assert.equal(await status('rider.report'), 404);
+    actor('pending', 'customer');
+    assert.equal(await status('seller.maker-profile'), 200);
+    assert.equal(await status('seller.product-submission'), 200);
+    assert.equal(await status('seller.product-filter'), 404);
+    assert.equal(await status('rider.report'), 404);
+    actor('rider', 'customer');
+    assert.equal(await status('rider.report'), 200);
+    assert.equal(await status('rider.code-verify'), 200);
+    assert.equal(await status('rider.application'), 404);
+  } finally { sqlite.close(); }
+});
+
+void test('persisted syntax errors in all catalog mutations are service failures and never audit', async () => {
+  const sqlite = await fixture();
+  try {
+    actor('sa', 'super_admin');
+    const realDb = globalThis.formCatalogRouteDb;
+    globalThis.formCatalogRouteDb = {
+      prepare(sql: string) {
+        if (sql.includes('form_config_versions')) throw new SyntaxError('Stored config JSON is corrupt');
+        return realDb.prepare(sql);
+      },
+    } as D1Database;
+    const draftRoute = await import('../app/api/admin/forms/[formId]/draft/route');
+    const publishRoute = await import('../app/api/admin/forms/[formId]/publish/route');
+    const restoreRoute = await import('../app/api/admin/forms/[formId]/restore/route');
+    const actions = [
+      draftRoute.POST(request('/api/admin/forms/account.profile/draft', { config, expectedPublishedVersion: 0, reason: 'Draft', requestId: 'corrupt-d' }), params),
+      publishRoute.POST(request('/api/admin/forms/account.profile/publish', { draftId: 'old-draft', expectedDraftRevision: 1, expectedPublishedVersion: 0, reason: 'Publish', requestId: 'corrupt-p' }), params),
+      restoreRoute.POST(request('/api/admin/forms/account.profile/restore', { sourceVersion: 1, expectedPublishedVersion: 0, reason: 'Restore', requestId: 'corrupt-r' }), params),
+    ];
+    for (const response of await Promise.all(actions)) assert.equal(response.status, 503);
+    assert.equal(count(sqlite, 'form_config_versions'), 0);
+    assert.equal(count(sqlite, 'audit_logs'), 0);
+  } finally { sqlite.close(); }
+});
+
+void test('admin detail rejects parseable but invalid stored configuration as unavailable', async () => {
+  const sqlite = await fixture();
+  try {
+    actor('sa', 'super_admin');
+    seedPublishedForm(sqlite, formId, { formId, fields: 'not-an-array' });
+    const item = await import('../app/api/admin/forms/[formId]/route');
+    const response = await item.GET(request('/api/admin/forms/account.profile'), params);
+    assert.equal(response.status, 503);
   } finally { sqlite.close(); }
 });

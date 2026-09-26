@@ -5,7 +5,10 @@ import { FORM_REGISTRY } from '@/lib/forms/registry';
 import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { FormCatalogConflictError } from '@/lib/db/repositories/form-catalog';
-import { FormValidationError } from '@/lib/forms/validation';
+
+export class CatalogClientInputError extends Error {
+  constructor(message = 'Invalid request.') { super(message); this.name = 'CatalogClientInputError'; }
+}
 
 export const dynamic = 'force-dynamic';
 export const catalogJson = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
@@ -22,8 +25,10 @@ export async function catalogAdmin(): Promise<{ actorId: string; db: D1Database 
 
 export async function catalogBody(request: Request): Promise<Record<string, unknown>> {
   const bytes = await readBoundedBody(request, 70 * 1024);
-  const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new SyntaxError('Invalid request.');
+  let parsed: unknown;
+  try { parsed = JSON.parse(new TextDecoder().decode(bytes)); }
+  catch { throw new CatalogClientInputError(); }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new CatalogClientInputError();
   return parsed as Record<string, unknown>;
 }
 
@@ -34,28 +39,29 @@ export function catalogMutationInput(body: Record<string, unknown>): {
   if (typeof requestId !== 'string' || !requestId.trim() || requestId.length > 191 ||
       typeof reason !== 'string' || !reason.trim() || reason.length > 2000 ||
       !Number.isSafeInteger(expectedPublishedVersion) || (expectedPublishedVersion as number) < 0) {
-    throw new RangeError('Request ID, reason, and current published version are required.');
+    throw new CatalogClientInputError('Request ID, reason, and current published version are required.');
   }
   return { requestId: requestId.trim(), reason: reason.trim(), expectedPublishedVersion: expectedPublishedVersion as number };
 }
 
 export function catalogFormId(formId: string): boolean { return Object.hasOwn(FORM_REGISTRY, formId); }
 export function catalogNumber(value: unknown): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 1) throw new RangeError('A positive version is required.');
+  if (!Number.isSafeInteger(value) || (value as number) < 1) throw new CatalogClientInputError('A positive version is required.');
   return value as number;
 }
 export function catalogText(value: unknown): string {
-  if (typeof value !== 'string' || !value.trim() || value.length > 191) throw new RangeError('A valid draft ID is required.');
+  if (typeof value !== 'string' || !value.trim() || value.length > 191) throw new CatalogClientInputError('A valid draft ID is required.');
   return value.trim();
 }
 
 export function catalogError(error: unknown): Response {
   if (error instanceof StaffAuthorizationError) return catalogJson({ error: error.message }, error.status);
   if (error instanceof BodyTooLargeError) return catalogJson({ error: error.message }, 413);
-  if (error instanceof FormCatalogConflictError) return catalogJson({ error: error.message }, 409);
-  if (error instanceof FormValidationError || error instanceof RangeError || error instanceof SyntaxError) {
-    return catalogJson({ error: error instanceof Error ? error.message : 'Invalid request.' }, 400);
+  if (error instanceof CatalogClientInputError) return catalogJson({ error: error.message }, 400);
+  if (error instanceof FormCatalogConflictError && /^(Stored |Historical fields)/.test(error.message)) {
+    return catalogJson({ error: 'Stored form configuration is unavailable.' }, 503);
   }
+  if (error instanceof FormCatalogConflictError) return catalogJson({ error: error.message }, 409);
   return catalogJson({ error: 'Form catalog is unavailable.' }, 503);
 }
 
