@@ -54,6 +54,10 @@ const managedFixedSupplySql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-managed-fixed-supply.sql'),
   'utf8',
 );
+const formCatalogSql = await readFile(
+  resolve(projectRoot, 'deployment/babal/mariadb-form-catalog.sql'),
+  'utf8',
+);
 
 const quote = (value) => `\`${String(value).replaceAll('`', '``')}\``;
 
@@ -295,6 +299,8 @@ output.push(
   '',
   managedFixedSupplySql.trim(),
   '',
+  formCatalogSql.trim(),
+  '',
   '-- Babal.Host password authentication and server-side sessions.',
   'CREATE TABLE IF NOT EXISTS `user_credentials` (',
   '  `user_id` VARCHAR(191) NOT NULL,',
@@ -377,6 +383,8 @@ await mkdir(dirname(outputPath), { recursive: true });
 const schemaSql = output.join('\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
+  'form_answer_sets',
+  'form_config_versions',
   'seller_agreement_acceptance_history',
   'seller_route_transition_applications',
   'managed_supplier_payments',

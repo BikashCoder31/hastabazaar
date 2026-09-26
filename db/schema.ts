@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   AnySQLiteColumn,
   check,
+  foreignKey,
   index,
   integer,
   real,
@@ -2930,5 +2931,73 @@ export const trafficEvents = sqliteTable(
       table.sessionId,
       table.createdAt,
     ),
+  ],
+);
+
+// The registry owns form identity and field capabilities. Storage keeps immutable
+// published definitions and the answer snapshot used at submission time.
+export const formConfigVersions = sqliteTable(
+  'form_config_versions',
+  {
+    id: id(),
+    formId: text('form_id').notNull(),
+    version: integer('version').notNull(),
+    revision: integer('revision').notNull().default(1),
+    status: text('status', { enum: ['draft', 'published'] })
+      .notNull()
+      .default('draft'),
+    configJson: text('config_json').notNull(),
+    reason: text('reason').notNull(),
+    createdBy: text('created_by').notNull().references(() => users.id, { onDelete: 'restrict' }),
+    createdAt: timestamp('created_at').notNull(),
+    updatedBy: text('updated_by').notNull().references(() => users.id, { onDelete: 'restrict' }),
+    updatedAt: timestamp('updated_at').notNull(),
+    publishedBy: text('published_by').references(() => users.id, { onDelete: 'restrict' }),
+    publishedAt: timestamp('published_at'),
+    lastRequestId: text('last_request_id').notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_form_config_versions_form_version').on(table.formId, table.version),
+    uniqueIndex('idx_form_config_versions_form_id').on(table.formId, table.id),
+    uniqueIndex('idx_form_config_versions_request').on(table.lastRequestId),
+    index('idx_form_config_versions_current').on(table.formId, table.status, table.version),
+    check('form_config_versions_form_id_length', sql`length(${table.formId}) BETWEEN 1 AND 191`),
+    check('form_config_versions_version', sql`${table.version} >= 1`),
+    check('form_config_versions_revision', sql`${table.revision} >= 1`),
+    check('form_config_versions_status', sql`${table.status} IN ('draft','published')`),
+    check('form_config_versions_json', sql`json_valid(${table.configJson}) AND json_type(${table.configJson}) = 'object' AND length(CAST(${table.configJson} AS BLOB)) <= 65536`),
+    check('form_config_versions_reason', sql`length(trim(${table.reason})) BETWEEN 1 AND 2000`),
+    check('form_config_versions_request_length', sql`length(${table.lastRequestId}) BETWEEN 1 AND 191`),
+    check('form_config_versions_publication', sql`(${table.status} = 'draft' AND ${table.publishedBy} IS NULL AND ${table.publishedAt} IS NULL) OR (${table.status} = 'published' AND ${table.publishedBy} IS NOT NULL AND ${table.publishedAt} IS NOT NULL)`),
+  ],
+);
+
+export const formAnswerSets = sqliteTable(
+  'form_answer_sets',
+  {
+    id: id(),
+    formId: text('form_id').notNull(),
+    requestId: text('request_id').notNull(),
+    configVersionId: text('config_version_id').notNull(),
+    subjectType: text('subject_type').notNull(),
+    subjectId: text('subject_id').notNull(),
+    actorId: text('actor_id').references(() => users.id, { onDelete: 'restrict' }),
+    answersJson: text('answers_json').notNull(),
+    createdAt: timestamp('created_at').notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.formId, table.configVersionId],
+      foreignColumns: [formConfigVersions.formId, formConfigVersions.id],
+      name: 'form_answer_sets_version_fk',
+    }).onDelete('restrict'),
+    uniqueIndex('idx_form_answer_sets_form_request').on(table.formId, table.requestId),
+    index('idx_form_answer_sets_owner').on(table.subjectType, table.subjectId, table.createdAt),
+    index('idx_form_answer_sets_version').on(table.configVersionId, table.createdAt),
+    check('form_answer_sets_form_id_length', sql`length(${table.formId}) BETWEEN 1 AND 191`),
+    check('form_answer_sets_request_length', sql`length(${table.requestId}) BETWEEN 1 AND 191`),
+    check('form_answer_sets_subject_type_length', sql`length(${table.subjectType}) BETWEEN 1 AND 64`),
+    check('form_answer_sets_subject_id_length', sql`length(${table.subjectId}) BETWEEN 1 AND 191`),
+    check('form_answer_sets_json', sql`json_valid(${table.answersJson}) AND json_type(${table.answersJson}) = 'object' AND length(CAST(${table.answersJson} AS BLOB)) <= 131072`),
   ],
 );
