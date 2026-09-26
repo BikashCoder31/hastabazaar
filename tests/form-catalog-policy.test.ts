@@ -110,6 +110,22 @@ void test('one rendered site may have separate receiving adapters for conditiona
   assert.equal(FORM_REGISTRY['shipping.console-action-staff'].route, '/api/admin/shipping/:id');
 });
 
+void test('programmatic actions name their actual primary receiving routes', () => {
+  const expected = [
+    ['commerce.order-cancellation', '/orders/:number/cancel'],
+    ['staff.return-case-action', '/api/admin/returns/:id/review'],
+    ['staff.seller-review-action', '/api/admin/seller-applications/:id/review'],
+  ] as const;
+  assert.deepEqual(
+    expected.map(([id]) => [id, FORM_REGISTRY[id].route]),
+    expected.map(([id, route]) => [id, route]),
+  );
+});
+
+void test('return-case capability explains its conditional receiving actions', () => {
+  assert.match(FORM_REGISTRY['staff.return-case-action'].capabilities.explanation, /high-value.*operations/i);
+});
+
 void test('a new JSX form in a .jsx file is subject to the same policy', async () => {
   const fixture = await mkdtemp(join(tmpdir(), 'form-policy-'));
   try {

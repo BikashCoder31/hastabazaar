@@ -111,12 +111,12 @@ shipping.console-action-staff|staff|operation|/api/admin/shipping/:id|action
 const PROGRAMMATIC_ROWS = `
 seller.case-return-response|seller|operation|/api/seller/returns/:id/response|response
 seller.case-complaint-response|seller|operation|/api/seller/complaints/:id/response|response
-commerce.order-cancellation|customer|transaction|/api/account/orders/:id/cancel|reason
+commerce.order-cancellation|customer|transaction|/orders/:number/cancel|reason
 commerce.add-to-cart|customer|transaction|/api/cart|quantity
-staff.return-case-action|staff|operation|/api/admin/returns/:id|decision
+staff.return-case-action|staff|operation|/api/admin/returns/:id/review|decision
 staff.complaint-case-action|staff|operation|/api/admin/complaints/:id|decision
 staff.cancellation-review|staff|operation|/api/admin/cancellations|reason
-staff.seller-review-action|staff|operation|/api/admin/seller-applications/:id|decision
+staff.seller-review-action|staff|operation|/api/admin/seller-applications/:id/review|decision
 staff.homepage-hero-manager|super_admin|operation|/api/admin/business-settings|slides
 staff.homepage-occasion-manager|super_admin|operation|/api/admin/business-settings|occasions
 staff.business-settings-manager|super_admin|operation|/api/admin/business-settings|setting
@@ -129,13 +129,15 @@ staff.product-review|staff|operation|/api/admin/products/:id/review|reason
 
 function definition(row: string): FormDefinition {
   const [id, audience, mode, route, key] = row.split('|') as [FormId, FormAudience, FormMode, string, string];
-  const explanation = mode === 'identity'
-    ? 'Identity keys and access checks stay protected; custom answers require an explicit server adapter.'
-    : mode === 'query'
-      ? 'Existing filter presentation may change; a new criterion requires a server query adapter and creates no answer record.'
-      : mode === 'system'
-        ? 'This staging-only control cannot be made configurable in production.'
-        : 'Existing server validation and authorization stay protected; custom answers require a record-linked server adapter.';
+  const explanation = id === 'staff.return-case-action'
+    ? 'The primary decision uses /api/admin/returns/:id/review; conditional high-value and operations actions use /api/admin/returns/:id/high-value and /api/admin/returns/:id/operations. Existing validation and authorization stay protected.'
+    : mode === 'identity'
+      ? 'Identity keys and access checks stay protected; custom answers require an explicit server adapter.'
+      : mode === 'query'
+        ? 'Existing filter presentation may change; a new criterion requires a server query adapter and creates no answer record.'
+        : mode === 'system'
+          ? 'This staging-only control cannot be made configurable in production.'
+          : 'Existing server validation and authorization stay protected; custom answers require a record-linked server adapter.';
   return Object.freeze({
     id, audience, mode, route,
     baseFields: Object.freeze([{ key, type: 'existing', label: key, capability: (mode === 'query' ? 'display_editable' : 'protected') as BaseFieldCapability, explanation }]),
