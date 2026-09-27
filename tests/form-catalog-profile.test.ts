@@ -217,6 +217,48 @@ void test('repeating a request ID does not update profile or duplicate its answe
   } finally { sqlite.close(); }
 });
 
+void test('exact replay omits optional empty answers even after a later publication', async () => {
+  const { sqlite } = await fixture();
+  try {
+    const { PATCH } = await import('../app/api/account/profile/route');
+    const optional = { id: 'favorite_color', key: 'favorite_color', type: 'short_text', label: 'Favorite color', required: false, order: 1, status: 'active' };
+    seedVersion(sqlite, 2, [requiredNote, optional]);
+    const original = input('optional-empty-replay', 2, [
+      { fieldId: 'delivery_note', value: 'By the blue gate' }, { fieldId: 'favorite_color', value: '' },
+    ]);
+    assert.equal((await PATCH(request(original))).status, 200);
+    seedVersion(sqlite, 3, [requiredNote, optional]);
+    assert.equal((await PATCH(request(original))).status, 200);
+    assert.equal((await PATCH(request({ ...original, customAnswers: [
+      { fieldId: 'delivery_note', value: 'Different gate' }, { fieldId: 'favorite_color', value: '' },
+    ] }))).status, 409);
+    assert.equal(count(sqlite, 'form_answer_sets'), 1);
+    assert.equal(count(sqlite, 'audit_logs'), 1);
+    assert.deepEqual(user(sqlite), { name: 'Asha Rai', phone: '9812345678' });
+  } finally { sqlite.close(); }
+});
+
+void test('exact replay accepts answer entries in a different order but rejects changed values', async () => {
+  const { sqlite } = await fixture();
+  try {
+    const { PATCH } = await import('../app/api/account/profile/route');
+    const color = { id: 'favorite_color', key: 'favorite_color', type: 'short_text', label: 'Favorite color', required: true, order: 1, status: 'active' };
+    seedVersion(sqlite, 2, [requiredNote, color]);
+    const original = input('reordered-replay', 2, [
+      { fieldId: 'delivery_note', value: 'By the blue gate' }, { fieldId: 'favorite_color', value: 'Blue' },
+    ]);
+    assert.equal((await PATCH(request(original))).status, 200);
+    assert.equal((await PATCH(request({ ...original, customAnswers: [
+      { fieldId: 'favorite_color', value: 'Blue' }, { fieldId: 'delivery_note', value: 'By the blue gate' },
+    ] }))).status, 200);
+    assert.equal((await PATCH(request({ ...original, customAnswers: [
+      { fieldId: 'delivery_note', value: 'By the blue gate' }, { fieldId: 'favorite_color', value: 'Red' },
+    ] }))).status, 409);
+    assert.equal(count(sqlite, 'form_answer_sets'), 1);
+    assert.equal(count(sqlite, 'audit_logs'), 1);
+  } finally { sqlite.close(); }
+});
+
 void test('guest and cross-origin requests cannot mutate or store answers', async () => {
   const { sqlite } = await fixture();
   try {

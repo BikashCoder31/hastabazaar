@@ -2,8 +2,10 @@ import {normalizeProvince,normalizeDistrict,districtBelongsToProvince,validWard}
 import { publicProductEligibility } from '@/lib/products/eligibility';
 import {parseLocation} from '@/lib/delivery/validation';
 import { buildFormAnswerInsert } from './form-answers';
-import type { FormAnswerSnapshot } from '@/lib/forms/types';
+import { FORM_REGISTRY } from '@/lib/forms/registry';
+import type { FormAnswerSnapshot, PublishedFormConfig } from '@/lib/forms/types';
 import { FormRuntimeError } from '@/lib/forms/runtime';
+import { validateAnswersForDefinition, validateFormDraft } from '@/lib/forms/validation';
 export class CustomerDataConflictError extends Error {}
 
 export interface CustomerOrderRow {
@@ -198,23 +200,35 @@ export async function customerProfileRequestStatus(database: D1Database, input: 
   userId: string; requestId: string; displayName: string; phone: string; locale: 'en-NP' | 'ne-NP';
   formVersion: number; customAnswers: unknown;
 }): Promise<'new' | 'same' | 'conflict'> {
-  const row = await database.prepare(`SELECT a.next_json AS coreJson, f.answers_json AS answersJson
+  type ProfileReplayRow = { coreJson: string; answersJson: string | null; configJson: string | null;
+    savedVersion: number | null; publishedAt: number | null; versionStatus: string | null };
+  let row: ProfileReplayRow | null;
+  try { row = await database.prepare(`SELECT a.next_json AS coreJson, f.answers_json AS answersJson,
+      v.config_json AS configJson, v.version AS savedVersion, v.published_at AS publishedAt, v.status AS versionStatus
     FROM audit_logs a LEFT JOIN form_answer_sets f
       ON f.form_id = 'account.profile' AND f.request_id = a.request_id
+    LEFT JOIN form_config_versions v ON v.id = f.config_version_id
     WHERE a.request_id = ? AND a.actor_id = ? AND a.action = 'account.profile.updated'
       AND a.subject_type = 'user' AND a.subject_id = ? LIMIT 1`)
-    .bind(input.requestId, input.userId, input.userId).first<{ coreJson: string; answersJson: string | null }>();
+    .bind(input.requestId, input.userId, input.userId).first<ProfileReplayRow>(); }
+  catch { throw new FormRuntimeError('config_unavailable', 'Form configuration read failed'); }
   if (!row) return 'new';
   try {
     const core = JSON.parse(row.coreJson) as { displayName?: unknown; phone?: unknown; locale?: unknown };
     const snapshot = JSON.parse(row.answersJson ?? '') as FormAnswerSnapshot;
-    const requested = input.customAnswers;
-    if (!Array.isArray(requested) || requested.some((entry) => !entry || typeof entry !== 'object' || Array.isArray(entry) ||
-      Object.keys(entry).some((key) => key !== 'fieldId' && key !== 'value') || typeof entry.fieldId !== 'string')) return 'conflict';
+    if (row.versionStatus !== 'published' || !row.configJson || typeof row.savedVersion !== 'number' ||
+      !Number.isSafeInteger(row.savedVersion) || typeof row.publishedAt !== 'number' || !Number.isSafeInteger(row.publishedAt)) return 'conflict';
+    const definition = FORM_REGISTRY['account.profile'];
+    const savedConfig = validateFormDraft('account.profile', JSON.parse(row.configJson) as unknown);
+    const builtInKeys = new Set(definition.baseFields.map((field) => field.key.replace(/[^a-z0-9]/gi, '').toLowerCase()));
+    const config: PublishedFormConfig = { ...savedConfig, version: row.savedVersion, publishedAt: row.publishedAt,
+      fields: savedConfig.fields.filter((field) => !builtInKeys.has(field.key.replace(/[^a-z0-9]/gi, '').toLowerCase())) };
+    const requested = validateAnswersForDefinition(definition, config, input.customAnswers);
     const previouslySaved = snapshot.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value }));
     return core.displayName === input.displayName.trim() && core.phone === (input.phone.trim().replace(/[\s-]/g, '') || null) &&
-      core.locale === input.locale && snapshot.formId === 'account.profile' && snapshot.version === input.formVersion &&
-      JSON.stringify(previouslySaved) === JSON.stringify(requested) ? 'same' : 'conflict';
+      core.locale === input.locale && snapshot.formId === 'account.profile' && snapshot.version === row.savedVersion &&
+      snapshot.version === input.formVersion &&
+      JSON.stringify(previouslySaved) === JSON.stringify(requested.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value }))) ? 'same' : 'conflict';
   } catch { return 'conflict'; }
 }
 

@@ -12,7 +12,8 @@ import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import type { ConfiguredField, FormDefinition, PublishedFormConfig } from '../lib/forms/types';
 import type { CatalogVersion } from '../components/admin/form-catalog-editor';
 import { adminNavigation } from '../lib/admin/navigation';
-import { validateFormDraftForDefinition } from '../lib/forms/validation';
+import { validateFormDraft, validateFormDraftForDefinition } from '../lib/forms/validation';
+import { FORM_REGISTRY } from '../lib/forms/registry';
 import type * as FormCatalogRepository from '../lib/db/repositories/form-catalog';
 
 void test('Form catalog appears in Controls for Super Admin alone', () => {
@@ -90,6 +91,35 @@ void test('Edit display preserves a saved canonical alias and its field identity
     assert.equal(saves.length, 1);
     assert.deepEqual(saves[0].config.fields.map(({ id, key, label }) => ({ id, key, label })), [
       { id: 'displayname', key: 'displayname', label: 'Updated display' },
+    ]);
+    assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), false);
+  } finally { await page.close(); await browser.close(); }
+});
+
+void test('Edit display saves a real mixed-case profile built-in under a valid stable ID', async () => {
+  const form = FORM_REGISTRY['account.profile'];
+  let draft: CatalogVersion | null = null;
+  const { browser, page } = await mountConcurrencyEditor([], form);
+  const saves: { config: { fields: ConfiguredField[] } }[] = [];
+  try {
+    // oxlint-disable-next-line typescript/no-explicit-any -- Capture the editor's HTTP request and validate at the server boundary.
+    await page.route('https://form.test/api/**', async (route: any) => {
+      if (route.request().method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ versions: draft ? [draft] : [] }) });
+      const body = route.request().postDataJSON();
+      validateFormDraft('account.profile', body.config);
+      saves.push(body);
+      draft = { id: 'profile-draft', version: 1, revision: 1, status: 'draft', reason: body.reason,
+        updatedAt: 1, publishedAt: null, config: body.config };
+      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ draft }) });
+    });
+    await page.getByRole('button', { name: 'Edit display' }).first().click();
+    await page.locator('#base-displayName-label').fill('Name shown on your account');
+    await page.getByLabel('Reason for change').fill('Clarify profile label');
+    await page.getByRole('button', { name: 'Save draft' }).click();
+    await page.getByText('Draft saved.', { exact: true }).waitFor();
+    assert.equal(saves.length, 1);
+    assert.deepEqual(saves[0].config.fields.map(({ id, key, label }) => ({ id, key, label })), [
+      { id: 'displayname', key: 'displayname', label: 'Name shown on your account' },
     ]);
     assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), false);
   } finally { await page.close(); await browser.close(); }
