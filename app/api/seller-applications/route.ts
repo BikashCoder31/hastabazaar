@@ -227,6 +227,7 @@ export async function POST(request: Request): Promise<Response> {
         WHERE id = ? AND lower(support_email) = ? LIMIT 1`)
         .bind(committedSellerId, parsed.input.email.trim().toLowerCase()).first<{ reference: string }>();
       if (!winner) throw new Error('Application replay state is unavailable.');
+      if (bucket) await Promise.all(uploadedKeys.map((key) => bucket.delete(key)));
       savedReference = winner.reference;
     }
   } catch (error) {

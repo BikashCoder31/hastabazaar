@@ -935,6 +935,8 @@ void test('anonymous application batch race responds with the winning reference,
     requestForm.set('requestId', 'application-route-race');
     requestForm.set('formVersion', '1');
     requestForm.set('custom.workshop_note', 'Fictional answer');
+    requestForm.set('profileImage', new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])],
+      'maker.jpg', { type: 'image/jpeg' }));
     const digest = await digestMultipartRequest(requestForm);
     const parsed = parseSellerApplication(requestForm);
     assert.ok(parsed.input, parsed.errors.join('; '));
@@ -949,6 +951,9 @@ void test('anonymous application batch race responds with the winning reference,
     const response = await send(requestForm);
     assert.equal(response.status, 201);
     assert.equal((await response.json() as { applicationReference: string }).applicationReference, 'HB-WINNING');
+    assert.equal(globalThis.sellerCatalogMedia.stored.length, 1);
+    assert.deepEqual(globalThis.sellerCatalogMedia.deleted, globalThis.sellerCatalogMedia.stored,
+      'the losing application must remove private media uploaded before its DB race');
     const changed = managedApplication();
     changed.set('email', 'changed@example.test');
     changed.set('requestId', 'application-route-race');
