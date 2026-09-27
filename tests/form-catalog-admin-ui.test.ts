@@ -185,6 +185,13 @@ void test('editor keeps edits on 409, reloads history, and confirms publish and 
     assert.equal(await numberPreview.getAttribute('min'), '0');
     assert.equal(await numberPreview.getAttribute('max'), '5');
     assert.equal(await numberPreview.getAttribute('step'), '1');
+    await page.getByRole('checkbox', { name: 'Whole numbers only' }).focus();
+    await page.keyboard.press('Space');
+    assert.equal(await numberPreview.getAttribute('step'), 'any');
+    await numberPreview.fill('1.5');
+    assert.equal(await numberPreview.evaluate((input: HTMLInputElement) => input.checkValidity()), true);
+    await page.getByRole('checkbox', { name: 'Whole numbers only' }).focus();
+    await page.keyboard.press('Space');
     await page.getByLabel('Reason for change').fill('Improve recipient context');
     await page.getByRole('button', { name: 'Save draft' }).click();
     await page.getByRole('button', { name: 'Reload latest version' }).click();
@@ -227,5 +234,71 @@ void test('editor keeps edits on 409, reloads history, and confirms publish and 
     assert.equal(operations[5].body.expectedPublishedVersion, 3);
     assert.equal(operations[5].body.draftId, undefined);
     assert.equal(versions[0].version, 4);
+  } finally { await page.close(); await browser.close(); }
+});
+
+void test('restore commits before history refresh and keeps POST errors inside its dialog', async () => {
+  const playwrightPath = process.env.PLAYWRIGHT_MODULE ?? 'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+  // oxlint-disable-next-line typescript/no-explicit-any -- Playwright lives in the bundled external runtime.
+  const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<any> } };
+  const restoredFields = [{ id: 'gift_color', key: 'gift_color', type: 'short_text', label: 'Original colour', required: false, order: 0, status: 'active' }];
+  const draftFields = [{ ...restoredFields[0], label: 'Unsaved newer colour' }];
+  const published = { id: 'published-1', version: 1, revision: 1, status: 'published', reason: 'Initial', updatedAt: 1, publishedAt: 1, config: { formId: definition.id, fields: restoredFields } };
+  const draft = { id: 'draft-2', version: 2, revision: 1, status: 'draft', reason: 'Newer draft', updatedAt: 2, publishedAt: null, config: { formId: definition.id, fields: draftFields } };
+  const bundle = await build({ stdin: { resolveDir: process.cwd(), sourcefile: 'catalog-restore-fixture.tsx', contents: `
+    import React from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { FormCatalogEditor } from './components/admin/form-catalog-editor';
+    createRoot(document.getElementById('root')!).render(<FormCatalogEditor form={${JSON.stringify(definition)}} versions={${JSON.stringify([draft, published])}} />);
+  `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife', define: { 'process.env.NODE_ENV': '"production"' } });
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
+  const page = await browser.newPage();
+  let versions = [draft, published];
+  let restoreRequests = 0;
+  let successfulRestores = 0;
+  let historyRequests = 0;
+  try {
+    // oxlint-disable-next-line typescript/no-explicit-any -- Playwright route type is external to this package.
+    await page.route('https://form.test/**', async (route: any) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === '/') return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><html><head><meta charset="utf-8"></head><body><div id="root"></div></body></html>' });
+      if (route.request().method() === 'GET') {
+        historyRequests++;
+        return route.fulfill(historyRequests === 1 ? { status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'History service unavailable.' }) } :
+          { status: 200, contentType: 'application/json', body: JSON.stringify({ form: definition, versions }) });
+      }
+      restoreRequests++;
+      if (restoreRequests === 1) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Restore unavailable.' }) });
+      successfulRestores++;
+      const restored = { ...published, id: 'published-3', version: 3, revision: 1, reason: 'Restore baseline', updatedAt: 3, publishedAt: 3 };
+      versions = [restored, ...versions];
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ published: restored }) });
+    });
+    await page.goto('https://form.test/');
+    await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    await page.getByLabel('Reason for change').fill('Restore baseline');
+    await page.getByRole('button', { name: 'Restore', exact: true }).click();
+    await page.getByRole('button', { name: 'Confirm restore' }).focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.body.textContent?.includes('Restore unavailable.'));
+    assert.equal(await page.getByRole('alertdialog').getByRole('alert').count(), 1, 'POST failure is announced inside the focus trap');
+    assert.equal(await page.evaluate(() => document.activeElement?.closest('[role="alertdialog"]') !== null), true);
+    assert.equal(await page.locator('#gift_color-label').inputValue(), 'Unsaved newer colour');
+    await page.getByRole('button', { name: 'Confirm restore' }).focus();
+    await page.keyboard.press('Enter');
+    await page.getByText('Historical version restored as a new publication.').waitFor();
+    assert.equal(await page.getByRole('alertdialog').count(), 0);
+    assert.equal(await page.locator('#gift_color-label').inputValue(), 'Original colour');
+    assert.equal(await page.getByLabel('Reason for change').inputValue(), '');
+    assert.equal(await page.getByRole('button', { name: 'Confirm restore' }).count(), 0);
+    assert.equal(successfulRestores, 1);
+    assert.equal(restoreRequests, 2, 'failed POST plus one successful POST; refresh never re-posts');
+    assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), true);
+    assert.match(await page.getByRole('alert').last().textContent(), /history.*refresh|refresh.*history/i);
+    await page.getByRole('button', { name: 'Retry history refresh' }).click();
+    await page.getByText('Latest version loaded.').waitFor();
+    assert.equal(restoreRequests, 2);
+    assert.equal(historyRequests, 2);
+    assert.equal(await page.locator('#gift_color-label').inputValue(), 'Original colour');
   } finally { await page.close(); await browser.close(); }
 });

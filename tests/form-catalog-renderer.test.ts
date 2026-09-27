@@ -101,6 +101,27 @@ void test('long labels have wrapping mobile layout and fields order by configure
   assert.match(html, /w-full/);
 });
 
+void test('decimal number controls accept fractional values while integer-only controls reject them natively', async () => {
+  const decimal = render(config([field({ id: 'amount', key: 'amount', type: 'number', min: 0, max: 5, integerOnly: false })]));
+  const integer = render(config([field({ id: 'amount', key: 'amount', type: 'number', min: 0, max: 5, integerOnly: true })]));
+  const playwrightPath = process.env.PLAYWRIGHT_MODULE ??
+    'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+  // oxlint-disable-next-line typescript/no-explicit-any -- Playwright lives in the bundled external runtime.
+  const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<any> } };
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
+  const page = await browser.newPage();
+  try {
+    await page.setContent(`<div id="decimal">${decimal}</div><div id="integer">${integer}</div>`);
+    assert.equal(await page.locator('#decimal input[name="custom.amount"]').getAttribute('step'), 'any');
+    assert.equal(await page.locator('#integer input[name="custom.amount"]').getAttribute('step'), '1');
+    assert.deepEqual(await page.evaluate(() => ['decimal', 'integer'].map((id) => {
+      const input = document.querySelector<HTMLInputElement>(`#${id} input[name="custom.amount"]`)!;
+      input.value = '1.5';
+      return input.checkValidity();
+    })), [true, false]);
+  } finally { await page.close(); await browser.close(); }
+});
+
 void test('built-in display overrides expose only active field presentation', () => {
   assert.deepEqual(fieldDisplay(config([field({ id: 'display_name', key: 'display_name', label: 'Your name',
     helpText: 'As it appears to customers', required: true })]), 'display_name'),

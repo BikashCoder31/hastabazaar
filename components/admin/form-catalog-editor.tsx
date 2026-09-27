@@ -53,12 +53,15 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
   const [newType, setNewType] = useState<CustomFieldType>(form.capabilities.customFieldTypes[0] ?? 'short_text');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [dialogError, setDialogError] = useState('');
+  const [refreshWarning, setRefreshWarning] = useState('');
   const [conflict, setConflict] = useState(false);
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState<'publish' | 'restore' | null>(null);
   const [fieldWarning, setFieldWarning] = useState<{ id: string; label: string; action: 'optional' | 'archive' } | null>(null);
   const [restoreVersion, setRestoreVersion] = useState<number | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
+  const dialogErrorRef = useRef<HTMLDivElement>(null);
   const reasonRef = useRef<HTMLTextAreaElement>(null);
   const keyRef = useRef<HTMLInputElement>(null);
   const labelRef = useRef<HTMLInputElement>(null);
@@ -109,11 +112,12 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
       setFields(next); setSavedFields(JSON.stringify(next)); setChoiceDrafts({});
     }
     setConflict(false);
+    setRefreshWarning('');
     setMessage(keepEdits ? 'Latest version loaded. Your edits are still here; review them before saving again.' : 'Latest version loaded.');
     setError('');
   }
   async function mutate(action: 'draft' | 'publish' | 'restore', extra: Record<string, unknown>) {
-    setBusy(true); setError(''); setMessage('');
+    setBusy(true); setError(''); setDialogError(''); setMessage('');
     try {
       const response = await fetch(`/api/admin/forms/${encodeURIComponent(form.id)}/${action}`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
@@ -135,16 +139,40 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
         setFields(restored.config.fields);
         setSavedFields(JSON.stringify(restored.config.fields));
         setChoiceDrafts({});
+        setConflict(false);
+        setDialog(null); setReason(''); setRestoreVersion(null);
+        setMessage('Historical version restored as a new publication.');
+        try {
+          await reload(true);
+          setMessage('Historical version restored as a new publication.');
+        } catch {
+          setRefreshWarning('The form was restored, but version history could not refresh.');
+        }
+        return;
       }
       await reload(true);
       setMessage(action === 'draft' ? 'Draft saved.' : action === 'publish' ? 'Form published.' : 'Historical version restored as a new publication.');
       setDialog(null); setReason('');
-    } catch (caught) { announce(caught instanceof Error ? caught.message : 'Form catalog is unavailable.'); }
+    } catch (caught) {
+      const problem = caught instanceof Error ? caught.message : 'Form catalog is unavailable.';
+      if (dialog) {
+        setDialogError(problem);
+        queueMicrotask(() => dialogErrorRef.current?.focus());
+      } else announce(problem);
+    }
     finally { setBusy(false); }
+  }
+  async function retryHistoryRefresh() {
+    try { await reload(true); }
+    catch { setRefreshWarning('Version history could not refresh. Try again.'); }
   }
   function validReason() {
     if (reason.trim()) return true;
-    announce('Enter a reason for this change.', reasonRef.current); return false;
+    if (dialog) {
+      setDialogError('Enter a reason for this change.');
+      queueMicrotask(() => dialogErrorRef.current?.focus());
+    } else announce('Enter a reason for this change.', reasonRef.current);
+    return false;
   }
   function save() {
     if (!validReason()) return;
@@ -239,6 +267,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
       <CardHeader><CardTitle>Save and publish</CardTitle><CardDescription>Save a draft before publishing. Publication changes new visits to {form.route}.</CardDescription></CardHeader>
       <CardContent><FieldGroup><Field><FieldLabel htmlFor="catalog-reason">Reason for change</FieldLabel><Textarea ref={reasonRef} id="catalog-reason" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={2000} aria-required="true" /><FieldDescription>Recorded in the form catalog audit history.</FieldDescription></Field>
         <div ref={errorRef} tabIndex={-1} role="alert" aria-live="assertive" className="text-sm text-destructive focus:outline-none">{error ? <FieldError>{error}</FieldError> : null}</div>
+        {refreshWarning ? <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3 text-sm"><span>{refreshWarning}</span><Button type="button" variant="outline" size="sm" onClick={() => void retryHistoryRefresh()}>Retry history refresh</Button></div> : null}
         <output aria-live="polite" className="text-sm text-muted-foreground">{message}</output>
         {conflict ? <div className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/40 p-3"><p className="text-sm">The catalog changed. Your edits are preserved.</p><Button type="button" variant="outline" onClick={() => void reload(true)}>Reload latest version</Button></div> : null}
       </FieldGroup></CardContent>
@@ -250,7 +279,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
       <CardContent className="grid gap-2">{versions.length ? versions.map((entry) => <div key={entry.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b py-2 last:border-b-0"><div className="min-w-0"><p className="font-medium">Version {entry.version} · revision {entry.revision} <Badge variant={entry.status === 'published' ? 'default' : 'secondary'}>{entry.status === 'draft' && entry.version <= (published?.version ?? 0) ? 'stale draft' : entry.status}</Badge></p><p className="break-words text-xs text-muted-foreground">{entry.reason} · {displayDate(entry.updatedAt)}</p></div>{entry.status === 'published' ? <Button type="button" size="sm" variant="outline" onClick={() => { setRestoreVersion(entry.version); if (validReason()) setDialog('restore'); }}><RotateCcw data-icon="inline-start" /> Restore</Button> : null}</div>) : <p className="text-sm text-muted-foreground">No saved versions yet.</p>}</CardContent>
     </Card>
 
-    <AlertDialog open={dialog !== null} onOpenChange={(open) => { if (!open) setDialog(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{dialog === 'publish' ? 'Publish this form draft?' : `Restore version ${restoreVersion}?`}</AlertDialogTitle><AlertDialogDescription>{dialog === 'publish' ? `New visits to ${form.route} will use this draft. Reason: ${reason.trim()}` : `A new published version will copy the selected historical configuration for ${form.route}. Reason: ${reason.trim()}`}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction disabled={busy} onClick={confirm}>{dialog === 'publish' ? 'Confirm publish' : 'Confirm restore'}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <AlertDialog open={dialog !== null} onOpenChange={(open) => { if (!open) { setDialog(null); setDialogError(''); } }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{dialog === 'publish' ? 'Publish this form draft?' : `Restore version ${restoreVersion}?`}</AlertDialogTitle><AlertDialogDescription>{dialog === 'publish' ? `New visits to ${form.route} will use this draft. Reason: ${reason.trim()}` : `A new published version will copy the selected historical configuration for ${form.route}. Reason: ${reason.trim()}`}</AlertDialogDescription></AlertDialogHeader><div ref={dialogErrorRef} tabIndex={-1} role="alert" aria-live="assertive" className="text-sm text-destructive focus:outline-none">{dialogError}</div><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction disabled={busy} onClick={confirm}>{dialog === 'publish' ? 'Confirm publish' : 'Confirm restore'}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
     <AlertDialog open={fieldWarning !== null} onOpenChange={(open) => { if (!open) setFieldWarning(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{fieldWarning?.action === 'archive' ? `Archive required field ${fieldWarning.label}?` : `Make required field ${fieldWarning?.label} optional?`}</AlertDialogTitle><AlertDialogDescription>{fieldWarning?.action === 'archive' ? 'New submissions will not show this field. Existing answers remain available with their original form version.' : 'New submissions may omit this field. Existing answers and historical form versions are unchanged.'}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmFieldWarning}>{fieldWarning?.action === 'archive' ? 'Confirm archive' : 'Confirm optional'}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </div>;
 }
