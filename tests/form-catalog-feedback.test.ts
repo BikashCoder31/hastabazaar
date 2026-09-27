@@ -138,6 +138,73 @@ void test('rejected send is not success; same request retries without another an
   } finally { sqlite.close(); }
 });
 
+void test('sent exact replay bypasses exhausted quota without another mail, while new work remains limited', async () => {
+  const { sqlite } = await fixture();
+  try {
+    seed(sqlite, 'public.contact', 1);
+    const { POST } = await import('../app/api/feedback/route');
+    assert.equal((await POST(request('quota-sent-one'))).status, 200);
+    globalThis.feedbackCatalogBlocked = true;
+    assert.equal((await POST(request('quota-sent-one'))).status, 200);
+    assert.equal((await POST(request('quota-sent-one', { name: 'Different Name' }))).status, 409);
+    assert.equal((await POST(request('quota-new-one'))).status, 429);
+    assert.equal(globalThis.feedbackCatalogMail.attempts, 1);
+    assert.equal(count(sqlite, 'form_answer_sets'), 1);
+  } finally { sqlite.close(); }
+});
+
+void test('definitely failed exact delivery retries despite exhausted quota', async () => {
+  const { sqlite } = await fixture();
+  try {
+    seed(sqlite, 'public.contact', 1);
+    const { POST } = await import('../app/api/feedback/route');
+    globalThis.feedbackCatalogMail.configured = false;
+    assert.equal((await POST(request('quota-retry-one'))).status, 503);
+    assert.equal(sqlite.prepare("SELECT status FROM feedback_delivery_jobs WHERE request_id='quota-retry-one'").get()?.status, 'failed');
+    globalThis.feedbackCatalogMail.configured = true;
+    globalThis.feedbackCatalogBlocked = true;
+    assert.equal((await POST(request('quota-retry-one'))).status, 200);
+    assert.equal((await POST(request('quota-new-two'))).status, 429);
+    assert.equal(globalThis.feedbackCatalogMail.attempts, 1);
+    assert.equal(globalThis.feedbackCatalogMail.sent.length, 1);
+    assert.equal(count(sqlite, 'form_answer_sets'), 1);
+  } finally { sqlite.close(); }
+});
+
+void test('transient pre-send answer read failure leaves job retryable without mailing', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    seed(sqlite, 'public.contact', 1);
+    const { POST } = await import('../app/api/feedback/route');
+    db.failNextSql = /WHERE a\.subject_type=\?/;
+    assert.equal((await POST(request('answer-read-one'))).status, 503);
+    assert.equal(globalThis.feedbackCatalogMail.attempts, 0);
+    assert.notEqual(sqlite.prepare("SELECT status FROM feedback_delivery_jobs WHERE request_id='answer-read-one'").get()?.status, 'sending');
+    assert.equal((await POST(request('answer-read-one'))).status, 200);
+    assert.equal(globalThis.feedbackCatalogMail.sent.length, 1);
+    assert.equal(count(sqlite, 'form_answer_sets'), 1);
+  } finally { sqlite.close(); }
+});
+
+void test('pre-send feedback decode failure leaves job retryable without mailing', async () => {
+  const { sqlite } = await fixture();
+  try {
+    seed(sqlite, 'public.contact', 1);
+    const { POST } = await import('../app/api/feedback/route');
+    globalThis.feedbackCatalogMail.configured = false;
+    assert.equal((await POST(request('decode-retry-one'))).status, 503);
+    const row = sqlite.prepare("SELECT feedback_json AS feedbackJson FROM feedback_delivery_jobs WHERE request_id='decode-retry-one'").get() as { feedbackJson: string };
+    sqlite.prepare("UPDATE feedback_delivery_jobs SET feedback_json='{}' WHERE request_id='decode-retry-one'").run();
+    globalThis.feedbackCatalogMail.configured = true;
+    assert.equal((await POST(request('decode-retry-one'))).status, 503);
+    assert.equal(globalThis.feedbackCatalogMail.attempts, 0);
+    assert.notEqual(sqlite.prepare("SELECT status FROM feedback_delivery_jobs WHERE request_id='decode-retry-one'").get()?.status, 'sending');
+    sqlite.prepare("UPDATE feedback_delivery_jobs SET feedback_json=? WHERE request_id='decode-retry-one'").run(row.feedbackJson);
+    assert.equal((await POST(request('decode-retry-one'))).status, 200);
+    assert.equal(globalThis.feedbackCatalogMail.sent.length, 1);
+  } finally { sqlite.close(); }
+});
+
 void test('ambiguous post-send persistence failure never automatically resends', async () => {
   const { sqlite, db } = await fixture();
   try {

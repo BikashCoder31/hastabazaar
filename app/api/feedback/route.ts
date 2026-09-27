@@ -93,15 +93,19 @@ async function deliver(db: D1Database, job: FeedbackDeliveryJob): Promise<Respon
   if (job.status === 'sent') return json({ ok: true }, 200);
   // A sending lease is never reclaimed: the mail transport could already have accepted it.
   if (job.status === 'sending') return json({ error: retryMessage }, 503);
+  let feedback: CustomerFeedback;
+  try {
+    const answers = await listFormAnswersForSubject(db, 'feedback_submission', job.id);
+    if (answers.length !== 1 || answers[0].formId !== job.formId || answers[0].requestId !== job.requestId)
+      return json({ error: retryMessage }, 503);
+    feedback = decodeFeedbackJob(job);
+  } catch { return json({ error: retryMessage }, 503); }
   const now = Date.now();
   const token = await claimFeedbackDelivery(db, job.id, now);
   if (!token || !(await beginFeedbackSend(db, job.id, token, Date.now())))
     return json({ error: retryMessage }, 503);
   try {
-    const answers = await listFormAnswersForSubject(db, 'feedback_submission', job.id);
-    if (answers.length !== 1 || answers[0].formId !== job.formId || answers[0].requestId !== job.requestId)
-      return json({ error: retryMessage }, 503);
-    await sendCustomerFeedbackEmail(decodeFeedbackJob(job));
+    await sendCustomerFeedbackEmail(feedback);
     if (!(await completeFeedbackSend(db, job.id, token, Date.now())))
       return json({ error: retryMessage }, 503);
     return json({ ok: true }, 200);
@@ -133,6 +137,13 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const database = requireDatabase(env as unknown as { DB?: D1Database });
+    let job = await findFeedbackDeliveryJob(database, contract.requestId);
+    if (job) {
+      const payloadHash = await formHash(form);
+      if (job.formId !== contract.formId || job.payloadHash !== payloadHash)
+        return json({ error: 'Request identifier was already used.' }, 409);
+      return deliver(database, job);
+    }
     const networkLimit = await consumePublicRequestRateLimit(database, request, {
       scope: 'public-feedback', limit: 10, windowMs: 15 * 60_000,
     });
@@ -143,12 +154,6 @@ export async function POST(request: Request): Promise<Response> {
     if (!addressLimit.allowed) return rateLimitJson(addressLimit);
 
     const payloadHash = await formHash(form);
-    let job = await findFeedbackDeliveryJob(database, contract.requestId);
-    if (job) {
-      if (job.formId !== contract.formId || job.payloadHash !== payloadHash)
-        return json({ error: 'Request identifier was already used.' }, 409);
-      return deliver(database, job);
-    }
     const config = await resolvePublishedForm(database, contract.formId);
     const answers = await validateSubmittedForm(database, contract.formId, contract.version,
       configuredAnswers(form, config, validation.feedback));
