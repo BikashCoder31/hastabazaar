@@ -60,6 +60,11 @@ void test('both admin pages deny ordinary Admin before reading catalog data', as
     context.catalogPageRole = 'super_admin';
     const html = renderToStaticMarkup(await pageModule.exports.default({ params: Promise.resolve({ formId: 'account.profile' }) }) as React.ReactElement);
     assert.match(html, entry.includes('[formId]') ? /Form capability/ : /Form catalog/);
+    if (entry.includes('[formId]')) {
+      assert.match(html, /Super Admin · Form editor/);
+      assert.match(html, /customer · collection · \/api\/account\/profile/);
+      assert.doesNotMatch(html, /Â/);
+    }
     assert.equal(reads, 1, entry);
   }
 });
@@ -86,7 +91,7 @@ void test('editor keeps edits on 409, reloads history, and confirms publish and 
     // oxlint-disable-next-line typescript/no-explicit-any -- Playwright route type is external to this package.
     await page.route('https://form.test/**', async (route: any) => {
       const url = new URL(route.request().url());
-      if (url.pathname === '/') return route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
+      if (url.pathname === '/') return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><p id="fixture-heading">Super Admin · Form editor</p><p id="fixture-metadata">customer · collection · /api/account/profile</p><div id="root"></div></body></html>' });
       if (url.pathname === '/api/admin/forms/account.profile' && route.request().method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ form: definition, versions }) });
       const action = url.pathname.split('/').at(-1)!;
       const body = route.request().postDataJSON();
@@ -108,6 +113,9 @@ void test('editor keeps edits on 409, reloads history, and confirms publish and 
     });
     await page.goto('https://form.test/');
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    assert.equal(await page.locator('#fixture-heading').textContent(), 'Super Admin · Form editor');
+    assert.equal(await page.locator('#fixture-metadata').textContent(), 'customer · collection · /api/account/profile');
+    assert.doesNotMatch(await page.locator('body').textContent(), /Â/);
     await page.getByRole('button', { name: 'Save draft' }).click();
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'catalog-reason');
     assert.match(await page.getByRole('alert').last().textContent(), /Enter a reason/);
