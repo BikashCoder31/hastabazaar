@@ -6,6 +6,10 @@ import {
   requestSellerPayout,
 } from '@/lib/db/repositories/payouts';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
+import { FormRequestConflictError, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
 export async function POST(request: Request) {
   if (!isTrustedMutationRequest(request))
     return Response.json(
@@ -14,23 +18,28 @@ export async function POST(request: Request) {
     );
   try {
     const seller = await requireSellerApi();
-    const body = (await request.json()) as {
-      note?: string;
-      requestId?: string;
-    };
-    if (!body.requestId)
+    const body = JSON.parse(new TextDecoder().decode(await readBoundedBody(request, 131_072))) as Record<string, unknown>;
+    if (!body || Array.isArray(body) || Object.keys(body).some((key) =>
+      !['note', 'requestId', 'formVersion', 'customAnswers'].includes(key)) ||
+      typeof body.note !== 'string' || typeof body.requestId !== 'string' ||
+      !/^[a-zA-Z0-9_-]{1,100}$/.test(body.requestId) ||
+      !Number.isSafeInteger(body.formVersion) || !Array.isArray(body.customAnswers))
       return Response.json(
         { error: 'Request identifier is required.' },
         { status: 400 },
       );
+    const database = requireDatabase(env as unknown as { DB?: D1Database });
+    const form = await validateSellerFormSubmission(database, 'seller.payout-request', body.formVersion,
+      body.customAnswers, body.requestId);
     const id = await requestSellerPayout(
-      requireDatabase(env as unknown as { DB?: D1Database }),
+      database,
       {
         sellerId: seller.sellerId,
         actorId: seller.userId,
-        note: body.note ?? '',
+        note: body.note,
         requestId: body.requestId,
         now: Date.now(),
+        form: { requestId: body.requestId, versionId: form.versionId, answers: form.answers },
       },
     );
     return Response.json({ id }, { status: 201 });
@@ -39,6 +48,11 @@ export async function POST(request: Request) {
       return Response.json({ error: error.message }, { status: error.status });
     if (error instanceof PayoutConflictError)
       return Response.json({ error: error.message }, { status: 409 });
+    if (error instanceof FormRequestConflictError) return Response.json({ error: error.message }, { status: 409 });
+    if (error instanceof FormRuntimeError) return Response.json({ error: error.message, code: error.code }, { status: error.code === 'stale_version' ? 409 : 503 });
+    if (error instanceof FormValidationError) return Response.json({ error: error.message, fieldId: error.fieldId }, { status: 400 });
+    if (error instanceof BodyTooLargeError) return Response.json({ error: error.message }, { status: 413 });
+    if (error instanceof SyntaxError) return Response.json({ error: 'Invalid payout request.' }, { status: 400 });
     return Response.json(
       { error: 'Payout request could not be submitted.' },
       { status: 500 },

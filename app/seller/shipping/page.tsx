@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:workers';
+import Link from 'next/link';
 import { SellerShippingWorkspace } from '@/components/seller/shipping-workspace';
 import { requireSellerPage } from '@/lib/auth/seller';
 import { requireDatabase } from '@/lib/db/d1';
@@ -22,8 +23,13 @@ export default async function SellerShippingPage() {
           remain manually controlled until Nepal Can Move credentials are
           configured.
         </p>
+        <p className="mt-3 flex flex-wrap gap-4 text-sm">
+          <Link className="section-link" href="/seller/form-history?kind=shipping-request">Shipping request answers</Link>
+          <Link className="section-link" href="/seller/form-history?kind=shipping-action">Shipping action answers</Link>
+        </p>
       </div>
       <SellerShippingWorkspace
+        sellerId={seller.sellerId}
         jobs={jobs}
         orders={orders.map(({ id, orderNumber }) => ({ id, orderNumber }))}
       />

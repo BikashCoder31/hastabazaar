@@ -99,6 +99,11 @@ async function fixture() {
     CREATE TABLE product_reviews(id TEXT PRIMARY KEY,product_id TEXT NOT NULL,customer_id TEXT NOT NULL REFERENCES users(id),order_item_id TEXT NOT NULL UNIQUE REFERENCES order_items(id),rating INTEGER NOT NULL,title TEXT,body TEXT NOT NULL,status TEXT NOT NULL,moderation_note TEXT,moderated_by TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
     CREATE TABLE products(id TEXT PRIMARY KEY,name_en TEXT NOT NULL,slug TEXT NOT NULL,seller_id TEXT);
     CREATE TABLE seller_profiles(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,trading_name TEXT NOT NULL);
+    CREATE TABLE shipping_jobs(id TEXT PRIMARY KEY,seller_id TEXT NOT NULL);
+    CREATE TABLE shipping_job_events(id TEXT PRIMARY KEY,shipping_job_id TEXT NOT NULL);
+    CREATE TABLE payout_requests(id TEXT PRIMARY KEY,seller_id TEXT NOT NULL);
+    CREATE TABLE managed_supply_records(id TEXT PRIMARY KEY,seller_id TEXT NOT NULL);
+    CREATE TABLE seller_route_transition_applications(id TEXT PRIMARY KEY,seller_id TEXT NOT NULL);
     CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY);
     CREATE TABLE review_replies(id TEXT PRIMARY KEY,review_id TEXT NOT NULL,body TEXT NOT NULL,version INTEGER NOT NULL,status TEXT NOT NULL,created_at INTEGER NOT NULL,seller_id TEXT NOT NULL);
     CREATE TABLE review_photos(id TEXT PRIMARY KEY,review_id TEXT NOT NULL REFERENCES product_reviews(id),object_key TEXT NOT NULL UNIQUE,mime_type TEXT NOT NULL,size_bytes INTEGER NOT NULL,sort_order INTEGER NOT NULL,created_at INTEGER NOT NULL);

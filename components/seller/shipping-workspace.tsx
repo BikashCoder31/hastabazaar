@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { PackageCheck, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -23,16 +23,26 @@ import {
 import { StatusBadge } from '@/components/admin/status-badge';
 import { sendJson } from '@/lib/http/client-request';
 import type { ShippingJobRow } from '@/lib/db/repositories/operations';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
+
+const requestBaseKeys = ['orderId', 'direction', 'note', 'requestId', 'sellerId', 'formVersion', 'customAnswers'];
+const actionBaseKeys = ['action', 'jobId', 'note', 'requestId', 'sellerId', 'formVersion', 'customAnswers'];
 
 export function SellerShippingWorkspace({
   jobs,
   orders,
+  sellerId,
 }: {
   jobs: readonly ShippingJobRow[];
   orders: readonly { id: string; orderNumber: string }[];
+  sellerId: string;
 }) {
   const router = useRouter();
-  const [requestId, setRequestId] = useState(() => crypto.randomUUID());
+  const catalog = usePublishedFormConfig('seller.shipping-request');
+  const attemptKey = sessionAttemptKey('seller.shipping-request', sellerId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -41,13 +51,15 @@ export function SellerShippingWorkspace({
     currentTarget: HTMLFormElement;
   }) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || !catalog.canSubmit || !catalog.config) return;
     const element = event.currentTarget;
     const form = new FormData(element);
     setBusy(true);
     setError('');
     setMessage('');
     try {
+      const configured = readConfiguredSubmission(element, catalog.config, requestBaseKeys);
+      const requestId = getOrCreateSessionAttempt(attemptKey);
       await sendJson(
         '/api/seller/shipping',
         'POST',
@@ -56,13 +68,14 @@ export function SellerShippingWorkspace({
           direction: form.get('direction'),
           note: form.get('note'),
           requestId,
+          ...configuredJsonPayload(catalog.config, configured.answers, requestBaseKeys),
         },
         'Shipping request could not be sent.',
       );
       setMessage(
         'Request recorded for manual coordination. A pickup is not booked yet.',
       );
-      setRequestId(crypto.randomUUID());
+      clearSessionAttempt(attemptKey);
       element.reset();
       router.refresh();
     } catch (reason) {
@@ -85,6 +98,7 @@ export function SellerShippingWorkspace({
         {orders.length ? (
           <form
             onSubmit={requestJob}
+            data-form-id="seller.shipping-request"
             className="mt-5 grid gap-4 sm:grid-cols-2"
           >
 <p className="text-xs text-muted-foreground">* Required field</p>
@@ -135,9 +149,11 @@ export function SellerShippingWorkspace({
                 placeholder="Include packing or collection details for operations."
               />
             </div>
+            {catalog.config ? <div className="sm:col-span-2"><ConfiguredFields config={catalog.config} baseKeys={requestBaseKeys} /></div> : null}
+            {catalog.status !== 'ready' ? <p role="alert" className="sm:col-span-2 text-sm text-destructive">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}
             <Button
               type="submit"
-              disabled={busy}
+              disabled={busy || !catalog.canSubmit}
               className="min-h-11 w-fit rounded-full"
             >
               {busy ? 'Sending…' : 'Request coordination'}
@@ -163,7 +179,7 @@ export function SellerShippingWorkspace({
         {jobs.length ? (
           <div className="space-y-4">
             {jobs.map((job) => (
-              <ShippingRecord key={job.id + ':' + job.status} job={job} />
+              <ShippingRecord key={job.id + ':' + job.status} job={job} sellerId={sellerId} />
             ))}
           </div>
         ) : (
@@ -176,25 +192,31 @@ export function SellerShippingWorkspace({
   );
 }
 
-function ShippingRecord({ job }: { job: ShippingJobRow }) {
+function ShippingRecord({ job, sellerId }: { job: ShippingJobRow; sellerId: string }) {
   const router = useRouter();
-  const [requestId] = useState(() => crypto.randomUUID());
+  const catalog = usePublishedFormConfig('seller.shipping-action');
+  const attemptKey = sessionAttemptKey('seller.shipping-action', `${sellerId}:${job.id}`);
+  const formRef = useRef<HTMLFormElement>(null);
   const [note, setNote] = useState('');
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   async function recordPickup() {
-    if (busy || job.status !== 'pickup_scheduled') return;
+    if (busy || job.status !== 'pickup_scheduled' || !catalog.canSubmit || !catalog.config || !formRef.current) return;
     setBusy(true);
     setError('');
     try {
+      const configured = readConfiguredSubmission(formRef.current, catalog.config, actionBaseKeys);
+      const requestId = getOrCreateSessionAttempt(attemptKey);
       await sendJson(
         '/api/seller/shipping/' + encodeURIComponent(job.id),
         'POST',
-        { action: 'picked_up', note, requestId },
+        { action: 'picked_up', note, requestId,
+          ...configuredJsonPayload(catalog.config, configured.answers, actionBaseKeys) },
         'Pickup could not be recorded.',
       );
       setConfirm(false);
+      clearSessionAttempt(attemptKey);
       router.refresh();
     } catch (reason) {
       setError(
@@ -249,6 +271,8 @@ function ShippingRecord({ job }: { job: ShippingJobRow }) {
       </dl>
       {job.status === 'pickup_scheduled' ? (
         <form
+          ref={formRef}
+          data-form-id="seller.shipping-action"
           onSubmit={(event) => {
             event.preventDefault();
             if (!busy) setConfirm(true);
@@ -269,10 +293,12 @@ function ShippingRecord({ job }: { job: ShippingJobRow }) {
             disabled={busy}
             placeholder="Record who collected the parcel and when."
           />
+          {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={actionBaseKeys} /> : null}
+          {catalog.status !== 'ready' ? <p role="alert" className="text-sm text-destructive">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}
           <Button
             type="submit"
             variant="outline"
-            disabled={busy || note.trim().length < 8}
+            disabled={busy || !catalog.canSubmit || note.trim().length < 8}
             className="min-h-11 rounded-full"
           >
             <PackageCheck />

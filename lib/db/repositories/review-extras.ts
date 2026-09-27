@@ -1,5 +1,8 @@
 import { publicProductEligibility } from '@/lib/products/eligibility';
 import { CustomerDataConflictError } from './customers';
+import { buildFormAnswerInsert } from './form-answers';
+import type { FormAnswerSnapshot } from '@/lib/forms/types';
+import { digestFormRequest, formRequestReplay, FormRequestConflictError } from '@/lib/forms/submission';
 export interface ReviewPhoto {
   id: string;
   reviewId: string;
@@ -73,8 +76,23 @@ export async function saveSellerReply(
     version: number;
     requestId: string;
     now: number;
+    form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot };
   },
 ) {
+  const catalogDigest = o.form ? await digestFormRequest({ reviewId: o.reviewId, sellerId: o.sellerId,
+    body: o.body.trim(), version: o.version, versionId: o.form.versionId, answers: o.form.answers }) : null;
+  if (o.form) {
+    const replay = await formRequestReplay(db, { formId: 'seller.review-reply', requestId: o.requestId,
+      actorId: o.actorId, action: 'review.reply_submitted', digest: catalogDigest! });
+    if (replay) {
+      const owned = await db.prepare(`SELECT 1 FROM review_replies rr JOIN product_reviews r ON r.id=rr.review_id
+        JOIN products p ON p.id=r.product_id JOIN seller_profiles s ON s.id=p.seller_id
+        WHERE rr.id=? AND rr.review_id=? AND rr.seller_id=? AND s.user_id=? AND s.status='approved' LIMIT 1`)
+        .bind(replay, o.reviewId, o.sellerId, o.actorId).first();
+      if (!owned) throw new FormRequestConflictError('Request reference is already used for another reply.');
+      return;
+    }
+  }
   const body = o.body.trim();
   if (
     body.length < 10 ||
@@ -92,7 +110,7 @@ export async function saveSellerReply(
     throw new CustomerDataConflictError(
       'Only the productâ€™s seller can reply to a published review.',
     );
-  if (
+  if (!o.form &&
     await db
       .prepare(
         "SELECT id FROM audit_logs WHERE request_id=? AND actor_id=? AND subject_id=? AND action='review.reply_submitted'",
@@ -111,6 +129,7 @@ export async function saveSellerReply(
     throw new CustomerDataConflictError(
       'This reply changed. Refresh before replying.',
     );
+  const replyId = crypto.randomUUID();
   try {
     await db.batch([
       db
@@ -118,20 +137,35 @@ export async function saveSellerReply(
           "INSERT INTO review_replies(id,review_id,seller_id,body,version,status,created_at) VALUES (?,?,?,?,?,'pending',?)",
         )
         .bind(
-          crypto.randomUUID(),
+          replyId,
           o.reviewId,
           o.sellerId,
           body,
           o.version + 1,
           o.now,
         ),
-      db
-        .prepare(
+      ...(o.form ? [db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at)
+        VALUES (?,?,'review.reply_submitted','review_reply',?,'Seller reply submitted for moderation',?,?,?)`)
+        .bind(crypto.randomUUID(), o.actorId, replyId, JSON.stringify({ catalogDigest }), o.requestId, o.now),
+        buildFormAnswerInsert(db, { formId: 'seller.review-reply', requestId: o.requestId,
+          versionId: o.form.versionId, subjectType: 'review_reply', subjectId: replyId,
+          actorId: o.actorId, answers: o.form.answers, now: o.now })] : [db.prepare(
           "INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,request_id,created_at) VALUES (?,?,'review.reply_submitted','product_review',?,'Seller reply submitted for moderation',?,?)",
-        )
-        .bind(crypto.randomUUID(), o.actorId, o.reviewId, o.requestId, o.now),
+        ).bind(crypto.randomUUID(), o.actorId, o.reviewId, o.requestId, o.now)]),
     ]);
   } catch (e) {
+    if (o.form) {
+      const replay = await formRequestReplay(db, { formId: 'seller.review-reply', requestId: o.requestId,
+        actorId: o.actorId, action: 'review.reply_submitted', digest: catalogDigest! });
+      if (replay) {
+        const owned = await db.prepare(`SELECT 1 FROM review_replies rr JOIN product_reviews r ON r.id=rr.review_id
+          JOIN products p ON p.id=r.product_id JOIN seller_profiles s ON s.id=p.seller_id
+          WHERE rr.id=? AND rr.review_id=? AND rr.seller_id=? AND s.user_id=? AND s.status='approved' LIMIT 1`)
+          .bind(replay, o.reviewId, o.sellerId, o.actorId).first();
+        if (!owned) throw new FormRequestConflictError('Request reference is already used for another reply.');
+        return;
+      }
+    }
     if (
       e instanceof Error &&
       /UNIQUE constraint|Duplicate entry/.test(e.message)

@@ -2,6 +2,9 @@ import {staffMutationGuard} from './staff-mutation-guard';
 import { operationalBusinessNotificationStatements } from '../../operations/business-notifications';
 import type { StaffRole } from '@/lib/auth/staff';
 import { phaseOneMarketplacePolicy } from '@/lib/marketplace/policy';
+import { buildFormAnswerInsert } from './form-answers';
+import type { FormAnswerSnapshot } from '@/lib/forms/types';
+import { digestFormRequest, formRequestReplay, FormRequestConflictError } from '@/lib/forms/submission';
 
 const payoutPolicy = phaseOneMarketplacePolicy.value.payouts;
 const dayMs = 86_400_000;
@@ -393,13 +396,30 @@ export async function requestSellerPayout(
     note: string;
     requestId: string;
     now: number;
+    form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot };
   },
 ): Promise<string> {
+  const catalogDigest = options.form ? await digestFormRequest({ sellerId: options.sellerId,
+    note: options.note.trim(), versionId: options.form.versionId, answers: options.form.answers }) : null;
+  if (options.form) {
+    const replay = await formRequestReplay(database, { formId: 'seller.payout-request',
+      requestId: options.requestId, actorId: options.actorId, action: 'payout.seller.requested',
+      digest: catalogDigest! });
+    if (replay) {
+      const owned = await database.prepare('SELECT id FROM payout_requests WHERE id=? AND seller_id=? AND created_request_id=? LIMIT 1')
+        .bind(replay, options.sellerId, options.requestId).first();
+      if (!owned) throw new FormRequestConflictError('Request reference is already used for another payout.');
+      return replay;
+    }
+  }
   const duplicate = await database
     .prepare(`SELECT id FROM payout_requests WHERE created_request_id = ?`)
     .bind(options.requestId)
     .first<{ id: string }>();
-  if (duplicate) return duplicate.id;
+  if (duplicate) {
+    if (options.form) throw new FormRequestConflictError('Request reference is already used.');
+    return duplicate.id;
+  }
   const open = await database
     .prepare(
       `SELECT id FROM payout_requests WHERE seller_id = ? AND status = 'submitted' LIMIT 1`,
@@ -423,7 +443,7 @@ export async function requestSellerPayout(
   if (note.length < 8 || note.length > 500)
     throw new PayoutConflictError('Add a payout note of 8–500 characters.');
   const id = crypto.randomUUID();
-  await database.batch([
+  try { await database.batch([
     database
       .prepare(
         `INSERT INTO payout_requests (id, seller_id, status, seller_note, available_amount_snapshot_paisa, payout_id, processed_by, processing_note, created_request_id, operation_request_id, created_at, updated_at) VALUES (?, ?, 'submitted', ?, ?, NULL, NULL, NULL, ?, NULL, ?, ?)`,
@@ -449,12 +469,29 @@ export async function requestSellerPayout(
         JSON.stringify({
           status: 'submitted',
           availableAmountSnapshotPaisa: summary.availablePaisa,
+          ...(catalogDigest ? { catalogDigest } : {}),
         }),
         options.requestId,
         options.now,
       ),
     ...await operationalBusinessNotificationStatements(database,{kind:'payout.requested',sourceId:id,eventId:options.requestId,actorId:options.actorId,now:options.now}),
-  ]);
+    ...(options.form ? [buildFormAnswerInsert(database, { formId: 'seller.payout-request',
+      requestId: options.requestId, versionId: options.form.versionId, subjectType: 'payout_request',
+      subjectId: id, actorId: options.actorId, answers: options.form.answers, now: options.now })] : []),
+  ]); } catch (error) {
+    if (options.form) {
+      const replay = await formRequestReplay(database, { formId: 'seller.payout-request',
+        requestId: options.requestId, actorId: options.actorId, action: 'payout.seller.requested',
+        digest: catalogDigest! });
+      if (replay) {
+        const owned = await database.prepare('SELECT id FROM payout_requests WHERE id=? AND seller_id=? AND created_request_id=? LIMIT 1')
+          .bind(replay, options.sellerId, options.requestId).first();
+        if (!owned) throw new FormRequestConflictError('Request reference is already used for another payout.');
+        return replay;
+      }
+    }
+    throw error;
+  }
   return id;
 }
 

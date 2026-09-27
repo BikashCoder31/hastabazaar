@@ -38,6 +38,41 @@ export async function formAnswerOwnerId(db: D1Database, answer: Pick<StoredFormA
       WHERE products.id=? LIMIT 1`).bind(answer.subjectId).first<{ userId: string }>();
     return row?.userId ?? null;
   }
+  if (answer.subjectType === 'shipping_job' || answer.subjectType === 'shipping_job_event') {
+    const join = answer.subjectType === 'shipping_job_event'
+      ? 'JOIN shipping_job_events e ON e.shipping_job_id=j.id AND e.id=?'
+      : '';
+    const where = answer.subjectType === 'shipping_job' ? 'j.id=?' : '1=1';
+    const row = await db.prepare(`SELECT s.user_id AS userId FROM shipping_jobs j ${join}
+      JOIN seller_profiles s ON s.id=j.seller_id WHERE ${where} AND s.status='approved' LIMIT 1`)
+      .bind(answer.subjectId).first<{ userId: string }>();
+    return row?.userId ?? null;
+  }
+  if (answer.subjectType === 'payout_request') {
+    const row = await db.prepare(`SELECT s.user_id AS userId FROM payout_requests p
+      JOIN seller_profiles s ON s.id=p.seller_id WHERE p.id=? AND s.status='approved' LIMIT 1`)
+      .bind(answer.subjectId).first<{ userId: string }>();
+    return row?.userId ?? null;
+  }
+  if (answer.subjectType === 'review_reply') {
+    const row = await db.prepare(`SELECT s.user_id AS userId FROM review_replies reply
+      JOIN product_reviews review ON review.id=reply.review_id JOIN products p ON p.id=review.product_id
+      JOIN seller_profiles s ON s.id=p.seller_id WHERE reply.id=? AND reply.seller_id=s.id
+        AND s.status='approved' LIMIT 1`).bind(answer.subjectId).first<{ userId: string }>();
+    return row?.userId ?? null;
+  }
+  if (answer.subjectType === 'managed_supply') {
+    const row = await db.prepare(`SELECT s.user_id AS userId FROM managed_supply_records supply
+      JOIN seller_profiles s ON s.id=supply.seller_id WHERE supply.id=? AND s.status='approved' LIMIT 1`)
+      .bind(answer.subjectId).first<{ userId: string }>();
+    return row?.userId ?? null;
+  }
+  if (answer.subjectType === 'seller_route_transition') {
+    const row = await db.prepare(`SELECT s.user_id AS userId FROM seller_route_transition_applications transition
+      JOIN seller_profiles s ON s.id=transition.seller_id WHERE transition.id=? AND s.status='approved' LIMIT 1`)
+      .bind(answer.subjectId).first<{ userId: string }>();
+    return row?.userId ?? null;
+  }
   if (answer.subjectType === 'rider') {
     const row = await db.prepare('SELECT user_id AS userId FROM rider_profiles WHERE user_id=? LIMIT 1')
       .bind(answer.subjectId).first<{ userId: string }>();

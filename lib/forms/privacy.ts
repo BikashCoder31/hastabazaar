@@ -15,9 +15,23 @@ const owned = `((subject_type='user' AND subject_id=?)
   OR (subject_type='seller' AND EXISTS(SELECT 1 FROM seller_profiles s WHERE s.id=subject_id AND s.user_id=?))
   OR (subject_type='product' AND EXISTS(SELECT 1 FROM products p
     JOIN seller_profiles s ON s.id=p.seller_id WHERE p.id=subject_id AND s.user_id=?))
+  OR (subject_type='shipping_job' AND EXISTS(SELECT 1 FROM shipping_jobs j
+    JOIN seller_profiles s ON s.id=j.seller_id WHERE j.id=subject_id AND s.user_id=?))
+  OR (subject_type='shipping_job_event' AND EXISTS(SELECT 1 FROM shipping_job_events e
+    JOIN shipping_jobs j ON j.id=e.shipping_job_id JOIN seller_profiles s ON s.id=j.seller_id
+    WHERE e.id=subject_id AND s.user_id=?))
+  OR (subject_type='payout_request' AND EXISTS(SELECT 1 FROM payout_requests p
+    JOIN seller_profiles s ON s.id=p.seller_id WHERE p.id=subject_id AND s.user_id=?))
+  OR (subject_type='review_reply' AND EXISTS(SELECT 1 FROM review_replies reply
+    JOIN product_reviews review ON review.id=reply.review_id JOIN products p ON p.id=review.product_id
+    JOIN seller_profiles s ON s.id=p.seller_id WHERE reply.id=subject_id AND reply.seller_id=s.id AND s.user_id=?))
+  OR (subject_type='managed_supply' AND EXISTS(SELECT 1 FROM managed_supply_records supply
+    JOIN seller_profiles s ON s.id=supply.seller_id WHERE supply.id=subject_id AND s.user_id=?))
+  OR (subject_type='seller_route_transition' AND EXISTS(SELECT 1 FROM seller_route_transition_applications transition
+    JOIN seller_profiles s ON s.id=transition.seller_id WHERE transition.id=subject_id AND s.user_id=?))
   OR (subject_type='rider' AND EXISTS(SELECT 1 FROM rider_profiles r WHERE r.user_id=subject_id AND r.user_id=?))
   OR (subject_type='data_rights_request' AND EXISTS(SELECT 1 FROM data_rights_requests d WHERE d.id=subject_id AND d.customer_id=?)))`;
-const ownerBindings = (userId: string) => [userId, userId, userId, userId, userId, userId, userId, userId];
+const ownerBindings = (userId: string) => Array(14).fill(userId) as string[];
 const deletable = `(form_id='account.profile' AND subject_type='user' AND subject_id=?)`;
 
 function required(value: string, label: string, max = 191): string {

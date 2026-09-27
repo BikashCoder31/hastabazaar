@@ -1,15 +1,50 @@
 import type { RuntimeEnvironment } from '@/lib/staging/environment';
 import { assertSimulationAllowed, SIMULATED_RECORD_LABEL } from '@/lib/staging/environment';
+import { buildFormAnswerInsert } from '@/lib/db/repositories/form-answers';
+import type { FormAnswerSnapshot } from '@/lib/forms/types';
+import { digestFormRequest, formRequestReplay, FormRequestConflictError } from '@/lib/forms/submission';
 
 export class RouteTransitionError extends Error {}
 function required(label:string,value:string,min=2,max=191){const text=value.trim().replace(/\s+/g,' ');if(text.length<min||text.length>max||/[<>\p{Cc}]/u.test(text))throw new RangeError(`${label} must contain ${min}–${max} safe characters.`);return text;}
 function requestId(value:string){return required('Request ID',value,1,191);}
 
-export async function submitRegisteredSellerTransition(database:D1Database,options:{sellerId:string;actorId:string;legalName:string;registrationAuthority:string;registrationNumber:string;taxMode:'PAN'|'VAT'|'BOTH';taxRegistrationNumber:string;evidenceReferences:readonly string[];agreementVersion:string;agreementLanguage:'en'|'ne';agreementAcceptedAt:number;requestId:string;now:number;environment:RuntimeEnvironment}):Promise<string>{
- assertSimulationAllowed(options.environment);const existing=await database.prepare('SELECT id FROM seller_route_transition_applications WHERE request_id=?').bind(options.requestId).first<{id:string}>();if(existing)return existing.id;
+export async function submitRegisteredSellerTransition(database:D1Database,options:{sellerId:string;actorId:string;legalName:string;registrationAuthority:string;registrationNumber:string;taxMode:'PAN'|'VAT'|'BOTH';taxRegistrationNumber:string;evidenceReferences:readonly string[];agreementVersion:string;agreementLanguage:'en'|'ne';agreementAcceptedAt:number;requestId:string;now:number;environment:RuntimeEnvironment;form?:{requestId:string;versionId:string;answers:FormAnswerSnapshot}}):Promise<string>{
+ assertSimulationAllowed(options.environment);
+ const catalogDigest=options.form?await digestFormRequest({sellerId:options.sellerId,legalName:options.legalName,
+  registrationAuthority:options.registrationAuthority,registrationNumber:options.registrationNumber,
+  taxMode:options.taxMode,taxRegistrationNumber:options.taxRegistrationNumber,
+  evidenceReferences:options.evidenceReferences,agreementVersion:options.agreementVersion,
+  agreementLanguage:options.agreementLanguage,versionId:options.form.versionId,answers:options.form.answers}):null;
+ const replay=async()=>{
+  const subject=await formRequestReplay(database,{formId:'seller.managed-transition-request',requestId:options.requestId,
+   actorId:options.actorId,action:'seller.route_transition.requested',digest:catalogDigest!});
+  if(!subject)return null;
+  const owned=await database.prepare(`SELECT 1 FROM seller_route_transition_applications WHERE id=? AND seller_id=? AND requested_by=? AND request_id=? LIMIT 1`)
+   .bind(subject,options.sellerId,options.actorId,options.requestId).first();
+  if(!owned)throw new FormRequestConflictError('Request reference is already used for another transition.');
+  return subject;
+ };
+ if(options.form){const prior=await replay();if(prior)return prior;}
+ const existing=await database.prepare('SELECT id FROM seller_route_transition_applications WHERE request_id=?').bind(options.requestId).first<{id:string}>();
+ if(existing){if(options.form)throw new FormRequestConflictError('Request reference is already used.');return existing.id;}
  const owner=await database.prepare(`SELECT 1 FROM seller_profiles JOIN seller_participation_profiles participation ON participation.seller_id=seller_profiles.id WHERE seller_profiles.id=? AND seller_profiles.user_id=? AND participation.participation_route='managed_maker' AND participation.application_stage='active' LIMIT 1`).bind(options.sellerId,options.actorId).first();if(!owner)throw new RouteTransitionError('Only the active Managed Maker account holder may request this transition.');
  if(!['PAN','VAT','BOTH'].includes(options.taxMode))throw new RangeError('Select PAN, VAT, or both.');if(!Number.isSafeInteger(options.agreementAcceptedAt)||options.agreementAcceptedAt<1)throw new RangeError('Agreement acceptance time is required.');if(!Array.isArray(options.evidenceReferences)||options.evidenceReferences.length<1||options.evidenceReferences.length>20)throw new RangeError('At least one bounded private evidence reference is required.');const evidence=options.evidenceReferences.map((value)=>required('Evidence reference',value,3,191));if(new Set(evidence).size!==evidence.length)throw new RangeError('Evidence references cannot be duplicated.');
- const id=crypto.randomUUID();try{await database.prepare(`INSERT INTO seller_route_transition_applications(id,seller_id,from_route,to_route,status,legal_name,registration_authority,registration_number,tax_mode,tax_registration_number,evidence_references_json,agreement_version,agreement_language,agreement_accepted_at,requested_by,reviewed_by,review_reason,effective_at,applied_at,request_id,decision_request_id,version,created_at,updated_at) VALUES (?,?,'managed_maker','registered_seller','submitted',?,?,?,?,?,?,?,?,?,?,NULL,NULL,NULL,NULL,?,NULL,1,?,?)`).bind(id,options.sellerId,required('Legal name',options.legalName),required('Registration authority',options.registrationAuthority),required('Registration number',options.registrationNumber),options.taxMode,required('Tax registration number',options.taxRegistrationNumber),JSON.stringify(evidence),required('Agreement version',options.agreementVersion),options.agreementLanguage,options.agreementAcceptedAt,options.actorId,requestId(options.requestId),options.now,options.now).run();}catch{throw new RouteTransitionError('An active route-transition application already exists.');}return id;
+ const id=crypto.randomUUID();const insert=database.prepare(`INSERT INTO seller_route_transition_applications(id,seller_id,from_route,to_route,status,legal_name,registration_authority,registration_number,tax_mode,tax_registration_number,evidence_references_json,agreement_version,agreement_language,agreement_accepted_at,requested_by,reviewed_by,review_reason,effective_at,applied_at,request_id,decision_request_id,version,created_at,updated_at) VALUES (?,?,'managed_maker','registered_seller','submitted',?,?,?,?,?,?,?,?,?,?,NULL,NULL,NULL,NULL,?,NULL,1,?,?)`).bind(id,options.sellerId,required('Legal name',options.legalName),required('Registration authority',options.registrationAuthority),required('Registration number',options.registrationNumber),options.taxMode,required('Tax registration number',options.taxRegistrationNumber),JSON.stringify(evidence),required('Agreement version',options.agreementVersion),options.agreementLanguage,options.agreementAcceptedAt,options.actorId,requestId(options.requestId),options.now,options.now);
+ try{
+  if(!options.form)await insert.run();
+  else await database.batch([insert,database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at)
+   VALUES (?,?,'seller.route_transition.requested','seller_route_transition',?,'Simulated registered-seller transition requested',?,?,?)`)
+   .bind(crypto.randomUUID(),options.actorId,id,JSON.stringify({catalogDigest}),options.requestId,options.now),
+   buildFormAnswerInsert(database,{formId:'seller.managed-transition-request',requestId:options.requestId,
+    versionId:options.form.versionId,subjectType:'seller_route_transition',subjectId:id,
+    actorId:options.actorId,answers:options.form.answers,now:options.now})]);
+ }catch(error){
+  if(options.form){const prior=await replay();if(prior)return prior;}
+  if(error instanceof Error&&/UNIQUE constraint|Duplicate entry/.test(error.message))
+   throw new RouteTransitionError('An active route-transition application already exists.');
+  throw error;
+ }
+ return id;
 }
 
 export async function reviewRouteTransition(database:D1Database,options:{applicationId:string;actorId:string;action:'approve'|'reject'|'request_changes';reason:string;effectiveAt?:number;requestId:string;now:number;environment:RuntimeEnvironment}):Promise<void>{

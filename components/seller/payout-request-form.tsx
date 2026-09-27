@@ -7,16 +7,25 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { sendJson } from '@/lib/http/client-request';
 import { payoutRequestBlock } from '@/lib/seller/presentation';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
+
+const catalogBaseKeys = ['amount', 'availablePaisa', 'note', 'requestId', 'sellerId', 'formVersion', 'customAnswers'];
 
 export function PayoutRequestForm({
   availablePaisa,
   hasOpenRequest,
+  sellerId,
 }: {
   availablePaisa: number;
   hasOpenRequest: boolean;
+  sellerId: string;
 }) {
   const router = useRouter();
-  const [requestId] = useState(() => crypto.randomUUID());
+  const catalog = usePublishedFormConfig('seller.payout-request');
+  const attemptKey = sessionAttemptKey('seller.payout-request', sellerId);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -29,18 +38,22 @@ export function PayoutRequestForm({
     currentTarget: HTMLFormElement;
   }) {
     event.preventDefault();
-    if (busy || blocked) return;
+    if (busy || blocked || !catalog.canSubmit || !catalog.config) return;
     const form = new FormData(event.currentTarget);
     setBusy(true);
     setError('');
     try {
+      const configured = readConfiguredSubmission(event.currentTarget, catalog.config, catalogBaseKeys);
+      const requestId = getOrCreateSessionAttempt(attemptKey);
       await sendJson(
         '/api/seller/payout-requests',
         'POST',
-        { note: form.get('note'), requestId },
+        { note: form.get('note'), requestId,
+          ...configuredJsonPayload(catalog.config, configured.answers, catalogBaseKeys) },
         'Payout request could not be submitted.',
       );
       setSubmitted(true);
+      clearSessionAttempt(attemptKey);
       router.refresh();
     } catch (reason) {
       setError(
@@ -67,7 +80,7 @@ export function PayoutRequestForm({
           {blocked}
         </output>
       ) : (
-        <form onSubmit={submit} className="mt-5 space-y-3">
+        <form onSubmit={submit} data-form-id="seller.payout-request" className="mt-5 space-y-3">
 <p className="text-xs text-muted-foreground">* Required field</p>
 
           <Label htmlFor="payout-note">Note for the payout reviewer <span aria-hidden="true">*</span></Label>
@@ -81,9 +94,11 @@ export function PayoutRequestForm({
             placeholder="Add any relevant settlement details (8–500 characters)."
             className="min-h-24 text-base"
           />
+          {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={catalogBaseKeys} /> : null}
+          {catalog.status !== 'ready' ? <p role="alert" className="text-sm text-destructive">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}
           <Button
             type="submit"
-            disabled={busy}
+            disabled={busy || !catalog.canSubmit}
             className="min-h-11 rounded-full"
           >
             {busy ? 'Submitting…' : 'Send payout request'}

@@ -241,7 +241,13 @@ export async function formRequestReplay(db: D1Database, input: {
   try { recorded = row.nextJson && JSON.parse(row.nextJson); } catch { /* Invalid persisted audit is a conflict. */ }
   if (row.actorId !== input.actorId || row.action !== input.action || row.formId !== input.formId ||
     row.subjectType !== (input.formId === 'seller.maker-profile' || input.formId === 'seller.profile' ? 'seller_profile'
-      : input.formId.startsWith('seller.product') || input.formId === 'seller.inventory' ? 'product' : 'seller') ||
+      : input.formId.startsWith('seller.product') || input.formId === 'seller.inventory' ? 'product'
+      : input.formId === 'seller.shipping-request' ? 'shipping_job'
+      : input.formId === 'seller.shipping-action' ? 'shipping_job_event'
+      : input.formId === 'seller.payout-request' ? 'payout_request'
+      : input.formId === 'seller.review-reply' ? 'review_reply'
+      : input.formId === 'seller.managed-supply-proposal' ? 'managed_supply'
+      : input.formId === 'seller.managed-transition-request' ? 'seller_route_transition' : 'seller') ||
     input.subjectId && row.subjectId !== input.subjectId ||
     !recorded || typeof recorded !== 'object' || !('catalogDigest' in recorded) ||
     recorded.catalogDigest !== input.digest) throw new FormRequestConflictError('Request reference is already used for different content.');

@@ -54,7 +54,11 @@ export default async function SellerDashboardPage() {
       {seller.sellerAgreementVersion !== SELLER_AGREEMENT_VERSION || !currentCommissionAccepted ? (
         <SellerAgreementAcceptance commissionPercent={commission.percent} />
       ) : null}
-      <SellerManagedProgramWorkspace workspace={managedProgram} />
+      <SellerManagedProgramWorkspace workspace={managedProgram} sellerId={seller.sellerId} />
+      <p className="flex flex-wrap gap-4 text-sm">
+        <Link className="section-link" href="/seller/form-history?kind=managed-supply">Managed supply answer history</Link>
+        <Link className="section-link" href="/seller/form-history?kind=managed-transition">Managed route answer history</Link>
+      </p>
       <section>
         <h2 className="font-heading text-2xl">Product overview</h2>
         <p className="mt-2 text-sm text-muted-foreground">

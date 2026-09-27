@@ -73,12 +73,25 @@ void test('registry definitions require a server adapter and capability explanat
   assert.ok((await scanFormSites(root, noExplanation)).some((violation) => violation.reason.includes('future.unexplained')));
 });
 
-void test('a future site cannot borrow a pending adapter from the frozen inventory', async () => {
+void test('a future site cannot borrow a pending adapter', async () => {
   const fixture = await mkdtemp(join(tmpdir(), 'form-policy-'));
   try {
+    const pendingId = 'future.pending-fixture';
+    const pendingRegistry = {
+      ...FORM_REGISTRY,
+      [pendingId]: {
+        ...FORM_REGISTRY['seller.payout-request'],
+        id: pendingId,
+        route: '/api/future/pending-fixture',
+        adapterId: `pending:${pendingId}`,
+        capabilities: { ...FORM_REGISTRY['seller.payout-request'].capabilities,
+          explanation: 'Synthetic pending adapter for the policy fixture.' },
+      },
+    };
     await mkdir(join(fixture, 'components'), { recursive: true });
-    await writeFile(join(fixture, 'components', 'new-form.tsx'), 'export const NewForm = () => <form data-form-id="seller.payout-request"><input name="name" /></form>;');
-    assert.ok((await scanFormSites(fixture)).some((violation) => violation.reason.includes('pending adapter')));
+    await writeFile(join(fixture, 'components', 'new-form.tsx'), `export const NewForm = () => <form data-form-id="${pendingId}"><input name="name" /></form>;`);
+    assert.ok((await scanFormSites(fixture, pendingRegistry)).some((violation) =>
+      violation.path === 'components/new-form.tsx' && violation.reason.includes('pending adapter')));
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }

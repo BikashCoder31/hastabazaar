@@ -25,7 +25,13 @@ void test('privacy export follows product seller profile ownership for submissio
       CREATE TABLE products(id TEXT PRIMARY KEY, seller_id TEXT NOT NULL);
       CREATE TABLE addresses(id TEXT PRIMARY KEY, user_id TEXT NOT NULL);
       CREATE TABLE address_answer_owner_tombstones(address_id TEXT PRIMARY KEY, user_id TEXT NOT NULL);
-      CREATE TABLE product_reviews(id TEXT PRIMARY KEY, customer_id TEXT NOT NULL);
+      CREATE TABLE product_reviews(id TEXT PRIMARY KEY, customer_id TEXT NOT NULL, product_id TEXT);
+      CREATE TABLE shipping_jobs(id TEXT PRIMARY KEY, seller_id TEXT NOT NULL);
+      CREATE TABLE shipping_job_events(id TEXT PRIMARY KEY, shipping_job_id TEXT NOT NULL);
+      CREATE TABLE payout_requests(id TEXT PRIMARY KEY, seller_id TEXT NOT NULL);
+      CREATE TABLE review_replies(id TEXT PRIMARY KEY, review_id TEXT NOT NULL, seller_id TEXT NOT NULL);
+      CREATE TABLE managed_supply_records(id TEXT PRIMARY KEY, seller_id TEXT NOT NULL);
+      CREATE TABLE seller_route_transition_applications(id TEXT PRIMARY KEY, seller_id TEXT NOT NULL);
       CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY);
       CREATE TABLE data_rights_requests(id TEXT PRIMARY KEY, customer_id TEXT NOT NULL);
       CREATE TABLE form_config_versions(id TEXT PRIMARY KEY, form_id TEXT NOT NULL,

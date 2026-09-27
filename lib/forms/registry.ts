@@ -21,6 +21,12 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
   'seller.profile': { formId: 'seller.profile', route: '/api/seller/profile', mode: 'collection' },
   'seller.product-submission': { formId: 'seller.product-submission', route: '/api/seller/products', mode: 'collection' },
   'seller.inventory': { formId: 'seller.inventory', route: '/api/seller/products/:id/inventory', mode: 'operation' },
+  'seller.shipping-request': { formId: 'seller.shipping-request', route: '/api/seller/shipping', mode: 'operation' },
+  'seller.shipping-action': { formId: 'seller.shipping-action', route: '/api/seller/shipping/:id', mode: 'operation' },
+  'seller.managed-supply-proposal': { formId: 'seller.managed-supply-proposal', route: '/api/seller/managed-program', mode: 'operation' },
+  'seller.managed-transition-request': { formId: 'seller.managed-transition-request', route: '/api/seller/managed-program', mode: 'operation' },
+  'seller.payout-request': { formId: 'seller.payout-request', route: '/api/seller/payout-requests', mode: 'transaction' },
+  'seller.review-reply': { formId: 'seller.review-reply', route: '/api/seller/reviews/:id/reply', mode: 'collection' },
 });
 
 // Inventory rows are ordered to match the 69 JSX sites in the frozen policy baseline.
@@ -281,6 +287,29 @@ function sellerDefinition(id: 'seller.application' | 'seller.maker-profile' | 's
   } satisfies FormDefinition);
 }
 
+function sellerOperationDefinition(id: 'seller.shipping-request' | 'seller.shipping-action' |
+  'seller.managed-supply-proposal' | 'seller.managed-transition-request' |
+  'seller.payout-request' | 'seller.review-reply'): FormDefinition {
+  const source = SOURCE_ROWS.split('\n').find((row) => row.startsWith(`${id}|`));
+  if (!source) throw new Error(`Missing source definition: ${id}`);
+  const [, , mode, route] = source.split('|') as [string, FormAudience, FormMode, string];
+  const domainKeys: Record<typeof id, readonly string[]> = {
+    'seller.shipping-request': ['orderId', 'direction', 'note', 'requestId', 'sellerId', 'formVersion', 'customAnswers'],
+    'seller.shipping-action': ['action', 'jobId', 'note', 'requestId', 'sellerId', 'formVersion', 'customAnswers'],
+    'seller.managed-supply-proposal': ['action', 'productId', 'quantity', 'agreedUnitNpr', 'agreedUnitPaisa', 'agreementVersion', 'agreementLanguage', 'payoutBeneficiaryReference', 'requestId', 'sellerId', 'formVersion', 'customAnswers'],
+    'seller.managed-transition-request': ['action', 'legalName', 'registrationAuthority', 'registrationNumber', 'taxMode', 'taxRegistrationNumber', 'evidenceReferences', 'agreementVersion', 'agreementLanguage', 'requestId', 'sellerId', 'formVersion', 'customAnswers'],
+    'seller.payout-request': ['amount', 'availablePaisa', 'note', 'requestId', 'sellerId', 'formVersion', 'customAnswers'],
+    'seller.review-reply': ['reviewId', 'body', 'version', 'idempotencyKey', 'sellerId', 'formVersion', 'customAnswers'],
+  };
+  return Object.freeze({ id, audience: 'seller', mode, route, adapterId: id,
+    baseFields: Object.freeze(domainKeys[id].map((key) => ({ key, type: 'existing' as const, label: key,
+      capability: 'protected' as const,
+      explanation: 'The action, amount, evidence, ownership, state, and request identity remain under server control.' }))),
+    capabilities: Object.freeze({ explanation: 'Custom context is linked to the resulting seller action. Operational state, money, evidence, ownership and replay rules remain server enforced.',
+      customFieldTypes: ACCOUNT_CUSTOM_TYPES, answerBehavior: 'record' }),
+  } satisfies FormDefinition);
+}
+
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
   Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
     const item = row.startsWith('public.contact|') ? feedbackDefinition('public.contact')
@@ -294,6 +323,12 @@ export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.fr
       : row.startsWith('seller.profile|') ? sellerDefinition('seller.profile')
       : row.startsWith('seller.product-submission|') ? sellerDefinition('seller.product-submission')
       : row.startsWith('seller.inventory|') ? sellerDefinition('seller.inventory')
+      : row.startsWith('seller.shipping-request|') ? sellerOperationDefinition('seller.shipping-request')
+      : row.startsWith('seller.shipping-action|') ? sellerOperationDefinition('seller.shipping-action')
+      : row.startsWith('seller.managed-supply-proposal|') ? sellerOperationDefinition('seller.managed-supply-proposal')
+      : row.startsWith('seller.managed-transition-request|') ? sellerOperationDefinition('seller.managed-transition-request')
+      : row.startsWith('seller.payout-request|') ? sellerOperationDefinition('seller.payout-request')
+      : row.startsWith('seller.review-reply|') ? sellerOperationDefinition('seller.review-reply')
       : row.startsWith('account.profile|') ? Object.freeze({
       id: 'account.profile', audience: 'customer', mode: 'collection', route: '/api/account/profile',
       baseFields: Object.freeze([

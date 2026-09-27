@@ -100,7 +100,13 @@ async function fixture() {
     CREATE TABLE products(id TEXT PRIMARY KEY, seller_id TEXT NOT NULL);
     CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY);
     CREATE TABLE addresses(id TEXT PRIMARY KEY,user_id TEXT NOT NULL);
-    CREATE TABLE product_reviews(id TEXT PRIMARY KEY,customer_id TEXT NOT NULL);
+    CREATE TABLE product_reviews(id TEXT PRIMARY KEY,customer_id TEXT NOT NULL,product_id TEXT);
+    CREATE TABLE shipping_jobs(id TEXT PRIMARY KEY,seller_id TEXT NOT NULL);
+    CREATE TABLE shipping_job_events(id TEXT PRIMARY KEY,shipping_job_id TEXT NOT NULL);
+    CREATE TABLE payout_requests(id TEXT PRIMARY KEY,seller_id TEXT NOT NULL);
+    CREATE TABLE review_replies(id TEXT PRIMARY KEY,review_id TEXT NOT NULL,seller_id TEXT NOT NULL);
+    CREATE TABLE managed_supply_records(id TEXT PRIMARY KEY,seller_id TEXT NOT NULL);
+    CREATE TABLE seller_route_transition_applications(id TEXT PRIMARY KEY,seller_id TEXT NOT NULL);
     INSERT INTO users VALUES ('owner','auth-owner','active'),('other','auth-other','active'),
       ('staff','auth-staff','active'),('staff-other','auth-staff-other','active'),
       ('seller','auth-seller','active'),('rider','auth-rider','active'),('inactive','auth-inactive','disabled');

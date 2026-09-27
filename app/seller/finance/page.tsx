@@ -81,6 +81,7 @@ export default async function SellerFinancePage() {
             Seller Marketplace Agreement
           </Link>
         </p>
+        <p className="mt-3"><Link className="section-link" href="/seller/form-history?kind=payout-request">Payout request answer history</Link></p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
         {cards.map(({ label, value, icon: Icon }) => (
@@ -100,6 +101,7 @@ export default async function SellerFinancePage() {
         ))}
       </div>
       <PayoutRequestForm
+        sellerId={seller.sellerId}
         availablePaisa={summary.availablePaisa}
         hasOpenRequest={requests.some(
           (request) => request.status === 'submitted',

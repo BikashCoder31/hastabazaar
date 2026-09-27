@@ -1,5 +1,8 @@
 import type { RuntimeEnvironment } from '@/lib/staging/environment';
 import { assertSimulationAllowed, SIMULATED_RECORD_LABEL } from '@/lib/staging/environment';
+import { buildFormAnswerInsert } from '@/lib/db/repositories/form-answers';
+import type { FormAnswerSnapshot } from '@/lib/forms/types';
+import { digestFormRequest, formRequestReplay, FormRequestConflictError } from '@/lib/forms/submission';
 
 export class FixedSupplyError extends Error {}
 
@@ -7,13 +10,38 @@ function text(label:string,value:string,min=3,max=191){const normalized=value.tr
 function money(label:string,value:number){if(!Number.isSafeInteger(value)||value<=0)throw new RangeError(`${label} must be positive whole paisa.`);return value;}
 function quantity(value:number){if(!Number.isSafeInteger(value)||value<=0||value>100_000)throw new RangeError('Supply quantity must be from 1 through 100,000.');return value;}
 
-export async function createFixedSupplyRecord(database:D1Database,options:{sellerId:string;productId:string;quantity:number;agreedUnitPaisa:number;createdBy:string;agreementVersion:string;agreementLanguage:'en'|'ne';payoutBeneficiaryReference:string;requestId:string;now:number;environment:RuntimeEnvironment}):Promise<string>{
- assertSimulationAllowed(options.environment);const existing=await database.prepare('SELECT id FROM managed_supply_records WHERE proposal_request_id=?').bind(options.requestId).first<{id:string}>();if(existing)return existing.id;
+export async function createFixedSupplyRecord(database:D1Database,options:{sellerId:string;productId:string;quantity:number;agreedUnitPaisa:number;createdBy:string;agreementVersion:string;agreementLanguage:'en'|'ne';payoutBeneficiaryReference:string;requestId:string;now:number;environment:RuntimeEnvironment;form?:{requestId:string;versionId:string;answers:FormAnswerSnapshot}}):Promise<string>{
+ assertSimulationAllowed(options.environment);
+ const catalogDigest=options.form?await digestFormRequest({sellerId:options.sellerId,productId:options.productId,
+  quantity:options.quantity,agreedUnitPaisa:options.agreedUnitPaisa,agreementVersion:options.agreementVersion,
+  agreementLanguage:options.agreementLanguage,payoutBeneficiaryReference:options.payoutBeneficiaryReference,
+  versionId:options.form.versionId,answers:options.form.answers}):null;
+ const replay=async()=>{
+  const subject=await formRequestReplay(database,{formId:'seller.managed-supply-proposal',requestId:options.requestId,
+   actorId:options.createdBy,action:'seller.managed_supply.proposed',digest:catalogDigest!});
+  if(!subject)return null;
+  const owned=await database.prepare(`SELECT 1 FROM managed_supply_records WHERE id=? AND seller_id=? AND created_by=? AND proposal_request_id=? LIMIT 1`)
+   .bind(subject,options.sellerId,options.createdBy,options.requestId).first();
+  if(!owned)throw new FormRequestConflictError('Request reference is already used for another supply.');
+  return subject;
+ };
+ if(options.form){const prior=await replay();if(prior)return prior;}
+ const existing=await database.prepare('SELECT id FROM managed_supply_records WHERE proposal_request_id=?').bind(options.requestId).first<{id:string}>();
+ if(existing){if(options.form)throw new FormRequestConflictError('Request reference is already used.');return existing.id;}
  const eligibility=await database.prepare(`SELECT 1 FROM products JOIN seller_profiles ON seller_profiles.id=products.seller_id JOIN seller_participation_profiles participation ON participation.seller_id=seller_profiles.id
   WHERE products.id=? AND seller_profiles.id=? AND seller_profiles.user_id=? AND participation.participation_route='managed_maker' AND participation.application_stage='active' AND participation.commercial_model='managed_fixed_supplier_price_v1' LIMIT 1`).bind(options.productId,options.sellerId,options.createdBy).first();
  if(!eligibility)throw new FixedSupplyError('Only the active fixed-price Managed Maker may propose this supply.');
- const id=crypto.randomUUID();await database.prepare(`INSERT INTO managed_supply_records(id,seller_id,product_id,quantity_proposed,quantity_accepted,agreed_unit_paisa,accepted_total_paisa,status,possession_status,quality_status,ownership_record_status,risk_record_status,evidence_reference,agreement_version,agreement_language,payout_beneficiary_reference,simulation_label,created_by,decided_by,decision_reason,proposal_request_id,decision_request_id,created_at,decided_at)
-  VALUES (?,?,?,?,NULL,?,NULL,'proposed','not_received','not_inspected','not_recorded','not_recorded',NULL,?,?,?,?,?,NULL,NULL,?,NULL,?,NULL)`).bind(id,options.sellerId,options.productId,quantity(options.quantity),money('Agreed supplier unit amount',options.agreedUnitPaisa),text('Agreement version',options.agreementVersion),options.agreementLanguage,text('Payout beneficiary reference',options.payoutBeneficiaryReference),SIMULATED_RECORD_LABEL,options.createdBy,text('Request ID',options.requestId,1,191),options.now).run();return id;
+ const id=crypto.randomUUID();const insert=database.prepare(`INSERT INTO managed_supply_records(id,seller_id,product_id,quantity_proposed,quantity_accepted,agreed_unit_paisa,accepted_total_paisa,status,possession_status,quality_status,ownership_record_status,risk_record_status,evidence_reference,agreement_version,agreement_language,payout_beneficiary_reference,simulation_label,created_by,decided_by,decision_reason,proposal_request_id,decision_request_id,created_at,decided_at)
+  VALUES (?,?,?,?,NULL,?,NULL,'proposed','not_received','not_inspected','not_recorded','not_recorded',NULL,?,?,?,?,?,NULL,NULL,?,NULL,?,NULL)`).bind(id,options.sellerId,options.productId,quantity(options.quantity),money('Agreed supplier unit amount',options.agreedUnitPaisa),text('Agreement version',options.agreementVersion),options.agreementLanguage,text('Payout beneficiary reference',options.payoutBeneficiaryReference),SIMULATED_RECORD_LABEL,options.createdBy,text('Request ID',options.requestId,1,191),options.now);
+ if(!options.form){await insert.run();return id;}
+ try{await database.batch([insert,database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at)
+  VALUES (?,?,'seller.managed_supply.proposed','managed_supply',?,'Simulated documented supply proposal',?,?,?)`)
+  .bind(crypto.randomUUID(),options.createdBy,id,JSON.stringify({catalogDigest}),options.requestId,options.now),
+  buildFormAnswerInsert(database,{formId:'seller.managed-supply-proposal',requestId:options.requestId,
+   versionId:options.form.versionId,subjectType:'managed_supply',subjectId:id,actorId:options.createdBy,
+   answers:options.form.answers,now:options.now})]);}
+ catch(error){const prior=await replay();if(prior)return prior;throw error;}
+ return id;
 }
 
 export async function decideFixedSupplyRecord(database:D1Database,options:{recordId:string;actorId:string;action:'accept'|'reject'|'cancel';quantityAccepted:number;possessionStatus:'not_received'|'received'|'returned';qualityStatus:'not_inspected'|'accepted'|'rejected';ownershipRecordStatus:'not_recorded'|'simulated_terms_recorded';riskRecordStatus:'not_recorded'|'simulated_terms_recorded';evidenceReference:string;reason:string;requestId:string;now:number;environment:RuntimeEnvironment}):Promise<void>{
