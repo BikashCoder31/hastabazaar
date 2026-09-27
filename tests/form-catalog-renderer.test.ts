@@ -15,7 +15,9 @@ const field = (overrides: Partial<ConfiguredField> = {}): ConfiguredField => ({
 const config = (fields: readonly ConfiguredField[] = [field()]): PublishedFormConfig => ({
   formId: 'account.profile', version: 3, publishedAt: 1, fields,
 });
-const render = (item: PublishedFormConfig) => renderToStaticMarkup(createElement(ConfiguredFields, { config: item }));
+// @ts-expect-error Published config alone cannot identify built-in fields.
+void createElement(ConfiguredFields, { config: config() });
+const render = (item: PublishedFormConfig) => renderToStaticMarkup(createElement(ConfiguredFields, { config: item, baseKeys: [] }));
 function withFormEntries<T>(entries: readonly [string, string][], run: () => T): T {
   const previous = globalThis.FormData;
   globalThis.FormData = class extends FormData {
@@ -26,7 +28,7 @@ function withFormEntries<T>(entries: readonly [string, string][], run: () => T):
 
 void test('field errors connect to their controls and are announced', () => {
   const html = renderToStaticMarkup(createElement(ConfiguredFields, {
-    config: config(), errors: { delivery_note: 'Please add a delivery note.' },
+    config: config(), baseKeys: [], errors: { delivery_note: 'Please add a delivery note.' },
   }));
   assert.match(html, /aria-invalid="true"/);
   assert.match(html, /aria-describedby="custom-delivery_note-help custom-delivery_note-error"/);
@@ -38,11 +40,11 @@ void test('prototype-shaped field IDs never inherit errors from an ordinary map'
     field({ id: 'constructor', key: 'constructor', label: 'Constructor detail' }),
     field({ id: 'toString', key: 'toString', label: 'Display detail', order: 2 }),
   ]);
-  const plain = renderToStaticMarkup(createElement(ConfiguredFields, { config: hostile, errors: {} }));
+  const plain = renderToStaticMarkup(createElement(ConfiguredFields, { config: hostile, baseKeys: [], errors: {} }));
   assert.doesNotMatch(plain, /aria-invalid|role="alert"|custom-constructor-error|custom-toString-error/);
   const own = Object.create(null) as Record<string, string>;
   Reflect.set(own, 'constructor', 'Please check this value.');
-  const html = renderToStaticMarkup(createElement(ConfiguredFields, { config: hostile, errors: own }));
+  const html = renderToStaticMarkup(createElement(ConfiguredFields, { config: hostile, baseKeys: [], errors: own }));
   assert.match(html, /id="custom-constructor-error"[^>]*>Please check this value\./);
   assert.doesNotMatch(html, /custom-toString-error/);
 });
@@ -221,7 +223,7 @@ void test('mounted form retains text through 409 and refresh, then ignores an ol
         return React.createElement('main', null,
           React.createElement('output', { id: 'status' }, state.status),
           state.config ? React.createElement('form', null,
-            React.createElement(ConfiguredFields, { config: state.config }),
+            React.createElement(ConfiguredFields, { config: state.config, baseKeys: [] }),
             React.createElement('button', { id: 'submit', type: 'submit', disabled: !state.canSubmit }, 'Save')) : null,
           React.createElement('button', { id: 'stale', type: 'button', onClick: () => state.handleSubmissionResponse(new Response(null, { status: 409 })) }, 'Stale'),
           React.createElement('button', { id: 'refresh', type: 'button', onClick: state.refresh }, 'Refresh'),

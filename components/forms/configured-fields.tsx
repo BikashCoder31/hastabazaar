@@ -56,8 +56,8 @@ function ConfiguredFieldControl({ field, error }: { field: ConfiguredField; erro
   </div>;
 }
 
-export function ConfiguredFields({ config, baseKeys = [], errors = {} }: {
-  config: PublishedFormConfig; baseKeys?: readonly string[]; errors?: Readonly<Record<string, string>>;
+export function ConfiguredFields({ config, baseKeys, errors = {} }: {
+  config: PublishedFormConfig; baseKeys: readonly string[]; errors?: Readonly<Record<string, string>>;
 }) {
   const builtIns = new Set(baseKeys.map(canonicalKey));
   const fields = config.fields.filter((field) => field.status === 'active' && !builtIns.has(canonicalKey(field.key)))
