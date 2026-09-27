@@ -16,6 +16,7 @@ import { createSellerApplication, updateSellerParticipationPublicProfile } from 
 import { updateSellerProfile } from '../lib/db/repositories/seller-profile';
 import { createProductSubmission, setProductInventory } from '../lib/db/repositories/products';
 import { digestMultipartRequest, validateSellerMultipartStructure } from '../lib/forms/submission';
+import { requestFingerprint } from '../lib/http/rate-limit';
 import { parseSellerApplication } from '../lib/sellers/application';
 
 declare global {
@@ -498,6 +499,52 @@ void test('application route rejects missing, unknown and file custom answers an
     assert.equal((await send('application-new-stale')).status, 409);
     assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM seller_profiles WHERE support_email='maker@example.test'").get() as { count: number }).count, 1);
     assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE request_id='application-route-one'").get() as { count: number }).count, 1);
+  } finally { sqlite.close(); }
+});
+
+void test('exhausted seller application quota rejects before consuming the multipart body', async () => {
+  const { sqlite } = await fixture();
+  try {
+    const { POST } = await import('../app/api/seller-applications/route');
+    const form = managedApplication();
+    form.set('email', 'admin@example.test');
+    form.set('requestId', 'application-over-quota');
+    const request = new Request('http://localhost:3000/api/seller-applications', {
+      method: 'POST', headers: { origin: 'http://localhost:3000' }, body: form,
+    });
+    const key = await requestFingerprint(request, 'seller-application');
+    const now = Date.now();
+    sqlite.prepare('INSERT INTO request_rate_limits(key,request_count,window_started_at,expires_at) VALUES (?,?,?,?)')
+      .run(key, 300, now, now + 60 * 60_000);
+    assert.equal(request.bodyUsed, false);
+    const response = await POST(request);
+    assert.equal(response.status, 429);
+    assert.equal(request.bodyUsed, false, 'quota rejection must not parse or hash uploaded files');
+  } finally { sqlite.close(); }
+});
+
+void test('invalid and existing-email seller application attempts consume the public quota', async () => {
+  const { sqlite } = await fixture();
+  try {
+    const { POST } = await import('../app/api/seller-applications/route');
+    const send = (form: FormData) => {
+      const request = new Request('http://localhost:3000/api/seller-applications', {
+        method: 'POST', headers: { origin: 'http://localhost:3000' }, body: form,
+      });
+      return { request, response: POST(request) };
+    };
+    const invalid = managedApplication();
+    invalid.delete('legalName');
+    const first = send(invalid);
+    assert.equal((await first.response).status, 400);
+    const existing = managedApplication();
+    existing.set('email', 'admin@example.test');
+    existing.set('requestId', 'application-existing-email');
+    const second = send(existing);
+    assert.equal((await second.response).status, 409);
+    const key = await requestFingerprint(first.request, 'seller-application');
+    assert.equal((sqlite.prepare('SELECT request_count AS count FROM request_rate_limits WHERE key=?')
+      .get(key) as { count: number } | undefined)?.count, 2);
   } finally { sqlite.close(); }
 });
 

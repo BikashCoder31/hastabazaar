@@ -40,6 +40,10 @@ export async function POST(request: Request): Promise<Response> {
     return json({ error: 'Cross-site requests are not allowed.' }, 403);
   const bindings = env as unknown as { DB?: D1Database; MEDIA?: R2Bucket };
   const database = requireDatabase(bindings);
+  const rateLimit = await consumeRequestRateLimit(database, request, {
+    scope: 'seller-application', limit: 5, windowMs: 60 * 60_000,
+  });
+  if (!rateLimit.allowed) return rateLimitJson(rateLimit);
   const contentLength = Number(request.headers.get('content-length') ?? 0);
   if (contentLength > maximumApplicationBytes) {
     return json({ error: 'The application upload is too large.' }, 413);
@@ -100,10 +104,6 @@ export async function POST(request: Request): Promise<Response> {
     return json({ error: 'The application replay state is unavailable.' }, 503);
   }
   if (existing) return json({ error: 'Sign in with this email before applying to sell, then return to this form.' }, 409);
-  const rateLimit = await consumeRequestRateLimit(database, request, {
-    scope: 'seller-application', limit: 5, windowMs: 60 * 60_000,
-  });
-  if (!rateLimit.allowed) return rateLimitJson(rateLimit);
   let form;
   try {
     const config = await resolvePublishedForm(database, 'seller.application');
