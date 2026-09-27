@@ -57,6 +57,12 @@ export default async function RiderPage() {
         Switch to customer dashboard
       </Link>
       <h1 className="text-3xl font-semibold">Rider dashboard</h1>
+      <nav aria-label="Your saved rider form answers" className="flex flex-wrap gap-4 text-sm">
+        <Link className="underline" href="/rider/form-history?kind=application">Application answers</Link>
+        <Link className="underline" href="/rider/form-history?kind=report">Report answers</Link>
+        <Link className="underline" href="/rider/form-history?kind=remittance">Remittance answers</Link>
+        <Link className="underline" href="/rider/form-history?kind=code">Code-verification context</Link>
+      </nav>
       {profile ? (
         <section className="rounded-xl border p-4">
           <h2 className="font-semibold">Verification: {profile.status}</h2>

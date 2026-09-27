@@ -78,12 +78,61 @@ export async function formAnswerOwnerId(db: D1Database, answer: Pick<StoredFormA
       .bind(answer.subjectId).first<{ userId: string }>();
     return row?.userId ?? null;
   }
+  if (answer.subjectType === 'rider_application') {
+    const row = await db.prepare('SELECT user_id AS userId FROM rider_applications WHERE id=? LIMIT 1')
+      .bind(answer.subjectId).first<{ userId: string }>();
+    return row?.userId ?? null;
+  }
+  if (answer.subjectType === 'rider_report') {
+    const row = await db.prepare('SELECT rider_user_id AS userId FROM rider_reports WHERE id=? LIMIT 1')
+      .bind(answer.subjectId).first<{ userId: string }>();
+    return row?.userId ?? null;
+  }
+  if (answer.subjectType === 'parcel_cash_record') {
+    const row = await db.prepare('SELECT rider_user_id AS userId FROM parcel_cash_records WHERE id=? LIMIT 1')
+      .bind(answer.subjectId).first<{ userId: string }>();
+    return row?.userId ?? null;
+  }
+  if (answer.subjectType === 'rider_event') {
+    const row = await db.prepare('SELECT user_id AS userId FROM rider_events WHERE id=? LIMIT 1')
+      .bind(answer.subjectId).first<{ userId: string }>();
+    return row?.userId ?? null;
+  }
   if (answer.subjectType === 'data_rights_request') {
     const row = await db.prepare('SELECT customer_id AS userId FROM data_rights_requests WHERE id=? LIMIT 1')
       .bind(answer.subjectId).first<{ userId: string }>();
     return row?.userId ?? null;
   }
   return null;
+}
+
+const riderShippingSubjects = new Map([
+  ['rider.application', 'rider_application'],
+  ['rider.report', 'rider_report'],
+  ['rider.remittance', 'parcel_cash_record'],
+  ['rider.code-verify', 'rider_event'],
+  ['staff.delivery-assignment', 'order'],
+  ['shipping.console-request', 'shipping_job'],
+  ['shipping.console-action-seller', 'shipping_job_event'],
+  ['shipping.console-action-staff', 'shipping_job_event'],
+]);
+
+async function currentStaffGrant(db: D1Database, viewer: FormAnswerViewer,
+  permission: Permission | null): Promise<boolean> {
+  if (viewer.role !== 'admin' && viewer.role !== 'super_admin') return false;
+  if (viewer.role === 'super_admin') return true;
+  if (!permission) return false;
+  const safePermissions = `CASE WHEN json_valid(p.permissions_json) THEN p.permissions_json ELSE '[]' END`;
+  return Boolean(await db.prepare(`SELECT 1 AS valid FROM users u JOIN user_roles r ON r.user_id=u.id
+    LEFT JOIN staff_permission_profiles p ON p.user_id=u.id
+    WHERE u.id=? AND u.status='active' AND r.role='admin'
+      AND (p.user_id IS NULL OR (json_type(${safePermissions})='array'
+        AND EXISTS(SELECT 1 FROM json_each(${safePermissions}) item
+          WHERE item.type='text' AND item.value=?)
+        AND NOT EXISTS(SELECT 1 FROM json_each(${safePermissions}) item
+          WHERE item.type<>'text' OR item.value NOT IN (SELECT value FROM json_each(?)))))
+    LIMIT 1`).bind(viewer.id, permission, JSON.stringify(configurableAdminPermissions))
+    .first<{ valid: number }>());
 }
 
 export async function authorizeFormAnswerRead(
@@ -96,6 +145,27 @@ export async function authorizeFormAnswerRead(
     WHERE u.id=? AND u.status='active' AND r.role=? LIMIT 1`)
     .bind(viewer.id, viewer.role).first<{ valid: number }>();
   if (!identity) return false;
+  const expectedSubject = riderShippingSubjects.get(answerSet.formId);
+  if (expectedSubject && answerSet.subjectType !== expectedSubject) return false;
+  if (answerSet.formId === 'staff.delivery-assignment') {
+    const parent = await db.prepare(`SELECT 1 AS valid FROM orders o JOIN audit_logs audit
+      ON audit.subject_type='order' AND audit.subject_id=o.id
+        AND audit.actor_id=? AND audit.action='delivery.assigned.configured'
+        AND audit.request_id=?
+      WHERE o.id=? LIMIT 1`)
+      .bind(answerSet.actorId, `delivery.assignment:${answerSet.requestId}`, answerSet.subjectId)
+      .first<{ valid: number }>();
+    return Boolean(parent) && currentStaffGrant(db, viewer, 'order.manage');
+  }
+  if (answerSet.formId === 'shipping.console-action-staff') {
+    const parent = await db.prepare(`SELECT 1 AS valid FROM shipping_job_events event
+      JOIN shipping_jobs job ON job.id=event.shipping_job_id
+      WHERE event.id=? AND event.request_id=? AND event.actor_id=?
+        AND event.actor_role IN ('admin','super_admin') LIMIT 1`)
+      .bind(answerSet.subjectId, answerSet.requestId, answerSet.actorId)
+      .first<{ valid: number }>();
+    return Boolean(parent) && currentStaffGrant(db, viewer, 'order.manage');
+  }
   if (answerSet.subjectType === 'feedback_submission') {
     if (viewer.role !== 'admin' && viewer.role !== 'super_admin') return false;
     const safePermissions = `CASE WHEN json_valid(p.permissions_json) THEN p.permissions_json ELSE '[]' END`;
@@ -122,6 +192,12 @@ export async function authorizeFormAnswerRead(
   const ownerId = await formAnswerOwnerId(db, answerSet);
   if (!ownerId) return false;
   if (ownerId === viewer.id) return true;
+  if (answerSet.formId === 'rider.application')
+    return currentStaffGrant(db, viewer, null);
+  if (answerSet.formId === 'rider.report' || answerSet.formId === 'rider.code-verify')
+    return currentStaffGrant(db, viewer, 'order.manage');
+  if (answerSet.formId === 'rider.remittance')
+    return currentStaffGrant(db, viewer, 'payout.prepare');
   if (viewer.role !== 'admin' && viewer.role !== 'super_admin') return false;
   if (answerSet.subjectType === 'product_review') {
     const safeReviewPermissions = `CASE WHEN json_valid(p.permissions_json) THEN p.permissions_json ELSE '[]' END`;

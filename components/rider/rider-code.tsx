@@ -1,5 +1,9 @@
 'use client';
 import { useState } from 'react';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+const verificationKeys = ['jobId', 'version', 'code', 'requestId', 'formVersion', 'customAnswers'];
 export function CustomerRiderCode({
   orderNumber,
   jobs,
@@ -94,25 +98,33 @@ export function RiderCodeVerification({
   jobId: string;
   version: number;
 }) {
-  const [code, setCode] = useState(''),
+  const catalog = usePublishedFormConfig('rider.code-verify'),
+    [requestId, setRequestId] = useState(() => crypto.randomUUID()),
+    [code, setCode] = useState(''),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(''),
     [verified, setVerified] = useState(false);
-  async function verify(e: { preventDefault(): void }) {
+  async function verify(e: { preventDefault(): void; currentTarget: HTMLFormElement }) {
     e.preventDefault();
+    if (!catalog.canSubmit || !catalog.config) return;
     setBusy(true);
     setMessage('');
     try {
+      const configured = readConfiguredSubmission(e.currentTarget, catalog.config, verificationKeys);
       const response = await fetch('/api/rider/verify-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId, version, code }),
+        body: JSON.stringify({ jobId, version, code, requestId,
+          ...configuredJsonPayload(catalog.config, configured.answers, verificationKeys) }),
       });
       const data = (await response.json()) as {
         error?: string;
         message?: string;
+        code?: string;
       };
+      if (data.code === 'stale_version') catalog.handleSubmissionResponse(response, data.code);
       setVerified(response.ok);
+      if (response.ok) setRequestId(crypto.randomUUID());
       setMessage(data.message ?? data.error ?? 'Unable to verify.');
       setCode('');
     } catch {
@@ -133,7 +145,7 @@ export function RiderCodeVerification({
       {verified ? (
         <output className="mt-2 block">{message}</output>
       ) : (
-        <form className="mt-3 flex flex-wrap items-end gap-3" onSubmit={verify}>
+        <form data-form-id="rider.code-verify" className="mt-3 flex flex-wrap items-end gap-3" onSubmit={verify}>
           <label className="text-sm">
             Six-digit code<span aria-hidden="true"> *</span>
             <input
@@ -148,17 +160,18 @@ export function RiderCodeVerification({
               className="mt-1 block rounded border bg-background p-2"
             />
           </label>
+          {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={verificationKeys} /> : null}
           <button
-            disabled={busy}
+            disabled={busy || !catalog.canSubmit}
             className="rounded bg-primary px-4 py-2 text-primary-foreground"
           >
             {busy ? 'Checking…' : 'Verify code'}
           </button>
         </form>
       )}
-      {message && !verified ? (
+      {(message || catalog.message) && !verified ? (
         <p role="alert" className="mt-2 text-sm">
-          {message}
+          {message || catalog.message}
         </p>
       ) : null}
     </section>

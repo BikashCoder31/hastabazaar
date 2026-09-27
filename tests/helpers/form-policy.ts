@@ -68,19 +68,12 @@ components/commerce/customer-aftercare.tsx|1|417435099796a888|commerce.return-re
 components/commerce/customer-aftercare.tsx|2|d783a2bcada9085b|commerce.complaint
 components/commerce/gift-card-form.tsx|1|5342c96832a973ab|commerce.gift-card-redeem
 components/commerce/order-tracker.tsx|1|3afed58539121cfc|commerce.order-tracking
-components/delivery/delivery-assignment.tsx|1|95c4f5b2a77f5a06|staff.delivery-assignment
 components/layout/site-header.tsx|1|ed4b8ecbf0b141e5|catalog.header-search
-components/rider/rider-code.tsx|1|038f0239202bc644|rider.code-verify
-components/rider/rider-forms.tsx|1|114a8494120aa500|rider.application
-components/rider/rider-forms.tsx|2|9f842c13daeabb3f|rider.report
-components/rider/rider-forms.tsx|3|e0e19bcb5d976898|rider.remittance
 components/seller/inventory-editor.tsx|1|8b247e4b170098a3|seller.inventory
 components/seller/maker-application-profile-form.tsx|1|9625a6332c0dfcaf|seller.maker-profile
 components/seller/product-submission-form.tsx|1|e6535dffb04ca89f|seller.product-submission
 components/seller/seller-application-form.tsx|1|aa9ba3abeacd03db|seller.application
 components/seller/seller-profile-form.tsx|1|3993f76f6976fddc|seller.profile
-components/shipping-console.tsx|1|10441fd1c3053740|shipping.console-request
-components/shipping-console.tsx|2|84261bfac06aec3d|shipping.console-action-seller
 `.trim();
 
 const baseline = new Map(FROZEN_BASELINE.split('\n').map((row) => {

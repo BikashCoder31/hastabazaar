@@ -33,6 +33,10 @@ void test('privacy export follows product seller profile ownership for submissio
       CREATE TABLE managed_supply_records(id TEXT PRIMARY KEY, seller_id TEXT NOT NULL);
       CREATE TABLE seller_route_transition_applications(id TEXT PRIMARY KEY, seller_id TEXT NOT NULL);
       CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY);
+      CREATE TABLE rider_applications(id TEXT PRIMARY KEY,user_id TEXT NOT NULL);
+      CREATE TABLE rider_reports(id TEXT PRIMARY KEY,rider_user_id TEXT NOT NULL);
+      CREATE TABLE parcel_cash_records(id TEXT PRIMARY KEY,kind TEXT NOT NULL,rider_user_id TEXT NOT NULL);
+      CREATE TABLE rider_events(id TEXT PRIMARY KEY,action TEXT NOT NULL,user_id TEXT NOT NULL);
       CREATE TABLE data_rights_requests(id TEXT PRIMARY KEY, customer_id TEXT NOT NULL);
       CREATE TABLE form_config_versions(id TEXT PRIMARY KEY, form_id TEXT NOT NULL,
         version INTEGER NOT NULL, status TEXT NOT NULL, config_json TEXT NOT NULL);

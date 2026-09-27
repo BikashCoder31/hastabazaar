@@ -12,6 +12,9 @@ import {
   RiderError,
   submitRiderRemittance,
 } from '@/lib/riders/repository';
+import { digestFormRequest, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +45,16 @@ export async function POST(request: Request) {
     } catch {
       return json({ error: 'Use a valid remittance request.' }, 400);
     }
+    if (!data || typeof data !== 'object' || Array.isArray(data) ||
+      Object.keys(data).some((key) => !['jobId', 'requestId', 'amountPaisa', 'reference',
+        'formVersion', 'customAnswers'].includes(key)))
+      return json({ error: 'Use a valid remittance request.' }, 400);
+    if (!Number.isSafeInteger(data.formVersion))
+      throw new FormRuntimeError('stale_version', 'This form changed. Refresh it and review your answers.');
+    const form = await validateSellerFormSubmission(db, 'rider.remittance',
+      data.formVersion, data.customAnswers, typeof data.requestId === 'string' ? data.requestId : undefined);
+    const digest = await digestFormRequest({ jobId: data.jobId, amountPaisa: data.amountPaisa,
+      reference: data.reference, formVersion: data.formVersion, customAnswers: data.customAnswers });
     const result = await submitRiderRemittance(db, {
       riderId: user.userId,
       jobId: typeof data.jobId === 'string' ? data.jobId : '',
@@ -49,6 +62,8 @@ export async function POST(request: Request) {
       amountPaisa: Number(data.amountPaisa),
       reference: typeof data.reference === 'string' ? data.reference : '',
       now: Date.now(),
+      form: { requestId: typeof data.requestId === 'string' ? data.requestId : '',
+        versionId: form.versionId, answers: form.answers, digest },
     });
     return json(result, 201);
   } catch (error) {
@@ -56,6 +71,10 @@ export async function POST(request: Request) {
       return json({ error: error.message }, error.status);
     if (error instanceof BodyTooLargeError)
       return json({ error: error.message }, 413);
+    if (error instanceof FormRuntimeError)
+      return json({ error: error.message, code: error.code }, error.code === 'stale_version' ? 409 : 503);
+    if (error instanceof FormValidationError)
+      return json({ error: error.message, fieldId: error.fieldId }, 400);
     if (error instanceof RiderError)
       return json({ error: error.message }, 409);
     return json(

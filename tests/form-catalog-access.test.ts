@@ -99,6 +99,10 @@ async function fixture() {
     CREATE TABLE seller_profiles(id TEXT PRIMARY KEY, user_id TEXT NOT NULL);
     CREATE TABLE products(id TEXT PRIMARY KEY, seller_id TEXT NOT NULL);
     CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY);
+    CREATE TABLE rider_applications(id TEXT PRIMARY KEY,user_id TEXT NOT NULL);
+    CREATE TABLE rider_reports(id TEXT PRIMARY KEY,rider_user_id TEXT NOT NULL);
+    CREATE TABLE parcel_cash_records(id TEXT PRIMARY KEY,kind TEXT NOT NULL,rider_user_id TEXT NOT NULL);
+    CREATE TABLE rider_events(id TEXT PRIMARY KEY,action TEXT NOT NULL,user_id TEXT NOT NULL);
     CREATE TABLE addresses(id TEXT PRIMARY KEY,user_id TEXT NOT NULL);
     CREATE TABLE product_reviews(id TEXT PRIMARY KEY,customer_id TEXT NOT NULL,product_id TEXT);
     CREATE TABLE shipping_jobs(id TEXT PRIMARY KEY,seller_id TEXT NOT NULL);

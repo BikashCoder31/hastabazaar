@@ -244,6 +244,8 @@ export async function formRequestReplay(db: D1Database, input: {
       : input.formId.startsWith('seller.product') || input.formId === 'seller.inventory' ? 'product'
       : input.formId === 'seller.shipping-request' ? 'shipping_job'
       : input.formId === 'seller.shipping-action' ? 'shipping_job_event'
+      : input.formId === 'shipping.console-request' ? 'shipping_job'
+      : input.formId === 'shipping.console-action-seller' || input.formId === 'shipping.console-action-staff' ? 'shipping_job_event'
       : input.formId === 'seller.payout-request' ? 'payout_request'
       : input.formId === 'seller.review-reply' ? 'review_reply'
       : input.formId === 'seller.managed-supply-proposal' ? 'managed_supply'

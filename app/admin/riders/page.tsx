@@ -45,6 +45,12 @@ export default async function RidersPage() {
       <Link className="underline" href="/admin/orders">
         Open order assignments
       </Link>
+      <nav aria-label="Rider form answer history" className="flex flex-wrap gap-4 text-sm">
+        {superAdmin ? <Link className="underline" href="/admin/riders/form-history?kind=application">Application answers</Link> : null}
+        <Link className="underline" href="/admin/riders/form-history?kind=report">Report answers</Link>
+        <Link className="underline" href="/admin/riders/form-history?kind=code">Code-verification context</Link>
+        {superAdmin ? <Link className="underline" href="/admin/riders/form-history?kind=remittance">Remittance answers</Link> : null}
+      </nav>
       {superAdmin ? (
         <>
           <RiderPolicyForm policy={await riderPolicy(db)} />

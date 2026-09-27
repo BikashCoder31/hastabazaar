@@ -27,6 +27,14 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
   'seller.managed-transition-request': { formId: 'seller.managed-transition-request', route: '/api/seller/managed-program', mode: 'operation' },
   'seller.payout-request': { formId: 'seller.payout-request', route: '/api/seller/payout-requests', mode: 'transaction' },
   'seller.review-reply': { formId: 'seller.review-reply', route: '/api/seller/reviews/:id/reply', mode: 'collection' },
+  'rider.application': { formId: 'rider.application', route: '/api/rider/application', mode: 'collection' },
+  'rider.report': { formId: 'rider.report', route: '/api/rider/reports', mode: 'operation' },
+  'rider.remittance': { formId: 'rider.remittance', route: '/api/rider/remittances', mode: 'operation' },
+  'rider.code-verify': { formId: 'rider.code-verify', route: '/api/rider/verify-code', mode: 'identity' },
+  'staff.delivery-assignment': { formId: 'staff.delivery-assignment', route: '/api/admin/orders/:id/delivery', mode: 'operation' },
+  'shipping.console-request': { formId: 'shipping.console-request', route: '/api/seller/shipping', mode: 'operation' },
+  'shipping.console-action-seller': { formId: 'shipping.console-action-seller', route: '/api/seller/shipping/:id', mode: 'operation' },
+  'shipping.console-action-staff': { formId: 'shipping.console-action-staff', route: '/api/admin/shipping/:id', mode: 'operation' },
 });
 
 // Inventory rows are ordered to match the 69 JSX sites in the frozen policy baseline.
@@ -310,6 +318,34 @@ function sellerOperationDefinition(id: 'seller.shipping-request' | 'seller.shipp
   } satisfies FormDefinition);
 }
 
+function riderDeliveryDefinition(id: 'rider.application' | 'rider.report' | 'rider.remittance' |
+  'rider.code-verify' | 'staff.delivery-assignment' | 'shipping.console-request' |
+  'shipping.console-action-seller' | 'shipping.console-action-staff'): FormDefinition {
+  const source = [SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS].flatMap((rows) => rows.split('\n'))
+    .find((row) => row.startsWith(`${id}|`));
+  if (!source) throw new Error(`Missing source definition: ${id}`);
+  const [, audience, mode, route] = source.split('|') as [string, FormAudience, FormMode, string];
+  const keys: Record<typeof id, readonly string[]> = {
+    'rider.application': ['legalName', 'phone', 'district', 'identityType', 'identityNumber', 'identityPhoto', 'requestId', 'formVersion'],
+    'rider.report': ['jobId', 'version', 'kind', 'note', 'cash', 'cashPaisa', 'photo', 'video', 'openBoxOutcome', 'requestId', 'formVersion'],
+    'rider.remittance': ['jobId', 'amount', 'amountPaisa', 'reference', 'requestId', 'formVersion', 'customAnswers'],
+    'rider.code-verify': ['jobId', 'version', 'code', 'requestId', 'formVersion', 'customAnswers'],
+    'staff.delivery-assignment': ['orderId', 'method', 'riderEmail', 'courierName', 'trackingUrl', 'trackingReference', 'requestId', 'formVersion', 'customAnswers'],
+    'shipping.console-request': ['orderId', 'direction', 'note', 'sellerId', 'requestId', 'formVersion', 'customAnswers', 'sourceFormId'],
+    'shipping.console-action-seller': ['jobId', 'action', 'note', 'sellerId', 'requestId', 'formVersion', 'customAnswers', 'sourceFormId'],
+    'shipping.console-action-staff': ['jobId', 'action', 'note', 'labelReference', 'trackingCode', 'claimReference', 'reconciliationStatus', 'requestId', 'formVersion', 'customAnswers'],
+  };
+  return Object.freeze({ id, audience, mode, route, adapterId: id,
+    baseFields: Object.freeze(keys[id].map((key) => ({ key, type: 'existing' as const,
+      label: key, capability: 'protected' as const,
+      explanation: 'Identity, evidence, money, operational state, ownership and request identity remain server enforced.' }))),
+    capabilities: Object.freeze({ explanation: id === 'rider.code-verify'
+      ? 'Only a successful verification records custom context; the code and challenge never enter answer history.'
+      : 'Custom context is linked to the committed record; identity, evidence, money, authority and transitions remain protected.',
+      customFieldTypes: ACCOUNT_CUSTOM_TYPES, answerBehavior: 'record' }),
+  } satisfies FormDefinition);
+}
+
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
   Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
     const item = row.startsWith('public.contact|') ? feedbackDefinition('public.contact')
@@ -329,6 +365,14 @@ export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.fr
       : row.startsWith('seller.managed-transition-request|') ? sellerOperationDefinition('seller.managed-transition-request')
       : row.startsWith('seller.payout-request|') ? sellerOperationDefinition('seller.payout-request')
       : row.startsWith('seller.review-reply|') ? sellerOperationDefinition('seller.review-reply')
+      : row.startsWith('rider.application|') ? riderDeliveryDefinition('rider.application')
+      : row.startsWith('rider.report|') ? riderDeliveryDefinition('rider.report')
+      : row.startsWith('rider.remittance|') ? riderDeliveryDefinition('rider.remittance')
+      : row.startsWith('rider.code-verify|') ? riderDeliveryDefinition('rider.code-verify')
+      : row.startsWith('staff.delivery-assignment|') ? riderDeliveryDefinition('staff.delivery-assignment')
+      : row.startsWith('shipping.console-request|') ? riderDeliveryDefinition('shipping.console-request')
+      : row.startsWith('shipping.console-action-seller|') ? riderDeliveryDefinition('shipping.console-action-seller')
+      : row.startsWith('shipping.console-action-staff|') ? riderDeliveryDefinition('shipping.console-action-staff')
       : row.startsWith('account.profile|') ? Object.freeze({
       id: 'account.profile', audience: 'customer', mode: 'collection', route: '/api/account/profile',
       baseFields: Object.freeze([

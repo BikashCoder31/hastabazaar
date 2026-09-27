@@ -7,6 +7,7 @@ import { FormRuntimeError, resolvePublishedForm } from '@/lib/forms/runtime';
 import type { FormAnswerSnapshot, PublishedFormConfig } from '@/lib/forms/types';
 import { validateAnswersForDefinition, validateFormDraft } from '@/lib/forms/validation';
 import { digestFormRequest, formRequestReplay, FormRequestConflictError } from '@/lib/forms/submission';
+import { staffMutationGuard } from './staff-mutation-guard';
 
 export class OperationsConflictError extends Error {}
 
@@ -199,15 +200,21 @@ export async function createShippingJob(
     note: string;
     requestId: string;
     now: number;
-    form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot };
+    form?: { formId?: 'seller.shipping-request' | 'shipping.console-request'; requestId: string; versionId: string; answers: FormAnswerSnapshot };
   },
 ): Promise<string> {
+  const formId = options.form?.formId ?? 'seller.shipping-request';
+  if (options.form && (options.form.requestId !== options.requestId ||
+    !['seller.shipping-request', 'shipping.console-request'].includes(formId)))
+    throw new FormRequestConflictError('Shipping request form reference is invalid.');
+  const auditAction = formId === 'shipping.console-request'
+    ? 'shipping.console.requested' : 'seller.shipping.requested';
   const catalogDigest = options.form ? await digestFormRequest({ orderId: options.orderId,
     sellerId: options.sellerId, direction: options.direction, note: options.note.trim(),
     versionId: options.form.versionId, answers: options.form.answers }) : null;
   if (options.form) {
-    const replay = await formRequestReplay(database, { formId: 'seller.shipping-request',
-      requestId: options.requestId, actorId: options.actorId, action: 'seller.shipping.requested',
+    const replay = await formRequestReplay(database, { formId,
+      requestId: options.requestId, actorId: options.actorId, action: auditAction,
       digest: catalogDigest! });
     if (replay) {
       const ownedReplay = await database.prepare('SELECT id FROM shipping_jobs WHERE id=? AND seller_id=? AND created_by=? AND created_request_id=? LIMIT 1')
@@ -268,16 +275,16 @@ export async function createShippingJob(
         ),
     workflowAudit(database,'shipping',options,id,'request_pickup'),
     ...(options.form ? [database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,created_at)
-      VALUES (?,?,'seller.shipping.requested','shipping_job',?,'Seller requested manual shipping coordination',NULL,?,?,?)`)
-      .bind(crypto.randomUUID(), options.actorId, id, JSON.stringify({ catalogDigest }), options.requestId, options.now),
-      buildFormAnswerInsert(database, { formId: 'seller.shipping-request', requestId: options.requestId,
+      VALUES (?,?,?,'shipping_job',?,'Seller requested manual shipping coordination',NULL,?,?,?)`)
+      .bind(crypto.randomUUID(), options.actorId, auditAction, id, JSON.stringify({ catalogDigest }), options.requestId, options.now),
+      buildFormAnswerInsert(database, { formId, requestId: options.requestId,
         versionId: options.form.versionId, subjectType: 'shipping_job', subjectId: id,
         actorId: options.actorId, answers: options.form.answers, now: options.now })] : []),
     ]);
   } catch (error) {
     if (options.form) {
-      const replay = await formRequestReplay(database, { formId: 'seller.shipping-request',
-        requestId: options.requestId, actorId: options.actorId, action: 'seller.shipping.requested',
+      const replay = await formRequestReplay(database, { formId,
+        requestId: options.requestId, actorId: options.actorId, action: auditAction,
         digest: catalogDigest! });
       if (replay) {
         const ownedReplay = await database.prepare('SELECT id FROM shipping_jobs WHERE id=? AND seller_id=? AND created_by=? AND created_request_id=? LIMIT 1')
@@ -312,20 +319,39 @@ export async function operateShippingJob(
     reconciliationStatus?: string;
     requestId: string;
     now: number;
-    form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot };
+    form?: { formId?: 'seller.shipping-action' | 'shipping.console-action-seller' | 'shipping.console-action-staff';
+      requestId: string; versionId: string; answers: FormAnswerSnapshot };
   },
 ): Promise<void> {
+  const formId = options.form?.formId ?? 'seller.shipping-action';
+  if (options.form && (options.form.requestId !== options.requestId ||
+    !['seller.shipping-action', 'shipping.console-action-seller',
+      'shipping.console-action-staff'].includes(formId) ||
+    (formId === 'shipping.console-action-staff') === (options.actorRole === 'seller')))
+    throw new FormRequestConflictError('Shipping action form reference is invalid.');
+  const auditAction = formId === 'shipping.console-action-staff'
+    ? 'shipping.console.action.staff' : formId === 'shipping.console-action-seller'
+      ? 'shipping.console.action.seller' : 'seller.shipping.picked_up';
+  const authority = formId === 'shipping.console-action-staff'
+    ? await staffMutationGuard(database, options.actorId, 'order.manage',
+      OperationsConflictError, options.actorRole as StaffRole) : null;
   const catalogDigest = options.form ? await digestFormRequest({ jobId: options.jobId,
     sellerId: options.sellerId, action: options.action, note: options.note.trim(),
-    versionId: options.form.versionId, answers: options.form.answers }) : null;
+    ...(formId === 'shipping.console-action-staff' ? {
+      labelReference: options.labelReference, trackingCode: options.trackingCode,
+      claimReference: options.claimReference, reconciliationStatus: options.reconciliationStatus,
+      pickupStart: options.pickupStart, pickupEnd: options.pickupEnd,
+    } : {}), versionId: options.form.versionId, answers: options.form.answers }) : null;
   if (options.form) {
-    const replay = await formRequestReplay(database, { formId: 'seller.shipping-action',
-      requestId: options.requestId, actorId: options.actorId, action: 'seller.shipping.picked_up',
+    const replay = await formRequestReplay(database, { formId,
+      requestId: options.requestId, actorId: options.actorId, action: auditAction,
       digest: catalogDigest! });
     if (replay) {
       const ownedReplay = await database.prepare(`SELECT 1 FROM shipping_job_events e JOIN shipping_jobs j ON j.id=e.shipping_job_id
-        WHERE e.id=? AND e.shipping_job_id=? AND e.actor_id=? AND j.seller_id=? AND e.request_id=? LIMIT 1`)
-        .bind(replay, options.jobId, options.actorId, options.sellerId, options.requestId).first();
+        WHERE e.id=? AND e.shipping_job_id=? AND e.actor_id=? AND e.request_id=?
+          ${options.actorRole === 'seller' ? 'AND j.seller_id=?' : "AND e.actor_role IN ('admin','super_admin')"} LIMIT 1`)
+        .bind(replay, options.jobId, options.actorId, options.requestId,
+          ...(options.actorRole === 'seller' ? [options.sellerId] : [])).first();
       if (!ownedReplay) throw new FormRequestConflictError('Request reference is already used for another shipping action.');
       return;
     }
@@ -385,6 +411,7 @@ export async function operateShippingJob(
   const eventId = crypto.randomUUID();
   let results;
   try { results = await database.batch([
+    ...(authority?.statements ?? []),
     database
       .prepare(
         `UPDATE shipping_jobs SET status = ?, label_reference = COALESCE(?, label_reference), tracking_code = COALESCE(?, tracking_code), pickup_window_start = COALESCE(?, pickup_window_start), pickup_window_end = COALESCE(?, pickup_window_end), claim_reference = COALESCE(?, claim_reference), reconciliation_status = COALESCE(?, reconciliation_status), reconciliation_note = CASE WHEN ? IS NULL THEN reconciliation_note ELSE ? END, updated_at = ? WHERE id = ? AND status = ?`,
@@ -424,23 +451,25 @@ export async function operateShippingJob(
       ),
   workflowAudit(database,'shipping',options,options.jobId,options.action),
   ...(options.form ? [database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,created_at)
-    VALUES (?,?,'seller.shipping.picked_up','shipping_job_event',?,'Seller confirmed carrier pickup',NULL,
+    VALUES (?,?,?,'shipping_job_event',?,'Configured shipping action',NULL,
       CASE WHEN EXISTS(SELECT 1 FROM shipping_job_events WHERE id=? AND shipping_job_id=? AND actor_id=? AND request_id=?)
         THEN ? ELSE json_extract('invalid action','$') END,?,?)`)
-    .bind(crypto.randomUUID(), options.actorId, eventId, eventId, options.jobId, options.actorId,
+    .bind(crypto.randomUUID(), options.actorId, auditAction, eventId, eventId, options.jobId, options.actorId,
       options.requestId, JSON.stringify({ catalogDigest }), options.requestId, options.now),
-    buildFormAnswerInsert(database, { formId: 'seller.shipping-action', requestId: options.requestId,
+    buildFormAnswerInsert(database, { formId, requestId: options.requestId,
       versionId: options.form.versionId, subjectType: 'shipping_job_event', subjectId: eventId,
       actorId: options.actorId, answers: options.form.answers, now: options.now })] : []),
     ]); } catch (error) {
     if (options.form) {
-      const replay = await formRequestReplay(database, { formId: 'seller.shipping-action',
-        requestId: options.requestId, actorId: options.actorId, action: 'seller.shipping.picked_up',
+      const replay = await formRequestReplay(database, { formId,
+        requestId: options.requestId, actorId: options.actorId, action: auditAction,
         digest: catalogDigest! });
       if (replay) {
         const ownedReplay = await database.prepare(`SELECT 1 FROM shipping_job_events e JOIN shipping_jobs j ON j.id=e.shipping_job_id
-          WHERE e.id=? AND e.shipping_job_id=? AND e.actor_id=? AND j.seller_id=? AND e.request_id=? LIMIT 1`)
-          .bind(replay, options.jobId, options.actorId, options.sellerId, options.requestId).first();
+          WHERE e.id=? AND e.shipping_job_id=? AND e.actor_id=? AND e.request_id=?
+            ${options.actorRole === 'seller' ? 'AND j.seller_id=?' : "AND e.actor_role IN ('admin','super_admin')"} LIMIT 1`)
+          .bind(replay, options.jobId, options.actorId, options.requestId,
+            ...(options.actorRole === 'seller' ? [options.sellerId] : [])).first();
         if (!ownedReplay) throw new FormRequestConflictError('Request reference is already used for another shipping action.');
         return;
       }
@@ -448,8 +477,8 @@ export async function operateShippingJob(
     throw error;
   }
   if (
-    (results[0].meta.changes ?? 0) !== 1 ||
-    (results[1].meta.changes ?? 0) !== 1
+    (results[authority?.statements.length ?? 0].meta.changes ?? 0) !== 1 ||
+    (results[(authority?.statements.length ?? 0) + 1].meta.changes ?? 0) !== 1
   )
     throw new OperationsConflictError(
       'Shipping job changed. Refresh and try again.',

@@ -17,7 +17,8 @@ const owned = `((subject_type='user' AND subject_id=?)
     JOIN seller_profiles s ON s.id=p.seller_id WHERE p.id=subject_id AND s.user_id=?))
   OR (subject_type='shipping_job' AND EXISTS(SELECT 1 FROM shipping_jobs j
     JOIN seller_profiles s ON s.id=j.seller_id WHERE j.id=subject_id AND s.user_id=?))
-  OR (subject_type='shipping_job_event' AND EXISTS(SELECT 1 FROM shipping_job_events e
+  OR (subject_type='shipping_job_event' AND form_id<>'shipping.console-action-staff'
+    AND EXISTS(SELECT 1 FROM shipping_job_events e
     JOIN shipping_jobs j ON j.id=e.shipping_job_id JOIN seller_profiles s ON s.id=j.seller_id
     WHERE e.id=subject_id AND s.user_id=?))
   OR (subject_type='payout_request' AND EXISTS(SELECT 1 FROM payout_requests p
@@ -30,8 +31,20 @@ const owned = `((subject_type='user' AND subject_id=?)
   OR (subject_type='seller_route_transition' AND EXISTS(SELECT 1 FROM seller_route_transition_applications transition
     JOIN seller_profiles s ON s.id=transition.seller_id WHERE transition.id=subject_id AND s.user_id=?))
   OR (subject_type='rider' AND EXISTS(SELECT 1 FROM rider_profiles r WHERE r.user_id=subject_id AND r.user_id=?))
+  OR (subject_type='rider_application' AND form_id='rider.application'
+    AND EXISTS(SELECT 1 FROM rider_applications application
+      WHERE application.id=subject_id AND application.user_id=?))
+  OR (subject_type='rider_report' AND form_id='rider.report'
+    AND EXISTS(SELECT 1 FROM rider_reports report
+      WHERE report.id=subject_id AND report.rider_user_id=?))
+  OR (subject_type='parcel_cash_record' AND form_id='rider.remittance'
+    AND EXISTS(SELECT 1 FROM parcel_cash_records cash
+      WHERE cash.id=subject_id AND cash.kind='remittance' AND cash.rider_user_id=?))
+  OR (subject_type='rider_event' AND form_id='rider.code-verify'
+    AND EXISTS(SELECT 1 FROM rider_events event
+      WHERE event.id=subject_id AND event.action='otp_verified' AND event.user_id=?))
   OR (subject_type='data_rights_request' AND EXISTS(SELECT 1 FROM data_rights_requests d WHERE d.id=subject_id AND d.customer_id=?)))`;
-const ownerBindings = (userId: string) => Array(14).fill(userId) as string[];
+const ownerBindings = (userId: string) => Array(18).fill(userId) as string[];
 const deletable = `(form_id='account.profile' AND subject_type='user' AND subject_id=?)`;
 
 function required(value: string, label: string, max = 191): string {

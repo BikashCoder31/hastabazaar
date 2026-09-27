@@ -2,24 +2,36 @@
 import { useState, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { DISTRICTS_BY_PROVINCE } from '@/lib/checkout/nepal-address';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+const applicationKeys = ['legalName', 'phone', 'identityNumber', 'district', 'identityType', 'identityPhoto', 'requestId', 'formVersion'];
+const reportKeys = ['jobId', 'version', 'requestId', 'kind', 'note', 'cash', 'cashPaisa', 'proof', 'photo', 'video', 'openBoxOutcome', 'formVersion'];
+const remittanceKeys = ['jobId', 'amount', 'amountPaisa', 'reference', 'requestId', 'formVersion', 'customAnswers'];
 const input = 'mt-1 block w-full rounded-lg border bg-background p-2';
 function Star() {
   return <span aria-hidden="true"> *</span>;
 }
 export function RiderApplicationForm() {
   const router = useRouter(),
+    catalog = usePublishedFormConfig('rider.application'),
+    [requestId, setRequestId] = useState(() => crypto.randomUUID()),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false);
   async function submit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!catalog.canSubmit) return;
     setBusy(true);
     try {
+      const data = new FormData(e.currentTarget);
+      data.set('requestId', requestId);
       const r = await fetch('/api/rider/application', {
           method: 'POST',
-          body: new FormData(e.currentTarget),
+          body: data,
         }),
-        data = (await r.json()) as { error?: string };
-      if (!r.ok) throw new Error(data.error ?? 'Application failed.');
+        result = (await r.json()) as { error?: string; code?: string };
+      if (!catalog.handleSubmissionResponse(r, result.code)) throw new Error(result.error ?? 'Application failed.');
+      setRequestId(crypto.randomUUID());
       setMessage('Application submitted for Super Admin review.');
       router.refresh();
     } catch (error) {
@@ -32,6 +44,7 @@ export function RiderApplicationForm() {
   }
   return (
     <form
+      data-form-id="rider.application"
       onSubmit={(e) => void submit(e)}
       className="space-y-4 rounded-xl border p-5"
     >
@@ -102,14 +115,15 @@ export function RiderApplicationForm() {
           JPG, PNG or WebP up to 5 MB; show the document clearly.
         </span>
       </label>
+      {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={applicationKeys} /> : null}
       <button
         className="rounded-lg bg-primary p-3 text-primary-foreground"
-        disabled={busy}
+        disabled={busy || !catalog.canSubmit}
       >
         Submit rider application
       </button>
       <output aria-live="polite" className="block">
-        {message}
+        {message || catalog.message}
       </output>
     </form>
   );
@@ -126,15 +140,18 @@ export function RiderReportForm({
   openBoxRequired: boolean;
 }) {
   const router = useRouter(),
+    catalog = usePublishedFormConfig('rider.report'),
+    [requestId, setRequestId] = useState(() => crypto.randomUUID()),
     [kind, setKind] = useState('delivered'),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false);
   async function submit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!catalog.canSubmit) return;
     const form = new FormData(e.currentTarget);
     form.set('jobId', jobId);
     form.set('version', String(version));
-    form.set('requestId', crypto.randomUUID());
+    form.set('requestId', requestId);
     const proof = form.get('proof');
     form.delete('proof');
     if (proof instanceof File && proof.size)
@@ -158,8 +175,9 @@ export function RiderReportForm({
           method: 'POST',
           body: form,
         }),
-        data = (await r.json()) as { error?: string };
-      if (!r.ok) throw new Error(data.error ?? 'Report failed.');
+        data = (await r.json()) as { error?: string; code?: string };
+      if (!catalog.handleSubmissionResponse(r, data.code)) throw new Error(data.error ?? 'Report failed.');
+      setRequestId(crypto.randomUUID());
       setMessage(
         'Report saved. Staff must verify it before delivery or COD records change.',
       );
@@ -172,6 +190,7 @@ export function RiderReportForm({
   }
   return (
     <form
+      data-form-id="rider.report"
       onSubmit={(e) => void submit(e)}
       className="space-y-3 rounded-lg bg-muted p-4"
     >
@@ -303,14 +322,15 @@ export function RiderReportForm({
       ) : (
         <input type="hidden" name="cash" value="0" />
       )}
+      {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={reportKeys} /> : null}
       <button
         className="rounded-lg bg-primary p-3 text-primary-foreground"
-        disabled={busy}
+        disabled={busy || !catalog.canSubmit}
       >
         Submit for staff confirmation
       </button>
       <output className="block" aria-live="polite">
-        {message}
+        {message || catalog.message}
       </output>
     </form>
   );
@@ -326,10 +346,13 @@ export function RiderRemittanceForm({
   outstandingPaisa: number;
 }) {
   const router = useRouter(),
+    catalog = usePublishedFormConfig('rider.remittance'),
+    [requestId, setRequestId] = useState(() => crypto.randomUUID()),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false);
   async function submit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!catalog.canSubmit || !catalog.config) return;
     const form = new FormData(e.currentTarget),
       rawAmount = form.get('amount'),
       reference = form.get('reference'),
@@ -346,6 +369,7 @@ export function RiderRemittanceForm({
     }
     setBusy(true);
     try {
+      const configured = readConfiguredSubmission(e.currentTarget, catalog.config, remittanceKeys);
       const response = await fetch('/api/rider/remittances', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -353,12 +377,14 @@ export function RiderRemittanceForm({
             jobId,
             amountPaisa: Number(paisa),
             reference,
-            requestId: crypto.randomUUID(),
+            requestId,
+            ...configuredJsonPayload(catalog.config, configured.answers, remittanceKeys),
           }),
         }),
-        data = (await response.json()) as { error?: string };
-      if (!response.ok)
+        data = (await response.json()) as { error?: string; code?: string };
+      if (!catalog.handleSubmissionResponse(response, data.code))
         throw new Error(data.error ?? 'Remittance submission failed.');
+      setRequestId(crypto.randomUUID());
       setMessage(
         'Cash handover submitted. A different authorized finance reviewer must verify actual receipt.',
       );
@@ -376,6 +402,7 @@ export function RiderRemittanceForm({
   }
   return (
     <form
+      data-form-id="rider.remittance"
       onSubmit={(event) => void submit(event)}
       className="space-y-3 rounded-lg border bg-background p-4"
     >
@@ -410,14 +437,15 @@ export function RiderRemittanceForm({
           maxLength={120}
         />
       </label>
+      {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={remittanceKeys} /> : null}
       <button
         className="rounded-lg bg-primary p-3 text-primary-foreground"
-        disabled={busy}
+        disabled={busy || !catalog.canSubmit}
       >
         Submit for finance verification
       </button>
       <output className="block" aria-live="polite">
-        {message}
+        {message || catalog.message}
       </output>
     </form>
   );

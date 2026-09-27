@@ -6,6 +6,8 @@ import {
 } from 'node:crypto';
 import { operationalBusinessNotificationStatements } from '../operations/business-notifications';
 import { staffMutationGuard } from '../db/repositories/staff-mutation-guard';
+import { buildFormAnswerInsert } from '../db/repositories/form-answers';
+import type { FormAnswerSnapshot } from '../forms/types';
 import { normalizeDistrict } from '../checkout/nepal-address';
 import {
   can,
@@ -13,6 +15,8 @@ import {
   type Permission,
 } from '../marketplace/permissions';
 export class RiderError extends Error {}
+export class RiderReplayConflictError extends RiderError {}
+export class RiderStorageError extends Error {}
 export function riderText(value: unknown, min = 2, max = 160) {
   if (
     typeof value !== 'string' ||
@@ -77,6 +81,7 @@ export async function submitRiderRemittance(
     amountPaisa: number;
     reference: string;
     now: number;
+    form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot; digest: string };
   },
 ) {
   const requestId = riderText(o.requestId, 8, 150),
@@ -106,6 +111,24 @@ export async function submitRiderRemittance(
       throw new RiderError(
         'This remittance request reference was already used for different details.',
       );
+    if (o.form) {
+      const answer = await db.prepare(`SELECT subject_id AS subjectId,actor_id AS actorId,
+        config_version_id AS versionId FROM form_answer_sets
+        WHERE form_id='rider.remittance' AND request_id=? LIMIT 1`)
+        .bind(requestId).first<{ subjectId: string; actorId: string; versionId: string }>();
+      const audits = await db.prepare(`SELECT actor_id AS actorId,subject_id AS subjectId,next_json AS nextJson
+        FROM audit_logs WHERE request_id=? LIMIT 2`)
+        .bind(`rider.remittance:${requestId}`)
+        .all<{ actorId: string; subjectId: string; nextJson: string | null }>();
+      let digest: unknown;
+      try { digest = audits.results.length === 1 && JSON.parse(audits.results[0].nextJson ?? '').catalogDigest; }
+      catch { /* Invalid prior audit cannot authorize replay. */ }
+      if (o.form.requestId !== requestId || answer?.subjectId !== existing.id ||
+        answer.actorId !== o.riderId || answer.versionId !== o.form.versionId ||
+        audits.results[0]?.actorId !== o.riderId || audits.results[0]?.subjectId !== existing.id ||
+        digest !== o.form.digest)
+        throw new RiderError('This remittance request reference was already used for different details.');
+    }
     return Object.freeze({ id: existing.id, status: existing.status });
   }
   const position = await db
@@ -151,6 +174,16 @@ export async function submitRiderRemittance(
           o.now,
           o.riderId,
         ),
+      ...(o.form ? [buildFormAnswerInsert(db, {
+        formId: 'rider.remittance', requestId, versionId: o.form.versionId,
+        subjectType: 'parcel_cash_record', subjectId: requestId,
+        actorId: o.riderId, answers: o.form.answers, now: o.now,
+      }), db.prepare(`INSERT INTO audit_logs
+        (id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at)
+        VALUES (?,?, 'rider.remittance.submitted','parcel_cash_record',?,
+          'Configured rider remittance submitted',?,?,?)`)
+        .bind(crypto.randomUUID(), o.riderId, requestId,
+          JSON.stringify({ catalogDigest: o.form.digest }), `rider.remittance:${requestId}`, o.now)] : []),
       db
         .prepare(
           "INSERT INTO parcel_operation_events(id,order_id,shipping_job_id,actor_id,action,payload_json,note,created_at) SELECT ?,j.order_id,j.id,?,'rider_remittance_submitted',?,'Rider-submitted cash handover awaits separate finance verification',? FROM shipping_jobs j WHERE j.id=?",
@@ -203,13 +236,14 @@ function audit(
   note: string,
   now: number,
   reportId: string | null = null,
+  eventId: string = crypto.randomUUID(),
 ) {
   return [
     db
       .prepare(
         'INSERT INTO rider_events(id,user_id,actor_id,action,report_id,note,created_at) VALUES (?,?,?,?,?,?,?)',
       )
-      .bind(crypto.randomUUID(), user, actor, action, reportId, note, now),
+      .bind(eventId, user, actor, action, reportId, note, now),
     db
       .prepare(
         "INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,created_at) VALUES (?,?,?,'rider',?,'Rider workflow updated',?)",
@@ -309,6 +343,37 @@ export async function riderNotifications(
   }
   return statements;
 }
+export async function riderApplicationReplay(db: D1Database, input: {
+  userId: string; requestId: string; versionId: string; digest: string;
+}): Promise<string | null> {
+  const audits = await db.prepare(`SELECT actor_id AS actorId,subject_id AS subjectId,next_json AS nextJson
+    FROM audit_logs WHERE request_id=? AND action='rider.application.submitted' LIMIT 2`)
+    .bind(`rider.application:${input.requestId}`).all<{
+      actorId: string; subjectId: string; nextJson: string | null;
+    }>();
+  if (!audits.results.length) {
+    const answer = await db.prepare(`SELECT id FROM form_answer_sets
+      WHERE form_id='rider.application' AND request_id=? LIMIT 1`)
+      .bind(input.requestId).first();
+    if (answer) throw new RiderError('Application request reference is already used.');
+    return null;
+  }
+  if (audits.results.length !== 1) throw new RiderError('Application request reference is already used.');
+  const audit = audits.results[0];
+  const linked = await db.prepare(`SELECT a.id FROM rider_applications a
+    JOIN form_answer_sets f ON f.subject_type='rider_application' AND f.subject_id=a.id
+      AND f.form_id='rider.application' AND f.request_id=? AND f.config_version_id=?
+    WHERE a.id=? AND a.user_id=? AND f.actor_id=? LIMIT 1`)
+    .bind(input.requestId, input.versionId, audit.subjectId, input.userId, input.userId)
+    .first<{ id: string }>();
+  let recorded: unknown;
+  try { recorded = JSON.parse(audit.nextJson ?? '').catalogDigest; }
+  catch { /* Invalid audit data cannot authorize a replay. */ }
+  if (audit.actorId !== input.userId || recorded !== input.digest || !linked)
+    throw new RiderError('Application request reference is already used for different details.');
+  return linked.id;
+}
+
 export async function submitRiderApplication(
   db: D1Database,
   o: ReturnType<typeof riderApplicationInput> & {
@@ -316,8 +381,14 @@ export async function submitRiderApplication(
     key: string;
     mime: string;
     now: number;
+    form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot; digest: string };
   },
 ) {
+  if (o.form) {
+    const prior = await riderApplicationReplay(db, { userId: o.userId,
+      requestId: o.form.requestId, versionId: o.form.versionId, digest: o.form.digest });
+    if (prior) return prior;
+  }
   const current = await riderProfile(db, o.userId);
   if (
     current &&
@@ -360,6 +431,17 @@ export async function submitRiderApplication(
         o.mime,
         o.now,
       ),
+    ...(o.form ? [buildFormAnswerInsert(db, {
+      formId: 'rider.application', requestId: o.form.requestId,
+      versionId: o.form.versionId, subjectType: 'rider_application',
+      subjectId: id, actorId: o.userId, answers: o.form.answers, now: o.now,
+    })] : []),
+    ...(o.form ? [db.prepare(`INSERT INTO audit_logs
+      (id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at)
+      VALUES (?,?, 'rider.application.submitted','rider_application',?,
+        'Configured rider application submitted',?,?,?)`)
+      .bind(crypto.randomUUID(), o.userId, id,
+        JSON.stringify({ catalogDigest: o.form.digest }), `rider.application:${o.form.requestId}`, o.now)] : []),
     current
       ? db
           .prepare(
@@ -613,8 +695,40 @@ export async function submitRiderReport(
     openBox?: boolean;
     openBoxOutcome?: string;
     now: number;
+    form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot; digest: string };
   },
 ) {
+  if (o.form) {
+    if (o.form.requestId !== o.requestId || !/^[a-f0-9]{64}$/.test(o.form.digest) &&
+      !/^[a-zA-Z0-9_-]{8,100}$/.test(o.form.digest))
+      throw new RiderError('Report request reference is invalid.');
+    const previous = await db.prepare(`SELECT id,shipping_job_id AS jobId,rider_user_id AS riderId,
+      assignment_version AS version,kind,note,cash_paisa AS cashPaisa,open_box_outcome AS openBoxOutcome
+      FROM rider_reports WHERE request_id=? LIMIT 1`).bind(o.requestId).first<{
+        id: string; jobId: string; riderId: string; version: number; kind: string;
+        note: string; cashPaisa: number; openBoxOutcome: string;
+      }>();
+    if (previous) {
+      const auditRows = await db.prepare(`SELECT actor_id AS actorId,subject_id AS subjectId,next_json AS nextJson
+        FROM audit_logs WHERE request_id=? LIMIT 2`).bind(`rider.report:${o.requestId}`)
+        .all<{ actorId: string; subjectId: string; nextJson: string | null }>();
+      const answer = await db.prepare(`SELECT subject_id AS subjectId,actor_id AS actorId,
+        config_version_id AS versionId FROM form_answer_sets
+        WHERE form_id='rider.report' AND request_id=? LIMIT 1`).bind(o.requestId)
+        .first<{ subjectId: string; actorId: string; versionId: string }>();
+      let digest: unknown;
+      try { digest = auditRows.results.length === 1 && JSON.parse(auditRows.results[0].nextJson ?? '').catalogDigest; }
+      catch { /* A malformed prior audit cannot authorize replay. */ }
+      if (previous.jobId === o.jobId && previous.riderId === o.riderId &&
+        previous.version === o.version && previous.kind === o.kind &&
+        previous.note === o.note.trim() && previous.cashPaisa === o.cashPaisa &&
+        previous.openBoxOutcome === (o.openBoxOutcome ?? 'not_applicable') &&
+        auditRows.results[0]?.actorId === o.riderId && auditRows.results[0]?.subjectId === previous.id &&
+        digest === o.form.digest && answer?.subjectId === previous.id &&
+        answer.actorId === o.riderId && answer.versionId === o.form.versionId) return previous.id;
+      throw new RiderError('This report request reference was already used for different details.');
+    }
+  }
   if (
     !['delivered', 'failed_delivery', 'customer_unavailable'].includes(
       o.kind,
@@ -748,6 +862,17 @@ export async function submitRiderReport(
         job.openBoxRequired ? 1 : 0,
         outcome,
       ),
+    ...(o.form ? [buildFormAnswerInsert(db, {
+      formId: 'rider.report', requestId: o.form.requestId, versionId: o.form.versionId,
+      subjectType: 'rider_report', subjectId: id, actorId: o.riderId,
+      answers: o.form.answers, now: o.now,
+    })] : []),
+    ...(o.form ? [db.prepare(`INSERT INTO audit_logs
+      (id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at)
+      VALUES (?,?, 'rider.report.submitted','rider_report',?,
+        'Configured rider report submitted',?,?,?)`)
+      .bind(crypto.randomUUID(), o.riderId, id, JSON.stringify({ catalogDigest: o.form.digest }),
+        `rider.report:${o.requestId}`, o.now)] : []),
     ...audit(
       db,
       o.riderId,
@@ -1096,9 +1221,55 @@ export async function verifyRiderOtp(
     version: number;
     code: string;
     now: number;
+    form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot };
   },
 ) {
   if (!/^\d{6}$/.test(o.code)) return false;
+  const replay = async (): Promise<boolean | null> => {
+    if (!o.form) return null;
+    const answer = await db.prepare(`SELECT subject_id AS subjectId,actor_id AS actorId,
+      config_version_id AS versionId,answers_json AS answersJson FROM form_answer_sets
+      WHERE form_id='rider.code-verify' AND request_id=? LIMIT 1`)
+      .bind(o.form.requestId).first<{ subjectId: string; actorId: string;
+        versionId: string; answersJson: string }>();
+    if (!answer) return null;
+    const event = await db.prepare(`SELECT user_id AS userId,actor_id AS actorId,action,note
+      FROM rider_events WHERE id=? LIMIT 1`).bind(o.form.requestId)
+      .first<{ userId: string; actorId: string; action: string; note: string }>();
+    let originalJobId: string | null = null;
+    let originalVersion: number | null = null;
+    try {
+      const provenance = JSON.parse(event?.note ?? 'null') as unknown;
+      if (provenance && typeof provenance === 'object' && !Array.isArray(provenance) &&
+        'shippingJobId' in provenance && typeof provenance.shippingJobId === 'string' &&
+        'assignmentVersion' in provenance && Number.isSafeInteger(provenance.assignmentVersion)) {
+        originalJobId = provenance.shippingJobId;
+        originalVersion = provenance.assignmentVersion as number;
+      }
+    } catch { /* Missing or malformed immutable provenance cannot authorize replay. */ }
+    const challenge = await db.prepare(`SELECT rider_user_id AS riderId,
+      assignment_version AS assignmentVersion,code_hash AS hash,consumed_at AS consumedAt
+      FROM rider_otp_challenges WHERE shipping_job_id=? LIMIT 1`).bind(o.jobId)
+      .first<{ riderId: string; assignmentVersion: number;
+        hash: string; consumedAt: number | null }>();
+    const assignment = await db.prepare(`SELECT 1 AS valid FROM shipping_parcels
+      WHERE shipping_job_id=? AND rider_user_id=? AND version=? AND method='own_rider' LIMIT 1`)
+      .bind(o.jobId, o.riderId, o.version).first<{ valid: number }>();
+    const [salt, hash] = challenge?.hash.split(':') ?? [];
+    const codeMatches = Boolean(salt && hash && /^[a-f0-9]{64}$/.test(hash) &&
+      timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(otpHash(salt, o.code), 'hex')));
+    if (answer.subjectId !== o.form.requestId || answer.actorId !== o.riderId ||
+      answer.versionId !== o.form.versionId ||
+      answer.answersJson !== JSON.stringify(o.form.answers) ||
+      event?.userId !== o.riderId || event.actorId !== o.riderId ||
+      event.action !== 'otp_verified' || originalJobId !== o.jobId ||
+      originalVersion !== o.version || !assignment ||
+      challenge?.riderId !== o.riderId || challenge.assignmentVersion !== o.version ||
+      challenge.consumedAt === null || !codeMatches || !(await approvedRider(db, o.riderId)))
+      throw new RiderReplayConflictError('This verification request reference was already used for different details.');
+    return true;
+  };
+  if (await replay()) return true;
   const current = await db
     .prepare(
       'SELECT code_hash AS hash,attempts,expires_at AS expiresAt,consumed_at AS consumedAt FROM rider_otp_challenges WHERE shipping_job_id=? AND rider_user_id=? AND assignment_version=?',
@@ -1152,12 +1323,27 @@ export async function verifyRiderOtp(
         o.riderId,
         o.riderId,
         matched ? 'otp_verified' : 'otp_rejected',
-        'Parcel delivery code verification recorded; no delivery or cash transition.',
+        matched && o.form ? JSON.stringify({
+          message: 'Parcel delivery code verification recorded; no delivery or cash transition.',
+          shippingJobId: o.jobId, assignmentVersion: o.version,
+        }) : 'Parcel delivery code verification recorded; no delivery or cash transition.',
         o.now,
+        null,
+        matched && o.form ? o.form.requestId : crypto.randomUUID(),
       ),
+      ...(matched && o.form ? [buildFormAnswerInsert(db, {
+        formId: 'rider.code-verify', requestId: o.form.requestId,
+        versionId: o.form.versionId, subjectType: 'rider_event',
+        subjectId: o.form.requestId, actorId: o.riderId,
+        answers: o.form.answers, now: o.now,
+      })] : []),
     ]);
     return matched;
-  } catch {
+  } catch (error) {
+    if (error instanceof RiderReplayConflictError) throw error;
+    if (matched && o.form && await replay()) return true;
+    if (matched && o.form)
+      throw new RiderStorageError('Code verification could not be saved. Please retry.');
     return false;
   }
 }

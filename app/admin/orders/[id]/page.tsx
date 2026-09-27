@@ -8,6 +8,10 @@ import {
   riderCompensationEntries,
 } from '@/lib/operations/parcels';
 import { DeliveryAssignment } from '@/components/delivery/delivery-assignment';
+import { AnswerDetails } from '@/components/forms/answer-details';
+import { listFormAnswersForSubjectPage } from '@/lib/db/repositories/form-answers';
+import { authorizeFormAnswerRead } from '@/lib/forms/access';
+import { readHistoryCursor } from '@/lib/forms/rider-history';
 import { getDelivery } from '@/lib/delivery/repository';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
@@ -35,8 +39,10 @@ function money(paisa: number): string {
 
 export default async function AdminOrderPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ deliveryAfterAt?: string; deliveryAfterId?: string }>;
 }) {
   const { id } = await params;
   const staff = await requireStaffPage(`/admin/orders/${id}`, 'order.manage');
@@ -47,6 +53,17 @@ export default async function AdminOrderPage({
   if (!order) notFound();
   const address = order.address;
   const db = requireDatabase(env as unknown as { DB?: D1Database });
+  const query = await searchParams;
+  let deliveryAfter;
+  try { deliveryAfter = readHistoryCursor(query?.deliveryAfterAt, query?.deliveryAfterId); }
+  catch { notFound(); }
+  const deliveryAnswers = await listFormAnswersForSubjectPage(db, {
+    subjectType: 'order', subjectId: id, formId: 'staff.delivery-assignment',
+    after: deliveryAfter,
+  });
+  if ((await Promise.all(deliveryAnswers.answers.map((answer) =>
+    authorizeFormAnswerRead(db, { id: staff.id, role: staff.role }, answer))))
+    .some((allowed) => !allowed)) notFound();
   const [parcels, cash, compensation, invoiceGroups] = await Promise.all([
     listParcels(db, id),
     parcelCashRecords(db, id),
@@ -236,6 +253,14 @@ export default async function AdminOrderPage({
                   riderEmail={assignedRider?.email}
                 />
               ) : null}
+              <section className="mt-6 space-y-3 rounded-xl border p-5">
+                <h3 className="font-semibold">Saved delivery-assignment answers</h3>
+                {deliveryAnswers.answers.length ? deliveryAnswers.answers.map((answer) =>
+                  <AnswerDetails key={answer.id} answer={answer} />) : <p>No saved assignment answers.</p>}
+                {deliveryAnswers.nextCursor ? <Link className="underline" href={
+                  `/admin/orders/${encodeURIComponent(id)}?deliveryAfterAt=${deliveryAnswers.nextCursor.createdAt}&deliveryAfterId=${encodeURIComponent(deliveryAnswers.nextCursor.id)}`
+                }>Next 50 answers</Link> : null}
+              </section>
               {!parcels.length ? (
                 <AdminOrderFulfillmentActions
                   key={order.trackingCode ?? 'manual'}

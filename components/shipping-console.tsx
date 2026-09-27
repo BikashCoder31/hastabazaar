@@ -1,9 +1,19 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { ShippingJobRow } from '@/lib/db/repositories/operations';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
+
+const requestBaseKeys = ['orderId', 'direction', 'note', 'sellerId', 'requestId',
+  'formVersion', 'customAnswers', 'sourceFormId'];
+const actionBaseKeys = ['jobId', 'action', 'note', 'sellerId', 'labelReference',
+  'trackingCode', 'claimReference', 'reconciliationStatus', 'requestId',
+  'formVersion', 'customAnswers', 'sourceFormId'];
 
 interface OrderOption {
   id: string;
@@ -21,32 +31,72 @@ export function ShippingConsole({
   const router = useRouter();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  async function requestJob(form: FormData) {
+  const [pendingAttempts, setPendingAttempts] = useState<Record<string, boolean>>({});
+  const [requestOrderId, setRequestOrderId] = useState('');
+  const requestCatalog = usePublishedFormConfig('shipping.console-request');
+  const actionFormId = admin ? 'shipping.console-action-staff' : 'shipping.console-action-seller';
+  const actionCatalog = usePublishedFormConfig(actionFormId);
+  const requestAttempt = requestOrderId ? sessionAttemptKey('shipping.console-request', requestOrderId) : null;
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setPendingAttempts((current) => ({ ...current,
+      ...Object.fromEntries(jobs.map((job) => {
+        const key = sessionAttemptKey(actionFormId, job.id);
+        return [key, hasSessionAttempt(key)];
+      })),
+    })), 0);
+    return () => window.clearTimeout(timeout);
+  }, [actionFormId, jobs]);
+  function resetAttempt(key: string, kind: 'request' | 'action') {
+    if (!window.confirm(`A previous shipping ${kind} may already have succeeded. Check its answer history first. Starting a new attempt can create a duplicate ${kind} record. Start a new attempt anyway?`)) return;
+    try { sessionStorage.removeItem(key); }
+    catch { setError('Browser session storage is unavailable. Please enable it before submitting.'); return; }
+    setPendingAttempts((current) => ({ ...current, [key]: false }));
+    setError(`New shipping ${kind} attempt ready.`);
+  }
+  async function requestJob(event: { preventDefault(): void; currentTarget: HTMLFormElement }) {
+    event.preventDefault();
+    if (busy || !requestCatalog.canSubmit || !requestCatalog.config) return;
+    const element = event.currentTarget;
+    const form = new FormData(element);
     setBusy(true);
     setError('');
-    const response = await fetch('/api/seller/shipping', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        orderId: form.get('orderId'),
-        direction: form.get('direction'),
-        note: form.get('note'),
-        requestId: crypto.randomUUID(),
-      }),
-    });
-    const body = (await response.json().catch(() => ({}))) as {
-      error?: string;
-    };
-    setBusy(false);
-    if (!response.ok) return setError(body.error ?? 'Shipping request failed.');
-    router.refresh();
+    try {
+      const configured = readConfiguredSubmission(element, requestCatalog.config, requestBaseKeys);
+      const attempt = sessionAttemptKey('shipping.console-request', String(form.get('orderId')));
+      const requestId = getOrCreateSessionAttempt(attempt);
+      setPendingAttempts((current) => ({ ...current, [attempt]: true }));
+      const response = await fetch('/api/seller/shipping', { method: 'POST',
+        headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+          orderId: form.get('orderId'), direction: form.get('direction'), note: form.get('note'),
+          requestId, sourceFormId: 'shipping.console-request',
+          ...configuredJsonPayload(requestCatalog.config, configured.answers, requestBaseKeys),
+        }) });
+      const body = (await response.json().catch(() => ({}))) as { error?: string; code?: string };
+      if (!requestCatalog.handleSubmissionResponse(response, body.code))
+        throw new Error(body.error ?? 'Shipping request failed.');
+      clearSessionAttempt(attempt);
+      setPendingAttempts((current) => ({ ...current, [attempt]: false }));
+      element.reset();
+      router.refresh();
+    } catch (reason) {
+      setError(`${reason instanceof Error ? reason.message : 'Shipping request failed.'} The request may already have succeeded. Check request answers and retry unchanged details before starting a new attempt.`);
+    } finally { setBusy(false); }
   }
-  async function act(id: string, form: FormData) {
+  async function act(id: string, event: { preventDefault(): void; currentTarget: HTMLFormElement }) {
+    event.preventDefault();
+    if (busy || !actionCatalog.canSubmit || !actionCatalog.config) return;
+    const element = event.currentTarget;
+    const form = new FormData(element);
     setBusy(true);
     setError('');
     const endpoint = admin
       ? `/api/admin/shipping/${id}`
       : `/api/seller/shipping/${id}`;
+    try {
+    const configured = readConfiguredSubmission(element, actionCatalog.config, actionBaseKeys);
+    const attempt = sessionAttemptKey(actionFormId, id);
+    const requestId = getOrCreateSessionAttempt(attempt);
+    setPendingAttempts((current) => ({ ...current, [attempt]: true }));
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -57,26 +107,44 @@ export function ShippingConsole({
         trackingCode: form.get('trackingCode') || undefined,
         claimReference: form.get('claimReference') || undefined,
         reconciliationStatus: form.get('reconciliationStatus') || undefined,
-        requestId: crypto.randomUUID(),
+        requestId,
+        ...(!admin ? { sourceFormId: actionFormId } : {}),
+        ...configuredJsonPayload(actionCatalog.config, configured.answers, actionBaseKeys),
       }),
     });
-    const body = (await response.json().catch(() => ({}))) as {
-      error?: string;
-    };
-    setBusy(false);
-    if (!response.ok) return setError(body.error ?? 'Shipping action failed.');
+    const body = (await response.json().catch(() => ({}))) as { error?: string; code?: string };
+    if (!actionCatalog.handleSubmissionResponse(response, body.code))
+      throw new Error(body.error ?? 'Shipping action failed.');
+    clearSessionAttempt(attempt);
+    setPendingAttempts((current) => ({ ...current, [attempt]: false }));
+    element.reset();
     router.refresh();
+    } catch (reason) {
+      setError(`${reason instanceof Error ? reason.message : 'Shipping action failed.'} The action may already have succeeded. Check action answers and retry unchanged details before starting a new attempt.`);
+    } finally { setBusy(false); }
   }
   return (
     <div className="space-y-5">
+      {!admin ? <nav aria-label="Shipping console answer history" className="flex gap-4 text-sm">
+        <a className="underline" href="/seller/form-history?kind=console-request">Request answers</a>
+        <a className="underline" href="/seller/form-history?kind=console-action">Action answers</a>
+      </nav> : null}
       {!admin ? (
         <form
-          action={requestJob}
+          onSubmit={requestJob}
+          data-form-id="shipping.console-request"
           className="grid gap-3 rounded-2xl border bg-card p-5 md:grid-cols-4"
         >
           <select
             name="orderId"
             required
+            onChange={(event) => {
+              setRequestOrderId(event.target.value);
+              if (event.target.value) {
+                const key = sessionAttemptKey('shipping.console-request', event.target.value);
+                setPendingAttempts((current) => ({ ...current, [key]: hasSessionAttempt(key) }));
+              }
+            }}
             className="rounded-lg border bg-background p-3"
           >
             <option value="">Select order</option>
@@ -100,12 +168,19 @@ export function ShippingConsole({
             placeholder="Pickup note"
             className="rounded-lg border bg-background p-3"
           />
+          {requestCatalog.config ? <ConfiguredFields config={requestCatalog.config} baseKeys={requestBaseKeys} /> : null}
           <button
-            disabled={busy}
+            disabled={busy || !requestCatalog.canSubmit}
             className="rounded-lg bg-primary p-3 font-semibold text-primary-foreground"
           >
             Request coordination
           </button>
+          {requestAttempt && pendingAttempts[requestAttempt] ? <div className="space-y-2 text-sm md:col-span-4">
+            <p>A previous request may already have succeeded. Check request answers, then retry unchanged details with the saved reference.</p>
+            <button type="button" disabled={busy} className="underline" onClick={() => resetAttempt(requestAttempt, 'request')}>
+              Start a new shipping request attempt
+            </button>
+          </div> : null}
         </form>
       ) : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -129,7 +204,8 @@ export function ShippingConsole({
               <div>Reconciliation: {job.reconciliationStatus}</div>
             </dl>
             <form
-              action={act.bind(null, job.id)}
+              onSubmit={(event) => act(job.id, event)}
+              data-form-id={admin ? 'shipping.console-action-staff' : 'shipping.console-action-seller'}
               className="mt-4 grid gap-2 md:grid-cols-3"
             >
               {admin ? (
@@ -182,12 +258,20 @@ export function ShippingConsole({
                 placeholder="Operational note"
                 className="rounded-lg border bg-background p-2 text-sm"
               />
+              {actionCatalog.config ? <ConfiguredFields config={actionCatalog.config} baseKeys={actionBaseKeys} /> : null}
               <button
-                disabled={busy}
+                disabled={busy || !actionCatalog.canSubmit}
                 className="rounded-lg border p-2 text-sm font-semibold"
               >
                 {admin ? 'Apply action' : 'Confirm carrier pickup'}
               </button>
+              {pendingAttempts[sessionAttemptKey(actionFormId, job.id)] ? <div className="space-y-2 text-sm md:col-span-3">
+                <p>A previous action may already have succeeded. Check action answers, then retry unchanged details with the saved reference.</p>
+                <button type="button" disabled={busy} className="underline"
+                  onClick={() => resetAttempt(sessionAttemptKey(actionFormId, job.id), 'action')}>
+                  Start a new shipping action attempt
+                </button>
+              </div> : null}
             </form>
           </article>
         ))
@@ -196,6 +280,8 @@ export function ShippingConsole({
           No shipping coordination records.
         </p>
       )}
+      {requestCatalog.message || actionCatalog.message ?
+        <p className="text-sm text-destructive">{requestCatalog.message || actionCatalog.message}</p> : null}
     </div>
   );
 }

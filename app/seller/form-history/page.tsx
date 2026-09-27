@@ -14,7 +14,11 @@ export const dynamic = 'force-dynamic';
 const historyKinds = {
   'shipping-request': { title: 'Shipping requests', formId: 'seller.shipping-request', subjectType: 'shipping_job',
     from: 'shipping_jobs record', sellerId: 'record.seller_id' },
+  'console-request': { title: 'Shipping console requests', formId: 'shipping.console-request', subjectType: 'shipping_job',
+    from: 'shipping_jobs record', sellerId: 'record.seller_id' },
   'shipping-action': { title: 'Shipping actions', formId: 'seller.shipping-action', subjectType: 'shipping_job_event',
+    from: 'shipping_job_events record JOIN shipping_jobs job ON job.id=record.shipping_job_id', sellerId: 'job.seller_id' },
+  'console-action': { title: 'Shipping console actions', formId: 'shipping.console-action-seller', subjectType: 'shipping_job_event',
     from: 'shipping_job_events record JOIN shipping_jobs job ON job.id=record.shipping_job_id', sellerId: 'job.seller_id' },
   'managed-supply': { title: 'Managed supply proposals', formId: 'seller.managed-supply-proposal', subjectType: 'managed_supply',
     from: 'managed_supply_records record', sellerId: 'record.seller_id' },

@@ -24,7 +24,8 @@ export async function POST(
     const body = JSON.parse(new TextDecoder().decode(await readBoundedBody(request, 131_072))) as Record<string, unknown>;
     const { id } = await context.params;
     if (!body || Array.isArray(body) || Object.keys(body).some((key) =>
-      !['action', 'note', 'requestId', 'formVersion', 'customAnswers'].includes(key)) ||
+      !['action', 'note', 'requestId', 'formVersion', 'customAnswers', 'sourceFormId'].includes(key)) ||
+      body.sourceFormId !== undefined && body.sourceFormId !== 'shipping.console-action-seller' ||
       body.action !== 'picked_up' || typeof body.note !== 'string' ||
       typeof body.requestId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(body.requestId) ||
       !Number.isSafeInteger(body.formVersion) || !Array.isArray(body.customAnswers))
@@ -33,7 +34,9 @@ export async function POST(
         { status: 400 },
       );
     const database = requireDatabase(env as unknown as { DB?: D1Database });
-    const form = await validateSellerFormSubmission(database, 'seller.shipping-action', body.formVersion,
+    const formId = body.sourceFormId === 'shipping.console-action-seller'
+      ? body.sourceFormId : 'seller.shipping-action';
+    const form = await validateSellerFormSubmission(database, formId, body.formVersion,
       body.customAnswers, body.requestId);
     await operateShippingJob(
       database,
@@ -46,7 +49,7 @@ export async function POST(
         note: body.note,
         requestId: body.requestId,
         now: Date.now(),
-        form: { requestId: body.requestId, versionId: form.versionId, answers: form.answers },
+        form: { formId, requestId: body.requestId, versionId: form.versionId, answers: form.answers },
       },
     );
     return Response.json({ ok: true });
@@ -55,7 +58,7 @@ export async function POST(
       return Response.json({ error: error.message }, { status: error.status });
     if (error instanceof OperationsConflictError)
       return Response.json({ error: error.message }, { status: 409 });
-    if (error instanceof FormRequestConflictError) return Response.json({ error: error.message }, { status: 409 });
+    if (error instanceof FormRequestConflictError) return Response.json({ error: error.message, code: 'request_id_conflict' }, { status: 409 });
     if (error instanceof FormRuntimeError) return Response.json({ error: error.message, code: error.code }, { status: error.code === 'stale_version' ? 409 : 503 });
     if (error instanceof FormValidationError) return Response.json({ error: error.message, fieldId: error.fieldId }, { status: 400 });
     if (error instanceof BodyTooLargeError) return Response.json({ error: error.message }, { status: 413 });
