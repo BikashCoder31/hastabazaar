@@ -23,11 +23,14 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 const catalogBaseKeys = ['tradingName', 'businessDescription', 'legalName', 'representativeName',
   'email', 'phone', 'applicantType', 'taxMode', 'taxRegistrationNumber', 'registrationNumber',
   'registrationAuthority', 'document', 'profileImage', 'makerVideo', 'applicationAcknowledgement',
   'participationRoute', 'website', 'requestId', 'formVersion', 'customAnswers'];
+const applicationAttemptKey = sessionAttemptKey('seller.application', 'new');
+const uncertainMessage = 'Application status is uncertain: your application may have been accepted. Retry with the same details to recover its reference, or contact support before starting a new attempt.';
 
 type SubmissionState =
   | { status: 'idle' }
@@ -87,9 +90,25 @@ export function SellerApplicationForm({
     'business_pan_only',
   );
   const formRef = useRef<HTMLFormElement>(null);
-  const attemptId = useRef('');
+  const [hasPendingAttempt, setHasPendingAttempt] = useState(false);
   const catalog = usePublishedFormConfig('seller.application');
   const [state, setState] = useState<SubmissionState>({ status: 'idle' });
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setHasPendingAttempt(hasSessionAttempt(applicationAttemptKey)), 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  function resetAttempt() {
+    if (!window.confirm('A previous application may already have succeeded. Check for your application reference or contact support first. Starting a new attempt can create a duplicate application. Start a new attempt anyway?')) return;
+    try { sessionStorage.removeItem(applicationAttemptKey); }
+    catch {
+      setState({ status: 'error', message: 'Browser session storage is unavailable. Please enable it before submitting.' });
+      return;
+    }
+    setHasPendingAttempt(false);
+    setState({ status: 'idle' });
+  }
 
   useEffect(() => {
     const modelContext = (
@@ -166,31 +185,30 @@ export function SellerApplicationForm({
     setState({ status: 'submitting' });
 
     const form = event.currentTarget;
-    const formData = new FormData(form);
-    attemptId.current ||= crypto.randomUUID();
-    formData.set('requestId', attemptId.current);
-
     try {
+      const formData = new FormData(form);
+      formData.set('requestId', getOrCreateSessionAttempt(applicationAttemptKey));
+      setHasPendingAttempt(true);
       const response = await fetch('/api/seller-applications', {
-        method: 'POST',
-        body: formData,
-        headers: { Accept: 'application/json' },
-      });
-      const body = (await response.json()) as {
+        method: 'POST', body: formData, headers: { Accept: 'application/json' },
+      }).catch(() => { throw new Error(uncertainMessage); });
+      const body = (await response.json().catch(() => { throw new Error(uncertainMessage); })) as {
         error?: string;
         applicationReference?: string;
         code?: string;
       };
       catalog.handleSubmissionResponse(response, body.code);
 
-      if (!response.ok || !body.applicationReference) {
+      if (!response.ok) {
         throw new Error(
           body.error ?? 'The application could not be submitted.',
         );
       }
+      if (!body.applicationReference) throw new Error(uncertainMessage);
 
       setState({ status: 'success', reference: body.applicationReference });
-      attemptId.current = '';
+      clearSessionAttempt(applicationAttemptKey);
+      setHasPendingAttempt(false);
       form.reset();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
@@ -222,6 +240,7 @@ export function SellerApplicationForm({
 
   return (
     <form
+      data-form-id="seller.application"
       ref={formRef}
       onSubmit={submitApplication}
       className="space-y-10 rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-10"
@@ -597,10 +616,15 @@ export function SellerApplicationForm({
 
       {state.status === 'error' && (
         <Alert variant="destructive">
-          <AlertTitle>Application not submitted</AlertTitle>
+          <AlertTitle>Application needs attention</AlertTitle>
           <AlertDescription>{state.message}</AlertDescription>
         </Alert>
       )}
+
+      {hasPendingAttempt ? <div className="space-y-2">
+        <p className="text-sm text-muted-foreground">If a submission response was lost, retrying reuses its request reference. Check for an application reference before starting a different attempt.</p>
+        <Button type="button" variant="outline" onClick={resetAttempt}>Start a new application attempt</Button>
+      </div> : null}
 
       {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={catalogBaseKeys} /> : null}
       {catalog.status !== 'ready' ? <p role="alert" className="text-sm text-destructive">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}
