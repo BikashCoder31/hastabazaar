@@ -6,7 +6,16 @@ const destinations: readonly {
   group: string;
   icon: string;
   permission: Permission;
+  role?: 'super_admin';
 }[] = [
+  {
+    href: '/admin/forms',
+    label: 'Form catalog',
+    group: 'Controls',
+    icon: 'forms',
+    permission: 'business_settings.manage',
+    role: 'super_admin',
+  },
   {
     href: '/admin/riders',
     label: 'Rider operations',
@@ -212,6 +221,6 @@ export function adminNavigation(
 ) {
   if (role !== 'admin' && role !== 'super_admin') return [];
   return destinations.filter((item) =>
-    can({ role, permissions }, item.permission),
+    (!item.role || item.role === role) && can({ role, permissions }, item.permission),
   );
 }
