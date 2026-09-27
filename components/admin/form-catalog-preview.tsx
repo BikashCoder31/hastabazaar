@@ -25,7 +25,10 @@ export function FormCatalogPreview({ form, config, mode }: {
               {override?.helpText ? <p className="text-sm text-muted-foreground">{override.helpText}</p> : null}
             </div>;
           })}
-          <ConfiguredFields config={config} baseKeys={baseKeys} />
+          {/* The renderer's viewport breakpoint must not create columns in a phone-sized preview. */}
+          <div className={mode === 'phone' ? '[&>div]:grid-cols-1' : undefined}>
+            <ConfiguredFields config={config} baseKeys={baseKeys} />
+          </div>
           <Badge variant="outline">Preview only</Badge>
         </div>
       </CardContent>

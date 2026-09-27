@@ -6,6 +6,8 @@ import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import { readFile } from 'node:fs/promises';
+import postcss from 'postcss';
+import tailwindcss from '@tailwindcss/postcss';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import type { ConfiguredField, FormDefinition, PublishedFormConfig } from '../lib/forms/types';
 import type { CatalogVersion } from '../components/admin/form-catalog-editor';
@@ -30,7 +32,7 @@ const config: PublishedFormConfig = { formId: 'account.profile', version: 1, pub
   { id: 'delivery_note', key: 'delivery_note', type: 'short_text', label: 'Delivery note', required: false, order: 0, status: 'active' },
 ] };
 
-async function mountConcurrencyEditor(versions: readonly CatalogVersion[]) {
+async function mountConcurrencyEditor(versions: readonly CatalogVersion[], form = definition) {
   const playwrightPath = process.env.PLAYWRIGHT_MODULE ?? 'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
   // oxlint-disable-next-line typescript/no-explicit-any -- Playwright lives in the bundled external runtime.
   const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<any> } };
@@ -38,7 +40,7 @@ async function mountConcurrencyEditor(versions: readonly CatalogVersion[]) {
     import React from 'react';
     import { createRoot } from 'react-dom/client';
     import { FormCatalogEditor } from './components/admin/form-catalog-editor';
-    createRoot(document.getElementById('root')!).render(<FormCatalogEditor form={${JSON.stringify(definition)}} versions={${JSON.stringify(versions)}} />);
+    createRoot(document.getElementById('root')!).render(<FormCatalogEditor form={${JSON.stringify(form)}} versions={${JSON.stringify(versions)}} />);
   `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife', define: { 'process.env.NODE_ENV': '"production"' } });
   const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
   const page = await browser.newPage();
@@ -287,6 +289,98 @@ void test('publish conflict retains preview A until explicit reload adopts and p
     await page.keyboard.press('Enter');
     await page.getByText('Form published.').waitFor();
     assert.deepEqual(publishBodies.map(({ draftId, expectedDraftRevision }) => [draftId, expectedDraftRevision]), [['draft-2', 1], ['draft-2', 2]]);
+  } finally { await page.close(); await browser.close(); }
+});
+
+void test('replacing conflict reload locks every edit until its deferred GET succeeds or fails', async (t) => {
+  for (const fails of [false, true]) await t.test(fails ? 'failed reload preserves edits and conflict gate' : 'successful reload adopts reviewed server draft', async () => {
+    const editableForm: FormDefinition = { ...definition, baseFields: [...definition.baseFields,
+      { key: 'nickname', type: 'short_text', label: 'Nickname', capability: 'display_editable', required: false, status: 'active', explanation: 'Display may be edited.' }] };
+    const draftA: CatalogVersion = { id: 'draft-2', version: 2, revision: 1, status: 'draft', reason: 'Initial draft', updatedAt: 2, publishedAt: null,
+      config: { formId: definition.id, fields: [config.fields[0],
+        { id: 'nickname', key: 'nickname', type: 'short_text', label: 'Nickname', required: false, order: 1, status: 'active' },
+        { id: 'gift_wrap', key: 'gift_wrap', type: 'single_choice', label: 'Gift wrap', required: false, order: 2, status: 'active', choices: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] },
+        { id: 'quantity', key: 'quantity', type: 'number', label: 'Quantity', required: false, order: 3, status: 'active' }] } };
+    const published: CatalogVersion = { ...draftA, id: 'published-1', version: 1, status: 'published', publishedAt: 1 };
+    const draftB: CatalogVersion = { ...draftA, revision: 2, config: { ...draftA.config, fields: [{ ...config.fields[0], label: 'Server draft B' }] } };
+    const { browser, page } = await mountConcurrencyEditor([draftA, published], editableForm);
+    // oxlint-disable-next-line typescript/no-explicit-any -- Deferred HTTP route controls the replacement boundary.
+    let receiveHistory!: (route: any) => void;
+    // oxlint-disable-next-line typescript/no-explicit-any -- Playwright is supplied by the bundled runtime.
+    const history = new Promise<any>((resolve) => { receiveHistory = resolve; });
+    let writes = 0;
+    try {
+      // oxlint-disable-next-line typescript/no-explicit-any -- Playwright route type is external to this package.
+      await page.route('https://form.test/api/**', async (route: any) => {
+        if (route.request().method() === 'GET') { receiveHistory(route); return; }
+        writes++;
+        return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'Another admin revised this draft.' }) });
+      });
+      await page.getByLabel('Reason for change').fill('Publish reviewed draft');
+      await page.getByRole('button', { name: 'Publish draft' }).click();
+      await page.getByRole('button', { name: 'Confirm publish' }).focus();
+      await page.keyboard.press('Enter');
+      await page.getByRole('alertdialog').getByText('Another admin revised this draft.').waitFor();
+      await page.getByRole('button', { name: 'Cancel', exact: true }).focus();
+      await page.keyboard.press('Enter');
+      await page.getByRole('button', { name: 'Reload latest version' }).click();
+      const held = await history;
+      assert.equal(await page.locator('#delivery_note-label').isDisabled(), true, 'the replacing GET must lock edits before it can discard newly typed text');
+      const unlocked = await page.locator('fieldset input, fieldset textarea, fieldset select, fieldset button').evaluateAll((controls: Element[]) =>
+        controls.filter((control) => !control.matches(':disabled') && control.getAttribute('aria-disabled') !== 'true').map((control) => control.id || control.textContent));
+      assert.deepEqual(unlocked, [], 'all built-in/custom text, choices, numeric, toggle, order, archive, and add controls are locked');
+      assert.equal(await page.getByLabel('Reason for change').isDisabled(), true);
+      for (const name of ['Save draft', 'Publish draft', 'Restore', 'Reload latest version']) assert.equal(await page.getByRole('button', { name, exact: true }).isDisabled(), true, name);
+      await page.locator('#delivery_note-label').focus();
+      await page.keyboard.type('New user edit while reload is pending');
+      assert.equal(await page.locator('#delivery_note-label').inputValue(), 'Delivery note');
+      assert.equal(writes, 1);
+      await held.fulfill({ status: fails ? 503 : 200, contentType: 'application/json', body: JSON.stringify(fails ? { error: 'History unavailable.' } : { versions: [draftB, published] }) });
+      await page.waitForFunction(() => !document.querySelector('#delivery_note-label')?.matches(':disabled'));
+      assert.equal(await page.locator('#delivery_note-label').inputValue(), fails ? 'Delivery note' : 'Server draft B');
+      assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), fails);
+      assert.equal(await page.getByRole('button', { name: 'Save draft' }).isDisabled(), false);
+      if (fails) {
+        assert.equal(await page.getByRole('button', { name: 'Reload latest version' }).isDisabled(), false);
+        assert.match(await page.getByRole('alert').last().textContent(), /history.*refresh/i);
+      } else assert.match(await page.locator('[data-preview-mode="phone"]').textContent(), /Server draft B/);
+      await page.locator('#delivery_note-label').fill('New edit after reload');
+      assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), true, 'subsequent edits must still be saved before publishing');
+    } finally { await page.close(); await browser.close(); }
+  });
+});
+
+void test('phone preview stacks custom fields at desktop viewport while desktop preview retains columns', async () => {
+  const initial: CatalogVersion = { id: 'draft-1', version: 1, revision: 1, status: 'draft', reason: 'Layout', updatedAt: 1, publishedAt: null,
+    config: { formId: definition.id, fields: [config.fields[0], { ...config.fields[0], id: 'gift_note', key: 'gift_note', label: 'Gift note', order: 1 }] } };
+  const { browser, page } = await mountConcurrencyEditor([initial]);
+  try {
+    // Compile the real preview/renderer utility classes, without requiring a running app server.
+    const css = await postcss([tailwindcss({ base: process.cwd() })]).process(
+      "@import 'tailwindcss' source(none); @source '../components/admin/form-catalog-preview.tsx'; @source '../components/forms/configured-fields.tsx';",
+      { from: `${process.cwd()}/tests/preview-layout.css` });
+    await page.addStyleTag({ content: css.css });
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.getByRole('tab', { name: 'Phone', exact: true }).click();
+      const phone = page.locator('[data-preview-mode="phone"] [data-configured-field]');
+      const [first, second] = await phone.evaluateAll((items: Element[]) => items.map((item) => {
+        const { x, y, width, height } = item.getBoundingClientRect(); return { x, y, width, height };
+      }));
+      assert.ok(first && second);
+      assert.equal(second.x, first.x, `phone fields share one column at ${width}px viewport`);
+      assert.ok(second.y >= first.y + first.height, 'the next phone field is below the previous one');
+      await page.getByRole('tab', { name: 'Desktop', exact: true }).click();
+      const desktop = page.locator('[data-preview-mode="desktop"] [data-configured-field]');
+      const [left, right] = await desktop.evaluateAll((items: Element[]) => items.map((item) => {
+        const { x, y, width, height } = item.getBoundingClientRect(); return { x, y, width, height };
+      }));
+      assert.ok(left && right);
+      if (width === 1440) {
+        assert.equal(left.y, right.y);
+        assert.ok(right.x >= left.x + left.width, 'desktop preview keeps its two columns');
+      } else assert.ok(right.y >= left.y + left.height);
+    }
   } finally { await page.close(); await browser.close(); }
 });
 

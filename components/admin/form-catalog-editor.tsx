@@ -58,6 +58,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
   const [refreshWarning, setRefreshWarning] = useState('');
   const [conflict, setConflict] = useState<'draft' | 'publish' | 'restore' | null>(null);
   const [busy, setBusy] = useState(false);
+  const [replacingHistory, setReplacingHistory] = useState(false);
   const [uncertainAction, setUncertainAction] = useState<'draft' | 'publish' | 'restore' | null>(null);
   const [dialog, setDialog] = useState<'publish' | 'restore' | null>(null);
   const [fieldWarning, setFieldWarning] = useState<{ id: string; label: string; action: 'optional' | 'archive' } | null>(null);
@@ -73,7 +74,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
   const customTypes = form.capabilities.customFieldTypes;
   const published = newest(versions, 'published');
   const draft = currentDraft(versions);
-  const editLocked = busy || uncertainAction !== null;
+  const editLocked = busy || replacingHistory || uncertainAction !== null;
   const dirty = JSON.stringify(fields) !== savedFields;
   const canPublish = !!draft && !dirty && !conflict && JSON.stringify(fields) === JSON.stringify(draft.config.fields);
   const baseKeys = new Set(form.baseFields.map((item) => item.key.replaceAll(/[^a-z0-9]/gi, '').toLowerCase()));
@@ -85,6 +86,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
     queueMicrotask(() => (focus ?? errorRef.current)?.focus());
   }
   function replaceField(id: string, change: Partial<ConfiguredField>) {
+    if (editLocked) return;
     setFields((current) => current.map((item) => item.id === id ? { ...item, ...change } : item));
     setError('');
   }
@@ -113,6 +115,9 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
     keepEdits?: boolean; resolveConflict?: boolean; success?: string; warning?: string;
   } = {}) {
     const generation = ++historyGeneration.current;
+    // Replacing fields must exclude edits for the entire GET, just like a write.
+    // Keep this separate from POST busy state and non-replacing history refreshes.
+    if (!keepEdits) setReplacingHistory(true);
     try {
       const response = await fetch(`/api/admin/forms/${encodeURIComponent(form.id)}`, { cache: 'no-store' });
       const body = await response.json() as { versions?: CatalogVersion[]; error?: string };
@@ -130,9 +135,12 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
       setError('');
     } catch {
       if (generation === historyGeneration.current) setRefreshWarning(warning);
+    } finally {
+      if (!keepEdits) setReplacingHistory(false);
     }
   }
   async function mutate(action: 'draft' | 'publish' | 'restore', extra: Record<string, unknown>) {
+    if (replacingHistory) return;
     if (pendingRequest.current && pendingRequest.current.action !== action) return;
     ++historyGeneration.current;
     const request = pendingRequest.current ?? { action, body: JSON.stringify({ requestId: crypto.randomUUID(), expectedPublishedVersion: published?.version ?? 0, reason: reason.trim(), ...extra }) };
@@ -229,7 +237,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
     {refreshWarning ? <p role="alert">{refreshWarning}</p> : null}
   </div> : null;
 
-  return <div className="grid min-w-0 gap-5" aria-busy={busy}>
+  return <div className="grid min-w-0 gap-5" aria-busy={busy || replacingHistory}>
     <Card>
       <CardHeader>
         <CardTitle>Form capability</CardTitle>
@@ -308,10 +316,10 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
         <div ref={errorRef} tabIndex={-1} role="alert" aria-live="assertive" className="text-sm text-destructive focus:outline-none">{error ? <FieldError>{error}</FieldError> : null}</div>
         {uncertainAction === 'draft' ? uncertaintyNotice : null}
         {refreshWarning && !uncertainAction ? <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3 text-sm"><span>{refreshWarning}</span><Button type="button" variant="outline" size="sm" disabled={editLocked} onClick={() => void reload()}>Retry history refresh</Button></div> : null}
-        <output aria-live="polite" className="text-sm text-muted-foreground">{busy ? 'Updating form…' : dialog ? '' : message}</output>
+        <output aria-live="polite" className="text-sm text-muted-foreground">{replacingHistory ? 'Loading latest version…' : busy ? 'Updating form…' : dialog ? '' : message}</output>
         {conflict ? <div className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/40 p-3"><p className="text-sm">The catalog changed. Your edits are preserved.{conflict === 'publish' ? ' Reload to replace the displayed fields with the latest server draft and review it before publishing.' : ''}</p><Button type="button" variant="outline" disabled={editLocked} onClick={() => void reload({ keepEdits: conflict !== 'publish', resolveConflict: true })}>Reload latest version</Button></div> : null}
       </FieldGroup></CardContent>
-      <CardFooter className="flex flex-wrap gap-2"><Button type="button" onClick={save} disabled={busy || (uncertainAction !== null && uncertainAction !== 'draft')}><Save data-icon="inline-start" /> Save draft</Button><Button type="button" variant="secondary" disabled={!canPublish || editLocked} onClick={() => { if (validReason()) setDialog('publish'); }}><Send data-icon="inline-start" /> Publish draft</Button>{dirty || (draft && !conflict && !canPublish) ? <span className="text-xs text-muted-foreground">Save your latest edits before publishing.</span> : null}</CardFooter>
+      <CardFooter className="flex flex-wrap gap-2"><Button type="button" onClick={save} disabled={busy || replacingHistory || (uncertainAction !== null && uncertainAction !== 'draft')}><Save data-icon="inline-start" /> Save draft</Button><Button type="button" variant="secondary" disabled={!canPublish || editLocked} onClick={() => { if (validReason()) setDialog('publish'); }}><Send data-icon="inline-start" /> Publish draft</Button>{dirty || (draft && !conflict && !canPublish) ? <span className="text-xs text-muted-foreground">Save your latest edits before publishing.</span> : null}</CardFooter>
     </Card>
 
     <Card>
