@@ -37,7 +37,7 @@ function historyCursor(at?: string, id?: string) {
 }
 
 export default async function SellerApplicationProgressPage({ searchParams }: {
-  searchParams?: Promise<{ appAt?: string; appId?: string; makerAt?: string; makerId?: string }>;
+  searchParams?: Promise<{ appAt?: string; appId?: string; makerAt?: string; makerId?: string; draftAt?: string; draftId?: string }>;
 } = {}) {
   const customer = await requireCustomerPage('/sell/application');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
@@ -62,6 +62,7 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
     const otherAt = kind === 'app' ? query?.makerAt : query?.appAt;
     const otherId = kind === 'app' ? query?.makerId : query?.appId;
     if (otherAt && otherId) { link.set(`${other}At`, otherAt); link.set(`${other}Id`, otherId); }
+    if (query?.draftAt && query?.draftId) { link.set('draftAt', query.draftAt); link.set('draftId', query.draftId); }
     return `/sell/application?${link.toString()}`;
   };
   const clock = await database.prepare("SELECT unixepoch('now') * 1000 AS now").first<{ now: number }>();
@@ -70,10 +71,25 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
   const finance = profile.participationRoute === 'managed_maker'
     ? await getManagedFinanceSummary(database, profile.sellerId)
     : null;
-  const drafts = (await database.prepare(
-    `SELECT id, name_en AS nameEn, status, updated_at AS updatedAt FROM products
-     WHERE seller_id = ? AND status = 'draft' ORDER BY updated_at DESC LIMIT 50`,
-  ).bind(profile.sellerId).all<{ id: string; nameEn: string; status: string; updatedAt: number }>()).results;
+  const draftCursor = historyCursor(query?.draftAt, query?.draftId);
+  const draftRows = (await database.prepare(
+    `SELECT id, name_en AS nameEn, updated_at AS updatedAt FROM products
+     WHERE seller_id = ? AND status = 'draft'
+     ${draftCursor ? 'AND (updated_at < ? OR (updated_at = ? AND id < ?))' : ''}
+     ORDER BY updated_at DESC, id DESC LIMIT 51`,
+  ).bind(profile.sellerId, ...(draftCursor ? [draftCursor.createdAt, draftCursor.createdAt, draftCursor.id] : []))
+    .all<{ id: string; nameEn: string; updatedAt: number }>()).results;
+  const drafts = draftRows.slice(0, 50);
+  const nextDraft = draftRows.length > 50 ? drafts[49] : null;
+  const nextDraftLink = (() => {
+    if (!nextDraft) return null;
+    const link = new URLSearchParams();
+    link.set('draftAt', String(nextDraft.updatedAt));
+    link.set('draftId', nextDraft.id);
+    if (query?.appAt && query?.appId) { link.set('appAt', query.appAt); link.set('appId', query.appId); }
+    if (query?.makerAt && query?.makerId) { link.set('makerAt', query.makerAt); link.set('makerId', query.makerId); }
+    return `/sell/application?${link.toString()}`;
+  })();
   const [nextAction, responsible] = stageGuidance[profile.applicationStage];
   return <div className="min-h-screen bg-background"><SiteHeader /><main className="shell space-y-8 py-10" id="main-content" tabIndex={-1}>
     <header><p className="eyebrow">Application progress</p><h1 className="mt-2 font-heading text-4xl">{profile.participationRoute === 'managed_maker' ? managedMakerDisplayName(profile.publicName) : profile.publicName}</h1><p className="mt-3 text-muted-foreground">Route: {profile.participationRoute === 'managed_maker' ? 'Hastabazaar Managed Maker' : 'Registered Seller'} · Stage: {profile.applicationStage.replaceAll('_', ' ')}</p></header>
@@ -98,7 +114,7 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
       {!makerProfiles.answers.length ? <p>No saved maker profile answers yet.</p> : null}
       {makerProfiles.nextCursor ? <Link className="section-link" href={nextHistory('maker', makerProfiles.nextCursor)!}>Next 50 profile edits</Link> : null}
     </section>
-    <section className="rounded-2xl border bg-card p-6"><div className="flex flex-wrap items-center justify-between gap-4"><div><h2 className="font-heading text-2xl">Private product drafts</h2><p className="mt-2 text-sm text-muted-foreground">Product materials and origin stories remain attached to each product. Nothing here is published.</p></div>{capabilities.prepareProductDrafts ? <Link className="rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground" href="/sell/application/products/new">Prepare a product draft</Link> : null}</div>{drafts.length ? <ul className="mt-5 divide-y">{drafts.map((draft) => <li className="py-3" key={draft.id}>{draft.nameEn} · private draft · <Link className="section-link" href={`/sell/application/products/${encodeURIComponent(draft.id)}/answers`}>Answer history</Link></li>)}</ul> : <p className="mt-5 text-sm text-muted-foreground">No product drafts yet.</p>}</section>
+    <section className="rounded-2xl border bg-card p-6"><div className="flex flex-wrap items-center justify-between gap-4"><div><h2 className="font-heading text-2xl">Private product drafts</h2><p className="mt-2 text-sm text-muted-foreground">Product materials and origin stories remain attached to each product. Nothing here is published.</p></div>{capabilities.prepareProductDrafts ? <Link className="rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground" href="/sell/application/products/new">Prepare a product draft</Link> : null}</div>{drafts.length ? <ul className="mt-5 divide-y">{drafts.map((draft) => <li className="py-3" key={draft.id}>{draft.nameEn} · private draft · <Link className="section-link" href={`/sell/application/products/${encodeURIComponent(draft.id)}/answers`}>Answer history</Link></li>)}</ul> : <p className="mt-5 text-sm text-muted-foreground">No product drafts yet.</p>}{nextDraftLink ? <Link className="section-link mt-4 inline-block" href={nextDraftLink}>Older drafts</Link> : null}</section>
   </main><SiteFooter /></div>;
 }
 

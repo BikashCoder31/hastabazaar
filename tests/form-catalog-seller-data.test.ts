@@ -5,7 +5,7 @@ import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 import { build } from 'esbuild';
-import { createElement, type ComponentType } from 'react';
+import { createElement, isValidElement, type ComponentType } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { FORM_REGISTRY, IMPLEMENTED_FORM_ADAPTERS } from '../lib/forms/registry';
@@ -858,6 +858,51 @@ void test('preapproval maker draft history is linked locally and shows archived 
     globalThis.sellerCatalogActor = { sellerId: 'other-seller', userId: 'other-user' };
     await assert.rejects(history.default({ params: Promise.resolve({ id: 'maker-draft-history' }),
       searchParams: Promise.resolve({}) }), /Not found/);
+  } finally { sqlite.close(); }
+});
+
+void test('applicant can reach older owned draft histories after 50 tied drafts without seeing another maker’s drafts', async () => {
+  const { sqlite, database } = await fixture();
+  try {
+    await createSeller(database);
+    await createSeller(database, 'other-seller', 'other-user');
+    const insert = sqlite.prepare(`INSERT INTO products
+      (id,seller_id,category_id,slug,sku,name_en,description_en,price_paisa,inventory_quantity,producer,materials,created_at,updated_at)
+      VALUES (?,?, 'cat-test', ?, ?, ?, 'Private test draft', 100, 0, 'Fictional Maker', '[]', 100, ?)`);
+    for (let i = 0; i < 52; i++) {
+      const id = `owned-draft-${String(i).padStart(2, '0')}`;
+      insert.run(id, 'seller-one', id, id, id, 200);
+    }
+    insert.run('foreign-draft', 'other-seller', 'foreign-draft', 'foreign-draft', 'foreign-draft', 300);
+    const page = await import('../app/sell/application/page');
+    const findLink = (node: unknown, label: string): string | null => {
+      if (Array.isArray(node)) return node.map((child) => findLink(child, label)).find((href) => href !== null) ?? null;
+      if (!isValidElement(node)) return null;
+      const props = node.props as { children?: unknown; href?: unknown };
+      if (props.children === label && typeof props.href === 'string') return props.href;
+      return findLink(props.children, label);
+    };
+    const first = await page.default({ searchParams: Promise.resolve({ appAt: '100', appId: 'application-cursor',
+      makerAt: '101', makerId: 'maker-cursor' }) });
+    const firstHtml = renderToStaticMarkup(first);
+    assert.equal((firstHtml.match(/private draft · Answer history/g) ?? []).length, 50);
+    assert.match(firstHtml, /owned-draft-51/);
+    assert.doesNotMatch(firstHtml, /owned-draft-01|foreign-draft/);
+    const href = findLink(first, 'Older drafts');
+    assert.ok(href, 'older private drafts must remain navigable');
+    const older = new URL(href, 'http://localhost:3000');
+    assert.equal(older.searchParams.get('appId'), 'application-cursor');
+    assert.equal(older.searchParams.get('makerId'), 'maker-cursor');
+    const second = await page.default({ searchParams: Promise.resolve(Object.fromEntries(older.searchParams)) });
+    const secondHtml = renderToStaticMarkup(second);
+    assert.match(secondHtml, /owned-draft-01/);
+    assert.match(secondHtml, /owned-draft-00/);
+    assert.doesNotMatch(secondHtml, /owned-draft-51|foreign-draft/);
+    assert.equal(findLink(second, 'Older drafts'), null);
+    globalThis.sellerCatalogActor = { sellerId: 'other-seller', userId: 'other-user' };
+    const foreignHtml = renderToStaticMarkup(await page.default({ searchParams: Promise.resolve({}) }));
+    assert.match(foreignHtml, /foreign-draft/);
+    assert.doesNotMatch(foreignHtml, /owned-draft-/);
   } finally { sqlite.close(); }
 });
 
