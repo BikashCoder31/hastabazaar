@@ -43,9 +43,10 @@ export async function resolve(specifier, context, nextResolve) {
 
 class Statement {
   private values: SQLInputValue[] = [];
-  constructor(private readonly statement: StatementSync, private readonly beforeRun: () => void) {}
+  constructor(private readonly statement: StatementSync, private readonly beforeRun: () => void,
+    private readonly beforeFirst: () => void) {}
   bind(...values: SQLInputValue[]) { this.values = values; return this; }
-  async first<T>() { return (this.statement.get(...this.values) as T | undefined) ?? null; }
+  async first<T>() { this.beforeFirst(); return (this.statement.get(...this.values) as T | undefined) ?? null; }
   async all<T>() { return { results: this.statement.all(...this.values) as T[] }; }
   async run() {
     this.beforeRun();
@@ -58,8 +59,10 @@ class Database {
   failStatement: number | null = null;
   beforeBatch: (() => void) | null = null;
   beforeRun: ((sql: string) => void) | null = null;
+  beforeFirst: ((sql: string) => void) | null = null;
   constructor(readonly sqlite: DatabaseSync) {}
-  prepare(sql: string) { return new Statement(this.sqlite.prepare(sql), () => this.beforeRun?.(sql)); }
+  prepare(sql: string) { return new Statement(this.sqlite.prepare(sql), () => this.beforeRun?.(sql),
+    () => this.beforeFirst?.(sql)); }
   async batch(statements: readonly Statement[]) {
     this.beforeBatch?.();
     this.beforeBatch = null;
@@ -170,6 +173,10 @@ void test('staff needs record assignment as well as support permission', async (
     assert.ok(answer);
     assert.equal(await authorizeFormAnswerRead(db, { id: 'staff', role: 'admin', permissions: ['support.manage'] }, answer), true);
     assert.equal(await authorizeFormAnswerRead(db, { id: 'staff-other', role: 'admin', permissions: ['support.manage'] }, answer), false);
+    // A missing persisted profile uses the existing legacy Admin grant, not a caller snapshot.
+    assert.equal(await authorizeFormAnswerRead(db, { id: 'staff', role: 'admin', permissions: [] }, answer), true);
+    sqlite.prepare(`INSERT INTO staff_permission_profiles
+      (user_id,permissions_json,version,updated_by,updated_at) VALUES ('staff','[]',1,'staff-other',1)`).run();
     assert.equal(await authorizeFormAnswerRead(db, { id: 'staff', role: 'admin', permissions: [] }, answer), false);
     assert.equal(await authorizeFormAnswerRead(db, { id: 'inactive', role: 'super_admin' }, answer), false);
     assert.equal(await authorizeFormAnswerRead(db, { id: 'staff', role: 'admin', permissions: ['support.manage'] },
@@ -227,6 +234,31 @@ void test('answer API hides other records and emits only safe snapshot fields', 
     assert.equal((await call('a-owner')).status, 401);
   } finally { sqlite.close(); }
 });
+
+for (const [change, permissionsJson] of [
+  ['revoked', '[]'], ['malformed', 'not-json'],
+] as const) {
+  void test(`answer API denies a staff read when its persisted grant becomes ${change} during answer fetch`, async () => {
+    const { sqlite, database } = await fixture();
+    try {
+      sqlite.prepare(`INSERT INTO staff_permission_profiles
+        (user_id,permissions_json,version,updated_by,updated_at) VALUES ('staff',?,1,'staff-other',1)`)
+        .run(JSON.stringify(['support.manage']));
+      globalThis.answerTestSubject = 'auth-staff';
+      database.beforeFirst = (sql) => {
+        if (!sql.includes('FROM form_answer_sets a')) return;
+        database.beforeFirst = null;
+        sqlite.prepare('UPDATE staff_permission_profiles SET permissions_json=?,version=2 WHERE user_id=?')
+          .run(permissionsJson, 'staff');
+      };
+      const { GET } = await import('../app/api/forms/answers/[id]/route');
+      const response = await GET(new Request('http://localhost/api/forms/answers/a-owner'),
+        { params: Promise.resolve({ id: 'a-owner' }) });
+      assert.equal(response.status, 404);
+      assert.doesNotMatch(await response.text(), /Original color|Original blue|a-owner/);
+    } finally { sqlite.close(); }
+  });
+}
 
 void test('profile page shows only the owner historical answers', async () => {
   const { sqlite } = await fixture();

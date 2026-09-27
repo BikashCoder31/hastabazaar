@@ -1,7 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { getAuthenticatedUser } from '@/app/auth';
 import { requireDatabase } from '@/lib/db/d1';
-import { getStaffPermissionProfile } from '@/lib/db/repositories/staff-permissions';
 import { getFormAnswerById } from '@/lib/db/repositories/form-answers';
 import { authorizeFormAnswerRead, type FormAnswerViewer } from '@/lib/forms/access';
 
@@ -24,11 +23,8 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
         WHEN 'rider' THEN 3 ELSE 4 END LIMIT 1`)
       .bind(identity.userId).first<{ id: string; role: FormAnswerViewer['role'] }>();
     if (!actor) return json({ error: 'Answer not found.' }, 404);
-    const viewer: FormAnswerViewer = actor.role === 'admin'
-      ? { ...actor, permissions: (await getStaffPermissionProfile(db, actor.id)).permissions }
-      : actor;
     const answer = await getFormAnswerById(db, id);
-    if (!answer || !(await authorizeFormAnswerRead(db, viewer, answer)))
+    if (!answer || !(await authorizeFormAnswerRead(db, actor, answer)))
       return json({ error: 'Answer not found.' }, 404);
     // Deliberately omit actor, request and parent identifiers from this response.
     return json({ answer: { id: answer.id, formId: answer.formId,
