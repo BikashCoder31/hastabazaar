@@ -147,6 +147,20 @@ void test('missing required and invalid custom answers do not update a profile o
   } finally { sqlite.close(); }
 });
 
+void test('required checkbox false cannot update profile, answers, or audit', async () => {
+  const { sqlite } = await fixture();
+  try {
+    const { PATCH } = await import('../app/api/account/profile/route');
+    seedVersion(sqlite, 2, [{ id: 'acknowledged', key: 'acknowledged', type: 'checkbox', label: 'I acknowledge', required: true, order: 0, status: 'active' }]);
+    const response = await PATCH(request(input('unchecked-required', 2, [{ fieldId: 'acknowledged', value: false }])));
+    assert.equal(response.status, 400);
+    assert.equal((await response.json() as { fieldId: string }).fieldId, 'acknowledged');
+    assert.deepEqual(user(sqlite), { name: 'Old Name', phone: null });
+    assert.equal(count(sqlite, 'form_answer_sets'), 0);
+    assert.equal(count(sqlite, 'audit_logs'), 0);
+  } finally { sqlite.close(); }
+});
+
 void test('stale and unavailable configurations fail closed without profile writes', async () => {
   const { sqlite } = await fixture();
   try {

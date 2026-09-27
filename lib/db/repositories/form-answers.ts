@@ -100,6 +100,9 @@ const validAgainstVersion = `EXISTS (
           AND json_extract(field.value, '$.label') = json_extract(answer.value, '$.label')
           AND json_extract(field.value, '$.type') = json_extract(answer.value, '$.type')
           AND json_extract(field.value, '$.status') = 'active'
+          AND (json_extract(field.value, '$.type') != 'checkbox'
+            OR json_extract(field.value, '$.required') != 1
+            OR json_type(answer.value, '$.value') = 'true')
           AND (json_extract(field.value, '$.type') NOT IN ('single_choice','multiple_choice')
             OR ((json_type(answer.value, '$.choiceLabels') IS NULL OR
               json_array_length(answer.value, '$.choiceLabels') =

@@ -380,6 +380,28 @@ void test('required custom fields still need a snapshot entry', async () => {
   } finally { sqlite.close(); }
 });
 
+void test('direct answer insert rejects required checkbox false atomically and permits optional false', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    sqlite.exec('CREATE TABLE parent_actions(id TEXT PRIMARY KEY)');
+    const requiredCheckbox = { ...field('acknowledged', 'checkbox', 'I acknowledge'), required: true };
+    seedPublished(sqlite, 'checkbox-required-v1', 1, [requiredCheckbox]);
+    const answer = { formId, version: 1, answers: [{ fieldId: 'acknowledged', label: 'I acknowledge', type: 'checkbox' as const, value: false }] };
+    const insert = buildFormAnswerInsert(db, { formId, requestId: 'checkbox-required', versionId: 'checkbox-required-v1',
+      subjectType: 'customer_profile', subjectId: 'profile-1', actorId: 'customer', answers: answer, now: 40 });
+    await assert.rejects(() => db.batch([db.prepare('INSERT INTO parent_actions(id) VALUES (?)').bind('profile-1'), insert]));
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM parent_actions').get()?.count, 0);
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM form_answer_sets').get()?.count, 0);
+
+    seedPublished(sqlite, 'checkbox-optional-v2', 2, [{ ...requiredCheckbox, required: false }]);
+    const optionalInsert = buildFormAnswerInsert(db, { formId, requestId: 'checkbox-optional', versionId: 'checkbox-optional-v2',
+      subjectType: 'customer_profile', subjectId: 'profile-2', actorId: 'customer',
+      answers: { ...answer, version: 2 }, now: 41 });
+    await db.batch([db.prepare('INSERT INTO parent_actions(id) VALUES (?)').bind('profile-2'), optionalInsert]);
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM form_answer_sets').get()?.count, 1);
+  } finally { sqlite.close(); }
+});
+
 void test('non-choice answers reject choice-label metadata', async () => {
   const { sqlite, db } = await fixture();
   try {

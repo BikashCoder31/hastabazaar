@@ -200,6 +200,7 @@ export function validateAnswersForDefinition(definition: FormDefinition, config:
       if (field.required) return fail('invalid_answer', 'Required answer missing');
       continue;
     }
+    if (field.type === 'checkbox' && field.required && value === false) return fail('invalid_answer', 'Required answer missing');
     if (!validAnswer(field, value)) return fail('invalid_answer', 'Invalid answer value');
     // Built-in values belong to the domain record; only safe custom fields enter snapshots.
     if (definition.baseFields.some((base) => canonicalName(base.key) === canonicalName(field.key))) continue;

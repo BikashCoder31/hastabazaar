@@ -100,6 +100,14 @@ void test('optional empty values stay out of the snapshot', () => {
   assert.deepEqual(validateAnswersForDefinition(definition, config, answer('safe', '')), { formId: 'test.safe', version: 1, answers: [] });
 });
 
+void test('required checkbox rejects false while optional checkbox retains false', () => {
+  const requiredConfig = { ...validateFormDraftForDefinition(definition, draft([field('acknowledged', 'checkbox')])), version: 1, publishedAt: 1 };
+  assert.throws(() => validateAnswersForDefinition(definition, requiredConfig, answer('acknowledged', false)), errorCode('invalid_answer'));
+  const optionalConfig = { ...requiredConfig, fields: [{ ...requiredConfig.fields[0], required: false }] };
+  assert.deepEqual(validateAnswersForDefinition(definition, optionalConfig, answer('acknowledged', false)).answers,
+    [{ fieldId: 'acknowledged', label: 'acknowledged', type: 'checkbox', value: false }]);
+});
+
 for (const unsafeKey of ['pin', 'pin_code', 'credit_card', 'debit_card']) {
   void test(`snapshot rejects unsafe key ${unsafeKey} even when the field ID is safe`, () => {
     const config = { ...validateFormDraftForDefinition(definition, draft([field('public_note', 'short_text')])), version: 1, publishedAt: 1 };
