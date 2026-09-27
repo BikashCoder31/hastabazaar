@@ -355,7 +355,7 @@ void test('answer insert is deferred, atomic with parent write, unique per form/
 void test('required built-in fields stay in the parent record and need no answer snapshot entry', async () => {
   const { sqlite, db } = await fixture();
   try {
-    seedPublished(sqlite, 'built-in-v1', 1, [{ ...field('name', 'short_text', 'Your name'), required: true }]);
+    seedPublished(sqlite, 'built-in-v1', 1, [{ ...field('displayName', 'short_text', 'Your name'), required: true }]);
     sqlite.exec('CREATE TABLE parent_actions(id TEXT PRIMARY KEY)');
     const insert = buildFormAnswerInsert(db, { formId, requestId: 'built-in-answer', versionId: 'built-in-v1',
       subjectType: 'customer_profile', subjectId: 'profile-1', actorId: 'customer',

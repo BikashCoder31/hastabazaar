@@ -6,9 +6,10 @@ export interface ImplementedFormAdapter {
   readonly mode: FormMode;
 }
 
-// Integrations add an entry here only when their server adapter exists and is
-// tested. None of the inventory-only definitions below is implemented yet.
-export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormAdapter>> = Object.freeze({});
+// Integrations add an entry here only when their server adapter exists and is tested.
+export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormAdapter>> = Object.freeze({
+  'account.profile': { formId: 'account.profile', route: '/api/account/profile', mode: 'collection' },
+});
 
 // Inventory rows are ordered to match the 69 JSX sites in the frozen policy baseline.
 // A pending adapter is deliberately not a live configuration adapter.
@@ -148,7 +149,22 @@ function definition(row: string): FormDefinition {
 
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
   Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
-    const item = definition(row);
+    const item = row.startsWith('account.profile|') ? Object.freeze({
+      id: 'account.profile', audience: 'customer', mode: 'collection', route: '/api/account/profile',
+      baseFields: Object.freeze([
+        { key: 'displayName', type: 'short_text', label: 'Your name', capability: 'display_editable',
+          explanation: 'Only its display text and position can change; a name of 2–100 characters remains required.', required: true, status: 'active' },
+        { key: 'phone', type: 'phone', label: 'Nepal mobile number', capability: 'display_editable',
+          explanation: 'Only its display text and position can change; the Nepal mobile check remains server enforced.', required: false, status: 'active' },
+        { key: 'locale', type: 'existing', label: 'Language', capability: 'protected',
+          explanation: 'The supported language choices are enforced by the profile endpoint.' },
+        { key: 'idempotencyKey', type: 'existing', label: 'Request ID', capability: 'protected',
+          explanation: 'Request deduplication is required for profile changes.' },
+      ] as const),
+      capabilities: Object.freeze({ explanation: 'Profile display text and order may change; custom answers are linked to the customer account. Name, Nepal phone, language, and request deduplication rules remain enforced.',
+        customFieldTypes: Object.freeze(['short_text', 'long_text', 'number', 'date', 'single_choice', 'multiple_choice', 'checkbox', 'email', 'phone'] as const), answerBehavior: 'record' }),
+      adapterId: 'account.profile',
+    } satisfies FormDefinition) : definition(row);
     return [item.id, item];
   })),
 );

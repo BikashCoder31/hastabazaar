@@ -35,7 +35,6 @@ app/register/page.tsx|1|a9a9a3b7531bfabd|identity.register
 app/seller/products/page.tsx|1|d5d574dcd78d58bb|seller.product-filter
 components/account/address-manager.tsx|1|08f5b8cafeeeb78d|account.address
 components/account/privacy-request-form.tsx|1|1ff6b963fa2b245a|account.privacy-request
-components/account/profile-form.tsx|1|0d422eb726deca8b|account.profile
 components/account/review-form.tsx|1|643c713e52aaf7a9|account.review
 components/admin/catalog-manager.tsx|1|cc10cf6494149a43|staff.catalog
 components/admin/delivery-rate-settings.tsx|1|9698f58ea30c192c|staff.delivery-rate

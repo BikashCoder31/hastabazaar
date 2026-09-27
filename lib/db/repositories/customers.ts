@@ -1,6 +1,9 @@
 import {normalizeProvince,normalizeDistrict,districtBelongsToProvince,validWard} from '@/lib/checkout/nepal-address';
 import { publicProductEligibility } from '@/lib/products/eligibility';
 import {parseLocation} from '@/lib/delivery/validation';
+import { buildFormAnswerInsert } from './form-answers';
+import type { FormAnswerSnapshot } from '@/lib/forms/types';
+import { FormRuntimeError } from '@/lib/forms/runtime';
 export class CustomerDataConflictError extends Error {}
 
 export interface CustomerOrderRow {
@@ -191,20 +194,67 @@ export async function deleteCustomerAddress(database: D1Database, options: { use
   ]);
 }
 
-export async function updateCustomerProfile(database: D1Database, options: { userId: string; displayName: string; phone: string; locale: 'en-NP' | 'ne-NP'; requestId: string; now: number }): Promise<void> {
+export async function customerProfileRequestStatus(database: D1Database, input: {
+  userId: string; requestId: string; displayName: string; phone: string; locale: 'en-NP' | 'ne-NP';
+  formVersion: number; customAnswers: unknown;
+}): Promise<'new' | 'same' | 'conflict'> {
+  const row = await database.prepare(`SELECT a.next_json AS coreJson, f.answers_json AS answersJson
+    FROM audit_logs a LEFT JOIN form_answer_sets f
+      ON f.form_id = 'account.profile' AND f.request_id = a.request_id
+    WHERE a.request_id = ? AND a.actor_id = ? AND a.action = 'account.profile.updated'
+      AND a.subject_type = 'user' AND a.subject_id = ? LIMIT 1`)
+    .bind(input.requestId, input.userId, input.userId).first<{ coreJson: string; answersJson: string | null }>();
+  if (!row) return 'new';
+  try {
+    const core = JSON.parse(row.coreJson) as { displayName?: unknown; phone?: unknown; locale?: unknown };
+    const snapshot = JSON.parse(row.answersJson ?? '') as FormAnswerSnapshot;
+    const requested = input.customAnswers;
+    if (!Array.isArray(requested) || requested.some((entry) => !entry || typeof entry !== 'object' || Array.isArray(entry) ||
+      Object.keys(entry).some((key) => key !== 'fieldId' && key !== 'value') || typeof entry.fieldId !== 'string')) return 'conflict';
+    const previouslySaved = snapshot.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value }));
+    return core.displayName === input.displayName.trim() && core.phone === (input.phone.trim().replace(/[\s-]/g, '') || null) &&
+      core.locale === input.locale && snapshot.formId === 'account.profile' && snapshot.version === input.formVersion &&
+      JSON.stringify(previouslySaved) === JSON.stringify(requested) ? 'same' : 'conflict';
+  } catch { return 'conflict'; }
+}
+
+export async function updateCustomerProfile(database: D1Database, options: { userId: string; displayName: string; phone: string; locale: 'en-NP' | 'ne-NP'; requestId: string; now: number; formVersion: number; versionId: string; answers: FormAnswerSnapshot }): Promise<void> {
   const displayName = options.displayName.trim();
   const phone = options.phone.trim().replace(/[\s-]/g, '');
   if (displayName.length < 2 || displayName.length > 100) throw new CustomerDataConflictError('Name must be 2â€“100 characters.');
   if (phone && !/^(?:\+?977)?9[678]\d{8}$/.test(phone)) throw new CustomerDataConflictError('Enter a valid Nepal mobile number.');
-  const duplicate = await database.prepare(`SELECT id FROM audit_logs WHERE request_id = ? AND actor_id = ? LIMIT 1`).bind(options.requestId, options.userId).first();
-  if (duplicate) return;
-  await database.batch([
+  const replay = await customerProfileRequestStatus(database, { ...options,
+    customAnswers: options.answers.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value })) });
+  if (replay === 'same') return;
+  if (replay === 'conflict') throw new CustomerDataConflictError('This request ID was already used for different profile values.');
+  const statements = [
+    database.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM users WHERE id = ? AND status = 'active')
+      AND (SELECT MAX(version) FROM form_config_versions WHERE form_id = 'account.profile' AND status = 'published') = ?
+      AND NOT EXISTS (SELECT 1 FROM audit_logs WHERE request_id = ?)
+      THEN 1 ELSE json_extract('invalid', '$') END AS valid`)
+      .bind(options.userId, options.formVersion, options.requestId),
     database.prepare(`UPDATE users SET display_name = ?, phone = ?, locale = ?, updated_at = ? WHERE id = ? AND status = 'active'`).bind(displayName, phone || null, options.locale, options.now, options.userId),
+    buildFormAnswerInsert(database, { formId: 'account.profile', requestId: options.requestId,
+      versionId: options.versionId, subjectType: 'user', subjectId: options.userId,
+      actorId: options.userId, answers: options.answers, now: options.now }),
     database.prepare(
       `INSERT INTO audit_logs (id, actor_id, action, subject_type, subject_id, reason, previous_json, next_json, request_id, ip_hash, created_at)
        VALUES (?, ?, 'account.profile.updated', 'user', ?, 'Customer updated own profile', NULL, ?, ?, NULL, ?)`,
     ).bind(crypto.randomUUID(), options.userId, options.userId, JSON.stringify({ displayName, phone: phone || null, locale: options.locale }), options.requestId, options.now),
-  ]);
+  ];
+  try { await database.batch(statements); }
+  catch (error) {
+    // A concurrent exact replay can lose the pre-batch duplicate check; the
+    // unique request ID still aborts its batch and leaves one successful write.
+    const concurrent = await customerProfileRequestStatus(database, { ...options,
+      customAnswers: options.answers.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value })) });
+    if (concurrent === 'same') return;
+    if (concurrent === 'conflict') throw new CustomerDataConflictError('This request ID was already used for different profile values.');
+    const current = await database.prepare(`SELECT MAX(version) AS version FROM form_config_versions
+      WHERE form_id = 'account.profile' AND status = 'published'`).first<{ version: number | null }>();
+    if (current?.version !== options.formVersion) throw new FormRuntimeError('stale_version', 'This form changed. Refresh it and review your answers.');
+    throw error;
+  }
 }
 
 export async function listWishlist(database: D1Database, userId: string): Promise<readonly WishlistProductRow[]> {

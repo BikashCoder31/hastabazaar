@@ -59,14 +59,16 @@ function ConfiguredFieldControl({ field, error }: { field: ConfiguredField; erro
   </div>;
 }
 
-export function ConfiguredFields({ config, baseKeys, errors = {} }: {
+export function ConfiguredFields({ config, baseKeys, errors = {}, fieldIds, includeVersion = true }: {
   config: PublishedFormConfig; baseKeys: readonly string[]; errors?: Readonly<Record<string, string>>;
+  fieldIds?: readonly string[]; includeVersion?: boolean;
 }) {
   const builtIns = new Set(baseKeys.map(canonicalKey));
-  const fields = config.fields.filter((field) => field.status === 'active' && !builtIns.has(canonicalKey(field.key)))
+  const selected = fieldIds ? new Set(fieldIds) : null;
+  const fields = config.fields.filter((field) => field.status === 'active' && !builtIns.has(canonicalKey(field.key)) && (!selected || selected.has(field.id)))
     .toSorted((left, right) => left.order - right.order);
   return <>
-    <input type="hidden" name="formVersion" value={config.version} />
+    {includeVersion ? <input type="hidden" name="formVersion" value={config.version} /> : null}
     <div className="grid min-w-0 gap-4 sm:grid-cols-2">
       {fields.map((field) => <ConfiguredFieldControl key={field.id} field={field}
         error={Object.hasOwn(errors, field.id) && typeof errors[field.id] === 'string' ? errors[field.id] : undefined} />)}

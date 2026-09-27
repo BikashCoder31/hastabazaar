@@ -22,6 +22,7 @@ export default async function ProfilePage() {
         <ProfileForm
           displayName={customer.displayName}
           phone={customer.phone}
+          locale={customer.locale}
         />
       </section>
     </div>

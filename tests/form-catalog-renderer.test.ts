@@ -60,6 +60,18 @@ void test('active controls connect labels, help, and required cues without treat
   assert.match(html, /name="formVersion" value="3"/);
 });
 
+void test('a form can place individual custom fields in DOM order with one version control', () => {
+  const published = config([field({ id: 'first', key: 'first', order: 0 }), field({ id: 'second', key: 'second', order: 1 })]);
+  const first = renderToStaticMarkup(createElement(ConfiguredFields, { config: published, baseKeys: [], fieldIds: ['first'] }));
+  const second = renderToStaticMarkup(createElement(ConfiguredFields, { config: published, baseKeys: [], fieldIds: ['second'], includeVersion: false }));
+  const html = first + second;
+  assert.equal((html.match(/name="formVersion"/g) ?? []).length, 1);
+  assert.match(first, /name="custom\.first"/);
+  assert.doesNotMatch(first, /custom\.second/);
+  assert.match(second, /name="custom\.second"/);
+  assert.doesNotMatch(second, /custom\.first/);
+});
+
 void test('choices render semantic single and multiple controls and omit archived fields', () => {
   const html = render(config([
     field({ id: 'colour', key: 'colour', type: 'single_choice', label: 'Colour', order: 1,
