@@ -360,6 +360,87 @@ void test('current required custom answer, unknown field and stale version fail 
   } finally { sqlite.close(); }
 });
 
+void test('valid published long-text feedback above the legacy body cap persists once and sends once', async () => {
+  const { sqlite } = await fixture();
+  try {
+    const fields = Array.from({ length: 4 }, (_, index) => ({ id: `story_${index}`, key: `story_${index}`,
+      type: 'long_text', label: `Story ${index}`, required: true, order: index, status: 'active' }));
+    seed(sqlite, 'public.contact', 1, fields);
+    const payload = await request('large-valid-one', { note: null }).formData();
+    for (const field of fields) payload.set(`custom.${field.id}`, 'A'.repeat(5000));
+    const { POST } = await import('../app/api/feedback/route');
+    const response = await POST(new Request('http://localhost:3000/api/feedback', {
+      method: 'POST', headers: { origin: 'http://localhost:3000' }, body: payload,
+    }));
+    assert.equal(response.status, 200);
+    assert.equal(count(sqlite, 'feedback_delivery_jobs'), 1);
+    const row = sqlite.prepare('SELECT answers_json AS answersJson FROM form_answer_sets').get() as { answersJson: string };
+    const snapshot = JSON.parse(row.answersJson) as { answers: { fieldId: string; value: string }[] };
+    assert.equal(snapshot.answers.length, 4);
+    assert.equal(snapshot.answers.every((answer) => answer.value.length === 5000), true);
+    assert.equal(globalThis.feedbackCatalogMail.sent.length, 1);
+  } finally { sqlite.close(); }
+});
+
+void test('oversized feedback remains rejected before creating a job or sending mail', async () => {
+  const { sqlite } = await fixture();
+  try {
+    seed(sqlite, 'public.contact', 1);
+    const payload = await request('oversized-one').formData();
+    payload.set('custom.delivery_note', 'A'.repeat(3 * 1024 * 1024));
+    const { POST } = await import('../app/api/feedback/route');
+    const response = await POST(new Request('http://localhost:3000/api/feedback', {
+      method: 'POST', headers: { origin: 'http://localhost:3000' }, body: payload,
+    }));
+    assert.equal(response.status, 413);
+    assert.equal(count(sqlite, 'feedback_delivery_jobs'), 0);
+    assert.equal(count(sqlite, 'form_answer_sets'), 0);
+    assert.equal(globalThis.feedbackCatalogMail.sent.length, 0);
+  } finally { sqlite.close(); }
+});
+
+for (const [id, value] of [['number-blank-one', '   '], ['number-hex-one', '0x10']] as const) {
+  void test(`required custom number rejects ${value === '   ' ? 'whitespace' : 'hexadecimal'} before coercion`, async () => {
+    const { sqlite } = await fixture();
+    try {
+      seed(sqlite, 'public.contact', 1, [{ id: 'quantity', key: 'quantity', type: 'number', label: 'Quantity',
+        required: true, order: 0, status: 'active' }]);
+      const { POST } = await import('../app/api/feedback/route');
+      const payload = await request(id, { note: null }).formData();
+      payload.set('custom.quantity', value);
+      const response = await POST(new Request('http://localhost:3000/api/feedback', {
+        method: 'POST', headers: { origin: 'http://localhost:3000' }, body: payload,
+      }));
+      assert.equal(response.status, 400, value);
+      assert.equal(count(sqlite, 'feedback_delivery_jobs'), 0);
+      assert.equal(count(sqlite, 'form_answer_sets'), 0);
+      assert.equal(globalThis.feedbackCatalogMail.sent.length, 0);
+    } finally { sqlite.close(); }
+  });
+}
+
+void test('custom number still accepts finite decimal and exponent values', async () => {
+  const { sqlite } = await fixture();
+  try {
+    seed(sqlite, 'public.contact', 1, [{ id: 'quantity', key: 'quantity', type: 'number', label: 'Quantity',
+      required: true, order: 0, status: 'active' }]);
+    const { POST } = await import('../app/api/feedback/route');
+    for (const [id, value] of [['number-decimal-one', '-1.5'], ['number-exponent-one', '2e3']]) {
+      const payload = await request(id, { note: null }).formData();
+      payload.set('custom.quantity', value);
+      const response = await POST(new Request('http://localhost:3000/api/feedback', {
+        method: 'POST', headers: { origin: 'http://localhost:3000' }, body: payload,
+      }));
+      assert.equal(response.status, 200, value);
+    }
+    const snapshots = sqlite.prepare('SELECT answers_json AS answersJson FROM form_answer_sets ORDER BY request_id').all() as
+      { answersJson: string }[];
+    assert.deepEqual(snapshots.map((row) => (JSON.parse(row.answersJson) as { answers: { value: number }[] }).answers[0].value),
+      [-1.5, 2000]);
+    assert.equal(globalThis.feedbackCatalogMail.sent.length, 2);
+  } finally { sqlite.close(); }
+});
+
 void test('file payload in a text-only configured answer is a client error with no stored job', async () => {
   const { sqlite } = await fixture();
   try {

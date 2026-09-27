@@ -23,6 +23,11 @@ import {
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 
 const noStoreHeaders = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
+// A valid answer snapshot is capped at 128 KiB, but up to 64 configured fields
+// with 100 selected choices each carry much larger multipart header overhead.
+// Keep the transport bounded at 2 MiB; field/form validation still applies.
+const FEEDBACK_MULTIPART_LIMIT = 2 * 1024 * 1024;
+const DECIMAL_NUMBER = /^-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 const json = (body: unknown, status: number) => Response.json(body, { status, headers: noStoreHeaders });
 const retryableDelivery = () => json({ code: 'delivery_retryable',
   error: 'Your message was not sent. Retry without changing it.' }, 503);
@@ -89,8 +94,12 @@ function configuredAnswers(form: FormData, config: PublishedFormConfig, feedback
     if (field.type === 'checkbox') { answers.push({ fieldId: field.id, value: values.length > 0 }); continue; }
     if (!values.length || values.length === 1 && values[0] === '') continue;
     if (field.type === 'multiple_choice') { answers.push({ fieldId: field.id, value: values }); continue; }
-    if (field.type === 'number') answers.push({ fieldId: field.id, value: Number(values[0]) });
-    else answers.push({ fieldId: field.id, value: values[0] });
+    if (field.type === 'number') {
+      const raw = values[0];
+      if (typeof raw !== 'string' || !DECIMAL_NUMBER.test(raw))
+        throw new FormValidationError('invalid_answer', 'Invalid numeric answer', field.id);
+      answers.push({ fieldId: field.id, value: Number(raw) });
+    } else answers.push({ fieldId: field.id, value: values[0] });
   }
   return answers;
 }
@@ -139,7 +148,7 @@ export async function POST(request: Request): Promise<Response> {
 
   let form: FormData;
   try {
-    form = await readBoundedForm(request, 16 * 1024);
+    form = await readBoundedForm(request, FEEDBACK_MULTIPART_LIMIT);
   } catch { return json({ error: 'The submitted form is invalid or too large.' }, 413); }
 
   // Bots commonly populate this visually hidden field. Return a neutral success
