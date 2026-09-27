@@ -186,14 +186,15 @@ export async function saveFormDraft(db: D1Database, input: { formId: FormId; dra
     const draftId = required(input.draftId, 'Draft ID', 191);
     const revision = version(input.expectedDraftRevision as number, 'Draft revision');
     const old = await byId(db, draftId);
-    if (!old || old.formId !== input.formId || old.status !== 'draft' || old.revision !== revision) throw new FormCatalogConflictError();
+    if (!old || old.formId !== input.formId || old.status !== 'draft' || old.revision !== revision ||
+        old.version <= data.expectedPublishedVersion) throw new FormCatalogConflictError();
     try {
       await db.batch([
         guard(db, `${activeAdmin} AND ${publishedIs} AND ${requestUnused} AND EXISTS
-          (SELECT 1 FROM form_config_versions WHERE id = ? AND form_id = ? AND status = 'draft' AND revision = ?)
+          (SELECT 1 FROM form_config_versions WHERE id = ? AND form_id = ? AND status = 'draft' AND revision = ? AND version > ?)
           AND ${historyCompatible}`,
         [data.actorId, input.formId, data.expectedPublishedVersion, data.requestId,
-          draftId, input.formId, revision, input.formId, configJson]),
+          draftId, input.formId, revision, data.expectedPublishedVersion, input.formId, configJson]),
         db.prepare(`UPDATE form_config_versions SET revision = revision + 1, config_json = ?, reason = ?,
           updated_by = ?, updated_at = ?, last_request_id = ? WHERE id = ? AND revision = ? AND status = 'draft'`)
           .bind(configJson, data.reason, data.actorId, data.now, data.requestId, draftId, revision),
@@ -242,16 +243,17 @@ export async function publishFormDraft(db: D1Database, input: { formId: FormId; 
   if (await usedRequest(db, data.requestId)) throw new FormCatalogConflictError('Request ID was already used.');
   const draft = await byId(db, draftId);
   if (!draft || draft.formId !== input.formId || draft.status !== 'draft' || draft.revision !== revision ||
+      draft.version <= data.expectedPublishedVersion ||
       await currentPublished(db, input.formId) !== data.expectedPublishedVersion) throw new FormCatalogConflictError();
   const config = validateFormDraft(input.formId, draft.config);
   await assertIdentity(db, input.formId, config);
   try {
     await db.batch([
       guard(db, `${activeAdmin} AND ${publishedIs} AND ${requestUnused} AND EXISTS
-        (SELECT 1 FROM form_config_versions WHERE id = ? AND form_id = ? AND status = 'draft' AND revision = ?)
+        (SELECT 1 FROM form_config_versions WHERE id = ? AND form_id = ? AND status = 'draft' AND revision = ? AND version > ?)
         AND ${historyCompatible}`,
       [data.actorId, input.formId, data.expectedPublishedVersion, data.requestId,
-        draftId, input.formId, revision, input.formId, JSON.stringify(config)]),
+        draftId, input.formId, revision, data.expectedPublishedVersion, input.formId, JSON.stringify(config)]),
       db.prepare(`UPDATE form_config_versions SET status = 'published', revision = revision + 1,
         reason = ?, updated_by = ?, updated_at = ?, published_by = ?, published_at = ?, last_request_id = ?
         WHERE id = ? AND status = 'draft' AND revision = ?`)

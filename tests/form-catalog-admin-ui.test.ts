@@ -20,7 +20,7 @@ void test('Form catalog appears in Controls for Super Admin alone', () => {
 const definition: FormDefinition = {
   id: 'account.profile', audience: 'customer', mode: 'collection', route: '/api/account/profile', adapterId: 'profile',
   baseFields: [{ key: 'name', type: 'short_text', label: 'Name', capability: 'protected', required: true, status: 'active', explanation: 'Identity name is required by the profile adapter.' }],
-  capabilities: { explanation: 'Profile answers attach to the customer record.', customFieldTypes: ['short_text', 'single_choice'], answerBehavior: 'record' },
+  capabilities: { explanation: 'Profile answers attach to the customer record.', customFieldTypes: ['short_text', 'single_choice', 'number'], answerBehavior: 'record' },
 };
 const config: PublishedFormConfig = { formId: 'account.profile', version: 1, publishedAt: 1, fields: [
   { id: 'delivery_note', key: 'delivery_note', type: 'short_text', label: 'Delivery note', required: false, order: 0, status: 'active' },
@@ -98,16 +98,18 @@ void test('editor keeps edits on 409, reloads history, and confirms publish and 
       operations.push({ action, body });
       if (action === 'draft' && rejectDraft) { rejectDraft = false; return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'Form configuration changed.' }) }); }
       if (action === 'draft') {
-        const draft = { id: 'draft-1', version: 1, revision: 1, status: 'draft', reason: body.reason, updatedAt: 1, publishedAt: null, config: body.config };
-        versions = [draft];
+        const nextVersion = Math.max(0, ...versions.map((item) => item.version)) + 1;
+        const draft = { id: `draft-${nextVersion}`, version: nextVersion, revision: 1, status: 'draft', reason: body.reason, updatedAt: nextVersion, publishedAt: null, config: body.config };
+        versions = [draft, ...versions];
         return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ draft }) });
       }
       if (action === 'publish') {
-        const published = { ...versions[0], status: 'published', publishedAt: 2, updatedAt: 2 };
-        versions = [published];
+        const published = { ...versions.find((item) => item.id === body.draftId), status: 'published', publishedAt: 2, updatedAt: 2 };
+        versions = [published, ...versions.filter((item) => item.id !== body.draftId)];
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ published }) });
       }
-      const published = { ...versions[0], id: 'published-2', version: 2, reason: body.reason, updatedAt: 3, publishedAt: 3 };
+      const source = versions.find((item) => item.status === 'published' && item.version === body.sourceVersion);
+      const published = { ...source, id: 'published-restore', version: Math.max(...versions.map((item) => item.version)) + 1, reason: body.reason, updatedAt: 3, publishedAt: 3 };
       versions = [published, ...versions];
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ published }) });
     });
@@ -132,12 +134,57 @@ void test('editor keeps edits on 409, reloads history, and confirms publish and 
     await page.getByRole('button', { name: 'Move Gift colour up' }).click();
     assert.deepEqual(await page.locator('[data-editor-field]').evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('data-editor-field'))), ['gift_color', 'delivery_note']);
     await page.getByRole('button', { name: 'Required for Gift colour' }).click();
+    await page.getByRole('button', { name: 'Required for Gift colour' }).click();
+    assert.equal(await page.getByRole('alertdialog').count(), 1, 'making a required field optional needs confirmation');
+    assert.equal(await page.locator('[aria-label="Required for Gift colour"]').getAttribute('aria-pressed'), 'true');
+    await page.getByRole('button', { name: 'Cancel' }).focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await page.getByRole('button', { name: 'Required for Gift colour' }).getAttribute('aria-pressed'), 'true');
+    await page.getByRole('button', { name: 'Required for Gift colour' }).click();
+    await page.getByRole('button', { name: 'Confirm optional' }).focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await page.getByRole('button', { name: 'Required for Gift colour' }).getAttribute('aria-pressed'), 'false');
+    await page.getByRole('button', { name: 'Required for Gift colour' }).click();
     await page.locator('[data-editor-field="gift_color"]').getByRole('button', { name: 'Archive' }).click();
+    assert.equal(await page.getByRole('alertdialog').count(), 1, 'archiving a required field needs confirmation');
+    assert.match(await page.locator('[data-editor-field="gift_color"]').textContent(), /active/);
+    await page.getByRole('button', { name: 'Cancel' }).focus();
+    await page.keyboard.press('Enter');
+    assert.match(await page.locator('[data-editor-field="gift_color"]').textContent(), /active/);
+    await page.locator('[data-editor-field="gift_color"]').getByRole('button', { name: 'Archive' }).click();
+    await page.getByRole('button', { name: 'Confirm archive' }).focus();
+    await page.keyboard.press('Enter');
     assert.match(await page.locator('[data-editor-field="gift_color"]').textContent(), /archived/);
     await page.locator('[data-editor-field="gift_color"]').getByRole('button', { name: 'Reactivate' }).click();
+    await page.getByLabel('New field key').fill('gift_wrap');
+    await page.getByLabel('Label', { exact: true }).last().fill('Gift wrap');
+    await page.getByLabel('Type').selectOption('single_choice');
+    await page.getByRole('button', { name: 'Add field' }).click();
+    const choices = page.locator('#gift_wrap-choices');
+    await choices.focus();
+    await page.keyboard.press('ControlOrMeta+End');
+    await page.keyboard.press('Enter');
+    assert.equal((await choices.inputValue()).endsWith('\n'), true, 'Enter leaves a new editable choice line');
+    await choices.pressSequentially('third | Third option');
+    assert.match(await choices.inputValue(), /second \| Second option\nthird \| Third option$/);
+    await page.getByLabel('New field key').fill('quantity_hint');
+    await page.getByLabel('Label', { exact: true }).last().fill('Quantity hint');
+    await page.getByLabel('Type').selectOption('number');
+    await page.getByRole('button', { name: 'Add field' }).click();
+    await page.locator('#quantity_hint-min').fill('0');
+    await page.locator('#quantity_hint-max').fill('5');
+    await page.locator('#quantity_hint-min').fill('');
+    assert.equal(await page.locator('#quantity_hint-min').inputValue(), '', 'empty bound remains undefined instead of zero');
+    await page.locator('#quantity_hint-min').fill('0');
+    await page.getByRole('checkbox', { name: 'Whole numbers only' }).focus();
+    await page.keyboard.press('Space');
     await page.getByRole('tab', { name: 'Desktop' }).click();
     assert.equal(await page.locator('[data-preview-mode="desktop"] input[name="custom.gift_color"]').count(), 1);
     await page.getByRole('tab', { name: 'Phone' }).click();
+    const numberPreview = page.locator('[data-preview-mode="phone"] input[name="custom.quantity_hint"]');
+    assert.equal(await numberPreview.getAttribute('min'), '0');
+    assert.equal(await numberPreview.getAttribute('max'), '5');
+    assert.equal(await numberPreview.getAttribute('step'), '1');
     await page.getByLabel('Reason for change').fill('Improve recipient context');
     await page.getByRole('button', { name: 'Save draft' }).click();
     await page.getByRole('button', { name: 'Reload latest version' }).click();
@@ -150,14 +197,35 @@ void test('editor keeps edits on 409, reloads history, and confirms publish and 
     await page.getByRole('button', { name: 'Confirm publish' }).focus();
     await page.keyboard.press('Enter');
     await page.getByRole('status').getByText('Form published.').waitFor();
+    await page.locator('#gift_color-label').fill('Temporary gift colour');
+    await page.getByLabel('Reason for change').fill('Save a newer draft');
+    await page.getByRole('button', { name: 'Save draft' }).click();
+    await page.getByRole('status').getByText('Draft saved.').waitFor();
     await page.getByLabel('Reason for change').fill('Restore prior layout');
     await page.getByRole('button', { name: 'Restore', exact: true }).click();
     await page.getByRole('button', { name: 'Confirm restore' }).focus();
     await page.keyboard.press('Enter');
-    assert.deepEqual(operations.map((item) => item.action), ['draft', 'draft', 'publish', 'restore']);
+    await page.getByRole('status').getByText('Historical version restored as a new publication.').waitFor();
+    assert.equal(await page.locator('#gift_color-label').inputValue(), 'Gift colour');
+    assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), true);
+    assert.match(await page.getByText('Version 2 · revision 1').textContent(), /stale draft/);
+    assert.match(await page.locator('[data-preview-mode="phone"]').textContent(), /Gift colour/);
+    await page.locator('#gift_color-label').fill('After restore colour');
+    await page.getByLabel('Reason for change').fill('New edit after restore');
+    await page.getByRole('button', { name: 'Save draft' }).click();
+    await page.getByRole('status').getByText('Draft saved.').waitFor();
+    assert.deepEqual(operations.map((item) => item.action), ['draft', 'draft', 'publish', 'draft', 'restore', 'draft']);
     assert.equal(operations[1].body.config.fields[0].key, 'gift_color');
     assert.equal(operations[1].body.config.fields[0].required, true);
+    assert.deepEqual(operations[1].body.config.fields.find((field: { key: string }) => field.key === 'gift_wrap').choices[2], { value: 'third', label: 'Third option' });
+    const numberField = operations[1].body.config.fields.find((field: { key: string }) => field.key === 'quantity_hint');
+    assert.equal(numberField.min, 0);
+    assert.equal(numberField.max, 5);
+    assert.equal(numberField.integerOnly, true);
     assert.equal(operations[2].body.reason, 'Publish recipient context');
-    assert.equal(operations[3].body.sourceVersion, 1);
+    assert.equal(operations[4].body.sourceVersion, 1);
+    assert.equal(operations[5].body.expectedPublishedVersion, 3);
+    assert.equal(operations[5].body.draftId, undefined);
+    assert.equal(versions[0].version, 4);
   } finally { await page.close(); await browser.close(); }
 });

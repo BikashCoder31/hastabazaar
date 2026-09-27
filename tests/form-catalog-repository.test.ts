@@ -231,6 +231,30 @@ void test('restore publishes a new version and never edits the source publicatio
   } finally { sqlite.close(); }
 });
 
+void test('restore makes an older draft stale and later saves allocate above the restoration', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    seedPublished(sqlite, 'published-1', 1, []);
+    seedDraft(sqlite, 'old-draft', 2, []);
+    const restored = await restoreFormVersion(db, { formId, ...actor, sourceVersion: 1,
+      expectedPublishedVersion: 1, reason: 'Restore baseline', requestId: 'restore-over-draft', now: 30 });
+    assert.equal(restored.version, 3);
+    const auditBefore = auditCount(sqlite);
+    await assert.rejects(() => publishFormDraft(db, { formId, ...actor, draftId: 'old-draft',
+      expectedDraftRevision: 1, expectedPublishedVersion: 3, reason: 'Publish old draft',
+      requestId: 'publish-obsolete', now: 31 }), /changed|permitted/i);
+    await assert.rejects(() => saveFormDraft(db, { formId, ...actor, draftId: 'old-draft',
+      expectedDraftRevision: 1, expectedPublishedVersion: 3, config: emptyConfig,
+      reason: 'Edit old draft', requestId: 'save-obsolete', now: 32 }), /changed|permitted/i);
+    assert.equal(sqlite.prepare('SELECT status FROM form_config_versions WHERE id = ?').get('old-draft')?.status, 'draft');
+    assert.equal(auditCount(sqlite), auditBefore);
+    const next = await saveFormDraft(db, { formId, ...actor, expectedPublishedVersion: 3,
+      config: emptyConfig, reason: 'Edit restored form', requestId: 'save-after-restore', now: 33 });
+    assert.equal(next.version, 4);
+    assert.equal(next.status, 'draft');
+  } finally { sqlite.close(); }
+});
+
 void test('historical field identity cannot be repurposed by restored publications', async () => {
   const { sqlite, db } = await fixture();
   try {
