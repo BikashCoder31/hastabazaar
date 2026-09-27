@@ -42,9 +42,19 @@ export async function createSellerApplication(
   const catalogDigest = options.form ? options.form.digest ?? await digestFormRequest({ input,
     documents: options.documents, profileMedia: options.profileMedia ?? [],
     versionId: options.form.versionId, answers: options.form.answers }) : null;
-  if (options.form && await formRequestReplay(database, { formId: 'seller.application',
-    requestId: options.form.requestId, actorId: userId, action: 'seller.application.submitted',
-    digest: catalogDigest! })) return sellerId;
+  if (options.form) {
+    // The route may have uploaded private media while an identical anonymous
+    // request committed under a different generated user ID. Resolve only by
+    // the submitted email; formRequestReplay still requires the exact action,
+    // answer and payload digest before exposing the winning seller ID.
+    const replayActor = options.existingAccount ? userId :
+      (await database.prepare('SELECT id FROM users WHERE lower(email) = ? LIMIT 1')
+        .bind(input.email.trim().toLowerCase()).first<{ id: string }>())?.id ?? userId;
+    const replay = await formRequestReplay(database, { formId: 'seller.application',
+      requestId: options.form.requestId, actorId: replayActor, action: 'seller.application.submitted',
+      digest: catalogDigest! });
+    if (replay) return replay;
+  }
   const profileMedia = options.profileMedia ?? [];
   if (!['individual','company'].includes(input.applicantType) || !['PAN','VAT','BOTH','NONE'].includes(input.taxMode)) throw new Error('Choose a valid applicant and tax document type.');
   if (input.participationRoute === 'managed_maker' && (input.taxMode !== 'NONE' || input.taxRegistrationNumber || input.registrationNumber || input.registrationAuthority)) throw new Error('Managed Maker applications cannot store placeholder registration or tax identifiers.');

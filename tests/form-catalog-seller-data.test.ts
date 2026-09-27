@@ -22,6 +22,7 @@ import { parseSellerApplication } from '../lib/sellers/application';
 declare global {
   var sellerCatalogDb: D1Database;
   var sellerCatalogActor: { sellerId: string; userId: string } | null;
+  var sellerCatalogCustomer: { userId: string; email: string } | null;
   var sellerCatalogMedia: { stored: string[]; deleted: string[]; put(key: string): Promise<void>; delete(key: string): Promise<void> };
 }
 registerHooks({ resolve(specifier, context, nextResolve) {
@@ -34,7 +35,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
     export class CustomerAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}}
     export async function requireCustomerApi(){if(!globalThis.sellerCatalogActor)throw new CustomerAuthorizationError('Authentication is required.',401);return globalThis.sellerCatalogActor}
     export async function requireCustomerPage(){if(!globalThis.sellerCatalogActor)throw new CustomerAuthorizationError('Authentication is required.',401);return globalThis.sellerCatalogActor}
-    export async function getCustomerUser(){return null}`, shortCircuit: true };
+    export async function getCustomerUser(){return globalThis.sellerCatalogCustomer ?? null}`, shortCircuit: true };
   if (specifier === 'next/navigation') return { url: 'data:text/javascript,export function notFound(){throw new Error("Not found")};export function redirect(){throw new Error("Redirect")};export function useRouter(){return {refresh(){}}}', shortCircuit: true };
   if (specifier === 'next/link') return { url: 'data:text/javascript,export default function Link({children}){return children}', shortCircuit: true };
   if (specifier === '@/components/layout/site-header' || specifier === '@/components/layout/site-footer')
@@ -240,6 +241,7 @@ async function fixture() {
   const db = new Database(sqlite);
   globalThis.sellerCatalogDb = db as unknown as D1Database;
   globalThis.sellerCatalogActor = { sellerId: 'seller-one', userId: 'seller-user' };
+  globalThis.sellerCatalogCustomer = null;
   globalThis.sellerCatalogMedia = { stored: [], deleted: [], async put(key) { this.stored.push(key); },
     async delete(key) { this.deleted.push(key); } };
   return { sqlite, db, database: db as unknown as D1Database };
@@ -962,6 +964,75 @@ void test('anonymous application batch race responds with the winning reference,
     assert.equal((await send(changed)).status, 409);
   } finally { sqlite.close(); }
 });
+
+for (const signedIn of [false, true]) {
+  void test(`${signedIn ? 'signed-in' : 'anonymous'} application pre-batch replay returns the persisted winner after losing R2 upload`, async () => {
+    const { sqlite, database } = await fixture();
+    try {
+      seed(sqlite, 'seller.application');
+      const form = managedApplication();
+      const requestId = `application-prebatch-${signedIn ? 'auth' : 'anon'}`;
+      form.set('requestId', requestId);
+      form.set('formVersion', '1');
+      form.set('custom.workshop_note', 'Fictional answer');
+      form.set('profileImage', new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])],
+        'maker.jpg', { type: 'image/jpeg' }));
+      const parsed = parseSellerApplication(form);
+      assert.ok(parsed.input, parsed.errors.join('; '));
+      const digest = await digestMultipartRequest(form);
+      const winnerUserId = signedIn ? 'signed-in-user' : 'winning-user';
+      if (signedIn) {
+        sqlite.prepare(`INSERT INTO users(id,email,display_name,status,created_at,updated_at)
+          VALUES (?, ?, 'Fictional Maker', 'active', 1, 1)`).run(winnerUserId, parsed.input.email);
+        globalThis.sellerCatalogCustomer = { userId: winnerUserId, email: parsed.input.email };
+      }
+      globalThis.sellerCatalogMedia.put = async function (key) {
+        this.stored.push(key);
+        if (this.stored.length !== 1) return;
+        await createSellerApplication(database, { userId: winnerUserId, existingAccount: signedIn,
+          sellerId: 'winning-seller', applicationReference: 'HB-WINNING-PREBATCH',
+          input: parsed.input!, documents: [], now: 1_800_000_000_400,
+          form: { ...formLink('seller.application', requestId), digest } });
+      };
+      const { POST } = await import('../app/api/seller-applications/route');
+      const send = (body: FormData) => POST(new Request('http://localhost:3000/api/seller-applications', {
+        method: 'POST', headers: { origin: 'http://localhost:3000' }, body,
+      }));
+      const response = await send(form);
+      assert.equal(response.status, 201);
+      assert.equal((await response.json() as { applicationReference: string }).applicationReference, 'HB-WINNING-PREBATCH');
+      assert.equal(globalThis.sellerCatalogMedia.stored.length, 1);
+      assert.deepEqual(globalThis.sellerCatalogMedia.deleted, globalThis.sellerCatalogMedia.stored,
+        'the private losing upload must be removed when the pre-batch replay finds a winner');
+      assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM seller_profiles').get() as { count: number }).count, 1);
+      assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM audit_logs WHERE request_id=?').get(requestId) as { count: number }).count, 1);
+      assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM form_answer_sets WHERE request_id=?').get(requestId) as { count: number }).count, 1);
+
+      const changed = managedApplication();
+      changed.set('requestId', requestId);
+      changed.set('formVersion', '1');
+      changed.set('custom.workshop_note', 'Changed answer');
+      changed.set('profileImage', form.get('profileImage') as File);
+      const changedResponse = await send(changed);
+      assert.equal(changedResponse.status, 409);
+      assert.doesNotMatch(await changedResponse.text(), /HB-WINNING-PREBATCH/);
+      changed.set('custom.workshop_note', 'Fictional answer');
+      changed.set('email', 'different@example.test');
+      const changedEmailResponse = await send(changed);
+      assert.equal(changedEmailResponse.status, 409);
+      assert.doesNotMatch(await changedEmailResponse.text(), /HB-WINNING-PREBATCH/);
+      await assert.rejects(createSellerApplication(database, { userId: 'different-actor', existingAccount: true,
+        sellerId: 'different-seller', applicationReference: 'HB-DIFFERENT', input: parsed.input!, documents: [],
+        now: 1_800_000_000_401, form: { ...formLink('seller.application', requestId), digest } }),
+      /Request reference/);
+      assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM seller_profiles').get() as { count: number }).count, 1);
+      assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM form_answer_sets WHERE request_id=?').get(requestId) as { count: number }).count, 1);
+    } finally {
+      globalThis.sellerCatalogCustomer = null;
+      sqlite.close();
+    }
+  });
+}
 
 void test('seller approval revoked at the batch boundary cannot commit an audit or answer', async () => {
   const { sqlite, db, database } = await fixture();
