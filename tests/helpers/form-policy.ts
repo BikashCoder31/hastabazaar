@@ -79,7 +79,7 @@ components/seller/maker-application-profile-form.tsx|1|4d8d692da4bae111|seller.m
 components/seller/managed-program-workspace.tsx|1|1788e9a6e7146fe8|seller.managed-supply-proposal
 components/seller/managed-program-workspace.tsx|2|7cdb2508742528c7|seller.managed-transition-request
 components/seller/payout-request-form.tsx|1|4c786e7a16233cde|seller.payout-request
-components/seller/product-submission-form.tsx|1|18ab3a2fd406982f|seller.product-submission
+components/seller/product-submission-form.tsx|1|e6535dffb04ca89f|seller.product-submission
 components/seller/review-reply-form.tsx|1|19c1f3ee22a30a2b|seller.review-reply
 components/seller/seller-application-form.tsx|1|aa9ba3abeacd03db|seller.application
 components/seller/seller-profile-form.tsx|1|b0db3d37c07631f6|seller.profile

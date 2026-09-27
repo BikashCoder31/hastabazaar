@@ -52,6 +52,7 @@ type SubmissionState =
 const catalogBaseKeys = ['nameEn', 'descriptionEn', 'sku', 'price', 'pricePaisa', 'inventoryQuantity',
   'image', 'video', 'reviewRequestId', 'categoryId', 'occasionIds', 'sellerId', 'producer', 'materials',
   'requestId', 'formVersion', 'customAnswers'];
+const uncertainSubmissionMessage = 'Submission status is uncertain. Your product or private media may already have been saved. Check your products before starting a new attempt.';
 
 interface ModelContext {
   registerTool(
@@ -372,8 +373,11 @@ export function ProductSubmissionForm({
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const attemptId = useRef('');
+  const attemptContext = initial ? `revision:${initial.id}` : mode === 'draft' ? 'new-draft' : 'new-submit';
+  const attemptStorageKey = `hastabazaar:product-attempt:${attemptContext}`;
   const catalog = usePublishedFormConfig('seller.product-submission');
   const [state, setState] = useState<SubmissionState>({ status: 'idle' });
+  const [hasPendingAttempt, setHasPendingAttempt] = useState(false);
   const [price, setPrice] = useState(
     initial ? String(initial.pricePaisa / 100) : '',
   );
@@ -408,6 +412,30 @@ export function ProductSubmissionForm({
   const [removedMedia, setRemovedMedia] = useState<Set<string>>(
     () => new Set(),
   );
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      try {
+        setHasPendingAttempt(Boolean(sessionStorage.getItem(attemptStorageKey)));
+      } catch {
+        setHasPendingAttempt(false);
+      }
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [attemptStorageKey]);
+
+  function resetAttempt() {
+    if (!window.confirm('A previous product submission or private media upload may already have succeeded. Check your products first: starting a new attempt can create a duplicate product or upload. Start a new product attempt anyway?')) return;
+    try {
+      sessionStorage.removeItem(attemptStorageKey);
+    } catch {
+      setState({ status: 'error', message: 'Browser session storage is unavailable. Please enable it before submitting.' });
+      return;
+    }
+    attemptId.current = '';
+    setHasPendingAttempt(false);
+    setState({ status: 'idle' });
+  }
 
   useEffect(() => {
     const modelContext = (
@@ -475,7 +503,15 @@ export function ProductSubmissionForm({
     const form = event.currentTarget;
     try {
       const payload = new FormData(form);
-      attemptId.current ||= crypto.randomUUID();
+      try {
+        const savedAttempt = sessionStorage.getItem(attemptStorageKey);
+        attemptId.current = savedAttempt && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(savedAttempt)
+          ? savedAttempt : crypto.randomUUID();
+        sessionStorage.setItem(attemptStorageKey, attemptId.current);
+      } catch {
+        throw new Error('Browser session storage is unavailable. Please enable it before submitting.');
+      }
+      setHasPendingAttempt(true);
       payload.set('requestId', attemptId.current);
       const response = await fetch(
         initial
@@ -486,12 +522,15 @@ export function ProductSubmissionForm({
           body: payload,
           headers: { Accept: 'application/json' },
         },
-      );
-      const result = (await response.json()) as { error?: string; code?: string };
+      ).catch(() => { throw new Error(uncertainSubmissionMessage); });
+      const result = await response.json().catch(() => { throw new Error(uncertainSubmissionMessage); }) as { error?: string; code?: string } | null;
+      if (!result || typeof result !== 'object') throw new Error(uncertainSubmissionMessage);
       catalog.handleSubmissionResponse(response, result.code);
       if (!response.ok)
         throw new Error(result.error || 'Product submission failed.');
+      try { sessionStorage.removeItem(attemptStorageKey); } catch { /* Confirmed success is not revoked by storage failure. */ }
       attemptId.current = '';
+      setHasPendingAttempt(false);
       form.reset();
       setPrice(initial ? String(initial.pricePaisa / 100) : '');
       setOriginalPrice(
@@ -515,7 +554,7 @@ export function ProductSubmissionForm({
       setState({
         status: 'error',
         message:
-          error instanceof Error ? error.message : 'Product submission failed.',
+          error instanceof Error ? error.message : uncertainSubmissionMessage,
       });
     }
   }
@@ -1059,6 +1098,10 @@ export function ProductSubmissionForm({
           <AlertDescription>{state.message}</AlertDescription>
         </Alert>
       ) : null}
+      {hasPendingAttempt ? <div className="space-y-2 text-sm text-muted-foreground">
+        <p>A previous attempt may already have saved this product or its private media. Reuse this attempt to check its result; if details changed, the server may reject it as a conflict.</p>
+        <Button type="button" variant="outline" onClick={resetAttempt}>Start a new product attempt</Button>
+      </div> : null}
 
       {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={catalogBaseKeys} /> : null}
       {catalog.status !== 'ready' ? <p role="alert" className="text-sm text-destructive">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}

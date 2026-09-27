@@ -7,6 +7,7 @@ import { ConfiguredFields, fieldDisplay } from '../components/forms/configured-f
 import { parsePublishedFormConfig, submissionFeedback, usePublishedFormConfig } from '../components/forms/form-config-client';
 import { configuredJsonPayload, readConfiguredSubmission } from '../lib/forms/submission';
 import type { ConfiguredField, PublishedFormConfig } from '../lib/forms/types';
+import { FORM_REGISTRY } from '../lib/forms/registry';
 
 const field = (overrides: Partial<ConfiguredField> = {}): ConfiguredField => ({
   id: 'delivery_note', key: 'delivery_note', type: 'short_text', label: 'Delivery note',
@@ -224,6 +225,39 @@ void test('fetched configuration rejects Task 3 semantic invalidity while retain
   ]) {
     assert.equal(parsePublishedFormConfig('account.profile', { config: config(fields) }), null);
   }
+});
+
+void test('client parser accepts only exact registered camelCase seller display fields', () => {
+  for (const [formId, fieldId, type, required] of [
+    ['seller.application', 'tradingName', 'short_text', true],
+    ['seller.application', 'businessDescription', 'long_text', true],
+    ['seller.profile', 'businessDescription', 'long_text', false],
+    ['seller.profile', 'tradingName', 'short_text', true],
+    ['seller.maker-profile', 'publicName', 'short_text', true],
+    ['seller.maker-profile', 'publicCity', 'short_text', true],
+    ['seller.product-submission', 'nameEn', 'short_text', true],
+    ['seller.product-submission', 'descriptionEn', 'long_text', true],
+  ] as const) {
+    const base = FORM_REGISTRY[formId].baseFields.find((item) => item.key === fieldId);
+    assert.equal(base?.capability, 'display_editable');
+    const published = { formId, version: 1, publishedAt: 1,
+      fields: [field({ id: fieldId, key: fieldId, type, required })] };
+    assert.equal(parsePublishedFormConfig(formId, { config: published })?.fields[0].id, fieldId);
+    for (const invalid of [field({ id: fieldId, key: fieldId,
+      type: type === 'short_text' ? 'long_text' : 'short_text', required }),
+    field({ id: fieldId, key: fieldId, type, required: !required }),
+    field({ id: fieldId, key: fieldId, type, required, status: 'archived' })]) {
+      assert.equal(parsePublishedFormConfig(formId, { config: { ...published, fields: [invalid] } }), null);
+    }
+    assert.equal(parsePublishedFormConfig(formId, { config: { ...published,
+      fields: [field({ id: `${fieldId}X`, key: `${fieldId}X`, type, required })] } }), null);
+    assert.equal(parsePublishedFormConfig('account.profile', { config: { ...published,
+      formId: 'account.profile' } }), null);
+  }
+  assert.equal(parsePublishedFormConfig('seller.product-submission', { config: {
+    formId: 'seller.product-submission', version: 1, publishedAt: 1,
+    fields: [field({ id: 'pricePaisa', key: 'pricePaisa' })],
+  } }), null);
 });
 
 void test('stale response supplies refresh feedback and leaves entered values intact', () => {
