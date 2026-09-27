@@ -7,7 +7,7 @@ import {
 } from '@/lib/db/repositories/operations';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
-import { can } from '@/lib/marketplace/permissions';
+import { can, validateAdminPermissions } from '@/lib/marketplace/permissions';
 import { collectFormAnswersForPrivacy, eraseFormAnswersForPrivacy, FormPrivacyError } from '@/lib/forms/privacy';
 export async function POST(
   request: Request,
@@ -68,6 +68,19 @@ export async function POST(
         .bind(auditKey).first();
       if (prior) return Response.json({ error: 'This export request ID was already used. Start a new export to obtain current data.' }, { status: 409 });
       const answers = await collectFormAnswersForPrivacy(db, requestRow.customerId);
+      const permissionProfile = staff.role === 'admin'
+        ? await db.prepare(`SELECT permissions_json AS permissionsJson,version
+          FROM staff_permission_profiles WHERE user_id=? LIMIT 1`)
+          .bind(staff.id).first<{ permissionsJson: string; version: number }>()
+        : null;
+      if (permissionProfile) {
+        try {
+          if (!can({ role: 'admin', permissions: validateAdminPermissions(JSON.parse(permissionProfile.permissionsJson)) }, 'support.manage'))
+            return Response.json({ error: 'Staff access changed. Retry.' }, { status: 409 });
+        } catch {
+          return Response.json({ error: 'Staff access changed. Retry.' }, { status: 409 });
+        }
+      }
       const audit = await db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,
         reason,previous_json,next_json,request_id,created_at)
         SELECT ?,?,'form.answers.exported','data_rights_request',?,
@@ -76,14 +89,21 @@ export async function POST(
           AND request_type='access' AND status='approved'
           AND NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
           AND EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id
-            WHERE u.id=? AND u.status='active' AND r.role IN ('admin','super_admin'))`)
+            WHERE u.id=? AND u.status='active' AND r.role=?)
+          AND (?='super_admin' OR
+            (?=0 AND NOT EXISTS(SELECT 1 FROM staff_permission_profiles WHERE user_id=?)) OR
+            (?=1 AND EXISTS(SELECT 1 FROM staff_permission_profiles
+              WHERE user_id=? AND version=? AND permissions_json=?)))`)
         .bind(crypto.randomUUID(), staff.id, id, answers.length, auditKey, Date.now(),
-          id, requestRow.customerId, staff.id, auditKey, staff.id).run();
+          id, requestRow.customerId, staff.id, auditKey, staff.id, staff.role,
+          staff.role, permissionProfile ? 1 : 0, staff.id,
+          permissionProfile ? 1 : 0, staff.id, permissionProfile?.version ?? -1,
+          permissionProfile?.permissionsJson ?? '').run();
       if ((audit.meta.changes ?? 0) !== 1) {
         const claimed = await db.prepare('SELECT 1 AS claimed FROM audit_logs WHERE request_id=? LIMIT 1')
           .bind(auditKey).first();
         if (claimed) return Response.json({ error: 'This export request ID was already used. Start a new export to obtain current data.' }, { status: 409 });
-        return Response.json({ error: 'Request assignment changed. Retry.' }, { status: 409 });
+        return Response.json({ error: 'Request assignment or staff access changed. Retry.' }, { status: 409 });
       }
       return Response.json({ answers: answers.map((answer) => ({ id: answer.id,
         formId: answer.formId, createdAt: answer.createdAt,

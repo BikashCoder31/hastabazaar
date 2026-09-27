@@ -107,7 +107,7 @@ async function fixture() {
     INSERT INTO data_rights_requests(id,customer_id,request_type,status,assigned_to)
       VALUES ('access-owner','owner','access','assigned','staff');
   `);
-  for (const path of ['../drizzle/0056_form_catalog.sql', '../drizzle/0057_data_rights_legal_holds.sql']) {
+  for (const path of ['../drizzle/0031_staff_permissions.sql', '../drizzle/0056_form_catalog.sql', '../drizzle/0057_data_rights_legal_holds.sql']) {
     const migration = await readFile(new URL(path, import.meta.url), 'utf8');
     for (const statement of migration.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
   }
@@ -374,6 +374,47 @@ void test('access export rejects a request ID claimed by another case after its 
     assert.equal(response.status, 409);
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE request_id='form-answer-export:shared-export'").get()?.count, 1);
     assert.equal(sqlite.prepare("SELECT subject_id FROM audit_logs WHERE request_id='form-answer-export:shared-export'").get()?.subject_id, 'other-case');
+  } finally { sqlite.close(); }
+});
+
+void test('access export does not return answers when Admin support grant is revoked before final audit', async () => {
+  const { sqlite, database } = await fixture();
+  try {
+    sqlite.exec("UPDATE data_rights_requests SET status='approved' WHERE id='access-owner'");
+    sqlite.prepare(`INSERT INTO staff_permission_profiles
+      (user_id,permissions_json,version,updated_by,updated_at) VALUES ('staff',?,1,'staff-other',1)`)
+      .run(JSON.stringify(['support.manage']));
+    database.beforeRun = (sql) => {
+      if (!sql.includes("'form.answers.exported'")) return;
+      database.beforeRun = null;
+      sqlite.exec("UPDATE staff_permission_profiles SET permissions_json='[]',version=2 WHERE user_id='staff'");
+    };
+    const { POST } = await import('../app/api/admin/privacy/[id]/route');
+    const response = await POST(new Request('http://localhost:3000/api/admin/privacy/access-owner', {
+      method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'export_answers', requestId: 'export-revoked' }),
+    }), { params: Promise.resolve({ id: 'access-owner' }) });
+    assert.equal(response.status, 409);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE action='form.answers.exported'").get()?.count, 0);
+    assert.doesNotMatch(await response.text(), /Original color|Original blue|a-owner/);
+  } finally { sqlite.close(); }
+});
+
+void test('access export treats malformed persisted Admin permissions as revoked', async () => {
+  const { sqlite } = await fixture();
+  try {
+    sqlite.exec("UPDATE data_rights_requests SET status='approved' WHERE id='access-owner'");
+    sqlite.exec(`INSERT INTO staff_permission_profiles
+      (user_id,permissions_json,version,updated_by,updated_at)
+      VALUES ('staff','not-json',1,'staff-other',1)`);
+    const { POST } = await import('../app/api/admin/privacy/[id]/route');
+    const response = await POST(new Request('http://localhost:3000/api/admin/privacy/access-owner', {
+      method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'export_answers', requestId: 'export-malformed-grant' }),
+    }), { params: Promise.resolve({ id: 'access-owner' }) });
+    assert.equal(response.status, 409);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE action='form.answers.exported'").get()?.count, 0);
+    assert.doesNotMatch(await response.text(), /Original color|Original blue|a-owner/);
   } finally { sqlite.close(); }
 });
 
