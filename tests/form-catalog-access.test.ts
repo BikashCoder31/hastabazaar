@@ -43,11 +43,12 @@ export async function resolve(specifier, context, nextResolve) {
 
 class Statement {
   private values: SQLInputValue[] = [];
-  constructor(private readonly statement: StatementSync) {}
+  constructor(private readonly statement: StatementSync, private readonly beforeRun: () => void) {}
   bind(...values: SQLInputValue[]) { this.values = values; return this; }
   async first<T>() { return (this.statement.get(...this.values) as T | undefined) ?? null; }
   async all<T>() { return { results: this.statement.all(...this.values) as T[] }; }
   async run() {
+    this.beforeRun();
     const result = this.statement.run(...this.values);
     return { success: true, meta: { changes: Number(result.changes) }, results: [] };
   }
@@ -56,8 +57,9 @@ class Statement {
 class Database {
   failStatement: number | null = null;
   beforeBatch: (() => void) | null = null;
+  beforeRun: ((sql: string) => void) | null = null;
   constructor(readonly sqlite: DatabaseSync) {}
-  prepare(sql: string) { return new Statement(this.sqlite.prepare(sql)); }
+  prepare(sql: string) { return new Statement(this.sqlite.prepare(sql), () => this.beforeRun?.(sql)); }
   async batch(statements: readonly Statement[]) {
     this.beforeBatch?.();
     this.beforeBatch = null;
@@ -83,7 +85,7 @@ async function fixture() {
     CREATE TABLE users(id TEXT PRIMARY KEY, auth_subject TEXT, status TEXT NOT NULL);
     CREATE TABLE user_roles(user_id TEXT NOT NULL, role TEXT NOT NULL);
     CREATE TABLE audit_logs(id TEXT PRIMARY KEY, actor_id TEXT, action TEXT, subject_type TEXT,
-      subject_id TEXT, reason TEXT, previous_json TEXT, next_json TEXT, request_id TEXT UNIQUE,
+      subject_id TEXT, reason TEXT, previous_json TEXT, next_json TEXT, request_id TEXT,
       created_at INTEGER);
     CREATE TABLE data_rights_requests(id TEXT PRIMARY KEY, customer_id TEXT NOT NULL,
       request_type TEXT NOT NULL, status TEXT NOT NULL, assigned_to TEXT,
@@ -319,7 +321,10 @@ void test('mounted access export can start a fresh attempt after an audited-ID c
     const button = page.getByRole('button', { name: 'Export form answers' });
     await button.click();
     await page.getByRole('alert').getByText(/already used/).waitFor();
+    const downloadReady = page.waitForEvent('download');
     await button.click();
+    const download = await downloadReady;
+    assert.equal(download.suggestedFilename(), 'form-answers-access-owner.json');
     await page.getByText('Form-answer export prepared. Request status is unchanged.').waitFor();
     assert.equal(requestIds.length, 2);
     assert.notEqual(requestIds[0], requestIds[1]);
@@ -347,6 +352,28 @@ void test('privacy access action exports only an assigned approved request and a
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE action='form.answers.exported'").get()?.count, 1);
     assert.equal((await call('access-owner', 'export-once')).status, 409);
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE action='form.answers.exported'").get()?.count, 1);
+  } finally { sqlite.close(); }
+});
+
+void test('access export rejects a request ID claimed by another case after its precheck', async () => {
+  const { sqlite, database } = await fixture();
+  try {
+    sqlite.exec("UPDATE data_rights_requests SET status='approved' WHERE id='access-owner'");
+    database.beforeRun = (sql) => {
+      if (!sql.includes("'form.answers.exported'")) return;
+      database.beforeRun = null;
+      sqlite.exec(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,
+        request_id,created_at) VALUES ('competing-export','staff','form.answers.exported',
+        'data_rights_request','other-case','form-answer-export:shared-export',1)`);
+    };
+    const { POST } = await import('../app/api/admin/privacy/[id]/route');
+    const response = await POST(new Request('http://localhost:3000/api/admin/privacy/access-owner', {
+      method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'export_answers', requestId: 'shared-export' }),
+    }), { params: Promise.resolve({ id: 'access-owner' }) });
+    assert.equal(response.status, 409);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE request_id='form-answer-export:shared-export'").get()?.count, 1);
+    assert.equal(sqlite.prepare("SELECT subject_id FROM audit_logs WHERE request_id='form-answer-export:shared-export'").get()?.subject_id, 'other-case');
   } finally { sqlite.close(); }
 });
 
@@ -525,6 +552,22 @@ void test('legal hold placed after precheck still aborts the atomic deletion bat
   } finally { sqlite.close(); }
 });
 
+void test('erasure request ID collision after precheck cannot erase another customer', async () => {
+  const { sqlite, db, database } = await fixture();
+  try {
+    sqlite.exec("INSERT INTO user_roles VALUES ('staff','super_admin')");
+    database.beforeBatch = () => sqlite.exec(`INSERT INTO audit_logs(id,actor_id,action,subject_type,
+      subject_id,next_json,request_id,created_at) VALUES ('competing-erasure','staff',
+      'form.answers.erased','user','other','{"deletedCount":0,"dataRightsRequestId":"other-request"}',
+      'form-answer-erasure:shared-erase',1)`);
+    await assert.rejects(() => eraseFormAnswersForPrivacy(db, { userId: 'owner',
+      requestId: 'shared-erase', dataRightsRequestId: 'delete-owner', actorId: 'staff' }));
+    assert.equal(count(sqlite), 4);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE request_id='form-answer-erasure:shared-erase'").get()?.count, 1);
+    assert.equal(sqlite.prepare("SELECT subject_id FROM audit_logs WHERE request_id='form-answer-erasure:shared-erase'").get()?.subject_id, 'other');
+  } finally { sqlite.close(); }
+});
+
 void test('approved erasure is atomic, auditable, and exact replay does not delete later answers', async () => {
   const { sqlite, db } = await fixture();
   try {
@@ -584,5 +627,37 @@ void test('only active Super Admin can place or release an audited stored legal 
       reason: 'Dispute closed', requestId: 'release-1', now: 12 });
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE action='privacy.legal_hold.released'").get()?.count, 1);
     assert.equal(sqlite.prepare('SELECT released_at FROM data_rights_legal_holds WHERE id=?').get(hold.id)?.released_at, 12);
+  } finally { sqlite.close(); }
+});
+
+void test('hold placement request ID collision after precheck leaves no orphan hold', async () => {
+  const { sqlite, db, database } = await fixture();
+  try {
+    sqlite.exec("INSERT INTO user_roles VALUES ('staff','super_admin')");
+    database.beforeBatch = () => sqlite.exec(`INSERT INTO audit_logs(id,actor_id,action,subject_type,
+      subject_id,request_id,created_at) VALUES ('competing-placement','staff',
+      'privacy.legal_hold.placed','data_rights_legal_hold','other-hold',
+      'legal-hold-place:shared-place',1)`);
+    await assert.rejects(() => placeDataRightsLegalHold(db, { userId: 'owner', actorId: 'staff',
+      reason: 'Open dispute', requestId: 'shared-place', now: 10 }));
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM data_rights_legal_holds WHERE user_id='owner'").get()?.count, 0);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE request_id='legal-hold-place:shared-place'").get()?.count, 1);
+  } finally { sqlite.close(); }
+});
+
+void test('hold release request ID collision after precheck keeps the original hold active', async () => {
+  const { sqlite, db, database } = await fixture();
+  try {
+    sqlite.exec("INSERT INTO user_roles VALUES ('staff','super_admin')");
+    sqlite.exec(`INSERT INTO data_rights_legal_holds(id,user_id,reason,placed_by,placed_at)
+      VALUES ('owner-hold','owner','Open dispute','staff',5)`);
+    database.beforeBatch = () => sqlite.exec(`INSERT INTO audit_logs(id,actor_id,action,subject_type,
+      subject_id,request_id,created_at) VALUES ('competing-release','staff',
+      'privacy.legal_hold.released','data_rights_legal_hold','other-hold',
+      'legal-hold-release:shared-release',1)`);
+    await assert.rejects(() => releaseDataRightsLegalHold(db, { holdId: 'owner-hold', actorId: 'staff',
+      reason: 'Dispute closed', requestId: 'shared-release', now: 10 }));
+    assert.equal(sqlite.prepare("SELECT released_at FROM data_rights_legal_holds WHERE id='owner-hold'").get()?.released_at, null);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE request_id='legal-hold-release:shared-release'").get()?.count, 1);
   } finally { sqlite.close(); }
 });

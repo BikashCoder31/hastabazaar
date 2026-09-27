@@ -86,6 +86,7 @@ export async function eraseFormAnswersForPrivacy(db: D1Database, input: {
     reason,previous_json,next_json,request_id,created_at)
     VALUES (?,?,'form.answers.erased','user',?,'Approved account-profile answer deletion; linked records retained',NULL,
       CASE WHEN EXISTS(SELECT 1 FROM data_rights_legal_holds WHERE user_id=? AND released_at IS NULL)
+        OR EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
         OR EXISTS(SELECT 1 FROM audit_logs WHERE action='form.answers.erased' AND subject_id=?
           AND json_extract(next_json,'$.dataRightsRequestId')=?)
         OR NOT EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id
@@ -95,7 +96,7 @@ export async function eraseFormAnswersForPrivacy(db: D1Database, input: {
       THEN json_extract('invalid guard', '$')
       ELSE json_object('deletedCount',(SELECT COUNT(*) FROM form_answer_sets WHERE ${deletable}),
         'dataRightsRequestId',?,'scope','account.profile') END,?,?)`)
-    .bind(crypto.randomUUID(), actorId, userId, userId, userId, dataRightsRequestId,
+    .bind(crypto.randomUUID(), actorId, userId, userId, key, userId, dataRightsRequestId,
       actorId, dataRightsRequestId, userId, actorId,
       userId, dataRightsRequestId, key, now);
   const deletion = db.prepare(`DELETE FROM form_answer_sets WHERE ${deletable}
@@ -107,6 +108,9 @@ export async function eraseFormAnswersForPrivacy(db: D1Database, input: {
       const activeHold = await db.prepare(`SELECT 1 AS valid FROM data_rights_legal_holds
         WHERE user_id=? AND released_at IS NULL LIMIT 1`).bind(userId).first<{ valid: number }>();
       if (activeHold) throw new FormPrivacyError('A stored legal hold blocks deletion.');
+      const claimed = await db.prepare('SELECT 1 AS valid FROM audit_logs WHERE request_id=? LIMIT 1')
+        .bind(key).first<{ valid: number }>();
+      if (claimed) throw new FormPrivacyError('Request ID belongs to a different erasure.');
       const alreadyRecorded = await db.prepare(`SELECT 1 AS valid FROM audit_logs
         WHERE action='form.answers.erased' AND subject_id=?
           AND json_extract(next_json,'$.dataRightsRequestId')=? LIMIT 1`)
@@ -146,9 +150,10 @@ export async function placeDataRightsLegalHold(db: D1Database, input: {
   const id = crypto.randomUUID();
   const [placed, audited] = await db.batch([
     db.prepare(`INSERT INTO data_rights_legal_holds(id,user_id,reason,placed_by,placed_at)
-      SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id
+      SELECT ?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
+        AND EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id
         WHERE u.id=? AND u.status='active' AND r.role='super_admin')`)
-      .bind(id, userId, reason, actorId, input.now, actorId),
+      .bind(id, userId, reason, actorId, input.now, key, actorId),
     db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,
       previous_json,next_json,request_id,created_at)
       SELECT ?,?,'privacy.legal_hold.placed','data_rights_legal_hold',?, ?,NULL,
@@ -180,9 +185,10 @@ export async function releaseDataRightsLegalHold(db: D1Database, input: {
   }
   const [released, audited] = await db.batch([
     db.prepare(`UPDATE data_rights_legal_holds SET released_by=?,released_at=? WHERE id=?
-      AND released_at IS NULL AND placed_at<=? AND EXISTS(SELECT 1 FROM users u
+      AND released_at IS NULL AND placed_at<=? AND NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
+      AND EXISTS(SELECT 1 FROM users u
         JOIN user_roles r ON r.user_id=u.id WHERE u.id=? AND u.status='active' AND r.role='super_admin')`)
-      .bind(actorId, input.now, holdId, input.now, actorId),
+      .bind(actorId, input.now, holdId, input.now, key, actorId),
     db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,
       previous_json,next_json,request_id,created_at)
       SELECT ?,?,'privacy.legal_hold.released','data_rights_legal_hold',?, ?,NULL,

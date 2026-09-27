@@ -74,12 +74,17 @@ export async function POST(
           'Approved form-answer access export generated',NULL,json_object('answerCount',?),?,?
         FROM data_rights_requests WHERE id=? AND customer_id=? AND assigned_to=?
           AND request_type='access' AND status='approved'
+          AND NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
           AND EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id
             WHERE u.id=? AND u.status='active' AND r.role IN ('admin','super_admin'))`)
         .bind(crypto.randomUUID(), staff.id, id, answers.length, auditKey, Date.now(),
-          id, requestRow.customerId, staff.id, staff.id).run();
-      if ((audit.meta.changes ?? 0) !== 1)
+          id, requestRow.customerId, staff.id, auditKey, staff.id).run();
+      if ((audit.meta.changes ?? 0) !== 1) {
+        const claimed = await db.prepare('SELECT 1 AS claimed FROM audit_logs WHERE request_id=? LIMIT 1')
+          .bind(auditKey).first();
+        if (claimed) return Response.json({ error: 'This export request ID was already used. Start a new export to obtain current data.' }, { status: 409 });
         return Response.json({ error: 'Request assignment changed. Retry.' }, { status: 409 });
+      }
       return Response.json({ answers: answers.map((answer) => ({ id: answer.id,
         formId: answer.formId, createdAt: answer.createdAt,
         answers: answer.answers, historicalFieldIds: answer.historicalFieldIds })) },
