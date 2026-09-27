@@ -27,14 +27,22 @@ async function requireSuperAdmin(db: D1Database, actorId: string): Promise<void>
 
 export async function collectFormAnswersForPrivacy(db: D1Database, userId: string): Promise<StoredFormAnswer[]> {
   required(userId, 'User ID');
-  const rows = await db.prepare(`SELECT id FROM form_answer_sets WHERE ${owned}
-    ORDER BY created_at,id LIMIT 201`).bind(...ownerBindings(userId)).all<{ id: string }>();
-  if (rows.results.length > 200) throw new FormPrivacyError('The answer export is too large for one request.');
   const answers: StoredFormAnswer[] = [];
-  for (const { id } of rows.results) {
-    const answer = await getFormAnswerById(db, id);
-    if (!answer) throw new FormPrivacyError('An answer changed during export. Retry.');
-    answers.push(answer);
+  let cursor: { createdAt: number; id: string } | null = null;
+  while (true) {
+    const rows: { results: { id: string; createdAt: number }[] } = await db.prepare(`SELECT id,created_at AS createdAt
+      FROM form_answer_sets WHERE ${owned}
+        AND (? IS NULL OR created_at>? OR (created_at=? AND id>?))
+      ORDER BY created_at,id LIMIT 100`)
+      .bind(...ownerBindings(userId), cursor?.createdAt ?? null,
+        cursor?.createdAt ?? 0, cursor?.createdAt ?? 0, cursor?.id ?? '').all<{ id: string; createdAt: number }>();
+    for (const { id } of rows.results) {
+      const answer = await getFormAnswerById(db, id);
+      if (!answer) throw new FormPrivacyError('An answer changed during export. Retry.');
+      answers.push(answer);
+    }
+    if (rows.results.length < 100) break;
+    cursor = rows.results[rows.results.length - 1];
   }
   return answers;
 }

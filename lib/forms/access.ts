@@ -49,6 +49,12 @@ export async function authorizeFormAnswerRead(
   // Staff support authority is limited to a currently assigned case for
   // this exact owner. Other seller/rider records need their own adapter.
   if (answerSet.subjectType !== 'user' && answerSet.subjectType !== 'data_rights_request') return false;
+  if (answerSet.subjectType === 'data_rights_request') {
+    return Boolean(await db.prepare(`SELECT 1 AS valid FROM data_rights_requests
+      WHERE id=? AND customer_id=? AND assigned_to=?
+        AND status IN ('assigned','needs_information','approved') LIMIT 1`)
+      .bind(answerSet.subjectId, ownerId, viewer.id).first<{ valid: number }>());
+  }
   return Boolean(await db.prepare(`SELECT 1 AS valid FROM data_rights_requests
     WHERE customer_id=? AND assigned_to=? AND status IN ('assigned','needs_information','approved') LIMIT 1`)
     .bind(ownerId, viewer.id).first<{ valid: number }>());

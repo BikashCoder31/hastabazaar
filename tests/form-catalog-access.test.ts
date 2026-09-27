@@ -174,6 +174,25 @@ void test('staff needs record assignment as well as support permission', async (
   } finally { sqlite.close(); }
 });
 
+void test('staff assigned to another case for the same owner cannot read this case answer', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    sqlite.exec("UPDATE data_rights_requests SET assigned_to='staff-other' WHERE id='access-owner'");
+    sqlite.exec(`INSERT INTO form_answer_sets(id,form_id,request_id,config_version_id,
+      subject_type,subject_id,actor_id,answers_json,created_at)
+      SELECT 'a-access-case','account.profile','request-case-answer','v1',
+        'data_rights_request','access-owner','owner',answers_json,2
+      FROM form_answer_sets WHERE id='a-owner'`);
+    const answer = await getFormAnswerById(db, 'a-access-case');
+    assert.ok(answer);
+    assert.equal(await authorizeFormAnswerRead(db,
+      { id: 'staff', role: 'admin', permissions: ['support.manage'] }, answer), false);
+    assert.equal(await authorizeFormAnswerRead(db,
+      { id: 'staff-other', role: 'admin', permissions: ['support.manage'] }, answer), true);
+    assert.equal(await authorizeFormAnswerRead(db, { id: 'owner', role: 'customer' }, answer), true);
+  } finally { sqlite.close(); }
+});
+
 void test('answer details preserve submission labels and choice labels and mark archived fields historical', async () => {
   const { sqlite, db } = await fixture();
   try {
@@ -215,6 +234,28 @@ void test('profile page shows only the owner historical answers', async () => {
     assert.match(html, /Original blue/);
     assert.match(html, /Historical/);
     assert.doesNotMatch(html, /a-other|auth-other/);
+  } finally { sqlite.close(); }
+});
+
+void test('profile page offers bounded, navigable history beyond 200 answers', async () => {
+  const { sqlite } = await fixture();
+  try {
+    const insert = sqlite.prepare(`INSERT INTO form_answer_sets(id,form_id,request_id,config_version_id,
+      subject_type,subject_id,actor_id,answers_json,created_at)
+      SELECT ?,form_id,?,config_version_id,subject_type,subject_id,actor_id,answers_json,?
+      FROM form_answer_sets WHERE id='a-owner'`);
+    for (let index = 1; index <= 205; index++)
+      insert.run(`a-bulk-${String(index).padStart(3, '0')}`, `request-bulk-${index}`, index + 1);
+    const { default: ProfilePage } = await import('../app/account/profile/page');
+    const first = renderToStaticMarkup(await ProfilePage());
+    assert.equal((first.match(/Original color/g) ?? []).length, 50);
+    assert.match(first, /historyAt=50/);
+    const second = renderToStaticMarkup(await ProfilePage({ searchParams: Promise.resolve({
+      historyAt: '50', historyId: 'a-bulk-049',
+    }) }));
+    assert.equal((second.match(/Original color/g) ?? []).length, 50);
+    assert.match(second, /historyAt=100/);
+    assert.doesNotMatch(second, /a-other|auth-other/);
   } finally { sqlite.close(); }
 });
 
@@ -316,6 +357,37 @@ void test('privacy export contains owned historical snapshots without other user
     assert.deepEqual((await listFormAnswersForSubject(db, 'user', 'owner')).map((row) => row.id), ['a-owner']);
     assert.deepEqual((await collectFormAnswersForPrivacy(db, 'seller')).map((row) => row.id), ['a-seller']);
     assert.deepEqual((await collectFormAnswersForPrivacy(db, 'rider')).map((row) => row.id), ['a-rider']);
+  } finally { sqlite.close(); }
+});
+
+void test('privacy export includes owned answer sets beyond the first 200', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    const insert = sqlite.prepare(`INSERT INTO form_answer_sets(id,form_id,request_id,config_version_id,
+      subject_type,subject_id,actor_id,answers_json,created_at)
+      SELECT ?,form_id,?,config_version_id,subject_type,subject_id,actor_id,answers_json,?
+      FROM form_answer_sets WHERE id='a-owner'`);
+    for (let index = 1; index <= 205; index++)
+      insert.run(`a-bulk-${String(index).padStart(3, '0')}`, `request-bulk-${index}`, index + 1);
+    const exported = await collectFormAnswersForPrivacy(db, 'owner');
+    assert.equal(exported.length, 206);
+    assert.equal(exported.at(-1)?.id, 'a-bulk-205');
+    assert.equal(exported.some((answer) => answer.id === 'a-other'), false);
+  } finally { sqlite.close(); }
+});
+
+void test('subject history includes answer sets beyond the first 200', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    const insert = sqlite.prepare(`INSERT INTO form_answer_sets(id,form_id,request_id,config_version_id,
+      subject_type,subject_id,actor_id,answers_json,created_at)
+      SELECT ?,form_id,?,config_version_id,subject_type,subject_id,actor_id,answers_json,?
+      FROM form_answer_sets WHERE id='a-owner'`);
+    for (let index = 1; index <= 205; index++)
+      insert.run(`a-bulk-${String(index).padStart(3, '0')}`, `request-bulk-${index}`, index + 1);
+    const history = await listFormAnswersForSubject(db, 'user', 'owner');
+    assert.equal(history.length, 206);
+    assert.equal(history.at(-1)?.id, 'a-bulk-205');
   } finally { sqlite.close(); }
 });
 

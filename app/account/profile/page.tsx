@@ -4,15 +4,22 @@ import { ProfileForm } from '@/components/account/profile-form';
 import { AnswerDetails } from '@/components/forms/answer-details';
 import { requireCustomerPage } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
-import { listFormAnswersForSubject } from '@/lib/db/repositories/form-answers';
+import { listFormAnswersForSubjectPage } from '@/lib/db/repositories/form-answers';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ProfilePage() {
+export default async function ProfilePage({ searchParams }: {
+  searchParams?: Promise<{ historyAt?: string; historyId?: string }>;
+} = {}) {
   const customer = await requireCustomerPage('/account/profile');
-  const answers = (await listFormAnswersForSubject(
-    requireDatabase(env as unknown as { DB?: D1Database }), 'user', customer.userId,
-  )).filter((answer) => answer.formId === 'account.profile');
+  const params = await searchParams;
+  const at = params?.historyAt ? Number(params.historyAt) : NaN;
+  const after = Number.isSafeInteger(at) && at >= 0 && params?.historyId && params.historyId.length <= 191
+    ? { createdAt: at, id: params.historyId } : undefined;
+  const { answers, nextCursor } = await listFormAnswersForSubjectPage(
+    requireDatabase(env as unknown as { DB?: D1Database }),
+    { subjectType: 'user', subjectId: customer.userId, formId: 'account.profile', after },
+  );
   return (
     <div>
       <AccountHeading
@@ -38,6 +45,13 @@ export default async function ProfilePage() {
         <section className="mt-6 space-y-4" aria-label="Your profile answer history">
           <h2 className="font-heading text-2xl">Your previous profile answers</h2>
           {answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)}
+          {nextCursor ? (
+            <nav aria-label="Profile answer history pages">
+              <a className="inline-flex rounded-lg border px-4 py-2 text-sm font-medium" href={
+                `/account/profile?historyAt=${nextCursor.createdAt}&historyId=${encodeURIComponent(nextCursor.id)}`
+              }>Next 50 answers</a>
+            </nav>
+          ) : null}
         </section>
       ) : null}
     </div>

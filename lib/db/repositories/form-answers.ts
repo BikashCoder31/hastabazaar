@@ -216,8 +216,41 @@ export async function getFormAnswerById(db: D1Database, answerId: string): Promi
 export async function listFormAnswersForSubject(db: D1Database, subjectType: string, subjectId: string): Promise<StoredFormAnswer[]> {
   const type = required(subjectType, 'Subject type', 64);
   const id = required(subjectId, 'Subject ID', 191);
-  const rows = await db.prepare(`${answerSelect} WHERE a.subject_type=? AND a.subject_id=?
-    ORDER BY a.created_at,a.id LIMIT 201`).bind(type, id).all<AnswerRow>();
-  if (rows.results.length > 200) throw new FormAnswerRepositoryError('Answer history is too large for one view.');
-  return rows.results.map(decodeAnswer);
+  const answers: StoredFormAnswer[] = [];
+  let cursor: { createdAt: number; id: string } | null = null;
+  while (true) {
+    const rows: { results: AnswerRow[] } = await db.prepare(`${answerSelect}
+      WHERE a.subject_type=? AND a.subject_id=?
+        AND (? IS NULL OR a.created_at>? OR (a.created_at=? AND a.id>?))
+      ORDER BY a.created_at,a.id LIMIT 100`)
+      .bind(type, id, cursor?.createdAt ?? null, cursor?.createdAt ?? 0,
+        cursor?.createdAt ?? 0, cursor?.id ?? '').all<AnswerRow>();
+    answers.push(...rows.results.map(decodeAnswer));
+    if (rows.results.length < 100) break;
+    cursor = rows.results[rows.results.length - 1];
+  }
+  return answers;
+}
+
+export async function listFormAnswersForSubjectPage(db: D1Database, input: {
+  subjectType: string; subjectId: string; formId: FormId;
+  after?: { createdAt: number; id: string };
+}): Promise<{ answers: StoredFormAnswer[]; nextCursor: { createdAt: number; id: string } | null }> {
+  const type = required(input.subjectType, 'Subject type', 64);
+  const id = required(input.subjectId, 'Subject ID', 191);
+  const formId = required(input.formId, 'Form ID', 191);
+  const after = input.after;
+  if (after && (!Number.isSafeInteger(after.createdAt) || after.createdAt < 0))
+    throw new FormAnswerRepositoryError('History cursor is invalid.');
+  const cursorId = after ? required(after.id, 'History cursor', 191) : '';
+  const rows = await db.prepare(`${answerSelect}
+    WHERE a.subject_type=? AND a.subject_id=? AND a.form_id=?
+      AND (? IS NULL OR a.created_at>? OR (a.created_at=? AND a.id>?))
+    ORDER BY a.created_at,a.id LIMIT 51`)
+    .bind(type, id, formId, after?.createdAt ?? null,
+      after?.createdAt ?? 0, after?.createdAt ?? 0, cursorId).all<AnswerRow>();
+  const page = rows.results.slice(0, 50);
+  const last = page.at(-1);
+  return { answers: page.map(decodeAnswer), nextCursor: rows.results.length > 50 && last
+    ? { createdAt: last.createdAt, id: last.id } : null };
 }
