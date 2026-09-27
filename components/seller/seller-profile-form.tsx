@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,7 @@ import { NEPAL_PROVINCES } from '@/lib/checkout/validation';
 import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 const catalogBaseKeys = ['tradingName', 'businessDescription', 'sellerId', 'idempotencyKey',
   'legalName', 'payoutAccountReference', 'supportPhone', 'supportEmail', 'province', 'district',
@@ -20,14 +21,28 @@ const catalogBaseKeys = ['tradingName', 'businessDescription', 'sellerId', 'idem
 
 export function SellerProfileForm({
   profile,
+  sellerId,
 }: {
   profile: EditableSellerProfile;
+  sellerId: string;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const attemptId = useRef('');
+  const attemptKey = sessionAttemptKey('seller.profile', sellerId);
+  const [hasPendingAttempt, setHasPendingAttempt] = useState(false);
   const catalog = usePublishedFormConfig('seller.profile');
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setHasPendingAttempt(hasSessionAttempt(attemptKey)), 0);
+    return () => window.clearTimeout(timeout);
+  }, [attemptKey]);
+  function resetAttempt() {
+    if (!window.confirm('A previous seller profile save may already have succeeded. Check your profile history first. Starting a new attempt can create duplicate history. Start a new attempt anyway?')) return;
+    try { sessionStorage.removeItem(attemptKey); }
+    catch { setMessage('Browser session storage is unavailable. Please enable it before submitting.'); return; }
+    setHasPendingAttempt(false);
+    setMessage('New seller profile attempt ready.');
+  }
   async function submit(event: {
     preventDefault(): void;
     currentTarget: HTMLFormElement;
@@ -40,16 +55,18 @@ export function SellerProfileForm({
     const next = Object.fromEntries([...data.entries()].filter(([key]) => key !== 'formVersion' && !key.startsWith('custom.')));
     try {
       const configured = readConfiguredSubmission(event.currentTarget, catalog.config, catalogBaseKeys);
-      attemptId.current ||= crypto.randomUUID();
+      const attemptId = getOrCreateSessionAttempt(attemptKey);
+      setHasPendingAttempt(true);
       await sendJson(
         '/api/seller/profile',
         'PATCH',
-        { profile: next, idempotencyKey: attemptId.current,
+        { profile: next, idempotencyKey: attemptId,
           ...configuredJsonPayload(catalog.config, configured.answers, catalogBaseKeys) },
         'Profile could not be saved.',
       );
       setMessage('Seller profile saved.');
-      attemptId.current = '';
+      clearSessionAttempt(attemptKey);
+      setHasPendingAttempt(false);
       router.refresh();
     } catch (reason) {
       setMessage(
@@ -162,6 +179,10 @@ export function SellerProfileForm({
         Legal name, registration, tax and payout details stay locked to the
         reviewed application and require Admin-controlled change verification.
       </p>
+      {hasPendingAttempt ? <div className="space-y-2 sm:col-span-2">
+        <p className="text-sm text-muted-foreground">If a save response was lost, retrying reuses its request reference. Check your profile history before starting a different attempt.</p>
+        <Button type="button" variant="outline" onClick={resetAttempt}>Start a new seller profile attempt</Button>
+      </div> : null}
     </form>
   );
 }

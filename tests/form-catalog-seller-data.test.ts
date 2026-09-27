@@ -148,6 +148,7 @@ void test('actual seller controls render the published required custom field and
     profile: { publicName: 'Fictional Studio', publicCity: 'Kathmandu', craftExperience: [], socialLinks: {}, version: 1 },
   });
   const profile = await renderSellerForm('components/seller/seller-profile-form.tsx', 'SellerProfileForm', {
+    sellerId: 'seller-one',
     profile: { tradingName: 'Fictional Studio', businessDescription: null, productCategories: null, supportPhone: '9800000000', supportEmail: 'studio@example.test', province: 'Bagmati', district: 'Kathmandu', municipality: 'Kathmandu', ward: null, locality: 'Private workshop' },
   });
   const product = await renderSellerForm('components/seller/product-submission-form.tsx', 'ProductSubmissionForm', { categories: [], occasions: [] });
@@ -166,7 +167,7 @@ void test('safe built-in display labels follow the published seller configuratio
     ['components/seller/maker-application-profile-form.tsx', 'MakerApplicationProfileForm',
       { profile: { publicName: 'Fictional Studio', publicCity: 'Kathmandu', craftExperience: [], socialLinks: {}, version: 1 } }, 'publicName'],
     ['components/seller/seller-profile-form.tsx', 'SellerProfileForm',
-      { profile: { tradingName: 'Fictional Studio', businessDescription: null, productCategories: null,
+      { sellerId: 'seller-one', profile: { tradingName: 'Fictional Studio', businessDescription: null, productCategories: null,
         supportPhone: '9800000000', supportEmail: 'studio@example.test', province: 'Bagmati', district: 'Kathmandu',
         municipality: 'Kathmandu', ward: null, locality: 'Private workshop' } }, 'tradingName'],
     ['components/seller/product-submission-form.tsx', 'ProductSubmissionForm', { categories: [], occasions: [] }, 'nameEn'],
@@ -184,7 +185,7 @@ void test('seller safe built-in placeholder and help text appear beside the live
     ['components/seller/maker-application-profile-form.tsx', 'MakerApplicationProfileForm',
       { profile: { publicName: 'Fictional Studio', publicCity: 'Kathmandu', craftExperience: [], socialLinks: {}, version: 1 } }, 'publicName'],
     ['components/seller/seller-profile-form.tsx', 'SellerProfileForm',
-      { profile: { tradingName: 'Fictional Studio', businessDescription: null, productCategories: null,
+      { sellerId: 'seller-one', profile: { tradingName: 'Fictional Studio', businessDescription: null, productCategories: null,
         supportPhone: '9800000000', supportEmail: 'studio@example.test', province: 'Bagmati', district: 'Kathmandu',
         municipality: 'Kathmandu', ward: null, locality: 'Private workshop' } }, 'tradingName'],
     ['components/seller/product-submission-form.tsx', 'ProductSubmissionForm', { categories: [], occasions: [] }, 'nameEn'],
@@ -830,6 +831,33 @@ void test('application progress shows only the current maker’s application and
     assert.match(html, /Fictional answer/);
     globalThis.sellerCatalogActor = { sellerId: 'other-seller', userId: 'other-user' };
     await assert.rejects(page.default({ searchParams: Promise.resolve({}) }), /Redirect/);
+  } finally { sqlite.close(); }
+});
+
+void test('preapproval maker draft history is linked locally and shows archived answers only to its customer owner', async () => {
+  const { sqlite, database } = await fixture();
+  try {
+    await createSeller(database);
+    sqlite.prepare("INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES ('other-user','other@example.test','Other Maker','active',1,1)").run();
+    sqlite.prepare("INSERT OR IGNORE INTO user_roles(user_id,role,assigned_at) VALUES ('seller-user','customer',1),('other-user','customer',1)").run();
+    seed(sqlite, 'seller.product-submission');
+    await createProductSubmission(database, { productId: 'maker-draft-history', sellerId: 'seller-one', actorId: 'seller-user',
+      slug: 'maker-draft-history', input: productInput, images: [], intent: 'draft', now: 1_800_000_000_300,
+      form: formLink('seller.product-submission', 'maker-draft-answer') } as Parameters<typeof createProductSubmission>[1]);
+    sqlite.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+      VALUES ('seller.product-submission-v2','seller.product-submission',2,1,'published',?,'Archive','admin',2,'admin',2,'admin',2,'seed-maker-draft-v2')`)
+      .run(JSON.stringify({ formId: 'seller.product-submission', fields: [{ ...field, status: 'archived' }] }));
+    const application = await import('../app/sell/application/page');
+    const applicationHtml = renderToStaticMarkup(await application.default({ searchParams: Promise.resolve({}) }));
+    assert.match(applicationHtml, /private draft · Answer history/);
+    const history = await import('../app/sell/application/products/[id]/answers/page');
+    const html = renderToStaticMarkup(await history.default({ params: Promise.resolve({ id: 'maker-draft-history' }),
+      searchParams: Promise.resolve({}) }));
+    assert.match(html, /Fictional answer/);
+    assert.match(html, /Historical/);
+    globalThis.sellerCatalogActor = { sellerId: 'other-seller', userId: 'other-user' };
+    await assert.rejects(history.default({ params: Promise.resolve({ id: 'maker-draft-history' }),
+      searchParams: Promise.resolve({}) }), /Not found/);
   } finally { sqlite.close(); }
 });
 

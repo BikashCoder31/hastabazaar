@@ -1,0 +1,107 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { build } from 'esbuild';
+
+const playwrightPath = process.env.PLAYWRIGHT_MODULE ??
+  'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+
+void test('maker and seller profile attempts retain opaque IDs across lost responses and reload', async () => {
+  // oxlint-disable-next-line typescript/no-explicit-any -- Bundled Playwright supplies the browser type.
+  const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<any> } };
+  const bundle = await build({
+    stdin: { resolveDir: process.cwd(), sourcefile: 'profile-client-fixture.tsx', contents: `
+      import React from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { MakerApplicationProfileForm } from './components/seller/maker-application-profile-form';
+      import { SellerProfileForm } from './components/seller/seller-profile-form';
+      const sellerId = location.pathname.split('/')[2];
+      const maker = location.pathname.startsWith('/maker/');
+      const version = Number(new URLSearchParams(location.search).get('version') || 1);
+      const profile = { sellerId, version, publicName: 'Fictional Studio', publicCity: 'Birgunj',
+        craftExperience: [], socialLinks: {}, tradingName: 'Fictional Studio', businessDescription: '',
+        productCategories: '', supportPhone: '9800000000', supportEmail: 'studio@example.test',
+        province: 'Madhesh', district: 'Parsa', municipality: 'Birgunj', ward: '', locality: 'Workshop' };
+      createRoot(document.getElementById('root')!).render(maker
+        ? <MakerApplicationProfileForm profile={profile as any} />
+        : <SellerProfileForm profile={profile as any} sellerId={sellerId} />);
+    `, loader: 'tsx' },
+    bundle: true, write: false, platform: 'browser', format: 'iife',
+    define: { 'process.env.NODE_ENV': '"production"' },
+    plugins: [{ name: 'profile-fixture-boundaries', setup(bundler) {
+      bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'fixture' }));
+      bundler.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
+        contents: 'export function useRouter(){return {refresh(){}}}', loader: 'js',
+      }));
+    } }],
+  });
+  const browser = await chromium.launch({ headless: true,
+    executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
+  const page = await browser.newPage();
+  const attempts = new Map<string, string[]>();
+  try {
+    // oxlint-disable-next-line typescript/no-explicit-any -- Browser route type belongs to bundled Playwright.
+    await page.route('https://profile.test/**', async (route: any) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.startsWith('/maker/') || url.pathname.startsWith('/seller/'))
+        return route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
+      if (url.pathname.startsWith('/api/forms/')) return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ config: { formId: url.pathname.endsWith('maker-profile') ? 'seller.maker-profile' : 'seller.profile',
+          version: 1, publishedAt: 1, fields: [] } }) });
+      const payload = JSON.parse(route.request().postData() ?? '{}') as { requestId?: string; idempotencyKey?: string };
+      const key = `${url.pathname}:${route.request().headers()['x-seller-context'] ?? ''}`;
+      const list = attempts.get(key) ?? [];
+      list.push(payload.requestId ?? payload.idempotencyKey ?? '');
+      attempts.set(key, list);
+      return list.length === 1 ? route.abort('failed') : route.fulfill({ status: 200,
+        contentType: 'application/json', body: '{"ok":true}' });
+    });
+    async function mount(path: string) {
+      await page.goto(`https://profile.test${path}`);
+      await page.addScriptTag({ content: bundle.outputFiles[0].text });
+      await page.waitForFunction(() => document.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled === false ||
+        document.querySelector<HTMLButtonElement>('form button')?.disabled === false);
+    }
+    async function submit() {
+      await page.evaluate(() => document.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    }
+    for (const [path, endpoint, storage] of [
+      ['/maker/seller-one?version=1', '/api/seller-applications/profile', 'hastabazaar:profile-attempt:seller.maker-profile:seller-one'],
+      ['/seller/seller-one', '/api/seller/profile', 'hastabazaar:profile-attempt:seller.profile:seller-one'],
+    ] as const) {
+      await mount(path);
+      await submit();
+      await page.waitForFunction(() => document.querySelector('form')?.textContent?.includes('couldn’t connect'));
+      const first = attempts.get(`${endpoint}:`)?.[0];
+      assert.match(first ?? '', /^[0-9a-f-]{36}$/i);
+      assert.equal(await page.evaluate((key: string) => sessionStorage.getItem(key), storage), first);
+      await mount(path.startsWith('/maker/') ? '/maker/seller-one?version=2' : path);
+      await submit();
+      await page.waitForFunction(() => document.querySelector('form')?.textContent?.includes('saved.'));
+      assert.deepEqual(attempts.get(`${endpoint}:`), [first, first]);
+      assert.equal(await page.evaluate((key: string) => sessionStorage.getItem(key), storage), null);
+    }
+    attempts.set('/api/seller/profile:', []);
+    await mount('/seller/seller-two');
+    await submit();
+    await page.waitForFunction(() => document.querySelector('form')?.textContent?.includes('couldn’t connect'));
+    const original = attempts.get('/api/seller/profile:')?.[0];
+    const sellerTwoKey = 'hastabazaar:profile-attempt:seller.profile:seller-two';
+    assert.ok(original);
+    const reset = page.getByRole('button', { name: 'Start a new seller profile attempt' });
+    page.once('dialog', async (dialog: { message(): string; dismiss(): Promise<void> }) => {
+      assert.match(dialog.message(), /duplicate history/i);
+      await dialog.dismiss();
+    });
+    await reset.click();
+    assert.equal(await page.evaluate((key: string) => sessionStorage.getItem(key), sellerTwoKey), original);
+    page.once('dialog', async (dialog: { message(): string; accept(): Promise<void> }) => {
+      assert.match(dialog.message(), /duplicate history/i);
+      await dialog.accept();
+    });
+    await reset.click();
+    assert.equal(await page.evaluate((key: string) => sessionStorage.getItem(key), sellerTwoKey), null);
+    await submit();
+    await page.waitForFunction(() => document.querySelector('form')?.textContent?.includes('Seller profile saved.'));
+    assert.notEqual(attempts.get('/api/seller/profile:')?.[1], original);
+  } finally { await page.close(); await browser.close(); }
+});

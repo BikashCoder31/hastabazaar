@@ -75,14 +75,14 @@ components/rider/rider-forms.tsx|1|114a8494120aa500|rider.application
 components/rider/rider-forms.tsx|2|9f842c13daeabb3f|rider.report
 components/rider/rider-forms.tsx|3|e0e19bcb5d976898|rider.remittance
 components/seller/inventory-editor.tsx|1|8b247e4b170098a3|seller.inventory
-components/seller/maker-application-profile-form.tsx|1|4d8d692da4bae111|seller.maker-profile
+components/seller/maker-application-profile-form.tsx|1|9625a6332c0dfcaf|seller.maker-profile
 components/seller/managed-program-workspace.tsx|1|1788e9a6e7146fe8|seller.managed-supply-proposal
 components/seller/managed-program-workspace.tsx|2|7cdb2508742528c7|seller.managed-transition-request
 components/seller/payout-request-form.tsx|1|4c786e7a16233cde|seller.payout-request
 components/seller/product-submission-form.tsx|1|e6535dffb04ca89f|seller.product-submission
 components/seller/review-reply-form.tsx|1|19c1f3ee22a30a2b|seller.review-reply
 components/seller/seller-application-form.tsx|1|aa9ba3abeacd03db|seller.application
-components/seller/seller-profile-form.tsx|1|b0db3d37c07631f6|seller.profile
+components/seller/seller-profile-form.tsx|1|3993f76f6976fddc|seller.profile
 components/seller/shipping-workspace.tsx|1|fb2a56c35f735a44|seller.shipping-request
 components/seller/shipping-workspace.tsx|2|8a14968ab575bf7d|seller.shipping-action
 components/shipping-console.tsx|1|10441fd1c3053740|shipping.console-request

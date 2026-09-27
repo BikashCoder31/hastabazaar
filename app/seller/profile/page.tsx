@@ -49,7 +49,7 @@ export default async function SellerProfilePage({ searchParams }: {
           application. Changes need verification by HastaBazaar operations.
         </p>
       </div>
-      <SellerProfileForm profile={profile} />
+      <SellerProfileForm profile={profile} sellerId={seller.sellerId} />
       {answers.length ? <section className="mt-8 space-y-4" aria-label="Shop profile answer history">
         <h2 className="font-heading text-2xl">Previous shop profile answers</h2>
         {answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)}

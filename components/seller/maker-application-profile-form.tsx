@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,7 @@ import { sendJson } from '@/lib/http/client-request';
 import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 const catalogBaseKeys = ['publicName', 'publicCity', 'sellerId', 'expectedVersion', 'experienceCraft',
   'experienceBand', 'facebookUrl', 'instagramUrl', 'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl',
@@ -29,9 +30,21 @@ export function MakerApplicationProfileForm({ profile }: { profile: SellerPartic
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const attemptId = useRef('');
+  const attemptKey = sessionAttemptKey('seller.maker-profile', profile.sellerId);
+  const [hasPendingAttempt, setHasPendingAttempt] = useState(false);
   const catalog = usePublishedFormConfig('seller.maker-profile');
   const experience = profile.craftExperience[0];
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setHasPendingAttempt(hasSessionAttempt(attemptKey)), 0);
+    return () => window.clearTimeout(timeout);
+  }, [attemptKey]);
+  function resetAttempt() {
+    if (!window.confirm('A previous maker profile save may already have succeeded. Check your application progress first. Starting a new attempt can create duplicate history. Start a new attempt anyway?')) return;
+    try { sessionStorage.removeItem(attemptKey); }
+    catch { setMessage('Browser session storage is unavailable. Please enable it before submitting.'); return; }
+    setHasPendingAttempt(false);
+    setMessage('New maker profile attempt ready.');
+  }
   async function submit(event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>) {
     event.preventDefault();
     if (busy || !catalog.canSubmit || !catalog.config) return;
@@ -40,14 +53,16 @@ export function MakerApplicationProfileForm({ profile }: { profile: SellerPartic
     const form = new FormData(event.currentTarget);
     try {
       const configured = readConfiguredSubmission(event.currentTarget, catalog.config, catalogBaseKeys);
-      attemptId.current ||= crypto.randomUUID();
+      const attemptId = getOrCreateSessionAttempt(attemptKey);
+      setHasPendingAttempt(true);
       await sendJson('/api/seller-applications/profile', 'PATCH', {
         ...Object.fromEntries([...form.entries()].filter(([key]) => key !== 'formVersion' && !key.startsWith('custom.'))),
         expectedVersion: profile.version,
-        requestId: attemptId.current,
+        requestId: attemptId,
         ...configuredJsonPayload(catalog.config, configured.answers, catalogBaseKeys),
       }, 'Maker profile could not be saved.');
-      attemptId.current = '';
+      clearSessionAttempt(attemptKey);
+      setHasPendingAttempt(false);
       setMessage('Maker profile saved.');
       router.refresh();
     } catch (error) {
@@ -83,6 +98,10 @@ export function MakerApplicationProfileForm({ profile }: { profile: SellerPartic
       <Button disabled={busy || !catalog.canSubmit}>{busy ? 'Saving…' : 'Save maker profile'}</Button>
       <output className="text-sm text-muted-foreground" aria-live="polite">{message}</output>
     </div>
+    {hasPendingAttempt ? <div className="space-y-2 sm:col-span-2">
+      <p className="text-sm text-muted-foreground">If a save response was lost, retrying reuses its request reference. Check application progress before starting a different attempt.</p>
+      <Button type="button" variant="outline" onClick={resetAttempt}>Start a new maker profile attempt</Button>
+    </div> : null}
   </form>;
 }
 
