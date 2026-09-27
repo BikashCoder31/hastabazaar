@@ -102,8 +102,8 @@ void test('long labels have wrapping mobile layout and fields order by configure
 });
 
 void test('decimal number controls accept fractional values while integer-only controls reject them natively', async () => {
-  const decimal = render(config([field({ id: 'amount', key: 'amount', type: 'number', min: 0, max: 5, integerOnly: false })]));
-  const integer = render(config([field({ id: 'amount', key: 'amount', type: 'number', min: 0, max: 5, integerOnly: true })]));
+  const decimal = render(config([field({ id: 'amount', key: 'amount', type: 'number', min: 0.5, max: 5, integerOnly: false })]));
+  const integer = render(config([field({ id: 'amount', key: 'amount', type: 'number', min: 0.5, max: 5, integerOnly: true })]));
   const playwrightPath = process.env.PLAYWRIGHT_MODULE ??
     'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
   // oxlint-disable-next-line typescript/no-explicit-any -- Playwright lives in the bundled external runtime.
@@ -114,11 +114,15 @@ void test('decimal number controls accept fractional values while integer-only c
     await page.setContent(`<div id="decimal">${decimal}</div><div id="integer">${integer}</div>`);
     assert.equal(await page.locator('#decimal input[name="custom.amount"]').getAttribute('step'), 'any');
     assert.equal(await page.locator('#integer input[name="custom.amount"]').getAttribute('step'), '1');
-    assert.deepEqual(await page.evaluate(() => ['decimal', 'integer'].map((id) => {
+    assert.equal(await page.locator('#decimal input[name="custom.amount"]').getAttribute('min'), '0.5');
+    assert.equal(await page.locator('#integer input[name="custom.amount"]').getAttribute('min'), '1');
+    assert.deepEqual(await page.evaluate(() => [
+      ['decimal', '1.5'], ['integer', '1'], ['integer', '1.5'],
+    ].map(([id, value]) => {
       const input = document.querySelector<HTMLInputElement>(`#${id} input[name="custom.amount"]`)!;
-      input.value = '1.5';
+      input.value = value;
       return input.checkValidity();
-    })), [true, false]);
+    })), [true, true, false]);
   } finally { await page.close(); await browser.close(); }
 });
 

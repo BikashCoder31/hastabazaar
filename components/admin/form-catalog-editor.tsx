@@ -57,11 +57,14 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
   const [refreshWarning, setRefreshWarning] = useState('');
   const [conflict, setConflict] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [uncertainAction, setUncertainAction] = useState<'draft' | 'publish' | 'restore' | null>(null);
   const [dialog, setDialog] = useState<'publish' | 'restore' | null>(null);
   const [fieldWarning, setFieldWarning] = useState<{ id: string; label: string; action: 'optional' | 'archive' } | null>(null);
   const [restoreVersion, setRestoreVersion] = useState<number | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const dialogErrorRef = useRef<HTMLDivElement>(null);
+  const pendingRequest = useRef<{ action: 'draft' | 'publish' | 'restore'; body: Record<string, unknown> } | null>(null);
+  const mutationSerial = useRef(0);
   const reasonRef = useRef<HTMLTextAreaElement>(null);
   const keyRef = useRef<HTMLInputElement>(null);
   const labelRef = useRef<HTMLInputElement>(null);
@@ -69,6 +72,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
   const customTypes = form.capabilities.customFieldTypes;
   const published = newest(versions, 'published');
   const draft = currentDraft(versions);
+  const editLocked = busy || uncertainAction !== null;
   const dirty = JSON.stringify(fields) !== savedFields;
   const baseKeys = new Set(form.baseFields.map((item) => item.key.replaceAll(/[^a-z0-9]/gi, '').toLowerCase()));
   const customFields = ordered(fields.filter((field) => !baseKeys.has(field.key.replaceAll(/[^a-z0-9]/gi, '').toLowerCase())));
@@ -84,9 +88,11 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
   }
   function move(id: string, direction: -1 | 1) {
     const list = ordered(fields);
+    const customIndex = customFields.findIndex((item) => item.id === id);
+    const neighbor = customFields[customIndex + direction];
+    if (customIndex < 0 || !neighbor) return;
     const index = list.findIndex((item) => item.id === id);
-    const target = index + direction;
-    if (target < 0 || target >= list.length) return;
+    const target = list.findIndex((item) => item.id === neighbor.id);
     [list[index], list[target]] = [list[target], list[index]];
     setFields(normalized(list));
   }
@@ -101,9 +107,10 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
     setFields((current) => normalized([...current, item]));
     setNewKey(''); setNewLabel(''); setError('');
   }
-  async function reload(keepEdits = true) {
+  async function reload(keepEdits = true, serial?: number) {
     const response = await fetch(`/api/admin/forms/${encodeURIComponent(form.id)}`, { cache: 'no-store' });
     const body = await response.json() as { versions?: CatalogVersion[]; error?: string };
+    if (serial !== undefined && serial !== mutationSerial.current) return;
     if (!response.ok || !body.versions) throw new Error(body.error ?? 'Could not reload form history.');
     setVersions(body.versions);
     if (!keepEdits) {
@@ -117,44 +124,53 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
     setError('');
   }
   async function mutate(action: 'draft' | 'publish' | 'restore', extra: Record<string, unknown>) {
-    setBusy(true); setError(''); setDialogError(''); setMessage('');
+    if (pendingRequest.current && pendingRequest.current.action !== action) return;
+    const serial = ++mutationSerial.current;
+    const request = pendingRequest.current ?? { action, body: { requestId: crypto.randomUUID(), expectedPublishedVersion: published?.version ?? 0, reason: reason.trim(), ...extra } };
+    pendingRequest.current = request;
+    setBusy(true); setError(''); setDialogError(''); setMessage(''); setRefreshWarning('');
     try {
       const response = await fetch(`/api/admin/forms/${encodeURIComponent(form.id)}/${action}`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ requestId: crypto.randomUUID(), expectedPublishedVersion: published?.version ?? 0, reason: reason.trim(), ...extra }),
+        body: JSON.stringify(request.body),
       });
-      const body = await response.json() as { error?: string; draft?: CatalogVersion; published?: CatalogVersion };
       if (!response.ok) {
+        pendingRequest.current = null; setUncertainAction(null);
+        const rejected = await response.json().catch(() => ({})) as { error?: string };
         if (response.status === 409) setConflict(true);
-        throw new Error(body.error ?? `Could not ${action} form.`);
+        throw new Error(rejected.error ?? `Could not ${action} form.`);
       }
+      const body = await response.json() as { draft?: CatalogVersion; published?: CatalogVersion };
+      if ((action === 'draft' && !body.draft) || (action !== 'draft' && !body.published)) throw new Error('The server response could not confirm this change. Retry the same request.');
+      pendingRequest.current = null; setUncertainAction(null);
       if (action === 'draft' && body.draft) {
+        const saved = body.draft;
+        setVersions((current) => [saved, ...current.filter((entry) => entry.id !== saved.id)]);
         setFields(body.draft.config.fields);
         setSavedFields(JSON.stringify(body.draft.config.fields));
         setChoiceDrafts({});
       }
-      if (action === 'restore' && body.published) {
-        const restored = body.published;
-        setVersions((current) => [restored, ...current]);
-        setFields(restored.config.fields);
-        setSavedFields(JSON.stringify(restored.config.fields));
-        setChoiceDrafts({});
-        setConflict(false);
-        setDialog(null); setReason(''); setRestoreVersion(null);
-        setMessage('Historical version restored as a new publication.');
-        try {
-          await reload(true);
-          setMessage('Historical version restored as a new publication.');
-        } catch {
-          setRefreshWarning('The form was restored, but version history could not refresh.');
+      if (body.published) {
+        const publishedResult = body.published;
+        setVersions((current) => [publishedResult, ...current.filter((entry) => entry.id !== publishedResult.id)]);
+        if (action === 'restore') {
+          setFields(publishedResult.config.fields);
+          setSavedFields(JSON.stringify(publishedResult.config.fields));
+          setChoiceDrafts({});
         }
-        return;
       }
-      await reload(true);
-      setMessage(action === 'draft' ? 'Draft saved.' : action === 'publish' ? 'Form published.' : 'Historical version restored as a new publication.');
-      setDialog(null); setReason('');
+      setConflict(false);
+      setDialog(null); setReason(''); setRestoreVersion(null);
+      const success = action === 'draft' ? 'Draft saved.' : action === 'publish' ? 'Form published.' : 'Historical version restored as a new publication.';
+      setMessage(success);
+      void (async () => {
+        try { await reload(true, serial); if (serial === mutationSerial.current) setMessage(success); }
+        catch { if (serial === mutationSerial.current) setRefreshWarning(`${action === 'draft' ? 'The draft was saved' : action === 'publish' ? 'The form was published' : 'The form was restored'}, but version history could not refresh.`); }
+      })();
     } catch (caught) {
-      const problem = caught instanceof Error ? caught.message : 'Form catalog is unavailable.';
+      if (pendingRequest.current) setUncertainAction(action);
+      const detail = caught instanceof Error ? caught.message : 'Form catalog is unavailable.';
+      const problem = pendingRequest.current ? `${detail} Request outcome is unknown; retry the same request.` : detail;
       if (dialog) {
         setDialogError(problem);
         queueMicrotask(() => dialogErrorRef.current?.focus());
@@ -175,6 +191,8 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
     return false;
   }
   function save() {
+    if (pendingRequest.current?.action === 'draft') { void mutate('draft', {}); return; }
+    if (uncertainAction) return;
     if (!validReason()) return;
     const config = { formId: form.id, fields: normalized(fields.map((field) => choiceDrafts[field.id] === undefined ? field : { ...field, choices: parseChoices(choiceDrafts[field.id]) })) };
     try { validateFormDraftForDefinition(form, config, !pending); }
@@ -192,7 +210,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
     setFieldWarning(null);
   }
 
-  return <div className="grid min-w-0 gap-5">
+  return <div className="grid min-w-0 gap-5" aria-busy={busy}>
     <Card>
       <CardHeader>
         <CardTitle>Form capability</CardTitle>
@@ -210,6 +228,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
         <CardTitle>Fields</CardTitle>
         <CardDescription>Protected fields keep their server rules. Archived custom fields remain in version history and old answers.</CardDescription>
       </CardHeader>
+      <fieldset disabled={editLocked} aria-busy={editLocked} className="min-w-0">
       <CardContent className="grid min-w-0 gap-4">
         {form.baseFields.map((base) => {
           const item = fields.find((field) => field.key.replaceAll(/[^a-z0-9]/gi, '').toLowerCase() === base.key.replaceAll(/[^a-z0-9]/gi, '').toLowerCase());
@@ -238,7 +257,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
             {field.type === 'number' ? <>
               <Field><FieldLabel htmlFor={`${field.id}-min`}>Minimum</FieldLabel><Input id={`${field.id}-min`} type="number" value={field.min ?? ''} onChange={(event) => replaceField(field.id, { min: event.target.value === '' ? undefined : Number(event.target.value) })} /></Field>
               <Field><FieldLabel htmlFor={`${field.id}-max`}>Maximum</FieldLabel><Input id={`${field.id}-max`} type="number" value={field.max ?? ''} onChange={(event) => replaceField(field.id, { max: event.target.value === '' ? undefined : Number(event.target.value) })} /></Field>
-              <Field orientation="horizontal" className="sm:col-span-2"><Checkbox id={`${field.id}-integer-only`} checked={field.integerOnly ?? false} onCheckedChange={(checked) => replaceField(field.id, { integerOnly: checked })} /><FieldLabel htmlFor={`${field.id}-integer-only`}>Whole numbers only</FieldLabel></Field>
+              <Field orientation="horizontal" className="sm:col-span-2"><Checkbox id={`${field.id}-integer-only`} checked={field.integerOnly ?? false} disabled={editLocked} onCheckedChange={(checked) => replaceField(field.id, { integerOnly: checked })} /><FieldLabel htmlFor={`${field.id}-integer-only`}>Whole numbers only</FieldLabel></Field>
             </> : null}
           </FieldGroup>
           <div className="flex flex-wrap gap-2">
@@ -256,6 +275,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
         <Button type="button" variant="outline" className="sm:col-span-3 sm:justify-self-start" disabled={pending || customTypes.length === 0} onClick={addField}><Plus data-icon="inline-start" /> Add field</Button>
         {pending || customTypes.length === 0 ? <p className="text-xs text-muted-foreground sm:col-span-3">New fields are unavailable until a server adapter defines accepted field types and answer behavior.</p> : null}
       </CardFooter>
+      </fieldset>
     </Card>
 
     <Card>
@@ -265,21 +285,21 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
 
     <Card>
       <CardHeader><CardTitle>Save and publish</CardTitle><CardDescription>Save a draft before publishing. Publication changes new visits to {form.route}.</CardDescription></CardHeader>
-      <CardContent><FieldGroup><Field><FieldLabel htmlFor="catalog-reason">Reason for change</FieldLabel><Textarea ref={reasonRef} id="catalog-reason" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={2000} aria-required="true" /><FieldDescription>Recorded in the form catalog audit history.</FieldDescription></Field>
+      <CardContent><FieldGroup><Field><FieldLabel htmlFor="catalog-reason">Reason for change</FieldLabel><Textarea ref={reasonRef} id="catalog-reason" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={2000} aria-required="true" disabled={editLocked} /><FieldDescription>Recorded in the form catalog audit history.</FieldDescription></Field>
         <div ref={errorRef} tabIndex={-1} role="alert" aria-live="assertive" className="text-sm text-destructive focus:outline-none">{error ? <FieldError>{error}</FieldError> : null}</div>
         {refreshWarning ? <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3 text-sm"><span>{refreshWarning}</span><Button type="button" variant="outline" size="sm" onClick={() => void retryHistoryRefresh()}>Retry history refresh</Button></div> : null}
-        <output aria-live="polite" className="text-sm text-muted-foreground">{message}</output>
+        <output aria-live="polite" className="text-sm text-muted-foreground">{busy ? 'Updating form…' : message}</output>
         {conflict ? <div className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/40 p-3"><p className="text-sm">The catalog changed. Your edits are preserved.</p><Button type="button" variant="outline" onClick={() => void reload(true)}>Reload latest version</Button></div> : null}
       </FieldGroup></CardContent>
-      <CardFooter className="flex flex-wrap gap-2"><Button type="button" onClick={save} disabled={busy}><Save data-icon="inline-start" /> Save draft</Button><Button type="button" variant="secondary" disabled={!draft || dirty || busy} onClick={() => { if (validReason()) setDialog('publish'); }}><Send data-icon="inline-start" /> Publish draft</Button>{dirty ? <span className="text-xs text-muted-foreground">Save your latest edits before publishing.</span> : null}</CardFooter>
+      <CardFooter className="flex flex-wrap gap-2"><Button type="button" onClick={save} disabled={busy || (uncertainAction !== null && uncertainAction !== 'draft')}><Save data-icon="inline-start" /> Save draft</Button><Button type="button" variant="secondary" disabled={!draft || dirty || editLocked} onClick={() => { if (validReason()) setDialog('publish'); }}><Send data-icon="inline-start" /> Publish draft</Button>{dirty ? <span className="text-xs text-muted-foreground">Save your latest edits before publishing.</span> : null}</CardFooter>
     </Card>
 
     <Card>
       <CardHeader><CardTitle>Version history</CardTitle><CardDescription>Restoring a published version creates a new publication. Existing answers stay with their original version.</CardDescription></CardHeader>
-      <CardContent className="grid gap-2">{versions.length ? versions.map((entry) => <div key={entry.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b py-2 last:border-b-0"><div className="min-w-0"><p className="font-medium">Version {entry.version} · revision {entry.revision} <Badge variant={entry.status === 'published' ? 'default' : 'secondary'}>{entry.status === 'draft' && entry.version <= (published?.version ?? 0) ? 'stale draft' : entry.status}</Badge></p><p className="break-words text-xs text-muted-foreground">{entry.reason} · {displayDate(entry.updatedAt)}</p></div>{entry.status === 'published' ? <Button type="button" size="sm" variant="outline" onClick={() => { setRestoreVersion(entry.version); if (validReason()) setDialog('restore'); }}><RotateCcw data-icon="inline-start" /> Restore</Button> : null}</div>) : <p className="text-sm text-muted-foreground">No saved versions yet.</p>}</CardContent>
+      <CardContent className="grid gap-2">{versions.length ? versions.map((entry) => <div key={entry.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b py-2 last:border-b-0"><div className="min-w-0"><p className="font-medium">Version {entry.version} · revision {entry.revision} <Badge variant={entry.status === 'published' ? 'default' : 'secondary'}>{entry.status === 'draft' && entry.version <= (published?.version ?? 0) ? 'stale draft' : entry.status}</Badge></p><p className="break-words text-xs text-muted-foreground">{entry.reason} · {displayDate(entry.updatedAt)}</p></div>{entry.status === 'published' ? <Button type="button" size="sm" variant="outline" disabled={editLocked} onClick={() => { setRestoreVersion(entry.version); if (validReason()) setDialog('restore'); }}><RotateCcw data-icon="inline-start" /> Restore</Button> : null}</div>) : <p className="text-sm text-muted-foreground">No saved versions yet.</p>}</CardContent>
     </Card>
 
-    <AlertDialog open={dialog !== null} onOpenChange={(open) => { if (!open) { setDialog(null); setDialogError(''); } }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{dialog === 'publish' ? 'Publish this form draft?' : `Restore version ${restoreVersion}?`}</AlertDialogTitle><AlertDialogDescription>{dialog === 'publish' ? `New visits to ${form.route} will use this draft. Reason: ${reason.trim()}` : `A new published version will copy the selected historical configuration for ${form.route}. Reason: ${reason.trim()}`}</AlertDialogDescription></AlertDialogHeader><div ref={dialogErrorRef} tabIndex={-1} role="alert" aria-live="assertive" className="text-sm text-destructive focus:outline-none">{dialogError}</div><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction disabled={busy} onClick={confirm}>{dialog === 'publish' ? 'Confirm publish' : 'Confirm restore'}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <AlertDialog open={dialog !== null} onOpenChange={(open) => { if (!open && !editLocked) { setDialog(null); setDialogError(''); } }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{dialog === 'publish' ? 'Publish this form draft?' : `Restore version ${restoreVersion}?`}</AlertDialogTitle><AlertDialogDescription>{dialog === 'publish' ? `New visits to ${form.route} will use this draft. Reason: ${reason.trim()}` : `A new published version will copy the selected historical configuration for ${form.route}. Reason: ${reason.trim()}`}</AlertDialogDescription></AlertDialogHeader><div ref={dialogErrorRef} tabIndex={-1} role="alert" aria-live="assertive" className="text-sm text-destructive focus:outline-none">{dialogError}</div><AlertDialogFooter><AlertDialogCancel disabled={editLocked}>Cancel</AlertDialogCancel><AlertDialogAction disabled={busy} onClick={confirm}>{dialog === 'publish' ? 'Confirm publish' : 'Confirm restore'}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
     <AlertDialog open={fieldWarning !== null} onOpenChange={(open) => { if (!open) setFieldWarning(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{fieldWarning?.action === 'archive' ? `Archive required field ${fieldWarning.label}?` : `Make required field ${fieldWarning?.label} optional?`}</AlertDialogTitle><AlertDialogDescription>{fieldWarning?.action === 'archive' ? 'New submissions will not show this field. Existing answers remain available with their original form version.' : 'New submissions may omit this field. Existing answers and historical form versions are unchanged.'}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmFieldWarning}>{fieldWarning?.action === 'archive' ? 'Confirm archive' : 'Confirm optional'}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </div>;
 }

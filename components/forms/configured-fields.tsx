@@ -46,7 +46,10 @@ function ConfiguredFieldControl({ field, error }: { field: ConfiguredField; erro
       break;
     default:
       control = <input {...common} type={field.type === 'short_text' ? 'text' : field.type === 'phone' ? 'tel' : field.type}
-        placeholder={field.placeholder} min={field.min} max={field.max} step={field.integerOnly ? 1 : 'any'} />;
+        placeholder={field.placeholder}
+        min={field.integerOnly && field.min !== undefined ? Math.ceil(field.min) : field.min}
+        max={field.integerOnly && field.max !== undefined ? Math.floor(field.max) : field.max}
+        step={field.integerOnly ? 1 : 'any'} />;
   }
   return <div className="min-w-0 space-y-2 break-words" data-configured-field={field.id}>
     <label htmlFor={id} className="block min-w-0 break-words font-medium">{field.label}{field.required ? <span aria-hidden="true"> *</span> : null}</label>

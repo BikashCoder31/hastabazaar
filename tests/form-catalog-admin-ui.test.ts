@@ -5,7 +5,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
-import type { FormDefinition, PublishedFormConfig } from '../lib/forms/types';
+import type { ConfiguredField, FormDefinition, PublishedFormConfig } from '../lib/forms/types';
+import type { CatalogVersion } from '../components/admin/form-catalog-editor';
 import { adminNavigation } from '../lib/admin/navigation';
 
 void test('Form catalog appears in Controls for Super Admin alone', () => {
@@ -301,4 +302,147 @@ void test('restore commits before history refresh and keeps POST errors inside i
     assert.equal(historyRequests, 2);
     assert.equal(await page.locator('#gift_color-label').inputValue(), 'Original colour');
   } finally { await page.close(); await browser.close(); }
+});
+
+void test('custom reorder crosses a built-in override without losing it from the saved order', async () => {
+  const playwrightPath = process.env.PLAYWRIGHT_MODULE ?? 'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+  // oxlint-disable-next-line typescript/no-explicit-any -- Playwright lives in the bundled external runtime.
+  const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<any> } };
+  const form: FormDefinition = { ...definition, baseFields: [...definition.baseFields,
+    { key: 'display_name', type: 'short_text', label: 'Display name', capability: 'display_editable', required: false, status: 'active', explanation: 'Display-only override.' }] };
+  const fields = [
+    { id: 'a', key: 'a', type: 'short_text', label: 'Custom A', required: false, order: 0, status: 'active' },
+    { id: 'display_name', key: 'display_name', type: 'short_text', label: 'Display name', required: false, order: 1, status: 'active' },
+    { id: 'b', key: 'b', type: 'short_text', label: 'Custom B', required: false, order: 2, status: 'active' },
+  ];
+  const draft = { id: 'draft-1', version: 1, revision: 1, status: 'draft', reason: 'Initial', updatedAt: 1, publishedAt: null, config: { formId: form.id, fields } };
+  const bundle = await build({ stdin: { resolveDir: process.cwd(), sourcefile: 'catalog-reorder-fixture.tsx', contents: `
+    import React from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { FormCatalogEditor } from './components/admin/form-catalog-editor';
+    createRoot(document.getElementById('root')!).render(<FormCatalogEditor form={${JSON.stringify(form)}} versions={${JSON.stringify([draft])}} />);
+  `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife', define: { 'process.env.NODE_ENV': '"production"' } });
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
+  const page = await browser.newPage();
+  // oxlint-disable-next-line typescript/no-explicit-any -- Test captures serialized API payload.
+  let saved: any = null;
+  try {
+    // oxlint-disable-next-line typescript/no-explicit-any -- Playwright route type is external to this package.
+    await page.route('https://form.test/**', async (route: any) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === '/') return route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
+      if (route.request().method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ form, versions: [draft] }) });
+      saved = route.request().postDataJSON();
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ draft: { ...draft, revision: 2, config: saved.config } }) });
+    });
+    await page.goto('https://form.test/');
+    await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    await page.getByRole('button', { name: 'Move Custom A down' }).click();
+    assert.deepEqual(await page.locator('[data-editor-field]').evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('data-editor-field'))), ['b', 'a']);
+    await page.getByLabel('Reason for change').fill('Reorder custom questions');
+    await page.getByRole('button', { name: 'Save draft' }).click();
+    await page.getByText('Draft saved.').waitFor();
+    assert.deepEqual(saved.config.fields.map((item: { key: string; order: number }) => [item.key, item.order]), [['b', 0], ['display_name', 1], ['a', 2]]);
+  } finally { await page.close(); await browser.close(); }
+});
+
+void test('ambiguous save retries one request while busy edits lock and successful draft/publish survive history failure', async () => {
+  const playwrightPath = process.env.PLAYWRIGHT_MODULE ?? 'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+  // oxlint-disable-next-line typescript/no-explicit-any -- Playwright lives in the bundled external runtime.
+  const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<any> } };
+  const initialFields: ConfiguredField[] = [{ id: 'gift_color', key: 'gift_color', type: 'short_text', label: 'Gift colour', required: false, order: 0, status: 'active' }];
+  const published: CatalogVersion = { id: 'published-1', version: 1, revision: 1, status: 'published', reason: 'Initial', updatedAt: 1, publishedAt: 1, config: { formId: definition.id, fields: initialFields } };
+  const bundle = await build({ stdin: { resolveDir: process.cwd(), sourcefile: 'catalog-mutation-fixture.tsx', contents: `
+    import React from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { FormCatalogEditor } from './components/admin/form-catalog-editor';
+    createRoot(document.getElementById('root')!).render(<FormCatalogEditor form={${JSON.stringify(definition)}} versions={${JSON.stringify([published])}} />);
+  `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife', define: { 'process.env.NODE_ENV': '"production"' } });
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
+  const page = await browser.newPage();
+  // oxlint-disable-next-line typescript/no-explicit-any -- Test captures serialized API payloads.
+  const draftBodies: any[] = [];
+  let versions: CatalogVersion[] = [published];
+  let historyRequests = 0;
+  let publishRequests = 0;
+  let writes = 0;
+  let releaseSave: () => void = () => {};
+  const saveGate = new Promise<void>((resolve) => { releaseSave = resolve; });
+  let releaseDraftHistory: () => void = () => {};
+  const draftHistoryGate = new Promise<void>((resolve) => { releaseDraftHistory = resolve; });
+  let releasePublishHistory: () => void = () => {};
+  const publishHistoryGate = new Promise<void>((resolve) => { releasePublishHistory = resolve; });
+  try {
+    // oxlint-disable-next-line typescript/no-explicit-any -- Playwright route type is external to this package.
+    await page.route('https://form.test/**', async (route: any) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === '/') return route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
+      if (route.request().method() === 'GET') {
+        historyRequests++;
+        if (historyRequests === 1) await draftHistoryGate;
+        if (historyRequests === 3) await publishHistoryGate;
+        return route.fulfill(historyRequests === 1 || historyRequests === 3 ?
+          { status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'History unavailable.' }) } :
+          { status: 200, contentType: 'application/json', body: JSON.stringify({ form: definition, versions }) });
+      }
+      const body = route.request().postDataJSON();
+      if (url.pathname.endsWith('/draft')) {
+        draftBodies.push(body);
+        if (draftBodies.length === 1) return route.abort('failed');
+        await saveGate;
+        writes++;
+        const draft: CatalogVersion = { id: 'draft-2', version: 2, revision: 1, status: 'draft', reason: body.reason, updatedAt: 2, publishedAt: null, config: body.config };
+        versions = [draft, ...versions];
+        return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ draft }) });
+      }
+      publishRequests++;
+      writes++;
+      const next: CatalogVersion = { ...versions[0], status: 'published', reason: body.reason, revision: 2, publishedAt: 3 };
+      versions = [next, ...versions.slice(1)];
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ published: next }) });
+    });
+    await page.goto('https://form.test/');
+    await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    await page.locator('#gift_color-label').fill('Edited colour');
+    await page.getByLabel('Reason for change').fill('Save colour edit');
+    await page.getByRole('button', { name: 'Save draft' }).click();
+    await page.waitForFunction(() => document.body.textContent?.includes('Failed to fetch'));
+    await page.getByRole('button', { name: 'Save draft' }).click();
+    await page.waitForFunction(() => document.querySelector('#gift_color-label')?.matches(':disabled'));
+    assert.equal(await page.locator('#gift_color-label').isDisabled(), true);
+    assert.equal(await page.getByLabel('New field key').isDisabled(), true);
+    assert.equal(await page.getByRole('button', { name: 'Required for Edited colour' }).isDisabled(), true);
+    assert.equal(await page.locator('[data-editor-field="gift_color"]').getByRole('button', { name: 'Archive' }).isDisabled(), true);
+    assert.equal(await page.getByLabel('Reason for change').isDisabled(), true);
+    await page.keyboard.insertText('SHOULD NOT APPLY');
+    assert.equal(await page.locator('#gift_color-label').inputValue(), 'Edited colour');
+    releaseSave();
+    await page.getByText('Draft saved.').waitFor({ timeout: 3000 });
+    assert.equal(await page.locator('#gift_color-label').isDisabled(), false, 'successful save unlocks editing before history GET finishes');
+    releaseDraftHistory();
+    await page.getByRole('button', { name: 'Retry history refresh' }).waitFor();
+    assert.equal(await page.locator('#gift_color-label').inputValue(), 'Edited colour');
+    assert.equal(draftBodies[0].requestId, draftBodies[1].requestId, 'uncertain retry reuses idempotency key');
+    assert.equal(writes, 1);
+    await page.getByRole('button', { name: 'Retry history refresh' }).click();
+    await page.getByText('Latest version loaded.').waitFor();
+    assert.equal(draftBodies.length, 2);
+    await page.getByLabel('Reason for change').fill('Publish colour edit');
+    await page.getByRole('button', { name: 'Publish draft' }).click();
+    await page.getByRole('button', { name: 'Confirm publish' }).focus();
+    await page.keyboard.press('Enter');
+    await page.getByText('Form published.').waitFor({ timeout: 3000 });
+    assert.equal(await page.getByRole('alertdialog').count(), 0, 'successful publish closes confirmation before history GET finishes');
+    releasePublishHistory();
+    await page.getByRole('button', { name: 'Retry history refresh' }).waitFor();
+    assert.equal(await page.getByRole('alertdialog').count(), 0);
+    assert.equal(await page.getByLabel('Reason for change').inputValue(), '');
+    assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), true);
+    assert.equal(publishRequests, 1);
+    assert.equal(writes, 2);
+    await page.getByRole('button', { name: 'Retry history refresh' }).click();
+    await page.getByText('Latest version loaded.').waitFor();
+    assert.equal(historyRequests, 4);
+    assert.equal(publishRequests, 1);
+  } finally { releaseSave(); releaseDraftHistory(); releasePublishHistory(); await page.close(); await browser.close(); }
 });
