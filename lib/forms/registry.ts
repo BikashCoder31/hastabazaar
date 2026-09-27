@@ -55,6 +55,11 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
   'staff.privacy-action': { formId: 'staff.privacy-action', route: '/api/admin/privacy/:id', mode: 'operation' },
   'staff.rider-control-1': { formId: 'staff.rider-control-1', route: '/api/admin/riders', mode: 'operation' },
   'staff.rider-control-2': { formId: 'staff.rider-control-2', route: '/api/admin/riders', mode: 'operation' },
+  'staff.governance-rule-create': { formId: 'staff.governance-rule-create', route: '/api/admin/governance', mode: 'operation' },
+  'staff.governance-promotion-create': { formId: 'staff.governance-promotion-create', route: '/api/admin/governance', mode: 'operation' },
+  'staff.governance-incident-create': { formId: 'staff.governance-incident-create', route: '/api/admin/governance', mode: 'operation' },
+  'staff.governance-incident-update': { formId: 'staff.governance-incident-update', route: '/api/admin/governance', mode: 'operation' },
+  'staff.governance-backup-verify': { formId: 'staff.governance-backup-verify', route: '/api/admin/governance', mode: 'operation' },
   'shipping.console-request': { formId: 'shipping.console-request', route: '/api/seller/shipping', mode: 'operation' },
   'shipping.console-action-seller': { formId: 'shipping.console-action-seller', route: '/api/seller/shipping/:id', mode: 'operation' },
   'shipping.console-action-staff': { formId: 'shipping.console-action-staff', route: '/api/admin/shipping/:id', mode: 'operation' },
@@ -197,6 +202,10 @@ function definition(row: string): FormDefinition {
 }
 
 const ACCOUNT_CUSTOM_TYPES = Object.freeze(['short_text', 'long_text', 'number', 'date', 'single_choice', 'multiple_choice', 'checkbox', 'email', 'phone'] as const);
+const GOVERNANCE_KEYS = Object.freeze(['action', 'requestId', 'formVersion', 'customAnswers',
+  'id', 'code', 'titleEn', 'titleNe', 'descriptionEn', 'descriptionNe', 'severity',
+  'isActive', 'nameEn', 'nameNe', 'placement', 'startsAt', 'endsAt', 'note',
+  'productIds', 'title', 'detail', 'status', 'resolution', 'scope', 'evidenceReference']);
 
 const STAFF_OPERATION_KEYS = Object.freeze({
   'staff.catalog': ['kind', 'id', 'slug', 'nameEn', 'nameNe', 'sortOrder', 'isActive', 'idempotencyKey', 'requestId', 'formVersion', 'customAnswers'],
@@ -209,6 +218,11 @@ const STAFF_OPERATION_KEYS = Object.freeze({
   'staff.privacy-action': ['privacyRequestId', 'action', 'status', 'note', 'requestId', 'formVersion', 'customAnswers'],
   'staff.rider-control-1': ['action', 'status', 'note', 'userId', 'reportId', 'version', 'eligible', 'requestId', 'formVersion', 'customAnswers'],
   'staff.rider-control-2': ['action', 'version', 'otpScope', 'openBox', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.governance-rule-create': GOVERNANCE_KEYS,
+  'staff.governance-promotion-create': GOVERNANCE_KEYS,
+  'staff.governance-incident-create': GOVERNANCE_KEYS,
+  'staff.governance-incident-update': GOVERNANCE_KEYS,
+  'staff.governance-backup-verify': GOVERNANCE_KEYS,
 } as const);
 type StaffOperationFormId = keyof typeof STAFF_OPERATION_KEYS;
 const staffOperationIds = new Set<string>(Object.keys(STAFF_OPERATION_KEYS));

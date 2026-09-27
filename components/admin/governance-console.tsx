@@ -1,5 +1,6 @@
 'use client';
-import { Children, isValidElement, useState, type ReactNode } from 'react';
+import { Children, isValidElement, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -7,10 +8,28 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatusBadge } from '@/components/admin/status-badge';
 import { ConfirmOperation } from '@/components/admin/confirm-operation';
 import { useAdminMutation } from '@/components/admin/use-admin-mutation';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 import type { GovernanceOverview } from '@/lib/db/repositories/operations';
 
 const selectClass =
   'w-full rounded-lg border bg-background px-3 py-2 text-base';
+const governanceForms = {
+  'rule.create': 'staff.governance-rule-create',
+  'promotion.create': 'staff.governance-promotion-create',
+  'incident.create': 'staff.governance-incident-create',
+  'incident.update': 'staff.governance-incident-update',
+  'backup.verify': 'staff.governance-backup-verify',
+} as const;
+type GovernanceFormAction = keyof typeof governanceForms;
+const governanceBaseKeys = [
+  'action', 'requestId', 'formVersion', 'customAnswers', 'id', 'code', 'titleEn',
+  'titleNe', 'descriptionEn', 'descriptionNe', 'severity', 'isActive', 'nameEn',
+  'nameNe', 'placement', 'startsAt', 'endsAt', 'note', 'productIds', 'title',
+  'detail', 'status', 'resolution', 'scope', 'evidenceReference',
+] as const;
 type Decision = {
   action: string;
   data: Record<string, unknown>;
@@ -33,27 +52,86 @@ export function GovernanceConsole({
   superAdmin: boolean;
   actorId: string;
 }) {
-  const { send, pending, error } = useAdminMutation();
+  const router = useRouter();
+  const { send, pending: decisionPending, error } = useAdminMutation();
+  const configuredLock = useRef(false);
+  const [configuredPending, setConfiguredPending] = useState(false);
+  const [activeAttempts, setActiveAttempts] = useState<Record<string, boolean>>({});
+  const pending = decisionPending || configuredPending;
+  const ruleCatalog = usePublishedFormConfig(governanceForms['rule.create']);
+  const promotionCatalog = usePublishedFormConfig(governanceForms['promotion.create']);
+  const incidentCreateCatalog = usePublishedFormConfig(governanceForms['incident.create']);
+  const incidentUpdateCatalog = usePublishedFormConfig(governanceForms['incident.update']);
+  const backupCatalog = usePublishedFormConfig(governanceForms['backup.verify']);
+  const catalogs = {
+    'rule.create': ruleCatalog,
+    'promotion.create': promotionCatalog,
+    'incident.create': incidentCreateCatalog,
+    'incident.update': incidentUpdateCatalog,
+    'backup.verify': backupCatalog,
+  };
   const [message, setMessage] = useState('');
   const [validation, setValidation] = useState('');
   const [decision, setDecision] = useState<Decision | null>(null);
   const [userSearch, setUserSearch] = useState('');
-  async function save(action: string, values: Record<string, unknown>) {
+  function attemptKey(action: GovernanceFormAction, subjectId = 'new') {
+    return sessionAttemptKey(governanceForms[action], subjectId);
+  }
+  useEffect(() => {
+    const keys = [attemptKey('rule.create'), attemptKey('promotion.create'),
+      attemptKey('incident.create'), attemptKey('backup.verify'),
+      ...data.incidents.map((item) => attemptKey('incident.update', item.id))];
+    setActiveAttempts(Object.fromEntries(keys.filter(hasSessionAttempt).map((key) => [key, true])));
+  }, [data.incidents]);
+  function retryControl(action: GovernanceFormAction, subjectId = 'new') {
+    const key = attemptKey(action, subjectId);
+    if (!activeAttempts[key]) return null;
+    return <div className="space-y-2 text-xs text-muted-foreground">
+      <p>A prior governance action may have succeeded. Check its record before starting a new attempt.</p>
+      <Button type="button" variant="outline" disabled={pending} onClick={() => {
+        if (!window.confirm('This governance action may already have succeeded. Check its record first. Start a new request reference?')) return;
+        clearSessionAttempt(key);
+        setActiveAttempts((prior) => ({ ...prior, [key]: false }));
+        setValidation('');
+      }}>Start a new attempt</Button>
+    </div>;
+  }
+  async function save(
+    action: string,
+    values: Record<string, unknown>,
+    configured?: ReturnType<typeof configuredJsonPayload>,
+  ) {
     setMessage('');
     setValidation('');
-    const ok = await send('/api/admin/governance', { action, data: values });
+    const ok = await send('/api/admin/governance', { action, data: values, ...configured });
     if (ok)
       setMessage('Saved. The operation has been recorded in audit history.');
     return ok;
   }
   async function submit(
     event: { preventDefault(): void; currentTarget: HTMLFormElement },
-    action: string,
+    action: GovernanceFormAction,
   ) {
     event.preventDefault();
     const form = event.currentTarget;
+    const catalog = catalogs[action];
+    if (!catalog.config || !catalog.canSubmit) {
+      setValidation(catalog.message || 'Form configuration is unavailable.');
+      return;
+    }
+    let configured: ReturnType<typeof configuredJsonPayload>;
+    try {
+      const submission = readConfiguredSubmission(form, catalog.config, governanceBaseKeys);
+      configured = configuredJsonPayload(catalog.config, submission.answers, governanceBaseKeys);
+    } catch (cause) {
+      setValidation(cause instanceof Error ? cause.message : 'Review the configured fields.');
+      return;
+    }
     const values = new FormData(form);
-    let body: Record<string, unknown> = Object.fromEntries(values);
+    const domainKeys = governanceBaseKeys.filter((key) => !['action', 'requestId', 'formVersion', 'customAnswers'].includes(key));
+    let body: Record<string, unknown> = Object.fromEntries(
+      [...values].filter(([key]) => domainKeys.includes(key as typeof domainKeys[number])),
+    );
     if (action === 'rule.create')
       body = {
         ...body,
@@ -85,7 +163,34 @@ export function GovernanceConsole({
       }
       body = { ...body, nameNe: body.nameEn, startsAt, endsAt, productIds };
     }
-    if (await save(action, body)) form.reset();
+    if (configuredLock.current) return;
+    configuredLock.current = true;
+    setConfiguredPending(true);
+    setMessage('');
+    setValidation('');
+    const key = attemptKey(action, action === 'incident.update' && typeof body.id === 'string' ? body.id : 'new');
+    try {
+      const requestId = getOrCreateSessionAttempt(key);
+      setActiveAttempts((prior) => ({ ...prior, [key]: true }));
+      const response = await fetch('/api/admin/governance', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action, data: body, ...configured, requestId }),
+      });
+      const result = (await response.json().catch(() => null)) as { error?: string; code?: string; ok?: boolean } | null;
+      if (result?.code === 'stale_version') catalog.handleSubmissionResponse(response, result.code);
+      if (!response.ok) throw new Error(result?.error || 'The action could not be saved. Please try again.');
+      if (result?.ok !== true) throw new Error('The response could not be verified. Retry with the same request.');
+      clearSessionAttempt(key);
+      setActiveAttempts((prior) => ({ ...prior, [key]: false }));
+      form.reset();
+      setMessage('Saved. The operation has been recorded in audit history.');
+      router.refresh();
+    } catch (cause) {
+      setValidation(cause instanceof Error ? cause.message : 'The action could not be saved.');
+    } finally {
+      configuredLock.current = false;
+      setConfiguredPending(false);
+    }
   }
   const visibleUsers = data.users.filter((user) =>
     (user.displayName + ' ' + user.email + ' ' + (user.roles ?? ''))
@@ -94,6 +199,15 @@ export function GovernanceConsole({
   );
   return (
     <div className="space-y-4">
+      <nav className="flex flex-wrap gap-3 text-sm" aria-label="Governance form history">
+        <a className="underline" href="/admin/staff-form-history?kind=governance-rule-create">Rule form history</a>
+        <a className="underline" href="/admin/staff-form-history?kind=governance-promotion-create">Promotion form history</a>
+        {superAdmin ? <>
+          <a className="underline" href="/admin/staff-form-history?kind=governance-incident-create">Incident reports</a>
+          <a className="underline" href="/admin/staff-form-history?kind=governance-incident-update">Incident updates</a>
+          <a className="underline" href="/admin/staff-form-history?kind=governance-backup-verify">Backup verification history</a>
+        </> : null}
+      </nav>
       {message ? (
         <output className="block rounded-xl border bg-secondary p-4 text-sm">
           {message}
@@ -138,6 +252,7 @@ export function GovernanceConsole({
               description="Maintain the guidance used when reviewing listings. Changes are recorded in the audit log."
             >
               <form
+                data-form-id={governanceForms['rule.create']}
                 onSubmit={(event) => void submit(event, 'rule.create')}
                 className="grid gap-4 sm:grid-cols-2"
               >
@@ -173,7 +288,10 @@ export function GovernanceConsole({
                   </select>
                 </Field>
                 <div className="sm:col-span-2">
-                  <Button type="submit">Add rule</Button>
+                  {ruleCatalog.config ? <ConfiguredFields config={ruleCatalog.config} baseKeys={governanceBaseKeys} /> : null}
+                  {!ruleCatalog.canSubmit ? <p role="alert">{ruleCatalog.message || 'Form configuration is unavailable.'}</p> : null}
+                  {retryControl('rule.create')}
+                  <Button type="submit" disabled={!ruleCatalog.canSubmit}>Add rule</Button>
                 </div>
               </form>
               <div className="mt-6 divide-y">
@@ -221,6 +339,7 @@ export function GovernanceConsole({
               description="Prepare a placement, then ask a different Super Admin to approve it. This does not create a discount or change product prices."
             >
               <form
+                data-form-id={governanceForms['promotion.create']}
                 onSubmit={(event) => void submit(event, 'promotion.create')}
                 className="grid gap-4 sm:grid-cols-2"
               >
@@ -277,7 +396,10 @@ export function GovernanceConsole({
                   )}
                 </fieldset>
                 <div className="sm:col-span-2">
-                  <Button type="submit">Submit for independent approval</Button>
+                  {promotionCatalog.config ? <ConfiguredFields config={promotionCatalog.config} baseKeys={governanceBaseKeys} /> : null}
+                  {!promotionCatalog.canSubmit ? <p role="alert">{promotionCatalog.message || 'Form configuration is unavailable.'}</p> : null}
+                  {retryControl('promotion.create')}
+                  <Button type="submit" disabled={!promotionCatalog.canSubmit}>Submit for independent approval</Button>
                 </div>
               </form>
               <div className="mt-6 divide-y">
@@ -421,6 +543,7 @@ export function GovernanceConsole({
                   description="Record operational issues and the actual response. This register does not run monitoring or contact external services."
                 >
                   <form
+                    data-form-id={governanceForms['incident.create']}
                     onSubmit={(event) => void submit(event, 'incident.create')}
                     className="grid gap-4 sm:grid-cols-2"
                   >
@@ -450,7 +573,10 @@ export function GovernanceConsole({
                       </Field>
                     </div>
                     <div>
-                      <Button type="submit">Open incident</Button>
+                      {incidentCreateCatalog.config ? <ConfiguredFields config={incidentCreateCatalog.config} baseKeys={governanceBaseKeys} /> : null}
+                      {!incidentCreateCatalog.canSubmit ? <p role="alert">{incidentCreateCatalog.message || 'Form configuration is unavailable.'}</p> : null}
+                      {retryControl('incident.create')}
+                      <Button type="submit" disabled={!incidentCreateCatalog.canSubmit}>Open incident</Button>
                     </div>
                   </form>
                   <div className="mt-6 divide-y">
@@ -475,6 +601,7 @@ export function GovernanceConsole({
                           ) : null}
                           {item.status !== 'resolved' ? (
                             <form
+                              data-form-id={governanceForms['incident.update']}
                               onSubmit={(event) =>
                                 void submit(event, 'incident.update')
                               }
@@ -497,7 +624,10 @@ export function GovernanceConsole({
                                 />
                               </Field>
                               <div>
-                                <Button type="submit" variant="outline">
+                                {incidentUpdateCatalog.config ? <ConfiguredFields config={incidentUpdateCatalog.config} baseKeys={governanceBaseKeys} /> : null}
+                                {!incidentUpdateCatalog.canSubmit ? <p role="alert">{incidentUpdateCatalog.message || 'Form configuration is unavailable.'}</p> : null}
+                                {retryControl('incident.update', item.id)}
+                                <Button type="submit" variant="outline" disabled={!incidentUpdateCatalog.canSubmit}>
                                   Record incident update
                                 </Button>
                               </div>
@@ -515,6 +645,7 @@ export function GovernanceConsole({
                   description="Record checks you have actually performed. Saving here does not create, download, or restore a backup."
                 >
                   <form
+                    data-form-id={governanceForms['backup.verify']}
                     onSubmit={(event) => void submit(event, 'backup.verify')}
                     className="grid gap-4 sm:grid-cols-2"
                   >
@@ -548,7 +679,10 @@ export function GovernanceConsole({
                       />
                     </Field>
                     <div className="sm:col-span-2">
-                      <Button type="submit">Record verification</Button>
+                      {backupCatalog.config ? <ConfiguredFields config={backupCatalog.config} baseKeys={governanceBaseKeys} /> : null}
+                      {!backupCatalog.canSubmit ? <p role="alert">{backupCatalog.message || 'Form configuration is unavailable.'}</p> : null}
+                      {retryControl('backup.verify')}
+                      <Button type="submit" disabled={!backupCatalog.canSubmit}>Record verification</Button>
                     </div>
                   </form>
                   <div className="mt-6 divide-y">

@@ -15,6 +15,11 @@ export const STAFF_HISTORY_KINDS = [
   { kind: 'rider-control', label: 'Rider profile controls', formId: 'staff.rider-control-1', subjectType: 'rider', permission: 'admin.invite', superAdminOnly: true },
   { kind: 'rider-report-control', label: 'Rider report controls', formId: 'staff.rider-control-1', subjectType: 'rider_report', permission: 'order.manage' },
   { kind: 'rider-policy', label: 'Rider policy', formId: 'staff.rider-control-2', subjectType: 'rider_policy', permission: 'admin.invite', superAdminOnly: true },
+  { kind: 'governance-rule-create', label: 'Product rules', formId: 'staff.governance-rule-create', subjectType: 'prohibited_product_rule', permission: 'catalog.manage' },
+  { kind: 'governance-promotion-create', label: 'Promotion proposals', formId: 'staff.governance-promotion-create', subjectType: 'promotion', permission: 'catalog.manage' },
+  { kind: 'governance-incident-create', label: 'Incident reports', formId: 'staff.governance-incident-create', subjectType: 'operational_incident', permission: 'catalog.manage', superAdminOnly: true },
+  { kind: 'governance-incident-update', label: 'Incident updates', formId: 'staff.governance-incident-update', subjectType: 'operational_incident', permission: 'catalog.manage', superAdminOnly: true },
+  { kind: 'governance-backup-verify', label: 'Backup verifications', formId: 'staff.governance-backup-verify', subjectType: 'backup_verification', permission: 'catalog.manage', superAdminOnly: true },
 ] as const;
 
 export type StaffHistoryKind = (typeof STAFF_HISTORY_KINDS)[number];

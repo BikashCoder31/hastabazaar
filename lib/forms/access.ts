@@ -327,6 +327,35 @@ async function staffActionGrant(db: D1Database, viewer: FormAnswerViewer,
         WHERE parent.id='current' LIMIT 1`;
       values = [actorId, `staff.rider-control-2:${requestId}`];
       break;
+    case 'staff.governance-rule-create':
+    case 'staff.governance-promotion-create':
+    case 'staff.governance-incident-create':
+    case 'staff.governance-incident-update':
+    case 'staff.governance-backup-verify': {
+      const governance = {
+        'staff.governance-rule-create': { subject: 'prohibited_product_rule', table: 'prohibited_product_rules',
+          action: 'rule.create', parent: 'parent.created_by=?', extras: [actorId] },
+        'staff.governance-promotion-create': { subject: 'promotion', table: 'promotions',
+          action: 'promotion.create', parent: 'parent.created_by=? AND parent.created_request_id=?', extras: [actorId, requestId] },
+        'staff.governance-incident-create': { subject: 'operational_incident', table: 'operational_incidents',
+          action: 'incident.create', parent: 'parent.owner_id=? AND parent.request_id=?', extras: [actorId, requestId] },
+        'staff.governance-incident-update': { subject: 'operational_incident', table: 'operational_incidents',
+          action: 'incident.update', parent: '1=1', extras: [] },
+        'staff.governance-backup-verify': { subject: 'backup_verification', table: 'backup_verifications',
+          action: 'backup.verify', parent: 'parent.verified_by=? AND parent.request_id=?', extras: [actorId, requestId] },
+      }[formId];
+      if (subjectType !== governance.subject) return false;
+      permission = 'catalog.manage';
+      superAdminOnly = formId === 'staff.governance-incident-create' ||
+        formId === 'staff.governance-incident-update' || formId === 'staff.governance-backup-verify';
+      parentSql = `SELECT 1 FROM ${governance.table} parent JOIN audit_logs audit
+        ON audit.subject_type=? AND audit.subject_id=parent.id AND audit.action=?
+          AND audit.actor_id=? AND audit.request_id=?
+          AND json_type(audit.next_json,'$.catalogDigest')='text'
+        WHERE parent.id=? AND ${governance.parent} LIMIT 1`;
+      values = [subjectType, governance.action, actorId, requestId, subjectId, ...governance.extras];
+      break;
+    }
     default: return false;
   }
   if (superAdminOnly && viewer.role !== 'super_admin') return false;

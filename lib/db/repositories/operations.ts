@@ -924,6 +924,65 @@ function dataText(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
+const governanceFormIds = {
+  'rule.create': 'staff.governance-rule-create',
+  'promotion.create': 'staff.governance-promotion-create',
+  'incident.create': 'staff.governance-incident-create',
+  'incident.update': 'staff.governance-incident-update',
+  'backup.verify': 'staff.governance-backup-verify',
+} as const;
+type GovernanceInputAction = keyof typeof governanceFormIds;
+type GovernanceFormId = (typeof governanceFormIds)[GovernanceInputAction];
+
+async function governanceReplay(database: D1Database, input: {
+  formId: GovernanceFormId; requestId: string; versionId: string; actorId: string;
+  action: GovernanceInputAction; digest: string; subjectId?: string;
+}): Promise<boolean> {
+  const audits = await database.prepare(`SELECT actor_id AS actorId,action,subject_type AS subjectType,
+    subject_id AS subjectId,next_json AS nextJson FROM audit_logs WHERE request_id=? LIMIT 2`)
+    .bind(input.requestId).all<{ actorId: string | null; action: string; subjectType: string;
+      subjectId: string; nextJson: string | null }>();
+  if (!audits.results.length) {
+    const orphan = await database.prepare('SELECT 1 FROM form_answer_sets WHERE form_id=? AND request_id=? LIMIT 1')
+      .bind(input.formId, input.requestId).first();
+    if (orphan) throw new OperationsConflictError('Request reference is already used.');
+    return false;
+  }
+  const audit = audits.results[0];
+  const answer = await database.prepare(`SELECT actor_id AS actorId,subject_type AS subjectType,
+    subject_id AS subjectId,config_version_id AS versionId FROM form_answer_sets
+    WHERE form_id=? AND request_id=? LIMIT 1`).bind(input.formId, input.requestId)
+    .first<{ actorId: string | null; subjectType: string; subjectId: string; versionId: string }>();
+  let recorded: unknown;
+  try { recorded = JSON.parse(audit.nextJson ?? ''); } catch { /* An invalid audit cannot replay. */ }
+  const expectedSubject = input.action === 'rule.create' ? 'prohibited_product_rule'
+    : input.action === 'promotion.create' ? 'promotion'
+    : input.action === 'backup.verify' ? 'backup_verification' : 'operational_incident';
+  if (audits.results.length !== 1 || audit.actorId !== input.actorId || audit.action !== input.action ||
+    audit.subjectType !== expectedSubject || input.subjectId && audit.subjectId !== input.subjectId ||
+    !answer || answer.actorId !== input.actorId || answer.subjectType !== expectedSubject ||
+    answer.subjectId !== audit.subjectId || answer.versionId !== input.versionId ||
+    !recorded || typeof recorded !== 'object' || !('catalogDigest' in recorded) ||
+    recorded.catalogDigest !== input.digest)
+    throw new OperationsConflictError('Request reference was already used for different governance details.');
+  const parent = input.action === 'rule.create'
+    ? await database.prepare('SELECT 1 FROM prohibited_product_rules WHERE id=? AND created_by=? LIMIT 1')
+      .bind(audit.subjectId, input.actorId).first()
+    : input.action === 'promotion.create'
+      ? await database.prepare('SELECT 1 FROM promotions WHERE id=? AND created_by=? AND created_request_id=? LIMIT 1')
+        .bind(audit.subjectId, input.actorId, input.requestId).first()
+      : input.action === 'incident.create'
+        ? await database.prepare('SELECT 1 FROM operational_incidents WHERE id=? AND owner_id=? AND request_id=? LIMIT 1')
+          .bind(audit.subjectId, input.actorId, input.requestId).first()
+        : input.action === 'incident.update'
+          ? await database.prepare('SELECT 1 FROM operational_incidents WHERE id=? LIMIT 1')
+            .bind(audit.subjectId).first()
+          : await database.prepare('SELECT 1 FROM backup_verifications WHERE id=? AND verified_by=? AND request_id=? LIMIT 1')
+            .bind(audit.subjectId, input.actorId, input.requestId).first();
+  if (!parent) throw new OperationsConflictError('Governance parent record is unavailable for replay.');
+  return true;
+}
+
 export async function performGovernanceAction(
   database: D1Database,
   options: {
@@ -933,19 +992,19 @@ export async function performGovernanceAction(
     requestId: string;
     data: Record<string, unknown>;
     now: number;
+    form?: { formId: GovernanceFormId; requestId: string; versionId: string; answers: FormAnswerSnapshot };
   },
 ): Promise<void> {
   if (!options.requestId || options.requestId.length > 100)
     throw new OperationsConflictError(
       'A valid request identifier is required.',
     );
-  if (
-    await database
-      .prepare(`SELECT id FROM audit_logs WHERE request_id = ?`)
-      .bind(options.requestId)
-      .first()
-  )
-    return;
+  const expectedFormId = governanceFormIds[options.action as GovernanceInputAction];
+  if (options.form && (options.form.formId !== expectedFormId ||
+    options.form.requestId !== options.requestId || options.form.answers.formId !== expectedFormId))
+    throw new OperationsConflictError('Governance form reference is invalid.');
+  if (!options.form && await database.prepare('SELECT id FROM audit_logs WHERE request_id=?')
+    .bind(options.requestId).first()) return;
   const highRisk = [
     'promotion.approve',
     'promotion.reject',
@@ -958,7 +1017,15 @@ export async function performGovernanceAction(
     throw new OperationsConflictError(
       'This action requires Super Admin approval.',
     );
-  const statements: D1PreparedStatement[] = [];
+  const currentGrant = options.form ? await staffMutationGuard(database, options.actorId,
+    'catalog.manage', OperationsConflictError, options.actorRole) : null;
+  const catalogDigest = options.form ? await digestFormRequest({ action: options.action,
+    data: options.data, versionId: options.form.versionId, answers: options.form.answers }) : null;
+  if (options.form && await governanceReplay(database, { formId: options.form.formId,
+    requestId: options.requestId, versionId: options.form.versionId, actorId: options.actorId,
+    action: options.action as GovernanceInputAction, digest: catalogDigest!,
+    ...(options.action === 'incident.update' ? { subjectId: dataText(options.data.id) } : {}) })) return;
+  const statements: D1PreparedStatement[] = [...(currentGrant?.statements ?? [])];
   let subjectType = 'governance';
   let subjectId = dataText(options.data.id);
   let next: Record<string, unknown> = { action: options.action };
@@ -1185,6 +1252,16 @@ export async function performGovernanceAction(
     next = { reference, severity, title };
   } else if (options.action === 'incident.update') {
     subjectType = 'operational_incident';
+    if (options.form) {
+      const current = await database.prepare('SELECT status,updated_at AS updatedAt FROM operational_incidents WHERE id=? LIMIT 1')
+        .bind(subjectId).first<{ status: string; updatedAt: number }>();
+      if (!current) throw new OperationsConflictError('Incident was not found.');
+      const guardId = crypto.randomUUID();
+      statements.push(database.prepare(`INSERT INTO staff_permission_guards(id,valid)
+        SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM operational_incidents WHERE id=? AND status=? AND updated_at=?)
+        THEN 1 ELSE 0 END`).bind(guardId, subjectId, current.status, current.updatedAt),
+      database.prepare('DELETE FROM staff_permission_guards WHERE id=?').bind(guardId));
+    }
     const statusInput = dataText(options.data.status);
     const status = ['mitigating', 'monitoring', 'resolved'].includes(
       statusInput,
@@ -1255,16 +1332,25 @@ export async function performGovernanceAction(
         options.action,
         subjectType,
         subjectId,
-        JSON.stringify(next),
+        JSON.stringify(options.form ? { ...next, catalogDigest } : next),
         options.requestId,
         options.now,
       ),
   );
+  if (options.form) statements.push(buildFormAnswerInsert(database, {
+    formId: options.form.formId, requestId: options.requestId,
+    versionId: options.form.versionId, subjectType, subjectId,
+    actorId: options.actorId, answers: options.form.answers, now: options.now,
+  }));
   const businessKind = options.action==='promotion.create'?'promotion.proposed':options.action==='promotion.approve'||options.action==='promotion.reject'?'promotion.result':options.action==='incident.update'?'incident.updated':options.action==='user.status'?'account.status':null;
   if(businessKind) statements.push(...(await operationalBusinessNotificationStatements(database,{kind:businessKind,sourceId:subjectId,eventId:options.requestId,actorId:options.actorId,now:options.now,status:typeof next.status==='string'?next.status:undefined})));
   try {
     await database.batch(statements);
   } catch (error) {
+    if (options.form && await governanceReplay(database, { formId: options.form.formId,
+      requestId: options.requestId, versionId: options.form.versionId, actorId: options.actorId,
+      action: options.action as GovernanceInputAction, digest: catalogDigest!,
+      ...(options.action === 'incident.update' ? { subjectId: dataText(options.data.id) } : {}) })) return;
     if (error instanceof Error && error.message.includes('UNIQUE constraint'))
       throw new OperationsConflictError(
         'This record or operation already exists.',
