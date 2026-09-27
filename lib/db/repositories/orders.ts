@@ -1,4 +1,6 @@
 import { getDeliveryRates, rateVersionGuard } from './delivery-rates';
+import { buildFormAnswerInsert } from './form-answers';
+import { assertCommerceFormReplay, type CommerceForm } from './commerce-form-replay';
 import { getCommissionSetting, sellerAcceptedCommissionVersion } from './marketplace-settings';
 import { publicProductEligibility } from '@/lib/products/eligibility';
 import {
@@ -144,20 +146,43 @@ export async function createCodOrder(
   input: CheckoutInput,
   now: number,
   customerId: string | null = null,
+  form?: CommerceForm,
 ): Promise<CheckoutResult> {
   const cartReference = `${tokenHash}:${input.idempotencyKey}`;
+  const { formVersion: _formVersion, customAnswers: _customAnswers, ...coreInput } = input;
+  const intentBytes = new TextEncoder().encode(JSON.stringify({ customerId, ...coreInput }));
+  const intentDigest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', intentBytes)),
+    (byte) => byte.toString(16).padStart(2, '0')).join('');
   const previous = await database
     .prepare(
-      `SELECT orders.order_number AS orderNumber, COALESCE(orders.current_total_paisa,orders.grand_total_paisa) AS grandTotalPaisa,
+      `SELECT orders.id, orders.order_number AS orderNumber, COALESCE(orders.current_total_paisa,orders.grand_total_paisa) AS grandTotalPaisa,
         shipments.estimated_min_days AS estimatedMinDays,
-        shipments.estimated_max_days AS estimatedMaxDays
+        shipments.estimated_max_days AS estimatedMaxDays,
+        (SELECT json_extract(a.next_json,'$.checkoutIntentDigest') FROM audit_logs a
+          WHERE a.action='order.placed' AND a.subject_type='order' AND a.subject_id=orders.id
+            AND a.request_id=? LIMIT 1) AS checkoutIntentDigest
        FROM payments INNER JOIN orders ON orders.id = payments.order_id
        INNER JOIN shipments ON shipments.order_id = orders.id
        WHERE payments.idempotency_key = ? AND payments.provider_reference = ? LIMIT 1`,
     )
-    .bind(input.idempotencyKey, cartReference)
-    .first<CheckoutResult>();
-  if (previous) return previous;
+    .bind(input.idempotencyKey, input.idempotencyKey, cartReference)
+    .first<CheckoutResult & { id: string; checkoutIntentDigest: string | null }>();
+  if (previous) {
+    if (previous.checkoutIntentDigest !== intentDigest)
+      throw new CheckoutConflictError('This checkout request was already used for different order details.');
+    const changedCart = await database.prepare(
+      `SELECT 1 AS present FROM cart_items
+       INNER JOIN carts ON carts.id = cart_items.cart_id
+       WHERE carts.anonymous_token_hash = ? LIMIT 1`,
+    ).bind(tokenHash).first<{ present: number }>();
+    if (changedCart)
+      throw new CheckoutConflictError('This checkout request was already used for a different cart.');
+    await assertCommerceFormReplay(database, { formId: 'commerce.checkout',
+      requestId: input.idempotencyKey, subjectType: 'order', subjectId: previous.id,
+      actorId: customerId, form, conflictError: CheckoutConflictError });
+    const { id: _id, checkoutIntentDigest: _digest, ...result } = previous;
+    return result;
+  }
 
   const cartId = await getCartId(database, tokenHash);
   if (!cartId) throw new CheckoutConflictError('Your cart is empty.');
@@ -746,11 +771,18 @@ export async function createCodOrder(
           orderNumber: number,
           status: 'confirmed',
           paymentMode: 'cod',
+          checkoutIntentDigest: intentDigest,
         }),
         input.idempotencyKey,
         now,
       ),
   );
+
+  if (form) statements.push(buildFormAnswerInsert(database, {
+    formId: 'commerce.checkout', requestId: input.idempotencyKey,
+    versionId: form.versionId, subjectType: 'order', subjectId: id,
+    actorId: customerId, answers: form.answers, now,
+  }));
 
   try {
     await database.batch(statements);

@@ -14,6 +14,10 @@ import {
 import { LocationPicker } from '@/components/delivery/location-picker';
 import { Banknote, LockKeyhole, MapPin, Truck } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -50,6 +54,13 @@ interface CartData {
   hasUnavailableItems: boolean;
 }
 
+const checkoutBaseKeys = [
+  'customerEmail', 'customerPhone', 'recipientEmail', 'recipientName',
+  'recipientPhone', 'province', 'district', 'municipality', 'ward',
+  'locality', 'landmark', 'postalCode', 'latitude', 'longitude',
+  'saveAddressLabel', 'deliveryFor', 'termsAccepted', 'referralCode',
+];
+
 function money(paisa: number): string {
   return new Intl.NumberFormat('en-NP', {
     style: 'currency',
@@ -76,6 +87,7 @@ export function CheckoutForm({
   referralCampaign?: ReferralCampaign;
   initialReferralCode?: string;
 }) {
+  const published = usePublishedFormConfig('commerce.checkout');
   const initialAddress =
     savedAddresses.find((item) => item.isDefault) ?? savedAddresses[0];
   const [cart, setCart] = useState<CartData | null>(null);
@@ -99,7 +111,7 @@ export function CheckoutForm({
     if (error && cart) errorSummary.current?.focus();
   }, [error, cart]);
   const [loadAttempt, setLoadAttempt] = useState(0);
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const checkoutAttemptKey = sessionAttemptKey('commerce.checkout', 'cart');
   const [selectedAddress, setSelectedAddress] = useState<
     CustomerAddressRow | undefined
   >(initialAddress);
@@ -150,11 +162,21 @@ export function CheckoutForm({
       !cart ||
       cart.items.length === 0 ||
       submitting ||
-      cart.hasUnavailableItems
+      cart.hasUnavailableItems ||
+      !published.canSubmit || !published.config
     )
       return;
     setError('');
     const data = new FormData(event.currentTarget);
+    let configured;
+    let requestId: string;
+    try {
+      configured = readConfiguredSubmission(event.currentTarget, published.config, checkoutBaseKeys);
+      requestId = getOrCreateSessionAttempt(checkoutAttemptKey);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Form answers could not be read.');
+      return;
+    }
     const request = {
       customerEmail: data.get('customerEmail'),
       customerPhone: data.get('customerPhone'),
@@ -167,7 +189,7 @@ export function CheckoutForm({
       saveAddressLabel: data.get('saveAddressLabel'),
       locale: 'en-NP',
       termsAccepted: accepted,
-      idempotencyKey,
+      idempotencyKey: requestId,
       deliveryRateVersion: deliveryRates.version,
       useWallet,
       referralCode: referralCode.trim().toUpperCase(),
@@ -189,6 +211,7 @@ export function CheckoutForm({
               }
             : undefined,
       },
+      ...configuredJsonPayload(published.config, configured.answers, checkoutBaseKeys),
     };
     const parsed = parseCheckoutInput(request);
     if (!parsed.value) {
@@ -205,9 +228,13 @@ export function CheckoutForm({
       const result = (await response.json()) as {
         orderNumber?: string;
         error?: string;
+        code?: string;
       };
+      if (response.status === 409 && result.code === 'stale_version')
+        published.handleSubmissionResponse(response);
       if (!response.ok || !result.orderNumber)
         throw new Error(result.error || 'Order could not be placed.');
+      clearSessionAttempt(checkoutAttemptKey);
       window.location.assign(
         `/orders/${encodeURIComponent(result.orderNumber)}`,
       );
@@ -266,6 +293,7 @@ export function CheckoutForm({
     walletUsed;
   return (
     <form
+      data-form-id="commerce.checkout"
       onSubmit={submit}
       className="customer-form grid gap-8 lg:grid-cols-[minmax(0,1fr)_23rem]"
     >
@@ -515,6 +543,13 @@ export function CheckoutForm({
             </p>
           </div>
         </section>
+        {published.config ? (
+          <section className="rounded-2xl border bg-card p-5 sm:p-7">
+            <h2 className="font-heading text-2xl">Order details</h2>
+            <ConfiguredFields config={published.config} baseKeys={checkoutBaseKeys} />
+          </section>
+        ) : null}
+        {!published.canSubmit ? <p role="status">{published.message || 'Loading form…'}</p> : null}
       </div>
       <aside className="h-fit rounded-2xl border bg-card p-6 lg:sticky lg:top-40">
         <h2 className="font-heading text-2xl">Your order</h2>
@@ -684,7 +719,7 @@ export function CheckoutForm({
         ) : null}
         <Button
           type="submit"
-          disabled={submitting || cart.hasUnavailableItems}
+          disabled={submitting || cart.hasUnavailableItems || !published.canSubmit}
           className="mt-6 h-12 w-full rounded-full text-base"
         >
           <LockKeyhole /> {submitting ? 'Placing order…' : 'Place COD order'}

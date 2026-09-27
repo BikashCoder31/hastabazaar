@@ -12,6 +12,9 @@ import {
   requireCustomerApi,
   CustomerAuthorizationError,
 } from '@/lib/auth/customer';
+import { validateSellerFormSubmission } from '@/lib/forms/submission';
+import { FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
 export const dynamic = 'force-dynamic';
 const json = (body: unknown, status: number) =>
   Response.json(body, {
@@ -24,13 +27,14 @@ export async function POST(request: Request) {
   try {
     const customer = await requireCustomerApi();
     const body = JSON.parse(
-      new TextDecoder().decode(await readBoundedBody(request, 2048)),
+      new TextDecoder().decode(await readBoundedBody(request, 131_072)),
     );
     if (
       !body ||
       Array.isArray(body) ||
       typeof body !== 'object' ||
-      typeof body.requestId !== 'string'
+      typeof body.requestId !== 'string' ||
+      !Number.isSafeInteger(body.formVersion) || !Array.isArray(body.customAnswers)
     )
       return json({ error: 'Invalid request.' }, 400);
     const db = requireDatabase(env as unknown as { DB?: D1Database });
@@ -42,12 +46,15 @@ export async function POST(request: Request) {
     if (!limit.allowed) return rateLimitJson(limit);
     if (typeof body.code !== 'string')
       return json({ error: 'Enter a gift card code.' }, 400);
+    const form = await validateSellerFormSubmission(db, 'commerce.gift-card-redeem',
+      body.formVersion, body.customAnswers, body.requestId);
     return json(
       await redeemGiftCard(db, {
         userId: customer.userId,
         code: body.code,
         requestId: body.requestId,
         now: Date.now(),
+        form: { versionId: form.versionId, answers: form.answers },
       }),
       200,
     );
@@ -61,6 +68,10 @@ export async function POST(request: Request) {
       return json({ error: 'Request is too large.' }, 413);
     if (error instanceof GiftCardConflictError)
       return json({ error: error.message }, 409);
+    if (error instanceof FormRuntimeError)
+      return json({ error: error.message, code: error.code }, error.code === 'stale_version' ? 409 : 503);
+    if (error instanceof FormValidationError)
+      return json({ error: error.message, fieldId: error.fieldId }, 400);
     return json(
       { error: 'The gift card operation could not be completed.' },
       400,

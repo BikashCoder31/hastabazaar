@@ -23,6 +23,11 @@ void test('privacy export follows product seller profile ownership for submissio
     sqlite.exec(`
       CREATE TABLE seller_profiles(id TEXT PRIMARY KEY, user_id TEXT NOT NULL);
       CREATE TABLE products(id TEXT PRIMARY KEY, seller_id TEXT NOT NULL);
+      CREATE TABLE orders(id TEXT PRIMARY KEY, customer_id TEXT NOT NULL);
+      CREATE TABLE order_items(id TEXT PRIMARY KEY, order_id TEXT NOT NULL, seller_id TEXT NOT NULL);
+      CREATE TABLE return_requests(id TEXT PRIMARY KEY, order_item_id TEXT NOT NULL);
+      CREATE TABLE complaints(id TEXT PRIMARY KEY, order_id TEXT NOT NULL, seller_id TEXT NOT NULL);
+      CREATE TABLE gift_cards(id TEXT PRIMARY KEY, issued_by TEXT, redeemed_by TEXT);
       CREATE TABLE addresses(id TEXT PRIMARY KEY, user_id TEXT NOT NULL);
       CREATE TABLE address_answer_owner_tombstones(address_id TEXT PRIMARY KEY, user_id TEXT NOT NULL);
       CREATE TABLE product_reviews(id TEXT PRIMARY KEY, customer_id TEXT NOT NULL, product_id TEXT);

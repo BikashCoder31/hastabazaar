@@ -14,6 +14,10 @@ import {
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import { getCustomerUser } from '@/lib/auth/customer';
+import { readBoundedBody, BodyTooLargeError } from '@/lib/http/bounded-body';
+import { validateSellerFormSubmission } from '@/lib/forms/submission';
+import { FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
 
 export const dynamic = 'force-dynamic';
 const json = (data: unknown, status = 200) =>
@@ -38,7 +42,10 @@ export async function POST(
     });
     if (!rateLimit.allowed) return rateLimitJson(rateLimit);
     const { orderNumber } = await context.params;
-    const body = (await request.json()) as Record<string, unknown>;
+    const body = JSON.parse(new TextDecoder().decode(await readBoundedBody(request, 131_072))) as Record<string, unknown>;
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+      !Number.isSafeInteger(body.formVersion) || !Array.isArray(body.customAnswers))
+      return json({ error: 'Form version and answers are required.' }, 400);
     const orderItemId =
       typeof body.orderItemId === 'string' && body.orderItemId
         ? body.orderItemId
@@ -60,6 +67,8 @@ export async function POST(
       );
     if (requestId.length < 8 || requestId.length > 100)
       return json({ error: 'The request identifier is invalid.' }, 400);
+    const configured = await validateSellerFormSubmission(database, 'commerce.complaint',
+      body.formVersion, body.customAnswers, requestId);
     const result = await createCustomerComplaint(database, {
       orderNumber,
       receiptTokenHash: token ? await hashOpaqueToken(token) : null,
@@ -71,6 +80,7 @@ export async function POST(
       locale,
       requestId,
       now: Date.now(),
+      form: { versionId: configured.versionId, answers: configured.answers },
     });
     return json(
       {
@@ -84,6 +94,12 @@ export async function POST(
   } catch (error) {
     if (error instanceof ComplaintConflictError)
       return json({ error: error.message }, 409);
+    if (error instanceof BodyTooLargeError)
+      return json({ error: 'The complaint request is too large.' }, 413);
+    if (error instanceof FormRuntimeError)
+      return json({ error: error.message, code: error.code }, error.code === 'stale_version' ? 409 : 503);
+    if (error instanceof FormValidationError)
+      return json({ error: error.message, fieldId: error.fieldId }, 400);
     if (error instanceof SyntaxError)
       return json({ error: 'Invalid request.' }, 400);
     console.error('Complaint creation failed', error);

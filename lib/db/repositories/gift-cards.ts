@@ -1,4 +1,6 @@
 import { staffMutationGuard } from './staff-mutation-guard';
+import { buildFormAnswerInsert } from './form-answers';
+import { assertCommerceFormReplay, type CommerceForm } from './commerce-form-replay';
 export class GiftCardConflictError extends Error {}
 export const MAX_GIFT_PAISA = Number.MAX_SAFE_INTEGER;
 export function parseGiftAmount(value: unknown): number {
@@ -96,7 +98,8 @@ function notification(
 }
 export async function issueGiftCard(
   db: D1Database,
-  o: { actorId: string; amountPaisa: number; requestId: string; now: number },
+  o: { actorId: string; amountPaisa: number; requestId: string; now: number;
+    form?: CommerceForm },
 ) {
   validRequest(o.requestId);
   if (!Number.isSafeInteger(o.amountPaisa) || o.amountPaisa < 1)
@@ -121,6 +124,9 @@ export async function issueGiftCard(
       throw new GiftCardConflictError(
         'This request was already used for another amount.',
       );
+    await assertCommerceFormReplay(db, { formId: 'commerce.gift-card-issue',
+      requestId: o.requestId, subjectType: 'gift_card_issue', subjectId: prior.id,
+      actorId: o.actorId, form: o.form, conflictError: GiftCardConflictError });
     return { ...prior, code: null, duplicate: true };
   }
   const bytes = crypto.getRandomValues(new Uint8Array(24));
@@ -148,6 +154,9 @@ export async function issueGiftCard(
         o.requestId,
         o.now,
       ),
+      ...(o.form ? [buildFormAnswerInsert(db, { formId: 'commerce.gift-card-issue',
+        requestId: o.requestId, versionId: o.form.versionId, subjectType: 'gift_card_issue',
+        subjectId: id, actorId: o.actorId, answers: o.form.answers, now: o.now })] : []),
       notification(db, o.actorId, id, o.now, true),
     ]);
   } catch {
@@ -159,7 +168,8 @@ export async function issueGiftCard(
 }
 export async function redeemGiftCard(
   db: D1Database,
-  o: { userId: string; code: string; requestId: string; now: number },
+  o: { userId: string; code: string; requestId: string; now: number;
+    form?: CommerceForm },
 ) {
   validRequest(o.requestId);
   const code = o.code.trim().toUpperCase();
@@ -191,8 +201,12 @@ export async function redeemGiftCard(
       'An active signed-in customer is required.',
     );
   if (card.redeemedBy) {
-    if (card.redeemedBy === o.userId && card.requestId === o.requestId)
+    if (card.redeemedBy === o.userId && card.requestId === o.requestId) {
+      await assertCommerceFormReplay(db, { formId: 'commerce.gift-card-redeem',
+        requestId: o.requestId, subjectType: 'gift_card_redemption', subjectId: card.id,
+        actorId: o.userId, form: o.form, conflictError: GiftCardConflictError });
       return { id: card.id, amountPaisa: card.amountPaisa, duplicate: true };
+    }
     throw new GiftCardConflictError('This gift card cannot be redeemed.');
   }
   try {
@@ -249,6 +263,9 @@ export async function redeemGiftCard(
         o.requestId,
         o.now,
       ),
+      ...(o.form ? [buildFormAnswerInsert(db, { formId: 'commerce.gift-card-redeem',
+        requestId: o.requestId, versionId: o.form.versionId, subjectType: 'gift_card_redemption',
+        subjectId: card.id, actorId: o.userId, answers: o.form.answers, now: o.now })] : []),
       notification(db, o.userId, card.id, o.now, false),
     ]);
   } catch {

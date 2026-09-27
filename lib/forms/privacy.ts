@@ -6,7 +6,7 @@ export class FormPrivacyError extends Error {
 
 // This predicate is deliberately an allowlist. A new subject type needs an
 // explicit parent-owner relationship before it can enter access exports or erasure.
-const owned = `((subject_type='user' AND subject_id=?)
+const ownedBase = `((subject_type='user' AND subject_id=?)
   OR (subject_type='address' AND (EXISTS(SELECT 1 FROM addresses a WHERE a.id=subject_id AND a.user_id=?)
     OR (NOT EXISTS(SELECT 1 FROM addresses live WHERE live.id=subject_id)
       AND EXISTS(SELECT 1 FROM address_answer_owner_tombstones gone
@@ -43,8 +43,27 @@ const owned = `((subject_type='user' AND subject_id=?)
   OR (subject_type='rider_event' AND form_id='rider.code-verify'
     AND EXISTS(SELECT 1 FROM rider_events event
       WHERE event.id=subject_id AND event.action='otp_verified' AND event.user_id=?))
-  OR (subject_type='data_rights_request' AND EXISTS(SELECT 1 FROM data_rights_requests d WHERE d.id=subject_id AND d.customer_id=?)))`;
-const ownerBindings = (userId: string) => Array(18).fill(userId) as string[];
+  OR (subject_type='data_rights_request' AND EXISTS(SELECT 1 FROM data_rights_requests d WHERE d.id=subject_id AND d.customer_id=?))
+  OR (subject_type='order' AND form_id='commerce.checkout' AND EXISTS(
+    SELECT 1 FROM orders o WHERE o.id=subject_id AND o.customer_id=?))
+  OR (subject_type='return_request' AND form_id='commerce.return-request' AND EXISTS(
+    SELECT 1 FROM return_requests r JOIN order_items i ON i.id=r.order_item_id
+    JOIN orders o ON o.id=i.order_id WHERE r.id=subject_id AND o.customer_id=?))
+  OR (subject_type='complaint' AND form_id='commerce.complaint' AND EXISTS(
+    SELECT 1 FROM complaints c JOIN orders o ON o.id=c.order_id
+    WHERE c.id=subject_id AND o.customer_id=?))
+  OR (subject_type='gift_card_issue' AND form_id='commerce.gift-card-issue' AND EXISTS(
+    SELECT 1 FROM gift_cards g WHERE g.id=subject_id AND g.issued_by=?))
+  OR (subject_type='gift_card_redemption' AND form_id='commerce.gift-card-redeem' AND EXISTS(
+    SELECT 1 FROM gift_cards g WHERE g.id=subject_id AND g.redeemed_by=?))
+  OR (subject_type='return_request' AND form_id='seller.case-return-response' AND EXISTS(
+    SELECT 1 FROM return_requests r JOIN order_items i ON i.id=r.order_item_id
+    JOIN seller_profiles s ON s.id=i.seller_id WHERE r.id=subject_id AND s.user_id=?))
+  OR (subject_type='complaint' AND form_id='seller.case-complaint-response' AND EXISTS(
+    SELECT 1 FROM complaints c JOIN seller_profiles s ON s.id=c.seller_id
+    WHERE c.id=subject_id AND s.user_id=?)))`;
+const owned = `(form_id NOT LIKE 'staff.%' AND ${ownedBase})`;
+const ownerBindings = (userId: string) => Array(25).fill(userId) as string[];
 const deletable = `(form_id='account.profile' AND subject_type='user' AND subject_id=?)`;
 
 function required(value: string, label: string, max = 191): string {

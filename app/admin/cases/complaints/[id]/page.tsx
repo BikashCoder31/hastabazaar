@@ -3,23 +3,36 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, History } from 'lucide-react';
 import { ComplaintCaseActions } from '@/components/admin/complaint-case-actions';
+import { AnswerDetails } from '@/components/forms/answer-details';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { getOperationsComplaintDetail } from '@/lib/db/repositories/complaints';
+import { listFormAnswersForSubjectPage } from '@/lib/db/repositories/form-answers';
+import { authorizeFormAnswerRead } from '@/lib/forms/access';
 
 export const dynamic = 'force-dynamic';
 export default async function AdminComplaintPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ historyKind?: string; historyAt?: string; historyId?: string }>;
 }) {
   const { id } = await params;
-  await requireStaffPage(`/admin/cases/complaints/${id}`, 'support.manage');
-  const item = await getOperationsComplaintDetail(
-    requireDatabase(env as unknown as { DB?: D1Database }),
-    id,
-  );
+  const staff = await requireStaffPage(`/admin/cases/complaints/${id}`, 'support.manage');
+  const db = requireDatabase(env as unknown as { DB?: D1Database });
+  const item = await getOperationsComplaintDetail(db, id);
   if (!item) notFound();
+  const query = await searchParams;
+  const kind = query?.historyKind === 'seller' ? 'seller' : 'customer';
+  const at = query?.historyAt ? Number(query.historyAt) : NaN;
+  const after = Number.isSafeInteger(at) && at >= 0 && query?.historyId && query.historyId.length <= 191
+    ? { createdAt: at, id: query.historyId } : undefined;
+  const history = await listFormAnswersForSubjectPage(db, { subjectType: 'complaint',
+    subjectId: item.id, formId: kind === 'seller' ? 'seller.case-complaint-response' : 'commerce.complaint', after });
+  const allowed = await Promise.all(history.answers.map((answer) =>
+    authorizeFormAnswerRead(db, { id: staff.id, role: staff.role }, answer)));
+  if (allowed.some((value) => !value)) notFound();
   return (
     <div>
       <Link
@@ -44,6 +57,16 @@ export default async function AdminComplaintPage({
       </div>
       <div className="mt-8 grid gap-6 2xl:grid-cols-[minmax(0,1fr)_23rem]">
         <div className="space-y-6">
+          <section className="space-y-4 rounded-2xl border bg-card p-6" aria-label="Complaint form answer history">
+            <h2 className="font-heading text-2xl">Form answer history</h2>
+            <nav className="flex gap-4 text-sm"><Link className="underline" href={`/admin/cases/complaints/${encodeURIComponent(id)}`}>Customer request</Link>
+              <Link className="underline" href={`/admin/cases/complaints/${encodeURIComponent(id)}?historyKind=seller`}>Seller response</Link></nav>
+            {history.answers.length ? history.answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)
+              : <p>No saved answers for this action.</p>}
+            {history.nextCursor ? <Link className="underline" href={
+              `/admin/cases/complaints/${encodeURIComponent(id)}?historyKind=${kind}&historyAt=${history.nextCursor.createdAt}&historyId=${encodeURIComponent(history.nextCursor.id)}`
+            }>Next 50 answers</Link> : null}
+          </section>
           <section className="rounded-2xl border bg-card p-6">
             <h2 className="font-heading text-2xl">Complaint</h2>
             <p className="mt-4 whitespace-pre-wrap text-sm leading-7">

@@ -8,10 +8,10 @@ import { collectFormSites, scanFormSites } from './helpers/form-policy';
 
 const root = resolve(import.meta.dirname, '..');
 
-void test('the frozen source inventory contains exactly 69 form elements in 51 files', async () => {
+void test('the reviewed source inventory contains 70 form elements in 52 files', async () => {
   const sites = await collectFormSites(root);
-  assert.equal(sites.length, 69);
-  assert.equal(new Set(sites.map((site) => site.path)).size, 51);
+  assert.equal(sites.length, 70);
+  assert.equal(new Set(sites.map((site) => site.path)).size, 52);
   assert.deepEqual(await scanFormSites(root), []);
 });
 
@@ -118,8 +118,8 @@ void test('a future query form with an invented nonpending adapter is rejected',
   }
 });
 
-void test('click-driven data entry has a separate audited inventory including seller case responses', () => {
-  const caseResponse = PROGRAMMATIC_FORM_SITES.find((site) => site.path === 'components/seller/case-response-form.tsx');
+void test('seller case responses are rendered forms and remaining click-driven sites stay audited', async () => {
+  const caseResponse = (await collectFormSites(root)).find((site) => site.path === 'components/seller/case-response-form.tsx');
   assert.deepEqual(caseResponse?.formIds, ['seller.case-return-response', 'seller.case-complaint-response']);
   for (const site of PROGRAMMATIC_FORM_SITES) {
     assert.ok(site.explanation.length > 0);

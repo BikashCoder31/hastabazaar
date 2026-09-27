@@ -20,6 +20,8 @@ export interface CheckoutInput {
   deliveryRateVersion?: string;
   useWallet?: boolean;
   referralCode?: string;
+  formVersion?: unknown;
+  customAnswers?: unknown;
 }
 
 export interface CheckoutValidationResult {
@@ -63,6 +65,8 @@ export function parseCheckoutInput(body: unknown): CheckoutValidationResult {
     deliveryRateVersion: text(source.deliveryRateVersion) || undefined,
     useWallet: source.useWallet === true,
     referralCode: text(source.referralCode).toUpperCase(),
+    formVersion: source.formVersion,
+    customAnswers: source.customAnswers,
     address: {
       recipientName: text(rawAddress.recipientName),
       phone: phone(rawAddress.phone),

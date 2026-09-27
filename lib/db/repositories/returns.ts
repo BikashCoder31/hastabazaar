@@ -1,4 +1,6 @@
 import { caseBusinessNotificationStatements } from '../../operations/business-notifications';
+import { buildFormAnswerInsert } from './form-answers';
+import { assertCommerceFormReplay, type CommerceForm } from './commerce-form-replay';
 import type { StaffRole } from '@/lib/auth/staff';
 import { splitCreditRefund } from './wallet';
 import type { SupportedLocale } from '@/lib/marketplace/types';
@@ -18,6 +20,51 @@ export interface ReturnEvidenceInput {
   originalName: string;
   mimeType: string;
   sizeBytes: number;
+  sha256?: string;
+  nameSha256?: string;
+}
+
+type ReturnReplayRow = { id: string; referenceNumber: string; eligibilityDecision: string;
+  orderItemId: string; quantity: number; reason: ReturnReason; requestedResolution: RequestedResolution;
+  originalSealIntact: number; detail: string; locale: SupportedLocale };
+
+function assertReturnReplay(row: ReturnReplayRow, options: {
+  orderItemId: string; quantity: number; reason: ReturnReason; requestedResolution: RequestedResolution;
+  originalSealIntact?: boolean; detail: string; locale: SupportedLocale;
+}): void {
+  if (row.orderItemId !== options.orderItemId || row.quantity !== options.quantity ||
+    row.reason !== options.reason || row.requestedResolution !== options.requestedResolution ||
+    Boolean(row.originalSealIntact) !== Boolean(options.originalSealIntact) ||
+    row.detail !== options.detail || row.locale !== options.locale) {
+    throw new ReturnConflictError('This request ID was already used for different return details.');
+  }
+}
+
+function evidenceManifest(evidence: readonly ReturnEvidenceInput[]) {
+  if (evidence.some((file) => !file.sha256 || !/^[a-f0-9]{64}$/.test(file.sha256) ||
+    (file.nameSha256 !== undefined && !/^[a-f0-9]{64}$/.test(file.nameSha256))))
+    throw new ReturnConflictError('Evidence content could not be verified for this return request.');
+  return evidence.map(({ originalName, mimeType, sizeBytes, sha256, nameSha256 }) => ({
+    originalName, mimeType, sizeBytes, sha256, nameSha256,
+  }));
+}
+
+async function assertReturnEvidenceReplay(database: D1Database, caseId: string,
+  requestId: string, submitted: readonly ReturnEvidenceInput[]): Promise<void> {
+  const recorded = await database.prepare(`SELECT next_json AS nextJson FROM audit_logs
+    WHERE action='return.customer.requested' AND subject_type='return_request'
+      AND subject_id=? AND request_id=? LIMIT 1`).bind(caseId, requestId)
+    .first<{ nextJson: string | null }>();
+  let saved: unknown;
+  try { saved = recorded?.nextJson ? JSON.parse(recorded.nextJson).evidenceManifest : undefined; }
+  catch { throw new ReturnConflictError('Saved return evidence could not be verified.'); }
+  if (saved === undefined) {
+    const prior = await database.prepare('SELECT COUNT(*) AS count FROM return_evidence WHERE return_request_id=?')
+      .bind(caseId).first<{ count: number }>();
+    if ((prior?.count ?? 0) === 0 && submitted.length === 0) return;
+  }
+  if (JSON.stringify(saved) !== JSON.stringify(evidenceManifest(submitted)))
+    throw new ReturnConflictError('This request ID was already used for different return details.');
 }
 
 function caseReference(prefix: 'RET' | 'CMP', now: number): string {
@@ -63,6 +110,7 @@ export async function createCustomerReturnRequest(
     idempotencyKey: string;
     evidence: readonly ReturnEvidenceInput[];
     now: number;
+    form?: CommerceForm;
   },
 ): Promise<{
   id: string;
@@ -73,7 +121,11 @@ export async function createCustomerReturnRequest(
   const previous = await database
     .prepare(
       `SELECT return_requests.id, return_requests.reference_number AS referenceNumber,
-        return_requests.eligibility_decision AS eligibilityDecision
+        return_requests.eligibility_decision AS eligibilityDecision,
+        return_requests.order_item_id AS orderItemId, return_requests.quantity,
+        return_requests.reason, return_requests.requested_resolution AS requestedResolution,
+        return_requests.original_seal_intact AS originalSealIntact,
+        return_requests.detail, return_requests.locale
        FROM return_requests
        INNER JOIN order_items ON order_items.id = return_requests.order_item_id
        INNER JOIN orders ON orders.id = order_items.order_id
@@ -88,12 +140,16 @@ export async function createCustomerReturnRequest(
       options.receiptTokenHash,
       options.customerId ?? null,
     )
-    .first<{
-      id: string;
-      referenceNumber: string;
-      eligibilityDecision: string;
-    }>();
-  if (previous) return { ...previous, duplicate: true };
+    .first<ReturnReplayRow>();
+  if (previous) {
+    assertReturnReplay(previous, options);
+    await assertReturnEvidenceReplay(database, previous.id, options.idempotencyKey, options.evidence);
+    await assertCommerceFormReplay(database, { formId: 'commerce.return-request',
+      requestId: options.idempotencyKey, subjectType: 'return_request', subjectId: previous.id,
+      actorId: options.customerId ?? null, form: options.form, conflictError: ReturnConflictError });
+    return { id: previous.id, referenceNumber: previous.referenceNumber,
+      eligibilityDecision: previous.eligibilityDecision, duplicate: true };
+  }
 
   const item = await database
     .prepare(
@@ -168,6 +224,7 @@ export async function createCustomerReturnRequest(
     policy,
   });
   const id = crypto.randomUUID();
+  const submittedEvidenceManifest = evidenceManifest(options.evidence);
   const referenceNumber = caseReference('RET', options.now);
   const eventId = crypto.randomUUID();
   const statements: D1PreparedStatement[] = [
@@ -239,6 +296,14 @@ export async function createCustomerReturnRequest(
       ),
   ];
 
+  // Keep the conditional case insert and its answer/event writes in one rollback boundary.
+  // D1 batch success alone does not mean the INSERT ... SELECT matched a row.
+  statements.splice(1, 0, database.prepare(
+    `SELECT CASE WHEN EXISTS (
+      SELECT 1 FROM return_requests WHERE id = ? AND created_request_id = ?
+    ) THEN 1 ELSE json_extract('invalid-case-insert', '$') END`,
+  ).bind(id, options.idempotencyKey));
+
   for (const evidence of options.evidence) {
     statements.push(
       database
@@ -282,6 +347,7 @@ export async function createCustomerReturnRequest(
           requestedResolution: options.requestedResolution,
           originalSealIntact: Boolean(options.originalSealIntact),
           eligibility: eligibility.decision,
+          evidenceManifest: submittedEvidenceManifest,
         }),
         options.idempotencyKey,
         options.now,
@@ -289,6 +355,12 @@ export async function createCustomerReturnRequest(
         options.idempotencyKey,
       ),
   );
+
+  if (options.form) statements.push(buildFormAnswerInsert(database, {
+    formId: 'commerce.return-request', requestId: options.idempotencyKey,
+    versionId: options.form.versionId, subjectType: 'return_request', subjectId: id,
+    actorId: options.customerId ?? null, answers: options.form.answers, now: options.now,
+  }));
 
   try {
     statements.push(
@@ -314,16 +386,22 @@ export async function createCustomerReturnRequest(
       const duplicate = await database
         .prepare(
           `SELECT id, reference_number AS referenceNumber,
-            eligibility_decision AS eligibilityDecision
+            eligibility_decision AS eligibilityDecision, order_item_id AS orderItemId,
+            quantity, reason, requested_resolution AS requestedResolution,
+            original_seal_intact AS originalSealIntact, detail, locale
            FROM return_requests WHERE created_request_id = ? LIMIT 1`,
         )
         .bind(options.idempotencyKey)
-        .first<{
-          id: string;
-          referenceNumber: string;
-          eligibilityDecision: string;
-        }>();
-      if (duplicate) return { ...duplicate, duplicate: true };
+        .first<ReturnReplayRow>();
+      if (duplicate) {
+        assertReturnReplay(duplicate, options);
+        await assertReturnEvidenceReplay(database, duplicate.id, options.idempotencyKey, options.evidence);
+        await assertCommerceFormReplay(database, { formId: 'commerce.return-request',
+          requestId: options.idempotencyKey, subjectType: 'return_request', subjectId: duplicate.id,
+          actorId: options.customerId ?? null, form: options.form, conflictError: ReturnConflictError });
+        return { id: duplicate.id, referenceNumber: duplicate.referenceNumber,
+          eligibilityDecision: duplicate.eligibilityDecision, duplicate: true };
+      }
       throw new ReturnConflictError(
         'Another return is open or the remaining item quantity is insufficient.',
       );
@@ -514,12 +592,8 @@ export async function addCustomerReturnClarification(
     now: number;
   },
 ): Promise<void> {
-  const duplicate = await database
-    .prepare(
-      `SELECT id FROM return_request_events WHERE request_id = ? LIMIT 1`,
-    )
-    .bind(options.requestId)
-    .first();
+  const duplicate = await database.prepare(`SELECT id FROM return_request_events WHERE request_id = ? LIMIT 1`)
+    .bind(options.requestId).first();
   if (duplicate) return;
   const results = await database.batch([
     database
@@ -642,15 +716,48 @@ export async function respondToReturnAsSeller(
     locale: SupportedLocale;
     requestId: string;
     now: number;
+    form?: CommerceForm;
   },
 ): Promise<void> {
+  if (!['accept', 'contest', 'request_information'].includes(options.recommendation) ||
+      !['en-NP', 'ne-NP'].includes(options.locale) ||
+      options.response.trim().length < 20 || options.response.length > 2000 ||
+      options.requestId.length < 8 || options.requestId.length > 100)
+    throw new ReturnConflictError('Seller response details are invalid.');
+  const seller = await database.prepare(`SELECT 1 AS valid FROM seller_profiles s
+    JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.user_id=?
+      AND s.status='approved' AND u.status='active' LIMIT 1`)
+    .bind(options.sellerId, options.actorId).first();
+  if (!seller) throw new ReturnConflictError('Seller authority changed.');
   const duplicate = await database
     .prepare(
-      `SELECT id FROM return_request_events WHERE request_id = ? LIMIT 1`,
+      `SELECT e.return_request_id AS caseId,e.actor_id AS actorId,e.internal_note AS response,
+        e.action,r.seller_recommendation AS recommendation,r.seller_response_locale AS locale,
+        i.seller_id AS sellerId FROM return_request_events e
+        JOIN return_requests r ON r.id=e.return_request_id
+        JOIN order_items i ON i.id=r.order_item_id
+        WHERE e.request_id = ? LIMIT 1`,
     )
     .bind(options.requestId)
-    .first();
-  if (duplicate) return;
+    .first<{ caseId: string; actorId: string | null; response: string | null;
+      action: string; recommendation: string | null; locale: string | null; sellerId: string }>();
+  if (duplicate) {
+    if (duplicate.caseId !== options.returnRequestId || duplicate.actorId !== options.actorId ||
+        duplicate.sellerId !== options.sellerId || duplicate.action !== 'seller_responded' ||
+        duplicate.response !== options.response || duplicate.recommendation !== options.recommendation ||
+        duplicate.locale !== options.locale)
+      throw new ReturnConflictError('This request was already used for a different response.');
+    await assertCommerceFormReplay(database, { formId: 'seller.case-return-response',
+      requestId: options.requestId, subjectType: 'return_request', subjectId: duplicate.caseId,
+      actorId: options.actorId, form: options.form, conflictError: ReturnConflictError });
+    return;
+  }
+  const current = await database.prepare(`SELECT r.status FROM return_requests r
+    JOIN order_items i ON i.id=r.order_item_id
+    WHERE r.id=? AND i.seller_id=? AND r.seller_response IS NULL LIMIT 1`)
+    .bind(options.returnRequestId, options.sellerId).first<{ status: string }>();
+  if (!current || current.status !== 'requested')
+    throw new ReturnConflictError('This case is not awaiting a seller response.');
   const results = await database.batch([
     database
       .prepare(
@@ -659,8 +766,11 @@ export async function respondToReturnAsSeller(
           status = 'under_investigation', operation_request_id = ?, updated_at = ?
          WHERE id = ? AND status = 'requested' AND seller_response IS NULL
            AND EXISTS (
-             SELECT 1 FROM order_items WHERE order_items.id = return_requests.order_item_id
-               AND order_items.seller_id = ?
+             SELECT 1 FROM order_items JOIN seller_profiles s ON s.id=order_items.seller_id
+               JOIN users u ON u.id=s.user_id
+             WHERE order_items.id = return_requests.order_item_id
+               AND order_items.seller_id = ? AND s.user_id=?
+               AND s.status='approved' AND u.status='active'
            )`,
       )
       .bind(
@@ -673,7 +783,12 @@ export async function respondToReturnAsSeller(
         options.now,
         options.returnRequestId,
         options.sellerId,
+        options.actorId,
       ),
+    database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM return_requests
+      WHERE id=? AND operation_request_id=? AND seller_responded_by=?)
+      THEN 1 ELSE json_extract('invalid-seller-response','$') END`)
+      .bind(options.returnRequestId, options.requestId, options.actorId),
     database
       .prepare(
         `INSERT INTO return_request_events (
@@ -694,6 +809,12 @@ export async function respondToReturnAsSeller(
         options.returnRequestId,
         options.requestId,
       ),
+    ...(options.form ? [buildFormAnswerInsert(database, {
+      formId: 'seller.case-return-response', requestId: options.requestId,
+      versionId: options.form.versionId, subjectType: 'return_request',
+      subjectId: options.returnRequestId, actorId: options.actorId,
+      answers: options.form.answers, now: options.now,
+    })] : []),
     database
       .prepare(
         `INSERT INTO audit_logs (

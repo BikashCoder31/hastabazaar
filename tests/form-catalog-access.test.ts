@@ -98,6 +98,11 @@ async function fixture() {
       operation_request_id TEXT UNIQUE,created_at INTEGER);
     CREATE TABLE seller_profiles(id TEXT PRIMARY KEY, user_id TEXT NOT NULL);
     CREATE TABLE products(id TEXT PRIMARY KEY, seller_id TEXT NOT NULL);
+    CREATE TABLE orders(id TEXT PRIMARY KEY, customer_id TEXT NOT NULL);
+    CREATE TABLE order_items(id TEXT PRIMARY KEY, order_id TEXT NOT NULL, seller_id TEXT NOT NULL);
+    CREATE TABLE return_requests(id TEXT PRIMARY KEY, order_item_id TEXT NOT NULL);
+    CREATE TABLE complaints(id TEXT PRIMARY KEY, order_id TEXT NOT NULL, seller_id TEXT NOT NULL);
+    CREATE TABLE gift_cards(id TEXT PRIMARY KEY, issued_by TEXT, redeemed_by TEXT);
     CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY);
     CREATE TABLE rider_applications(id TEXT PRIMARY KEY,user_id TEXT NOT NULL);
     CREATE TABLE rider_reports(id TEXT PRIMARY KEY,rider_user_id TEXT NOT NULL);
@@ -137,6 +142,11 @@ async function fixture() {
     reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
     VALUES ('v2','account.profile',2,1,'published',?,'Archive','staff',2,'staff',2,'staff',2,'seed-v2')`)
     .run(JSON.stringify({ formId: 'account.profile', fields: [{ ...choice, status: 'archived' }] }));
+  sqlite.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,
+    reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+    VALUES ('privacy-v1','staff.privacy-action',1,1,'published',?,
+      'Test action form','staff',1,'staff',1,'staff',1,'privacy-seed')`)
+    .run(JSON.stringify({ formId: 'staff.privacy-action', fields: [] }));
   const answer = JSON.stringify({ formId: 'account.profile', version: 1, answers: [
     { fieldId: 'color', label: 'Original color', type: 'single_choice', value: 'blue' },
   ] });
@@ -350,12 +360,14 @@ void test('mounted access export can start a fresh attempt after an audited-ID c
   const requestIds: string[] = [];
   try {
     await page.route('https://privacy.test/**', async (route: {
-      request(): { url(): string; postDataJSON(): { requestId: string } };
+      request(): { url(): string; postDataJSON(): { requestId: string } | null };
       fulfill(input: { status: number; contentType: string; body: string }): Promise<void>;
     }) => {
       if (new URL(route.request().url()).pathname === '/')
         return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><div id="root"></div>' });
-      requestIds.push(route.request().postDataJSON().requestId);
+      const payload = route.request().postDataJSON();
+      if (!payload) return route.fulfill({ status: 404, contentType: 'text/plain', body: '' });
+      requestIds.push(payload.requestId);
       if (requestIds.length === 1 || requestIds[1] === requestIds[0])
         return route.fulfill({ status: 409, contentType: 'application/json',
           body: JSON.stringify({ error: 'This export request ID was already used. Start a new export to obtain current data.' }) });
@@ -497,7 +509,8 @@ void test('request completion alone cannot claim an access export or deletion oc
       sqlite.prepare("UPDATE data_rights_requests SET status='approved' WHERE id=?").run(id);
       const response = await POST(new Request(`http://localhost:3000/api/admin/privacy/${id}`, {
         method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'complete', note: 'All reviewed work is documented.', requestId: `complete-${id}` }),
+        body: JSON.stringify({ action: 'complete', note: 'All reviewed work is documented.', requestId: `complete-${id}`,
+          formVersion: 1, customAnswers: [] }),
       }), { params: Promise.resolve({ id }) });
       assert.equal(response.status, 409, id);
       assert.equal(sqlite.prepare('SELECT status FROM data_rights_requests WHERE id=?').get(id)?.status, 'approved');
@@ -534,7 +547,7 @@ void test('partial profile erasure cannot complete deletion while owned seller a
     const response = await POST(new Request('http://localhost:3000/api/admin/privacy/delete-owner', {
       method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'complete', note: 'Profile history erased; seller answers remain.',
-        requestId: 'complete-partial' }),
+        requestId: 'complete-partial', formVersion: 1, customAnswers: [] }),
     }), { params: Promise.resolve({ id: 'delete-owner' }) });
     assert.equal(response.status, 409);
     assert.equal(sqlite.prepare("SELECT status FROM data_rights_requests WHERE id='delete-owner'").get()?.status, 'approved');
@@ -559,7 +572,7 @@ void test('deletion completion rechecks surviving answers inside the status batc
     const response = await POST(new Request('http://localhost:3000/api/admin/privacy/delete-owner', {
       method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'complete', note: 'History was erased earlier.',
-        requestId: 'complete-race' }),
+        requestId: 'complete-race', formVersion: 1, customAnswers: [] }),
     }), { params: Promise.resolve({ id: 'delete-owner' }) });
     assert.equal(response.status, 409);
     assert.equal(sqlite.prepare("SELECT status FROM data_rights_requests WHERE id='delete-owner'").get()?.status, 'approved');
@@ -579,6 +592,22 @@ void test('privacy export contains owned historical snapshots without other user
     assert.deepEqual((await listFormAnswersForSubject(db, 'user', 'owner')).map((row) => row.id), ['a-owner']);
     assert.deepEqual((await collectFormAnswersForPrivacy(db, 'seller')).map((row) => row.id), ['a-seller']);
     assert.deepEqual((await collectFormAnswersForPrivacy(db, 'rider')).map((row) => row.id), ['a-rider']);
+  } finally { sqlite.close(); }
+});
+
+void test('customer privacy export excludes staff decision answers on their request', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    sqlite.prepare(`INSERT INTO form_answer_sets(id,form_id,request_id,config_version_id,
+      subject_type,subject_id,actor_id,answers_json,created_at)
+      VALUES ('staff-private','staff.privacy-action','staff-private-request','privacy-v1',
+        'data_rights_request','access-owner','staff',?,4)`)
+      .run(JSON.stringify({ formId: 'staff.privacy-action', version: 1, answers: [] }));
+    const staffAnswer = await getFormAnswerById(db, 'staff-private');
+    assert.ok(staffAnswer);
+    assert.equal(await authorizeFormAnswerRead(db, { id: 'owner', role: 'customer' }, staffAnswer), false);
+    assert.deepEqual((await collectFormAnswersForPrivacy(db, 'owner')).map((row) => row.id),
+      ['a-owner']);
   } finally { sqlite.close(); }
 });
 

@@ -8,6 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 import {
   Accordion,
   AccordionContent,
@@ -41,6 +45,11 @@ function newKey() {
   return crypto.randomUUID();
 }
 
+const returnBaseKeys = ['orderItemId', 'quantity', 'requestedResolution', 'reason',
+  'detail', 'originalSealIntact', 'locale', 'evidence', 'idempotencyKey'];
+const complaintBaseKeys = ['orderItemId', 'category', 'subject', 'detail',
+  'locale', 'idempotencyKey'];
+
 export function CustomerAftercare({
   orderNumber,
   orderStatus,
@@ -55,9 +64,11 @@ export function CustomerAftercare({
   complaints: readonly ComplaintRow[];
 }) {
   const router = useRouter();
+  const returnForm = usePublishedFormConfig('commerce.return-request');
+  const complaintForm = usePublishedFormConfig('commerce.complaint');
   const returnItems=items.filter(item=>item.fulfillmentStatus==='delivered'||(!item.fulfillmentStatus&&orderStatus==='delivered'));
-  const [returnKey, setReturnKey] = useState(newKey);
-  const [complaintKey, setComplaintKey] = useState(newKey);
+  const returnAttemptKey = sessionAttemptKey('commerce.return-request', orderNumber);
+  const complaintAttemptKey = sessionAttemptKey('commerce.complaint', orderNumber);
   const [returnPending, setReturnPending] = useState(false);
   const [complaintPending, setComplaintPending] = useState(false);
   const [returnError, setReturnError] = useState('');
@@ -72,12 +83,21 @@ export function CustomerAftercare({
   ) {
     event.preventDefault();
     const formElement = event.currentTarget;
+    if (!returnForm.canSubmit || !returnForm.config) {
+      setReturnError(returnForm.message || 'Return form is unavailable.');
+      return;
+    }
     setReturnPending(true);
     setReturnError('');
     setReturnMessage('');
-    const form = new FormData(formElement);
-    form.set('idempotencyKey', returnKey);
     try {
+      const configured = readConfiguredSubmission(formElement, returnForm.config, returnBaseKeys);
+      const form = new FormData(formElement);
+      for (const key of [...form.keys()]) if (key.startsWith('custom.')) form.delete(key);
+      const payload = configuredJsonPayload(returnForm.config, configured.answers, returnBaseKeys);
+      form.set('formVersion', String(payload.formVersion));
+      form.set('customAnswers', JSON.stringify(payload.customAnswers));
+      form.set('idempotencyKey', getOrCreateSessionAttempt(returnAttemptKey));
       const response = await fetch(
         `/orders/${encodeURIComponent(orderNumber)}/returns`,
         { method: 'POST', body: form },
@@ -85,11 +105,14 @@ export function CustomerAftercare({
       const result = (await response.json()) as {
         error?: string;
         message?: string;
+        code?: string;
       };
+      if (response.status === 409 && result.code === 'stale_version')
+        returnForm.handleSubmissionResponse(response);
       if (!response.ok)
         throw new Error(result.error || 'Return request could not be sent.');
       setReturnMessage(result.message || 'Return request received.');
-      setReturnKey(newKey());
+      clearSessionAttempt(returnAttemptKey);
       formElement.reset();
       router.refresh();
     } catch (error) {
@@ -108,11 +131,16 @@ export function CustomerAftercare({
   ) {
     event.preventDefault();
     const formElement = event.currentTarget;
+    if (!complaintForm.canSubmit || !complaintForm.config) {
+      setComplaintError(complaintForm.message || 'Complaint form is unavailable.');
+      return;
+    }
     setComplaintPending(true);
     setComplaintError('');
     setComplaintMessage('');
     const form = new FormData(formElement);
     try {
+      const configured = readConfiguredSubmission(formElement, complaintForm.config, complaintBaseKeys);
       const response = await fetch(
         `/orders/${encodeURIComponent(orderNumber)}/complaints`,
         {
@@ -124,18 +152,22 @@ export function CustomerAftercare({
             subject: form.get('subject'),
             detail: form.get('detail'),
             locale: 'en-NP',
-            idempotencyKey: complaintKey,
+            idempotencyKey: getOrCreateSessionAttempt(complaintAttemptKey),
+            ...configuredJsonPayload(complaintForm.config, configured.answers, complaintBaseKeys),
           }),
         },
       );
       const result = (await response.json()) as {
         error?: string;
         message?: string;
+        code?: string;
       };
+      if (response.status === 409 && result.code === 'stale_version')
+        complaintForm.handleSubmissionResponse(response);
       if (!response.ok)
         throw new Error(result.error || 'Complaint could not be sent.');
       setComplaintMessage(result.message || 'Complaint received.');
-      setComplaintKey(newKey());
+      clearSessionAttempt(complaintAttemptKey);
       formElement.reset();
       router.refresh();
     } catch (error) {
@@ -247,7 +279,7 @@ export function CustomerAftercare({
             </span>
           </AccordionTrigger>
           <AccordionContent className="h-auto pb-6">
-            <form onSubmit={submitReturn} className="border-t pt-5">
+            <form data-form-id="commerce.return-request" onSubmit={submitReturn} className="border-t pt-5">
               <div className="flex items-center gap-2">
                 <RotateCcw className="size-5 text-primary" />
                 <h3 className="font-heading text-2xl">Request a return</h3>
@@ -348,6 +380,8 @@ export function CustomerAftercare({
                       invalidate a statutory claim.
                     </p>
                   </Field>
+                  {returnForm.config ? <ConfiguredFields config={returnForm.config} baseKeys={returnBaseKeys} /> : null}
+                  {!returnForm.canSubmit ? <p role="status">{returnForm.message || 'Loading return form…'}</p> : null}
                   {returnError ? (
                     <p
                       role="alert"
@@ -361,7 +395,7 @@ export function CustomerAftercare({
                       {returnMessage}
                     </output>
                   ) : null}
-                  <Button type="submit" disabled={returnPending}>
+                  <Button type="submit" disabled={returnPending || !returnForm.canSubmit}>
                     {returnPending ? 'Sending…' : 'Send return request'}
                   </Button>
                 </div>
@@ -380,7 +414,7 @@ export function CustomerAftercare({
             </span>
           </AccordionTrigger>
           <AccordionContent className="h-auto pb-6">
-            <form onSubmit={submitComplaint} className="border-t pt-5">
+            <form data-form-id="commerce.complaint" onSubmit={submitComplaint} className="border-t pt-5">
               <div className="flex items-center gap-2">
                 <CircleAlert className="size-5 text-primary" />
                 <h3 className="font-heading text-2xl">Raise a complaint</h3>
@@ -431,6 +465,8 @@ export function CustomerAftercare({
                     placeholder="Explain what happened and what help you need."
                   />
                 </Field>
+                {complaintForm.config ? <ConfiguredFields config={complaintForm.config} baseKeys={complaintBaseKeys} /> : null}
+                {!complaintForm.canSubmit ? <p role="status">{complaintForm.message || 'Loading complaint form…'}</p> : null}
                 {complaintError ? (
                   <p
                     role="alert"
@@ -447,7 +483,7 @@ export function CustomerAftercare({
                 <Button
                   type="submit"
                   variant="outline"
-                  disabled={complaintPending}
+                  disabled={complaintPending || !complaintForm.canSubmit}
                 >
                   {complaintPending ? 'Sending…' : 'Send complaint'}
                 </Button>

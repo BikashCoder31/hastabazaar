@@ -21,6 +21,10 @@ import {
 } from '@/lib/http/rate-limit';
 import { getCustomerUser } from '@/lib/auth/customer';
 import { WalletConflictError } from '@/lib/db/repositories/wallet';
+import { readBoundedBody, BodyTooLargeError } from '@/lib/http/bounded-body';
+import { validateSellerFormSubmission } from '@/lib/forms/submission';
+import { FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,9 +50,13 @@ export async function POST(request: Request): Promise<Response> {
   const cartToken = readCookie(request, CART_COOKIE);
   if (!cartToken) return json({ error: 'Your cart is empty.' }, 409);
   try {
-    const parsed = parseCheckoutInput(await request.json());
+    const parsed = parseCheckoutInput(JSON.parse(new TextDecoder().decode(
+      await readBoundedBody(request, 131_072))));
     if (!parsed.value)
       return json({ error: parsed.errors[0], errors: parsed.errors }, 400);
+    if (!Number.isSafeInteger(parsed.value.formVersion) ||
+      !Array.isArray(parsed.value.customAnswers))
+      return json({ error: 'Form version and answers are required.' }, 400);
     if (!parsed.value.deliveryRateVersion)
       return json(
         { error: 'Reload checkout to review current delivery rates.' },
@@ -56,6 +64,8 @@ export async function POST(request: Request): Promise<Response> {
       );
     const customer = await getCustomerUser();
     if (customer) parsed.value.customerEmail = customer.email;
+    const configured = await validateSellerFormSubmission(database, 'commerce.checkout',
+      parsed.value.formVersion, parsed.value.customAnswers, parsed.value.idempotencyKey);
     const [cartHash, receiptHash] = await Promise.all([
       hashOpaqueToken(cartToken),
       hashOpaqueToken(parsed.value.idempotencyKey),
@@ -67,6 +77,7 @@ export async function POST(request: Request): Promise<Response> {
       parsed.value,
       Date.now(),
       customer?.userId ?? null,
+      { versionId: configured.versionId, answers: configured.answers },
     );
     await sendPendingOrderUpdates({ orderNumber: result.orderNumber });
     const response = json(
@@ -97,6 +108,12 @@ export async function POST(request: Request): Promise<Response> {
       return json({ error: error.message }, 409);
     if (error instanceof SyntaxError)
       return json({ error: 'Invalid checkout request.' }, 400);
+    if (error instanceof BodyTooLargeError)
+      return json({ error: 'Checkout request is too large.' }, 413);
+    if (error instanceof FormRuntimeError)
+      return json({ error: error.message, code: error.code }, error.code === 'stale_version' ? 409 : 503);
+    if (error instanceof FormValidationError)
+      return json({ error: error.message, fieldId: error.fieldId }, 400);
     console.error('Checkout failed', error);
     return json(
       { error: 'The order could not be placed. No payment was collected.' },

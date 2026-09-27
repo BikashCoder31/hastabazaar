@@ -4,8 +4,14 @@ import { useRouter } from 'next/navigation';
 import { useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { sendJson } from '@/lib/http/client-request';
 import { Textarea } from '@/components/ui/textarea';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
+
+const caseBaseKeys = ['response', 'recommendation', 'locale', 'idempotencyKey',
+  'returnRequestId', 'complaintId', 'sellerId', 'actorId'];
 
 export function SellerCaseResponseForm({
   kind,
@@ -17,10 +23,12 @@ export function SellerCaseResponseForm({
   disabled: boolean;
 }) {
   const router = useRouter();
+  const formId = kind === 'return' ? 'seller.case-return-response' : 'seller.case-complaint-response';
+  const published = usePublishedFormConfig(formId);
   const inputId = useId();
   const [response, setResponse] = useState('');
   const [recommendation, setRecommendation] = useState('accept');
-  const [requestId] = useState(() => crypto.randomUUID());
+  const attemptKey = sessionAttemptKey(formId, id);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   if (disabled)
@@ -30,26 +38,36 @@ export function SellerCaseResponseForm({
         makes the final decision.
       </p>
     );
-  async function submit() {
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     if (pending || disabled) return;
+    if (!published.canSubmit || !published.config) {
+      setError(published.message || 'Response form is unavailable.');
+      return;
+    }
     setPending(true);
     setError('');
     try {
+      const configured = readConfiguredSubmission(event.currentTarget, published.config, caseBaseKeys);
       const endpoint =
         kind === 'return'
           ? `/api/seller/returns/${encodeURIComponent(id)}/response`
           : `/api/seller/complaints/${encodeURIComponent(id)}/response`;
       const resultBody = {
         response,
-        idempotencyKey: requestId,
+        idempotencyKey: getOrCreateSessionAttempt(attemptKey),
         ...(kind === 'return' ? { recommendation, locale: 'en-NP' } : {}),
+        ...configuredJsonPayload(published.config, configured.answers, caseBaseKeys),
       };
-      await sendJson(
-        endpoint,
-        'POST',
-        resultBody,
-        'Response could not be saved.',
-      );
+      const saved = await fetch(endpoint, { method: 'POST',
+        headers: { 'content-type': 'application/json' }, body: JSON.stringify(resultBody) });
+      const result = await saved.json().catch(() => null) as { error?: string; code?: string } | null;
+      if (!saved.ok) {
+        if (saved.status === 409 && result?.code === 'stale_version')
+          published.handleSubmissionResponse(saved);
+        throw new Error(result?.error || 'Response could not be saved.');
+      }
+      clearSessionAttempt(attemptKey);
       router.refresh();
     } catch (cause) {
       setError(
@@ -60,7 +78,7 @@ export function SellerCaseResponseForm({
     }
   }
   return (
-    <div className="seller-form space-y-4">
+    <form data-form-id={kind === 'return' ? 'seller.case-return-response' : 'seller.case-complaint-response'} onSubmit={submit} className="seller-form space-y-4">
       {kind === 'return' ? (
         <div className="space-y-2">
           <Label htmlFor={inputId + '-recommendation'}>Recommendation</Label>
@@ -89,17 +107,19 @@ export function SellerCaseResponseForm({
           placeholder="Provide factual item, packing, and fulfilment details. Do not include unrelated customer data."
         />
       </div>
+      {published.config ? <ConfiguredFields config={published.config} baseKeys={caseBaseKeys} /> : null}
+      {!published.canSubmit ? <p role="status">{published.message || 'Loading response form…'}</p> : null}
       {error ? (
         <p role="alert" className="text-sm font-medium text-destructive">
           {error}
         </p>
       ) : null}
       <Button
-        onClick={() => void submit()}
-        disabled={pending || response.trim().length < 20}
+        type="submit"
+        disabled={pending || response.trim().length < 20 || !published.canSubmit}
       >
         {pending ? 'Saving…' : 'Submit response'}
       </Button>
-    </div>
+    </form>
   );
 }

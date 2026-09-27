@@ -1,9 +1,22 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 export function GiftCardForm({ issue = false }: { issue?: boolean }) {
   const router = useRouter(),
     request = useRef(crypto.randomUUID());
+  const formId = issue ? 'commerce.gift-card-issue' : 'commerce.gift-card-redeem';
+  const attemptKey = sessionAttemptKey('commerce.gift-card-issue', 'current-staff');
+  const published = usePublishedFormConfig(formId);
+  const [hasPendingAttempt, setHasPendingAttempt] = useState(false);
+  useEffect(() => {
+    if (!issue) return;
+    const timeout = window.setTimeout(() => setHasPendingAttempt(hasSessionAttempt(attemptKey)), 0);
+    return () => window.clearTimeout(timeout);
+  }, [issue, attemptKey]);
   const [value, setValue] = useState(''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
@@ -12,20 +25,25 @@ export function GiftCardForm({ issue = false }: { issue?: boolean }) {
       id: string;
       amountPaisa: number;
     } | null>(null);
-  async function submit(e: { preventDefault(): void }) {
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (busy) return;
     setBusy(true);
     setError('');
     try {
+      if (!published.canSubmit || !published.config) throw new Error(published.message || 'Form configuration is unavailable.');
+      const configured = readConfiguredSubmission(e.currentTarget, published.config, ['amount', 'code']);
+      const requestId = issue ? getOrCreateSessionAttempt(attemptKey) : request.current;
+      if (issue) setHasPendingAttempt(true);
       const response = await fetch(
         issue ? '/api/admin/gift-cards' : '/api/account/gift-cards',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            requestId: request.current,
+            requestId,
             ...(issue ? { amount: value } : { code: value }),
+            ...configuredJsonPayload(published.config, configured.answers, ['amount', 'code']),
           }),
         },
       );
@@ -36,16 +54,18 @@ export function GiftCardForm({ issue = false }: { issue?: boolean }) {
         amountPaisa: number;
       };
       if (!response.ok) {
+        if (response.status === 409 && data.code === 'stale_version')
+          published.handleSubmissionResponse(response);
         setError(data.error || 'The operation could not be completed.');
         return;
       }
       setResult(data);
+      if (issue) { clearSessionAttempt(attemptKey); setHasPendingAttempt(false); }
       setValue('');
       router.refresh();
-    } catch {
-      setError(
-        'Connection interrupted. Retry this same request to check its result.',
-      );
+    } catch (cause) {
+      setError(cause instanceof Error && cause.message.startsWith('Browser session storage')
+        ? cause.message : 'Connection interrupted. Retry this same request to check its result.');
     } finally {
       setBusy(false);
     }
@@ -103,7 +123,7 @@ export function GiftCardForm({ issue = false }: { issue?: boolean }) {
           </button>
         </output>
       ) : (
-        <form className="mt-4 space-y-3" onSubmit={submit}>
+        <form data-form-id={issue ? 'commerce.gift-card-issue' : 'commerce.gift-card-redeem'} className="mt-4 space-y-3" onSubmit={submit}>
           <label className="block text-sm font-medium">
             {issue ? 'Amount in NPR' : 'Gift card code'}<span aria-hidden="true"> *</span>
             <input
@@ -118,8 +138,10 @@ export function GiftCardForm({ issue = false }: { issue?: boolean }) {
               className="mt-2 block w-full rounded-lg border bg-background p-3"
             />
           </label>
+          {published.config ? <ConfiguredFields config={published.config} baseKeys={['amount', 'code']} /> : null}
+          {!published.canSubmit ? <p role="status" className="text-sm">{published.message || 'Loading form…'}</p> : null}
           <button
-            disabled={busy}
+            disabled={busy || !published.canSubmit}
             className="rounded-lg bg-primary px-5 py-3 text-primary-foreground disabled:opacity-50"
           >
             {busy
@@ -134,6 +156,18 @@ export function GiftCardForm({ issue = false }: { issue?: boolean }) {
         <p role="alert" className="mt-3 text-sm text-destructive">
           {error}
         </p>
+      ) : null}
+      {issue && hasPendingAttempt && !result ? (
+        <div className="mt-3 space-y-2 text-sm">
+          <p>A prior issuance may already have succeeded. Check the issuance record before starting a separate attempt.</p>
+          <button type="button" disabled={busy} className="underline" onClick={() => {
+            if (!window.confirm('A prior gift card may already have been issued. Start a separate issuance attempt?')) return;
+            clearSessionAttempt(attemptKey);
+            request.current = crypto.randomUUID();
+            setHasPendingAttempt(false);
+            setError('');
+          }}>Start a separate issuance attempt</button>
+        </div>
       ) : null}
     </section>
   );

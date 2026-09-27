@@ -1,4 +1,6 @@
 import { caseBusinessNotificationStatements } from '../../operations/business-notifications';
+import { buildFormAnswerInsert } from './form-answers';
+import { assertCommerceFormReplay, type CommerceForm } from './commerce-form-replay';
 import type { StaffRole } from '@/lib/auth/staff';
 import type { SupportedLocale } from '@/lib/marketplace/types';
 
@@ -14,6 +16,17 @@ export const complaintCategories = [
   'other',
 ] as const;
 export type ComplaintCategory = (typeof complaintCategories)[number];
+
+type ComplaintReplayRow = { id: string; referenceNumber: string; orderItemId: string | null;
+  category: ComplaintCategory; subject: string; detail: string; locale: SupportedLocale };
+function assertComplaintReplay(row: ComplaintReplayRow, options: {
+  orderItemId: string | null; category: ComplaintCategory; subject: string; detail: string; locale: SupportedLocale;
+}): void {
+  if (row.orderItemId !== options.orderItemId || row.category !== options.category ||
+    row.subject !== options.subject || row.detail !== options.detail || row.locale !== options.locale) {
+    throw new ComplaintConflictError('This request ID was already used for different complaint details.');
+  }
+}
 
 function complaintReference(now: number): string {
   const date = new Intl.DateTimeFormat('en-CA', {
@@ -40,11 +53,14 @@ export async function createCustomerComplaint(
     locale: SupportedLocale;
     requestId: string;
     now: number;
+    form?: CommerceForm;
   },
 ): Promise<{ id: string; referenceNumber: string; duplicate: boolean }> {
   const previous = await database
     .prepare(
-      `SELECT complaints.id, complaints.reference_number AS referenceNumber
+      `SELECT complaints.id, complaints.reference_number AS referenceNumber,
+        complaints.order_item_id AS orderItemId, complaints.category,
+        complaints.subject, complaints.detail, complaints.locale
        FROM complaints INNER JOIN orders ON orders.id = complaints.order_id
        WHERE complaints.created_request_id = ? AND orders.order_number = ?
          AND (orders.receipt_token_hash = ? OR orders.customer_id = ?) LIMIT 1`,
@@ -55,8 +71,14 @@ export async function createCustomerComplaint(
       options.receiptTokenHash,
       options.customerId ?? null,
     )
-    .first<{ id: string; referenceNumber: string }>();
-  if (previous) return { ...previous, duplicate: true };
+    .first<ComplaintReplayRow>();
+  if (previous) {
+    assertComplaintReplay(previous, options);
+    await assertCommerceFormReplay(database, { formId: 'commerce.complaint',
+      requestId: options.requestId, subjectType: 'complaint', subjectId: previous.id,
+      actorId: options.customerId ?? null, form: options.form, conflictError: ComplaintConflictError });
+    return { id: previous.id, referenceNumber: previous.referenceNumber, duplicate: true };
+  }
   const order = await database
     .prepare(
       `SELECT orders.id AS orderId,
@@ -122,6 +144,12 @@ export async function createCustomerComplaint(
           options.receiptTokenHash,
           options.customerId ?? null,
         ),
+      // Abort the D1 batch if the conditional parent insert matched no order.
+      database.prepare(
+        `SELECT CASE WHEN EXISTS (
+          SELECT 1 FROM complaints WHERE id = ? AND created_request_id = ?
+        ) THEN 1 ELSE json_extract('invalid-case-insert', '$') END`,
+      ).bind(id, options.requestId),
       database
         .prepare(
           `INSERT INTO complaint_events (
@@ -161,6 +189,11 @@ export async function createCustomerComplaint(
           id,
           options.requestId,
         ),
+      ...(options.form ? [buildFormAnswerInsert(database, {
+        formId: 'commerce.complaint', requestId: options.requestId,
+        versionId: options.form.versionId, subjectType: 'complaint', subjectId: id,
+        actorId: options.customerId ?? null, answers: options.form.answers, now: options.now,
+      })] : []),
       ...(await caseBusinessNotificationStatements(database, {
         sourceType: 'complaint',
         sourceId: id,
@@ -180,11 +213,18 @@ export async function createCustomerComplaint(
     if (message.includes('UNIQUE constraint failed')) {
       const duplicate = await database
         .prepare(
-          `SELECT id, reference_number AS referenceNumber FROM complaints WHERE created_request_id = ? LIMIT 1`,
+          `SELECT id, reference_number AS referenceNumber, order_item_id AS orderItemId,
+            category, subject, detail, locale FROM complaints WHERE created_request_id = ? LIMIT 1`,
         )
         .bind(options.requestId)
-        .first<{ id: string; referenceNumber: string }>();
-      if (duplicate) return { ...duplicate, duplicate: true };
+        .first<ComplaintReplayRow>();
+      if (duplicate) {
+        assertComplaintReplay(duplicate, options);
+        await assertCommerceFormReplay(database, { formId: 'commerce.complaint',
+          requestId: options.requestId, subjectType: 'complaint', subjectId: duplicate.id,
+          actorId: options.customerId ?? null, form: options.form, conflictError: ComplaintConflictError });
+        return { id: duplicate.id, referenceNumber: duplicate.referenceNumber, duplicate: true };
+      }
     }
     throw error;
   }
@@ -430,15 +470,33 @@ export async function respondToComplaintAsSeller(
     response: string;
     requestId: string;
     now: number;
+    form?: CommerceForm;
   },
 ): Promise<void> {
-  if (
-    await database
-      .prepare(`SELECT id FROM complaint_events WHERE request_id = ? LIMIT 1`)
-      .bind(options.requestId)
-      .first()
-  )
+  if (options.response.trim().length < 20 || options.response.length > 2000 ||
+      options.requestId.length < 8 || options.requestId.length > 100)
+    throw new ComplaintConflictError('Seller response details are invalid.');
+  const seller = await database.prepare(`SELECT 1 AS valid FROM seller_profiles s
+    JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.user_id=?
+      AND s.status='approved' AND u.status='active' LIMIT 1`)
+    .bind(options.sellerId, options.actorId).first();
+  if (!seller) throw new ComplaintConflictError('Seller authority changed.');
+  const duplicate = await database.prepare(`SELECT e.complaint_id AS caseId,
+    e.actor_id AS actorId,e.internal_note AS response,e.action,c.seller_id AS sellerId
+    FROM complaint_events e JOIN complaints c ON c.id=e.complaint_id
+    WHERE e.request_id=? LIMIT 1`).bind(options.requestId)
+    .first<{ caseId: string; actorId: string | null; response: string | null;
+      action: string; sellerId: string | null }>();
+  if (duplicate) {
+    if (duplicate.caseId !== options.complaintId || duplicate.actorId !== options.actorId ||
+        duplicate.sellerId !== options.sellerId || duplicate.action !== 'seller_responded' ||
+        duplicate.response !== options.response)
+      throw new ComplaintConflictError('This request was already used for a different response.');
+    await assertCommerceFormReplay(database, { formId: 'seller.case-complaint-response',
+      requestId: options.requestId, subjectType: 'complaint', subjectId: duplicate.caseId,
+      actorId: options.actorId, form: options.form, conflictError: ComplaintConflictError });
     return;
+  }
   const current = await database
     .prepare(
       `SELECT status FROM complaints WHERE id = ? AND seller_id = ? LIMIT 1`,
@@ -461,7 +519,10 @@ export async function respondToComplaintAsSeller(
         `UPDATE complaints SET seller_response = ?, seller_responded_by = ?,
           seller_responded_at = ?, status = CASE WHEN status = 'open' THEN 'investigating' ELSE status END,
           operation_request_id = ?, updated_at = ? WHERE id = ? AND seller_id = ?
-          AND seller_response IS NULL AND status NOT IN ('resolved', 'closed')`,
+          AND seller_response IS NULL AND status NOT IN ('resolved', 'closed')
+          AND EXISTS(SELECT 1 FROM seller_profiles s JOIN users u ON u.id=s.user_id
+            WHERE s.id=complaints.seller_id AND s.user_id=? AND s.status='approved'
+              AND u.status='active')`,
       )
       .bind(
         options.response,
@@ -471,7 +532,12 @@ export async function respondToComplaintAsSeller(
         options.now,
         options.complaintId,
         options.sellerId,
+        options.actorId,
       ),
+    database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM complaints
+      WHERE id=? AND operation_request_id=? AND seller_responded_by=?)
+      THEN 1 ELSE json_extract('invalid-seller-response','$') END`)
+      .bind(options.complaintId, options.requestId, options.actorId),
     database
       .prepare(
         `INSERT INTO complaint_events (
@@ -493,6 +559,12 @@ export async function respondToComplaintAsSeller(
         options.complaintId,
         options.requestId,
       ),
+    ...(options.form ? [buildFormAnswerInsert(database, {
+      formId: 'seller.case-complaint-response', requestId: options.requestId,
+      versionId: options.form.versionId, subjectType: 'complaint',
+      subjectId: options.complaintId, actorId: options.actorId,
+      answers: options.form.answers, now: options.now,
+    })] : []),
     database
       .prepare(
         `INSERT INTO audit_logs (

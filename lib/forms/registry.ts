@@ -9,6 +9,13 @@ export interface ImplementedFormAdapter {
 
 // Integrations add an entry here only when their server adapter exists and is tested.
 export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormAdapter>> = Object.freeze({
+  'commerce.checkout': { formId: 'commerce.checkout', route: '/api/checkout', mode: 'transaction' },
+  'commerce.return-request': { formId: 'commerce.return-request', route: '/orders/:number/returns', mode: 'transaction' },
+  'commerce.complaint': { formId: 'commerce.complaint', route: '/orders/:number/complaints', mode: 'transaction' },
+  'commerce.gift-card-issue': { formId: 'commerce.gift-card-issue', route: '/api/admin/gift-cards', mode: 'transaction' },
+  'commerce.gift-card-redeem': { formId: 'commerce.gift-card-redeem', route: '/api/account/gift-cards', mode: 'transaction' },
+  'seller.case-return-response': { formId: 'seller.case-return-response', route: '/api/seller/returns/:id/response', mode: 'operation' },
+  'seller.case-complaint-response': { formId: 'seller.case-complaint-response', route: '/api/seller/complaints/:id/response', mode: 'operation' },
   'account.profile': { formId: 'account.profile', route: '/api/account/profile', mode: 'collection' },
   'account.address': { formId: 'account.address', route: '/api/account/addresses', mode: 'collection' },
   'account.privacy-request': { formId: 'account.privacy-request', route: '/api/account/privacy', mode: 'collection' },
@@ -113,7 +120,6 @@ shipping.console-action-seller|seller|operation|/api/seller/shipping/:id|action
 
 // Input-bearing, click-driven server mutations found outside JSX <form>.
 export const PROGRAMMATIC_FORM_SITES = Object.freeze([
-  { path: 'components/seller/case-response-form.tsx', formIds: ['seller.case-return-response', 'seller.case-complaint-response'], explanation: 'One component submits responses to distinct return and complaint endpoints.' },
   { path: 'components/commerce/customer-order-cancellation.tsx', formIds: ['commerce.order-cancellation'], explanation: 'Dialog collects a reason and submits by click.' },
   { path: 'components/commerce/add-to-cart.tsx', formIds: ['commerce.add-to-cart'], explanation: 'Quantity selector submits cart actions by click.' },
   { path: 'components/admin/return-case-actions.tsx', formIds: ['staff.return-case-action'], explanation: 'Staff case decision collects evidence without JSX form.' },
@@ -346,9 +352,69 @@ function riderDeliveryDefinition(id: 'rider.application' | 'rider.report' | 'rid
   } satisfies FormDefinition);
 }
 
+function commerceDefinition(id: 'commerce.checkout' | 'commerce.return-request' |
+  'commerce.complaint' | 'commerce.gift-card-issue' | 'commerce.gift-card-redeem'): FormDefinition {
+  const source = [SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS].flatMap((rows) => rows.split('\n'))
+    .find((row) => row.startsWith(`${id}|`));
+  if (!source) throw new Error(`Missing commerce definition: ${id}`);
+  const [, audience, mode, route] = source.split('|') as [string, FormAudience, FormMode, string];
+  const keys: Record<typeof id, readonly string[]> = {
+    'commerce.checkout': ['customerEmail', 'customerPhone', 'deliveryFor', 'recipientEmail',
+      'selectedAddressId', 'saveAddressForFuture', 'saveAddressLabel', 'address', 'recipientName',
+      'recipientPhone', 'province', 'district', 'municipality', 'ward', 'locality', 'landmark',
+      'postalCode', 'location', 'latitude', 'longitude', 'termsAccepted', 'idempotencyKey',
+      'deliveryRateVersion', 'useWallet', 'referralCode', 'cart', 'price', 'discount',
+      'formVersion', 'customAnswers'],
+    'commerce.return-request': ['orderNumber', 'orderItemId', 'quantity', 'reason',
+      'requestedResolution', 'detail', 'originalSealIntact', 'locale', 'evidence',
+      'idempotencyKey', 'receiptTokenHash', 'customerId', 'returnWindow', 'formVersion',
+      'customAnswers'],
+    'commerce.complaint': ['orderNumber', 'orderItemId', 'category', 'subject', 'detail',
+      'locale', 'idempotencyKey', 'receiptTokenHash', 'customerId', 'formVersion',
+      'customAnswers'],
+    'commerce.gift-card-issue': ['amount', 'amountPaisa', 'requestId', 'actorId',
+      'formVersion', 'customAnswers'],
+    'commerce.gift-card-redeem': ['code', 'requestId', 'userId', 'formVersion',
+      'customAnswers'],
+  };
+  return Object.freeze({ id, audience, mode, route, adapterId: id,
+    baseFields: Object.freeze(keys[id].map((key) => ({ key, type: 'existing' as const,
+      label: key, capability: 'protected' as const,
+      explanation: 'Money, cart, contact, consent, eligibility, evidence, ownership and request identity remain server enforced.' }))),
+    capabilities: Object.freeze({ explanation: 'Safe custom context is stored with the committed commerce record. Financial calculations, eligibility, ownership, consent, media and exact replay remain protected.',
+      customFieldTypes: ACCOUNT_CUSTOM_TYPES, answerBehavior: 'record' }),
+  } satisfies FormDefinition);
+}
+
+function sellerCaseDefinition(id: 'seller.case-return-response' |
+  'seller.case-complaint-response'): FormDefinition {
+  const source = PROGRAMMATIC_ROWS.split('\n').find((row) => row.startsWith(`${id}|`));
+  if (!source) throw new Error(`Missing seller case definition: ${id}`);
+  const [, audience, mode, route] = source.split('|') as [string, FormAudience, FormMode, string];
+  const keys = id === 'seller.case-return-response'
+    ? ['returnRequestId', 'recommendation', 'response', 'locale', 'idempotencyKey',
+      'sellerId', 'actorId', 'formVersion', 'customAnswers']
+    : ['complaintId', 'response', 'idempotencyKey', 'sellerId', 'actorId',
+      'formVersion', 'customAnswers'];
+  return Object.freeze({ id, audience, mode, route, adapterId: id,
+    baseFields: Object.freeze(keys.map((key) => ({ key, type: 'existing' as const,
+      label: key, capability: 'protected' as const,
+      explanation: 'Case ownership, state, recommendation, response validation and exact replay stay server enforced.' }))),
+    capabilities: Object.freeze({ explanation: 'Safe custom seller context is linked to the committed case response; eligibility, decision, ownership and replay remain protected.',
+      customFieldTypes: ACCOUNT_CUSTOM_TYPES, answerBehavior: 'record' }),
+  } satisfies FormDefinition);
+}
+
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
   Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
     const item = row.startsWith('public.contact|') ? feedbackDefinition('public.contact')
+      : row.startsWith('seller.case-return-response|') ? sellerCaseDefinition('seller.case-return-response')
+      : row.startsWith('seller.case-complaint-response|') ? sellerCaseDefinition('seller.case-complaint-response')
+      : row.startsWith('commerce.checkout|') ? commerceDefinition('commerce.checkout')
+      : row.startsWith('commerce.return-request|') ? commerceDefinition('commerce.return-request')
+      : row.startsWith('commerce.complaint|') ? commerceDefinition('commerce.complaint')
+      : row.startsWith('commerce.gift-card-issue|') ? commerceDefinition('commerce.gift-card-issue')
+      : row.startsWith('commerce.gift-card-redeem|') ? commerceDefinition('commerce.gift-card-redeem')
       : row.startsWith('public.feedback|') ? feedbackDefinition('public.feedback')
       : row.startsWith('public.footer-feedback|') ? feedbackDefinition('public.footer-feedback')
       : row.startsWith('account.address|') ? accountDefinition('account.address')

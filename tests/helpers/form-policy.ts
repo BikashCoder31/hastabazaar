@@ -63,10 +63,6 @@ components/admin/staff-invitation-manager.tsx|1|837eabc8ee11d381|staff.staff-inv
 components/admin/staff-permission-manager.tsx|1|fac9c7b9874e69d9|staff.staff-permission-1
 components/admin/staff-permission-manager.tsx|2|db915f5fc80feeb9|staff.staff-permission-2
 components/catalog/catalog-filters.tsx|1|f69d92f8b2083c49|catalog.filters
-components/commerce/checkout-form.tsx|1|79a07828ec082b54|commerce.checkout
-components/commerce/customer-aftercare.tsx|1|417435099796a888|commerce.return-request
-components/commerce/customer-aftercare.tsx|2|d783a2bcada9085b|commerce.complaint
-components/commerce/gift-card-form.tsx|1|5342c96832a973ab|commerce.gift-card-redeem
 components/commerce/order-tracker.tsx|1|3afed58539121cfc|commerce.order-tracking
 components/layout/site-header.tsx|1|ed4b8ecbf0b141e5|catalog.header-search
 components/seller/inventory-editor.tsx|1|8b247e4b170098a3|seller.inventory

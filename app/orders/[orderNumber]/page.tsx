@@ -19,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { CustomerOrderCancellation } from '@/components/commerce/customer-order-cancellation';
 import { CustomerAftercare } from '@/components/commerce/customer-aftercare';
+import { AnswerDetails } from '@/components/forms/answer-details';
 import { OrderStatusBadge } from '@/components/commerce/order-status-badge';
 import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
@@ -29,6 +30,8 @@ import {
 } from '@/lib/cart/session';
 import { requireDatabase } from '@/lib/db/d1';
 import { getOrderReceipt } from '@/lib/db/repositories/orders';
+import { listFormAnswersForSubjectPage } from '@/lib/db/repositories/form-answers';
+import { authorizeFormAnswerRead } from '@/lib/forms/access';
 import { listReturnsForCustomerReceipt } from '@/lib/db/repositories/returns';
 import { listComplaintsForCustomerReceipt } from '@/lib/db/repositories/complaints';
 import { getCustomerUser } from '@/lib/auth/customer';
@@ -46,8 +49,11 @@ function money(paisa: number): string {
 
 export default async function OrderReceiptPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ orderNumber: string }>;
+  searchParams?: Promise<{ historyKind?: string; historyCaseId?: string;
+    historyAt?: string; historyId?: string }>;
 }) {
   const { orderNumber } = await params;
   const requestHeaders = await headers();
@@ -78,6 +84,40 @@ export default async function OrderReceiptPage({
     ),
   ]);
   const codeJobs=await customerRiderCodeJobs(database,{orderNumber,customerId:customer?.userId??null,receiptTokenHash});
+  const query = await searchParams;
+  const historyKind = query?.historyKind ?? 'checkout';
+  if (!['checkout', 'return', 'complaint'].includes(historyKind)) notFound();
+  const historyAt = query?.historyAt ? Number(query.historyAt) : NaN;
+  const historyAfter = Number.isSafeInteger(historyAt) && historyAt >= 0 &&
+    query?.historyId && query.historyId.length <= 191
+    ? { createdAt: historyAt, id: query.historyId } : undefined;
+  const ownedOrder = customer ? await database.prepare(`SELECT id FROM orders
+    WHERE order_number=? AND customer_id=? LIMIT 1`)
+    .bind(orderNumber, customer.userId).first<{ id: string }>() : null;
+  let answerHistory: Awaited<ReturnType<typeof listFormAnswersForSubjectPage>> | null = null;
+  let historySubjectId = ownedOrder?.id ?? null;
+  let historyFormId = 'commerce.checkout';
+  let historySubjectType = 'order';
+  if (ownedOrder && historyKind !== 'checkout') {
+    const caseId = query?.historyCaseId;
+    if (!caseId || caseId.length > 191) notFound();
+    const selected = historyKind === 'return'
+      ? returnCases.find((item) => item.id === caseId)
+      : complaints.find((item) => item.id === caseId);
+    if (!selected) notFound();
+    historySubjectId = caseId;
+    historyFormId = historyKind === 'return' ? 'commerce.return-request' : 'commerce.complaint';
+    historySubjectType = historyKind === 'return' ? 'return_request' : 'complaint';
+  }
+  if (historySubjectId && customer) {
+    answerHistory = await listFormAnswersForSubjectPage(database, {
+      subjectType: historySubjectType, subjectId: historySubjectId,
+      formId: historyFormId, after: historyAfter,
+    });
+    const allowed = await Promise.all(answerHistory.answers.map((answer) =>
+      authorizeFormAnswerRead(database, { id: customer.userId, role: 'customer' }, answer)));
+    if (allowed.some((value) => !value)) notFound();
+  }
   const address = receipt.address;
   const presentation = orderPresentation(receipt.status, receipt.paymentStatus);
   return (
@@ -262,6 +302,26 @@ export default async function OrderReceiptPage({
               returns={returnCases}
               complaints={complaints}
             />
+            {ownedOrder ? <section className="mt-7 space-y-4 rounded-2xl border bg-card p-6" aria-label="Your order form answers">
+              <h2 className="font-heading text-2xl">Your order form answers</h2>
+              <nav className="flex flex-wrap gap-3 text-sm" aria-label="Order answer history">
+                <Link className="underline" href={`/orders/${encodeURIComponent(orderNumber)}`}>Checkout</Link>
+                {returnCases.map((item) => <Link key={item.id} className="underline" href={
+                  `/orders/${encodeURIComponent(orderNumber)}?historyKind=return&historyCaseId=${encodeURIComponent(item.id)}`
+                }>Return {item.referenceNumber}</Link>)}
+                {complaints.map((item) => <Link key={item.id} className="underline" href={
+                  `/orders/${encodeURIComponent(orderNumber)}?historyKind=complaint&historyCaseId=${encodeURIComponent(item.id)}`
+                }>Complaint {item.referenceNumber}</Link>)}
+              </nav>
+              {answerHistory?.answers.length
+                ? answerHistory.answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)
+                : <p className="text-sm text-muted-foreground">No saved answers for this action.</p>}
+              {answerHistory?.nextCursor ? <Link className="underline" href={
+                `/orders/${encodeURIComponent(orderNumber)}?historyKind=${historyKind}` +
+                (historyKind === 'checkout' ? '' : `&historyCaseId=${encodeURIComponent(historySubjectId!)}`) +
+                `&historyAt=${answerHistory.nextCursor.createdAt}&historyId=${encodeURIComponent(answerHistory.nextCursor.id)}`
+              }>Next 50 answers</Link> : null}
+            </section> : null}
             <div className="mt-7 flex flex-wrap gap-3">
               <Button render={<Link href="/shop" />} className="rounded-full">
                 Continue shopping

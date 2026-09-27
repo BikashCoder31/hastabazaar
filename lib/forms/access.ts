@@ -9,7 +9,44 @@ export type FormAnswerViewer = {
 };
 
 /** Ownership is derived from the parent record, never from the submitter ID. */
-export async function formAnswerOwnerId(db: D1Database, answer: Pick<StoredFormAnswer, 'subjectType' | 'subjectId'>): Promise<string | null> {
+export async function formAnswerOwnerId(db: D1Database, answer: Pick<StoredFormAnswer, 'subjectType' | 'subjectId'> &
+  Partial<Pick<StoredFormAnswer, 'formId'>>): Promise<string | null> {
+  if (answer.formId === 'seller.case-return-response' && answer.subjectType === 'return_request') {
+    const row = await db.prepare(`SELECT s.user_id AS userId FROM return_requests r
+      JOIN order_items i ON i.id=r.order_item_id JOIN seller_profiles s ON s.id=i.seller_id
+      WHERE r.id=? AND s.status='approved' LIMIT 1`)
+      .bind(answer.subjectId).first<{ userId: string }>();
+    return row?.userId ?? null;
+  }
+  if (answer.formId === 'seller.case-complaint-response' && answer.subjectType === 'complaint') {
+    const row = await db.prepare(`SELECT s.user_id AS userId FROM complaints c
+      JOIN seller_profiles s ON s.id=c.seller_id WHERE c.id=? AND s.status='approved' LIMIT 1`)
+      .bind(answer.subjectId).first<{ userId: string }>();
+    return row?.userId ?? null;
+  }
+  if (answer.subjectType === 'order') {
+    const row = await db.prepare('SELECT customer_id AS userId FROM orders WHERE id=? LIMIT 1')
+      .bind(answer.subjectId).first<{ userId: string | null }>();
+    return row?.userId ?? null;
+  }
+  if (answer.subjectType === 'return_request') {
+    const row = await db.prepare(`SELECT o.customer_id AS userId FROM return_requests r
+      JOIN order_items i ON i.id=r.order_item_id JOIN orders o ON o.id=i.order_id
+      WHERE r.id=? LIMIT 1`).bind(answer.subjectId).first<{ userId: string | null }>();
+    return row?.userId ?? null;
+  }
+  if (answer.subjectType === 'complaint') {
+    const row = await db.prepare(`SELECT o.customer_id AS userId FROM complaints c
+      JOIN orders o ON o.id=c.order_id WHERE c.id=? LIMIT 1`)
+      .bind(answer.subjectId).first<{ userId: string | null }>();
+    return row?.userId ?? null;
+  }
+  if (answer.subjectType === 'gift_card_issue' || answer.subjectType === 'gift_card_redemption') {
+    const column = answer.subjectType === 'gift_card_issue' ? 'issued_by' : 'redeemed_by';
+    const row = await db.prepare(`SELECT ${column} AS userId FROM gift_cards WHERE id=? LIMIT 1`)
+      .bind(answer.subjectId).first<{ userId: string | null }>();
+    return row?.userId ?? null;
+  }
   if (answer.subjectType === 'user') {
     const row = await db.prepare('SELECT id FROM users WHERE id=? LIMIT 1').bind(answer.subjectId).first<{ id: string }>();
     return row?.id ?? null;
@@ -145,6 +182,69 @@ export async function authorizeFormAnswerRead(
     WHERE u.id=? AND u.status='active' AND r.role=? LIMIT 1`)
     .bind(viewer.id, viewer.role).first<{ valid: number }>();
   if (!identity) return false;
+  if (answerSet.formId === 'seller.case-return-response' ||
+      answerSet.formId === 'seller.case-complaint-response') {
+    const isReturn = answerSet.formId === 'seller.case-return-response';
+    if (answerSet.subjectType !== (isReturn ? 'return_request' : 'complaint')) return false;
+    const parent = isReturn
+      ? await db.prepare(`SELECT s.user_id AS sellerUserId FROM return_request_events e
+          JOIN return_requests r ON r.id=e.return_request_id
+          JOIN order_items i ON i.id=r.order_item_id
+          JOIN seller_profiles s ON s.id=i.seller_id
+          WHERE e.return_request_id=? AND e.request_id=? AND e.actor_id=?
+            AND e.action='seller_responded' AND s.status='approved' LIMIT 1`)
+          .bind(answerSet.subjectId, answerSet.requestId, answerSet.actorId)
+          .first<{ sellerUserId: string }>()
+      : await db.prepare(`SELECT s.user_id AS sellerUserId FROM complaint_events e
+          JOIN complaints c ON c.id=e.complaint_id
+          JOIN seller_profiles s ON s.id=c.seller_id
+          WHERE e.complaint_id=? AND e.request_id=? AND e.actor_id=?
+            AND e.action='seller_responded' AND s.status='approved' LIMIT 1`)
+          .bind(answerSet.subjectId, answerSet.requestId, answerSet.actorId)
+          .first<{ sellerUserId: string }>();
+    if (!parent || parent.sellerUserId !== answerSet.actorId) return false;
+    if (viewer.role === 'seller') return viewer.id === parent.sellerUserId;
+    return currentStaffGrant(db, viewer, isReturn ? 'refund.approve.standard' : 'support.manage');
+  }
+  if (answerSet.formId === 'commerce.checkout') {
+    if (answerSet.subjectType !== 'order' || viewer.role !== 'customer' ||
+        answerSet.actorId !== viewer.id) return false;
+    return Boolean(await db.prepare(`SELECT 1 AS valid FROM orders o
+      JOIN payments p ON p.order_id=o.id AND p.idempotency_key=?
+      WHERE o.id=? AND o.customer_id=? LIMIT 1`)
+      .bind(answerSet.requestId, answerSet.subjectId, viewer.id).first());
+  }
+  if (answerSet.formId === 'commerce.return-request' || answerSet.formId === 'commerce.complaint') {
+    const isReturn = answerSet.formId === 'commerce.return-request';
+    if (answerSet.subjectType !== (isReturn ? 'return_request' : 'complaint')) return false;
+    const parent = isReturn
+      ? await db.prepare(`SELECT o.customer_id AS customerId FROM return_requests r
+          JOIN order_items i ON i.id=r.order_item_id JOIN orders o ON o.id=i.order_id
+          WHERE r.id=? AND r.created_request_id=? LIMIT 1`)
+          .bind(answerSet.subjectId, answerSet.requestId).first<{ customerId: string | null }>()
+      : await db.prepare(`SELECT o.customer_id AS customerId FROM complaints c
+          JOIN orders o ON o.id=c.order_id
+          WHERE c.id=? AND c.created_request_id=? LIMIT 1`)
+          .bind(answerSet.subjectId, answerSet.requestId).first<{ customerId: string | null }>();
+    if (!parent) return false;
+    if (viewer.role === 'customer')
+      return parent.customerId === viewer.id && answerSet.actorId === viewer.id;
+    return currentStaffGrant(db, viewer, isReturn ? 'refund.approve.standard' : 'support.manage');
+  }
+  if (answerSet.formId === 'commerce.gift-card-issue') {
+    if (answerSet.subjectType !== 'gift_card_issue' || viewer.id !== answerSet.actorId) return false;
+    const parent = await db.prepare(`SELECT 1 AS valid FROM gift_cards WHERE id=?
+      AND issuance_request_id=? AND issued_by=? LIMIT 1`)
+      .bind(answerSet.subjectId, answerSet.requestId, viewer.id).first();
+    return Boolean(parent) && currentStaffGrant(db, viewer, 'admin.invite');
+  }
+  if (answerSet.formId === 'commerce.gift-card-redeem') {
+    if (answerSet.subjectType !== 'gift_card_redemption' || viewer.role !== 'customer' ||
+        viewer.id !== answerSet.actorId) return false;
+    return Boolean(await db.prepare(`SELECT 1 AS valid FROM gift_cards WHERE id=?
+      AND redemption_request_id=? AND redeemed_by=? LIMIT 1`)
+      .bind(answerSet.subjectId, answerSet.requestId, viewer.id).first());
+  }
   const expectedSubject = riderShippingSubjects.get(answerSet.formId);
   if (expectedSubject && answerSet.subjectType !== expectedSubject) return false;
   if (answerSet.formId === 'staff.delivery-assignment') {
@@ -166,6 +266,9 @@ export async function authorizeFormAnswerRead(
       .first<{ valid: number }>();
     return Boolean(parent) && currentStaffGrant(db, viewer, 'order.manage');
   }
+  // Staff-authored answers need an explicit form-specific policy. Parent
+  // ownership alone never grants customers the staff decision context.
+  if (answerSet.formId.startsWith('staff.')) return false;
   if (answerSet.subjectType === 'feedback_submission') {
     if (viewer.role !== 'admin' && viewer.role !== 'super_admin') return false;
     const safePermissions = `CASE WHEN json_valid(p.permissions_json) THEN p.permissions_json ELSE '[]' END`;
