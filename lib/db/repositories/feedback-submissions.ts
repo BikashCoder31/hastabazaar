@@ -3,6 +3,7 @@ import type { FormAnswerSnapshot, FormId } from '../../forms/types';
 import { buildFormAnswerInsert } from './form-answers';
 
 export type FeedbackJobStatus = 'pending' | 'leased' | 'sending' | 'failed' | 'sent';
+export const FEEDBACK_MAX_ATTEMPTS = 5;
 export interface FeedbackDeliveryJob {
   id: string;
   requestId: string;
@@ -22,16 +23,25 @@ export async function findFeedbackDeliveryJob(db: D1Database, requestId: string)
     FROM feedback_delivery_jobs WHERE request_id=? LIMIT 1`).bind(requestId).first<FeedbackDeliveryJob>();
 }
 
-export async function listSentFeedbackDeliveryJobs(db: D1Database, cursor?: { createdAt: number; id: string }): Promise<{
+export function isFeedbackDeliveryExhausted(job: FeedbackDeliveryJob, now: number): boolean {
+  return job.attemptCount >= FEEDBACK_MAX_ATTEMPTS &&
+    (job.status === 'failed' || job.status === 'leased' && (job.leaseExpiresAt ?? Infinity) <= now);
+}
+
+export async function listSupportFeedbackDeliveryJobs(db: D1Database,
+  cursor?: { createdAt: number; id: string }): Promise<{
   jobs: FeedbackDeliveryJob[]; nextCursor: { createdAt: number; id: string } | null;
 }> {
   const rows = await db.prepare(`SELECT id,request_id AS requestId,form_id AS formId,
     payload_hash AS payloadHash,feedback_json AS feedbackJson,status,lease_token AS leaseToken,
     lease_expires_at AS leaseExpiresAt,attempt_count AS attemptCount,created_at AS createdAt
-    FROM feedback_delivery_jobs WHERE status='sent'
+    FROM feedback_delivery_jobs WHERE (status IN ('sent','sending')
+      OR (status='failed' AND attempt_count>=?)
+      OR (status='leased' AND attempt_count>=? AND lease_expires_at<=?))
       AND (? IS NULL OR created_at<? OR (created_at=? AND id<?))
     ORDER BY created_at DESC,id DESC LIMIT 51`)
-    .bind(cursor?.createdAt ?? null, cursor?.createdAt ?? 0, cursor?.createdAt ?? 0, cursor?.id ?? '')
+    .bind(FEEDBACK_MAX_ATTEMPTS, FEEDBACK_MAX_ATTEMPTS, Date.now(),
+      cursor?.createdAt ?? null, cursor?.createdAt ?? 0, cursor?.createdAt ?? 0, cursor?.id ?? '')
     .all<FeedbackDeliveryJob & { createdAt: number }>();
   const jobs = rows.results.slice(0, 50);
   const last = rows.results.length > 50 ? jobs.at(-1) : null;
@@ -68,7 +78,6 @@ export async function createFeedbackSubmission(db: D1Database, input: {
 }
 
 const LEASE_MS = 30_000;
-const MAX_ATTEMPTS = 5;
 
 /** A lease prevents two active requests from racing to the send boundary. */
 export async function claimFeedbackDelivery(db: D1Database, jobId: string, now: number): Promise<string | null> {
@@ -77,7 +86,7 @@ export async function claimFeedbackDelivery(db: D1Database, jobId: string, now: 
     SET status='leased',lease_token=?,lease_expires_at=?,attempt_count=attempt_count+1,updated_at=?
     WHERE id=? AND attempt_count<? AND (status IN ('pending','failed')
       OR (status='leased' AND lease_expires_at<=?))`)
-    .bind(token, now + LEASE_MS, now, jobId, MAX_ATTEMPTS, now).run();
+    .bind(token, now + LEASE_MS, now, jobId, FEEDBACK_MAX_ATTEMPTS, now).run();
   return result.meta.changes === 1 ? token : null;
 }
 

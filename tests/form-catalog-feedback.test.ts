@@ -207,6 +207,29 @@ void test('pre-send feedback decode failure leaves job retryable without mailing
   } finally { sqlite.close(); }
 });
 
+void test('five definite pre-send failures end in a truthful exhausted response without a sixth mail attempt', async () => {
+  const { sqlite } = await fixture();
+  try {
+    seed(sqlite, 'public.contact', 1);
+    const { POST } = await import('../app/api/feedback/route');
+    globalThis.feedbackCatalogMail.configured = false;
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      const response = await POST(request('exhausted-before-send'));
+      assert.equal(response.status, 503);
+      assert.equal(((await response.json()) as { code: string }).code,
+        attempt === 5 ? 'delivery_exhausted' : 'delivery_retryable');
+    }
+    globalThis.feedbackCatalogMail.configured = true;
+    const repeat = await POST(request('exhausted-before-send'));
+    assert.equal(((await repeat.json()) as { code: string }).code, 'delivery_exhausted');
+    assert.equal(globalThis.feedbackCatalogMail.attempts, 0);
+    const job = sqlite.prepare("SELECT status,attempt_count AS attemptCount FROM feedback_delivery_jobs WHERE request_id='exhausted-before-send'").get() as
+      { status: string; attemptCount: number };
+    assert.equal(job.status, 'failed');
+    assert.equal(job.attemptCount, 5);
+  } finally { sqlite.close(); }
+});
+
 void test('ambiguous post-send persistence failure never automatically resends', async () => {
   const { sqlite, db } = await fixture();
   try {
@@ -398,6 +421,33 @@ void test('staff feedback page shows sent historical answer only while current g
     sqlite.exec("UPDATE staff_permission_profiles SET permissions_json='[]' WHERE user_id='admin'");
     const revoked = renderToStaticMarkup(await FeedbackPage({ searchParams: Promise.resolve({}) }));
     assert.doesNotMatch(revoked, /Original routing note|Please reply by email|asha@example\.test/);
+  } finally { sqlite.close(); }
+});
+
+void test('support can reconcile uncertain and exhausted records with request IDs but revoked grants reveal no answers', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    seed(sqlite, 'public.contact', 1);
+    const { POST } = await import('../app/api/feedback/route');
+    globalThis.feedbackCatalogMail.reject = true;
+    assert.equal((await POST(request('uncertain-support-one'))).status, 503);
+    globalThis.feedbackCatalogMail.reject = false;
+    globalThis.feedbackCatalogMail.configured = false;
+    for (let attempt = 0; attempt < 5; attempt++) await POST(request('exhausted-support-one'));
+    const uncertainJob = sqlite.prepare("SELECT id FROM feedback_delivery_jobs WHERE request_id='uncertain-support-one'").get() as { id: string };
+    const uncertainAnswer = (await listFormAnswersForSubject(db as unknown as D1Database, 'feedback_submission', uncertainJob.id))[0];
+    assert.equal(await authorizeFormAnswerRead(db as unknown as D1Database, { id: 'admin', role: 'admin' }, uncertainAnswer), true);
+    const { default: FeedbackPage } = await import('../app/admin/feedback/page');
+    const html = renderToStaticMarkup(await FeedbackPage({ searchParams: Promise.resolve({}) }));
+    assert.match(html, /uncertain-support-one/);
+    assert.match(html, /exhausted-support-one/);
+    assert.match(html, /may have been sent/i);
+    assert.match(html, /not sent/i);
+    assert.match(html, /Please reply by email/);
+    sqlite.exec("UPDATE staff_permission_profiles SET permissions_json='[]' WHERE user_id='admin'");
+    assert.equal(await authorizeFormAnswerRead(db as unknown as D1Database, { id: 'admin', role: 'admin' }, uncertainAnswer), false);
+    const revoked = renderToStaticMarkup(await FeedbackPage({ searchParams: Promise.resolve({}) }));
+    assert.doesNotMatch(revoked, /uncertain-support-one|exhausted-support-one|Please reply by email|asha@example\.test/);
   } finally { sqlite.close(); }
 });
 

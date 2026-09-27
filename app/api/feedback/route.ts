@@ -5,7 +5,7 @@ import { listFormAnswersForSubject } from '@/lib/db/repositories/form-answers';
 import {
   beginFeedbackSend, claimFeedbackDelivery, completeFeedbackSend,
   createFeedbackSubmission, decodeFeedbackJob, findFeedbackDeliveryJob,
-  rejectFeedbackBeforeSend, type FeedbackDeliveryJob,
+  isFeedbackDeliveryExhausted, rejectFeedbackBeforeSend, type FeedbackDeliveryJob,
 } from '@/lib/db/repositories/feedback-submissions';
 import { FeedbackDeliveryUnavailableError, sendCustomerFeedbackEmail } from '@/lib/email/customer-feedback';
 import { validateCustomerFeedback } from '@/lib/feedback/customer-feedback';
@@ -28,6 +28,8 @@ const retryableDelivery = () => json({ code: 'delivery_retryable',
   error: 'Your message was not sent. Retry without changing it.' }, 503);
 const uncertainDelivery = () => json({ code: 'delivery_uncertain',
   error: 'Delivery is uncertain. Your message may have been sent. Contact support before sending a new message.' }, 503);
+const exhaustedDelivery = () => json({ code: 'delivery_exhausted',
+  error: 'Your message was not sent after repeated delivery failures. Contact support before starting a new message.' }, 503);
 const requestConflict = { code: 'request_id_conflict', error: 'Your earlier message may have been sent. These edits were not sent. Contact support before sending a new message.' };
 const commonKeys = new Set(['kind', 'pagePath', 'website', 'name', 'email', 'topic', 'message',
   'privacyAcknowledgement', 'requestId', 'formVersion']);
@@ -97,6 +99,7 @@ async function deliver(db: D1Database, job: FeedbackDeliveryJob): Promise<Respon
   if (job.status === 'sent') return json({ ok: true }, 200);
   // A sending lease is never reclaimed: the mail transport could already have accepted it.
   if (job.status === 'sending') return uncertainDelivery();
+  if (isFeedbackDeliveryExhausted(job, Date.now())) return exhaustedDelivery();
   let feedback: CustomerFeedback;
   try {
     const answers = await listFormAnswersForSubject(db, 'feedback_submission', job.id);
@@ -106,8 +109,12 @@ async function deliver(db: D1Database, job: FeedbackDeliveryJob): Promise<Respon
   } catch { return retryableDelivery(); }
   const now = Date.now();
   const token = await claimFeedbackDelivery(db, job.id, now);
-  if (!token || !(await beginFeedbackSend(db, job.id, token, Date.now())))
-    return uncertainDelivery();
+  if (!token || !(await beginFeedbackSend(db, job.id, token, Date.now()))) {
+    const current = await findFeedbackDeliveryJob(db, job.requestId);
+    return current?.status === 'sent' ? json({ ok: true }, 200)
+      : current && isFeedbackDeliveryExhausted(current, Date.now()) ? exhaustedDelivery()
+      : uncertainDelivery();
+  }
   try {
     await sendCustomerFeedbackEmail(feedback);
     if (!(await completeFeedbackSend(db, job.id, token, Date.now())))
@@ -116,8 +123,11 @@ async function deliver(db: D1Database, job: FeedbackDeliveryJob): Promise<Respon
   } catch (error) {
     if (error instanceof FeedbackDeliveryUnavailableError) {
       try {
-        if (await rejectFeedbackBeforeSend(db, job.id, token, Date.now()))
-          return retryableDelivery();
+        if (await rejectFeedbackBeforeSend(db, job.id, token, Date.now())) {
+          const current = await findFeedbackDeliveryJob(db, job.requestId);
+          return current && isFeedbackDeliveryExhausted(current, Date.now())
+            ? exhaustedDelivery() : retryableDelivery();
+        }
       } catch { /* keep uncertain state */ }
     }
     return uncertainDelivery();

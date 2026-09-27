@@ -112,6 +112,30 @@ for (const kind of ['contact', 'footer'] as const) {
       assert.equal(requests.length, 4);
       assert.equal(new Set(requests.map(({ requestId }) => requestId)).size, 1);
       assert.equal(jobs, 1);
+      const startNew = remounted.getByRole('button', { name: /start a new message/i });
+      assert.equal(await startNew.count(), 1);
+      page.once('dialog', async (dialog: { message(): string; dismiss(): Promise<void> }) => {
+        assert.match(dialog.message(), /contact support|duplicate/i);
+        await dialog.dismiss();
+      });
+      await startNew.click();
+      const storageKey = `hastabazaar:feedback-attempt:${kind === 'contact' ? 'public.contact' : 'public.footer-feedback'}`;
+      assert.equal(await page.evaluate((key: string) => sessionStorage.getItem(key), storageKey), requests[0].requestId);
+      page.once('dialog', async (dialog: { message(): string; accept(): Promise<void> }) => {
+        assert.match(dialog.message(), /contact support|duplicate/i);
+        await dialog.accept();
+      });
+      await startNew.click();
+      await remounted.locator('[name="name"]').fill('New Message');
+      await remounted.locator('[name="email"]').fill('asha@example.test');
+      await remounted.locator('[name="topic"]').selectOption('General question');
+      if (kind === 'contact') await remounted.locator('[name="subject"]').fill('Another question');
+      await remounted.locator('[name="message"]').fill('Could you help with a different handmade item?');
+      await remounted.locator('[name="privacyAcknowledgement"]').check();
+      await remounted.locator('button[type="submit"]').click();
+      await page.waitForFunction(() => document.querySelector('form[data-form-id]')?.textContent?.includes('Thank you'));
+      assert.notEqual(requests[4].requestId, requests[0].requestId);
+      assert.equal(jobs, 2);
     } finally { await page.close(); await browser.close(); }
   });
 }

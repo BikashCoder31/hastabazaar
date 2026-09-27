@@ -3,7 +3,7 @@ import { AnswerDetails } from '@/components/forms/answer-details';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { listFormAnswersForSubject } from '@/lib/db/repositories/form-answers';
-import { decodeFeedbackJob, listSentFeedbackDeliveryJobs } from '@/lib/db/repositories/feedback-submissions';
+import { decodeFeedbackJob, listSupportFeedbackDeliveryJobs } from '@/lib/db/repositories/feedback-submissions';
 import { authorizeFormAnswerRead } from '@/lib/forms/access';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +22,7 @@ export default async function AdminFeedbackPage({ searchParams }: {
   const staff = await requireStaffPage('/admin/feedback', 'support.manage');
   const db = requireDatabase(env as unknown as { DB?: D1Database });
   const params = await searchParams;
-  const page = await listSentFeedbackDeliveryJobs(db, parseCursor(params.before));
+  const page = await listSupportFeedbackDeliveryJobs(db, parseCursor(params.before));
   const entries = (await Promise.all(page.jobs.map(async (job) => {
     const answers = await listFormAnswersForSubject(db, 'feedback_submission', job.id);
     const answer = answers.find((item) => item.formId === job.formId && item.requestId === job.requestId);
@@ -34,14 +34,19 @@ export default async function AdminFeedbackPage({ searchParams }: {
     <div>
       <p className="eyebrow">Support intake</p>
       <h1 className="section-title">Contact and feedback submissions</h1>
-      <p className="mt-2 text-sm text-muted-foreground">Only confirmed delivered submissions appear here. Custom answers stay in this restricted view and are not included in outbound email.</p>
+      <p className="mt-2 text-sm text-muted-foreground">Confirmed mail handoffs and records needing manual reconciliation appear here. Custom answers stay in this restricted view and are not included in outbound email.</p>
+      <p className="mt-2 text-sm text-muted-foreground">For uncertain delivery, check the support mailbox and transport records using the time and message details. Do not resend or mark sent without independent evidence. Ask the customer to start a new message only after explaining that a duplicate may result.</p>
     </div>
     {entries.length ? entries.map(({ job, answer, feedback }) => <article key={job.id} className="rounded-2xl border bg-card p-5">
       <h2 className="font-semibold">{feedback.topic}</h2>
+      <p className="text-sm font-semibold">{job.status === 'sent' ? 'Mail handoff confirmed'
+        : job.status === 'sending' ? 'Delivery uncertain: message may have been sent'
+          : 'Not sent: delivery attempts exhausted'}</p>
+      <p className="break-all text-xs text-muted-foreground">Request ID: {job.requestId} · Attempts: {job.attemptCount}</p>
       <p className="text-sm text-muted-foreground">{feedback.name} · {feedback.email}</p>
       <p className="mt-3 whitespace-pre-wrap text-sm">{feedback.message}</p>
       <div className="mt-4"><AnswerDetails answer={answer} /></div>
-    </article>) : <p className="rounded-2xl border bg-card p-5 text-sm text-muted-foreground">No authorized delivered submissions.</p>}
+    </article>) : <p className="rounded-2xl border bg-card p-5 text-sm text-muted-foreground">No authorized feedback submissions to review.</p>}
     {page.nextCursor ? <a className="inline-flex min-h-11 items-center rounded-full border px-5 text-sm font-semibold"
       href={`/admin/feedback?before=${encodeURIComponent(`${page.nextCursor.createdAt}:${page.nextCursor.id}`)}`}>Older submissions</a> : null}
   </div>;

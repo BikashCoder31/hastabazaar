@@ -25,6 +25,13 @@ export function CustomerContactForm({
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  function startNewMessage(form: HTMLFormElement) {
+    if (!window.confirm('Have you contacted support to check your earlier message? Starting a new message may create a duplicate.')) return;
+    clearFeedbackAttemptId(formId);
+    setError('');
+    setFieldErrors({});
+    form.reset();
+  }
   async function submit(
     event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>,
   ) {
@@ -220,6 +227,10 @@ export function CustomerContactForm({
         </Button>
         {!catalog.canSubmit ? <output className="text-sm text-muted-foreground">{catalog.message || 'Form configuration is loading.'}</output> : null}
         {catalog.status === 'stale' ? <Button type="button" onClick={catalog.refresh}>Refresh form</Button> : null}
+        <Button type="button" disabled={busy} onClick={(event) => {
+          const form = event.currentTarget.closest('form');
+          if (form) startNewMessage(form);
+        }}>Start a new message after contacting support</Button>
         {message ? (
           <output className="text-sm font-medium text-emerald-700">
             {message}

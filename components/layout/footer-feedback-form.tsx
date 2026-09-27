@@ -27,6 +27,12 @@ export function FooterFeedbackForm() {
     kind: 'idle',
     message: '',
   });
+  function startNewMessage(form: HTMLFormElement) {
+    if (!window.confirm('Have you contacted support to check your earlier message? Starting a new message may create a duplicate.')) return;
+    clearFeedbackAttemptId('public.footer-feedback');
+    setState({ kind: 'idle', message: '' });
+    form.reset();
+  }
 
   async function submit(event: {
     preventDefault(): void;
@@ -218,6 +224,12 @@ export function FooterFeedbackForm() {
             </button>
             {!catalog.canSubmit ? <output className="text-sm text-white/70">{catalog.message || 'Form configuration is loading.'}</output> : null}
             {catalog.status === 'stale' ? <button type="button" onClick={catalog.refresh}>Refresh form</button> : null}
+            <button type="button" disabled={busy}
+              className="min-h-11 rounded-full border border-white/40 px-4 text-sm font-semibold"
+              onClick={(event) => {
+                const form = event.currentTarget.closest('form');
+                if (form) startNewMessage(form);
+              }}>Start a new message after contacting support</button>
             <output
               aria-live="polite"
               className={

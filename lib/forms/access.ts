@@ -1,4 +1,5 @@
 import type { StoredFormAnswer } from '../db/repositories/form-answers';
+import { FEEDBACK_MAX_ATTEMPTS } from '../db/repositories/feedback-submissions';
 import { configurableAdminPermissions, type Permission } from '../marketplace/permissions';
 
 export type FormAnswerViewer = {
@@ -61,8 +62,10 @@ export async function authorizeFormAnswerRead(
     return Boolean(await db.prepare(`SELECT 1 AS valid FROM users u
       JOIN user_roles r ON r.user_id=u.id
       LEFT JOIN staff_permission_profiles p ON p.user_id=u.id
-      JOIN feedback_delivery_jobs job ON job.id=? AND job.status='sent'
-        AND job.form_id=? AND job.request_id=?
+      JOIN feedback_delivery_jobs job ON job.id=? AND job.form_id=? AND job.request_id=?
+        AND (job.status IN ('sent','sending')
+          OR (job.status='failed' AND job.attempt_count>=?)
+          OR (job.status='leased' AND job.attempt_count>=? AND job.lease_expires_at<=?))
       JOIN form_answer_sets answer ON answer.id=? AND answer.subject_type='feedback_submission'
         AND answer.subject_id=job.id AND answer.form_id=job.form_id
         AND answer.request_id=job.request_id
@@ -75,7 +78,8 @@ export async function authorizeFormAnswerRead(
             WHERE grant_item.type<>'text' OR grant_item.value NOT IN
               (SELECT value FROM json_each(?)))))
       LIMIT 1`)
-      .bind(answerSet.subjectId, answerSet.formId, answerSet.requestId, answerSet.id,
+      .bind(answerSet.subjectId, answerSet.formId, answerSet.requestId,
+        FEEDBACK_MAX_ATTEMPTS, FEEDBACK_MAX_ATTEMPTS, Date.now(), answerSet.id,
         viewer.id, viewer.role, JSON.stringify(configurableAdminPermissions)).first<{ valid: number }>());
   }
   const ownerId = await formAnswerOwnerId(db, answerSet);
