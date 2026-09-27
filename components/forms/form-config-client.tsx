@@ -2,12 +2,39 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { ConfiguredField, CustomFieldType, PublishedFormConfig } from '@/lib/forms/types';
+import { canonicalKey } from '@/lib/forms/submission';
 
 type FormConfigStatus = 'loading' | 'ready' | 'unavailable' | 'stale';
 interface FormConfigState { config: PublishedFormConfig | null; status: FormConfigStatus; message: string; formId: string }
 const types = new Set<CustomFieldType>(['short_text', 'long_text', 'number', 'date', 'single_choice', 'multiple_choice', 'checkbox', 'email', 'phone']);
 const fieldKeys = new Set(['id', 'key', 'type', 'label', 'helpText', 'placeholder', 'required', 'order', 'choices', 'min', 'max', 'integerOnly', 'status']);
 const configKeys = new Set(['formId', 'fields', 'version', 'publishedAt']);
+// Keep this identifier policy aligned with Task 3 without importing its
+// server registry into public client bundles.
+const sensitivePhrases = [
+  'password', 'passcode', 'credential', 'secret', 'token', 'otp', 'onetime', 'pin', 'pincode',
+  'verificationcode', 'securitycode', 'recoverycode', 'backupcode', 'resetcode',
+  'confirmationcode', 'authcode', 'accesscode', 'emailcode', 'smscode', 'mfacode', '2facode',
+  'apikey', 'privatekey', 'bankaccount', 'bankacct', 'accountnumber', 'routingnumber',
+  'iban', 'swift', 'creditcard', 'debitcard', 'cardnumber', 'cardexpiry', 'cardcvv',
+  'cardcvc', 'cvv', 'cvc', 'payment', 'captcha', 'recaptcha', 'turnstile', 'honeypot', 'csrf',
+];
+const sensitivePrefixes = ['user', 'admin', 'customer', 'account', 'login', 'session', 'access', 'refresh', 'new', 'old', 'current', 'confirm', 'confirmation', 'hashed', 'encrypted'];
+const sensitiveSuffixes = ['hash', 'digest', 'value', 'id', 'key', 'code', 'number', 'reference', 'response', 'challenge', 'answer', 'expiry', 'expiration', 'data', 'details', 'info', 'method', 'amount', 'status', 'field', 's'];
+const sensitiveIdentifier = new RegExp(`^(?:${sensitivePrefixes.join('|')})*(?:${sensitivePhrases.join('|')})+(?:${sensitiveSuffixes.join('|')})*[0-9]*$`);
+
+function unsafeName(value: string): boolean {
+  const tokens = value.replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  for (let start = 0; start < tokens.length; start++) {
+    let compound = '';
+    for (let end = start; end < tokens.length; end++) {
+      compound += tokens[end];
+      if (sensitiveIdentifier.test(compound)) return true;
+    }
+  }
+  return false;
+}
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -15,12 +42,15 @@ function record(value: unknown): value is Record<string, unknown> {
 function boundedText(value: unknown, limit: number): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= limit;
 }
+function optionalText(value: unknown, limit: number): value is string {
+  return typeof value === 'string' && (value.length === 0 || value.trim().length > 0) && value.length <= limit;
+}
 function validField(value: unknown): value is ConfiguredField {
   if (!record(value) || Object.keys(value).some((key) => !fieldKeys.has(key))) return false;
-  if (!boundedText(value.id, 100) || !/^[a-z][a-z0-9_]*$/.test(value.id) || value.key !== value.id ||
-    !types.has(value.type as CustomFieldType) || !boundedText(value.label, 200) ||
-    value.helpText !== undefined && (typeof value.helpText !== 'string' || value.helpText.length > 1000) ||
-    value.placeholder !== undefined && (typeof value.placeholder !== 'string' || value.placeholder.length > 200) ||
+  if (!boundedText(value.id, 100) || !/^[a-z][a-z0-9_]*$/.test(value.id) || value.key !== value.id || unsafeName(value.id) ||
+    !types.has(value.type as CustomFieldType) || !boundedText(value.label, 200) || unsafeName(value.label) ||
+    value.helpText !== undefined && !optionalText(value.helpText, 1000) ||
+    value.placeholder !== undefined && !optionalText(value.placeholder, 200) ||
     typeof value.required !== 'boolean' || !Number.isSafeInteger(value.order) || (value.order as number) < 0 || (value.order as number) >= 64 ||
     value.status !== 'active' && value.status !== 'archived') return false;
   if (value.type === 'single_choice' || value.type === 'multiple_choice') {
@@ -30,9 +60,11 @@ function validField(value: unknown): value is ConfiguredField {
       new Set(value.choices.map((choice) => choice.value)).size !== value.choices.length) return false;
   } else if (value.choices !== undefined) return false;
   if (value.type === 'number') {
-    if (value.min !== undefined && (typeof value.min !== 'number' || !Number.isFinite(value.min)) ||
-      value.max !== undefined && (typeof value.max !== 'number' || !Number.isFinite(value.max)) ||
+    if (value.min !== undefined && (typeof value.min !== 'number' || !Number.isFinite(value.min) || Math.abs(value.min) > 1_000_000_000_000) ||
+      value.max !== undefined && (typeof value.max !== 'number' || !Number.isFinite(value.max) || Math.abs(value.max) > 1_000_000_000_000) ||
       value.integerOnly !== undefined && typeof value.integerOnly !== 'boolean') return false;
+    if (typeof value.min === 'number' && typeof value.max === 'number' &&
+      (value.min > value.max || value.integerOnly === true && Math.ceil(value.min) > Math.floor(value.max))) return false;
   } else if (value.min !== undefined || value.max !== undefined || value.integerOnly !== undefined) return false;
   return true;
 }
@@ -45,8 +77,12 @@ export function parsePublishedFormConfig(formId: string, payload: unknown): Publ
     !Number.isSafeInteger(value.version) || (value.version as number) < 1 ||
     !Number.isSafeInteger(value.publishedAt) || (value.publishedAt as number) < 0 ||
     !Array.isArray(value.fields) || value.fields.length > 64 || value.fields.some((field) => !validField(field))) return null;
-  const ids = value.fields.map((field: ConfiguredField) => field.id);
+  const ids = value.fields.map((field: ConfiguredField) => canonicalKey(field.id));
   if (new Set(ids).size !== ids.length) return null;
+  try {
+    const draftBytes = new TextEncoder().encode(JSON.stringify({ formId: value.formId, fields: value.fields })).length;
+    if (draftBytes > 65536) return null;
+  } catch { return null; }
   return value as unknown as PublishedFormConfig;
 }
 

@@ -39,7 +39,7 @@ export function readConfiguredSubmission(form: HTMLFormElement, config: Publishe
 }
 
 /** The server validator accepts fieldId/value entries, preserving published field order. */
-function canonicalKey(key: string): string { return key.replace(/[^a-z0-9]/gi, '').toLowerCase(); }
+export function canonicalKey(key: string): string { return key.replace(/[^a-z0-9]/gi, '').toLowerCase(); }
 
 export function configuredJsonPayload(config: PublishedFormConfig, answers: Record<string, unknown>, baseKeys: readonly string[]) {
   const builtIns = new Set(baseKeys.map(canonicalKey));

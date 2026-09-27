@@ -33,6 +33,20 @@ void test('field errors connect to their controls and are announced', () => {
   assert.match(html, /id="custom-delivery_note-error"[^>]*role="alert"[^>]*>Please add a delivery note\./);
 });
 
+void test('prototype-shaped field IDs never inherit errors from an ordinary map', () => {
+  const hostile = config([
+    field({ id: 'constructor', key: 'constructor', label: 'Constructor detail' }),
+    field({ id: 'toString', key: 'toString', label: 'Display detail', order: 2 }),
+  ]);
+  const plain = renderToStaticMarkup(createElement(ConfiguredFields, { config: hostile, errors: {} }));
+  assert.doesNotMatch(plain, /aria-invalid|role="alert"|custom-constructor-error|custom-toString-error/);
+  const own = Object.create(null) as Record<string, string>;
+  Reflect.set(own, 'constructor', 'Please check this value.');
+  const html = renderToStaticMarkup(createElement(ConfiguredFields, { config: hostile, errors: own }));
+  assert.match(html, /id="custom-constructor-error"[^>]*>Please check this value\./);
+  assert.doesNotMatch(html, /custom-toString-error/);
+});
+
 void test('active controls connect labels, help, and required cues without treating help as markup', () => {
   const html = render(config([field({ helpText: 'Leave at <side door>' })]));
   assert.match(html, /<label[^>]*for="custom-delivery_note"[^>]*>Delivery note/);
@@ -92,6 +106,15 @@ void test('built-in display overrides expose only active field presentation', ()
   assert.equal(fieldDisplay(config([field({ id: 'display_name', key: 'display_name', status: 'archived' })]), 'display_name'), null);
 });
 
+void test('canonical built-in keys receive display overrides and never render custom controls', () => {
+  const builtIn = field({ id: 'displayname', key: 'displayname', label: 'Public display name' });
+  const published = config([builtIn, field({ id: 'extra_note', key: 'extra_note', label: 'Extra note', order: 2 })]);
+  assert.equal(fieldDisplay(published, 'displayName')?.label, 'Public display name');
+  const html = renderToStaticMarkup(createElement(ConfiguredFields, { config: published, baseKeys: ['displayName'] }));
+  assert.doesNotMatch(html, /custom\.displayname|Public display name/);
+  assert.match(html, /custom\.extra_note/);
+});
+
 void test('native form parsing returns typed, namespaced active custom answers', () => {
   const submitted = config([
     field({ id: 'note', key: 'note', required: false }),
@@ -147,6 +170,23 @@ void test('untrusted or unavailable fetched configuration fails closed and serve
   assert.match(renderToStaticMarkup(createElement(Fixture)), /disabled=""/);
 });
 
+void test('fetched configuration rejects Task 3 semantic invalidity while retaining an exact valid version', () => {
+  const valid = config([field({ id: 'amount', key: 'amount', type: 'number', min: 1, max: 5 })]);
+  assert.equal(parsePublishedFormConfig('account.profile', { config: valid })?.version, 3);
+  for (const fields of [
+    [field({ id: 'amount', key: 'amount', type: 'number', min: 5, max: 2 })],
+    [field({ id: 'amount', key: 'amount', type: 'number', min: 1_000_000_000_001 })],
+    [field({ id: 'amount', key: 'amount', type: 'number', min: 0.1, max: 0.9, integerOnly: true })],
+    [field({ id: 'delivery_note', key: 'delivery_note' }), field({ id: 'deliverynote', key: 'deliverynote', order: 2 })],
+    [field({ id: 'payment_reference', key: 'payment_reference' })],
+    [field({ label: 'Account password' })],
+    [field({ helpText: '   ' })],
+    [field({ placeholder: '   ' })],
+  ]) {
+    assert.equal(parsePublishedFormConfig('account.profile', { config: config(fields) }), null);
+  }
+});
+
 void test('stale response supplies refresh feedback and leaves entered values intact', () => {
   const entered = { delivery_note: 'Please ring twice' };
   const result = submissionFeedback(409);
@@ -185,7 +225,8 @@ void test('mounted form retains text through 409 and refresh, then ignores an ol
             React.createElement('button', { id: 'submit', type: 'submit', disabled: !state.canSubmit }, 'Save')) : null,
           React.createElement('button', { id: 'stale', type: 'button', onClick: () => state.handleSubmissionResponse(new Response(null, { status: 409 })) }, 'Stale'),
           React.createElement('button', { id: 'refresh', type: 'button', onClick: state.refresh }, 'Refresh'),
-          React.createElement('button', { id: 'switch', type: 'button', onClick: () => setFormId('account.other') }, 'Switch'));
+          React.createElement('button', { id: 'switch', type: 'button', onClick: () => setFormId('account.other') }, 'Switch'),
+          React.createElement('button', { id: 'switch-invalid', type: 'button', onClick: () => setFormId('account.invalid') }, 'Invalid'));
       }
       createRoot(document.getElementById('root')).render(React.createElement(App));
     ` }, bundle: true, write: false, platform: 'browser', format: 'iife',
@@ -210,6 +251,9 @@ void test('mounted form retains text through 409 and refresh, then ignores an ol
         if (requests === 2) await refreshGate;
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ config: requests === 2 ? { ...profile, version: 4 } : profile }) });
       }
+      if (path === '/api/forms/account.invalid') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        config: { ...config([field({ id: 'amount', key: 'amount', type: 'number', min: 5, max: 2 })]), formId: 'account.invalid' },
+      }) });
       await otherGate;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
         config: { ...config([field({ id: 'other_note', key: 'other_note', label: 'Other note' })]), formId: 'account.other' },
@@ -247,6 +291,10 @@ void test('mounted form retains text through 409 and refresh, then ignores an ol
     await page.evaluate(() => (window as typeof window & { oldResponse: (response: Response) => boolean }).oldResponse(new Response(null, { status: 409 })));
     assert.equal(await page.locator('#status').textContent(), 'ready');
     assert.equal(await page.locator('#submit').isDisabled(), false);
+    await page.locator('#switch-invalid').click();
+    await page.waitForFunction(() => document.querySelector('#status')?.textContent !== 'loading');
+    assert.equal(await page.locator('#status').textContent(), 'unavailable');
+    assert.equal(await page.locator('#submit').count(), 0);
   } finally {
     releaseRefresh();
     releaseOther();

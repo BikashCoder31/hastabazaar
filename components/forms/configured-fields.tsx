@@ -1,4 +1,5 @@
 import type { ConfiguredField, PublishedFormConfig } from '@/lib/forms/types';
+import { canonicalKey } from '@/lib/forms/submission';
 
 export interface FieldDisplay {
   label: string;
@@ -9,7 +10,8 @@ export interface FieldDisplay {
 
 /** Presentation only: existing domain controls keep their server-owned semantics. */
 export function fieldDisplay(config: PublishedFormConfig | null, baseKey: string): FieldDisplay | null {
-  const field = config?.fields.find((item) => item.key === baseKey && item.status === 'active');
+  const requested = canonicalKey(baseKey);
+  const field = config?.fields.find((item) => canonicalKey(item.key) === requested && item.status === 'active');
   return field ? { label: field.label, helpText: field.helpText, placeholder: field.placeholder, required: field.required } : null;
 }
 
@@ -57,13 +59,14 @@ function ConfiguredFieldControl({ field, error }: { field: ConfiguredField; erro
 export function ConfiguredFields({ config, baseKeys = [], errors = {} }: {
   config: PublishedFormConfig; baseKeys?: readonly string[]; errors?: Readonly<Record<string, string>>;
 }) {
-  const builtIns = new Set(baseKeys);
-  const fields = config.fields.filter((field) => field.status === 'active' && !builtIns.has(field.key))
+  const builtIns = new Set(baseKeys.map(canonicalKey));
+  const fields = config.fields.filter((field) => field.status === 'active' && !builtIns.has(canonicalKey(field.key)))
     .toSorted((left, right) => left.order - right.order);
   return <>
     <input type="hidden" name="formVersion" value={config.version} />
     <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-      {fields.map((field) => <ConfiguredFieldControl key={field.id} field={field} error={errors[field.id]} />)}
+      {fields.map((field) => <ConfiguredFieldControl key={field.id} field={field}
+        error={Object.hasOwn(errors, field.id) && typeof errors[field.id] === 'string' ? errors[field.id] : undefined} />)}
     </div>
   </>;
 }
