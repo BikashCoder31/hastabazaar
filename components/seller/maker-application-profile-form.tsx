@@ -11,7 +11,7 @@ import { sendJson } from '@/lib/http/client-request';
 import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
-import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
+import { clearVersionedSessionAttempt, getOrCreateVersionedSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 const catalogBaseKeys = ['publicName', 'publicCity', 'sellerId', 'expectedVersion', 'experienceCraft',
   'experienceBand', 'facebookUrl', 'instagramUrl', 'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl',
@@ -40,7 +40,7 @@ export function MakerApplicationProfileForm({ profile }: { profile: SellerPartic
   }, [attemptKey]);
   function resetAttempt() {
     if (!window.confirm('A previous maker profile save may already have succeeded. Check your application progress first. Starting a new attempt can create duplicate history. Start a new attempt anyway?')) return;
-    try { sessionStorage.removeItem(attemptKey); }
+    try { sessionStorage.removeItem(attemptKey); sessionStorage.removeItem(`${attemptKey}:expected-version`); }
     catch { setMessage('Browser session storage is unavailable. Please enable it before submitting.'); return; }
     setHasPendingAttempt(false);
     setMessage('New maker profile attempt ready.');
@@ -53,15 +53,15 @@ export function MakerApplicationProfileForm({ profile }: { profile: SellerPartic
     const form = new FormData(event.currentTarget);
     try {
       const configured = readConfiguredSubmission(event.currentTarget, catalog.config, catalogBaseKeys);
-      const attemptId = getOrCreateSessionAttempt(attemptKey);
+      const attempt = getOrCreateVersionedSessionAttempt(attemptKey, profile.version);
       setHasPendingAttempt(true);
       await sendJson('/api/seller-applications/profile', 'PATCH', {
         ...Object.fromEntries([...form.entries()].filter(([key]) => key !== 'formVersion' && !key.startsWith('custom.'))),
-        expectedVersion: profile.version,
-        requestId: attemptId,
+        expectedVersion: attempt.expectedVersion,
+        requestId: attempt.requestId,
         ...configuredJsonPayload(catalog.config, configured.answers, catalogBaseKeys),
       }, 'Maker profile could not be saved.');
-      clearSessionAttempt(attemptKey);
+      clearVersionedSessionAttempt(attemptKey);
       setHasPendingAttempt(false);
       setMessage('Maker profile saved.');
       router.refresh();

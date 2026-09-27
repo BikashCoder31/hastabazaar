@@ -37,7 +37,7 @@ void test('maker and seller profile attempts retain opaque IDs across lost respo
   const browser = await chromium.launch({ headless: true,
     executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
   const page = await browser.newPage();
-  const attempts = new Map<string, string[]>();
+  const attempts = new Map<string, Array<{ requestId: string; expectedVersion?: number; publicCity?: string }>>();
   try {
     // oxlint-disable-next-line typescript/no-explicit-any -- Browser route type belongs to bundled Playwright.
     await page.route('https://profile.test/**', async (route: any) => {
@@ -47,13 +47,24 @@ void test('maker and seller profile attempts retain opaque IDs across lost respo
       if (url.pathname.startsWith('/api/forms/')) return route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ config: { formId: url.pathname.endsWith('maker-profile') ? 'seller.maker-profile' : 'seller.profile',
           version: 1, publishedAt: 1, fields: [] } }) });
-      const payload = JSON.parse(route.request().postData() ?? '{}') as { requestId?: string; idempotencyKey?: string };
+      const payload = JSON.parse(route.request().postData() ?? '{}') as {
+        requestId?: string; idempotencyKey?: string; expectedVersion?: number; publicCity?: string;
+      };
       const key = `${url.pathname}:${route.request().headers()['x-seller-context'] ?? ''}`;
       const list = attempts.get(key) ?? [];
-      list.push(payload.requestId ?? payload.idempotencyKey ?? '');
+      list.push({ requestId: payload.requestId ?? payload.idempotencyKey ?? '',
+        expectedVersion: payload.expectedVersion, publicCity: payload.publicCity });
       attempts.set(key, list);
-      return list.length === 1 ? route.abort('failed') : route.fulfill({ status: 200,
-        contentType: 'application/json', body: '{"ok":true}' });
+      if (list.length === 1) return route.abort('failed');
+      if (url.pathname === '/api/seller-applications/profile' && list[0].requestId === payload.requestId &&
+        (list[0].expectedVersion !== payload.expectedVersion || list[0].publicCity !== payload.publicCity))
+        return route.fulfill({ status: 409, contentType: 'application/json',
+          body: '{"error":"Request reference conflicts with the saved profile."}' });
+      if (url.pathname === '/api/seller-applications/profile' && list[0].requestId !== payload.requestId &&
+        payload.expectedVersion !== 2)
+        return route.fulfill({ status: 409, contentType: 'application/json',
+          body: '{"error":"The profile owner or version changed."}' });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
     });
     async function mount(path: string) {
       await page.goto(`https://profile.test${path}`);
@@ -71,20 +82,51 @@ void test('maker and seller profile attempts retain opaque IDs across lost respo
       await mount(path);
       await submit();
       await page.waitForFunction(() => document.querySelector('form')?.textContent?.includes('couldn’t connect'));
-      const first = attempts.get(`${endpoint}:`)?.[0];
+      const first = attempts.get(`${endpoint}:`)?.[0]?.requestId;
       assert.match(first ?? '', /^[0-9a-f-]{36}$/i);
       assert.equal(await page.evaluate((key: string) => sessionStorage.getItem(key), storage), first);
       await mount(path.startsWith('/maker/') ? '/maker/seller-one?version=2' : path);
       await submit();
-      await page.waitForFunction(() => document.querySelector('form')?.textContent?.includes('saved.'));
-      assert.deepEqual(attempts.get(`${endpoint}:`), [first, first]);
+      await page.waitForFunction(() => /saved\.|conflicts/.test(document.querySelector('form')?.textContent ?? ''));
+      assert.match(await page.locator('form').innerText(), /saved\./);
+      assert.deepEqual(attempts.get(`${endpoint}:`)?.map((item) => item.requestId), [first, first]);
+      if (path.startsWith('/maker/')) {
+        assert.deepEqual(attempts.get(`${endpoint}:`)?.map((item) => item.expectedVersion), [1, 1]);
+        assert.equal(await page.evaluate((key: string) => sessionStorage.getItem(`${key}:expected-version`), storage), null);
+      }
       assert.equal(await page.evaluate((key: string) => sessionStorage.getItem(key), storage), null);
     }
+    attempts.set('/api/seller-applications/profile:', []);
+    await mount('/maker/seller-two?version=1');
+    await submit();
+    await page.waitForFunction(() => document.querySelector('form')?.textContent?.includes('couldn’t connect'));
+    const makerOriginal = attempts.get('/api/seller-applications/profile:')?.[0]?.requestId;
+    const makerKey = 'hastabazaar:profile-attempt:seller.maker-profile:seller-two';
+    assert.ok(makerOriginal);
+    await mount('/maker/seller-two?version=2');
+    await page.locator('input[name="publicCity"]').fill('Kathmandu');
+    await submit();
+    await page.waitForFunction(() => document.querySelector('form')?.textContent?.includes('conflicts'));
+    assert.equal(attempts.get('/api/seller-applications/profile:')?.[1]?.requestId, makerOriginal);
+    assert.equal(attempts.get('/api/seller-applications/profile:')?.[1]?.expectedVersion, 1);
+    assert.equal(await page.evaluate((key: string) => sessionStorage.getItem(key), makerKey), makerOriginal);
+    const makerReset = page.getByRole('button', { name: 'Start a new maker profile attempt' });
+    page.once('dialog', async (dialog: { message(): string; accept(): Promise<void> }) => {
+      assert.match(dialog.message(), /duplicate history/i);
+      await dialog.accept();
+    });
+    await makerReset.click();
+    assert.equal(await page.evaluate((key: string) => sessionStorage.getItem(key), makerKey), null);
+    assert.equal(await page.evaluate((key: string) => sessionStorage.getItem(`${key}:expected-version`), makerKey), null);
+    await submit();
+    await page.waitForFunction(() => document.querySelector('form')?.textContent?.includes('Maker profile saved.'));
+    assert.notEqual(attempts.get('/api/seller-applications/profile:')?.[2]?.requestId, makerOriginal);
+    assert.equal(attempts.get('/api/seller-applications/profile:')?.[2]?.expectedVersion, 2);
     attempts.set('/api/seller/profile:', []);
     await mount('/seller/seller-two');
     await submit();
     await page.waitForFunction(() => document.querySelector('form')?.textContent?.includes('couldn’t connect'));
-    const original = attempts.get('/api/seller/profile:')?.[0];
+    const original = attempts.get('/api/seller/profile:')?.[0]?.requestId;
     const sellerTwoKey = 'hastabazaar:profile-attempt:seller.profile:seller-two';
     assert.ok(original);
     const reset = page.getByRole('button', { name: 'Start a new seller profile attempt' });
@@ -102,6 +144,6 @@ void test('maker and seller profile attempts retain opaque IDs across lost respo
     assert.equal(await page.evaluate((key: string) => sessionStorage.getItem(key), sellerTwoKey), null);
     await submit();
     await page.waitForFunction(() => document.querySelector('form')?.textContent?.includes('Seller profile saved.'));
-    assert.notEqual(attempts.get('/api/seller/profile:')?.[1], original);
+    assert.notEqual(attempts.get('/api/seller/profile:')?.[1]?.requestId, original);
   } finally { await page.close(); await browser.close(); }
 });
