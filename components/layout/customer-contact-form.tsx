@@ -47,8 +47,9 @@ export function CustomerContactForm({
         ok?: boolean;
         error?: string;
         fieldId?: string;
+        code?: string;
       };
-      catalog.handleSubmissionResponse(response);
+      catalog.handleSubmissionResponse(response, result.code);
       if (result.fieldId) setFieldErrors({ [result.fieldId]: result.error || 'Invalid answer.' });
       if (!response.ok || !result.ok)
         throw new Error(result.error || 'Your message could not be sent.');
@@ -73,7 +74,6 @@ export function CustomerContactForm({
     <form
       data-form-id={kind === 'feedback' ? 'public.feedback' : 'public.contact'}
       onSubmit={submit}
-      onInput={() => { if (error) attemptId.current = ''; }}
       className="grid gap-5 rounded-3xl border bg-card p-6 shadow-sm sm:grid-cols-2 sm:p-8"
     >
       <input

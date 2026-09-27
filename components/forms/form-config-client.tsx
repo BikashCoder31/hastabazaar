@@ -117,8 +117,8 @@ export function usePublishedFormConfig(formId: string) {
       status: 'loading', message: '' }));
     setRefreshIndex((index) => index + 1);
   }, [formId]);
-  const handleSubmissionResponse = useCallback((response: Response) => {
-    if (response.status === 409) setState((current) => current.formId === formId
+  const handleSubmissionResponse = useCallback((response: Response, code?: string) => {
+    if (response.status === 409 && code !== 'request_id_conflict') setState((current) => current.formId === formId
       ? { ...current, status: 'stale', message: submissionFeedback(409).message } : current);
     return response.ok;
   }, [formId]);

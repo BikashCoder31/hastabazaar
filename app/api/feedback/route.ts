@@ -24,7 +24,8 @@ import { isTrustedMutationRequest } from '@/lib/http/request-security';
 
 const noStoreHeaders = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
 const json = (body: unknown, status: number) => Response.json(body, { status, headers: noStoreHeaders });
-const retryMessage = 'Your query could not be sent right now. Please try again later or use the contact page.';
+const retryMessage = 'Delivery is uncertain. Your message may have been sent. Retry without changing it, or contact support before sending a new message.';
+const requestConflict = { code: 'request_id_conflict', error: 'Your earlier message may have been sent. These edits were not sent. Contact support before sending a new message.' };
 const commonKeys = new Set(['kind', 'pagePath', 'website', 'name', 'email', 'topic', 'message',
   'privacyAcknowledgement', 'requestId', 'formVersion']);
 const variants = {
@@ -141,7 +142,7 @@ export async function POST(request: Request): Promise<Response> {
     if (job) {
       const payloadHash = await formHash(form);
       if (job.formId !== contract.formId || job.payloadHash !== payloadHash)
-        return json({ error: 'Request identifier was already used.' }, 409);
+        return json(requestConflict, 409);
       return deliver(database, job);
     }
     const networkLimit = await consumePublicRequestRateLimit(database, request, {
@@ -169,7 +170,7 @@ export async function POST(request: Request): Promise<Response> {
           : json({ error: retryMessage }, 503);
       }
       if (job.formId !== contract.formId || job.payloadHash !== payloadHash)
-        return json({ error: 'Request identifier was already used.' }, 409);
+        return json(requestConflict, 409);
     }
     return deliver(database, job);
   } catch (error) {

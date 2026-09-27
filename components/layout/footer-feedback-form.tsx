@@ -50,8 +50,9 @@ export function FooterFeedbackForm() {
       const result = (await response.json().catch(() => null)) as {
         ok?: boolean;
         error?: string;
+        code?: string;
       } | null;
-      catalog.handleSubmissionResponse(response);
+      catalog.handleSubmissionResponse(response, result?.code);
       if (!response.ok || !result?.ok) {
         throw new Error(
           result?.error ?? 'Your query could not be sent. Please try again.',
@@ -96,7 +97,6 @@ export function FooterFeedbackForm() {
         </div>
 
         <form data-form-id="public.footer-feedback" onSubmit={submit}
-          onInput={() => { if (state.kind === 'error') attemptId.current = ''; }}
           className="grid gap-4 sm:grid-cols-2">
           <input type="hidden" name="pagePath" value={pathname || '/'} />
           <input type="hidden" name="kind" value="footer" />

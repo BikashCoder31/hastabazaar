@@ -1,0 +1,91 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { build } from 'esbuild';
+
+const playwrightPath = process.env.PLAYWRIGHT_MODULE ??
+  'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+
+for (const kind of ['contact', 'footer'] as const) {
+  void test(`${kind} ambiguous delivery keeps one request after an edit and explains the conflict`, async () => {
+    // oxlint-disable-next-line typescript/no-explicit-any -- Playwright is supplied by the bundled runtime.
+    const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<any> } };
+    const bundle = await build({
+      stdin: { resolveDir: process.cwd(), sourcefile: 'feedback-client-fixture.tsx', contents: `
+        import React from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { CustomerContactForm } from './components/layout/customer-contact-form';
+        import { FooterFeedbackForm } from './components/layout/footer-feedback-form';
+        createRoot(document.getElementById('root')!).render(${kind === 'contact'
+          ? '<CustomerContactForm kind="contact" />' : '<FooterFeedbackForm />'});
+      `, loader: 'tsx' },
+      bundle: true, write: false, platform: 'browser', format: 'iife',
+      define: { 'process.env.NODE_ENV': '"production"' },
+      plugins: [{ name: 'next-browser-shims', setup(bundler) {
+        bundler.onResolve({ filter: /^next\/(link|navigation)$/ }, (args) => ({ path: args.path, namespace: 'next-browser-shims' }));
+        bundler.onLoad({ filter: /.*/, namespace: 'next-browser-shims' }, (args) => ({
+          contents: args.path === 'next/link'
+            ? 'import React from "react"; export default function Link(props){return React.createElement("a", {href:props.href}, props.children)}'
+            : 'export function usePathname(){return "/products/handmade-item"}',
+          loader: 'tsx', resolveDir: process.cwd(),
+        }));
+      } }],
+    });
+    const browser = await chromium.launch({ headless: true,
+      executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
+    const page = await browser.newPage();
+    const requests: { requestId: string; name: string }[] = [];
+    let jobs = 0;
+    let resolveSecond: () => void = () => {};
+    const secondRequest = new Promise<void>((resolve) => { resolveSecond = resolve; });
+    try {
+      // oxlint-disable-next-line typescript/no-explicit-any -- Browser route type belongs to bundled Playwright.
+      await page.route('https://feedback.test/**', async (route: any) => {
+        const url = new URL(route.request().url());
+        if (url.pathname === '/') return route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
+        if (url.pathname.startsWith('/api/forms/')) return route.fulfill({ status: 200, contentType: 'application/json',
+          body: JSON.stringify({ config: { formId: kind === 'contact' ? 'public.contact' : 'public.footer-feedback', version: 1, publishedAt: 1, fields: [] } }) });
+        const body = route.request().postData();
+        assert.ok(body);
+        const headers = route.request().headers();
+        const contentType = headers['content-type'];
+        const request = new Request('https://feedback.test/api/feedback', { method: 'POST', headers: { 'content-type': contentType }, body });
+        const form = await request.formData();
+        const requestId = form.get('requestId');
+        const name = form.get('name');
+        if (typeof requestId !== 'string' || typeof name !== 'string') throw new Error('Missing text payload');
+        requests.push({ requestId, name });
+        if (requests.length === 2) resolveSecond();
+        if (requests.length === 1) {
+          jobs++;
+          return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Delivery is uncertain. Retry without editing.' }) });
+        }
+        if (requestId === requests[0].requestId && name !== requests[0].name)
+          return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ code: 'request_id_conflict',
+            error: 'Your earlier message may have been sent. These edits were not sent.' }) });
+        jobs++;
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+      });
+      await page.goto('https://feedback.test/');
+      await page.addScriptTag({ content: bundle.outputFiles[0].text });
+      const form = page.locator('form[data-form-id]');
+      await form.locator('[name="name"]').fill('Asha Rai');
+      await form.locator('[name="email"]').fill('asha@example.test');
+      await form.locator('[name="topic"]').selectOption('General question');
+      if (kind === 'contact') await form.locator('[name="subject"]').fill('An order question');
+      await form.locator('[name="message"]').fill('Could you help with this handmade item?');
+      await form.locator('[name="privacyAcknowledgement"]').check();
+      await form.locator('button[type="submit"]').click();
+      await page.waitForFunction(() => document.querySelector('form[data-form-id]')?.textContent?.includes('Delivery is uncertain'));
+      await form.locator('[name="name"]').fill('Asha Sherpa');
+      await form.locator('button[type="submit"]').click();
+      await secondRequest;
+      assert.equal(requests.length, 2);
+      assert.equal(requests[0].requestId, requests[1].requestId);
+      assert.notEqual(requests[0].name, requests[1].name);
+      assert.equal(jobs, 1);
+      await page.waitForFunction(() => document.querySelector('form[data-form-id]')?.textContent?.includes('These edits were not sent'));
+      assert.equal(await form.locator('button[type="submit"]').isDisabled(), false);
+      assert.equal(await form.getByRole('button', { name: 'Refresh form' }).count(), 0);
+    } finally { await page.close(); await browser.close(); }
+  });
+}

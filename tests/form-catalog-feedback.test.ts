@@ -211,7 +211,9 @@ void test('ambiguous post-send persistence failure never automatically resends',
     seed(sqlite, 'public.contact', 1);
     const { POST } = await import('../app/api/feedback/route');
     db.failNextSql = /UPDATE feedback_delivery_jobs SET status='sent'/;
-    assert.equal((await POST(request('uncertain-one'))).status, 503);
+    const uncertain = await POST(request('uncertain-one'));
+    assert.equal(uncertain.status, 503);
+    assert.match(((await uncertain.json()) as { error: string }).error, /may have been sent|uncertain/i);
     assert.equal(globalThis.feedbackCatalogMail.sent.length, 1);
     assert.equal((await POST(request('uncertain-one'))).status, 503);
     assert.equal(globalThis.feedbackCatalogMail.sent.length, 1);
@@ -317,7 +319,9 @@ void test('same request key cannot switch source, kind or body', async () => {
     assert.equal((await POST(request('same-key'))).status, 200);
     assert.equal((await POST(request('same-key', { kind: 'feedback' }))).status, 409);
     assert.equal((await POST(request('same-key', { kind: 'footer' }))).status, 409);
-    assert.equal((await POST(request('same-key', { name: 'Changed Name' }))).status, 409);
+    const changed = await POST(request('same-key', { name: 'Changed Name' }));
+    assert.equal(changed.status, 409);
+    assert.equal(((await changed.json()) as { code: string }).code, 'request_id_conflict');
     assert.equal(globalThis.feedbackCatalogMail.sent.length, 1);
   } finally { sqlite.close(); }
 });
