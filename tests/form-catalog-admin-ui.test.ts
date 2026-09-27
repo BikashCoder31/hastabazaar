@@ -50,6 +50,119 @@ async function mountConcurrencyEditor(versions: readonly CatalogVersion[], form 
   return { browser, page };
 }
 
+const orderingForm: FormDefinition = { ...definition, baseFields: [...definition.baseFields,
+  { key: 'display_name', type: 'short_text', label: 'Display name', capability: 'display_editable', required: false, status: 'active', explanation: 'Display-only override.' },
+  { key: 'nickname', type: 'short_text', label: 'Nickname', capability: 'display_editable', required: false, status: 'active', explanation: 'Display-only override.' },
+] };
+const unsortedFields: ConfiguredField[] = [
+  { id: 'later', key: 'later', type: 'short_text', label: 'Later custom', required: false, order: 20, status: 'active' },
+  { id: 'display_name', key: 'display_name', type: 'short_text', label: 'Display name', required: false, order: 10, status: 'active' },
+  { id: 'first', key: 'first', type: 'short_text', label: 'First custom', required: false, order: 0, status: 'active' },
+];
+
+void test('configured order survives no-op save and additions to an unsorted stored draft', async (t) => {
+  for (const action of ['no-op', 'custom', 'built-in', 'tied order'] as const) await t.test(action, async () => {
+    const fields = action === 'tied order' ? [...unsortedFields, { ...unsortedFields[0], id: 'tie', key: 'tie', label: 'Tied custom' }] : unsortedFields;
+    let draft: CatalogVersion = { id: 'draft-1', version: 1, revision: 1, status: 'draft', reason: 'Stored order', updatedAt: 1, publishedAt: null,
+      config: { formId: orderingForm.id, fields } };
+    const { browser, page } = await mountConcurrencyEditor([draft], orderingForm);
+    const requests: { config: { fields: ConfiguredField[] } }[] = [];
+    const expectedCustom = action === 'tied order' ? ['first', 'later', 'tie'] : ['first', 'later'];
+    const expectedSaved: [string, number][] = [['first', 0], ['display_name', 1], ['later', 2]];
+    try {
+      // oxlint-disable-next-line typescript/no-explicit-any -- Capture the real editor's serialized HTTP payload.
+      await page.route('https://form.test/api/**', async (route: any) => {
+        if (route.request().method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ versions: [draft] }) });
+        const body = route.request().postDataJSON();
+        requests.push(body);
+        draft = { ...draft, revision: draft.revision + 1, config: body.config };
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ draft }) });
+      });
+      await page.locator('#first-label').waitFor();
+      assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), false, 'canonical order must not make a saved draft dirty');
+      assert.equal(await page.getByText('Save your latest edits before publishing.', { exact: true }).count(), 0);
+      assert.deepEqual(await page.locator('[data-editor-field]').evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('data-editor-field'))), expectedCustom);
+      assert.deepEqual(await page.locator('[data-preview-mode="phone"] [data-configured-field]').evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('data-configured-field'))), expectedCustom);
+      if (action === 'custom') {
+        await page.getByLabel('New field key').fill('added');
+        await page.locator('#new-field-label').fill('Added custom');
+        await page.getByRole('button', { name: 'Add field' }).click();
+        expectedCustom.push('added'); expectedSaved.push(['added', 3]);
+      } else if (action === 'built-in') {
+        await page.getByRole('button', { name: 'Edit display', exact: true }).last().click();
+        expectedSaved.push(['nickname', 3]);
+      } else if (action === 'tied order') expectedSaved.push(['tie', 3]);
+      if (action === 'custom' || action === 'built-in') assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), true);
+      assert.deepEqual(await page.locator('[data-editor-field]').evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('data-editor-field'))), expectedCustom);
+      await page.getByLabel('Reason for change').fill('Preserve configured order');
+      await page.getByRole('button', { name: 'Save draft' }).click();
+      await page.getByText('Draft saved.', { exact: true }).waitFor();
+      assert.equal(requests.length, 1);
+      assert.deepEqual(requests[0].config.fields.map(({ key, order }) => [key, order]), expectedSaved);
+      assert.deepEqual(await page.locator('[data-editor-field]').evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('data-editor-field'))), expectedCustom);
+      for (const mode of ['phone', 'desktop']) {
+        await page.getByRole('tab', { name: mode === 'phone' ? 'Phone' : 'Desktop', exact: true }).click();
+        assert.deepEqual(await page.locator(`[data-preview-mode="${mode}"] [data-configured-field]`).evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('data-configured-field'))), expectedCustom);
+      }
+      assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), false);
+      assert.equal(await page.getByText('Save your latest edits before publishing.', { exact: true }).count(), 0);
+    } finally { await page.close(); await browser.close(); }
+  });
+});
+
+void test('configured order remains canonical when save, conflict reload, or restore adopts server fields', async (t) => {
+  for (const adoption of ['save response', 'conflict reload', 'restore'] as const) await t.test(adoption, async () => {
+    const initial: CatalogVersion = { id: 'draft-2', version: 2, revision: 1, status: 'draft', reason: 'Initial', updatedAt: 2, publishedAt: null,
+      config: { formId: orderingForm.id, fields: [{ ...unsortedFields[2], order: 0 }, { ...unsortedFields[1], order: 1 }, { ...unsortedFields[0], order: 2 }] } };
+    const historical: CatalogVersion = { ...initial, id: 'published-1', version: 1, status: 'published', publishedAt: 1, config: { ...initial.config, fields: unsortedFields } };
+    let latest: CatalogVersion = { ...initial, revision: 2, config: historical.config };
+    const { browser, page } = await mountConcurrencyEditor([initial, historical], orderingForm);
+    const saves: { config: { fields: ConfiguredField[] } }[] = [];
+    try {
+      // oxlint-disable-next-line typescript/no-explicit-any -- HTTP boundary fixtures expose valid unsorted stored arrays.
+      await page.route('https://form.test/api/**', async (route: any) => {
+        if (route.request().method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ versions: [latest, historical] }) });
+        if (route.request().url().endsWith('/publish')) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'Draft changed.' }) });
+        if (route.request().url().endsWith('/restore')) {
+          latest = { ...historical, id: 'published-3', version: 3, updatedAt: 3, publishedAt: 3 };
+          return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ published: latest }) });
+        }
+        const body = route.request().postDataJSON(); saves.push(body);
+        if (adoption !== 'save response' || saves.length > 1) latest = { ...initial, revision: 3, config: body.config };
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ draft: latest }) });
+      });
+      await page.getByLabel('Reason for change').fill('Adopt stored order');
+      if (adoption === 'save response') {
+        await page.getByRole('button', { name: 'Save draft' }).click();
+        await page.getByText('Draft saved.', { exact: true }).waitFor();
+      } else {
+        await page.getByRole('button', { name: adoption === 'restore' ? 'Restore' : 'Publish draft', exact: true }).click();
+        await page.getByRole('button', { name: adoption === 'restore' ? 'Confirm restore' : 'Confirm publish' }).focus();
+        await page.keyboard.press('Enter');
+        if (adoption === 'conflict reload') {
+          await page.getByRole('alertdialog').getByText('Draft changed.', { exact: true }).waitFor();
+          await page.getByRole('button', { name: 'Cancel', exact: true }).focus();
+          await page.keyboard.press('Enter');
+          await page.getByRole('button', { name: 'Reload latest version' }).click();
+          await page.getByText('Version 2 · revision 2').waitFor();
+        } else await page.getByText('Historical version restored as a new publication.', { exact: true }).waitFor();
+      }
+      assert.equal(await page.getByText('Save your latest edits before publishing.', { exact: true }).count(), 0);
+      assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), adoption === 'restore');
+      assert.deepEqual(await page.locator('[data-editor-field]').evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('data-editor-field'))), ['first', 'later']);
+      assert.deepEqual(await page.locator('[data-preview-mode="phone"] [data-configured-field]').evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('data-configured-field'))), ['first', 'later']);
+      await page.getByLabel('New field key').fill('added');
+      await page.locator('#new-field-label').fill('Added custom');
+      await page.getByRole('button', { name: 'Add field' }).click();
+      assert.deepEqual(await page.locator('[data-editor-field]').evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('data-editor-field'))), ['first', 'later', 'added']);
+      await page.getByLabel('Reason for change').fill('Save after adopting fields');
+      await page.getByRole('button', { name: 'Save draft' }).click();
+      await page.getByText('Draft saved.', { exact: true }).waitFor();
+      assert.deepEqual(saves.at(-1)!.config.fields.map(({ key, order }) => [key, order]), [['first', 0], ['display_name', 1], ['later', 2], ['added', 3]]);
+    } finally { await page.close(); await browser.close(); }
+  });
+});
+
 void test('valid constructor text field saves once whether active or archived', async (t) => {
   for (const status of ['active', 'archived'] as const) await t.test(status, async () => {
     const { browser, page } = await mountConcurrencyEditor([]);

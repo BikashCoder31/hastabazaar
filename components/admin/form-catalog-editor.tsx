@@ -34,6 +34,8 @@ const parseChoices = (raw: string) => raw.split('\n').filter((line) => line.trim
 });
 const ordered = (fields: readonly ConfiguredField[]) => fields.toSorted((a, b) => a.order - b.order);
 const normalized = (fields: readonly ConfiguredField[]) => fields.map((field, order) => ({ ...field, order }));
+// Stored array position is not configured order. Stable sorting also preserves ties.
+const canonicalFields = (fields: readonly ConfiguredField[]) => normalized(ordered(fields));
 const newest = (versions: readonly CatalogVersion[], status: CatalogVersion['status']) => versions.find((item) => item.status === status);
 const currentDraft = (versions: readonly CatalogVersion[]) => {
   const draft = newest(versions, 'draft');
@@ -45,8 +47,8 @@ const displayDate = (value: number) => new Intl.DateTimeFormat('en-NP', { dateSt
 export function FormCatalogEditor({ form, versions: initialVersions }: { form: FormDefinition; versions: readonly CatalogVersion[] }) {
   const [versions, setVersions] = useState(initialVersions);
   const first = currentDraft(initialVersions) ?? newest(initialVersions, 'published');
-  const [fields, setFields] = useState<readonly ConfiguredField[]>(first?.config.fields ?? []);
-  const [savedFields, setSavedFields] = useState(JSON.stringify(first?.config.fields ?? []));
+  const [fields, setFields] = useState<readonly ConfiguredField[]>(() => canonicalFields(first?.config.fields ?? []));
+  const [savedFields, setSavedFields] = useState(() => JSON.stringify(canonicalFields(first?.config.fields ?? [])));
   const [choiceDrafts, setChoiceDrafts] = useState<Record<string, string>>({});
   const [reason, setReason] = useState('');
   const [newKey, setNewKey] = useState('');
@@ -76,7 +78,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
   const draft = currentDraft(versions);
   const editLocked = busy || replacingHistory || uncertainAction !== null;
   const dirty = JSON.stringify(fields) !== savedFields;
-  const canPublish = !!draft && !dirty && !conflict && JSON.stringify(fields) === JSON.stringify(draft.config.fields);
+  const canPublish = !!draft && !dirty && !conflict && JSON.stringify(fields) === JSON.stringify(canonicalFields(draft.config.fields));
   const baseKeys = new Set(form.baseFields.map((item) => item.key.replaceAll(/[^a-z0-9]/gi, '').toLowerCase()));
   const customFields = ordered(fields.filter((field) => !baseKeys.has(field.key.replaceAll(/[^a-z0-9]/gi, '').toLowerCase())));
   const previewConfig = { formId: form.id, version: published?.version ?? 0, publishedAt: published?.publishedAt ?? 0, fields };
@@ -98,6 +100,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
     const index = list.findIndex((item) => item.id === id);
     const target = list.findIndex((item) => item.id === neighbor.id);
     [list[index], list[target]] = [list[target], list[index]];
+    // This explicit user move defines a new sequence; retain the built-in slots.
     setFields(normalized(list));
   }
   function addField() {
@@ -108,7 +111,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
     }
     if (!label) { announce('Enter a label for the new field.', labelRef.current); return; }
     const item: ConfiguredField = { id: key, key, label, type: newType, required: false, order: fields.length, status: 'active', ...(choicesType(newType) ? { choices: [{ value: 'first', label: 'First option' }, { value: 'second', label: 'Second option' }] } : {}) };
-    setFields((current) => normalized([...current, item]));
+    setFields((current) => canonicalFields([...current, item]));
     setNewKey(''); setNewLabel(''); setError('');
   }
   async function reload({ keepEdits = true, resolveConflict = false, success, warning = 'Version history could not refresh. Try again.' }: {
@@ -126,7 +129,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
       setVersions(body.versions);
       if (!keepEdits) {
         const selected = currentDraft(body.versions) ?? newest(body.versions, 'published');
-        const next = selected?.config.fields ?? [];
+        const next = canonicalFields(selected?.config.fields ?? []);
         setFields(next); setSavedFields(JSON.stringify(next)); setChoiceDrafts({});
       }
       if (resolveConflict) setConflict(null);
@@ -169,16 +172,18 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
       if (action === 'draft' && body.draft) {
         const saved = body.draft;
         setVersions((current) => [saved, ...current.filter((entry) => entry.id !== saved.id)]);
-        setFields(body.draft.config.fields);
-        setSavedFields(JSON.stringify(body.draft.config.fields));
+        const next = canonicalFields(saved.config.fields);
+        setFields(next);
+        setSavedFields(JSON.stringify(next));
         setChoiceDrafts({});
       }
       if (body.published) {
         const publishedResult = body.published;
         setVersions((current) => [publishedResult, ...current.filter((entry) => entry.id !== publishedResult.id)]);
         if (action === 'restore') {
-          setFields(publishedResult.config.fields);
-          setSavedFields(JSON.stringify(publishedResult.config.fields));
+          const next = canonicalFields(publishedResult.config.fields);
+          setFields(next);
+          setSavedFields(JSON.stringify(next));
           setChoiceDrafts({});
         }
       }
@@ -210,7 +215,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
     if (pendingRequest.current?.action === 'draft') { void mutate('draft', {}); return; }
     if (uncertainAction) return;
     if (!validReason()) return;
-    const config = { formId: form.id, fields: normalized(fields.map((field) => {
+    const config = { formId: form.id, fields: canonicalFields(fields.map((field) => {
       const raw = readChoiceDraft(choiceDrafts, field.id);
       return raw === undefined ? field : { ...field, choices: parseChoices(raw) };
     })) };
@@ -265,7 +270,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
             <div className="min-w-0"><p className="font-medium">{item?.label ?? base.label}</p><p className="break-words text-xs text-muted-foreground">Built-in · {base.key}</p><p className="mt-1 text-xs text-muted-foreground">{reasonLocked}</p></div>
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" aria-label={`Required for ${base.label}`} disabled title={reasonLocked}>{base.required ? 'Required' : 'Optional'}</Button>
-              {editable ? <Button type="button" variant="outline" size="sm" onClick={() => setFields((current) => current.some((field) => field.key === base.key) ? current : normalized([...current, { id: base.key, key: base.key, type: base.type as CustomFieldType, label: base.label, required: base.required ?? false, status: 'active', order: current.length, ...(base.choices ? { choices: base.choices } : {}), ...(base.min !== undefined ? { min: base.min } : {}), ...(base.max !== undefined ? { max: base.max } : {}), ...(base.integerOnly !== undefined ? { integerOnly: base.integerOnly } : {}) }]))}>Edit display</Button> : null}
+              {editable ? <Button type="button" variant="outline" size="sm" onClick={() => setFields((current) => current.some((field) => field.key === base.key) ? current : canonicalFields([...current, { id: base.key, key: base.key, type: base.type as CustomFieldType, label: base.label, required: base.required ?? false, status: 'active', order: current.length, ...(base.choices ? { choices: base.choices } : {}), ...(base.min !== undefined ? { min: base.min } : {}), ...(base.max !== undefined ? { max: base.max } : {}), ...(base.integerOnly !== undefined ? { integerOnly: base.integerOnly } : {}) }]))}>Edit display</Button> : null}
             </div>
             {item && editable ? <FieldGroup className="sm:col-span-2">
               <Field><FieldLabel htmlFor={`base-${base.key}-label`}>Label</FieldLabel><Input id={`base-${base.key}-label`} value={item.label} onChange={(event) => replaceField(item.id, { label: event.target.value })} /></Field>
