@@ -37,7 +37,9 @@ export async function POST(
       if (error instanceof BodyTooLargeError) return Response.json({ error: 'Request is too large.' }, { status: 413 });
       return Response.json({ error: 'Valid JSON is required.' }, { status: 400 });
     }
-    if (!body.action || !body.requestId || body.requestId.length > 100)
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+      typeof body.action !== 'string' || typeof body.requestId !== 'string' ||
+      !body.action || !body.requestId || body.requestId.length > 100)
       return Response.json(
         { error: 'Action and request identifier are required.' },
         { status: 400 },

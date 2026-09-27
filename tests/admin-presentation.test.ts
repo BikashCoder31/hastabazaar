@@ -128,6 +128,17 @@ void test('mutation client reports network, non-JSON and rejected responses and 
     globalThis.fetch = original;
   }
 });
+void test('mutation client preserves a rejected response status for retry decisions', async () => {
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => Response.json({ error: 'The export ID was already used.' }, { status: 409 });
+    await assert.rejects(() => sendJson('/test', 'POST', {}, 'Fallback'), (error: unknown) => {
+      assert.equal((error as { status?: number }).status, 409);
+      assert.match((error as Error).message, /already used/);
+      return true;
+    });
+  } finally { globalThis.fetch = original; }
+});
 
 void test('homepage controls present Hero slides first with every approved editable field', async () => {
   const [page, manager] = await Promise.all([

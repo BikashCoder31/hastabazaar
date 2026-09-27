@@ -513,7 +513,19 @@ export async function operateDataRightsRequest(
   const results = await database.batch([
     database
       .prepare(
-        `UPDATE data_rights_requests SET status = ?, assigned_to = COALESCE(assigned_to, ?), resolution = CASE WHEN ? IN ('rejected','completed') THEN ? ELSE resolution END, operation_request_id = ?, updated_at = ?, completed_at = CASE WHEN ? = 'completed' THEN ? ELSE completed_at END WHERE id = ? AND status = ?`,
+        `UPDATE data_rights_requests SET status = ?, assigned_to = COALESCE(assigned_to, ?), resolution = CASE WHEN ? IN ('rejected','completed') THEN ? ELSE resolution END, operation_request_id = ?, updated_at = ?, completed_at = CASE WHEN ? = 'completed' THEN ? ELSE completed_at END WHERE id = ? AND status = ?
+         AND (? <> 'completed' OR request_type <> 'deletion' OR NOT EXISTS (
+           SELECT 1 FROM form_answer_sets answers WHERE
+             (answers.subject_type='user' AND answers.subject_id=data_rights_requests.customer_id)
+             OR (answers.subject_type='seller' AND EXISTS (SELECT 1 FROM seller_profiles seller
+               WHERE seller.id=answers.subject_id AND seller.user_id=data_rights_requests.customer_id))
+             OR (answers.subject_type='rider' AND EXISTS (SELECT 1 FROM rider_profiles rider
+               WHERE rider.user_id=answers.subject_id AND rider.user_id=data_rights_requests.customer_id))
+             OR (answers.subject_type='data_rights_request' AND EXISTS (SELECT 1 FROM data_rights_requests parent
+               WHERE parent.id=answers.subject_id AND parent.customer_id=data_rights_requests.customer_id))
+             OR (answers.subject_type NOT IN ('user','seller','rider','data_rights_request')
+               AND answers.actor_id=data_rights_requests.customer_id)
+         ))`,
       )
       .bind(
         next,
@@ -526,6 +538,7 @@ export async function operateDataRightsRequest(
         options.now,
         options.id,
         current.status,
+        next,
       ),
     database
       .prepare(

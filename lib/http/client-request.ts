@@ -1,3 +1,10 @@
+export class HttpResponseError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'HttpResponseError';
+  }
+}
+
 /** Parse mutation responses without leaving forms pending after network failures. */
 export async function sendJson<T = Record<string, unknown>>(
   url: string,
@@ -20,10 +27,8 @@ export async function sendJson<T = Record<string, unknown>>(
   const result = (await response.json().catch(() => null)) as
     | (T & { error?: unknown })
     | null;
-  if (!response.ok || result === null) {
-    throw new Error(
-      typeof result?.error === 'string' ? result.error : fallbackMessage,
-    );
-  }
+  const message = typeof result?.error === 'string' ? result.error : fallbackMessage;
+  if (!response.ok) throw new HttpResponseError(message, response.status);
+  if (result === null) throw new Error(message);
   return result;
 }

@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ConfirmOperation } from '@/components/admin/confirm-operation';
 import { useAdminMutation } from '@/components/admin/use-admin-mutation';
-import { sendJson } from '@/lib/http/client-request';
+import { HttpResponseError, sendJson } from '@/lib/http/client-request';
 
 export function PrivacyActions({
   id,
@@ -69,6 +69,8 @@ export function PrivacyActions({
       exportAttempt.current = null;
       setExportDone(true);
     } catch (cause) {
+      if (cause instanceof HttpResponseError && cause.status === 409)
+        exportAttempt.current = null;
       setExportError(cause instanceof Error ? cause.message : 'The export could not be prepared.');
     } finally { setExportPending(false); }
   }

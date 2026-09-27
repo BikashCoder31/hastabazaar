@@ -19,7 +19,7 @@ export async function formAnswerOwnerId(db: D1Database, answer: Pick<StoredFormA
     return row?.userId ?? null;
   }
   if (answer.subjectType === 'rider') {
-    const row = await db.prepare('SELECT user_id AS userId FROM rider_profiles WHERE id=? LIMIT 1')
+    const row = await db.prepare('SELECT user_id AS userId FROM rider_profiles WHERE user_id=? LIMIT 1')
       .bind(answer.subjectId).first<{ userId: string }>();
     return row?.userId ?? null;
   }

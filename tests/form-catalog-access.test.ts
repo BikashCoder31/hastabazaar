@@ -5,6 +5,7 @@ import { register } from 'node:module';
 import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { build } from 'esbuild';
 
 import { authorizeFormAnswerRead } from '../lib/forms/access';
 import { collectFormAnswersForPrivacy, eraseFormAnswersForPrivacy,
@@ -91,14 +92,14 @@ async function fixture() {
       from_status TEXT,to_status TEXT,action TEXT,actor_id TEXT,actor_role TEXT,note TEXT,
       operation_request_id TEXT UNIQUE,created_at INTEGER);
     CREATE TABLE seller_profiles(id TEXT PRIMARY KEY, user_id TEXT NOT NULL);
-    CREATE TABLE rider_profiles(id TEXT PRIMARY KEY, user_id TEXT NOT NULL);
+    CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY);
     INSERT INTO users VALUES ('owner','auth-owner','active'),('other','auth-other','active'),
       ('staff','auth-staff','active'),('staff-other','auth-staff-other','active'),
       ('seller','auth-seller','active'),('rider','auth-rider','active'),('inactive','auth-inactive','disabled');
     INSERT INTO user_roles VALUES ('owner','customer'),('other','customer'),('staff','admin'),
       ('staff-other','admin'),('seller','seller'),('rider','rider'),('inactive','super_admin');
     INSERT INTO seller_profiles VALUES ('seller-profile','seller');
-    INSERT INTO rider_profiles VALUES ('rider-profile','rider');
+    INSERT INTO rider_profiles VALUES ('rider');
     INSERT INTO data_rights_requests(id,customer_id,request_type,status,assigned_to)
       VALUES ('delete-owner','owner','deletion','approved','staff');
     INSERT INTO data_rights_requests(id,customer_id,request_type,status,assigned_to)
@@ -123,7 +124,7 @@ async function fixture() {
   ] });
   for (const [id, subjectType, subjectId, actorId] of [
     ['a-owner', 'user', 'owner', 'owner'], ['a-other', 'user', 'other', 'other'],
-    ['a-seller', 'seller', 'seller-profile', 'seller'], ['a-rider', 'rider', 'rider-profile', 'rider'],
+    ['a-seller', 'seller', 'seller-profile', 'seller'], ['a-rider', 'rider', 'rider', 'rider'],
   ]) {
     sqlite.prepare(`INSERT INTO form_answer_sets(id,form_id,request_id,config_version_id,
       subject_type,subject_id,actor_id,answers_json,created_at)
@@ -280,6 +281,51 @@ void test('privacy controls expose explicit actions only for an assigned approve
   assert.match(eligibleDeletion, /Linked seller, rider, order, and case records remain/);
 });
 
+void test('mounted access export can start a fresh attempt after an audited-ID conflict', async () => {
+  const playwrightPath = process.env.PLAYWRIGHT_MODULE ??
+    'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+  // oxlint-disable-next-line typescript/no-explicit-any -- Playwright is provided by the external workspace runtime.
+  const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<any> } };
+  const bundle = await build({ stdin: { resolveDir: process.cwd(), sourcefile: 'privacy-mounted-fixture.tsx', contents: `
+    import React from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { PrivacyActions } from './components/admin/privacy-actions';
+    createRoot(document.getElementById('root')!).render(<PrivacyActions id="access-owner"
+      status="approved" requestType="access" assignedToCurrentStaff={true} canDecide={false} />);
+  `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
+  define: { 'process.env.NODE_ENV': '"production"' }, plugins: [{ name: 'privacy-navigation', setup(build) {
+    build.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'privacy-fixture' }));
+    build.onLoad({ filter: /.*/, namespace: 'privacy-fixture' }, () => ({ contents: 'export function useRouter(){return {refresh(){}}}', loader: 'js' }));
+  } }] });
+  const browser = await chromium.launch({ headless: true,
+    executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
+  const page = await browser.newPage({ acceptDownloads: true });
+  const requestIds: string[] = [];
+  try {
+    await page.route('https://privacy.test/**', async (route: {
+      request(): { url(): string; postDataJSON(): { requestId: string } };
+      fulfill(input: { status: number; contentType: string; body: string }): Promise<void>;
+    }) => {
+      if (new URL(route.request().url()).pathname === '/')
+        return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><div id="root"></div>' });
+      requestIds.push(route.request().postDataJSON().requestId);
+      if (requestIds.length === 1 || requestIds[1] === requestIds[0])
+        return route.fulfill({ status: 409, contentType: 'application/json',
+          body: JSON.stringify({ error: 'This export request ID was already used. Start a new export to obtain current data.' }) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ answers: [] }) });
+    });
+    await page.goto('https://privacy.test/');
+    await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    const button = page.getByRole('button', { name: 'Export form answers' });
+    await button.click();
+    await page.getByRole('alert').getByText(/already used/).waitFor();
+    await button.click();
+    await page.getByText('Form-answer export prepared. Request status is unchanged.').waitFor();
+    assert.equal(requestIds.length, 2);
+    assert.notEqual(requestIds[0], requestIds[1]);
+  } finally { await page.close(); await browser.close(); }
+});
+
 void test('privacy access action exports only an assigned approved request and audits once', async () => {
   const { sqlite } = await fixture();
   try {
@@ -343,6 +389,69 @@ void test('request completion alone cannot claim an access export or deletion oc
       assert.equal(response.status, 409, id);
       assert.equal(sqlite.prepare('SELECT status FROM data_rights_requests WHERE id=?').get(id)?.status, 'approved');
     }
+  } finally { sqlite.close(); }
+});
+
+void test('privacy action route rejects a JSON null body as a client error', async () => {
+  const { sqlite } = await fixture();
+  try {
+    const { POST } = await import('../app/api/admin/privacy/[id]/route');
+    const response = await POST(new Request('http://localhost:3000/api/admin/privacy/delete-owner', {
+      method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' },
+      body: 'null',
+    }), { params: Promise.resolve({ id: 'delete-owner' }) });
+    assert.equal(response.status, 400);
+  } finally { sqlite.close(); }
+});
+
+void test('partial profile erasure cannot complete deletion while owned seller answers remain', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    sqlite.exec("INSERT INTO user_roles VALUES ('staff','super_admin')");
+    sqlite.exec("INSERT INTO seller_profiles VALUES ('owner-seller-profile','owner')");
+    sqlite.exec(`INSERT INTO form_answer_sets(id,form_id,request_id,config_version_id,
+      subject_type,subject_id,actor_id,answers_json,created_at)
+      SELECT 'owner-seller-answer',form_id,'owner-seller-answer-request',config_version_id,
+        'seller','owner-seller-profile',actor_id,answers_json,3
+      FROM form_answer_sets WHERE id='a-owner'`);
+    await eraseFormAnswersForPrivacy(db, { userId: 'owner', requestId: 'erase-partial',
+      dataRightsRequestId: 'delete-owner', actorId: 'staff' });
+    globalThis.answerTestStaffActor = { id: 'staff', role: 'super_admin', permissions: ['support.manage'] };
+    const { POST } = await import('../app/api/admin/privacy/[id]/route');
+    const response = await POST(new Request('http://localhost:3000/api/admin/privacy/delete-owner', {
+      method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'complete', note: 'Profile history erased; seller answers remain.',
+        requestId: 'complete-partial' }),
+    }), { params: Promise.resolve({ id: 'delete-owner' }) });
+    assert.equal(response.status, 409);
+    assert.equal(sqlite.prepare("SELECT status FROM data_rights_requests WHERE id='delete-owner'").get()?.status, 'approved');
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE id='owner-seller-answer'").get()?.count, 1);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM data_rights_events WHERE action='complete'").get()?.count, 0);
+  } finally { sqlite.close(); }
+});
+
+void test('deletion completion rechecks surviving answers inside the status batch', async () => {
+  const { sqlite, db, database } = await fixture();
+  try {
+    sqlite.exec("INSERT INTO user_roles VALUES ('staff','super_admin')");
+    await eraseFormAnswersForPrivacy(db, { userId: 'owner', requestId: 'erase-before-race',
+      dataRightsRequestId: 'delete-owner', actorId: 'staff' });
+    database.beforeBatch = () => sqlite.exec(`INSERT INTO form_answer_sets(id,form_id,request_id,config_version_id,
+      subject_type,subject_id,actor_id,answers_json,created_at)
+      SELECT 'late-answer',form_id,'late-answer-request',config_version_id,
+        'user','owner',actor_id,answers_json,4
+      FROM form_answer_sets WHERE id='a-other'`);
+    globalThis.answerTestStaffActor = { id: 'staff', role: 'super_admin', permissions: ['support.manage'] };
+    const { POST } = await import('../app/api/admin/privacy/[id]/route');
+    const response = await POST(new Request('http://localhost:3000/api/admin/privacy/delete-owner', {
+      method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'complete', note: 'History was erased earlier.',
+        requestId: 'complete-race' }),
+    }), { params: Promise.resolve({ id: 'delete-owner' }) });
+    assert.equal(response.status, 409);
+    assert.equal(sqlite.prepare("SELECT status FROM data_rights_requests WHERE id='delete-owner'").get()?.status, 'approved');
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE id='late-answer'").get()?.count, 1);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM data_rights_events WHERE action='complete'").get()?.count, 0);
   } finally { sqlite.close(); }
 });
 
