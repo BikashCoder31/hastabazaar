@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { feedbackTopics } from '@/lib/feedback/customer-feedback';
+import { clearFeedbackAttemptId, reserveFeedbackAttemptId } from '@/lib/feedback/attempt-id';
 import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { readConfiguredSubmission } from '@/lib/forms/submission';
@@ -11,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 
 const displayKeys = ['name', 'email', 'phone', 'topic', 'message'] as const;
+const uncertainDeliveryMessage = 'Delivery is uncertain. Your message may have been accepted. Contact support before sending a new message.';
 
 export function CustomerContactForm({
   kind,
@@ -19,7 +21,6 @@ export function CustomerContactForm({
 }) {
   const formId = kind === 'feedback' ? 'public.feedback' : 'public.contact';
   const catalog = usePublishedFormConfig(formId);
-  const attemptId = useRef('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -36,25 +37,24 @@ export function CustomerContactForm({
     try {
       if (!catalog.config || !catalog.canSubmit) throw new Error(catalog.message || 'Form configuration is loading.');
       readConfiguredSubmission(form, catalog.config, displayKeys);
-      if (!attemptId.current) attemptId.current = crypto.randomUUID();
       const body = new FormData(form);
-      body.set('requestId', attemptId.current);
+      body.set('requestId', reserveFeedbackAttemptId(formId));
       const response = await fetch('/api/feedback', {
         method: 'POST',
         body,
-      });
-      const result = (await response.json()) as {
+      }).catch(() => { throw new Error(uncertainDeliveryMessage); });
+      const result = (await response.json().catch(() => { throw new Error(uncertainDeliveryMessage); })) as {
         ok?: boolean;
         error?: string;
         fieldId?: string;
         code?: string;
-      };
-      catalog.handleSubmissionResponse(response, result.code);
-      if (result.fieldId) setFieldErrors({ [result.fieldId]: result.error || 'Invalid answer.' });
-      if (!response.ok || !result.ok)
-        throw new Error(result.error || 'Your message could not be sent.');
+      } | null;
+      catalog.handleSubmissionResponse(response, result?.code);
+      if (result?.fieldId) setFieldErrors({ [result.fieldId]: result.error || 'Invalid answer.' });
+      if (!response.ok || !result?.ok)
+        throw new Error(result?.error || uncertainDeliveryMessage);
       form.reset();
-      attemptId.current = '';
+      clearFeedbackAttemptId(formId);
       setMessage(
         kind === 'feedback'
           ? 'Thank you for your feedback. We appreciate you taking the time to help us improve.'

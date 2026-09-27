@@ -129,7 +129,9 @@ void test('rejected send is not success; same request retries without another an
     seed(sqlite, 'public.contact', 1);
     const { POST } = await import('../app/api/feedback/route');
     globalThis.feedbackCatalogMail.configured = false;
-    assert.equal((await POST(request('retry-one'))).status, 503);
+    const retryable = await POST(request('retry-one'));
+    assert.equal(retryable.status, 503);
+    assert.equal(((await retryable.json()) as { code?: string }).code, 'delivery_retryable');
     assert.equal(count(sqlite, 'feedback_delivery_jobs'), 1);
     assert.equal(count(sqlite, 'form_answer_sets'), 1);
     globalThis.feedbackCatalogMail.configured = true;
@@ -213,9 +215,14 @@ void test('ambiguous post-send persistence failure never automatically resends',
     db.failNextSql = /UPDATE feedback_delivery_jobs SET status='sent'/;
     const uncertain = await POST(request('uncertain-one'));
     assert.equal(uncertain.status, 503);
-    assert.match(((await uncertain.json()) as { error: string }).error, /may have been sent|uncertain/i);
+    const uncertainBody = (await uncertain.json()) as { code?: string; error: string };
+    assert.equal(uncertainBody.code, 'delivery_uncertain');
+    assert.match(uncertainBody.error, /may have been sent|uncertain/i);
+    assert.doesNotMatch(uncertainBody.error, /retry/i);
     assert.equal(globalThis.feedbackCatalogMail.sent.length, 1);
-    assert.equal((await POST(request('uncertain-one'))).status, 503);
+    const repeat = await POST(request('uncertain-one'));
+    assert.equal(repeat.status, 503);
+    assert.equal(((await repeat.json()) as { code?: string }).code, 'delivery_uncertain');
     assert.equal(globalThis.feedbackCatalogMail.sent.length, 1);
   } finally { sqlite.close(); }
 });
@@ -226,12 +233,29 @@ void test('ambiguous provider rejection is not success and never automatically r
     seed(sqlite, 'public.contact', 1);
     const { POST } = await import('../app/api/feedback/route');
     globalThis.feedbackCatalogMail.reject = true;
-    assert.equal((await POST(request('provider-uncertain-one'))).status, 503);
+    const provider = await POST(request('provider-uncertain-one'));
+    assert.equal(provider.status, 503);
+    assert.equal(((await provider.json()) as { code?: string }).code, 'delivery_uncertain');
     assert.equal(sqlite.prepare("SELECT status FROM feedback_delivery_jobs WHERE request_id='provider-uncertain-one'").get()?.status, 'sending');
     globalThis.feedbackCatalogMail.reject = false;
     assert.equal((await POST(request('provider-uncertain-one'))).status, 503);
     assert.equal(globalThis.feedbackCatalogMail.attempts, 1);
     assert.equal(count(sqlite, 'form_answer_sets'), 1);
+  } finally { sqlite.close(); }
+});
+
+void test('failed pre-send rollback reports uncertainty until a durable failed state is known', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    seed(sqlite, 'public.contact', 1);
+    const { POST } = await import('../app/api/feedback/route');
+    globalThis.feedbackCatalogMail.configured = false;
+    db.failNextSql = /UPDATE feedback_delivery_jobs SET status='failed'/;
+    const response = await POST(request('rollback-uncertain-one'));
+    assert.equal(response.status, 503);
+    assert.equal(((await response.json()) as { code?: string }).code, 'delivery_uncertain');
+    assert.equal(sqlite.prepare("SELECT status FROM feedback_delivery_jobs WHERE request_id='rollback-uncertain-one'").get()?.status, 'sending');
+    assert.equal(globalThis.feedbackCatalogMail.attempts, 0);
   } finally { sqlite.close(); }
 });
 
@@ -246,7 +270,9 @@ void test('overlapping exact requests hold one send lease and do not send twice'
     for (let spin = 0; spin < 100 && globalThis.feedbackCatalogMail.attempts === 0; spin++)
       await new Promise((resolve) => setTimeout(resolve, 1));
     assert.equal(globalThis.feedbackCatalogMail.attempts, 1);
-    assert.equal((await POST(request('overlap-one'))).status, 503);
+    const overlapping = await POST(request('overlap-one'));
+    assert.equal(overlapping.status, 503);
+    assert.equal(((await overlapping.json()) as { code?: string }).code, 'delivery_uncertain');
     assert.equal(globalThis.feedbackCatalogMail.attempts, 1);
     release?.();
     assert.equal((await first).status, 200);

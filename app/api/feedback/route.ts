@@ -24,7 +24,10 @@ import { isTrustedMutationRequest } from '@/lib/http/request-security';
 
 const noStoreHeaders = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
 const json = (body: unknown, status: number) => Response.json(body, { status, headers: noStoreHeaders });
-const retryMessage = 'Delivery is uncertain. Your message may have been sent. Retry without changing it, or contact support before sending a new message.';
+const retryableDelivery = () => json({ code: 'delivery_retryable',
+  error: 'Your message was not sent. Retry without changing it.' }, 503);
+const uncertainDelivery = () => json({ code: 'delivery_uncertain',
+  error: 'Delivery is uncertain. Your message may have been sent. Contact support before sending a new message.' }, 503);
 const requestConflict = { code: 'request_id_conflict', error: 'Your earlier message may have been sent. These edits were not sent. Contact support before sending a new message.' };
 const commonKeys = new Set(['kind', 'pagePath', 'website', 'name', 'email', 'topic', 'message',
   'privacyAcknowledgement', 'requestId', 'formVersion']);
@@ -93,28 +96,31 @@ function configuredAnswers(form: FormData, config: PublishedFormConfig, feedback
 async function deliver(db: D1Database, job: FeedbackDeliveryJob): Promise<Response> {
   if (job.status === 'sent') return json({ ok: true }, 200);
   // A sending lease is never reclaimed: the mail transport could already have accepted it.
-  if (job.status === 'sending') return json({ error: retryMessage }, 503);
+  if (job.status === 'sending') return uncertainDelivery();
   let feedback: CustomerFeedback;
   try {
     const answers = await listFormAnswersForSubject(db, 'feedback_submission', job.id);
     if (answers.length !== 1 || answers[0].formId !== job.formId || answers[0].requestId !== job.requestId)
-      return json({ error: retryMessage }, 503);
+      return retryableDelivery();
     feedback = decodeFeedbackJob(job);
-  } catch { return json({ error: retryMessage }, 503); }
+  } catch { return retryableDelivery(); }
   const now = Date.now();
   const token = await claimFeedbackDelivery(db, job.id, now);
   if (!token || !(await beginFeedbackSend(db, job.id, token, Date.now())))
-    return json({ error: retryMessage }, 503);
+    return uncertainDelivery();
   try {
     await sendCustomerFeedbackEmail(feedback);
     if (!(await completeFeedbackSend(db, job.id, token, Date.now())))
-      return json({ error: retryMessage }, 503);
+      return uncertainDelivery();
     return json({ ok: true }, 200);
   } catch (error) {
     if (error instanceof FeedbackDeliveryUnavailableError) {
-      try { await rejectFeedbackBeforeSend(db, job.id, token, Date.now()); } catch { /* keep uncertain state */ }
+      try {
+        if (await rejectFeedbackBeforeSend(db, job.id, token, Date.now()))
+          return retryableDelivery();
+      } catch { /* keep uncertain state */ }
     }
-    return json({ error: retryMessage }, 503);
+    return uncertainDelivery();
   }
 }
 
@@ -167,7 +173,7 @@ export async function POST(request: Request): Promise<Response> {
         const current = await resolvePublishedForm(database, contract.formId);
         return current.version !== contract.version
           ? json({ error: 'This form changed. Refresh and review your answers.' }, 409)
-          : json({ error: retryMessage }, 503);
+          : uncertainDelivery();
       }
       if (job.formId !== contract.formId || job.payloadHash !== payloadHash)
         return json(requestConflict, 409);
@@ -178,6 +184,6 @@ export async function POST(request: Request): Promise<Response> {
       return json({ error: 'This form changed. Refresh and review your answers.' }, 409);
     if (error instanceof FormValidationError)
       return json({ error: error.fieldId ? `${error.fieldId} has an invalid answer.` : 'The submitted answers are invalid.', fieldId: error.fieldId }, 400);
-    return json({ error: retryMessage }, 503);
+    return uncertainDelivery();
   }
 }

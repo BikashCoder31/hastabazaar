@@ -98,10 +98,11 @@ export async function completeFeedbackSend(db: D1Database, jobId: string, token:
 }
 
 /** Only call when the transport proves no send was attempted. */
-export async function rejectFeedbackBeforeSend(db: D1Database, jobId: string, token: string, now: number): Promise<void> {
-  await db.prepare(`UPDATE feedback_delivery_jobs SET status='failed',lease_token=NULL,
+export async function rejectFeedbackBeforeSend(db: D1Database, jobId: string, token: string, now: number): Promise<boolean> {
+  const result = await db.prepare(`UPDATE feedback_delivery_jobs SET status='failed',lease_token=NULL,
     lease_expires_at=NULL,updated_at=? WHERE id=? AND status='sending' AND lease_token=?`)
     .bind(now, jobId, token).run();
+  return result.meta.changes === 1;
 }
 
 export function decodeFeedbackJob(job: FeedbackDeliveryJob): CustomerFeedback {

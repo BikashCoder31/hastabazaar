@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 
 import { feedbackTopics } from '@/lib/feedback/customer-feedback';
+import { clearFeedbackAttemptId, reserveFeedbackAttemptId } from '@/lib/feedback/attempt-id';
 import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { readConfiguredSubmission } from '@/lib/forms/submission';
@@ -16,11 +17,11 @@ type SubmissionState =
 const fieldClass =
   'mt-1.5 min-h-11 w-full rounded-lg border border-white/25 bg-white/10 px-3 py-2 text-sm text-white outline-none placeholder:text-white/50 focus:border-[#f4c46b] focus:ring-2 focus:ring-[#f4c46b]/30 disabled:opacity-60';
 const displayKeys = ['name', 'email', 'topic', 'message'] as const;
+const uncertainDeliveryMessage = 'Delivery is uncertain. Your message may have been accepted. Contact support before sending a new message.';
 
 export function FooterFeedbackForm() {
   const pathname = usePathname();
   const catalog = usePublishedFormConfig('public.footer-feedback');
-  const attemptId = useRef('');
   const [busy, setBusy] = useState(false);
   const [state, setState] = useState<SubmissionState>({
     kind: 'idle',
@@ -40,14 +41,13 @@ export function FooterFeedbackForm() {
     try {
       if (!catalog.config || !catalog.canSubmit) throw new Error(catalog.message || 'Form configuration is loading.');
       readConfiguredSubmission(form, catalog.config, displayKeys);
-      if (!attemptId.current) attemptId.current = crypto.randomUUID();
       const body = new FormData(form);
-      body.set('requestId', attemptId.current);
+      body.set('requestId', reserveFeedbackAttemptId('public.footer-feedback'));
       const response = await fetch('/api/feedback', {
         method: 'POST',
         body,
-      });
-      const result = (await response.json().catch(() => null)) as {
+      }).catch(() => { throw new Error(uncertainDeliveryMessage); });
+      const result = (await response.json().catch(() => { throw new Error(uncertainDeliveryMessage); })) as {
         ok?: boolean;
         error?: string;
         code?: string;
@@ -55,11 +55,11 @@ export function FooterFeedbackForm() {
       catalog.handleSubmissionResponse(response, result?.code);
       if (!response.ok || !result?.ok) {
         throw new Error(
-          result?.error ?? 'Your query could not be sent. Please try again.',
+          result?.error ?? uncertainDeliveryMessage,
         );
       }
       form.reset();
-      attemptId.current = '';
+      clearFeedbackAttemptId('public.footer-feedback');
       setState({
         kind: 'success',
         message: 'Thank you. Your query has been sent to the HastaBazaar team.',
@@ -70,7 +70,7 @@ export function FooterFeedbackForm() {
         message:
           reason instanceof Error
             ? reason.message
-            : 'Your query could not be sent. Please try again.',
+            : uncertainDeliveryMessage,
       });
     } finally {
       setBusy(false);

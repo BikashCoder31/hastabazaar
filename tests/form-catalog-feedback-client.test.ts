@@ -6,7 +6,7 @@ const playwrightPath = process.env.PLAYWRIGHT_MODULE ??
   'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
 
 for (const kind of ['contact', 'footer'] as const) {
-  void test(`${kind} ambiguous delivery keeps one request after an edit and explains the conflict`, async () => {
+  void test(`${kind} ambiguous delivery retains one request across reload and conservatively handles lost responses`, async () => {
     // oxlint-disable-next-line typescript/no-explicit-any -- Playwright is supplied by the bundled runtime.
     const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<any> } };
     const bundle = await build({
@@ -37,6 +37,8 @@ for (const kind of ['contact', 'footer'] as const) {
     let jobs = 0;
     let resolveSecond: () => void = () => {};
     const secondRequest = new Promise<void>((resolve) => { resolveSecond = resolve; });
+    let resolveFourth: () => void = () => {};
+    const fourthRequest = new Promise<void>((resolve) => { resolveFourth = resolve; });
     try {
       // oxlint-disable-next-line typescript/no-explicit-any -- Browser route type belongs to bundled Playwright.
       await page.route('https://feedback.test/**', async (route: any) => {
@@ -57,11 +59,18 @@ for (const kind of ['contact', 'footer'] as const) {
         if (requests.length === 2) resolveSecond();
         if (requests.length === 1) {
           jobs++;
-          return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Delivery is uncertain. Retry without editing.' }) });
+          return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'delivery_uncertain',
+            error: 'Delivery is uncertain. Your message may have been sent. Contact support before sending a new message.' }) });
         }
         if (requestId === requests[0].requestId && name !== requests[0].name)
           return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ code: 'request_id_conflict',
             error: 'Your earlier message may have been sent. These edits were not sent.' }) });
+        if (requests.length === 3)
+          return route.fulfill({ status: 503, contentType: 'application/json', body: '{invalid-json' });
+        if (requests.length === 4) {
+          resolveFourth();
+          return route.abort('failed');
+        }
         jobs++;
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
       });
@@ -76,16 +85,33 @@ for (const kind of ['contact', 'footer'] as const) {
       await form.locator('[name="privacyAcknowledgement"]').check();
       await form.locator('button[type="submit"]').click();
       await page.waitForFunction(() => document.querySelector('form[data-form-id]')?.textContent?.includes('Delivery is uncertain'));
-      await form.locator('[name="name"]').fill('Asha Sherpa');
-      await form.locator('button[type="submit"]').click();
+      await page.reload();
+      await page.addScriptTag({ content: bundle.outputFiles[0].text });
+      const remounted = page.locator('form[data-form-id]');
+      await remounted.locator('[name="name"]').fill('Asha Sherpa');
+      await remounted.locator('[name="email"]').fill('asha@example.test');
+      await remounted.locator('[name="topic"]').selectOption('General question');
+      if (kind === 'contact') await remounted.locator('[name="subject"]').fill('An order question');
+      await remounted.locator('[name="message"]').fill('Could you help with this handmade item?');
+      await remounted.locator('[name="privacyAcknowledgement"]').check();
+      await remounted.locator('button[type="submit"]').click();
       await secondRequest;
       assert.equal(requests.length, 2);
       assert.equal(requests[0].requestId, requests[1].requestId);
       assert.notEqual(requests[0].name, requests[1].name);
       assert.equal(jobs, 1);
       await page.waitForFunction(() => document.querySelector('form[data-form-id]')?.textContent?.includes('These edits were not sent'));
-      assert.equal(await form.locator('button[type="submit"]').isDisabled(), false);
-      assert.equal(await form.getByRole('button', { name: 'Refresh form' }).count(), 0);
+      assert.equal(await remounted.locator('button[type="submit"]').isDisabled(), false);
+      assert.equal(await remounted.getByRole('button', { name: 'Refresh form' }).count(), 0);
+      await remounted.locator('[name="name"]').fill('Asha Rai');
+      await remounted.locator('button[type="submit"]').click();
+      await page.waitForFunction(() => document.querySelector('form[data-form-id]')?.textContent?.includes('may have been accepted'));
+      await remounted.locator('button[type="submit"]').click();
+      await fourthRequest;
+      await page.waitForFunction(() => document.querySelector('form[data-form-id]')?.textContent?.includes('may have been accepted'));
+      assert.equal(requests.length, 4);
+      assert.equal(new Set(requests.map(({ requestId }) => requestId)).size, 1);
+      assert.equal(jobs, 1);
     } finally { await page.close(); await browser.close(); }
   });
 }
