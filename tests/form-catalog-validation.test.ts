@@ -67,7 +67,7 @@ for (const [name, fields] of [
 
 void test('unknown and pending form IDs fail closed', () => {
   assert.throws(() => validateFormDraft('invented.form', { formId: 'invented.form', fields: [] }), errorCode('unknown_form'));
-  assert.throws(() => validateFormDraft('account.review', { formId: 'account.review', fields: [field('note', 'short_text')] }), errorCode('adapter_unavailable'));
+  assert.throws(() => validateFormDraft('seller.product-filter', { formId: 'seller.product-filter', fields: [field('note', 'short_text')] }), errorCode('adapter_unavailable'));
 });
 
 for (const [name, raw] of [

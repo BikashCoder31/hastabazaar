@@ -1,11 +1,13 @@
 import {normalizeProvince,normalizeDistrict,districtBelongsToProvince,validWard} from '@/lib/checkout/nepal-address';
 import { publicProductEligibility } from '@/lib/products/eligibility';
 import {parseLocation} from '@/lib/delivery/validation';
-import { buildFormAnswerInsert } from './form-answers';
+import { buildFormAnswerInsert, getFormAnswerById, type StoredFormAnswer } from './form-answers';
+import { authorizeFormAnswerRead } from '@/lib/forms/access';
 import { FORM_REGISTRY } from '@/lib/forms/registry';
 import type { FormAnswerSnapshot, PublishedFormConfig } from '@/lib/forms/types';
-import { FormRuntimeError } from '@/lib/forms/runtime';
-import { validateAnswersForDefinition, validateFormDraft } from '@/lib/forms/validation';
+import { FormRuntimeError, resolvePublishedForm } from '@/lib/forms/runtime';
+import { canonicalKey } from '@/lib/forms/submission';
+import { FormValidationError, validateAnswersForDefinition, validateFormDraft } from '@/lib/forms/validation';
 export class CustomerDataConflictError extends Error {}
 
 export interface CustomerOrderRow {
@@ -155,14 +157,99 @@ function normalizedAddress(input: CustomerAddressInput): CustomerAddressInput {
   return normalized;
 }
 
-export async function saveCustomerAddress(database: D1Database, options: { userId: string; addressId?: string; input: CustomerAddressInput; requestId: string; now: number }): Promise<string> {
+type AddressFormSubmission = { formVersion: number; versionId: string; answers: FormAnswerSnapshot };
+
+function addressCore(input: CustomerAddressInput) {
+  return { label: input.label, recipientName: input.recipientName, phone: input.phone,
+    province: input.province, district: input.district, municipality: input.municipality,
+    ward: input.ward || null, locality: input.locality, landmark: input.landmark || null,
+    postalCode: input.postalCode || null, isDefault: Boolean(input.isDefault),
+    location: input.location ?? null };
+}
+
+async function addressDigest(input: CustomerAddressInput): Promise<string> {
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(addressCore(input))));
+  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export async function validateAddressFormSubmission(database: D1Database, input: CustomerAddressInput,
+  formVersion: number, customAnswers: unknown): Promise<AddressFormSubmission> {
+  const config = await resolvePublishedForm(database, 'account.address');
+  if (formVersion !== config.version) throw new FormRuntimeError('stale_version', 'This form changed. Refresh it and review your answers.');
+  if (!Array.isArray(customAnswers)) throw new FormValidationError('invalid_answer', 'Malformed answer payload');
+  const builtIns = new Set(FORM_REGISTRY['account.address'].baseFields.map((field) => canonicalKey(field.key)));
+  for (const entry of customAnswers) {
+    if (entry && typeof entry === 'object' && !Array.isArray(entry) && 'fieldId' in entry && typeof entry.fieldId === 'string') {
+      const field = config.fields.find((candidate) => candidate.id === entry.fieldId);
+      if (field && builtIns.has(canonicalKey(field.key))) throw new FormValidationError('invalid_answer', 'Built-in address values cannot be submitted as custom answers.');
+    }
+  }
+  const landmark = config.fields.find((field) => canonicalKey(field.key) === 'landmark' && field.status === 'active');
+  const raw = landmark && input.landmark?.trim() ? [...customAnswers, { fieldId: landmark.id, value: input.landmark.trim() }] : customAnswers;
+  const answers = validateAnswersForDefinition(FORM_REGISTRY['account.address'], config, raw);
+  const version = await database.prepare(`SELECT id FROM form_config_versions WHERE form_id=? AND version=? AND status='published' LIMIT 1`)
+    .bind('account.address', config.version).first<{ id: string }>();
+  if (!version) throw new FormRuntimeError('config_unavailable', 'Published form version unavailable');
+  return { formVersion: config.version, versionId: version.id, answers };
+}
+
+export async function customerAddressRequestStatus(database: D1Database, options: {
+  userId: string; addressId?: string; input: CustomerAddressInput; requestId: string;
+  formVersion: number; customAnswers: unknown;
+}): Promise<{ status: 'new' | 'same' | 'conflict'; id?: string }> {
   const input = normalizedAddress(options.input);
-  const duplicate = await database.prepare(`SELECT subject_id AS id FROM audit_logs WHERE request_id = ? AND actor_id = ? LIMIT 1`).bind(options.requestId, options.userId).first<{ id: string }>();
-  if (duplicate) return duplicate.id;
+  let row: { id: string; actorId: string; action: string; coreJson: string | null; answersJson: string | null;
+    configJson: string | null; savedVersion: number | null; publishedAt: number | null } | null;
+  try {
+    row = await database.prepare(`SELECT a.subject_id AS id,a.actor_id AS actorId,a.action,a.next_json AS coreJson,
+        f.answers_json AS answersJson,v.config_json AS configJson,v.version AS savedVersion,v.published_at AS publishedAt
+      FROM audit_logs a LEFT JOIN form_answer_sets f ON f.form_id='account.address' AND f.request_id=a.request_id
+      LEFT JOIN form_config_versions v ON v.id=f.config_version_id
+      WHERE a.request_id=? LIMIT 1`)
+      .bind(options.requestId).first<typeof row & object>();
+  } catch { throw new FormRuntimeError('config_unavailable', 'Address replay state unavailable'); }
+  if (!row) return { status: 'new' };
+  if (row.actorId !== options.userId || row.action !== (options.addressId ? 'account.address.updated' : 'account.address.created') ||
+    options.addressId && row.id !== options.addressId || !row.coreJson || !row.answersJson || !row.configJson ||
+    row.savedVersion !== options.formVersion || !Number.isSafeInteger(row.publishedAt)) return { status: 'conflict' };
+  try {
+    const previous = JSON.parse(row.coreJson) as { coreDigest?: unknown };
+    const snapshot = JSON.parse(row.answersJson) as FormAnswerSnapshot;
+    const draft = validateFormDraft('account.address', JSON.parse(row.configJson) as unknown);
+    const builtIns = new Set(FORM_REGISTRY['account.address'].baseFields.map((field) => canonicalKey(field.key)));
+    const config: PublishedFormConfig = { ...draft, version: row.savedVersion, publishedAt: row.publishedAt!,
+      fields: draft.fields.filter((field) => !builtIns.has(canonicalKey(field.key))) };
+    const normalized = validateAnswersForDefinition(FORM_REGISTRY['account.address'], config, options.customAnswers);
+    const same = previous.coreDigest === await addressDigest(input) && snapshot.formId === 'account.address' &&
+      JSON.stringify(snapshot.answers) === JSON.stringify(normalized.answers);
+    return { status: same ? 'same' : 'conflict', ...(same ? { id: row.id } : {}) };
+  } catch { return { status: 'conflict' }; }
+}
+
+export async function saveCustomerAddress(database: D1Database, options: { userId: string; addressId?: string; input: CustomerAddressInput; requestId: string; now: number; form?: AddressFormSubmission }): Promise<string> {
+  const input = normalizedAddress(options.input);
+  if (options.form) {
+    const replay = await customerAddressRequestStatus(database, { ...options, formVersion: options.form.formVersion,
+      customAnswers: options.form.answers.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value })) });
+    if (replay.status === 'same') return replay.id!;
+    if (replay.status === 'conflict') throw new CustomerDataConflictError('This request ID was already used for different address values.');
+  } else {
+    const duplicate = await database.prepare(`SELECT subject_id AS id FROM audit_logs WHERE request_id = ? AND actor_id = ? LIMIT 1`).bind(options.requestId, options.userId).first<{ id: string }>();
+    if (duplicate) return duplicate.id;
+  }
   const id = options.addressId ?? crypto.randomUUID();
   const existing = options.addressId ? await database.prepare(`SELECT id FROM addresses WHERE id = ? AND user_id = ?`).bind(id, options.userId).first<{ id: string }>() : null;
   if (options.addressId && !existing) throw new CustomerDataConflictError('Address not found.');
   const statements: D1PreparedStatement[] = [];
+  if (options.form) statements.push(database.prepare(`SELECT CASE WHEN
+      EXISTS(SELECT 1 FROM users WHERE id=? AND status='active')
+      AND (SELECT MAX(version) FROM form_config_versions WHERE form_id='account.address' AND status='published')=?
+      AND NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
+      AND NOT EXISTS(SELECT 1 FROM form_answer_sets WHERE form_id='account.address' AND request_id=?)
+      AND (? IS NULL OR EXISTS(SELECT 1 FROM addresses WHERE id=? AND user_id=?))
+      THEN 1 ELSE json_extract('invalid','$') END AS valid`)
+    .bind(options.userId, options.form.formVersion, options.requestId, options.requestId,
+      options.addressId ?? null, id, options.userId));
   if (input.isDefault) statements.push(database.prepare(`UPDATE addresses SET is_default = 0, updated_at = ? WHERE user_id = ?`).bind(options.now, options.userId));
   statements.push(existing
     ? database.prepare(
@@ -174,11 +261,26 @@ export async function saveCustomerAddress(database: D1Database, options: { userI
     ).bind(id, options.userId, input.label, input.recipientName, input.phone, input.province, input.district, input.municipality, input.ward || null, input.locality, input.landmark || null, input.postalCode || null, input.isDefault ? 1 : 0, options.now, options.now));
   statements.push(database.prepare('DELETE FROM address_locations WHERE address_id = ?').bind(id));
   if(input.location) statements.push(database.prepare('INSERT INTO address_locations(address_id,latitude,longitude) VALUES (?,?,?)').bind(id,input.location.latitude,input.location.longitude));
+  if (options.form) statements.push(buildFormAnswerInsert(database, { formId: 'account.address', requestId: options.requestId,
+    versionId: options.form.versionId, subjectType: 'address', subjectId: id, actorId: options.userId,
+    answers: options.form.answers, now: options.now }));
   statements.push(database.prepare(
     `INSERT INTO audit_logs (id, actor_id, action, subject_type, subject_id, reason, previous_json, next_json, request_id, ip_hash, created_at)
      VALUES (?, ?, ?, 'address', ?, 'Customer managed own saved delivery address', NULL, ?, ?, NULL, ?)`,
-  ).bind(crypto.randomUUID(), options.userId, existing ? 'account.address.updated' : 'account.address.created', id, JSON.stringify({ label: input.label, isDefault: Boolean(input.isDefault) }), options.requestId, options.now));
-  await database.batch(statements);
+  ).bind(crypto.randomUUID(), options.userId, existing ? 'account.address.updated' : 'account.address.created', id,
+    JSON.stringify({ label: input.label, isDefault: Boolean(input.isDefault), ...(options.form ? { coreDigest: await addressDigest(input) } : {}) }), options.requestId, options.now));
+  try { await database.batch(statements); }
+  catch (error) {
+    if (options.form) {
+      const replay = await customerAddressRequestStatus(database, { ...options, formVersion: options.form.formVersion,
+        customAnswers: options.form.answers.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value })) });
+      if (replay.status === 'same') return replay.id!;
+      if (replay.status === 'conflict') throw new CustomerDataConflictError('This request ID was already used for different address values.');
+      const current = await database.prepare(`SELECT MAX(version) AS version FROM form_config_versions WHERE form_id='account.address' AND status='published'`).first<{ version: number | null }>();
+      if (current?.version !== options.form.formVersion) throw new FormRuntimeError('stale_version', 'This form changed. Refresh it and review your answers.');
+    }
+    throw error;
+  }
   return id;
 }
 
@@ -322,15 +424,91 @@ export async function getReviewableOrderItem(database: D1Database, userId: strin
 }
 
 export interface ReviewPhotoInput {id:string;objectKey:string;mimeType:string;sizeBytes:number;sortOrder:number}
-export async function createProductReview(database: D1Database, options: { userId: string; productId: string; orderItemId: string; rating: number; title: string; body: string; requestId: string; now: number;photos?:readonly ReviewPhotoInput[] }): Promise<string> {
+type ReviewFormSubmission = { formVersion: number; versionId: string; answers: FormAnswerSnapshot };
+
+export async function validateReviewFormSubmission(database: D1Database, formVersion: number, customAnswers: unknown): Promise<ReviewFormSubmission> {
+  const config = await resolvePublishedForm(database, 'account.review');
+  if (config.version !== formVersion) throw new FormRuntimeError('stale_version', 'This form changed. Refresh it and review your answers.');
+  const answers = validateAnswersForDefinition(FORM_REGISTRY['account.review'], config, customAnswers);
+  const version = await database.prepare(`SELECT id FROM form_config_versions WHERE form_id='account.review' AND status='published' AND version=? LIMIT 1`)
+    .bind(config.version).first<{ id: string }>();
+  if (!version) throw new FormRuntimeError('config_unavailable', 'Published form version unavailable');
+  return { formVersion: config.version, versionId: version.id, answers };
+}
+
+export async function listCustomerReviewAnswerHistory(database: D1Database, userId: string,
+  after?: { createdAt: number; id: string }): Promise<{ entries: { orderNumber: string; answer: StoredFormAnswer }[];
+    nextCursor: { createdAt: number; id: string } | null }> {
+  if (after && (!Number.isSafeInteger(after.createdAt) || after.createdAt < 0 || !after.id || after.id.length > 191))
+    throw new CustomerDataConflictError('Review history cursor is invalid.');
+  const rows = await database.prepare(`SELECT f.id AS answerId,f.created_at AS createdAt,o.order_number AS orderNumber
+    FROM form_answer_sets f JOIN product_reviews r ON r.id=f.subject_id AND f.subject_type='product_review'
+    JOIN order_items i ON i.id=r.order_item_id JOIN orders o ON o.id=i.order_id
+    WHERE f.form_id='account.review' AND r.customer_id=? AND o.customer_id=?
+      AND (? IS NULL OR f.created_at<? OR (f.created_at=? AND f.id<?))
+    ORDER BY f.created_at DESC,f.id DESC LIMIT 51`)
+    .bind(userId, userId, after?.createdAt ?? null, after?.createdAt ?? 0,
+      after?.createdAt ?? 0, after?.id ?? '').all<{ answerId: string; createdAt: number; orderNumber: string }>();
+  const page = rows.results.slice(0, 50);
+  const entries = (await Promise.all(page.map(async (row) => {
+    const answer = await getFormAnswerById(database, row.answerId);
+    return answer && await authorizeFormAnswerRead(database, { id: userId, role: 'customer' }, answer)
+      ? { orderNumber: row.orderNumber, answer } : null;
+  }))).filter((entry): entry is { orderNumber: string; answer: StoredFormAnswer } => entry !== null);
+  const last = page.at(-1);
+  return { entries, nextCursor: rows.results.length > 50 && last ? { createdAt: last.createdAt, id: last.answerId } : null };
+}
+
+export async function productReviewRequestStatus(database: D1Database, options: {
+  userId: string; productId: string; orderItemId: string; requestId: string;
+  formVersion: number; customAnswers: unknown; requestDigest: string;
+}): Promise<{ status: 'new' | 'same' | 'conflict'; id?: string }> {
+  let row: { id: string; customerId: string; productId: string; orderItemId: string; nextJson: string | null;
+    answersJson: string | null; configJson: string | null; savedVersion: number | null; publishedAt: number | null } | null;
+  try {
+    row = await database.prepare(`SELECT a.subject_id AS id,r.customer_id AS customerId,r.product_id AS productId,
+        r.order_item_id AS orderItemId,a.next_json AS nextJson,f.answers_json AS answersJson,
+        v.config_json AS configJson,v.version AS savedVersion,v.published_at AS publishedAt
+      FROM audit_logs a LEFT JOIN product_reviews r ON r.id=a.subject_id
+      LEFT JOIN form_answer_sets f ON f.form_id='account.review' AND f.request_id=a.request_id
+      LEFT JOIN form_config_versions v ON v.id=f.config_version_id
+      WHERE a.request_id=? AND a.action='review.submitted' AND a.subject_type='product_review' LIMIT 1`)
+      .bind(options.requestId).first<typeof row & object>();
+  } catch { throw new FormRuntimeError('config_unavailable', 'Review replay state unavailable'); }
+  if (!row) {
+    const used = await database.prepare(`SELECT 1 AS used FROM audit_logs WHERE request_id=? LIMIT 1`).bind(options.requestId).first();
+    return { status: used ? 'conflict' : 'new' };
+  }
+  if (row.customerId !== options.userId || row.productId !== options.productId || row.orderItemId !== options.orderItemId ||
+    row.savedVersion !== options.formVersion || !row.nextJson || !row.answersJson || !row.configJson || !Number.isSafeInteger(row.publishedAt)) return { status: 'conflict' };
+  try {
+    const previous = JSON.parse(row.nextJson) as { requestDigest?: unknown };
+    const snapshot = JSON.parse(row.answersJson) as FormAnswerSnapshot;
+    const draft = validateFormDraft('account.review', JSON.parse(row.configJson) as unknown);
+    const config: PublishedFormConfig = { ...draft, version: row.savedVersion, publishedAt: row.publishedAt! };
+    const requested = validateAnswersForDefinition(FORM_REGISTRY['account.review'], config, options.customAnswers);
+    const same = previous.requestDigest === options.requestDigest && snapshot.formId === 'account.review' &&
+      JSON.stringify(snapshot.answers) === JSON.stringify(requested.answers);
+    return { status: same ? 'same' : 'conflict', ...(same ? { id: row.id } : {}) };
+  } catch { return { status: 'conflict' }; }
+}
+
+export async function createProductReview(database: D1Database, options: { userId: string; productId: string; orderItemId: string; rating: number; title: string; body: string; requestId: string; now: number;photos?:readonly ReviewPhotoInput[]; form?: ReviewFormSubmission; requestDigest?: string }): Promise<string> {
   const photos=options.photos??[];
   if(photos.length>3 || photos.some((p,i)=>p.sortOrder!==i || !['image/jpeg','image/png','image/webp'].includes(p.mimeType) || p.sizeBytes<1 || p.sizeBytes>5*1024*1024)) throw new CustomerDataConflictError('Add up to three JPG, PNG or WebP photos, each no larger than 5 MB.');
   if (!Number.isInteger(options.rating) || options.rating < 1 || options.rating > 5) throw new CustomerDataConflictError('Choose a rating from 1 to 5.');
   const title = options.title.trim();
   const body = options.body.trim();
   if (title.length > 120 || body.length < 10 || body.length > 2000) throw new CustomerDataConflictError('Review text must be 10â€“2,000 characters and the title at most 120 characters.');
-  const duplicate = await database.prepare(`SELECT subject_id AS id FROM audit_logs WHERE request_id = ? AND actor_id = ? AND action='review.submitted' AND subject_type='product_review' LIMIT 1`).bind(options.requestId, options.userId).first<{ id: string }>();
-  if (duplicate) return duplicate.id;
+  if (options.form && options.requestDigest) {
+    const replay = await productReviewRequestStatus(database, { ...options, formVersion: options.form.formVersion,
+      customAnswers: options.form.answers.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value })), requestDigest: options.requestDigest });
+    if (replay.status === 'same') return replay.id!;
+    if (replay.status === 'conflict') throw new CustomerDataConflictError('This request ID was already used for different review values.');
+  } else {
+    const duplicate = await database.prepare(`SELECT subject_id AS id FROM audit_logs WHERE request_id = ? AND actor_id = ? AND action='review.submitted' AND subject_type='product_review' LIMIT 1`).bind(options.requestId, options.userId).first<{ id: string }>();
+    if (duplicate) return duplicate.id;
+  }
   const eligible = await database.prepare(
     `SELECT order_items.id FROM order_items INNER JOIN orders ON orders.id = order_items.order_id
      WHERE order_items.id = ? AND order_items.product_id = ? AND orders.customer_id = ?
@@ -340,17 +518,43 @@ export async function createProductReview(database: D1Database, options: { userI
   const id = crypto.randomUUID();
   try {
     await database.batch([
+      ...(options.form ? [database.prepare(`SELECT CASE WHEN
+        EXISTS(SELECT 1 FROM users WHERE id=? AND status='active')
+        AND (SELECT MAX(version) FROM form_config_versions WHERE form_id='account.review' AND status='published')=?
+        AND NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
+        AND NOT EXISTS(SELECT 1 FROM form_answer_sets WHERE form_id='account.review' AND request_id=?)
+        AND EXISTS(SELECT 1 FROM order_items i JOIN orders o ON o.id=i.order_id
+          WHERE i.id=? AND i.product_id=? AND o.customer_id=? AND o.status='delivered' AND i.fulfillment_status='delivered')
+        AND NOT EXISTS(SELECT 1 FROM product_reviews WHERE order_item_id=?)
+        THEN 1 ELSE json_extract('invalid','$') END AS valid`)
+        .bind(options.userId, options.form.formVersion, options.requestId, options.requestId,
+          options.orderItemId, options.productId, options.userId, options.orderItemId)] : []),
       database.prepare(
         `INSERT INTO product_reviews (id, product_id, customer_id, order_item_id, rating, title, body, status, moderation_note, moderated_by, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?)`,
       ).bind(id, options.productId, options.userId, options.orderItemId, options.rating, title || null, body, options.now, options.now),
       ...photos.map(p=>database.prepare('INSERT INTO review_photos(id,review_id,object_key,mime_type,size_bytes,sort_order,created_at) VALUES (?,?,?,?,?,?,?)').bind(p.id,id,p.objectKey,p.mimeType,p.sizeBytes,p.sortOrder,options.now)),
+      ...(options.form ? [buildFormAnswerInsert(database, { formId: 'account.review', requestId: options.requestId,
+        versionId: options.form.versionId, subjectType: 'product_review', subjectId: id,
+        actorId: options.userId, answers: options.form.answers, now: options.now })] : []),
       database.prepare(
         `INSERT INTO audit_logs (id, actor_id, action, subject_type, subject_id, reason, previous_json, next_json, request_id, ip_hash, created_at)
          VALUES (?, ?, 'review.submitted', 'product_review', ?, 'Verified customer submitted a product review', NULL, ?, ?, NULL, ?)`,
-      ).bind(crypto.randomUUID(), options.userId, id, JSON.stringify({ status: 'pending', rating: options.rating }), options.requestId, options.now),
+      ).bind(crypto.randomUUID(), options.userId, id, JSON.stringify({ status: 'pending', rating: options.rating,
+        ...(options.requestDigest ? { requestDigest: options.requestDigest } : {}) }), options.requestId, options.now),
     ]);
   } catch (error) {
+    if (options.form && options.requestDigest) {
+      const replay = await productReviewRequestStatus(database, { ...options, formVersion: options.form.formVersion,
+        customAnswers: options.form.answers.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value })), requestDigest: options.requestDigest });
+      if (replay.status === 'same') return replay.id!;
+      if (replay.status === 'conflict') throw new CustomerDataConflictError('This request ID was already used for different review values.');
+      const current = await database.prepare(`SELECT MAX(version) AS version FROM form_config_versions WHERE form_id='account.review' AND status='published'`).first<{ version: number | null }>();
+      if (current?.version !== options.form.formVersion) throw new FormRuntimeError('stale_version', 'This form changed. Refresh it and review your answers.');
+    }
+    const reviewed = await database.prepare(`SELECT id FROM product_reviews WHERE order_item_id=? LIMIT 1`)
+      .bind(options.orderItemId).first<{ id: string }>();
+    if (reviewed) throw new CustomerDataConflictError('This delivered item has already been reviewed.');
     if (error instanceof Error && /UNIQUE constraint|Duplicate entry/.test(error.message)) throw new CustomerDataConflictError('This delivered item has already been reviewed.');
     throw error;
   }

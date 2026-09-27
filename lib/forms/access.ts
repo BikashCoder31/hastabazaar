@@ -14,6 +14,16 @@ export async function formAnswerOwnerId(db: D1Database, answer: Pick<StoredFormA
     const row = await db.prepare('SELECT id FROM users WHERE id=? LIMIT 1').bind(answer.subjectId).first<{ id: string }>();
     return row?.id ?? null;
   }
+  if (answer.subjectType === 'address') {
+    const row = await db.prepare('SELECT user_id AS userId FROM addresses WHERE id=? LIMIT 1')
+      .bind(answer.subjectId).first<{ userId: string }>();
+    return row?.userId ?? null;
+  }
+  if (answer.subjectType === 'product_review') {
+    const row = await db.prepare('SELECT customer_id AS userId FROM product_reviews WHERE id=? LIMIT 1')
+      .bind(answer.subjectId).first<{ userId: string }>();
+    return row?.userId ?? null;
+  }
   if (answer.subjectType === 'seller') {
     const row = await db.prepare('SELECT user_id AS userId FROM seller_profiles WHERE id=? LIMIT 1')
       .bind(answer.subjectId).first<{ userId: string }>();
@@ -46,6 +56,24 @@ export async function authorizeFormAnswerRead(
   if (!ownerId) return false;
   if (ownerId === viewer.id) return true;
   if (viewer.role !== 'admin' && viewer.role !== 'super_admin') return false;
+  if (answerSet.subjectType === 'product_review') {
+    const safeReviewPermissions = `CASE WHEN json_valid(p.permissions_json) THEN p.permissions_json ELSE '[]' END`;
+    return Boolean(await db.prepare(`SELECT 1 AS valid FROM users u
+      JOIN user_roles r ON r.user_id=u.id
+      LEFT JOIN staff_permission_profiles p ON p.user_id=u.id
+      JOIN product_reviews review ON review.id=? AND review.customer_id=?
+      WHERE u.id=? AND u.status='active' AND r.role=?
+        AND (r.role='super_admin' OR p.user_id IS NULL OR (
+          json_type(${safeReviewPermissions})='array'
+          AND EXISTS(SELECT 1 FROM json_each(${safeReviewPermissions}) grant_item
+            WHERE grant_item.type='text' AND grant_item.value='product.review')
+          AND NOT EXISTS(SELECT 1 FROM json_each(${safeReviewPermissions}) grant_item
+            WHERE grant_item.type<>'text' OR grant_item.value NOT IN
+              (SELECT value FROM json_each(?)))))
+      LIMIT 1`)
+      .bind(answerSet.subjectId, ownerId, viewer.id, viewer.role,
+        JSON.stringify(configurableAdminPermissions)).first<{ valid: number }>());
+  }
   // Staff support authority is limited to a currently assigned case for
   // this exact owner. Other seller/rider records need their own adapter.
   if (answerSet.subjectType !== 'user' && answerSet.subjectType !== 'data_rights_request') return false;

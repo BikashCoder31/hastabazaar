@@ -31,12 +31,12 @@ void test('a new JSX form cannot inherit a pre-existing exception', async () => 
 void test('replacing a frozen form body while preserving its opening tag is rejected', async () => {
   const fixture = await mkdtemp(join(tmpdir(), 'form-policy-'));
   try {
-    const path = 'components/account/review-form.tsx';
+    const path = 'components/seller/seller-profile-form.tsx';
     const original = await readFile(join(root, path), 'utf8');
     assert.match(original, /<form\s+onSubmit=\{submit\}/);
-    assert.match(original, /name="rating"/);
-    const replacement = original.replace('name="rating"', 'name="newUnapprovedField"');
-    await mkdir(join(fixture, 'components', 'account'), { recursive: true });
+    assert.match(original, /name="tradingName"/);
+    const replacement = original.replace('name="tradingName"', 'name="newUnapprovedField"');
+    await mkdir(join(fixture, 'components', 'seller'), { recursive: true });
     await writeFile(join(fixture, path), replacement);
     const violations = await scanFormSites(fixture);
     assert.ok(violations.some((violation) => violation.path === path && /unregistered/i.test(violation.reason)));
@@ -66,7 +66,7 @@ void test('a future site cannot borrow a pending adapter from the frozen invento
   const fixture = await mkdtemp(join(tmpdir(), 'form-policy-'));
   try {
     await mkdir(join(fixture, 'components'), { recursive: true });
-    await writeFile(join(fixture, 'components', 'new-form.tsx'), 'export const NewForm = () => <form data-form-id="account.review"><input name="name" /></form>;');
+    await writeFile(join(fixture, 'components', 'new-form.tsx'), 'export const NewForm = () => <form data-form-id="seller.application"><input name="name" /></form>;');
     assert.ok((await scanFormSites(fixture)).some((violation) => violation.reason.includes('pending adapter')));
   } finally {
     await rm(fixture, { recursive: true, force: true });

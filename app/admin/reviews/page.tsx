@@ -5,9 +5,12 @@ import { requireDatabase } from '@/lib/db/d1';
 import { listReviewsForModeration } from '@/lib/db/repositories/customers';
 import { getReviewExtras } from '@/lib/db/repositories/review-extras';
 import { ReviewPhotos } from '@/components/commerce/review-attachments';
+import { AnswerDetails } from '@/components/forms/answer-details';
+import { listFormAnswersForSubject } from '@/lib/db/repositories/form-answers';
+import { authorizeFormAnswerRead } from '@/lib/forms/access';
 export const dynamic = 'force-dynamic';
 export default async function AdminReviewsPage() {
-  await requireStaffPage('/admin/reviews', 'product.review');
+  const staff = await requireStaffPage('/admin/reviews', 'product.review');
   const db = requireDatabase(env as unknown as { DB?: D1Database });
   const reviews = await listReviewsForModeration(db);
   const extras = await getReviewExtras(
@@ -15,6 +18,11 @@ export default async function AdminReviewsPage() {
     reviews.map((r) => r.id),
     true,
   );
+  const answers = await Promise.all(reviews.map(async (review) =>
+    (await Promise.all((await listFormAnswersForSubject(db, 'product_review', review.id))
+      .filter((answer) => answer.formId === 'account.review')
+      .map(async (answer) => await authorizeFormAnswerRead(db, staff, answer) ? answer : null)))
+      .filter((answer) => answer !== null)));
   return (
     <div>
       <p className="eyebrow">Trust and quality</p>
@@ -25,7 +33,7 @@ export default async function AdminReviewsPage() {
         abuse, spam or unrelated content; every decision is recorded.
       </p>
       <div className="mt-7 grid gap-4 lg:grid-cols-2">
-        {reviews.map((review) => {
+        {reviews.map((review, index) => {
           const reply = extras.replies.find((r) => r.reviewId === review.id);
           return (
             <article
@@ -47,6 +55,7 @@ export default async function AdminReviewsPage() {
               <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
                 {review.body}
               </p>
+              {answers[index].map((answer) => <div key={answer.id} className="mt-4"><AnswerDetails answer={answer} /></div>)}
               <ReviewPhotos
                 photos={extras.photos.filter((p) => p.reviewId === review.id)}
               />

@@ -1,6 +1,11 @@
 import {riderNotificationSourceSql} from '../../operations/rider-notification-access';
 import { operationalBusinessNotificationStatements } from '../../operations/business-notifications';
 import type { StaffRole } from '@/lib/auth/staff';
+import { buildFormAnswerInsert } from './form-answers';
+import { FORM_REGISTRY } from '@/lib/forms/registry';
+import { FormRuntimeError, resolvePublishedForm } from '@/lib/forms/runtime';
+import type { FormAnswerSnapshot, PublishedFormConfig } from '@/lib/forms/types';
+import { validateAnswersForDefinition, validateFormDraft } from '@/lib/forms/validation';
 
 export class OperationsConflictError extends Error {}
 
@@ -375,6 +380,46 @@ export async function operateShippingJob(
 function rightsReference(now: number) {
   return `DR-${new Date(now).toISOString().slice(0, 10).replaceAll('-', '')}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 }
+
+type PrivacyFormSubmission = { formVersion: number; versionId: string; answers: FormAnswerSnapshot };
+
+export async function validatePrivacyRequestForm(database: D1Database, formVersion: number, customAnswers: unknown): Promise<PrivacyFormSubmission> {
+  const config = await resolvePublishedForm(database, 'account.privacy-request');
+  if (formVersion !== config.version) throw new FormRuntimeError('stale_version', 'This form changed. Refresh it and review your answers.');
+  const answers = validateAnswersForDefinition(FORM_REGISTRY['account.privacy-request'], config, customAnswers);
+  const version = await database.prepare(`SELECT id FROM form_config_versions WHERE form_id='account.privacy-request' AND status='published' AND version=? LIMIT 1`)
+    .bind(config.version).first<{ id: string }>();
+  if (!version) throw new FormRuntimeError('config_unavailable', 'Published form version unavailable');
+  return { formVersion: config.version, versionId: version.id, answers };
+}
+
+export async function privacyRequestStatus(database: D1Database, options: {
+  customerId: string; requestType: string; detail: string; requestId: string; formVersion: number; customAnswers: unknown;
+}): Promise<{ status: 'new' | 'same' | 'conflict'; id?: string }> {
+  let row: { id: string; customerId: string; requestType: string; detail: string; answersJson: string | null;
+    configJson: string | null; savedVersion: number | null; publishedAt: number | null } | null;
+  try {
+    row = await database.prepare(`SELECT d.id,d.customer_id AS customerId,d.request_type AS requestType,d.detail,
+        f.answers_json AS answersJson,v.config_json AS configJson,v.version AS savedVersion,v.published_at AS publishedAt
+      FROM data_rights_requests d LEFT JOIN form_answer_sets f
+        ON f.form_id='account.privacy-request' AND f.request_id=d.created_request_id
+      LEFT JOIN form_config_versions v ON v.id=f.config_version_id
+      WHERE d.created_request_id=? LIMIT 1`).bind(options.requestId).first<typeof row & object>();
+  } catch { throw new FormRuntimeError('config_unavailable', 'Privacy request replay state unavailable'); }
+  if (!row) return { status: 'new' };
+  if (row.customerId !== options.customerId || row.requestType !== options.requestType ||
+    row.detail !== options.detail.trim() || row.savedVersion !== options.formVersion ||
+    !row.answersJson || !row.configJson || !Number.isSafeInteger(row.publishedAt)) return { status: 'conflict' };
+  try {
+    const snapshot = JSON.parse(row.answersJson) as FormAnswerSnapshot;
+    const draft = validateFormDraft('account.privacy-request', JSON.parse(row.configJson) as unknown);
+    const config: PublishedFormConfig = { ...draft, version: row.savedVersion, publishedAt: row.publishedAt! };
+    const requested = validateAnswersForDefinition(FORM_REGISTRY['account.privacy-request'], config, options.customAnswers);
+    const same = snapshot.formId === 'account.privacy-request' && JSON.stringify(snapshot.answers) === JSON.stringify(requested.answers);
+    return { status: same ? 'same' : 'conflict', ...(same ? { id: row.id } : {}) };
+  } catch { return { status: 'conflict' }; }
+}
+
 export async function createDataRightsRequest(
   database: D1Database,
   options: {
@@ -383,13 +428,19 @@ export async function createDataRightsRequest(
     detail: string;
     requestId: string;
     now: number;
+    form?: PrivacyFormSubmission;
   },
 ): Promise<string> {
-  const duplicate = await database
-    .prepare(`SELECT id FROM data_rights_requests WHERE created_request_id = ?`)
-    .bind(options.requestId)
-    .first<{ id: string }>();
-  if (duplicate) return duplicate.id;
+  if (options.form) {
+    const replay = await privacyRequestStatus(database, { ...options, formVersion: options.form.formVersion,
+      customAnswers: options.form.answers.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value })) });
+    if (replay.status === 'same') return replay.id!;
+    if (replay.status === 'conflict') throw new OperationsConflictError('This request ID was already used for different privacy request values.');
+  } else {
+    const duplicate = await database.prepare(`SELECT id FROM data_rights_requests WHERE created_request_id = ?`)
+      .bind(options.requestId).first<{ id: string }>();
+    if (duplicate) return duplicate.id;
+  }
   if (
     !['access', 'correction', 'deletion', 'retention_objection'].includes(
       options.requestType,
@@ -400,7 +451,14 @@ export async function createDataRightsRequest(
       'Select a request type and add at least 20 characters of detail.',
     );
   const id = crypto.randomUUID();
-  await database.batch([
+  const statements: D1PreparedStatement[] = [
+    ...(options.form ? [database.prepare(`SELECT CASE WHEN
+      EXISTS(SELECT 1 FROM users WHERE id=? AND status='active')
+      AND (SELECT MAX(version) FROM form_config_versions WHERE form_id='account.privacy-request' AND status='published')=?
+      AND NOT EXISTS(SELECT 1 FROM data_rights_requests WHERE created_request_id=?)
+      AND NOT EXISTS(SELECT 1 FROM form_answer_sets WHERE form_id='account.privacy-request' AND request_id=?)
+      THEN 1 ELSE json_extract('invalid','$') END AS valid`)
+      .bind(options.customerId, options.form.formVersion, options.requestId, options.requestId)] : []),
     database
       .prepare(
         `INSERT INTO data_rights_requests (id, reference_number, customer_id, request_type, detail, status, created_request_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'submitted', ?, ?, ?)`,
@@ -426,8 +484,23 @@ export async function createDataRightsRequest(
         options.requestId,
         options.now,
       ),
-  workflowAudit(database,'privacy',{actorId:options.customerId,requestId:options.requestId,now:options.now},id,'submit'),
-    ]);
+    ...(options.form ? [buildFormAnswerInsert(database, { formId: 'account.privacy-request', requestId: options.requestId,
+      versionId: options.form.versionId, subjectType: 'data_rights_request', subjectId: id,
+      actorId: options.customerId, answers: options.form.answers, now: options.now })] : []),
+    workflowAudit(database,'privacy',{actorId:options.customerId,requestId:options.requestId,now:options.now},id,'submit'),
+  ];
+  try { await database.batch(statements); }
+  catch (error) {
+    if (options.form) {
+      const replay = await privacyRequestStatus(database, { ...options, formVersion: options.form.formVersion,
+        customAnswers: options.form.answers.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value })) });
+      if (replay.status === 'same') return replay.id!;
+      if (replay.status === 'conflict') throw new OperationsConflictError('This request ID was already used for different privacy request values.');
+      const current = await database.prepare(`SELECT MAX(version) AS version FROM form_config_versions WHERE form_id='account.privacy-request' AND status='published'`).first<{ version: number | null }>();
+      if (current?.version !== options.form.formVersion) throw new FormRuntimeError('stale_version', 'This form changed. Refresh it and review your answers.');
+    }
+    throw error;
+  }
   return id;
 }
 

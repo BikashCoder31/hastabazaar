@@ -3,16 +3,27 @@ import Link from 'next/link';
 import { Package, ReceiptText } from 'lucide-react';
 import { AccountEmpty, AccountHeading } from '@/components/account/account-ui';
 import { CustomerOrderList } from '@/components/account/order-list';
+import { AnswerDetails } from '@/components/forms/answer-details';
 import { requireCustomerPage } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
-import { listCustomerOrders } from '@/lib/db/repositories/customers';
+import { listCustomerOrders, listCustomerReviewAnswerHistory } from '@/lib/db/repositories/customers';
 
-export default async function CustomerOrdersPage() {
+export const dynamic = 'force-dynamic';
+
+export default async function CustomerOrdersPage({ searchParams }: {
+  searchParams?: Promise<{ reviewAt?: string; reviewId?: string }>;
+} = {}) {
   const customer = await requireCustomerPage('/account/orders');
+  const db = requireDatabase(env as unknown as { DB?: D1Database });
   const orders = await listCustomerOrders(
-    requireDatabase(env as unknown as { DB?: D1Database }),
+    db,
     customer.userId,
   );
+  const params = await searchParams;
+  const at = params?.reviewAt ? Number(params.reviewAt) : NaN;
+  const after = Number.isSafeInteger(at) && at >= 0 && params?.reviewId && params.reviewId.length <= 191
+    ? { createdAt: at, id: params.reviewId } : undefined;
+  const reviewHistory = await listCustomerReviewAnswerHistory(db, customer.userId, after);
   return (
     <div>
       <AccountHeading
@@ -38,6 +49,16 @@ export default async function CustomerOrdersPage() {
           action="Discover the collection"
         />
       )}
+      {reviewHistory.entries.length ? <section className="mt-7 space-y-4" aria-label="Your review answer history">
+        <h2 className="font-heading text-2xl">Your previous review answers</h2>
+        {reviewHistory.entries.map(({ orderNumber, answer }) => <div key={answer.id}>
+          <p className="mb-2 text-sm font-semibold">Order {orderNumber}</p>
+          <AnswerDetails answer={answer} />
+        </div>)}
+        {reviewHistory.nextCursor ? <a className="inline-flex rounded-lg border px-4 py-2 text-sm font-medium" href={
+          `/account/orders?reviewAt=${reviewHistory.nextCursor.createdAt}&reviewId=${encodeURIComponent(reviewHistory.nextCursor.id)}`
+        }>Next 50 review answers</a> : null}
+      </section> : null}
       <div className="mt-6 flex items-start gap-3 rounded-2xl bg-secondary p-5">
         <ReceiptText className="mt-0.5 size-5 shrink-0 text-primary" />
         <div>

@@ -9,6 +9,9 @@ export interface ImplementedFormAdapter {
 // Integrations add an entry here only when their server adapter exists and is tested.
 export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormAdapter>> = Object.freeze({
   'account.profile': { formId: 'account.profile', route: '/api/account/profile', mode: 'collection' },
+  'account.address': { formId: 'account.address', route: '/api/account/addresses', mode: 'collection' },
+  'account.privacy-request': { formId: 'account.privacy-request', route: '/api/account/privacy', mode: 'collection' },
+  'account.review': { formId: 'account.review', route: '/api/products/:id/reviews', mode: 'collection' },
 });
 
 // Inventory rows are ordered to match the 69 JSX sites in the frozen policy baseline.
@@ -147,9 +150,47 @@ function definition(row: string): FormDefinition {
   });
 }
 
+const ACCOUNT_CUSTOM_TYPES = Object.freeze(['short_text', 'long_text', 'number', 'date', 'single_choice', 'multiple_choice', 'checkbox', 'email', 'phone'] as const);
+
+function accountDefinition(id: 'account.address' | 'account.privacy-request' | 'account.review'): FormDefinition {
+  const protectedField = (key: string, explanation: string) => ({ key, type: 'existing', label: key, capability: 'protected' as const, explanation });
+  if (id === 'account.address') return Object.freeze({
+    id, audience: 'customer', mode: 'collection', route: '/api/account/addresses', adapterId: id,
+    baseFields: Object.freeze([
+      { key: 'landmark', type: 'short_text', label: 'Landmark', capability: 'configurable', required: false, status: 'active', explanation: 'Landmark may be required or optional; its server validation follows the published version.' },
+      ...['label', 'recipientName', 'phone', 'province', 'district', 'municipality', 'ward', 'locality', 'postalCode', 'isDefault'].map((key) => protectedField(key, 'Address format and delivery rules stay server enforced.')),
+      protectedField('location', 'The map pin keeps its existing coordinate validation.'),
+      protectedField('userId', 'Address ownership always comes from the authenticated customer.'),
+      protectedField('idempotencyKey', 'Request deduplication cannot be disabled.'),
+    ]),
+    capabilities: Object.freeze({ explanation: 'Landmark requiredness, safe presentation and custom answers are configurable; ownership, delivery address checks and request deduplication remain protected.', customFieldTypes: ACCOUNT_CUSTOM_TYPES, answerBehavior: 'record' }),
+  } satisfies FormDefinition);
+  if (id === 'account.privacy-request') return Object.freeze({
+    id, audience: 'customer', mode: 'collection', route: '/api/account/privacy', adapterId: id,
+    baseFields: Object.freeze([
+      protectedField('requestType', 'The four data-rights request types are server enforced.'),
+      protectedField('detail', 'The minimum detail length and privacy workflow are server enforced.'),
+      protectedField('requestId', 'Request deduplication cannot be disabled.'),
+      protectedField('customerId', 'The request owner comes from the authenticated customer.'),
+    ]),
+    capabilities: Object.freeze({ explanation: 'Custom context is linked to the data-rights request; request type, detail validation, owner and workflow remain protected.', customFieldTypes: ACCOUNT_CUSTOM_TYPES, answerBehavior: 'record' }),
+  } satisfies FormDefinition);
+  return Object.freeze({
+    id, audience: 'customer', mode: 'collection', route: '/api/products/:id/reviews', adapterId: id,
+    baseFields: Object.freeze([
+      ...['rating', 'title', 'body', 'orderItemId', 'idempotencyKey', 'photos'].map((key) => protectedField(key, 'Verified purchase, review text, request deduplication and private photo checks stay server enforced.')),
+      protectedField('customerId', 'The review owner comes from the authenticated customer.'),
+    ]),
+    capabilities: Object.freeze({ explanation: 'Custom context is linked to a verified-purchase review; rating, review text, ownership, moderation and private photo safeguards remain protected.', customFieldTypes: ACCOUNT_CUSTOM_TYPES, answerBehavior: 'record' }),
+  } satisfies FormDefinition);
+}
+
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
   Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
-    const item = row.startsWith('account.profile|') ? Object.freeze({
+    const item = row.startsWith('account.address|') ? accountDefinition('account.address')
+      : row.startsWith('account.privacy-request|') ? accountDefinition('account.privacy-request')
+      : row.startsWith('account.review|') ? accountDefinition('account.review')
+      : row.startsWith('account.profile|') ? Object.freeze({
       id: 'account.profile', audience: 'customer', mode: 'collection', route: '/api/account/profile',
       baseFields: Object.freeze([
         { key: 'displayName', type: 'short_text', label: 'Your name', capability: 'display_editable',

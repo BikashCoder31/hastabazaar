@@ -4,7 +4,7 @@ import type { ConfiguredField, CustomFieldType, FormAnswerSnapshot, FormConfigDr
 export type FormValidationCode = 'unknown_form' | 'adapter_unavailable' | 'invalid_draft' | 'invalid_answer';
 
 export class FormValidationError extends Error {
-  constructor(readonly code: FormValidationCode, message: string) {
+  constructor(readonly code: FormValidationCode, message: string, readonly fieldId?: string) {
     super(message);
     this.name = 'FormValidationError';
   }
@@ -20,8 +20,8 @@ function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function fail(code: FormValidationCode, message: string): never {
-  throw new FormValidationError(code, message);
+function fail(code: FormValidationCode, message: string, fieldId?: string): never {
+  throw new FormValidationError(code, message, fieldId);
 }
 
 function boundedString(value: unknown, max: number, optional = false): value is string {
@@ -96,7 +96,8 @@ function validField(value: unknown, definition: FormDefinition, adapterGrantsBui
     // An adapter alone grants no semantic edit. Legacy inventory definitions
     // have type "existing" and no baseline, so they remain uneditable.
     if (!FIELD_TYPES.includes(base.type as CustomFieldType) || typeof base.required !== 'boolean' || (base.status !== 'active' && base.status !== 'archived')) return false;
-    if (type !== base.type || required !== base.required || status !== base.status || !sameChoices(choices, base.choices) || min !== base.min || max !== base.max || integerOnly !== base.integerOnly) return false;
+    const landmarkRequiredness = definition.id === 'account.address' && canonicalName(base.key) === 'landmark' && base.capability === 'configurable';
+    if (type !== base.type || (!landmarkRequiredness && required !== base.required) || status !== base.status || !sameChoices(choices, base.choices) || min !== base.min || max !== base.max || integerOnly !== base.integerOnly) return false;
   }
   if (type === 'single_choice' || type === 'multiple_choice') {
     if (!Array.isArray(choices) || choices.length < 2 || choices.length > 100 || !choices.every(validChoice)) return false;
@@ -197,11 +198,11 @@ export function validateAnswersForDefinition(definition: FormDefinition, config:
     const value = values.get(field.id);
     const empty = value === undefined || value === null || value === '' || Array.isArray(value) && value.length === 0;
     if (empty) {
-      if (field.required) return fail('invalid_answer', 'Required answer missing');
+      if (field.required) return fail('invalid_answer', 'Required answer missing', field.id);
       continue;
     }
-    if (field.type === 'checkbox' && field.required && value === false) return fail('invalid_answer', 'Required answer missing');
-    if (!validAnswer(field, value)) return fail('invalid_answer', 'Invalid answer value');
+    if (field.type === 'checkbox' && field.required && value === false) return fail('invalid_answer', 'Required answer missing', field.id);
+    if (!validAnswer(field, value)) return fail('invalid_answer', 'Invalid answer value', field.id);
     // Built-in values belong to the domain record; only safe custom fields enter snapshots.
     if (definition.baseFields.some((base) => canonicalName(base.key) === canonicalName(field.key))) continue;
     if (isUnsafeName(field.id) || isUnsafeName(field.key) || isUnsafeName(field.label)) return fail('invalid_answer', 'Unsafe answer field');

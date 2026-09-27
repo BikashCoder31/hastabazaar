@@ -1,14 +1,24 @@
 import { env } from 'cloudflare:workers';
 import { PrivacyActions } from '@/components/admin/privacy-actions';
+import { AnswerDetails } from '@/components/forms/answer-details';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { listDataRightsRequests } from '@/lib/db/repositories/operations';
+import { listFormAnswersForSubject } from '@/lib/db/repositories/form-answers';
+import { authorizeFormAnswerRead } from '@/lib/forms/access';
 export const dynamic = 'force-dynamic';
 export default async function AdminPrivacyPage() {
   const staff = await requireStaffPage('/admin/privacy', 'support.manage');
+  const db = requireDatabase(env as unknown as { DB?: D1Database });
   const rows = await listDataRightsRequests(
-    requireDatabase(env as unknown as { DB?: D1Database }),
+    db,
   );
+  const answers = await Promise.all(rows.map(async (row) => row.assignedTo === staff.id
+    ? (await Promise.all((await listFormAnswersForSubject(db, 'data_rights_request', row.id))
+      .filter((answer) => answer.formId === 'account.privacy-request')
+      .map(async (answer) => await authorizeFormAnswerRead(db, staff, answer) ? answer : null)))
+      .filter((answer) => answer !== null)
+    : []));
   return (
     <div className="space-y-6">
       <div>
@@ -20,7 +30,7 @@ export default async function AdminPrivacyPage() {
         </p>
       </div>
       {rows.length ? (
-        rows.map((row) => (
+        rows.map((row, index) => (
           <article key={row.id} className="rounded-2xl border bg-card p-5">
             <div className="flex flex-wrap justify-between gap-3">
               <div>
@@ -37,6 +47,7 @@ export default async function AdminPrivacyPage() {
               {row.requestType.replaceAll('_', ' ')}
             </p>
             <p className="text-sm text-muted-foreground">{row.detail}</p>
+            {answers[index].map((answer) => <div key={answer.id} className="mt-4"><AnswerDetails answer={answer} /></div>)}
             <PrivacyActions
               key={row.id + ':' + row.status}
               id={row.id}

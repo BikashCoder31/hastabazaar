@@ -7,6 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+
+const BASE_KEYS = ['rating', 'title', 'body', 'orderItemId', 'idempotencyKey', 'photos', 'customerId'] as const;
 
 export function ReviewForm({
   productId,
@@ -20,17 +25,30 @@ export function ReviewForm({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const requestId = useRef(crypto.randomUUID());
+  const { config, status, message: configMessage, canSubmit, refresh, handleSubmissionResponse } = usePublishedFormConfig('account.review');
   async function submit(event: {
     preventDefault(): void;
     currentTarget: HTMLFormElement;
   }) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || !canSubmit || !config) return;
     const formElement = event.currentTarget;
     setBusy(true);
     setMessage('');
+    setFieldErrors({});
     const data = new FormData(event.currentTarget);
+    try {
+      const { answers } = readConfiguredSubmission(formElement, config, BASE_KEYS);
+      const payload = configuredJsonPayload(config, answers, BASE_KEYS);
+      data.set('formVersion', String(payload.formVersion));
+      data.set('customAnswers', JSON.stringify(payload.customAnswers));
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : 'Review your form answers.');
+      setBusy(false);
+      return;
+    }
     data.set('orderItemId', orderItemId);
     data.set('idempotencyKey', requestId.current);
     try {
@@ -46,11 +64,19 @@ export function ReviewForm({
       const result = (await response.json().catch(() => null)) as {
         id?: string;
         error?: string;
+        fieldId?: string;
       } | null;
       if (!response.ok || !result?.id)
-        throw new Error(
-          result?.error ?? 'Review could not be submitted. Please try again.',
-        );
+      {
+        if (response.status === 409 && (result as { code?: unknown } | null)?.code === 'stale_version') handleSubmissionResponse(response);
+        else if (response.status === 400 || response.status === 409) requestId.current = crypto.randomUUID();
+        const explanation = result?.error ?? 'Review could not be submitted. Please try again.';
+        if (typeof result?.fieldId === 'string') {
+          setFieldErrors({ [result.fieldId]: explanation });
+          document.getElementById(`custom-${result.fieldId}`)?.focus();
+        }
+        throw new Error(explanation);
+      }
       setMessage(
         'Thank you. Your verified-purchase review is awaiting moderation.',
       );
@@ -69,6 +95,7 @@ export function ReviewForm({
   }
   return (
     <form
+      data-form-id="account.review"
       onSubmit={submit}
       onChange={() => {
         if (!busy) requestId.current = crypto.randomUUID();
@@ -81,6 +108,7 @@ export function ReviewForm({
         Delivered order {orderNumber}
       </p>
       <fieldset disabled={busy} className="grid gap-4">
+        {config ? <ConfiguredFields config={config} baseKeys={BASE_KEYS} errors={fieldErrors} /> : null}
         <div className="space-y-2">
           <Label htmlFor="rating">Rating</Label>
           <select
@@ -133,7 +161,11 @@ export function ReviewForm({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" disabled={busy}>
+          {status !== 'ready' ? <div>
+            <output className="text-sm text-muted-foreground">{status === 'loading' ? 'Form configuration is loading.' : configMessage}</output>
+            {status !== 'loading' ? <Button type="button" variant="outline" onClick={refresh}>Refresh form</Button> : null}
+          </div> : null}
+          <Button type="submit" disabled={busy || !canSubmit}>
             {busy ? 'Submitting…' : 'Submit review'}
           </Button>
           {message ? (

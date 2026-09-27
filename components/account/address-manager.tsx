@@ -21,6 +21,12 @@ import {
 import { sendJson } from '@/lib/http/client-request';
 import type { CustomerAddressRow } from '@/lib/db/repositories/customers';
 import { NEPAL_PROVINCES, DISTRICTS_BY_PROVINCE,normalizeProvince,normalizeDistrict } from '@/lib/checkout/nepal-address';
+import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+
+const BASE_KEYS = ['label', 'recipientName', 'phone', 'province', 'district', 'municipality', 'ward', 'locality', 'landmark', 'postalCode', 'isDefault', 'location', 'userId', 'idempotencyKey'] as const;
+const ADDRESS_KEYS = ['label', 'recipientName', 'phone', 'province', 'district', 'municipality', 'ward', 'locality', 'landmark', 'postalCode'] as const;
 
 export function AddressManager({
   addresses,
@@ -28,6 +34,8 @@ export function AddressManager({
   addresses: readonly CustomerAddressRow[];
 }) {
   const router = useRouter();
+  const { config, status, message: configMessage, canSubmit, refresh, handleSubmissionResponse } = usePublishedFormConfig('account.address');
+  const requestId = useRef<string | null>(null);
   const [editing, setEditing] = useState<CustomerAddressRow | null | undefined>(
     undefined,
   );
@@ -37,6 +45,7 @@ export function AddressManager({
   useEffect(()=>{if(editing!==undefined) addressForm.current?.querySelector<HTMLInputElement>('input[name=label]')?.focus();},[editing]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   useEffect(()=>{if(error) errorSummary.current?.focus();},[error]);
   const [deleting, setDeleting] = useState<CustomerAddressRow | null>(null);
 
@@ -45,24 +54,42 @@ export function AddressManager({
     currentTarget: HTMLFormElement;
   }) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || !canSubmit || !config) return;
+    let payload: ReturnType<typeof configuredJsonPayload>;
+    try {
+      const { answers } = readConfiguredSubmission(event.currentTarget, config, BASE_KEYS);
+      payload = configuredJsonPayload(config, answers, BASE_KEYS);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Review your form answers.');
+      return;
+    }
     setBusy(true);
     setError('');
+    setFieldErrors({});
     const data = new FormData(event.currentTarget);
-    const address = Object.fromEntries(data.entries());
+    const address = Object.fromEntries(ADDRESS_KEYS.map((key) => [key, data.get(key)]));
     const url = editing?.id
       ? `/api/account/addresses/${editing.id}`
       : '/api/account/addresses';
     try {
-      await sendJson(
-        url,
-        editing?.id ? 'PATCH' : 'POST',
-        {
+      requestId.current ??= crypto.randomUUID();
+      const response = await fetch(url, { method: editing?.id ? 'PATCH' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
           address: { ...address, location: data.get('latitude') && data.get('longitude') ? {latitude:Number(data.get('latitude')),longitude:Number(data.get('longitude'))}:undefined, isDefault: data.get('isDefault') === 'on' },
-          idempotencyKey: crypto.randomUUID(),
-        },
-        'Address could not be saved.',
-      );
+          idempotencyKey: requestId.current,
+          ...payload,
+        }) });
+      const result = await response.json().catch(() => null) as { error?: unknown; code?: unknown; fieldId?: unknown } | null;
+      if (!response.ok) {
+        if (response.status === 409 && result?.code === 'stale_version') handleSubmissionResponse(response);
+        else if (response.status === 400 || response.status === 409) requestId.current = null;
+        const explanation = typeof result?.error === 'string' ? result.error : 'Address could not be saved.';
+        if (typeof result?.fieldId === 'string') {
+          setFieldErrors({ [result.fieldId]: explanation });
+          document.getElementById(result.fieldId === 'landmark' ? 'landmark' : `custom-${result.fieldId}`)?.focus();
+        }
+        throw new Error(explanation);
+      }
+      requestId.current = null;
       setEditing(undefined);
       router.refresh();
     } catch (reason) {
@@ -117,16 +144,21 @@ export function AddressManager({
         </div>
         <Button
           ref={openButton}
-          disabled={busy}
+          disabled={busy || !canSubmit}
           className="min-h-11 rounded-full px-5"
           onClick={() => {
             setError('');
+            requestId.current = null;
             setEditing(null);
           }}
         >
           <Plus /> Add address
         </Button>
       </div>
+      {status !== 'ready' ? <div className="mt-4">
+        <output className="text-sm text-muted-foreground">{status === 'loading' ? 'Form configuration is loading.' : configMessage}</output>
+        {status !== 'loading' ? <Button type="button" variant="outline" onClick={refresh} className="ml-3">Refresh form</Button> : null}
+      </div> : null}
       {error ? (
         <p
           role="alert"
@@ -139,9 +171,11 @@ export function AddressManager({
       ) : null}
       {editing !== undefined ? (
         <form
+          data-form-id="account.address"
           ref={addressForm}
           key={editing?.id ?? 'new'}
           onSubmit={save}
+          onChange={() => { if (!busy) requestId.current = null; }}
           className="customer-form mt-7 rounded-2xl border bg-card p-6"
         >
           <div className="flex justify-between gap-4">
@@ -160,6 +194,7 @@ export function AddressManager({
             </Button>
           </div>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            {config ? <div className="sm:col-span-2"><ConfiguredFields config={config} baseKeys={BASE_KEYS} errors={fieldErrors} /></div> : null}
             <Field
               name="label"
               label="Label"
@@ -227,8 +262,12 @@ export function AddressManager({
             />
             <Field
               name="landmark"
-              label="Landmark"
+              label={fieldDisplay(config, 'landmark')?.label ?? 'Landmark'}
               defaultValue={editing?.landmark ?? ''}
+              placeholder={fieldDisplay(config, 'landmark')?.placeholder}
+              required={fieldDisplay(config, 'landmark')?.required ?? false}
+              aria-required={fieldDisplay(config, 'landmark')?.required ?? false}
+              aria-invalid={Boolean(fieldErrors.landmark)}
             />
             <Field
               name="postalCode"
@@ -246,7 +285,7 @@ export function AddressManager({
             </label>
             <LocationPicker key={editing?.id??"new"} initial={editing?.latitude!=null && editing?.longitude!=null ? {latitude:editing.latitude,longitude:editing.longitude}:undefined} />
               <div className="flex justify-end">
-              <Button type="submit" disabled={busy}>
+              <Button type="submit" disabled={busy || !canSubmit}>
                 {busy ? 'Saving…' : 'Save address'}
               </Button>
             </div>
@@ -287,7 +326,7 @@ export function AddressManager({
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setEditing(address)}
+                    onClick={() => { requestId.current = null; setEditing(address); }}
                     disabled={busy}
                     aria-label={`Edit ${address.label}`}
                   >
