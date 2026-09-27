@@ -141,3 +141,23 @@ void test('identifier equality stays case and trailing-space sensitive in D1 and
     await rm(reviewRoot, { recursive: true, force: true });
   }
 });
+
+void test('legal holds store one active hold per customer and preserve released history', async () => {
+  const sqlite = await fixture();
+  try {
+    const migration = await readFile(new URL('../drizzle/0057_data_rights_legal_holds.sql', import.meta.url), 'utf8');
+    for (const statement of migration.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
+    const insert = sqlite.prepare(`INSERT INTO data_rights_legal_holds
+      (id,user_id,reason,placed_by,placed_at) VALUES (?, 'customer', 'Open legal dispute', 'admin', ?)`);
+    insert.run('hold-1', 100);
+    assert.throws(() => insert.run('hold-2', 101), /UNIQUE/);
+    assert.throws(() => sqlite.exec("UPDATE data_rights_legal_holds SET released_at=102 WHERE id='hold-1'"));
+    sqlite.exec("UPDATE data_rights_legal_holds SET released_by='admin',released_at=102 WHERE id='hold-1'");
+    insert.run('hold-2', 103);
+    assert.deepEqual(sqlite.prepare('SELECT id,released_at AS releasedAt FROM data_rights_legal_holds ORDER BY placed_at').all()
+      .map((row) => ({ ...row })), [{ id: 'hold-1', releasedAt: 102 }, { id: 'hold-2', releasedAt: null }]);
+    const generated = await readFile(new URL('../deployment/babal/mariadb-schema.sql', import.meta.url), 'utf8');
+    assert.match(generated, /CREATE TABLE IF NOT EXISTS `data_rights_legal_holds`/);
+    assert.match(generated, /UNIQUE KEY `idx_data_rights_legal_holds_one_active`/);
+  } finally { sqlite.close(); }
+});

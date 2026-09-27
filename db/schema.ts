@@ -3001,3 +3001,23 @@ export const formAnswerSets = sqliteTable(
     check('form_answer_sets_json', sql`json_valid(${table.answersJson}) AND json_type(${table.answersJson}) = 'object' AND length(CAST(${table.answersJson} AS BLOB)) <= 131072`),
   ],
 );
+
+export const dataRightsLegalHolds = sqliteTable(
+  'data_rights_legal_holds',
+  {
+    id: id(),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+    reason: text('reason').notNull(),
+    placedBy: text('placed_by').notNull().references(() => users.id, { onDelete: 'restrict' }),
+    placedAt: timestamp('placed_at').notNull(),
+    releasedBy: text('released_by').references(() => users.id, { onDelete: 'restrict' }),
+    releasedAt: timestamp('released_at'),
+  },
+  (table) => [
+    index('idx_data_rights_legal_holds_user_active').on(table.userId, table.releasedAt),
+    uniqueIndex('idx_data_rights_legal_holds_one_active').on(table.userId)
+      .where(sql`${table.releasedAt} IS NULL`),
+    check('data_rights_legal_holds_reason', sql`length(trim(${table.reason})) BETWEEN 8 AND 2000`),
+    check('data_rights_legal_holds_release', sql`(${table.releasedBy} IS NULL AND ${table.releasedAt} IS NULL) OR (${table.releasedBy} IS NOT NULL AND ${table.releasedAt} IS NOT NULL AND ${table.releasedAt} >= ${table.placedAt})`),
+  ],
+);

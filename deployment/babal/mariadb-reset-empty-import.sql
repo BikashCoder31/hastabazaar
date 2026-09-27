@@ -1,6 +1,9 @@
 -- RECOVERY ONLY: clears the failed partial import in an otherwise empty database.
 -- Do not use this file after real users, products, orders, or uploads exist.
 SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS `data_rights_legal_holds`;
+DROP TABLE IF EXISTS `form_answer_sets`;
+DROP TABLE IF EXISTS `form_config_versions`;
 DROP TABLE IF EXISTS `seller_agreement_acceptance_history`;
 DROP TABLE IF EXISTS `seller_route_transition_applications`;
 DROP TABLE IF EXISTS `managed_supplier_payments`;
@@ -1694,6 +1697,96 @@ DROP TRIGGER IF EXISTS `managed_supplier_adjustment_no_update`;
 CREATE TRIGGER `managed_supplier_adjustment_no_update` BEFORE UPDATE ON `managed_supplier_adjustments` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Managed supplier adjustment is immutable';
 DROP TRIGGER IF EXISTS `managed_supplier_adjustment_no_delete`;
 CREATE TRIGGER `managed_supplier_adjustment_no_delete` BEFORE DELETE ON `managed_supplier_adjustments` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Managed supplier adjustment is immutable';
+
+-- Additive form catalog. Published rows are frozen; restore publishes a new version.
+-- Catalog-owned identifiers use NO PAD binary collation to match D1 TEXT equality.
+-- Actor IDs retain the users.id collation required by their foreign keys.
+CREATE TABLE IF NOT EXISTS `form_config_versions` (
+  `id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `form_id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `version` BIGINT NOT NULL,
+  `revision` BIGINT NOT NULL DEFAULT 1,
+  `status` VARCHAR(32) COLLATE utf8mb4_nopad_bin NOT NULL DEFAULT 'draft',
+  `config_json` LONGTEXT NOT NULL,
+  `reason` LONGTEXT NOT NULL,
+  `created_by` VARCHAR(191) NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  `updated_by` VARCHAR(191) NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  `published_by` VARCHAR(191) NULL,
+  `published_at` BIGINT NULL,
+  `last_request_id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_form_config_versions_form_version` (`form_id`,`version`),
+  UNIQUE KEY `idx_form_config_versions_form_id` (`form_id`,`id`),
+  UNIQUE KEY `idx_form_config_versions_request` (`last_request_id`),
+  KEY `idx_form_config_versions_current` (`form_id`,`status`,`version` DESC),
+  CONSTRAINT `form_config_versions_form_id_length` CHECK (CHAR_LENGTH(`form_id`) BETWEEN 1 AND 191),
+  CONSTRAINT `form_config_versions_version` CHECK (`version` >= 1),
+  CONSTRAINT `form_config_versions_revision` CHECK (`revision` >= 1),
+  CONSTRAINT `form_config_versions_status` CHECK (`status` IN ('draft','published')),
+  CONSTRAINT `form_config_versions_json` CHECK (JSON_VALID(`config_json`) AND JSON_TYPE(`config_json`) = 'OBJECT' AND OCTET_LENGTH(`config_json`) <= 65536),
+  CONSTRAINT `form_config_versions_reason` CHECK (CHAR_LENGTH(TRIM(`reason`)) BETWEEN 1 AND 2000),
+  CONSTRAINT `form_config_versions_request_length` CHECK (CHAR_LENGTH(`last_request_id`) BETWEEN 1 AND 191),
+  CONSTRAINT `form_config_versions_publication` CHECK ((`status` = 'draft' AND `published_by` IS NULL AND `published_at` IS NULL) OR (`status` = 'published' AND `published_by` IS NOT NULL AND `published_at` IS NOT NULL)),
+  CONSTRAINT `form_config_versions_created_by_fk` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `form_config_versions_updated_by_fk` FOREIGN KEY (`updated_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `form_config_versions_published_by_fk` FOREIGN KEY (`published_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+DELIMITER $$
+CREATE TRIGGER IF NOT EXISTS `trg_form_config_versions_published_update` BEFORE UPDATE ON `form_config_versions` FOR EACH ROW BEGIN
+  IF OLD.`status` = 'published' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'published form configuration is immutable'; END IF;
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER IF NOT EXISTS `trg_form_config_versions_published_delete` BEFORE DELETE ON `form_config_versions` FOR EACH ROW BEGIN
+  IF OLD.`status` = 'published' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'published form configuration is immutable'; END IF;
+END$$
+DELIMITER ;
+
+CREATE TABLE IF NOT EXISTS `form_answer_sets` (
+  `id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `form_id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `request_id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `config_version_id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `subject_type` VARCHAR(64) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `subject_id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `actor_id` VARCHAR(191) NULL,
+  `answers_json` LONGTEXT NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_form_answer_sets_form_request` (`form_id`,`request_id`),
+  KEY `idx_form_answer_sets_owner` (`subject_type`,`subject_id`,`created_at`),
+  KEY `idx_form_answer_sets_version` (`config_version_id`,`created_at`),
+  CONSTRAINT `form_answer_sets_form_id_length` CHECK (CHAR_LENGTH(`form_id`) BETWEEN 1 AND 191),
+  CONSTRAINT `form_answer_sets_request_length` CHECK (CHAR_LENGTH(`request_id`) BETWEEN 1 AND 191),
+  CONSTRAINT `form_answer_sets_subject_type_length` CHECK (CHAR_LENGTH(`subject_type`) BETWEEN 1 AND 64),
+  CONSTRAINT `form_answer_sets_subject_id_length` CHECK (CHAR_LENGTH(`subject_id`) BETWEEN 1 AND 191),
+  CONSTRAINT `form_answer_sets_json` CHECK (JSON_VALID(`answers_json`) AND JSON_TYPE(`answers_json`) = 'OBJECT' AND OCTET_LENGTH(`answers_json`) <= 131072),
+  CONSTRAINT `form_answer_sets_version_fk` FOREIGN KEY (`form_id`,`config_version_id`) REFERENCES `form_config_versions` (`form_id`,`id`) ON DELETE RESTRICT,
+  CONSTRAINT `form_answer_sets_actor_fk` FOREIGN KEY (`actor_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- Additive stored legal-hold state. Placement/release is audited by the privacy repository.
+CREATE TABLE IF NOT EXISTS `data_rights_legal_holds` (
+  `id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `user_id` VARCHAR(191) NOT NULL,
+  `reason` LONGTEXT NOT NULL,
+  `placed_by` VARCHAR(191) NOT NULL,
+  `placed_at` BIGINT NOT NULL,
+  `released_by` VARCHAR(191) NULL,
+  `released_at` BIGINT NULL,
+  `active_user_id` VARCHAR(191) GENERATED ALWAYS AS (CASE WHEN `released_at` IS NULL THEN `user_id` ELSE NULL END) STORED,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_data_rights_legal_holds_one_active` (`active_user_id`),
+  KEY `idx_data_rights_legal_holds_user_active` (`user_id`,`released_at`),
+  CONSTRAINT `data_rights_legal_holds_reason` CHECK (CHAR_LENGTH(TRIM(`reason`)) BETWEEN 8 AND 2000),
+  CONSTRAINT `data_rights_legal_holds_release` CHECK ((`released_by` IS NULL AND `released_at` IS NULL) OR (`released_by` IS NOT NULL AND `released_at` IS NOT NULL AND `released_at` >= `placed_at`)),
+  CONSTRAINT `data_rights_legal_holds_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `data_rights_legal_holds_placed_by_fk` FOREIGN KEY (`placed_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `data_rights_legal_holds_released_by_fk` FOREIGN KEY (`released_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Babal.Host password authentication and server-side sessions.
 CREATE TABLE IF NOT EXISTS `user_credentials` (

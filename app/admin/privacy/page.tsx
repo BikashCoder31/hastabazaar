@@ -42,6 +42,8 @@ export default async function AdminPrivacyPage() {
               id={row.id}
               status={row.status}
               canDecide={staff.role === 'super_admin'}
+              requestType={row.requestType}
+              assignedToCurrentStaff={row.assignedTo === staff.id}
             />
           </article>
         ))

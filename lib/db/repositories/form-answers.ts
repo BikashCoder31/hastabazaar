@@ -17,8 +17,9 @@ export type StoredFormAnswer = {
   subjectType: string;
   subjectId: string;
   actorId: string | null;
-  answers: FormAnswerSnapshot & { answers: readonly (FormAnswerSnapshot['answers'][number] & { choiceLabels?: readonly string[] })[] };
+  answers: Omit<FormAnswerSnapshot, 'answers'> & { answers: readonly (FormAnswerSnapshot['answers'][number] & { choiceLabels?: readonly string[] })[] };
   createdAt: number;
+  historicalFieldIds: readonly string[];
 };
 
 const FIELD_TYPES: readonly CustomFieldType[] = [
@@ -169,25 +170,54 @@ export function buildFormAnswerInsert(db: D1Database, input: {
       versionId, formId, snapshot.version, json, builtInKeys, json, json, input.now);
 }
 
-export async function listFormAnswersForSubject(db: D1Database, subjectType: string, subjectId: string): Promise<StoredFormAnswer[]> {
-  const type = required(subjectType, 'Subject type', 64);
-  const id = required(subjectId, 'Subject ID', 191);
-  const rows = await db.prepare(`SELECT a.id, a.form_id AS formId, a.request_id AS requestId,
+type AnswerRow = Omit<StoredFormAnswer, 'answers' | 'historicalFieldIds'> & {
+  answersJson: string; configJson: string; currentConfigJson: string | null;
+};
+
+const answerSelect = `SELECT a.id, a.form_id AS formId, a.request_id AS requestId,
     a.config_version_id AS versionId, a.subject_type AS subjectType, a.subject_id AS subjectId,
     a.actor_id AS actorId, a.answers_json AS answersJson, a.created_at AS createdAt,
-    v.config_json AS configJson
-    FROM form_answer_sets a JOIN form_config_versions v ON v.id = a.config_version_id
-    WHERE a.subject_type = ? AND a.subject_id = ? ORDER BY a.created_at, a.id`)
-    .bind(type, id).all<Omit<StoredFormAnswer, 'answers'> & { answersJson: string; configJson: string }>();
-  return rows.results.map(({ answersJson, configJson, ...row }) => {
-    const snapshot = JSON.parse(answersJson) as FormAnswerSnapshot;
+    v.config_json AS configJson, current.config_json AS currentConfigJson
+    FROM form_answer_sets a JOIN form_config_versions v ON v.id=a.config_version_id
+    LEFT JOIN form_config_versions current ON current.id=(SELECT id FROM form_config_versions
+      WHERE form_id=a.form_id AND status='published' ORDER BY version DESC LIMIT 1)`;
+
+function decodeAnswer(row: AnswerRow): StoredFormAnswer {
+  const { answersJson, configJson, currentConfigJson, ...metadata } = row;
+  try {
+    const snapshot = validateInput(metadata.formId, JSON.parse(answersJson) as unknown);
     const config = JSON.parse(configJson) as { fields: { id: string; type: string; choices?: { value: string; label: string }[] }[] };
+    const current = currentConfigJson ? JSON.parse(currentConfigJson) as { fields: { id: string; status: string }[] } : null;
+    if (!Array.isArray(config.fields) || (current && !Array.isArray(current.fields))) throw new FormAnswerRepositoryError();
     const answers = snapshot.answers.map((answer) => {
       const field = config.fields.find((item) => item.id === answer.fieldId);
       if (!field || !field.choices || (field.type !== 'single_choice' && field.type !== 'multiple_choice')) return answer;
       const values = Array.isArray(answer.value) ? answer.value : [answer.value];
-      return { ...answer, choiceLabels: values.map((value) => field.choices?.find((choice) => choice.value === value)?.label ?? '') };
+      const labels = values.map((value) => field.choices?.find((choice) => choice.value === value)?.label);
+      if (labels.some((label) => typeof label !== 'string' || unsafeName(label))) throw new FormAnswerRepositoryError();
+      return { ...answer, choiceLabels: labels as string[] };
     });
-    return { ...row, answers: { ...snapshot, answers } };
-  });
+    const historicalFieldIds = answers.filter((answer) =>
+      !current?.fields.some((field) => field.id === answer.fieldId && field.status === 'active'))
+      .map((answer) => answer.fieldId);
+    return { ...metadata, answers: { ...snapshot, answers }, historicalFieldIds };
+  } catch (error) {
+    if (error instanceof FormAnswerRepositoryError) throw error;
+    throw new FormAnswerRepositoryError('Stored answer snapshot is unavailable.');
+  }
+}
+
+export async function getFormAnswerById(db: D1Database, answerId: string): Promise<StoredFormAnswer | null> {
+  const id = required(answerId, 'Answer ID', 191);
+  const row = await db.prepare(`${answerSelect} WHERE a.id=? LIMIT 1`).bind(id).first<AnswerRow>();
+  return row ? decodeAnswer(row) : null;
+}
+
+export async function listFormAnswersForSubject(db: D1Database, subjectType: string, subjectId: string): Promise<StoredFormAnswer[]> {
+  const type = required(subjectType, 'Subject type', 64);
+  const id = required(subjectId, 'Subject ID', 191);
+  const rows = await db.prepare(`${answerSelect} WHERE a.subject_type=? AND a.subject_id=?
+    ORDER BY a.created_at,a.id LIMIT 201`).bind(type, id).all<AnswerRow>();
+  if (rows.results.length > 200) throw new FormAnswerRepositoryError('Answer history is too large for one view.');
+  return rows.results.map(decodeAnswer);
 }

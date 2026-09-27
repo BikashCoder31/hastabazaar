@@ -473,10 +473,10 @@ export async function operateDataRightsRequest(
     return;
   const current = await database
     .prepare(
-      `SELECT status, customer_id AS customerId FROM data_rights_requests WHERE id = ?`,
+      `SELECT status, customer_id AS customerId, request_type AS requestType FROM data_rights_requests WHERE id = ?`,
     )
     .bind(options.id)
-    .first<{ status: string; customerId: string }>();
+    .first<{ status: string; customerId: string; requestType: string }>();
   if (!current)
     throw new OperationsConflictError('Data-rights request not found.');
   const map = {
@@ -494,6 +494,19 @@ export async function operateDataRightsRequest(
     throw new OperationsConflictError(
       'A Super Admin must approve, reject or complete this request.',
     );
+  if (options.action === 'complete' && (current.requestType === 'access' || current.requestType === 'deletion')) {
+    const evidence = current.requestType === 'access'
+      ? await database.prepare(`SELECT 1 AS valid FROM audit_logs WHERE action='form.answers.exported'
+          AND subject_type='data_rights_request' AND subject_id=? LIMIT 1`)
+        .bind(options.id).first<{ valid: number }>()
+      : await database.prepare(`SELECT 1 AS valid FROM audit_logs WHERE action='form.answers.erased'
+          AND subject_type='user' AND subject_id=?
+          AND json_extract(next_json,'$.dataRightsRequestId')=? LIMIT 1`)
+        .bind(current.customerId, options.id).first<{ valid: number }>();
+    if (!evidence) throw new OperationsConflictError(
+      'Record the separate form-answer export or erasure before completing this request.',
+    );
+  }
   const note = options.note.trim();
   if (note.length < 8)
     throw new OperationsConflictError('Add a decision note.');
