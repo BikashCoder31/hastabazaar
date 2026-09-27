@@ -237,7 +237,11 @@ export async function publishFormDraft(db: D1Database, input: { formId: FormId; 
   await assertActiveAdmin(db, data.actorId);
   const repeat = await byRequest(db, data.requestId);
   if (repeat) {
-    if (repeat.id === draftId && sameRequest(repeat, { ...input, ...data }, 'published')) return repeat;
+    const prior = await db.prepare(`SELECT 1 AS published FROM audit_logs
+      WHERE request_id = ? AND action = 'form_catalog.published' AND subject_type = 'form_config'
+        AND subject_id = ? AND actor_id = ? LIMIT 1`)
+      .bind(data.requestId, input.formId, data.actorId).first<{ published: number }>();
+    if (prior && repeat.id === draftId && sameRequest(repeat, { ...input, ...data }, 'published')) return repeat;
     throw new FormCatalogConflictError('Request ID was already used.');
   }
   if (await usedRequest(db, data.requestId)) throw new FormCatalogConflictError('Request ID was already used.');
@@ -274,12 +278,21 @@ export async function restoreFormVersion(db: D1Database, input: { formId: FormId
   await assertActiveAdmin(db, data.actorId);
   const repeat = await byRequest(db, data.requestId);
   if (repeat) {
-    const prior = await db.prepare(`SELECT next_json AS nextJson FROM audit_logs
-      WHERE request_id = ? AND action = 'form_catalog.restored' LIMIT 1`)
-      .bind(data.requestId).first<{ nextJson: string }>();
-    if (repeat.formId === input.formId && sameRequest(repeat, { ...input, ...data }, 'published') &&
-      repeat.version === input.expectedPublishedVersion + 1 && prior &&
-      (JSON.parse(prior.nextJson) as { sourceVersion?: number }).sourceVersion === sourceVersion) return repeat;
+    const prior = await db.prepare(`SELECT previous_json AS previousJson, next_json AS nextJson FROM audit_logs
+      WHERE request_id = ? AND action = 'form_catalog.restored' AND subject_type = 'form_config'
+        AND subject_id = ? AND actor_id = ? AND reason = ? LIMIT 1`)
+      .bind(data.requestId, input.formId, data.actorId, data.reason).first<{ previousJson: string; nextJson: string }>();
+    if (prior && sameRequest(repeat, { ...input, ...data }, 'published')) {
+      try {
+        const previous = JSON.parse(prior.previousJson) as { version?: number } | null;
+        const next = JSON.parse(prior.nextJson) as { versionId?: string; version?: number; sourceVersion?: number; config?: FormConfigDraft } | null;
+        // Version allocation includes drafts, so the prior publication is proved by
+        // the audit input rather than inferred from the allocated result version.
+        if (previous?.version === data.expectedPublishedVersion && next?.sourceVersion === sourceVersion &&
+          next.versionId === repeat.id && next.version === repeat.version &&
+          JSON.stringify(next.config) === JSON.stringify(repeat.config)) return repeat;
+      } catch { /* Unreadable audit evidence cannot establish an identical request. */ }
+    }
     throw new FormCatalogConflictError('Request ID was already used.');
   }
   if (await usedRequest(db, data.requestId)) throw new FormCatalogConflictError('Request ID was already used.');

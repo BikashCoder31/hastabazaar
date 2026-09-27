@@ -5,9 +5,12 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
+import { readFile } from 'node:fs/promises';
+import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import type { ConfiguredField, FormDefinition, PublishedFormConfig } from '../lib/forms/types';
 import type { CatalogVersion } from '../components/admin/form-catalog-editor';
 import { adminNavigation } from '../lib/admin/navigation';
+import type * as FormCatalogRepository from '../lib/db/repositories/form-catalog';
 
 void test('Form catalog appears in Controls for Super Admin alone', () => {
   const superLink = adminNavigation('super_admin').find((item) => item.href === '/admin/forms');
@@ -44,6 +47,126 @@ async function mountConcurrencyEditor(versions: readonly CatalogVersion[]) {
   await page.addScriptTag({ content: bundle.outputFiles[0].text });
   return { browser, page };
 }
+
+void test('committed mutation with failed readback keeps edits locked and retries the identical request once', async (t) => {
+  // The catalog currently has no connected production adapters. Supply a connected definition,
+  // keeping all repository validation, atomic SQL writes, audits, and replay checks real.
+  const bundle = await build({ entryPoints: ['lib/db/repositories/form-catalog.ts'], absWorkingDir: process.cwd(),
+    bundle: true, write: false, platform: 'node', format: 'cjs', plugins: [{ name: 'connected-form', setup(plugin) {
+      plugin.onResolve({ filter: /^\.\/registry$/ }, () => ({ path: 'registry', namespace: 'connected' }));
+      plugin.onLoad({ filter: /.*/, namespace: 'connected' }, () => ({ contents: `
+        export const FORM_REGISTRY = { 'account.profile': ${JSON.stringify(definition)} };
+        export const IMPLEMENTED_FORM_ADAPTERS = { 'account.profile': { formId: 'account.profile', route: '/api/account/profile', mode: 'collection' } };` }));
+    } }] });
+  const repository = { exports: {} as typeof FormCatalogRepository };
+  runInNewContext(bundle.outputFiles[0].text, { module: repository, exports: repository.exports, crypto, TextEncoder });
+  const { saveFormDraft, publishFormDraft, restoreFormVersion } = repository.exports;
+  for (const action of ['draft', 'publish', 'restore'] as const) await t.test(action, async () => {
+    const sqlite = new DatabaseSync(':memory:');
+    sqlite.exec(`CREATE TABLE users(id TEXT PRIMARY KEY, status TEXT NOT NULL);
+      CREATE TABLE user_roles(user_id TEXT NOT NULL, role TEXT NOT NULL);
+      CREATE TABLE audit_logs(id TEXT PRIMARY KEY, actor_id TEXT, action TEXT, subject_type TEXT,
+        subject_id TEXT, reason TEXT, previous_json TEXT, next_json TEXT, request_id TEXT, ip_hash TEXT, created_at INTEGER);
+      INSERT INTO users VALUES ('admin','active'); INSERT INTO user_roles VALUES ('admin','super_admin');`);
+    sqlite.exec((await readFile(new URL('../drizzle/0056_form_catalog.sql', import.meta.url), 'utf8')).replaceAll('--> statement-breakpoint', ''));
+    let failReadback = false;
+    let failAfterCommit = false;
+    const database = {
+      prepare(sql: string) {
+        const statement = sqlite.prepare(sql);
+        let values: SQLInputValue[] = [];
+        return {
+          bind(...input: SQLInputValue[]) { values = input; return this; },
+          async first() {
+            if (failReadback && sql.includes('WHERE id = ?')) { failReadback = false; throw new Error('Readback unavailable.'); }
+            return statement.get(...values) ?? null;
+          },
+          async all() { return { results: statement.all(...values) }; },
+          async run() { statement.run(...values); return { success: true, results: [] }; },
+        };
+      },
+      async batch(statements: { run(): Promise<unknown> }[]) {
+        sqlite.exec('BEGIN');
+        try {
+          const result = [];
+          for (const statement of statements) result.push(await statement.run());
+          sqlite.exec('COMMIT');
+          if (failAfterCommit) { failAfterCommit = false; failReadback = true; }
+          return result;
+        } catch (error) { sqlite.exec('ROLLBACK'); throw error; }
+      },
+    };
+    const db = database as unknown as D1Database;
+    const base = { formId: definition.id, actorId: 'admin', actorRole: 'super_admin' as const,
+      expectedPublishedVersion: 0, reason: 'Initial', now: 1 };
+    const initial = await saveFormDraft(db, { ...base, config: { formId: definition.id, fields: config.fields }, requestId: 'seed-draft' });
+    const published = await publishFormDraft(db, { ...base, draftId: initial.id, expectedDraftRevision: 1, requestId: 'seed-publish' });
+    const draft = action === 'draft' ? null : await saveFormDraft(db, { ...base, expectedPublishedVersion: 1,
+      config: { formId: definition.id, fields: [{ ...config.fields[0], label: 'New draft label' }] }, requestId: 'seed-next-draft' });
+    const initialVersions = draft ? [draft, published] : [published];
+    const beforeAudits = Number(sqlite.prepare('SELECT COUNT(*) AS n FROM audit_logs').get()?.n);
+    const { browser, page } = await mountConcurrencyEditor(initialVersions);
+    const requests: { action: string; body: string }[] = [];
+    let historyReads = 0;
+    failAfterCommit = true;
+    try {
+      // oxlint-disable-next-line typescript/no-explicit-any -- Browser HTTP interception connects the real editor to the real repository.
+      await page.route('https://form.test/api/**', async (route: any) => {
+        if (route.request().method() === 'GET') {
+          historyReads++;
+          const rows = sqlite.prepare(`SELECT id, version, revision, status, reason, updated_at AS updatedAt,
+            published_at AS publishedAt, config_json AS configJson FROM form_config_versions ORDER BY version DESC`).all();
+          const versions = rows.map(({ configJson, ...row }) => ({ ...row, config: JSON.parse(String(configJson)) }));
+          return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ versions }) });
+        }
+        requests.push({ action: route.request().url().split('/').at(-1), body: route.request().postData() });
+        const body = route.request().postDataJSON();
+        const input = { ...base, ...body, now: 10 + requests.length };
+        try {
+          const result = action === 'draft' ? await saveFormDraft(db, input) : action === 'publish' ?
+            await publishFormDraft(db, input) : await restoreFormVersion(db, input);
+          return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(action === 'draft' ? { draft: result } : { published: result }) });
+        } catch (error) {
+          return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: error instanceof Error ? error.message : 'Unavailable' }) });
+        }
+      });
+      if (action === 'draft') await page.locator('#delivery_note-label').fill('Reviewed label');
+      const label = await page.locator('#delivery_note-label').inputValue();
+      await page.getByLabel('Reason for change').fill(`Reviewed ${action}`);
+      await page.getByRole('button', { name: action === 'draft' ? 'Save draft' : action === 'publish' ? 'Publish draft' : 'Restore', exact: true }).click();
+      if (action !== 'draft') {
+        await page.getByRole('button', { name: `Confirm ${action}` }).focus();
+        await page.keyboard.press('Enter');
+      }
+      await page.getByText(/Readback unavailable/).waitFor();
+      assert.equal(Number(sqlite.prepare('SELECT COUNT(*) AS n FROM audit_logs').get()?.n), beforeAudits + 1, 'write committed before the HTTP failure');
+      assert.match(await page.getByRole('alert').filter({ hasText: 'Readback unavailable' }).first().textContent(), /outcome is unknown/i);
+      assert.equal(await page.locator('#delivery_note-label').isDisabled(), true);
+      assert.equal(await page.getByLabel('Reason for change').isDisabled(), true);
+      assert.equal(await page.getByLabel('New field key').isDisabled(), true);
+      assert.equal(await page.getByRole('button', { name: 'Publish draft', includeHidden: true }).isDisabled(), true);
+      if (action !== 'draft') assert.equal(await page.getByRole('button', { name: 'Save draft', includeHidden: true }).isDisabled(), true);
+      await page.keyboard.insertText('MUST NOT REPLACE REVIEWED INPUT');
+      assert.equal(await page.locator('#delivery_note-label').inputValue(), label);
+      await page.getByRole('button', { name: 'Refresh version history' }).focus();
+      await page.keyboard.press('Enter');
+      await page.getByText(/Version history refreshed/).waitFor();
+      assert.equal(historyReads, 1);
+      assert.equal(requests.length, 1, 'checking history does not retry or clear uncertainty');
+      assert.equal(await page.locator('#delivery_note-label').isDisabled(), true);
+      assert.equal(await page.locator('#delivery_note-label').inputValue(), label);
+      await page.getByRole('button', { name: action === 'draft' ? 'Save draft' : `Confirm ${action}` }).focus();
+      await page.keyboard.press('Enter');
+      await page.getByText(action === 'draft' ? 'Draft saved.' : action === 'publish' ? 'Form published.' : 'Historical version restored as a new publication.', { exact: true }).waitFor();
+      assert.equal(requests.length, 2);
+      assert.deepEqual(requests[1], requests[0], 'replay preserves the exact action, serialized body, and request ID despite refreshed version metadata');
+      assert.equal(Number(sqlite.prepare('SELECT COUNT(*) AS n FROM audit_logs').get()?.n), beforeAudits + 1);
+      assert.equal(Number(sqlite.prepare('SELECT COUNT(*) AS n FROM form_config_versions').get()?.n), action === 'restore' ? 3 : 2);
+      assert.equal(await page.locator('#delivery_note-label').isDisabled(), false);
+      assert.equal(await page.locator('#delivery_note-label').inputValue(), action === 'restore' ? 'Delivery note' : label);
+    } finally { await page.close(); await browser.close(); sqlite.close(); }
+  });
+});
 
 void test('publish conflict retains preview A until explicit reload adopts and publishes server draft B', async () => {
   const draftA: CatalogVersion = { id: 'draft-2', version: 2, revision: 1, status: 'draft', reason: 'Local draft A', updatedAt: 2, publishedAt: null,

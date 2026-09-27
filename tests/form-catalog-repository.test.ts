@@ -255,6 +255,44 @@ void test('restore makes an older draft stale and later saves allocate above the
   } finally { sqlite.close(); }
 });
 
+void test('restore retry replays its audited version across draft gaps and rejects changed request inputs', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    seedPublished(sqlite, 'published-1', 1, []);
+    seedDraft(sqlite, 'draft-2', 2, []);
+    sqlite.exec("INSERT INTO user_roles VALUES ('other','super_admin')");
+    const input = { formId, ...actor, sourceVersion: 1, expectedPublishedVersion: 1,
+      reason: 'Restore baseline', requestId: 'restore-gap-retry', now: 30 };
+    const restored = await restoreFormVersion(db, input);
+    assert.equal(restored.version, 3);
+    // A later allocation must not change which immutable result this request returns.
+    seedDraft(sqlite, 'draft-4', 4, []);
+    assert.deepEqual(await restoreFormVersion(db, { ...input, now: 40 }), restored);
+    for (const change of [{ sourceVersion: 3 }, { expectedPublishedVersion: 2 },
+      { reason: 'Different reason' }, { formId: 'account.address' }, { actorId: 'other' }]) {
+      await assert.rejects(() => restoreFormVersion(db, { ...input, ...change }), /Request ID was already used/);
+    }
+    await assert.rejects(() => publishFormDraft(db, { ...input, draftId: restored.id,
+      expectedDraftRevision: 1 }), /Request ID was already used/, 'a restore ID cannot replay a publish action');
+    await assert.rejects(() => saveFormDraft(db, { ...input, config: emptyConfig }), /Request ID was already used/);
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM form_config_versions').get()?.count, 4);
+    assert.equal(auditCount(sqlite), 1);
+  } finally { sqlite.close(); }
+});
+
+void test('a restore request ID cannot be replayed as a publish action', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    seedPublished(sqlite, 'published-1', 1, []);
+    const input = { formId, ...actor, sourceVersion: 1, expectedPublishedVersion: 1,
+      reason: 'Restore baseline', requestId: 'restore-not-publish', now: 30 };
+    const restored = await restoreFormVersion(db, input);
+    await assert.rejects(() => publishFormDraft(db, { ...input, draftId: restored.id,
+      expectedDraftRevision: 1 }), /Request ID was already used/);
+    assert.equal(auditCount(sqlite), 1);
+  } finally { sqlite.close(); }
+});
+
 void test('historical field identity cannot be repurposed by restored publications', async () => {
   const { sqlite, db } = await fixture();
   try {
