@@ -4,12 +4,15 @@ import { env } from 'cloudflare:workers';
 
 
 import { emailOtpCookie } from '@/lib/auth/email-otp';
-import { D1EmailOtpStore } from '@/lib/auth/email-otp-d1-store';
-import { requestEmailOtp } from '@/lib/auth/email-otp-service';
+import { acceptIdentityCodeRequest } from '@/lib/auth/identity-code-request';
 import { requireDatabase } from '@/lib/db/d1';
 import { sendEmailLoginCode, type EmailLoginEnvironment } from '@/lib/email/login-code';
 import { consumeAuthenticationRateLimit as consumeRequestRateLimit } from '@/lib/http/rate-limit';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { configuredMultipartAnswers, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { resolvePublishedForm, FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
+import { assertNoIdentitySecrets } from '@/lib/auth/identity-form-answers';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -48,16 +51,27 @@ export async function POST(request: Request): Promise<Response> {
   });
   if (!rateLimit.allowed) return redirect(request, '/login', returnTo, 'rate');
 
+  let submission: Awaited<ReturnType<typeof validateSellerFormSubmission>>;
+  let requestId: string;
   try {
-    const challenge = await requestEmailOtp(
-      new D1EmailOtpStore(database),
-      email,
-      (recipient, code) => sendEmailLoginCode(emailEnvironment, { email: recipient, code }),
-    );
-    const response = redirect(request, '/login/code', returnTo);
-    response.headers.append('Set-Cookie', emailOtpCookie(challenge.token));
-    return response;
-  } catch {
-    return redirect(request, '/login', returnTo, 'email_code_unavailable');
+    const config = await resolvePublishedForm(database, 'identity.email-code-request');
+    const parsed = configuredMultipartAnswers(data, config);
+    requestId = parsed.requestId;
+    submission = await validateSellerFormSubmission(database, 'identity.email-code-request', parsed.version, parsed.customAnswers);
+    assertNoIdentitySecrets(submission.answers, [], request.headers);
+  } catch (error) {
+    if (error instanceof FormRuntimeError) return new Response('Form configuration changed. Refresh and retry.', { status: error.retryable ? 503 : 409 });
+    if (error instanceof FormValidationError) return new Response(error.fieldId ? `Invalid answer for ${error.fieldId}.` : 'Invalid form answers.', { status: 422 });
+    throw error;
   }
+  const accepted = await acceptIdentityCodeRequest(database, { formId: 'identity.email-code-request',
+    challengeTable: 'email_login_challenges', email, requestId,
+    versionId: submission.versionId, answers: submission.answers, now: Date.now(),
+    deliver: (recipient, code) => sendEmailLoginCode(emailEnvironment, { email: recipient, code }),
+  });
+  if (accepted.status === 'duplicate') return new Response('Request reference already used.', { status: 409 });
+  if (accepted.status === 'stale') return new Response('Form configuration changed. Refresh and retry.', { status: 409 });
+  const response = redirect(request, '/login/code', returnTo);
+  response.headers.append('Set-Cookie', emailOtpCookie(accepted.token));
+  return response;
 }

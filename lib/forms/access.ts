@@ -182,6 +182,16 @@ export async function authorizeFormAnswerRead(
     WHERE u.id=? AND u.status='active' AND r.role=? LIMIT 1`)
     .bind(viewer.id, viewer.role).first<{ valid: number }>();
   if (!identity) return false;
+  if (answerSet.formId.startsWith('identity.')) {
+    if (['identity.register', 'identity.login-password', 'identity.email-code-verify',
+      'identity.password-reset-complete'].includes(answerSet.formId))
+      return answerSet.subjectType === 'user' && answerSet.subjectId === viewer.id &&
+        answerSet.actorId === viewer.id;
+    if (['identity.email-code-request', 'identity.password-reset-request'].includes(answerSet.formId))
+      return viewer.role === 'super_admin' && answerSet.subjectType === 'identity_request' &&
+        answerSet.actorId === null && answerSet.subjectId === answerSet.requestId;
+    return false;
+  }
   if (answerSet.formId === 'seller.case-return-response' ||
       answerSet.formId === 'seller.case-complaint-response') {
     const isReturn = answerSet.formId === 'seller.case-return-response';

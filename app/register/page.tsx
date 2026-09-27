@@ -1,4 +1,8 @@
 import { SignupPasswordFields } from '@/components/auth/signup-password-fields';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { env } from 'cloudflare:workers';
+import { requireDatabase } from '@/lib/db/d1';
+import { resolvePublishedForm } from '@/lib/forms/runtime';
 import { safeSignInReturnPath } from '@/lib/auth/sign-in-destination';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
@@ -25,6 +29,7 @@ export default async function RegisterPage({
   const returnTo = safeSignInReturnPath(query.return_to ?? '/account');
   if (identity) redirect(returnTo);
   const error = query.error ? errors[query.error] : null;
+  const config = await resolvePublishedForm(requireDatabase(env as unknown as { DB?: D1Database }), 'identity.register');
 
   return (
     <main tabIndex={-1} id="main-content" className="grid min-h-screen place-items-center bg-muted/20 px-5 py-12">
@@ -39,6 +44,8 @@ export default async function RegisterPage({
           <label className="block text-sm font-medium">Full name *<input required name="display_name" autoComplete="name" minLength={2} maxLength={100} className="mt-2 w-full rounded-xl border bg-background px-4 py-3 outline-none focus:ring-2 focus:ring-primary" /></label>
           <label className="block text-sm font-medium">Email address *<input required type="email" name="email" autoComplete="email" className="mt-2 w-full rounded-xl border bg-background px-4 py-3 outline-none focus:ring-2 focus:ring-primary" /></label>
           <SignupPasswordFields />
+          <input type="hidden" name="requestId" value={crypto.randomUUID()} />
+          <ConfiguredFields config={config} baseKeys={['display_name', 'email', 'password', 'confirm_password', 'return_to', 'requestId', 'formVersion']} />
           <button type="submit" className="w-full rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground hover:bg-primary/90">Create account</button>
         </form>
         <GoogleSignIn returnTo={returnTo} />

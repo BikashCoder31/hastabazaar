@@ -9,6 +9,12 @@ export interface ImplementedFormAdapter {
 
 // Integrations add an entry here only when their server adapter exists and is tested.
 export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormAdapter>> = Object.freeze({
+  'identity.register': { formId: 'identity.register', route: '/api/auth/register', mode: 'identity' },
+  'identity.login-password': { formId: 'identity.login-password', route: '/api/auth/login', mode: 'identity' },
+  'identity.email-code-request': { formId: 'identity.email-code-request', route: '/api/auth/email-code/request', mode: 'identity' },
+  'identity.email-code-verify': { formId: 'identity.email-code-verify', route: '/api/auth/email-code/verify', mode: 'identity' },
+  'identity.password-reset-request': { formId: 'identity.password-reset-request', route: '/api/auth/password-reset/request', mode: 'identity' },
+  'identity.password-reset-complete': { formId: 'identity.password-reset-complete', route: '/api/auth/password-reset/complete', mode: 'identity' },
   'commerce.checkout': { formId: 'commerce.checkout', route: '/api/checkout', mode: 'transaction' },
   'commerce.return-request': { formId: 'commerce.return-request', route: '/orders/:number/returns', mode: 'transaction' },
   'commerce.complaint': { formId: 'commerce.complaint', route: '/orders/:number/complaints', mode: 'transaction' },
@@ -181,6 +187,31 @@ function definition(row: string): FormDefinition {
 }
 
 const ACCOUNT_CUSTOM_TYPES = Object.freeze(['short_text', 'long_text', 'number', 'date', 'single_choice', 'multiple_choice', 'checkbox', 'email', 'phone'] as const);
+
+type IdentityFormId = 'identity.register' | 'identity.login-password' |
+  'identity.email-code-request' | 'identity.email-code-verify' |
+  'identity.password-reset-request' | 'identity.password-reset-complete';
+
+function identityDefinition(id: IdentityFormId): FormDefinition {
+  const source = SOURCE_ROWS.split('\n').find((row) => row.startsWith(`${id}|`));
+  if (!source) throw new Error(`Missing identity definition: ${id}`);
+  const [, audience, mode, route] = source.split('|') as [string, FormAudience, FormMode, string];
+  const keys: Record<IdentityFormId, readonly string[]> = {
+    'identity.register': ['display_name', 'email', 'password', 'confirm_password', 'return_to', 'requestId', 'formVersion', 'customAnswers'],
+    'identity.login-password': ['email', 'password', 'return_to', 'requestId', 'formVersion', 'customAnswers'],
+    'identity.email-code-request': ['email', 'return_to', 'requestId', 'formVersion', 'customAnswers'],
+    'identity.email-code-verify': ['code', 'return_to', 'requestId', 'formVersion', 'customAnswers'],
+    'identity.password-reset-request': ['email', 'return_to', 'requestId', 'formVersion', 'customAnswers'],
+    'identity.password-reset-complete': ['code', 'password', 'confirm_password', 'return_to', 'requestId', 'formVersion', 'customAnswers'],
+  };
+  return Object.freeze({ id, audience, mode, route, adapterId: id,
+    baseFields: Object.freeze(keys[id].map((key) => ({ key, type: 'existing' as const,
+      label: key, capability: 'protected' as const,
+      explanation: 'Credentials, code, identity, request identity, rate limits and access decisions remain server enforced.' }))),
+    capabilities: Object.freeze({ explanation: 'Safe custom context is stored only after an accepted identity action. Credentials, codes, session tokens, request identity and access decisions stay protected.',
+      customFieldTypes: ACCOUNT_CUSTOM_TYPES, answerBehavior: 'record' }),
+  } satisfies FormDefinition);
+}
 
 function accountDefinition(id: 'account.address' | 'account.privacy-request' | 'account.review'): FormDefinition {
   const protectedField = (key: string, explanation: string) => ({ key, type: 'existing', label: key, capability: 'protected' as const, explanation });
@@ -407,7 +438,8 @@ function sellerCaseDefinition(id: 'seller.case-return-response' |
 
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
   Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
-    const item = row.startsWith('public.contact|') ? feedbackDefinition('public.contact')
+    const item = row.startsWith('identity.') ? identityDefinition(row.split('|')[0] as IdentityFormId)
+      : row.startsWith('public.contact|') ? feedbackDefinition('public.contact')
       : row.startsWith('seller.case-return-response|') ? sellerCaseDefinition('seller.case-return-response')
       : row.startsWith('seller.case-complaint-response|') ? sellerCaseDefinition('seller.case-complaint-response')
       : row.startsWith('commerce.checkout|') ? commerceDefinition('commerce.checkout')

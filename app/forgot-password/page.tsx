@@ -1,3 +1,7 @@
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { env } from 'cloudflare:workers';
+import { requireDatabase } from '@/lib/db/d1';
+import { resolvePublishedForm } from '@/lib/forms/runtime';
 import Link from 'next/link';
 import { safeSignInReturnPath } from '@/lib/auth/sign-in-destination';
 export const metadata = { title: 'Forgot password' };
@@ -8,6 +12,7 @@ export default async function ForgotPassword({
 }) {
   const query = await searchParams;
   const back = safeSignInReturnPath(query.return_to);
+  const config = await resolvePublishedForm(requireDatabase(env as unknown as { DB?: D1Database }), 'identity.password-reset-request');
   const errors: Record<string, string> = {
     invalid: 'Enter a valid email address.',
     rate: 'Too many requests. Please wait 15 minutes before trying again.',
@@ -22,7 +27,7 @@ export default async function ForgotPassword({
         </Link>
         <h1 className="mt-6 font-heading text-4xl">Forgot password?</h1>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          Enter your account email. We’ll send a code to help you choose a new
+          Enter your account email. A reset code may arrive to help you choose a new
           password.
         </p>
         {query.error && errors[query.error] ? (
@@ -49,6 +54,8 @@ export default async function ForgotPassword({
               className="mt-2 w-full rounded-xl border bg-background px-4 py-3"
             />
           </label>
+          <input type="hidden" name="requestId" value={crypto.randomUUID()} />
+          <ConfiguredFields config={config} baseKeys={['email', 'return_to', 'requestId', 'formVersion']} />
           <button className="min-h-11 w-full rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground">
             Send reset code
           </button>

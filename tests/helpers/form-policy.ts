@@ -26,13 +26,7 @@ export interface FormPolicyViolation {
 const FROZEN_BASELINE = `
 app/admin/activity/page.tsx|1|7ba21c3206cc05a2|staff.activity-filter
 app/admin/homepage/page.tsx|1|237a866190d23266|staff.homepage-filter
-app/forgot-password/page.tsx|1|1279d881fb7f9046|identity.password-reset-request
-app/forgot-password/reset/page.tsx|1|1c1f701fd783b171|identity.password-reset-complete
 app/local-testing/page.tsx|1|6e9f8f1e61fdc654|system.local-testing-role
-app/login/code/page.tsx|1|9a523f2cdcddc920|identity.email-code-verify
-app/login/page.tsx|1|ada051e2836470ee|identity.login-password
-app/login/page.tsx|2|a042e05b7276bc3b|identity.email-code-request
-app/register/page.tsx|1|a9a9a3b7531bfabd|identity.register
 app/seller/products/page.tsx|1|d5d574dcd78d58bb|seller.product-filter
 components/admin/catalog-manager.tsx|1|cc10cf6494149a43|staff.catalog
 components/admin/delivery-rate-settings.tsx|1|9698f58ea30c192c|staff.delivery-rate

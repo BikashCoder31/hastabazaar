@@ -23,6 +23,8 @@ export async function resetPassword(
   code: string,
   password: string,
   now = Date.now(),
+  linkedAnswer?: (userId: string) => D1PreparedStatement,
+  versionGuard?: D1PreparedStatement,
 ): Promise<boolean> {
   if (
     password.length < 10 ||
@@ -44,7 +46,7 @@ export async function resetPassword(
   // racing request cannot act using another request's completion marker.
   const owner =
     'SELECT user_id FROM password_reset_challenges WHERE token_hash=? AND completion_id=?';
-  const results = await db.batch([
+  const statements = [
     db
       .prepare(`UPDATE password_reset_challenges SET consumed_at=?, completion_id=?
       WHERE token_hash=? AND code_hash=? AND consumed_at IS NULL AND expires_at>? AND attempts<5
@@ -84,6 +86,16 @@ export async function resetPassword(
       .prepare(`UPDATE password_reset_challenges SET consumed_at=? WHERE user_id=? AND consumed_at IS NULL
       AND EXISTS (SELECT 1 FROM user_credentials WHERE user_id=? AND password_hash=?)`)
       .bind(now, record.userId, record.userId, passwordData.hash),
-  ]);
-  return Number(results[0].meta.changes ?? 0) === 1;
+  ];
+  if (linkedAnswer) {
+    // The challenge claim carries a random completion marker. This guard
+    // aborts the batch if another request consumed it before this one.
+    statements.push(db.prepare(`SELECT CASE WHEN EXISTS(
+      SELECT 1 FROM password_reset_challenges WHERE token_hash=? AND completion_id=?
+    ) THEN 1 ELSE json_extract('invalid', '$') END`).bind(record.tokenHash, completion));
+    statements.push(linkedAnswer(record.userId));
+  }
+  if (versionGuard) statements.unshift(versionGuard);
+  const results = await db.batch(statements);
+  return Number(results[versionGuard ? 1 : 0].meta.changes ?? 0) === 1;
 }

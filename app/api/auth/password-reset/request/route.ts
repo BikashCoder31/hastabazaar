@@ -1,14 +1,17 @@
 import {readBoundedForm,formText} from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
-import { PasswordResetStore } from '@/lib/auth/password-reset-store';
-import { requestPasswordReset } from '@/lib/auth/password-reset-request';
+import { acceptIdentityCodeRequest } from '@/lib/auth/identity-code-request';
 import { resetCookie } from '@/lib/auth/password-reset';
 import { safeSignInReturnPath } from '@/lib/auth/sign-in-destination';
 import { sendPasswordResetCode } from '@/lib/email/password-reset';
 import type { EmailLoginEnvironment } from '@/lib/email/login-code';
 import { consumeAuthenticationRateLimit as consumeRequestRateLimit } from '@/lib/http/rate-limit';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { configuredMultipartAnswers, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { resolvePublishedForm, FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
+import { assertNoIdentitySecrets } from '@/lib/auth/identity-form-answers';
 
 export async function POST(request: Request) {
   if (!isTrustedMutationRequest(request))
@@ -53,12 +56,27 @@ export async function POST(request: Request) {
   );
   if (!ipLimit.allowed || !accountLimit.allowed)
     return redirect('/forgot-password', 'rate');
-  const token = await requestPasswordReset(
-    new PasswordResetStore(db),
-    email,
-    (recipient, code) => sendPasswordResetCode(emailEnv, recipient, code),
-  );
+  let submission: Awaited<ReturnType<typeof validateSellerFormSubmission>>;
+  let requestId: string;
+  try {
+    const config = await resolvePublishedForm(db, 'identity.password-reset-request');
+    const parsed = configuredMultipartAnswers(form, config);
+    requestId = parsed.requestId;
+    submission = await validateSellerFormSubmission(db, 'identity.password-reset-request', parsed.version, parsed.customAnswers);
+    assertNoIdentitySecrets(submission.answers, [], request.headers);
+  } catch (error) {
+    if (error instanceof FormRuntimeError) return new Response('Form configuration changed. Refresh and retry.', { status: error.retryable ? 503 : 409 });
+    if (error instanceof FormValidationError) return new Response(error.fieldId ? `Invalid answer for ${error.fieldId}.` : 'Invalid form answers.', { status: 422 });
+    throw error;
+  }
+  const accepted = await acceptIdentityCodeRequest(db, { formId: 'identity.password-reset-request',
+    challengeTable: 'password_reset_challenges', email, requestId,
+    versionId: submission.versionId, answers: submission.answers, now: Date.now(),
+    deliver: (recipient, code) => sendPasswordResetCode(emailEnv, recipient, code),
+  });
+  if (accepted.status === 'duplicate') return new Response('Request reference already used.', { status: 409 });
+  if (accepted.status === 'stale') return new Response('Form configuration changed. Refresh and retry.', { status: 409 });
   const response = redirect('/forgot-password/reset');
-  response.headers.append('Set-Cookie', resetCookie(token));
+  response.headers.append('Set-Cookie', resetCookie(accepted.token));
   return response;
 }

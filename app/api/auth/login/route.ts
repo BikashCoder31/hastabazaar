@@ -12,6 +12,11 @@ import {
 } from '@/lib/auth/hosted-session';
 import { consumeAuthenticationRateLimit as consumeRequestRateLimit } from '@/lib/http/rate-limit';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { buildFormAnswerInsert } from '@/lib/db/repositories/form-answers';
+import { configuredMultipartAnswers, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { resolvePublishedForm, FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
+import { assertNoIdentitySecrets, buildIdentityVersionGuard, identityVersionChanged } from '@/lib/auth/identity-form-answers';
 
 function redirectToLogin(request: Request, returnTo: string, error: string) {
   const location = new URL('/login', request.url);
@@ -42,7 +47,37 @@ export async function POST(request: Request): Promise<Response> {
     : false;
   if (!credential || !valid) return redirectToLogin(request, returnTo, 'invalid');
 
-  const token = await createHostedSessionForUser(database, credential.accountId, Date.now(), { passwordHash: credential.passwordHash });
+  let submission: Awaited<ReturnType<typeof validateSellerFormSubmission>>;
+  let requestId: string;
+  try {
+    const config = await resolvePublishedForm(database, 'identity.login-password');
+    const parsed = configuredMultipartAnswers(data, config);
+    requestId = parsed.requestId;
+    submission = await validateSellerFormSubmission(database, 'identity.login-password', parsed.version, parsed.customAnswers);
+    assertNoIdentitySecrets(submission.answers, [password], request.headers,
+      { rejectNumericSecrets: true });
+  } catch (error) {
+    if (error instanceof FormRuntimeError) return new Response('Form configuration changed. Refresh and retry.', { status: error.retryable ? 503 : 409 });
+    if (error instanceof FormValidationError) return new Response(error.fieldId ? `Invalid answer for ${error.fieldId}.` : 'Invalid form answers.', { status: 422 });
+    throw error;
+  }
+  const now = Date.now();
+  const linkedAnswer = buildFormAnswerInsert(database, { formId: 'identity.login-password', requestId,
+    versionId: submission.versionId, subjectType: 'user', subjectId: credential.accountId,
+    actorId: credential.accountId, answers: submission.answers, now });
+  let token: string;
+  try {
+    token = await createHostedSessionForUser(database, credential.accountId, now,
+      { passwordHash: credential.passwordHash }, linkedAnswer, undefined,
+      buildIdentityVersionGuard(database, 'identity.login-password', submission.versionId));
+  } catch (error) {
+    const used = await database.prepare('SELECT id FROM form_answer_sets WHERE form_id=? AND request_id=? LIMIT 1')
+      .bind('identity.login-password', requestId).first();
+    if (used) return new Response('Request reference already used.', { status: 409 });
+    if (await identityVersionChanged(database, 'identity.login-password', submission.versionId))
+      return new Response('Form configuration changed. Refresh and retry.', { status: 409 });
+    throw error;
+  }
   return new Response(null, {
     status: 303,
     headers: {

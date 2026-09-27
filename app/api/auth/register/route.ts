@@ -12,6 +12,11 @@ import {
 } from '@/lib/auth/hosted-session';
 import { consumeAuthenticationRateLimit as consumeRequestRateLimit } from '@/lib/http/rate-limit';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { buildFormAnswerInsert } from '@/lib/db/repositories/form-answers';
+import { configuredMultipartAnswers, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { resolvePublishedForm, FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
+import { assertNoIdentitySecrets, buildIdentityVersionGuard, identityVersionChanged } from '@/lib/auth/identity-form-answers';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -45,6 +50,21 @@ export async function POST(request: Request): Promise<Response> {
   });
   if (!rateLimit.allowed) return redirectToRegister(request, returnTo, 'rate');
 
+  let submission: Awaited<ReturnType<typeof validateSellerFormSubmission>>;
+  let requestId: string;
+  try {
+    const config = await resolvePublishedForm(database, 'identity.register');
+    const parsed = configuredMultipartAnswers(data, config);
+    requestId = parsed.requestId;
+    submission = await validateSellerFormSubmission(database, 'identity.register', parsed.version, parsed.customAnswers);
+    assertNoIdentitySecrets(submission.answers, [password, confirmation], request.headers,
+      { rejectNumericSecrets: true });
+  } catch (error) {
+    if (error instanceof FormRuntimeError) return new Response('Form configuration changed. Refresh and retry.', { status: error.retryable ? 503 : 409 });
+    if (error instanceof FormValidationError) return new Response(error.fieldId ? `Invalid answer for ${error.fieldId}.` : 'Invalid form answers.', { status: 422 });
+    throw error;
+  }
+
   const existing = await database
     .prepare('SELECT id FROM users WHERE lower(email) = ? LIMIT 1')
     .bind(email)
@@ -57,6 +77,7 @@ export async function POST(request: Request): Promise<Response> {
   const passwordData = await passwordRecord(password);
   try {
     await database.batch([
+      buildIdentityVersionGuard(database, 'identity.register', submission.versionId),
       database
         .prepare(
           `INSERT INTO users (id, auth_subject, email, phone, display_name, locale, status, created_at, updated_at)
@@ -75,8 +96,16 @@ export async function POST(request: Request): Promise<Response> {
            VALUES (?, 'customer', NULL, ?)`,
         )
         .bind(userId, now),
+      buildFormAnswerInsert(database, { formId: 'identity.register', requestId,
+        versionId: submission.versionId, subjectType: 'user', subjectId: userId,
+        actorId: userId, answers: submission.answers, now }),
     ]);
   } catch (error) {
+    const used = await database.prepare('SELECT id FROM form_answer_sets WHERE form_id=? AND request_id=? LIMIT 1')
+      .bind('identity.register', requestId).first();
+    if (used) return new Response('Request reference already used.', { status: 409 });
+    if (await identityVersionChanged(database, 'identity.register', submission.versionId))
+      return new Response('Form configuration changed. Refresh and retry.', { status: 409 });
     const message = error instanceof Error ? error.message : '';
     if (message.includes('UNIQUE constraint failed')) {
       return redirectToRegister(request, returnTo, 'exists');

@@ -62,7 +62,11 @@ const ownedBase = `((subject_type='user' AND subject_id=?)
   OR (subject_type='complaint' AND form_id='seller.case-complaint-response' AND EXISTS(
     SELECT 1 FROM complaints c JOIN seller_profiles s ON s.id=c.seller_id
     WHERE c.id=subject_id AND s.user_id=?)))`;
-const owned = `(form_id NOT LIKE 'staff.%' AND ${ownedBase})`;
+const owned = `(form_id NOT LIKE 'staff.%' AND
+  (form_id NOT LIKE 'identity.%' OR
+    (form_id IN ('identity.register','identity.login-password',
+      'identity.email-code-verify','identity.password-reset-complete')
+      AND subject_type='user' AND actor_id=subject_id)) AND ${ownedBase})`;
 const ownerBindings = (userId: string) => Array(25).fill(userId) as string[];
 const deletable = `(form_id='account.profile' AND subject_type='user' AND subject_id=?)`;
 

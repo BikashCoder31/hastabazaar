@@ -712,6 +712,13 @@ void test('submitted parcel code cannot be copied into configured text, choice o
     ] } as Parameters<typeof assertNoIdentitySecrets>[0];
     assert.doesNotThrow(() => assertNoIdentitySecrets(safe, [code], undefined,
       { rejectNumericSecrets: true }));
+    for (const [leadingZeroCode, numericAnswer] of [['000123', 123], ['000000', 0]] as const) {
+      const copied = { formId: 'rider.code-verify', version: 1, answers: [
+        { fieldId: 'delivery_count', label: 'Delivery count', type: 'number', value: numericAnswer },
+      ] } as Parameters<typeof assertNoIdentitySecrets>[0];
+      assert.throws(() => assertNoIdentitySecrets(copied, [leadingZeroCode], undefined,
+        { rejectNumericSecrets: true }), /secret|code/i);
+    }
     const field = { id: 'context', key: 'context', type: 'short_text', label: 'Context',
       required: false, order: 0, status: 'active' };
     const selection = { id: 'selection', key: 'selection', type: 'single_choice',

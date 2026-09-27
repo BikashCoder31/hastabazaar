@@ -78,6 +78,12 @@ export default async function AccountPage() {
             href: '/account/addresses',
             icon: MapPin,
           },
+          {
+            label: 'Sign-in form history',
+            detail: 'Review saved answers from your account and sign-in actions',
+            href: '/form-submissions',
+            icon: UserRound,
+          },
         ].map(({ label, detail, href, icon: Icon }) => (
           <Link
             key={href}

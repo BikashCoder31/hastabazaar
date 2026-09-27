@@ -101,6 +101,9 @@ export async function createHostedSessionForUser(
   userId: string,
   now = Date.now(),
   proof: { mailbox?: boolean; passwordHash?: string } = {},
+  linkedStatement?: D1PreparedStatement,
+  claimStatement?: D1PreparedStatement,
+  versionGuard?: D1PreparedStatement,
 ): Promise<string> {
   const user = await database
     .prepare("SELECT id FROM users WHERE id = ? AND status = 'active' LIMIT 1")
@@ -112,12 +115,27 @@ export async function createHostedSessionForUser(
   const statements = proof.mailbox
     ? mailboxClaimStatements(database, user.id, now)
     : [database.prepare('UPDATE users SET updated_at=updated_at WHERE id=?').bind(user.id)];
+  if (versionGuard) statements.unshift(versionGuard);
+  if (claimStatement) {
+    statements.push(claimStatement);
+    statements.push(database.prepare(`SELECT CASE WHEN changes()=1
+      THEN 1 ELSE json_extract('invalid', '$') END`));
+  }
   statements.push(database.prepare(`INSERT INTO user_sessions (token_hash, user_id, expires_at, created_at, last_seen_at)
     SELECT ?,id,?,?,? FROM users WHERE id=? AND status='active'
     AND (? IS NULL OR EXISTS(SELECT 1 FROM user_credentials c WHERE c.user_id=users.id AND c.password_hash=?))`)
     .bind(tokenHash(token),now+sessionLifetimeSeconds*1_000,now,now,user.id,proof.passwordHash??null,proof.passwordHash??null));
+  const sessionIndex = statements.length - 1;
+  if (linkedStatement) {
+    // Fail the whole batch if the credential or active-account proof changed
+    // after the initial read. A request ID never grants a session.
+    statements.push(database.prepare(`SELECT CASE WHEN EXISTS(
+      SELECT 1 FROM user_sessions WHERE token_hash=? AND user_id=?
+    ) THEN 1 ELSE json_extract('invalid', '$') END`).bind(tokenHash(token), user.id));
+    statements.push(linkedStatement);
+  }
   const results = await database.batch(statements);
-  if (Number(results[results.length-1].meta.changes)!==1) throw new Error('Sign-in changed. Please try again.');
+  if (Number(results[sessionIndex].meta.changes)!==1) throw new Error('Sign-in changed. Please try again.');
   return token;
 }
 

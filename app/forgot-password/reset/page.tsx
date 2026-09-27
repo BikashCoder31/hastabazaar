@@ -1,3 +1,7 @@
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { env } from 'cloudflare:workers';
+import { requireDatabase } from '@/lib/db/d1';
+import { resolvePublishedForm } from '@/lib/forms/runtime';
 import Link from 'next/link';
 import { safeSignInReturnPath } from '@/lib/auth/sign-in-destination';
 export const metadata = { title: 'Reset password' };
@@ -8,6 +12,7 @@ export default async function ResetPasswordPage({
 }) {
   const query = await searchParams;
   const back = safeSignInReturnPath(query.return_to);
+  const config = await resolvePublishedForm(requireDatabase(env as unknown as { DB?: D1Database }), 'identity.password-reset-complete');
   const errors: Record<string, string> = {
     invalid:
       'That code is invalid, expired or already used. Request another code and try again.',
@@ -23,8 +28,8 @@ export default async function ResetPasswordPage({
         </Link>
         <h1 className="mt-6 font-heading text-4xl">Reset your password</h1>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          If an active account exists for that email, a reset code has been
-          sent. Check your inbox and spam folder. The code expires in 10 minutes
+          If an active account exists for that email, a reset code may arrive.
+          Check your inbox and spam folder. The code expires in 10 minutes
           and works in the browser where you requested it.
         </p>
         {query.error && errors[query.error] ? (
@@ -81,6 +86,8 @@ export default async function ResetPasswordPage({
             Use at least 10 characters. Resetting your password signs out
             existing sessions. Sign in again with your new password.
           </p>
+          <input type="hidden" name="requestId" value={crypto.randomUUID()} />
+          <ConfiguredFields config={config} baseKeys={['code', 'password', 'confirm_password', 'return_to', 'requestId', 'formVersion']} />
           <button className="min-h-11 w-full rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground">
             Reset password
           </button>
