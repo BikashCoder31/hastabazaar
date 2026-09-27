@@ -34,13 +34,9 @@ function ConfiguredFieldControl({ field, error }: { field: ConfiguredField; erro
       </select>;
       break;
     case 'multiple_choice':
-      control = <fieldset className="min-w-0 space-y-2" aria-describedby={describedBy} aria-invalid={error ? true : undefined}>
-        <legend className="sr-only">{field.label}</legend>
-        {field.choices?.map((choice) => <label key={choice.value} className="flex min-w-0 items-start gap-2 break-words">
-          <input type="checkbox" name={name} value={choice.value} />
-          <span className="min-w-0 break-words">{choice.label}</span>
-        </label>)}
-      </fieldset>;
+      control = <select {...common} multiple size={Math.min(field.choices?.length ?? 2, 6)}>
+        {field.choices?.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+      </select>;
       break;
     case 'checkbox':
       control = <input id={id} name={name} type="checkbox" value="on" required={field.required} aria-required={field.required}
@@ -51,8 +47,7 @@ function ConfiguredFieldControl({ field, error }: { field: ConfiguredField; erro
         placeholder={field.placeholder} min={field.min} max={field.max} step={field.integerOnly ? 1 : undefined} />;
   }
   return <div className="min-w-0 space-y-2 break-words" data-configured-field={field.id}>
-    {field.type === 'multiple_choice' ? <p className="min-w-0 break-words font-medium">{field.label}{field.required ? <span aria-hidden="true"> *</span> : null}</p>
-      : <label htmlFor={id} className="block min-w-0 break-words font-medium">{field.label}{field.required ? <span aria-hidden="true"> *</span> : null}</label>}
+    <label htmlFor={id} className="block min-w-0 break-words font-medium">{field.label}{field.required ? <span aria-hidden="true"> *</span> : null}</label>
     {control}
     {field.helpText ? <p id={helpId} className="min-w-0 break-words text-sm text-muted-foreground">{field.helpText}</p> : null}
     {error ? <p id={errorId} role="alert" className="min-w-0 break-words text-sm text-destructive">{error}</p> : null}

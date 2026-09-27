@@ -64,23 +64,28 @@ export function usePublishedFormConfig(formId: string) {
     fetch(`/api/forms/${encodeURIComponent(formId)}`, { cache: 'no-store', credentials: 'same-origin', signal: controller.signal })
       .then(async (response) => response.ok ? parsePublishedFormConfig(formId, await response.json()) : null)
       .then((config) => {
-        if (!controller.signal.aborted) setState(config
+        if (!controller.signal.aborted) setState((current) => config
           ? { formId, config, status: 'ready', message: '' }
-          : { formId, config: null, status: 'unavailable', message: 'Form configuration is unavailable. Please try again.' });
+          : { formId, config: current.formId === formId ? current.config : null,
+            status: 'unavailable', message: 'Form configuration is unavailable. Please try again.' });
       })
       .catch(() => {
-        if (!controller.signal.aborted) setState({ formId, config: null, status: 'unavailable', message: 'Form configuration is unavailable. Please try again.' });
+        if (!controller.signal.aborted) setState((current) => ({ formId,
+          config: current.formId === formId ? current.config : null,
+          status: 'unavailable', message: 'Form configuration is unavailable. Please try again.' }));
       });
     return () => controller.abort();
   }, [formId, refreshIndex]);
   const refresh = useCallback(() => {
-    setState({ formId, config: null, status: 'loading', message: '' });
+    setState((current) => ({ formId, config: current.formId === formId ? current.config : null,
+      status: 'loading', message: '' }));
     setRefreshIndex((index) => index + 1);
   }, [formId]);
   const handleSubmissionResponse = useCallback((response: Response) => {
-    if (response.status === 409) setState((current) => ({ ...current, status: 'stale', message: submissionFeedback(409).message }));
+    if (response.status === 409) setState((current) => current.formId === formId
+      ? { ...current, status: 'stale', message: submissionFeedback(409).message } : current);
     return response.ok;
-  }, []);
+  }, [formId]);
   const current = state.formId === formId ? state : { formId, config: null, status: 'loading' as const, message: '' };
   return { ...current, canSubmit: current.status === 'ready' && current.config !== null, refresh, handleSubmissionResponse };
 }
