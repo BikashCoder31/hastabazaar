@@ -27,6 +27,7 @@ export interface CatalogVersion {
 }
 
 const choicesType = (type: CustomFieldType) => type === 'single_choice' || type === 'multiple_choice';
+const canonicalKey = (key: string) => key.replaceAll(/[^a-z0-9]/gi, '').toLowerCase();
 const readChoiceDraft = (drafts: Readonly<Record<string, string>>, id: string) => Object.hasOwn(drafts, id) && typeof drafts[id] === 'string' ? drafts[id] : undefined;
 const parseChoices = (raw: string) => raw.split('\n').filter((line) => line.trim()).map((line) => {
   const [value, ...label] = line.split('|');
@@ -79,8 +80,8 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
   const editLocked = busy || replacingHistory || uncertainAction !== null;
   const dirty = JSON.stringify(fields) !== savedFields;
   const canPublish = !!draft && !dirty && !conflict && JSON.stringify(fields) === JSON.stringify(canonicalFields(draft.config.fields));
-  const baseKeys = new Set(form.baseFields.map((item) => item.key.replaceAll(/[^a-z0-9]/gi, '').toLowerCase()));
-  const customFields = ordered(fields.filter((field) => !baseKeys.has(field.key.replaceAll(/[^a-z0-9]/gi, '').toLowerCase())));
+  const baseKeys = new Set(form.baseFields.map((item) => canonicalKey(item.key)));
+  const customFields = ordered(fields.filter((field) => !baseKeys.has(canonicalKey(field.key))));
   const previewConfig = { formId: form.id, version: published?.version ?? 0, publishedAt: published?.publishedAt ?? 0, fields };
 
   function announce(problem: string, focus?: HTMLElement | null) {
@@ -106,7 +107,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
   function addField() {
     const key = newKey.trim();
     const label = newLabel.trim();
-    if (!/^[a-z][a-z0-9_]*$/.test(key) || fields.some((item) => item.key.replaceAll(/[^a-z0-9]/gi, '').toLowerCase() === key.replaceAll(/[^a-z0-9]/gi, '').toLowerCase()) || baseKeys.has(key.replaceAll(/[^a-z0-9]/gi, '').toLowerCase())) {
+    if (!/^[a-z][a-z0-9_]*$/.test(key) || fields.some((item) => canonicalKey(item.key) === canonicalKey(key)) || baseKeys.has(canonicalKey(key))) {
       announce('Enter a unique field key using lowercase letters, numbers, and underscores.', keyRef.current); return;
     }
     if (!label) { announce('Enter a label for the new field.', labelRef.current); return; }
@@ -263,14 +264,14 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
       <fieldset disabled={editLocked} aria-busy={editLocked} className="min-w-0">
       <CardContent className="grid min-w-0 gap-4">
         {form.baseFields.map((base) => {
-          const item = fields.find((field) => field.key.replaceAll(/[^a-z0-9]/gi, '').toLowerCase() === base.key.replaceAll(/[^a-z0-9]/gi, '').toLowerCase());
+          const item = fields.find((field) => canonicalKey(field.key) === canonicalKey(base.key));
           const editable = !pending && base.capability !== 'protected' && customTypes.includes(base.type as CustomFieldType) && typeof base.required === 'boolean' && base.status === 'active';
           const reasonLocked = base.capability === 'protected' ? base.explanation : pending ? 'This form has no connected server adapter yet.' : 'The adapter keeps this built-in field’s required and visibility rules.';
           return <div key={base.key} className="grid min-w-0 gap-3 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
             <div className="min-w-0"><p className="font-medium">{item?.label ?? base.label}</p><p className="break-words text-xs text-muted-foreground">Built-in · {base.key}</p><p className="mt-1 text-xs text-muted-foreground">{reasonLocked}</p></div>
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" aria-label={`Required for ${base.label}`} disabled title={reasonLocked}>{base.required ? 'Required' : 'Optional'}</Button>
-              {editable ? <Button type="button" variant="outline" size="sm" onClick={() => setFields((current) => current.some((field) => field.key === base.key) ? current : canonicalFields([...current, { id: base.key, key: base.key, type: base.type as CustomFieldType, label: base.label, required: base.required ?? false, status: 'active', order: current.length, ...(base.choices ? { choices: base.choices } : {}), ...(base.min !== undefined ? { min: base.min } : {}), ...(base.max !== undefined ? { max: base.max } : {}), ...(base.integerOnly !== undefined ? { integerOnly: base.integerOnly } : {}) }]))}>Edit display</Button> : null}
+              {editable ? <Button type="button" variant="outline" size="sm" onClick={() => setFields((current) => current.some((field) => canonicalKey(field.key) === canonicalKey(base.key)) ? current : canonicalFields([...current, { id: base.key, key: base.key, type: base.type as CustomFieldType, label: base.label, required: base.required ?? false, status: 'active', order: current.length, ...(base.choices ? { choices: base.choices } : {}), ...(base.min !== undefined ? { min: base.min } : {}), ...(base.max !== undefined ? { max: base.max } : {}), ...(base.integerOnly !== undefined ? { integerOnly: base.integerOnly } : {}) }]))}>Edit display</Button> : null}
             </div>
             {item && editable ? <FieldGroup className="sm:col-span-2">
               <Field><FieldLabel htmlFor={`base-${base.key}-label`}>Label</FieldLabel><Input id={`base-${base.key}-label`} value={item.label} onChange={(event) => replaceField(item.id, { label: event.target.value })} /></Field>

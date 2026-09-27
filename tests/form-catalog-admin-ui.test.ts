@@ -12,6 +12,7 @@ import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import type { ConfiguredField, FormDefinition, PublishedFormConfig } from '../lib/forms/types';
 import type { CatalogVersion } from '../components/admin/form-catalog-editor';
 import { adminNavigation } from '../lib/admin/navigation';
+import { validateFormDraftForDefinition } from '../lib/forms/validation';
 import type * as FormCatalogRepository from '../lib/db/repositories/form-catalog';
 
 void test('Form catalog appears in Controls for Super Admin alone', () => {
@@ -59,6 +60,40 @@ const unsortedFields: ConfiguredField[] = [
   { id: 'display_name', key: 'display_name', type: 'short_text', label: 'Display name', required: false, order: 10, status: 'active' },
   { id: 'first', key: 'first', type: 'short_text', label: 'First custom', required: false, order: 0, status: 'active' },
 ];
+
+void test('Edit display preserves a saved canonical alias and its field identity', async () => {
+  const alias: ConfiguredField = { id: 'displayname', key: 'displayname', type: 'short_text', label: 'Preferred display', required: false, order: 0, status: 'active' };
+  let draft: CatalogVersion = { id: 'draft-alias', version: 1, revision: 1, status: 'draft', reason: 'Alias', updatedAt: 1, publishedAt: null,
+    config: { formId: orderingForm.id, fields: [alias] } };
+  assert.doesNotThrow(() => validateFormDraftForDefinition(orderingForm, draft.config, true));
+  const { browser, page } = await mountConcurrencyEditor([draft], orderingForm);
+  const saves: { config: { fields: ConfiguredField[] } }[] = [];
+  try {
+    // oxlint-disable-next-line typescript/no-explicit-any -- Capture the editor's serialized API request.
+    await page.route('https://form.test/api/**', async (route: any) => {
+      if (route.request().method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ versions: [draft] }) });
+      const body = route.request().postDataJSON();
+      saves.push(body);
+      draft = { ...draft, revision: draft.revision + 1, config: body.config };
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ draft }) });
+    });
+    const label = page.locator('#base-display_name-label');
+    await label.waitFor();
+    assert.equal(await label.inputValue(), 'Preferred display');
+    assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), false);
+    await label.fill('Updated display');
+    await page.getByRole('button', { name: 'Edit display', exact: true }).first().click();
+    assert.equal(await label.inputValue(), 'Updated display');
+    await page.getByLabel('Reason for change').fill('Update existing override');
+    await page.getByRole('button', { name: 'Save draft' }).click();
+    await page.getByText('Draft saved.', { exact: true }).waitFor();
+    assert.equal(saves.length, 1);
+    assert.deepEqual(saves[0].config.fields.map(({ id, key, label }) => ({ id, key, label })), [
+      { id: 'displayname', key: 'displayname', label: 'Updated display' },
+    ]);
+    assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), false);
+  } finally { await page.close(); await browser.close(); }
+});
 
 void test('configured order survives no-op save and additions to an unsorted stored draft', async (t) => {
   for (const action of ['no-op', 'custom', 'built-in', 'tied order'] as const) await t.test(action, async () => {
