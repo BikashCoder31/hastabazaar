@@ -90,63 +90,70 @@ function validateInput(formId: FormId, raw: unknown): FormAnswerSnapshot {
 
 // Every predicate runs inside the caller's D1 batch, so invalid versions or
 // snapshots abort the parent action instead of leaving an unlinked write.
-const validAgainstVersion = `EXISTS (
-  SELECT 1 FROM form_config_versions v
-  WHERE v.id = ? AND v.form_id = ? AND v.status = 'published' AND v.version = ?
-    AND v.version = (SELECT MAX(latest.version) FROM form_config_versions latest
-      WHERE latest.form_id = v.form_id AND latest.status = 'published')
-    AND NOT EXISTS (
-      SELECT 1 FROM json_each(?, '$.answers') answer
-      WHERE NOT EXISTS (
-        SELECT 1 FROM json_each(v.config_json, '$.fields') field
-        WHERE json_extract(field.value, '$.id') = json_extract(answer.value, '$.fieldId')
-          AND json_extract(field.value, '$.label') = json_extract(answer.value, '$.label')
-          AND json_extract(field.value, '$.type') = json_extract(answer.value, '$.type')
-          AND json_extract(field.value, '$.status') = 'active'
-          AND (json_extract(field.value, '$.type') != 'checkbox'
-            OR json_extract(field.value, '$.required') != 1
-            OR json_type(answer.value, '$.value') = 'true')
-          AND (json_extract(field.value, '$.type') NOT IN ('single_choice','multiple_choice')
-            OR ((json_type(answer.value, '$.choiceLabels') IS NULL OR
-              json_array_length(answer.value, '$.choiceLabels') =
-                CASE WHEN json_extract(field.value, '$.type') = 'multiple_choice'
-                  THEN json_array_length(answer.value, '$.value') ELSE 1 END)
-              AND NOT EXISTS (
-              SELECT 1 FROM json_each(
-                CASE WHEN json_extract(field.value, '$.type') = 'multiple_choice'
-                  THEN json_extract(answer.value, '$.value')
-                  ELSE json_array(json_extract(answer.value, '$.value')) END
-              ) selected
-              WHERE NOT EXISTS (
-                SELECT 1 FROM json_each(field.value, '$.choices') choice
-                WHERE json_extract(choice.value, '$.value') = selected.value
-                  AND (json_type(answer.value, '$.choiceLabels') IS NULL OR
-                    json_extract(choice.value, '$.label') =
-                      json_extract(answer.value, '$.choiceLabels[' || selected.key || ']'))
-                  AND lower(json_extract(choice.value, '$.label')) NOT LIKE '%password%'
-                  AND lower(json_extract(choice.value, '$.label')) NOT LIKE '%credential%'
-                  AND lower(json_extract(choice.value, '$.label')) NOT LIKE '%secret%'
-                  AND lower(json_extract(choice.value, '$.label')) NOT LIKE '%token%'
-                  AND lower(json_extract(choice.value, '$.label')) NOT LIKE '%payment%'
-                  AND lower(json_extract(choice.value, '$.label')) NOT LIKE '%captcha%'
-              )
-            )))
-          AND (json_extract(field.value, '$.type') != 'number' OR
-            ((json_extract(field.value, '$.min') IS NULL OR json_extract(answer.value, '$.value') >= json_extract(field.value, '$.min'))
-              AND (json_extract(field.value, '$.max') IS NULL OR json_extract(answer.value, '$.value') <= json_extract(field.value, '$.max'))
-              AND (json_extract(field.value, '$.integerOnly') IS NOT 1 OR json_extract(answer.value, '$.value') = CAST(json_extract(answer.value, '$.value') AS INTEGER))))
-      )
-    )
-    AND NOT EXISTS (
-      SELECT 1 FROM json_each(v.config_json, '$.fields') required_field
-      WHERE json_extract(required_field.value, '$.status') = 'active'
-        AND json_extract(required_field.value, '$.required') = 1
-        AND NOT EXISTS (SELECT 1 FROM json_each(?) built_in
-          WHERE built_in.value = lower(replace(json_extract(required_field.value, '$.key'), '_', '')))
-        AND NOT EXISTS (SELECT 1 FROM json_each(?, '$.answers') given
-          WHERE json_extract(given.value, '$.fieldId') = json_extract(required_field.value, '$.id'))
-    )
-)`;
+// Materialize the validation stages to stay below D1's SQLite expression-depth
+// limit without dropping any checks from the native parent transaction.
+const validAgainstVersion = `WITH current_version AS MATERIALIZED (
+  SELECT v.config_json FROM form_config_versions v
+  WHERE v.id=? AND v.form_id=? AND v.status='published' AND v.version=?
+    AND v.version=(SELECT MAX(latest.version) FROM form_config_versions latest
+      WHERE latest.form_id=v.form_id AND latest.status='published')
+), answer_fields AS MATERIALIZED (
+  SELECT answer.value AS answer_json,
+    (SELECT field.value FROM json_each(v.config_json,'$.fields') field
+      WHERE json_extract(field.value,'$.id')=json_extract(answer.value,'$.fieldId') LIMIT 1) AS field_json
+  FROM current_version v,json_each(?,'$.answers') answer
+), selected_choices AS MATERIALIZED (
+  SELECT answer.answer_json,answer.field_json,selected.value AS selected_value,
+    selected.key AS selected_index
+  FROM answer_fields answer,json_each(
+    CASE WHEN json_extract(answer.field_json,'$.type')='multiple_choice'
+      THEN json_extract(answer.answer_json,'$.value')
+      ELSE json_array(json_extract(answer.answer_json,'$.value')) END) selected
+  WHERE json_extract(answer.field_json,'$.type') IN ('single_choice','multiple_choice')
+)
+SELECT EXISTS(SELECT 1 FROM current_version)
+  AND NOT EXISTS (SELECT 1 FROM answer_fields answer WHERE
+    answer.field_json IS NULL
+    OR json_extract(answer.field_json,'$.label') IS NOT json_extract(answer.answer_json,'$.label')
+    OR json_extract(answer.field_json,'$.type') IS NOT json_extract(answer.answer_json,'$.type')
+    OR json_extract(answer.field_json,'$.status') IS NOT 'active'
+    OR (json_extract(answer.field_json,'$.type')='checkbox'
+      AND (json_extract(answer.field_json,'$.required')!=1
+        OR json_type(answer.answer_json,'$.value')='true') IS NOT 1)
+    OR (json_extract(answer.field_json,'$.type') IN ('single_choice','multiple_choice')
+      AND json_type(answer.answer_json,'$.choiceLabels') IS NOT NULL
+      AND json_array_length(answer.answer_json,'$.choiceLabels')!=
+        CASE WHEN json_extract(answer.field_json,'$.type')='multiple_choice'
+          THEN json_array_length(answer.answer_json,'$.value') ELSE 1 END)
+    OR (json_extract(answer.field_json,'$.type')='number'
+      AND ((json_extract(answer.field_json,'$.min') IS NOT NULL
+          AND json_extract(answer.answer_json,'$.value')<json_extract(answer.field_json,'$.min'))
+        OR (json_extract(answer.field_json,'$.max') IS NOT NULL
+          AND json_extract(answer.answer_json,'$.value')>json_extract(answer.field_json,'$.max'))
+        OR (json_extract(answer.field_json,'$.integerOnly')=1
+          AND json_extract(answer.answer_json,'$.value')!=CAST(json_extract(answer.answer_json,'$.value') AS INTEGER))))
+  )
+  AND NOT EXISTS (SELECT 1 FROM selected_choices selected WHERE NOT EXISTS (
+    SELECT 1 FROM json_each(selected.field_json,'$.choices') choice
+    WHERE json_extract(choice.value,'$.value')=selected.selected_value
+      AND (json_type(selected.answer_json,'$.choiceLabels') IS NULL OR
+        json_extract(choice.value,'$.label')=
+          json_extract(selected.answer_json,'$.choiceLabels['||selected.selected_index||']'))
+      AND lower(json_extract(choice.value,'$.label')) NOT LIKE '%password%'
+      AND lower(json_extract(choice.value,'$.label')) NOT LIKE '%credential%'
+      AND lower(json_extract(choice.value,'$.label')) NOT LIKE '%secret%'
+      AND lower(json_extract(choice.value,'$.label')) NOT LIKE '%token%'
+      AND lower(json_extract(choice.value,'$.label')) NOT LIKE '%payment%'
+      AND lower(json_extract(choice.value,'$.label')) NOT LIKE '%captcha%'
+  ))
+  AND NOT EXISTS (SELECT 1 FROM current_version v,json_each(v.config_json,'$.fields') required_field
+    WHERE json_extract(required_field.value,'$.status')='active'
+      AND json_extract(required_field.value,'$.required')=1
+      AND NOT EXISTS (SELECT 1 FROM json_each(?) built_in
+        WHERE built_in.value=lower(replace(json_extract(required_field.value,'$.key'),'_','')))
+      AND NOT EXISTS (SELECT 1 FROM json_each(?,'$.answers') given
+        WHERE json_extract(given.value,'$.fieldId')=json_extract(required_field.value,'$.id'))
+  )`;
 
 /** Returns an unexecuted native statement for the parent domain batch. */
 export function buildFormAnswerInsert(db: D1Database, input: {
@@ -167,7 +174,7 @@ export function buildFormAnswerInsert(db: D1Database, input: {
   if (new TextEncoder().encode(json).length > 131072) throw new FormAnswerRepositoryError('Answer snapshot is too large.');
   return db.prepare(`INSERT INTO form_answer_sets
     (id,form_id,request_id,config_version_id,subject_type,subject_id,actor_id,answers_json,created_at)
-    VALUES (?,?,?,?,?,?,?,CASE WHEN ${validAgainstVersion} THEN ? ELSE json_extract('invalid', '$') END,?)`)
+    VALUES (?,?,?,?,?,?,?,CASE WHEN (${validAgainstVersion}) THEN ? ELSE json_extract('invalid', '$') END,?)`)
     .bind(crypto.randomUUID(), formId, requestId, versionId, subjectType, subjectId, actorId,
       versionId, formId, snapshot.version, json, builtInKeys, json, json, input.now);
 }
