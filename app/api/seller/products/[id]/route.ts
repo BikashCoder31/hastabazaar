@@ -63,6 +63,10 @@ export async function PATCH(
       id,
     );
     if (!current) return json({ error: 'Product not found.' }, 404);
+    const rateLimit = await consumeRequestRateLimit(database, request, {
+      scope: `seller-product-revision:${seller.sellerId}`, limit: 20, windowMs: 60 * 60_000,
+    });
+    if (!rateLimit.allowed) return rateLimitJson(rateLimit);
     let formData: FormData;
     try {
       formData = await readBoundedForm(request, maximumProductSubmissionBytes);
@@ -80,10 +84,6 @@ export async function PATCH(
     if (await formRequestReplay(database, { formId: 'seller.product-submission', requestId,
       actorId: seller.userId, action: 'product.resubmitted', digest: requestDigest, subjectId: id }))
       return json({ id, status: 'submitted', message: 'Product revised and resubmitted for approval.' }, 200);
-    const rateLimit = await consumeRequestRateLimit(database, request, {
-      scope: `seller-product-revision:${seller.sellerId}`, limit: 20, windowMs: 60 * 60_000,
-    });
-    if (!rateLimit.allowed) return rateLimitJson(rateLimit);
     if (!['draft', 'needs_changes', 'rejected', 'approved', 'published'].includes(current.status)) {
       return json({ error: 'This product cannot be edited while it is in its current review state.' }, 409);
     }

@@ -36,7 +36,7 @@ interface CreateSellerApplicationOptions {
 export async function createSellerApplication(
   database: D1Database,
   options: CreateSellerApplicationOptions,
-): Promise<void> {
+): Promise<string> {
   const { userId, sellerId, applicationReference, input, documents, now } =
     options;
   const catalogDigest = options.form ? options.form.digest ?? await digestFormRequest({ input,
@@ -44,7 +44,7 @@ export async function createSellerApplication(
     versionId: options.form.versionId, answers: options.form.answers }) : null;
   if (options.form && await formRequestReplay(database, { formId: 'seller.application',
     requestId: options.form.requestId, actorId: userId, action: 'seller.application.submitted',
-    digest: catalogDigest!, subjectId: sellerId })) return;
+    digest: catalogDigest! })) return sellerId;
   const profileMedia = options.profileMedia ?? [];
   if (!['individual','company'].includes(input.applicantType) || !['PAN','VAT','BOTH','NONE'].includes(input.taxMode)) throw new Error('Choose a valid applicant and tax document type.');
   if (input.participationRoute === 'managed_maker' && (input.taxMode !== 'NONE' || input.taxRegistrationNumber || input.registrationNumber || input.registrationAuthority)) throw new Error('Managed Maker applications cannot store placeholder registration or tax identifiers.');
@@ -227,7 +227,24 @@ export async function createSellerApplication(
     formId: 'seller.application', requestId: options.form.requestId, versionId: options.form.versionId,
     subjectType: 'seller', subjectId: sellerId, actorId: userId, answers: options.form.answers, now,
   }));
-  await database.batch(statements);
+  try { await database.batch(statements); }
+  catch (error) {
+    if (options.form) {
+      // Anonymous attempts allocate a new user ID before the batch. A
+      // concurrent identical attempt can win with a different generated ID;
+      // resolve that actor only through the exact submitted email, then still
+      // require the audit action, form answer and digest to match.
+      const replayActor = options.existingAccount ? userId :
+        (await database.prepare('SELECT id FROM users WHERE lower(email) = ? LIMIT 1')
+          .bind(input.email.trim().toLowerCase()).first<{ id: string }>())?.id ?? userId;
+      const replay = await formRequestReplay(database, { formId: 'seller.application',
+        requestId: options.form.requestId, actorId: replayActor, action: 'seller.application.submitted',
+        digest: catalogDigest! });
+      if (replay) return replay;
+    }
+    throw error;
+  }
+  return sellerId;
 }
 
 export interface SellerReviewQueueRow {
@@ -403,7 +420,7 @@ export async function updateSellerParticipationPublicProfile(
   }
 
   const guardId = crypto.randomUUID();
-  await database.batch([
+  try { await database.batch([
     ...(options.form ? [database.prepare(`SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
       THEN 1 ELSE json_extract('invalid', '$') END`).bind(options.form.requestId)] : []),
     database.prepare(
@@ -454,7 +471,13 @@ export async function updateSellerParticipationPublicProfile(
       answers: options.form.answers, now: options.now,
     })] : []),
     database.prepare(`DELETE FROM seller_participation_guards WHERE id = ?`).bind(guardId),
-  ]);
+  ]); }
+  catch (error) {
+    if (options.form && await formRequestReplay(database, { formId: 'seller.maker-profile',
+      requestId: options.form.requestId, actorId: options.actorId, action: 'seller.participation_profile.updated',
+      digest: catalogDigest!, subjectId: options.sellerId })) return;
+    throw error;
+  }
 }
 
 export interface SellerRegistryRow extends SellerReviewQueueRow {

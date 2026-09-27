@@ -208,9 +208,15 @@ class Statement {
 }
 class Database {
   failAt: number | null = null;
+  beforeBatch: (() => Promise<unknown> | void) | null = null;
   constructor(readonly sqlite: DatabaseSync) {}
   prepare(sql: string) { return new Statement(this.sqlite.prepare(sql)); }
   async batch(statements: readonly Statement[]) {
+    if (this.beforeBatch) {
+      const beforeBatch = this.beforeBatch;
+      this.beforeBatch = null;
+      await beforeBatch();
+    }
     this.sqlite.exec('BEGIN');
     try {
       const results = [];
@@ -822,5 +828,170 @@ void test('application progress shows only the current maker’s application and
     assert.match(html, /Fictional answer/);
     globalThis.sellerCatalogActor = { sellerId: 'other-seller', userId: 'other-user' };
     await assert.rejects(page.default({ searchParams: Promise.resolve({}) }), /Redirect/);
+  } finally { sqlite.close(); }
+});
+
+void test('exhausted product create and revision quotas reject before multipart body consumption or hashing', async () => {
+  const { sqlite, database } = await fixture();
+  try {
+    await createSeller(database);
+    await createProductSubmission(database, { productId: 'quota-product', sellerId: 'seller-one', actorId: 'seller-user',
+      slug: 'quota-product', input: productInput, images: [], intent: 'draft', now: 1_800_000_000_300 });
+    const { POST } = await import('../app/api/seller/products/route');
+    const { PATCH } = await import('../app/api/seller/products/[id]/route');
+    for (const [scope, url, send] of [
+      ['seller-product-submission:seller-one', 'http://localhost:3000/api/seller/products',
+        (request: Request) => POST(request)],
+      ['seller-product-revision:seller-one', 'http://localhost:3000/api/seller/products/quota-product',
+        (request: Request) => PATCH(request, { params: Promise.resolve({ id: 'quota-product' }) })],
+    ] as const) {
+      const request = new Request(url, { method: scope.includes('revision') ? 'PATCH' : 'POST',
+        headers: { origin: 'http://localhost:3000' }, body: productForm(`quota-${scope}`) });
+      const key = await requestFingerprint(request, scope);
+      const now = Date.now();
+      sqlite.prepare('INSERT INTO request_rate_limits(key,request_count,window_started_at,expires_at) VALUES (?,?,?,?)')
+        .run(key, 20, now, now + 60 * 60_000);
+      const response = await send(request);
+      assert.equal(response.status, 429, scope);
+      assert.equal(request.bodyUsed, false, `${scope} consumed an over-quota multipart upload`);
+    }
+  } finally { sqlite.close(); }
+});
+
+void test('inventory audit-key race replays only the exact winning write', async () => {
+  const { sqlite, db, database } = await fixture();
+  try {
+    await createSeller(database);
+    seed(sqlite, 'seller.inventory');
+    await createProductSubmission(database, { productId: 'inventory-race', sellerId: 'seller-one', actorId: 'seller-user',
+      slug: 'inventory-race', input: productInput, images: [], intent: 'draft', now: 1_800_000_000_300 });
+    const request = { productId: 'inventory-race', sellerId: 'seller-one', actorId: 'seller-user', quantity: 6,
+      reason: 'Fictional count', now: 1_800_000_000_400, form: formLink('seller.inventory', 'inventory-race-key') };
+    db.beforeBatch = () => setProductInventory(database, request as Parameters<typeof setProductInventory>[1]);
+    await setProductInventory(database, request as Parameters<typeof setProductInventory>[1]);
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE request_id='inventory-race-key'").get() as { count: number }).count, 1);
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE request_id='inventory-race-key'").get() as { count: number }).count, 1);
+    await assert.rejects(setProductInventory(database, { ...request, quantity: 7 } as Parameters<typeof setProductInventory>[1]), /Request reference/);
+  } finally { sqlite.close(); }
+});
+
+void test('maker-profile audit-key race replays only the exact winning write', async () => {
+  const { sqlite, db, database } = await fixture();
+  try {
+    await createSeller(database);
+    seed(sqlite, 'seller.maker-profile');
+    const request = { sellerId: 'seller-one', actorId: 'seller-user', expectedVersion: 1,
+      publicName: 'Fictional Studio', publicCity: 'Birgunj', craftExperience: [], socialLinks: {},
+      requestId: 'maker-race-key', now: 1_800_000_000_400, form: formLink('seller.maker-profile', 'maker-race-key') };
+    db.beforeBatch = () => updateSellerParticipationPublicProfile(database, request as Parameters<typeof updateSellerParticipationPublicProfile>[1]);
+    await updateSellerParticipationPublicProfile(database, request as Parameters<typeof updateSellerParticipationPublicProfile>[1]);
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE request_id='maker-race-key'").get() as { count: number }).count, 1);
+    await assert.rejects(updateSellerParticipationPublicProfile(database, { ...request, publicCity: 'Kathmandu' } as Parameters<typeof updateSellerParticipationPublicProfile>[1]), /Request reference/);
+  } finally { sqlite.close(); }
+});
+
+void test('approved seller-profile audit-key race replays only the exact winning write', async () => {
+  const { sqlite, db, database } = await fixture();
+  try {
+    await createSeller(database);
+    seed(sqlite, 'seller.profile');
+    sqlite.prepare("UPDATE seller_profiles SET status='approved' WHERE id='seller-one'").run();
+    const request = { sellerId: 'seller-one', actorId: 'seller-user', requestId: 'profile-race-key',
+      now: 1_800_000_000_400, input: { tradingName: 'Fictional Studio', businessDescription: 'Fictional clay work.',
+        productCategories: 'Clay', supportPhone: '9800000000', supportEmail: 'shop@example.test', province: 'Madhesh',
+        district: 'Parsa', municipality: 'Birgunj', ward: null, locality: 'Private workshop' },
+      form: formLink('seller.profile', 'profile-race-key') };
+    db.beforeBatch = () => updateSellerProfile(database, request as Parameters<typeof updateSellerProfile>[1]);
+    await updateSellerProfile(database, request as Parameters<typeof updateSellerProfile>[1]);
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE request_id='profile-race-key'").get() as { count: number }).count, 1);
+    await assert.rejects(updateSellerProfile(database, { ...request, input: { ...request.input, tradingName: 'Changed name' } } as Parameters<typeof updateSellerProfile>[1]), /Request reference/);
+  } finally { sqlite.close(); }
+});
+
+void test('application audit-key race replays the winner but rejects changed actor or content', async () => {
+  const { sqlite, db, database } = await fixture();
+  try {
+    seed(sqlite, 'seller.application');
+    const parsed = parseSellerApplication(managedApplication());
+    assert.ok(parsed.input, parsed.errors.join('; '));
+    const winner = { userId: 'winner-user', sellerId: 'winner-seller', applicationReference: 'HB-WINNER',
+      input: parsed.input, documents: [], now: 1_800_000_000_400,
+      form: formLink('seller.application', 'application-race-key') } as Parameters<typeof createSellerApplication>[1];
+    const loser = { ...winner, userId: 'loser-user', sellerId: 'loser-seller', applicationReference: 'HB-LOSER' };
+    db.beforeBatch = () => createSellerApplication(database, winner);
+    assert.equal(await createSellerApplication(database, loser), 'winner-seller');
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM seller_profiles WHERE application_reference='HB-WINNER'").get() as { count: number }).count, 1);
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM seller_profiles WHERE application_reference='HB-LOSER'").get() as { count: number }).count, 0);
+    await assert.rejects(createSellerApplication(database, { ...loser, userId: 'different-actor', existingAccount: true }), /Request reference/);
+    await assert.rejects(createSellerApplication(database, { ...loser, input: { ...parsed.input, tradingName: 'Changed Studio' } }), /Request reference/);
+  } finally { sqlite.close(); }
+});
+
+void test('anonymous application batch race responds with the winning reference, while changed email conflicts', async () => {
+  const { sqlite, db, database } = await fixture();
+  try {
+    seed(sqlite, 'seller.application');
+    const requestForm = managedApplication();
+    requestForm.set('requestId', 'application-route-race');
+    requestForm.set('formVersion', '1');
+    requestForm.set('custom.workshop_note', 'Fictional answer');
+    const digest = await digestMultipartRequest(requestForm);
+    const parsed = parseSellerApplication(requestForm);
+    assert.ok(parsed.input, parsed.errors.join('; '));
+    const input = parsed.input;
+    db.beforeBatch = () => createSellerApplication(database, { userId: 'winning-user', sellerId: 'winning-seller',
+      applicationReference: 'HB-WINNING', input, documents: [], now: 1_800_000_000_400,
+      form: { ...formLink('seller.application', 'application-route-race'), digest } });
+    const { POST } = await import('../app/api/seller-applications/route');
+    const send = (form: FormData) => POST(new Request('http://localhost:3000/api/seller-applications', {
+      method: 'POST', headers: { origin: 'http://localhost:3000' }, body: form,
+    }));
+    const response = await send(requestForm);
+    assert.equal(response.status, 201);
+    assert.equal((await response.json() as { applicationReference: string }).applicationReference, 'HB-WINNING');
+    const changed = managedApplication();
+    changed.set('email', 'changed@example.test');
+    changed.set('requestId', 'application-route-race');
+    changed.set('formVersion', '1');
+    changed.set('custom.workshop_note', 'Fictional answer');
+    assert.equal((await send(changed)).status, 409);
+  } finally { sqlite.close(); }
+});
+
+void test('seller approval revoked at the batch boundary cannot commit an audit or answer', async () => {
+  const { sqlite, db, database } = await fixture();
+  try {
+    await createSeller(database);
+    seed(sqlite, 'seller.profile');
+    sqlite.prepare("UPDATE seller_profiles SET status='approved' WHERE id='seller-one'").run();
+    const request = { sellerId: 'seller-one', actorId: 'seller-user', requestId: 'profile-revoked-key',
+      now: 1_800_000_000_400, input: { tradingName: 'Changed Studio', businessDescription: 'Fictional clay work.',
+        productCategories: 'Clay', supportPhone: '9800000000', supportEmail: 'shop@example.test', province: 'Madhesh',
+        district: 'Parsa', municipality: 'Birgunj', ward: null, locality: 'Private workshop' },
+      form: formLink('seller.profile', 'profile-revoked-key') };
+    db.beforeBatch = () => { sqlite.prepare("UPDATE seller_profiles SET status='suspended' WHERE id='seller-one'").run(); };
+    await assert.rejects(updateSellerProfile(database, request as Parameters<typeof updateSellerProfile>[1]));
+    assert.equal((sqlite.prepare("SELECT trading_name AS name FROM seller_profiles WHERE id='seller-one'").get() as { name: string }).name, 'Fictional Studio');
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE request_id='profile-revoked-key'").get() as { count: number }).count, 0);
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE request_id='profile-revoked-key'").get() as { count: number }).count, 0);
+  } finally { sqlite.close(); }
+});
+
+void test('seller owner changed at the batch boundary cannot commit a stale actor audit or answer', async () => {
+  const { sqlite, db, database } = await fixture();
+  try {
+    await createSeller(database);
+    seed(sqlite, 'seller.profile');
+    sqlite.prepare("UPDATE seller_profiles SET status='approved' WHERE id='seller-one'").run();
+    sqlite.prepare("INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES ('new-owner','new-owner@example.test','New owner','active',1,1)").run();
+    const request = { sellerId: 'seller-one', actorId: 'seller-user', requestId: 'profile-owner-race',
+      now: 1_800_000_000_400, input: { tradingName: 'Changed Studio', businessDescription: 'Fictional clay work.',
+        productCategories: 'Clay', supportPhone: '9800000000', supportEmail: 'shop@example.test', province: 'Madhesh',
+        district: 'Parsa', municipality: 'Birgunj', ward: null, locality: 'Private workshop' },
+      form: formLink('seller.profile', 'profile-owner-race') };
+    db.beforeBatch = () => { sqlite.prepare("UPDATE seller_profiles SET user_id='new-owner' WHERE id='seller-one'").run(); };
+    await assert.rejects(updateSellerProfile(database, request as Parameters<typeof updateSellerProfile>[1]));
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE request_id='profile-owner-race'").get() as { count: number }).count, 0);
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE request_id='profile-owner-race'").get() as { count: number }).count, 0);
   } finally { sqlite.close(); }
 });

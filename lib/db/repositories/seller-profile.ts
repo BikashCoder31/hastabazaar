@@ -42,12 +42,13 @@ export async function updateSellerProfile(database: D1Database, options: { selle
   if ((input.businessDescription?.length ?? 0) > 2000 || (input.productCategories?.length ?? 0) > 1000) throw new SellerProfileConflictError('Profile description is too long.');
   const current = await database.prepare(`SELECT id FROM seller_profiles WHERE id = ? AND status = 'approved'`).bind(options.sellerId).first();
   if (!current) throw new SellerProfileConflictError('Approved seller profile not found.');
-  await database.batch([
+  try { await database.batch([
     ...(options.form ? [database.prepare(`SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
       THEN 1 ELSE json_extract('invalid', '$') END`).bind(options.form.requestId)] : []),
     database.prepare(
-      `UPDATE seller_profiles SET trading_name = ?, business_description = ?, product_categories = ?, support_phone = ?, support_email = ?, province = ?, district = ?, municipality = ?, ward = ?, locality = ?, updated_at = ? WHERE id = ? AND status = 'approved'`,
-    ).bind(input.tradingName, input.businessDescription || null, input.productCategories || null, input.supportPhone, input.supportEmail.toLowerCase(), input.province, input.district, input.municipality, input.ward || null, input.locality, options.now, options.sellerId),
+      `UPDATE seller_profiles SET trading_name = ?, business_description = ?, product_categories = ?, support_phone = ?, support_email = ?, province = ?, district = ?, municipality = ?, ward = ?, locality = ?, updated_at = ? WHERE id = ? AND user_id = ? AND status = 'approved'`,
+    ).bind(input.tradingName, input.businessDescription || null, input.productCategories || null, input.supportPhone, input.supportEmail.toLowerCase(), input.province, input.district, input.municipality, input.ward || null, input.locality, options.now, options.sellerId, options.actorId),
+    database.prepare(`SELECT CASE WHEN changes() = 1 THEN 1 ELSE json_extract('invalid', '$') END`),
     database.prepare(
       `INSERT INTO audit_logs (id, actor_id, action, subject_type, subject_id, reason, previous_json, next_json, request_id, ip_hash, created_at)
        VALUES (?, ?, 'seller.profile.updated', 'seller_profile', ?, 'Seller updated public support and workshop profile fields', NULL, ?, ?, NULL, ?)`,
@@ -58,5 +59,11 @@ export async function updateSellerProfile(database: D1Database, options: { selle
       subjectType: 'seller', subjectId: options.sellerId, actorId: options.actorId,
       answers: options.form.answers, now: options.now,
     })] : []),
-  ]);
+  ]); }
+  catch (error) {
+    if (options.form && await formRequestReplay(database, { formId: 'seller.profile',
+      requestId: options.form.requestId, actorId: options.actorId, action: 'seller.profile.updated',
+      digest: catalogDigest!, subjectId: options.sellerId })) return;
+    throw error;
+  }
 }

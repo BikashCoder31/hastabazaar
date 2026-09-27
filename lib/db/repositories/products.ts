@@ -800,7 +800,8 @@ export async function setProductInventory(
   }
 
   const mutationId = crypto.randomUUID();
-  const results = await database.batch([
+  let results;
+  try { results = await database.batch([
     database
       .prepare(
         `UPDATE products SET inventory_quantity = ?, updated_at = ?, review_request_id = ?
@@ -867,7 +868,13 @@ export async function setProductInventory(
       buildFormAnswerInsert(database, { formId: 'seller.inventory', requestId: options.form.requestId,
         versionId: options.form.versionId, subjectType: 'product', subjectId: options.productId,
         actorId: options.actorId, answers: options.form.answers, now: options.now })] : []),
-  ]);
+  ]); }
+  catch (error) {
+    if (options.form && await formRequestReplay(database, { formId: 'seller.inventory',
+      requestId: options.form.requestId, actorId: options.actorId, action: 'product.inventory.updated',
+      digest: catalogDigest!, subjectId: options.productId })) return;
+    throw error;
+  }
   if ((results[0].meta.changes ?? 0) !== 1) {
     throw new InventoryConflictError(
       'Inventory changed. Refresh and try again.',

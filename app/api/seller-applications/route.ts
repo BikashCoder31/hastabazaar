@@ -169,6 +169,7 @@ export async function POST(request: Request): Promise<Response> {
   const userId = customer?.userId ?? crypto.randomUUID();
   const sellerId = crypto.randomUUID();
   const applicationReference = createSellerApplicationReference();
+  let savedReference = applicationReference;
   const uploadedKeys: string[] = [];
   const documents: SellerApplicationDocument[] = [];
   const profileMedia: SellerProfileMediaUpload[] = [];
@@ -210,7 +211,7 @@ export async function POST(request: Request): Promise<Response> {
       });
     }
 
-    await createSellerApplication(database, {
+    const committedSellerId = await createSellerApplication(database, {
       userId,
       existingAccount: Boolean(customer),
       sellerId,
@@ -221,6 +222,13 @@ export async function POST(request: Request): Promise<Response> {
       now: Date.now(),
       form: { requestId, versionId: form.versionId, answers: form.answers, digest: requestDigest! },
     });
+    if (committedSellerId !== sellerId) {
+      const winner = await database.prepare(`SELECT application_reference AS reference FROM seller_profiles
+        WHERE id = ? AND lower(support_email) = ? LIMIT 1`)
+        .bind(committedSellerId, parsed.input.email.trim().toLowerCase()).first<{ reference: string }>();
+      if (!winner) throw new Error('Application replay state is unavailable.');
+      savedReference = winner.reference;
+    }
   } catch (error) {
     if (bucket) await Promise.allSettled(uploadedKeys.map((key) => bucket.delete(key)));
     const message = error instanceof Error ? error.message : '';
@@ -242,7 +250,7 @@ export async function POST(request: Request): Promise<Response> {
 
   return json(
     {
-      applicationReference,
+      applicationReference: savedReference,
       status: 'submitted',
       message: 'Your seller application has been received for review.',
     },

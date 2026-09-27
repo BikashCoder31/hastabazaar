@@ -63,6 +63,10 @@ export async function POST(request: Request): Promise<Response> {
           return { sellerId: participation.sellerId, userId: customer.userId };
         })()
       : await requireSellerApi();
+    const rateLimit = await consumeRequestRateLimit(database, request, {
+      scope: `seller-product-submission:${seller.sellerId}`, limit: 20, windowMs: 60 * 60_000,
+    });
+    if (!rateLimit.allowed) return rateLimitJson(rateLimit);
     let formData: FormData;
     try {
       formData = await readBoundedForm(request, maximumProductSubmissionBytes);
@@ -88,10 +92,6 @@ export async function POST(request: Request): Promise<Response> {
       return json({ id: prior.id, slug: prior.slug, status: draftIntent ? 'draft' : 'submitted',
         message: draftIntent ? 'Private product draft saved.' : 'Product submitted for review.' }, 201);
     }
-    const rateLimit = await consumeRequestRateLimit(database, request, {
-      scope: `seller-product-submission:${seller.sellerId}`, limit: 20, windowMs: 60 * 60_000,
-    });
-    if (!rateLimit.allowed) return rateLimitJson(rateLimit);
     const config = await resolvePublishedForm(database, 'seller.product-submission');
     const submitted = configuredMultipartAnswers(formData, config);
     formData.set('sku', ''); // New SKUs are generated; revisions retain the persisted SKU.
