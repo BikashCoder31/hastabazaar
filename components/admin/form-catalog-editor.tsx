@@ -27,6 +27,7 @@ export interface CatalogVersion {
 }
 
 const choicesType = (type: CustomFieldType) => type === 'single_choice' || type === 'multiple_choice';
+const readChoiceDraft = (drafts: Readonly<Record<string, string>>, id: string) => Object.hasOwn(drafts, id) && typeof drafts[id] === 'string' ? drafts[id] : undefined;
 const parseChoices = (raw: string) => raw.split('\n').filter((line) => line.trim()).map((line) => {
   const [value, ...label] = line.split('|');
   return { value: value.trim(), label: label.join('|').trim() };
@@ -201,7 +202,10 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
     if (pendingRequest.current?.action === 'draft') { void mutate('draft', {}); return; }
     if (uncertainAction) return;
     if (!validReason()) return;
-    const config = { formId: form.id, fields: normalized(fields.map((field) => choiceDrafts[field.id] === undefined ? field : { ...field, choices: parseChoices(choiceDrafts[field.id]) })) };
+    const config = { formId: form.id, fields: normalized(fields.map((field) => {
+      const raw = readChoiceDraft(choiceDrafts, field.id);
+      return raw === undefined ? field : { ...field, choices: parseChoices(raw) };
+    })) };
     try { validateFormDraftForDefinition(form, config, !pending); }
     catch (caught) { announce(caught instanceof Error ? caught.message : 'Review the field settings.'); return; }
     void mutate('draft', { config, ...(draft ? { draftId: draft.id, expectedDraftRevision: draft.revision } : {}) });
@@ -268,7 +272,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
             <Field><FieldLabel htmlFor={`${field.id}-label`}>Label</FieldLabel><Input id={`${field.id}-label`} value={field.label} onChange={(event) => replaceField(field.id, { label: event.target.value })} /></Field>
             <Field><FieldLabel htmlFor={`${field.id}-placeholder`}>Placeholder</FieldLabel><Input id={`${field.id}-placeholder`} value={field.placeholder ?? ''} onChange={(event) => replaceField(field.id, { placeholder: event.target.value })} /></Field>
             <Field className="sm:col-span-2"><FieldLabel htmlFor={`${field.id}-help`}>Help text</FieldLabel><Input id={`${field.id}-help`} value={field.helpText ?? ''} onChange={(event) => replaceField(field.id, { helpText: event.target.value })} /></Field>
-            {choicesType(field.type) ? <Field className="sm:col-span-2"><FieldLabel htmlFor={`${field.id}-choices`}>Choices (value | label, one per line)</FieldLabel><Textarea id={`${field.id}-choices`} value={choiceDrafts[field.id] ?? field.choices?.map((choice) => `${choice.value} | ${choice.label}`).join('\n') ?? ''} onChange={(event) => setChoiceDrafts((current) => ({ ...current, [field.id]: event.target.value }))} onBlur={(event) => replaceField(field.id, { choices: parseChoices(event.target.value) })} /></Field> : null}
+            {choicesType(field.type) ? <Field className="sm:col-span-2"><FieldLabel htmlFor={`${field.id}-choices`}>Choices (value | label, one per line)</FieldLabel><Textarea id={`${field.id}-choices`} value={readChoiceDraft(choiceDrafts, field.id) ?? field.choices?.map((choice) => `${choice.value} | ${choice.label}`).join('\n') ?? ''} onChange={(event) => setChoiceDrafts((current) => ({ ...current, [field.id]: event.target.value }))} onBlur={(event) => replaceField(field.id, { choices: parseChoices(event.target.value) })} /></Field> : null}
             {field.type === 'number' ? <>
               <Field><FieldLabel htmlFor={`${field.id}-min`}>Minimum</FieldLabel><Input id={`${field.id}-min`} type="number" value={field.min ?? ''} onChange={(event) => replaceField(field.id, { min: event.target.value === '' ? undefined : Number(event.target.value) })} /></Field>
               <Field><FieldLabel htmlFor={`${field.id}-max`}>Maximum</FieldLabel><Input id={`${field.id}-max`} type="number" value={field.max ?? ''} onChange={(event) => replaceField(field.id, { max: event.target.value === '' ? undefined : Number(event.target.value) })} /></Field>

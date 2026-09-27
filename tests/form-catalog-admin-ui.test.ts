@@ -24,7 +24,7 @@ void test('Form catalog appears in Controls for Super Admin alone', () => {
 const definition: FormDefinition = {
   id: 'account.profile', audience: 'customer', mode: 'collection', route: '/api/account/profile', adapterId: 'profile',
   baseFields: [{ key: 'name', type: 'short_text', label: 'Name', capability: 'protected', required: true, status: 'active', explanation: 'Identity name is required by the profile adapter.' }],
-  capabilities: { explanation: 'Profile answers attach to the customer record.', customFieldTypes: ['short_text', 'single_choice', 'number'], answerBehavior: 'record' },
+  capabilities: { explanation: 'Profile answers attach to the customer record.', customFieldTypes: ['short_text', 'single_choice', 'multiple_choice', 'number'], answerBehavior: 'record' },
 };
 const config: PublishedFormConfig = { formId: 'account.profile', version: 1, publishedAt: 1, fields: [
   { id: 'delivery_note', key: 'delivery_note', type: 'short_text', label: 'Delivery note', required: false, order: 0, status: 'active' },
@@ -47,6 +47,82 @@ async function mountConcurrencyEditor(versions: readonly CatalogVersion[]) {
   await page.addScriptTag({ content: bundle.outputFiles[0].text });
   return { browser, page };
 }
+
+void test('valid constructor text field saves once whether active or archived', async (t) => {
+  for (const status of ['active', 'archived'] as const) await t.test(status, async () => {
+    const { browser, page } = await mountConcurrencyEditor([]);
+    const requests: { config: { fields: ConfiguredField[] } }[] = [];
+    const errors: string[] = [];
+    let versions: CatalogVersion[] = [];
+    page.on('pageerror', (error: Error) => errors.push(error.message));
+    try {
+      // oxlint-disable-next-line typescript/no-explicit-any -- Playwright route type is external to this package.
+      await page.route('https://form.test/api/**', async (route: any) => {
+        if (route.request().method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ versions }) });
+        const body = route.request().postDataJSON();
+        requests.push(body);
+        const draft: CatalogVersion = { id: 'draft-1', version: 1, revision: 1, status: 'draft', reason: body.reason, updatedAt: 1, publishedAt: null, config: body.config };
+        versions = [draft];
+        return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ draft }) });
+      });
+      await page.getByLabel('New field key').fill('constructor');
+      await page.locator('#new-field-label').fill('Maker name');
+      await page.getByRole('button', { name: 'Add field' }).click();
+      if (status === 'archived') await page.locator('[data-editor-field="constructor"]').getByRole('button', { name: 'Archive', exact: true }).click();
+      await page.getByLabel('Reason for change').fill('Save maker field');
+      const outcome = Promise.race([page.waitForEvent('pageerror'), page.getByText('Draft saved.', { exact: true }).waitFor()]);
+      await page.getByRole('button', { name: 'Save draft' }).click();
+      await outcome;
+      assert.equal(requests.length, 1, `save must POST once; browser errors: ${errors.join('; ')}`);
+      assert.deepEqual(requests[0].config.fields, [{ id: 'constructor', key: 'constructor', label: 'Maker name', type: 'short_text', required: false, order: 0, status }]);
+      assert.deepEqual(errors, []);
+      assert.equal(await page.getByRole('alert').innerText(), '');
+      assert.equal(await page.locator('[data-preview-mode="phone"] [name="custom.constructor"]').count(), status === 'active' ? 1 : 0);
+    } finally { await page.close(); await browser.close(); }
+  });
+});
+
+void test('choice buffers ignore inherited constructor and preserve single and multiple choice edits', async (t) => {
+  for (const type of ['single_choice', 'multiple_choice'] as const) await t.test(type, async () => {
+    const initial: CatalogVersion = { id: 'draft-1', version: 1, revision: 1, status: 'draft', reason: 'Initial choices', updatedAt: 1, publishedAt: null,
+      config: { formId: definition.id, fields: ['constructor', 'gift_wrap'].map((id, order) => ({ id, key: id, label: order ? 'Gift wrap' : 'Maker options', type, required: false, order, status: 'active', choices: [{ value: 'first', label: 'First option' }, { value: 'second', label: 'Second option' }] })) } };
+    const { browser, page } = await mountConcurrencyEditor([initial]);
+    const requests: { config: { fields: ConfiguredField[] } }[] = [];
+    const errors: string[] = [];
+    let saved = initial;
+    page.on('pageerror', (error: Error) => errors.push(error.message));
+    try {
+      // oxlint-disable-next-line typescript/no-explicit-any -- Playwright route type is external to this package.
+      await page.route('https://form.test/api/**', async (route: any) => {
+        if (route.request().method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ versions: [saved] }) });
+        const body = route.request().postDataJSON();
+        requests.push(body);
+        saved = { ...initial, revision: 2, reason: body.reason, config: body.config };
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ draft: saved }) });
+      });
+      for (const id of ['constructor', 'gift_wrap']) {
+        const choices = page.locator(`#${id}-choices`);
+        assert.equal(await choices.inputValue(), 'first | First option\nsecond | Second option', 'unedited choice buffers use stored choices, never inherited properties');
+        await choices.focus();
+        await page.keyboard.press('ControlOrMeta+End');
+        await page.keyboard.press('Enter');
+        assert.equal((await choices.inputValue()).endsWith('\n'), true);
+        await choices.pressSequentially(`third | ${id} third`);
+      }
+      await page.getByLabel('Reason for change').fill('Extend choice lists');
+      await page.getByRole('button', { name: 'Save draft' }).click();
+      await page.getByText('Draft saved.', { exact: true }).waitFor();
+      assert.equal(requests.length, 1);
+      assert.deepEqual(requests[0].config.fields.map((field) => field.choices), [
+        [{ value: 'first', label: 'First option' }, { value: 'second', label: 'Second option' }, { value: 'third', label: 'constructor third' }],
+        [{ value: 'first', label: 'First option' }, { value: 'second', label: 'Second option' }, { value: 'third', label: 'gift_wrap third' }],
+      ]);
+      assert.equal(await page.locator('#constructor-choices').inputValue(), 'first | First option\nsecond | Second option\nthird | constructor third', 'clearing saved buffers still falls back to the saved choices');
+      assert.deepEqual(errors, []);
+      assert.equal(await page.getByRole('alert').innerText(), '');
+    } finally { await page.close(); await browser.close(); }
+  });
+});
 
 void test('committed mutation with failed readback keeps edits locked and retries the identical request once', async (t) => {
   // The catalog currently has no connected production adapters. Supply a connected definition,
