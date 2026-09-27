@@ -228,6 +228,18 @@ void test('name and Nepal phone validation still reject bad core values', async 
   } finally { sqlite.close(); }
 });
 
+void test('oversized profile JSON is rejected before custom-answer parsing or any write', async () => {
+  const { sqlite } = await fixture();
+  try {
+    const { PATCH } = await import('../app/api/account/profile/route');
+    const oversized = input('oversized', 1, [{ fieldId: 'delivery_note', value: 'x'.repeat(140_000) }]);
+    assert.equal((await PATCH(request(oversized))).status, 413);
+    assert.deepEqual(user(sqlite), { name: 'Old Name', phone: null });
+    assert.equal(count(sqlite, 'form_answer_sets'), 0);
+    assert.equal(count(sqlite, 'audit_logs'), 0);
+  } finally { sqlite.close(); }
+});
+
 void test('mounted ambiguous retry never reports edited values saved under an old request ID', async () => {
   const { sqlite } = await fixture();
   const playwrightPath = process.env.PLAYWRIGHT_MODULE ??
