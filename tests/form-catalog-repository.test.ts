@@ -352,6 +352,39 @@ void test('answer insert is deferred, atomic with parent write, unique per form/
   } finally { sqlite.close(); }
 });
 
+void test('new answer insert requires latest publication inside its parent batch while prior history stays readable', async () => {
+  const { sqlite, db, database } = await fixture();
+  try {
+    sqlite.exec('CREATE TABLE parent_actions(id TEXT PRIMARY KEY)');
+    seedPublished(sqlite, 'race-v1', 1, []);
+    const old = buildFormAnswerInsert(db, { formId, requestId: 'race-old', versionId: 'race-v1',
+      subjectType: 'user', subjectId: 'customer', actorId: 'customer',
+      answers: { formId, version: 1, answers: [] }, now: 10 });
+    database.beforeBatch = () => seedPublished(sqlite, 'race-v2', 2, []);
+    await assert.rejects(() => db.batch([
+      db.prepare("INSERT INTO parent_actions(id) VALUES ('old-parent')"), old,
+    ]));
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM parent_actions').get()?.n, 0);
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM form_answer_sets').get()?.n, 0);
+    await db.batch([
+      db.prepare("INSERT INTO parent_actions(id) VALUES ('current-parent')"),
+      buildFormAnswerInsert(db, { formId, requestId: 'race-current', versionId: 'race-v2',
+        subjectType: 'user', subjectId: 'customer', actorId: 'customer',
+        answers: { formId, version: 2, answers: [] }, now: 11 }),
+    ]);
+    seedPublished(sqlite, 'race-v3', 3, []);
+    const existing = sqlite.prepare("SELECT id,request_id AS requestId,config_version_id AS versionId FROM form_answer_sets WHERE request_id='race-current'")
+      .get() as { id: string; requestId: string; versionId: string };
+    assert.equal(existing.versionId, 'race-v2');
+    const historical = (await listFormAnswersForSubject(db, 'user', 'customer'))
+      .filter((answer) => answer.formId === formId);
+    assert.equal(historical.length, 1);
+    assert.equal(historical[0]?.id, existing.id);
+    assert.equal(historical[0]?.answers.version, 2);
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM parent_actions').get()?.n, 1);
+  } finally { sqlite.close(); }
+});
+
 void test('required built-in fields stay in the parent record and need no answer snapshot entry', async () => {
   const { sqlite, db } = await fixture();
   try {

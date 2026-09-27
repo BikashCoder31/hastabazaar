@@ -93,6 +93,8 @@ function validateInput(formId: FormId, raw: unknown): FormAnswerSnapshot {
 const validAgainstVersion = `EXISTS (
   SELECT 1 FROM form_config_versions v
   WHERE v.id = ? AND v.form_id = ? AND v.status = 'published' AND v.version = ?
+    AND v.version = (SELECT MAX(latest.version) FROM form_config_versions latest
+      WHERE latest.form_id = v.form_id AND latest.status = 'published')
     AND NOT EXISTS (
       SELECT 1 FROM json_each(?, '$.answers') answer
       WHERE NOT EXISTS (
