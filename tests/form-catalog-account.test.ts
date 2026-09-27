@@ -97,14 +97,14 @@ async function fixture() {
     CREATE TABLE orders(id TEXT PRIMARY KEY,order_number TEXT NOT NULL,customer_id TEXT,status TEXT NOT NULL,payment_status TEXT NOT NULL,grand_total_paisa INTEGER NOT NULL,current_total_paisa INTEGER,placed_at INTEGER,delivered_at INTEGER,created_at INTEGER NOT NULL);
     CREATE TABLE order_items(id TEXT PRIMARY KEY,order_id TEXT NOT NULL REFERENCES orders(id),product_id TEXT NOT NULL,fulfillment_status TEXT NOT NULL,quantity INTEGER NOT NULL);
     CREATE TABLE product_reviews(id TEXT PRIMARY KEY,product_id TEXT NOT NULL,customer_id TEXT NOT NULL REFERENCES users(id),order_item_id TEXT NOT NULL UNIQUE REFERENCES order_items(id),rating INTEGER NOT NULL,title TEXT,body TEXT NOT NULL,status TEXT NOT NULL,moderation_note TEXT,moderated_by TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
-    CREATE TABLE products(id TEXT PRIMARY KEY,name_en TEXT NOT NULL,slug TEXT NOT NULL);
+    CREATE TABLE products(id TEXT PRIMARY KEY,name_en TEXT NOT NULL,slug TEXT NOT NULL,seller_id TEXT);
     CREATE TABLE seller_profiles(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,trading_name TEXT NOT NULL);
     CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY);
     CREATE TABLE review_replies(id TEXT PRIMARY KEY,review_id TEXT NOT NULL,body TEXT NOT NULL,version INTEGER NOT NULL,status TEXT NOT NULL,created_at INTEGER NOT NULL,seller_id TEXT NOT NULL);
     CREATE TABLE review_photos(id TEXT PRIMARY KEY,review_id TEXT NOT NULL REFERENCES product_reviews(id),object_key TEXT NOT NULL UNIQUE,mime_type TEXT NOT NULL,size_bytes INTEGER NOT NULL,sort_order INTEGER NOT NULL,created_at INTEGER NOT NULL);
     INSERT INTO orders VALUES ('order-1','HB-1001','customer','delivered','paid',10000,NULL,1,2,1),('order-other','HB-2002','other','delivered','paid',10000,NULL,1,2,1);
     INSERT INTO order_items VALUES ('item-1','order-1','product-1','delivered',1),('item-other','order-other','product-1','delivered',1);`);
-  sqlite.exec("INSERT INTO products VALUES ('product-1','Handmade Item','handmade-item')");
+  sqlite.exec("INSERT INTO products(id,name_en,slug) VALUES ('product-1','Handmade Item','handmade-item')");
   const migration = await readFile(new URL('../drizzle/0056_form_catalog.sql', import.meta.url), 'utf8');
   for (const statement of migration.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
   const tombstoneMigration = await readFile(new URL('../drizzle/0058_address_answer_owner_tombstones.sql', import.meta.url), 'utf8');

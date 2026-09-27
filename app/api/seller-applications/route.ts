@@ -6,7 +6,7 @@ import { requireDatabase, requireMediaBucket } from '@/lib/db/d1';
 import { createSellerApplication } from '@/lib/db/repositories/seller-applications';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { configuredMultipartAnswers, digestMultipartRequest, FormRequestConflictError,
-  formRequestReplay, validateSellerFormSubmission } from '@/lib/forms/submission';
+  formRequestReplay, validateSellerFormSubmission, validateSellerMultipartStructure } from '@/lib/forms/submission';
 import { FormRuntimeError, resolvePublishedForm } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
 import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
@@ -51,6 +51,11 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error) {
     if (error instanceof BodyTooLargeError) return json({ error: error.message }, 413);
     return json({ error: 'The application form could not be read.' }, 400);
+  }
+  try { validateSellerMultipartStructure(formData, 'seller.application'); }
+  catch (error) {
+    if (error instanceof FormValidationError) return json({ error: error.message }, 400);
+    throw error;
   }
 
   const parsed = parseSellerApplication(formData);
@@ -103,7 +108,9 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const config = await resolvePublishedForm(database, 'seller.application');
     const submitted = configuredMultipartAnswers(formData, config);
-    form = await validateSellerFormSubmission(database, 'seller.application', submitted.version, submitted.customAnswers);
+    form = await validateSellerFormSubmission(database, 'seller.application', submitted.version,
+      submitted.customAnswers, undefined, { tradingName: parsed.input.tradingName,
+        businessDescription: parsed.input.businessDescription });
   } catch (error) {
     if (error instanceof FormRuntimeError) return json({ error: error.message, code: error.code }, error.code === 'stale_version' ? 409 : 503);
     if (error instanceof FormValidationError) return json({ error: error.message, fieldId: error.fieldId }, 400);

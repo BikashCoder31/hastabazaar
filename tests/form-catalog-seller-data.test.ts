@@ -15,6 +15,7 @@ import { authorizeFormAnswerRead } from '../lib/forms/access';
 import { createSellerApplication, updateSellerParticipationPublicProfile } from '../lib/db/repositories/seller-applications';
 import { updateSellerProfile } from '../lib/db/repositories/seller-profile';
 import { createProductSubmission, setProductInventory } from '../lib/db/repositories/products';
+import { digestMultipartRequest, validateSellerMultipartStructure } from '../lib/forms/submission';
 import { parseSellerApplication } from '../lib/sellers/application';
 
 declare global {
@@ -48,6 +49,8 @@ const sellerForms = [
   ['seller.inventory', '/api/seller/products/:id/inventory'],
 ] as const;
 const field = { id: 'workshop_note', key: 'workshop_note', type: 'short_text', label: 'Workshop note', required: true, order: 0, status: 'active' } as const;
+const builtIn = (key: string, type: 'short_text' | 'long_text' = 'short_text') =>
+  ({ id: key, key, type, label: `Configured ${key}`, required: key !== 'businessDescription', order: 1, status: 'active' as const });
 const safeTypes = ['short_text', 'long_text', 'number', 'date', 'single_choice', 'multiple_choice', 'checkbox', 'email', 'phone'];
 
 void test('all five seller form adapters publish only safe custom types and lock identity, money, media, and request controls', () => {
@@ -72,6 +75,28 @@ void test('all five seller form adapters publish only safe custom types and lock
   }
 });
 
+void test('seller catalog rejects custom keys colliding with every sensitive application and product control', () => {
+  const protectedKeys = {
+    'seller.application': ['hasBusinessTaxRegistration', 'taxStatus', 'acceptedTerms', 'province', 'district',
+      'municipality', 'ward', 'locality', 'publicCity', 'productCategories', 'experienceCraft', 'experienceBand',
+      'facebookUrl', 'instagramUrl', 'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl', 'representativeIdentity',
+      'bankVerification', 'businessRegistration', 'panCertificate', 'vatCertificate'],
+    'seller.product-submission': ['nameNe', 'descriptionNe', 'compareAtPrice', 'discountPercentage',
+      'returnEligible', 'madeToOrder', 'preparationDays', 'originStory', 'dimensions', 'size', 'colour',
+      'variations', 'specifications', 'careInstructions', 'safetyInformation', 'returnConditions',
+      'warrantyOffered', 'warranty', 'warrantyYears', 'warrantyMonths', 'manufacturedAt', 'expiresAt',
+      'licenceReference', 'image1', 'image2', 'image3', 'image4', 'image5', 'images', 'replacementVideo', 'removeMediaId'],
+  } as const;
+  for (const [formId, keys] of Object.entries(protectedKeys)) {
+    for (const key of keys) {
+      assert.equal(FORM_REGISTRY[formId as keyof typeof FORM_REGISTRY].baseFields.find((entry) => entry.key === key)?.capability,
+        'protected', `${formId}.${key}`);
+      assert.throws(() => validateFormDraft(formId as keyof typeof FORM_REGISTRY, { formId,
+        fields: [{ ...field, id: key, key }] }), `${formId}.${key} must not be publishable as custom`);
+    }
+  }
+});
+
 void test('seller publications require custom values and reject unknown or non-text upload answers', () => {
   for (const [id] of sellerForms) {
     const config = { formId: id, version: 1, publishedAt: 1, fields: [field] } as const;
@@ -79,6 +104,22 @@ void test('seller publications require custom values and reject unknown or non-t
     assert.throws(() => validateAnswersForDefinition(FORM_REGISTRY[id], config, [{ fieldId: 'unknown', value: 'x' }]));
     assert.throws(() => validateAnswersForDefinition(FORM_REGISTRY[id], config, [{ fieldId: field.id, value: new File(['private'], 'identity.png', { type: 'image/png' }) }]));
   }
+});
+
+void test('an exact registered camelCase safe built-in publishes and requires its domain value without snapshotting it', () => {
+  const config = { formId: 'seller.application', version: 1, publishedAt: 1,
+    fields: [field, builtIn('tradingName')] } as const;
+  assert.deepEqual(validateFormDraft('seller.application', { formId: config.formId, fields: config.fields }).fields, config.fields);
+  assert.throws(() => validateAnswersForDefinition(FORM_REGISTRY['seller.application'], config,
+    [{ fieldId: field.id, value: 'Fictional note' }]), { fieldId: 'tradingName' });
+  const snapshot = validateAnswersForDefinition(FORM_REGISTRY['seller.application'], config,
+    [{ fieldId: field.id, value: 'Fictional note' }, { fieldId: 'tradingName', value: 'Fictional Studio' }]);
+  assert.deepEqual(snapshot.answers, [{ fieldId: field.id, label: field.label, type: field.type, value: 'Fictional note' }]);
+});
+
+void test('seller application description cannot be published optional while its domain parser requires it', () => {
+  assert.throws(() => validateFormDraft('seller.application', { formId: 'seller.application',
+    fields: [{ ...builtIn('businessDescription', 'long_text'), required: false }] }));
 });
 
 async function renderSellerForm(entry: string, exported: string, props: Record<string, unknown>, configuredFields: unknown[] = [field]) {
@@ -132,6 +173,27 @@ void test('safe built-in display labels follow the published seller configuratio
     const html = await renderSellerForm(entry, exported, props, [{ id: key, key, type: 'short_text',
       label: 'Configured public label', required: true, order: 0, status: 'active' }]);
     assert.match(html, /Configured public label/, `${entry} did not render its safe built-in label`);
+  }
+});
+
+void test('seller safe built-in placeholder and help text appear beside the live input', async () => {
+  const cases = [
+    ['components/seller/seller-application-form.tsx', 'SellerApplicationForm', {}, 'tradingName'],
+    ['components/seller/maker-application-profile-form.tsx', 'MakerApplicationProfileForm',
+      { profile: { publicName: 'Fictional Studio', publicCity: 'Kathmandu', craftExperience: [], socialLinks: {}, version: 1 } }, 'publicName'],
+    ['components/seller/seller-profile-form.tsx', 'SellerProfileForm',
+      { profile: { tradingName: 'Fictional Studio', businessDescription: null, productCategories: null,
+        supportPhone: '9800000000', supportEmail: 'studio@example.test', province: 'Bagmati', district: 'Kathmandu',
+        municipality: 'Kathmandu', ward: null, locality: 'Private workshop' } }, 'tradingName'],
+    ['components/seller/product-submission-form.tsx', 'ProductSubmissionForm', { categories: [], occasions: [] }, 'nameEn'],
+  ] as const;
+  for (const [entry, exported, props, key] of cases) {
+    const html = await renderSellerForm(entry, exported, props, [{ id: key, key, type: 'short_text',
+      label: 'Configured public label', helpText: 'Published help for maker', placeholder: 'Published prompt for maker',
+      required: true, order: 0, status: 'active' }]);
+    const input = (html.match(/<input\b[^>]*>/g) ?? []).find((tag) => tag.includes(`name="${key}"`));
+    assert.match(input ?? '', /placeholder="Published prompt for maker"/, `${entry}: placeholder`);
+    assert.match(html, /Published help for maker/, `${entry}: help`);
   }
 });
 
@@ -348,8 +410,8 @@ void test('maker and approved seller profile routes require versioned custom ans
   const { sqlite, database } = await fixture();
   try {
     await createSeller(database);
-    seed(sqlite, 'seller.maker-profile');
-    seed(sqlite, 'seller.profile');
+    seed(sqlite, 'seller.maker-profile', [field, builtIn('publicName')]);
+    seed(sqlite, 'seller.profile', [field, builtIn('tradingName')]);
     const { PATCH: makerPatch } = await import('../app/api/seller-applications/profile/route');
     const makerBody = { publicName: 'Fictional Studio', publicCity: 'Birgunj', expectedVersion: 1,
       requestId: 'maker-route-one', formVersion: 1, customAnswers: [{ fieldId: field.id, value: 'Fictional answer' }] };
@@ -396,7 +458,7 @@ void test('maker and approved seller profile routes require versioned custom ans
 void test('application route rejects missing, unknown and file custom answers and replays only the same application', async () => {
   const { sqlite } = await fixture();
   try {
-    seed(sqlite, 'seller.application');
+    seed(sqlite, 'seller.application', [field, builtIn('tradingName')]);
     const { POST } = await import('../app/api/seller-applications/route');
     const send = (requestId: string, options: { answer?: string | null; unknown?: boolean; tradingName?: string } = {}) => {
       const form = managedApplication();
@@ -412,6 +474,15 @@ void test('application route rejects missing, unknown and file custom answers an
     assert.equal((await send('application-missing', { answer: null })).status, 400);
     assert.equal((await send('application-unknown', { unknown: true })).status, 400);
     assert.equal((await send('application-file', { answer: 'file' })).status, 400);
+    for (const [requestId, mutate] of [
+      ['application-top-level', (form: FormData) => form.set('unrelatedAdminOverride', 'yes')],
+      ['application-duplicate', (form: FormData) => form.append('tradingName', 'Injected alternate')],
+    ] as const) {
+      const form = managedApplication(); form.set('formVersion', '1'); form.set('requestId', requestId);
+      form.set('custom.workshop_note', 'Fictional answer'); mutate(form);
+      assert.equal((await POST(new Request('http://localhost:3000/api/seller-applications', { method: 'POST',
+        headers: { origin: 'http://localhost:3000' }, body: form }))).status, 400, requestId);
+    }
     const first = await send('application-route-one');
     assert.equal(first.status, 201);
     const reference = (await first.json() as { applicationReference: string }).applicationReference;
@@ -445,11 +516,22 @@ function productForm(requestId: string, options: { custom?: string | null; name?
   return form;
 }
 
+void test('product multipart structure preserves legitimate repeated images, materials, occasions and media mutations', () => {
+  const form = productForm('product-repeatable-controls');
+  form.append('images', new File([new Uint8Array([0xff, 0xd8, 0xff, 6])], 'extra.jpg', { type: 'image/jpeg' }));
+  form.append('materials', 'Wool');
+  form.append('occasionIds', 'second-occasion');
+  form.append('removeMediaId', 'existing-photo-one');
+  form.append('removeMediaId', 'existing-photo-two');
+  form.set('replaceImage:existing-photo-one', new File([new Uint8Array([0xff, 0xd8, 0xff, 7])], 'replacement.jpg', { type: 'image/jpeg' }));
+  assert.doesNotThrow(() => validateSellerMultipartStructure(form, 'seller.product-submission'));
+});
+
 void test('product POST enforces custom answers and media rules before an owned draft/submit write and exact replay', async () => {
   const { sqlite, database } = await fixture();
   try {
     await createSeller(database);
-    seed(sqlite, 'seller.product-submission');
+    seed(sqlite, 'seller.product-submission', [field, builtIn('nameEn')]);
     sqlite.exec("INSERT INTO occasions(id,slug,name_en,is_active,sort_order,created_at,updated_at) VALUES ('occasion-test','fictional-gift','Fictional Gift',1,1,1,1)");
     const { POST } = await import('../app/api/seller/products/route');
     const send = (requestId: string, options: Parameters<typeof productForm>[1] = {}) =>
@@ -458,6 +540,14 @@ void test('product POST enforces custom answers and media rules before an owned 
     assert.equal((await send('product-missing', { custom: null })).status, 400);
     assert.equal((await send('product-file', { custom: 'file' })).status, 400);
     assert.equal((await send('product-stale', { version: 2 })).status, 409);
+    for (const [requestId, mutate] of [
+      ['product-top-level', (form: FormData) => form.set('unrelatedAdminOverride', 'yes')],
+      ['product-duplicate', (form: FormData) => form.append('price', '0')],
+    ] as const) {
+      const form = productForm(requestId); mutate(form);
+      assert.equal((await POST(new Request('http://localhost:3000/api/seller/products', { method: 'POST',
+        headers: { origin: 'http://localhost:3000' }, body: form }))).status, 400, requestId);
+    }
     const created = await send('product-route-one');
     assert.equal(created.status, 201);
     const id = (await created.json() as { id: string }).id;
@@ -481,7 +571,7 @@ void test('product revision validates custom answers, preserves owner/media gate
   const { sqlite, database } = await fixture();
   try {
     await createSeller(database);
-    seed(sqlite, 'seller.product-submission');
+    seed(sqlite, 'seller.product-submission', [field, builtIn('nameEn')]);
     sqlite.exec("INSERT INTO occasions(id,slug,name_en,is_active,sort_order,created_at,updated_at) VALUES ('occasion-test','fictional-gift','Fictional Gift',1,1,1,1)");
     const { POST } = await import('../app/api/seller/products/route');
     const created = await POST(new Request('http://localhost:3000/api/seller/products', { method: 'POST',
@@ -498,6 +588,15 @@ void test('product revision validates custom answers, preserves owner/media gate
         headers: { origin: 'http://localhost:3000' }, body: form }), { params: Promise.resolve({ id }) });
     };
     assert.equal((await send('revision-missing', { custom: null })).status, 400);
+    for (const [requestId, mutate] of [
+      ['revision-top-level', (form: FormData) => form.set('unrelatedAdminOverride', 'yes')],
+      ['revision-duplicate', (form: FormData) => form.append('price', '0')],
+    ] as const) {
+      const form = productForm(requestId); for (let index = 1; index <= 4; index++) form.delete(`image${index}`);
+      form.set('reviewRequestId', ''); mutate(form);
+      assert.equal((await PATCH(new Request(`http://localhost:3000/api/seller/products/${id}`, { method: 'PATCH',
+        headers: { origin: 'http://localhost:3000' }, body: form }), { params: Promise.resolve({ id }) })).status, 400, requestId);
+    }
     globalThis.sellerCatalogActor = { sellerId: 'other-seller', userId: 'other-user' };
     assert.equal((await send('revision-foreign')).status, 404);
     globalThis.sellerCatalogActor = { sellerId: 'seller-one', userId: 'seller-user' };
@@ -513,6 +612,74 @@ void test('product revision validates custom answers, preserves owner/media gate
     const answers = await listFormAnswersForSubject(database, 'product', id);
     assert.equal(answers.length, 2);
     assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE subject_id=? AND action='product.resubmitted'").get(id) as { count: number }).count, 1);
+  } finally { sqlite.close(); }
+});
+
+void test('concurrent exact product POST after R2 upload returns the winning product and removes losing private objects', async () => {
+  const { sqlite, database } = await fixture();
+  try {
+    await createSeller(database);
+    seed(sqlite, 'seller.product-submission');
+    sqlite.exec("INSERT INTO occasions(id,slug,name_en,is_active,sort_order,created_at,updated_at) VALUES ('occasion-test','fictional-gift','Fictional Gift',1,1,1,1)");
+    const requestId = 'product-concurrent-post';
+    const multipart = productForm(requestId);
+    const digest = await digestMultipartRequest(multipart);
+    let raced = false;
+    const media = globalThis.sellerCatalogMedia;
+    media.put = async function (key) {
+      this.stored.push(key);
+      if (raced) return;
+      raced = true;
+      await createProductSubmission(database, { productId: 'winning-product', sellerId: 'seller-one', actorId: 'seller-user',
+        slug: 'winning-product', input: { ...productInput, occasionIds: ['occasion-test'] }, images: [], intent: 'submit',
+        now: 1_800_000_000_301, form: { ...formLink('seller.product-submission', requestId), digest } });
+    };
+    const { POST } = await import('../app/api/seller/products/route');
+    const response = await POST(new Request('http://localhost:3000/api/seller/products', { method: 'POST',
+      headers: { origin: 'http://localhost:3000' }, body: multipart }));
+    assert.equal(response.status, 201);
+    assert.equal((await response.json() as { id: string }).id, 'winning-product');
+    assert.equal(media.stored.length, 4);
+    assert.deepEqual([...media.deleted].sort(), [...media.stored].sort());
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM products WHERE seller_id='seller-one'").get() as { count: number }).count, 1);
+  } finally { sqlite.close(); }
+});
+
+void test('concurrent exact product PATCH after R2 upload removes losing private objects without a second revision', async () => {
+  const { sqlite, database } = await fixture();
+  try {
+    await createSeller(database);
+    seed(sqlite, 'seller.product-submission');
+    sqlite.exec("INSERT INTO occasions(id,slug,name_en,is_active,sort_order,created_at,updated_at) VALUES ('occasion-test','fictional-gift','Fictional Gift',1,1,1,1)");
+    const images = Array.from({ length: 4 }, (_, index) => ({ id: `original-${index}`, objectKey: `private/original-${index}`,
+      originalName: `original-${index}.jpg`, mimeType: 'image/jpeg', sizeBytes: 100, altEn: 'Fictional cup', altNe: null,
+      sortOrder: index }));
+    await createProductSubmission(database, { productId: 'revision-race', sellerId: 'seller-one', actorId: 'seller-user',
+      slug: 'revision-race', input: { ...productInput, occasionIds: ['occasion-test'] }, images, intent: 'draft', now: 1_800_000_000_300 });
+    sqlite.prepare("UPDATE products SET status='needs_changes' WHERE id='revision-race'").run();
+    const requestId = 'product-concurrent-patch';
+    const multipart = productForm(requestId); for (let index = 2; index <= 4; index++) multipart.delete(`image${index}`);
+    multipart.set('reviewRequestId', '');
+    const digest = await digestMultipartRequest(multipart);
+    let raced = false;
+    const media = globalThis.sellerCatalogMedia;
+    media.put = async function (key) {
+      this.stored.push(key);
+      if (raced) return;
+      raced = true;
+      await (await import('../lib/db/repositories/products')).reviseAndResubmitProduct(database, {
+        productId: 'revision-race', sellerId: 'seller-one', actorId: 'seller-user',
+        input: { ...productInput, occasionIds: ['occasion-test'] }, images: [], previousInventory: 4,
+        expectedStatus: 'needs_changes', expectedReviewRequestId: null, now: 1_800_000_000_301,
+        form: { ...formLink('seller.product-submission', requestId), digest },
+      });
+    };
+    const { PATCH } = await import('../app/api/seller/products/[id]/route');
+    const response = await PATCH(new Request('http://localhost:3000/api/seller/products/revision-race', { method: 'PATCH',
+      headers: { origin: 'http://localhost:3000' }, body: multipart }), { params: Promise.resolve({ id: 'revision-race' }) });
+    assert.equal(response.status, 200);
+    assert.deepEqual([...media.deleted].sort(), [...media.stored].sort());
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE subject_id='revision-race' AND action='product.resubmitted'").get() as { count: number }).count, 1);
   } finally { sqlite.close(); }
 });
 

@@ -15,7 +15,7 @@ import {
 } from '@/lib/db/repositories/products';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { configuredMultipartAnswers, digestMultipartRequest, FormRequestConflictError,
-  formRequestReplay, validateSellerFormSubmission } from '@/lib/forms/submission';
+  formRequestReplay, validateSellerFormSubmission, validateSellerMultipartStructure } from '@/lib/forms/submission';
 import { FormRuntimeError, resolvePublishedForm } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
 import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
@@ -70,6 +70,7 @@ export async function PATCH(
       if (error instanceof BodyTooLargeError) return json({ error: error.message }, 413);
       return json({ error: 'The product form could not be read.' }, 400);
     }
+    validateSellerMultipartStructure(formData, 'seller.product-submission');
     const rawRequestIds = formData.getAll('requestId');
     if (rawRequestIds.length !== 1 || typeof rawRequestIds[0] !== 'string' ||
       !/^[a-zA-Z0-9_-]{1,100}$/.test(rawRequestIds[0]))
@@ -89,8 +90,6 @@ export async function PATCH(
     if(formData.get('reviewRequestId') !== (current.reviewRequestId ?? ''))return json({error:'This product review changed. Reload the form before resubmitting.'},409);
     const config = await resolvePublishedForm(database, 'seller.product-submission');
     const submitted = configuredMultipartAnswers(formData, config);
-    const form = await validateSellerFormSubmission(database, 'seller.product-submission',
-      submitted.version, submitted.customAnswers);
     // Removed seller fields retain their original persisted values on revision.
     formData.set('producer', current.producer);
     formData.set('materials', current.materials);
@@ -99,6 +98,9 @@ export async function PATCH(
     const parsed = parseProductSubmission(formData);
     if (!parsed.input)
       return json({ error: parsed.errors[0], errors: parsed.errors }, 400);
+    const form = await validateSellerFormSubmission(database, 'seller.product-submission',
+      submitted.version, submitted.customAnswers, undefined,
+      { nameEn: parsed.input.nameEn, descriptionEn: parsed.input.descriptionEn });
     if (!(await isActiveCategory(database, parsed.input.categoryId))) {
       return json({ error: 'Select an active product category.' }, 400);
     }
@@ -198,7 +200,7 @@ export async function PATCH(
       });
     }
 
-    await reviseAndResubmitProduct(database, {
+    const outcome = await reviseAndResubmitProduct(database, {
       productId: id,
       sellerId: seller.sellerId,
       actorId: seller.userId,
@@ -211,6 +213,10 @@ export async function PATCH(
       now: Date.now(),
       form: { requestId, versionId: form.versionId, answers: form.answers, digest: requestDigest },
     });
+    if (outcome === 'replayed') {
+      await Promise.allSettled(uploadedKeys.map((key) => bucket!.delete(key)));
+      return json({ id, status: 'submitted', message: 'Product revised and resubmitted for approval.' }, 200);
+    }
     const removedKeys = ownedMedia
       .filter((media) => removedMediaIds.has(media.id))
       .map((media) => media.objectKey);

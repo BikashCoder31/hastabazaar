@@ -57,8 +57,12 @@ export function MakerApplicationProfileForm({ profile }: { profile: SellerPartic
     }
   }
   return <form onSubmit={(event) => void submit(event)} className="mt-5 grid gap-4 rounded-2xl border bg-card p-6 sm:grid-cols-2">
-    <Field name="publicName" label={fieldDisplay(catalog.config, 'publicName')?.label ?? 'Public maker/shop name'} defaultValue={profile.publicName} required />
-    <Field name="publicCity" label={fieldDisplay(catalog.config, 'publicCity')?.label ?? 'Public city/town only'} defaultValue={profile.publicCity} required />
+    <Field name="publicName" label={fieldDisplay(catalog.config, 'publicName')?.label ?? 'Public maker/shop name'}
+      help={fieldDisplay(catalog.config, 'publicName')?.helpText} placeholder={fieldDisplay(catalog.config, 'publicName')?.placeholder}
+      defaultValue={profile.publicName} required />
+    <Field name="publicCity" label={fieldDisplay(catalog.config, 'publicCity')?.label ?? 'Public city/town only'}
+      help={fieldDisplay(catalog.config, 'publicCity')?.helpText} placeholder={fieldDisplay(catalog.config, 'publicCity')?.placeholder}
+      defaultValue={profile.publicCity} required />
     <Field name="experienceCraft" label="Craft for this experience (optional)" defaultValue={experience?.craft ?? ''} />
     <div className="space-y-2">
       <Label htmlFor="experienceBand">Experience in that craft (optional)</Label>
@@ -82,6 +86,8 @@ export function MakerApplicationProfileForm({ profile }: { profile: SellerPartic
   </form>;
 }
 
-function Field({ name, label, ...props }: { name: string; label: string } & React.ComponentProps<typeof Input>) {
-  return <div className="space-y-2"><Label htmlFor={name}>{label}</Label><Input id={name} name={name} maxLength={500} {...props} /></div>;
+function Field({ name, label, help, ...props }: { name: string; label: string; help?: string } & React.ComponentProps<typeof Input>) {
+  return <div className="space-y-2"><Label htmlFor={name}>{label}</Label>
+    <Input id={name} name={name} maxLength={500} aria-describedby={help ? `${name}-catalog-help` : undefined} {...props} />
+    {help ? <p id={`${name}-catalog-help`} className="text-sm text-muted-foreground">{help}</p> : null}</div>;
 }

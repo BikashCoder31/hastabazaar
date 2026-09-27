@@ -232,10 +232,15 @@ function sellerDefinition(id: 'seller.application' | 'seller.maker-profile' | 's
   let mode: FormMode = 'collection';
   if (id === 'seller.application') {
     route = '/api/seller-applications';
-    fields = [displayField('tradingName', 'short_text', true), displayField('businessDescription', 'long_text', false),
+    fields = [displayField('tradingName', 'short_text', true), displayField('businessDescription', 'long_text', true),
       ...['legalName', 'representativeName', 'email', 'phone', 'applicantType', 'taxMode', 'taxRegistrationNumber',
         'registrationNumber', 'registrationAuthority', 'document', 'profileImage', 'makerVideo', 'applicationAcknowledgement',
-        'participationRoute', 'website'].map((key) => protectedField(key, 'Legal identity, consent, anti-abuse and private upload rules are not configurable.')),
+        'participationRoute', 'website', 'hasBusinessTaxRegistration', 'taxStatus', 'acceptedTerms',
+        'province', 'district', 'municipality', 'ward', 'locality', 'publicCity', 'productCategories',
+        'experienceCraft', 'experienceBand', 'facebookUrl', 'instagramUrl', 'linkedinUrl', 'tiktokUrl',
+        'xUrl', 'youtubeUrl', 'representativeIdentity', 'bankVerification', 'businessRegistration',
+        'panCertificate', 'vatCertificate'].map((key) => protectedField(key,
+          'Legal identity, consent, anti-abuse and private upload rules are not configurable.')),
       ...common];
   } else if (id === 'seller.maker-profile') {
     route = '/api/seller-applications/profile';
@@ -255,7 +260,13 @@ function sellerDefinition(id: 'seller.application' | 'seller.maker-profile' | 's
     route = '/api/seller/products';
     fields = [displayField('nameEn', 'short_text', true), displayField('descriptionEn', 'long_text', true),
       ...['sku', 'price', 'pricePaisa', 'inventoryQuantity', 'image', 'video', 'reviewRequestId', 'categoryId',
-        'occasionIds', 'sellerId', 'producer', 'materials'].map((key) => protectedField(key,
+        'occasionIds', 'sellerId', 'producer', 'materials', 'nameNe', 'descriptionNe', 'compareAtPrice',
+        'discountPercentage', 'returnEligible', 'madeToOrder', 'preparationDays', 'originStory',
+        'dimensions', 'size', 'colour', 'variations', 'specifications', 'careInstructions',
+        'safetyInformation', 'returnConditions', 'warrantyOffered', 'warranty', 'warrantyYears',
+        'warrantyMonths', 'manufacturedAt', 'expiresAt', 'licenceReference', 'image1', 'image2',
+        'image3', 'image4', 'image5', 'images', 'replacementVideo', 'removeMediaId',
+        'replaceImage'].map((key) => protectedField(key,
         'SKU, price, inventory, taxonomy, ownership, draft/review state and private media checks stay server enforced.')),
       ...common];
   } else {

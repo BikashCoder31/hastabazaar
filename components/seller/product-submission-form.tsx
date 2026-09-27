@@ -606,7 +606,10 @@ export function ProductSubmissionForm({
               required
               maxLength={160}
               defaultValue={initial?.nameEn}
+              placeholder={fieldDisplay(catalog.config, 'nameEn')?.placeholder}
+              aria-describedby={fieldDisplay(catalog.config, 'nameEn')?.helpText ? 'nameEn-catalog-help' : undefined}
             />
+            {fieldDisplay(catalog.config, 'nameEn')?.helpText ? <FieldDescription id="nameEn-catalog-help">{fieldDisplay(catalog.config, 'nameEn')?.helpText}</FieldDescription> : null}
           </Field>
         </FieldGroup>
       </FieldSet>
@@ -654,9 +657,11 @@ export function ProductSubmissionForm({
               required
               maxLength={4000}
               rows={6}
-              placeholder="Describe the craft, process, use, and what makes this item distinct."
+              placeholder={fieldDisplay(catalog.config, 'descriptionEn')?.placeholder ?? 'Describe the craft, process, use, and what makes this item distinct.'}
               defaultValue={initial?.descriptionEn}
+              aria-describedby={fieldDisplay(catalog.config, 'descriptionEn')?.helpText ? 'descriptionEn-catalog-help' : undefined}
             />
+            {fieldDisplay(catalog.config, 'descriptionEn')?.helpText ? <FieldDescription id="descriptionEn-catalog-help">{fieldDisplay(catalog.config, 'descriptionEn')?.helpText}</FieldDescription> : null}
           </Field>
           <MaterialsEditor initial={initial?.materials ?? ''} suggestions={materialSuggestions}/>
           <Field>

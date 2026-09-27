@@ -13,9 +13,11 @@ const owned = `((subject_type='user' AND subject_id=?)
         WHERE gone.address_id=subject_id AND gone.user_id=?))))
   OR (subject_type='product_review' AND EXISTS(SELECT 1 FROM product_reviews p WHERE p.id=subject_id AND p.customer_id=?))
   OR (subject_type='seller' AND EXISTS(SELECT 1 FROM seller_profiles s WHERE s.id=subject_id AND s.user_id=?))
+  OR (subject_type='product' AND EXISTS(SELECT 1 FROM products p
+    JOIN seller_profiles s ON s.id=p.seller_id WHERE p.id=subject_id AND s.user_id=?))
   OR (subject_type='rider' AND EXISTS(SELECT 1 FROM rider_profiles r WHERE r.user_id=subject_id AND r.user_id=?))
   OR (subject_type='data_rights_request' AND EXISTS(SELECT 1 FROM data_rights_requests d WHERE d.id=subject_id AND d.customer_id=?)))`;
-const ownerBindings = (userId: string) => [userId, userId, userId, userId, userId, userId, userId];
+const ownerBindings = (userId: string) => [userId, userId, userId, userId, userId, userId, userId, userId];
 const deletable = `(form_id='account.profile' AND subject_type='user' AND subject_id=?)`;
 
 function required(value: string, label: string, max = 191): string {

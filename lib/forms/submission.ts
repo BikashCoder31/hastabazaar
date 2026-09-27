@@ -81,7 +81,7 @@ async function digestFormBytes(bytes: ArrayBuffer): Promise<string> {
 export class FormRequestConflictError extends Error {}
 
 export async function validateSellerFormSubmission(db: D1Database, formId: FormId,
-  version: unknown, raw: unknown, replayRequestId?: string) {
+  version: unknown, raw: unknown, replayRequestId?: string, builtInValues: Readonly<Record<string, unknown>> = {}) {
   let config = await resolvePublishedForm(db, formId);
   if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 1)
     throw new FormRuntimeError('stale_version', 'This form changed. Refresh it and review your answers.');
@@ -117,7 +117,14 @@ export async function validateSellerFormSubmission(db: D1Database, formId: FormI
         throw new FormValidationError('invalid_answer', 'Built-in values cannot be submitted as custom answers.');
     }
   }
-  const answers = validateAnswersForDefinition(FORM_REGISTRY[formId], config, raw);
+  // Domain controls are validated by their existing parser/repository. Include
+  // only registered safe built-ins here so catalog requiredness is checked;
+  // validateAnswersForDefinition deliberately excludes them from snapshots.
+  const builtInAnswers = config.fields.filter((field) => field.status === 'active' &&
+    FORM_REGISTRY[formId].baseFields.some((baseField) => baseField.key === field.key && baseField.capability !== 'protected') &&
+    Object.hasOwn(builtInValues, field.key))
+    .map((field) => ({ fieldId: field.id, value: builtInValues[field.key] }));
+  const answers = validateAnswersForDefinition(FORM_REGISTRY[formId], config, [...raw, ...builtInAnswers]);
   if (!row) throw new FormRuntimeError('config_unavailable', 'Published form version unavailable');
   return { versionId: row.id, answers, config };
 }
@@ -163,6 +170,52 @@ export function configuredMultipartAnswers(form: FormData, config: PublishedForm
     }
   }
   return { version: Number(version), requestId, customAnswers };
+}
+
+const applicationMultipartKeys = new Set([
+  'formVersion', 'requestId', 'hasBusinessTaxRegistration', 'applicantType', 'legalName',
+  'tradingName', 'registrationAuthority', 'registrationNumber', 'taxStatus', 'taxMode',
+  'taxRegistrationNumber', 'representativeName', 'email', 'phone', 'province', 'district',
+  'municipality', 'ward', 'locality', 'publicCity', 'productCategories', 'businessDescription',
+  'experienceCraft', 'experienceBand', 'profileImage', 'makerVideo', 'facebookUrl',
+  'instagramUrl', 'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl', 'acceptedTerms',
+  'applicationAcknowledgement', 'representativeIdentity', 'bankVerification',
+  'businessRegistration', 'panCertificate', 'vatCertificate', 'website', 'participationRoute',
+  'document',
+]);
+const applicationFileKeys = new Set(['profileImage', 'makerVideo', 'representativeIdentity',
+  'bankVerification', 'businessRegistration', 'panCertificate', 'vatCertificate', 'document']);
+const productMultipartKeys = new Set([
+  'formVersion', 'requestId', 'reviewRequestId', 'categoryId', 'nameEn', 'nameNe',
+  'descriptionEn', 'descriptionNe', 'price', 'compareAtPrice', 'discountPercentage',
+  'inventoryQuantity', 'preparationDays', 'occasionIds', 'madeToOrder', 'returnEligible',
+  'materials', 'producer', 'sku', 'originStory', 'dimensions', 'size', 'colour', 'variations',
+  'specifications', 'careInstructions', 'safetyInformation', 'returnConditions',
+  'warrantyOffered', 'warranty', 'warrantyYears', 'warrantyMonths', 'manufacturedAt',
+  'expiresAt', 'licenceReference', 'image1', 'image2', 'image3', 'image4', 'image5',
+  'images', 'video', 'replacementVideo', 'removeMediaId',
+]);
+const productFileKeys = new Set(['image1', 'image2', 'image3', 'image4', 'image5',
+  'images', 'video', 'replacementVideo']);
+const productRepeatedKeys = new Set(['occasionIds', 'materials', 'images', 'removeMediaId']);
+
+/** Reject unknown domain controls and duplicate scalars before replay or parser access. */
+export function validateSellerMultipartStructure(form: FormData,
+  formId: 'seller.application' | 'seller.product-submission'): void {
+  const allowed = formId === 'seller.application' ? applicationMultipartKeys : productMultipartKeys;
+  const fileKeys = formId === 'seller.application' ? applicationFileKeys : productFileKeys;
+  const seen = new Set<string>();
+  for (const [key, value] of form) {
+    if (key.startsWith('custom.')) continue; // Publication-specific validation follows.
+    const replacementImage = formId === 'seller.product-submission' && /^replaceImage:[a-zA-Z0-9_-]{1,100}$/.test(key);
+    if (!allowed.has(key) && !replacementImage)
+      throw new FormValidationError('invalid_answer', 'Unknown form control.');
+    if (seen.has(key) && (formId === 'seller.application' || !productRepeatedKeys.has(key)))
+      throw new FormValidationError('invalid_answer', 'Duplicate form control.');
+    seen.add(key);
+    if ((fileKeys.has(key) || replacementImage) !== (value instanceof File))
+      throw new FormValidationError('invalid_answer', 'Unsupported form control value.');
+  }
 }
 
 /** Replays only the same actor, operation, parent and payload; a reused key never authorizes a new write. */

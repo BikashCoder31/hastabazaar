@@ -85,12 +85,14 @@ function sameChoices(a: unknown, b: unknown): boolean {
 function validField(value: unknown, definition: FormDefinition, adapterGrantsBuiltInEdits: boolean): value is ConfiguredField {
   if (!record(value) || !hasOnlyKeys(value, FIELD_KEYS)) return false;
   const { id, key, type, label, helpText, placeholder, required, order, choices, status, min, max, integerOnly } = value;
-  if (!boundedString(id, 100) || !/^[a-z][a-z0-9_]*$/.test(id) || key !== id || isUnsafeName(id)) return false;
+  if (typeof id !== 'string') return false;
+  const base = definition.baseFields.find((item) => canonicalName(item.key) === canonicalName(id));
+  const registeredSafeBuiltIn = adapterGrantsBuiltInEdits && base !== undefined && base.key === id && base.capability !== 'protected';
+  if (!boundedString(id, 100) || (!/^[a-z][a-z0-9_]*$/.test(id) && !registeredSafeBuiltIn) || key !== id || isUnsafeName(id)) return false;
   if (!FIELD_TYPES.includes(type as CustomFieldType) || !definition.capabilities.customFieldTypes.includes(type as CustomFieldType)) return false;
   if (!boundedString(label, 200) || isUnsafeName(label) || (helpText !== undefined && !boundedString(helpText, 1000, true)) || (placeholder !== undefined && !boundedString(placeholder, 200, true))) return false;
   if (required !== true && required !== false || !Number.isSafeInteger(order) || (order as number) < 0 || (order as number) >= MAX_FIELDS) return false;
   if (status !== 'active' && status !== 'archived') return false;
-  const base = definition.baseFields.find((item) => canonicalName(item.key) === canonicalName(id));
   if (base) {
     if (!adapterGrantsBuiltInEdits || base.capability === 'protected') return false;
     // An adapter alone grants no semantic edit. Legacy inventory definitions

@@ -14,7 +14,7 @@ import {
 } from '@/lib/db/repositories/products';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { configuredMultipartAnswers, digestMultipartRequest, FormRequestConflictError,
-  formRequestReplay, validateSellerFormSubmission } from '@/lib/forms/submission';
+  formRequestReplay, validateSellerFormSubmission, validateSellerMultipartStructure } from '@/lib/forms/submission';
 import { FormRuntimeError, resolvePublishedForm } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
 import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
@@ -70,6 +70,7 @@ export async function POST(request: Request): Promise<Response> {
       if (error instanceof BodyTooLargeError) return json({ error: error.message }, 413);
       return json({ error: 'The product form could not be read.' }, 400);
     }
+    validateSellerMultipartStructure(formData, 'seller.product-submission');
 
     const rawRequestIds = formData.getAll('requestId');
     if (rawRequestIds.length !== 1 || typeof rawRequestIds[0] !== 'string' ||
@@ -93,14 +94,14 @@ export async function POST(request: Request): Promise<Response> {
     if (!rateLimit.allowed) return rateLimitJson(rateLimit);
     const config = await resolvePublishedForm(database, 'seller.product-submission');
     const submitted = configuredMultipartAnswers(formData, config);
-    const form = await validateSellerFormSubmission(database, 'seller.product-submission',
-      submitted.version, submitted.customAnswers);
-
     formData.set('sku', ''); // New SKUs are generated; revisions retain the persisted SKU.
     const parsed = parseProductSubmission(formData);
     if (!parsed.input) {
       return json({ error: parsed.errors[0], errors: parsed.errors }, 400);
     }
+    const form = await validateSellerFormSubmission(database, 'seller.product-submission',
+      submitted.version, submitted.customAnswers, undefined,
+      { nameEn: parsed.input.nameEn, descriptionEn: parsed.input.descriptionEn });
 
     const files: File[] = [];
     const imageErrors: string[] = [];
@@ -156,7 +157,7 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const slug = createProductSlug(parsed.input.nameEn);
-    await createProductSubmission(database, {
+    const savedId = await createProductSubmission(database, {
       productId,
       sellerId: seller.sellerId,
       actorId: seller.userId,
@@ -167,6 +168,14 @@ export async function POST(request: Request): Promise<Response> {
       now: Date.now(),
       form: { requestId, versionId: form.versionId, answers: form.answers, digest: requestDigest },
     });
+    if (savedId !== productId) {
+      await Promise.allSettled(uploadedKeys.map((key) => bucket!.delete(key)));
+      const prior = await database.prepare('SELECT id,slug FROM products WHERE id=? AND seller_id=? LIMIT 1')
+        .bind(savedId, seller.sellerId).first<{ id: string; slug: string }>();
+      if (!prior) return json({ error: 'Product replay state is unavailable.' }, 503);
+      return json({ id: prior.id, slug: prior.slug, status: draftIntent ? 'draft' : 'submitted',
+        message: draftIntent ? 'Private product draft saved.' : 'Product submitted for review.' }, 201);
+    }
     return json(
       {
         id: productId,

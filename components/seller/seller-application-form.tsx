@@ -291,7 +291,10 @@ export function SellerApplicationForm({
               name="tradingName"
               required
               maxLength={160}
+              placeholder={fieldDisplay(catalog.config, 'tradingName')?.placeholder}
+              aria-describedby={fieldDisplay(catalog.config, 'tradingName')?.helpText ? 'tradingName-catalog-help' : undefined}
             />
+            {fieldDisplay(catalog.config, 'tradingName')?.helpText ? <FieldDescription id="tradingName-catalog-help">{fieldDisplay(catalog.config, 'tradingName')?.helpText}</FieldDescription> : null}
           </Field>
           {registrationAnswer === 'yes' && (
             <>
@@ -485,8 +488,10 @@ export function SellerApplicationForm({
               required
               maxLength={1500}
               rows={6}
-              placeholder="Describe what you make, who makes it, your materials, and your process."
+              placeholder={fieldDisplay(catalog.config, 'businessDescription')?.placeholder ?? 'Describe what you make, who makes it, your materials, and your process.'}
+              aria-describedby={fieldDisplay(catalog.config, 'businessDescription')?.helpText ? 'businessDescription-catalog-help' : undefined}
             />
+            {fieldDisplay(catalog.config, 'businessDescription')?.helpText ? <FieldDescription id="businessDescription-catalog-help">{fieldDisplay(catalog.config, 'businessDescription')?.helpText}</FieldDescription> : null}
           </Field>
         </FieldGroup>
       </FieldSet>

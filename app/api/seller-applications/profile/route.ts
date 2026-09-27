@@ -37,8 +37,9 @@ export async function PATCH(request: Request): Promise<Response> {
       typeof raw.requestId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(raw.requestId) ||
       !Number.isSafeInteger(raw.formVersion) || !Array.isArray(raw.customAnswers))
       return reply({ error: 'Invalid maker profile form request.' }, 400);
-    const form = await validateSellerFormSubmission(database, 'seller.maker-profile', raw.formVersion, raw.customAnswers, raw.requestId);
     const text = (key: string) => typeof raw[key] === 'string' ? raw[key] as string : '';
+    const form = await validateSellerFormSubmission(database, 'seller.maker-profile', raw.formVersion,
+      raw.customAnswers, raw.requestId, { publicName: text('publicName'), publicCity: text('publicCity') });
     const craftExperience = parseCraftExperience(text('experienceCraft'), text('experienceBand'));
     const socialLinks = parseMakerSocialLinks({
       facebook: text('facebookUrl'),

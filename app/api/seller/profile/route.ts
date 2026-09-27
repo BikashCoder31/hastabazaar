@@ -27,7 +27,9 @@ export async function PATCH(request: Request): Promise<Response> {
       !Number.isSafeInteger(body.formVersion) || !Array.isArray(body.customAnswers))
       return Response.json({ error: 'Profile and form request are required.' }, { status: 400 });
     const database = requireDatabase(env as unknown as { DB?: D1Database });
-    const form = await validateSellerFormSubmission(database, 'seller.profile', body.formVersion, body.customAnswers, body.idempotencyKey);
+    const form = await validateSellerFormSubmission(database, 'seller.profile', body.formVersion,
+      body.customAnswers, body.idempotencyKey, { tradingName: body.profile.tradingName,
+        businessDescription: body.profile.businessDescription });
     await updateSellerProfile(database, { sellerId: seller.sellerId, actorId: seller.userId, input: body.profile,
       requestId: body.idempotencyKey, now: Date.now(),
       form: { requestId: body.idempotencyKey, versionId: form.versionId, answers: form.answers } });

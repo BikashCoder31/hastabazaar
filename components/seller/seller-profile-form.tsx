@@ -69,6 +69,8 @@ export function SellerProfileForm({
       <Field
         name="tradingName"
         label={fieldDisplay(catalog.config, 'tradingName')?.label ?? 'Public trading name'}
+        help={fieldDisplay(catalog.config, 'tradingName')?.helpText}
+        placeholder={fieldDisplay(catalog.config, 'tradingName')?.placeholder}
         defaultValue={profile.tradingName}
         required
       />
@@ -127,7 +129,10 @@ export function SellerProfileForm({
           defaultValue={profile.businessDescription ?? ''}
           maxLength={2000}
           rows={6}
+          placeholder={fieldDisplay(catalog.config, 'businessDescription')?.placeholder}
+          aria-describedby={fieldDisplay(catalog.config, 'businessDescription')?.helpText ? 'businessDescription-catalog-help' : undefined}
         />
+        {fieldDisplay(catalog.config, 'businessDescription')?.helpText ? <p id="businessDescription-catalog-help" className="text-sm text-muted-foreground">{fieldDisplay(catalog.config, 'businessDescription')?.helpText}</p> : null}
       </div>
       <div className="space-y-2 sm:col-span-2">
         <Label htmlFor="productCategories">Crafts and specialties</Label>
@@ -163,12 +168,14 @@ export function SellerProfileForm({
 function Field({
   name,
   label,
+  help,
   ...props
-}: { name: string; label: string } & React.ComponentProps<typeof Input>) {
+}: { name: string; label: string; help?: string } & React.ComponentProps<typeof Input>) {
   return (
     <div className="space-y-2">
       <Label htmlFor={name}>{label}</Label>
-      <Input id={name} name={name} {...props} />
+      <Input id={name} name={name} aria-describedby={help ? `${name}-catalog-help` : undefined} {...props} />
+      {help ? <p id={`${name}-catalog-help`} className="text-sm text-muted-foreground">{help}</p> : null}
     </div>
   );
 }

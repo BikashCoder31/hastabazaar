@@ -97,6 +97,7 @@ async function fixture() {
       from_status TEXT,to_status TEXT,action TEXT,actor_id TEXT,actor_role TEXT,note TEXT,
       operation_request_id TEXT UNIQUE,created_at INTEGER);
     CREATE TABLE seller_profiles(id TEXT PRIMARY KEY, user_id TEXT NOT NULL);
+    CREATE TABLE products(id TEXT PRIMARY KEY, seller_id TEXT NOT NULL);
     CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY);
     CREATE TABLE addresses(id TEXT PRIMARY KEY,user_id TEXT NOT NULL);
     CREATE TABLE product_reviews(id TEXT PRIMARY KEY,customer_id TEXT NOT NULL);

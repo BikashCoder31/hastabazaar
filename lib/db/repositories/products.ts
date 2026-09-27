@@ -133,6 +133,12 @@ export async function createProductSubmission(database: D1Database, options: Par
       input: { ...options.input, sku: createProductSku() } }); return options.productId; }
     catch (error) {
       const message = error instanceof Error ? error.message : '';
+      if (options.form && /UNIQUE constraint failed|Duplicate entry/i.test(message)) {
+        const replay = await formRequestReplay(database, { formId: 'seller.product-submission',
+          requestId: options.form.requestId, actorId: options.actorId, action,
+          digest: catalogDigest! });
+        if (replay) return replay;
+      }
       if (attempt === 2 || !/UNIQUE constraint failed|Duplicate entry/i.test(message)) throw error;
     }
   }
@@ -497,7 +503,7 @@ export async function reviseAndResubmitProduct(
     now: number;
     form?: SellerProductFormLink;
   },
-): Promise<void> {
+): Promise<'applied' | 'replayed'> {
   const catalogDigest = options.form ? options.form.digest ?? await digestFormRequest({
     productId: options.productId, sellerId: options.sellerId, input: options.input,
     images: options.images, removedMediaIds: options.removedMediaIds ?? [],
@@ -506,7 +512,7 @@ export async function reviseAndResubmitProduct(
   }) : null;
   if (options.form && await formRequestReplay(database, { formId: 'seller.product-submission',
     requestId: options.form.requestId, actorId: options.actorId, action: 'product.resubmitted',
-    digest: catalogDigest!, subjectId: options.productId })) return;
+    digest: catalogDigest!, subjectId: options.productId })) return 'replayed';
   const mutationId = crypto.randomUUID();
   const addedPhotos=options.images.filter(m=>m.mimeType.startsWith('image/')).length;
   const addedVideos=options.images.filter(m=>m.mimeType==='video/mp4').length;
@@ -697,12 +703,23 @@ export async function reviseAndResubmitProduct(
       versionId: options.form.versionId, subjectType: 'product', subjectId: options.productId,
       actorId: options.actorId, answers: options.form.answers, now: options.now }),
   );
-  const results = await database.batch(statements);
+  let results;
+  try { results = await database.batch(statements); }
+  catch (error) {
+    if (options.form) {
+      const replay = await formRequestReplay(database, { formId: 'seller.product-submission',
+        requestId: options.form.requestId, actorId: options.actorId, action: 'product.resubmitted',
+        digest: catalogDigest!, subjectId: options.productId });
+      if (replay) return 'replayed';
+    }
+    throw error;
+  }
   if ((results[0].meta.changes ?? 0) !== 1) {
     throw new ProductRevisionConflictError(
       'This product is no longer available for revision. Refresh and try again.',
     );
   }
+  return 'applied';
 }
 
 export interface SellerProductStats {
