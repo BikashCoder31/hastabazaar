@@ -54,14 +54,14 @@ class Statement {
 }
 
 class Database {
-  beforeBatch: (() => void) | null = null;
+  beforeBatch: (() => void | Promise<void>) | null = null;
   failStatement: number | null = null;
   constructor(private readonly sqlite: DatabaseSync) {}
   prepare(sql: string) { return new Statement(this.sqlite.prepare(sql)); }
   async batch(statements: readonly Statement[]) {
     const before = this.beforeBatch;
     this.beforeBatch = null;
-    before?.();
+    await before?.();
     this.sqlite.exec('BEGIN');
     try {
       const results = [];
@@ -372,6 +372,101 @@ void test('denied, failed, and replayed address deletions do not create a new ow
     /already used/i);
     assert.equal(count(sqlite, 'address_answer_owner_tombstones'), 1);
     assert.equal((sqlite.prepare('SELECT id FROM addresses WHERE id=?').get(secondId) as { id: string }).id, secondId);
+  } finally { sqlite.close(); }
+});
+
+void test('concurrent identical address DELETE requests both return idempotent success', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    const { POST: createAddress } = await import('../app/api/account/addresses/route');
+    const { DELETE: removeAddress } = await import('../app/api/account/addresses/[id]/route');
+    seed(sqlite, 'account.address', 1, [extra]);
+    const created = await createAddress(jsonRequest('/api/account/addresses', 'POST',
+      { address, idempotencyKey: 'race-created', formVersion: 1, customAnswers: answers }));
+    assert.equal(created.status, 201);
+    const addressId = (await created.json() as { id: string }).id;
+    let reachedBatch!: () => void;
+    let releaseBatch!: () => void;
+    const pausedAtBatch = new Promise<void>((resolve) => { reachedBatch = resolve; });
+    const firstMayCommit = new Promise<void>((resolve) => { releaseBatch = resolve; });
+    db.beforeBatch = () => { reachedBatch(); return firstMayCommit; };
+    const target = { params: Promise.resolve({ id: addressId }) };
+    const request = () => jsonRequest(`/api/account/addresses/${addressId}`, 'DELETE', { idempotencyKey: 'race-delete' });
+    const first = removeAddress(request(), target);
+    await pausedAtBatch;
+    const second = await removeAddress(request(), target);
+    assert.equal(second.status, 200);
+    releaseBatch();
+    assert.equal((await first).status, 200);
+    assert.equal(count(sqlite, 'addresses'), 0);
+    assert.equal(count(sqlite, 'address_answer_owner_tombstones'), 1);
+    assert.equal(Number((sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE request_id='race-delete'").get() as { count: number }).count), 1);
+  } finally { sqlite.close(); }
+});
+
+void test('raced address DELETE rejects a request ID committed for another actor, action, or target', async () => {
+  for (const [actorId, action, subjectId] of [
+    ['other', 'account.address.deleted', 'owned-address'],
+    ['customer', 'account.address.updated', 'owned-address'],
+    ['customer', 'account.address.deleted', 'different-address'],
+  ]) {
+    const { sqlite, db } = await fixture();
+    try {
+      const { POST: createAddress } = await import('../app/api/account/addresses/route');
+      const { DELETE: removeAddress } = await import('../app/api/account/addresses/[id]/route');
+      seed(sqlite, 'account.address', 1, [extra]);
+      const created = await createAddress(jsonRequest('/api/account/addresses', 'POST',
+        { address, idempotencyKey: `create-${actorId}-${action}-${subjectId}`, formVersion: 1, customAnswers: answers }));
+      assert.equal(created.status, 201);
+      const addressId = (await created.json() as { id: string }).id;
+      db.beforeBatch = () => {
+        sqlite.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,request_id,created_at)
+          VALUES (?,?,?,?,?,'raced-key',1)`).run(crypto.randomUUID(), actorId, action, 'address',
+          subjectId === 'owned-address' ? addressId : subjectId);
+      };
+      const result = await removeAddress(jsonRequest(`/api/account/addresses/${addressId}`, 'DELETE',
+        { idempotencyKey: 'raced-key' }), { params: Promise.resolve({ id: addressId }) });
+      assert.equal(result.status, 409);
+      assert.equal(count(sqlite, 'addresses'), 1);
+      assert.equal(count(sqlite, 'address_answer_owner_tombstones'), 0);
+    } finally { sqlite.close(); }
+  }
+});
+
+void test('unrelated address DELETE batch failure remains a server error without tombstone', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    const { POST: createAddress } = await import('../app/api/account/addresses/route');
+    const { DELETE: removeAddress } = await import('../app/api/account/addresses/[id]/route');
+    seed(sqlite, 'account.address', 1, [extra]);
+    const created = await createAddress(jsonRequest('/api/account/addresses', 'POST',
+      { address, idempotencyKey: 'create-failed-delete', formVersion: 1, customAnswers: answers }));
+    assert.equal(created.status, 201);
+    const addressId = (await created.json() as { id: string }).id;
+    db.failStatement = 1;
+    const result = await removeAddress(jsonRequest(`/api/account/addresses/${addressId}`, 'DELETE',
+      { idempotencyKey: 'failed-delete-route' }), { params: Promise.resolve({ id: addressId }) });
+    assert.equal(result.status, 500);
+    assert.equal(count(sqlite, 'addresses'), 1);
+    assert.equal(count(sqlite, 'address_answer_owner_tombstones'), 0);
+  } finally { sqlite.close(); }
+});
+
+void test('address DELETE rejects malformed or oversized idempotency submissions before mutation', async () => {
+  const { sqlite } = await fixture();
+  try {
+    const { DELETE: removeAddress } = await import('../app/api/account/addresses/[id]/route');
+    const target = { params: Promise.resolve({ id: 'missing-address' }) };
+    for (const key of [42, 'x'.repeat(101)]) {
+      const response = await removeAddress(jsonRequest('/api/account/addresses/missing-address', 'DELETE',
+        { idempotencyKey: key }), target);
+      assert.equal(response.status, 400);
+    }
+    const oversized = await removeAddress(jsonRequest('/api/account/addresses/missing-address', 'DELETE',
+      { idempotencyKey: 'bounded-key', padding: 'x'.repeat(131_072) }), target);
+    assert.equal(oversized.status, 413);
+    assert.equal(count(sqlite, 'audit_logs'), 0);
+    assert.equal(count(sqlite, 'address_answer_owner_tombstones'), 0);
   } finally { sqlite.close(); }
 });
 

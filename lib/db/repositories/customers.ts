@@ -305,18 +305,23 @@ export async function saveCustomerAddress(database: D1Database, options: { userI
   return id;
 }
 
-export async function deleteCustomerAddress(database: D1Database, options: { userId: string; addressId: string; requestId: string; now: number }): Promise<void> {
+async function addressDeletionRequestStatus(database: D1Database, options: { userId: string; addressId: string; requestId: string }): Promise<'new' | 'same' | 'conflict'> {
   const duplicate = await database.prepare(`SELECT actor_id AS actorId,action,subject_type AS subjectType,
     subject_id AS subjectId FROM audit_logs WHERE request_id=? LIMIT 1`)
     .bind(options.requestId).first<{ actorId: string; action: string; subjectType: string; subjectId: string }>();
-  if (duplicate) {
-    if (duplicate.actorId === options.userId && duplicate.action === 'account.address.deleted' &&
-      duplicate.subjectType === 'address' && duplicate.subjectId === options.addressId) return;
-    throw new CustomerDataConflictError('This request ID was already used for a different address action.');
-  }
+  if (!duplicate) return 'new';
+  return duplicate.actorId === options.userId && duplicate.action === 'account.address.deleted' &&
+    duplicate.subjectType === 'address' && duplicate.subjectId === options.addressId ? 'same' : 'conflict';
+}
+
+export async function deleteCustomerAddress(database: D1Database, options: { userId: string; addressId: string; requestId: string; now: number }): Promise<void> {
+  const replay = await addressDeletionRequestStatus(database, options);
+  if (replay === 'same') return;
+  if (replay === 'conflict') throw new CustomerDataConflictError('This request ID was already used for a different address action.');
   const existing = await database.prepare(`SELECT id FROM addresses WHERE id = ? AND user_id = ?`).bind(options.addressId, options.userId).first();
   if (!existing) throw new CustomerDataConflictError('Address not found.');
-  await database.batch([
+  try {
+    await database.batch([
     database.prepare(`INSERT INTO address_answer_owner_tombstones
       (address_id,user_id,deletion_request_id,deleted_at)
       SELECT a.id,a.user_id,?,? FROM addresses a WHERE a.id=? AND a.user_id=?
@@ -332,7 +337,13 @@ export async function deleteCustomerAddress(database: D1Database, options: { use
          CASE WHEN changes()=1 THEN ? ELSE json_extract('invalid address deletion','$') END,
          'Customer deleted own saved delivery address', NULL, NULL, ?, NULL, ?)`,
     ).bind(crypto.randomUUID(), options.userId, options.addressId, options.requestId, options.now),
-  ]);
+    ]);
+  } catch (error) {
+    const committed = await addressDeletionRequestStatus(database, options);
+    if (committed === 'same') return;
+    if (committed === 'conflict') throw new CustomerDataConflictError('This request ID was already used for a different address action.');
+    throw error;
+  }
 }
 
 export async function customerProfileRequestStatus(database: D1Database, input: {

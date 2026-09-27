@@ -44,12 +44,15 @@ export async function DELETE(request: Request, context: Context): Promise<Respon
   if (!isTrustedMutationRequest(request)) return Response.json({ error: 'Cross-site requests are not allowed.' }, { status: 403 });
   try {
     const [customer, { id }] = await Promise.all([requireCustomerApi(), context.params]);
-    const body = await request.json().catch(() => null) as { idempotencyKey?: string } | null;
-    if (!body?.idempotencyKey || id.length > 100) return Response.json({ error: 'Idempotency key is required.' }, { status: 400 });
+    const body = JSON.parse(new TextDecoder().decode(await readBoundedBody(request, 131_072))) as { idempotencyKey?: unknown } | null;
+    if (typeof body?.idempotencyKey !== 'string' || !body.idempotencyKey || body.idempotencyKey.length > 100 || id.length > 100)
+      return Response.json({ error: 'Idempotency key is required.' }, { status: 400 });
     await deleteCustomerAddress(requireDatabase(env as unknown as { DB?: D1Database }), { userId: customer.userId, addressId: id, requestId: body.idempotencyKey, now: Date.now() });
     return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof CustomerAuthorizationError) return Response.json({ error: error.message }, { status: error.status });
+    if (error instanceof BodyTooLargeError) return Response.json({ error: 'Address submission is too large.' }, { status: 413 });
+    if (error instanceof SyntaxError) return Response.json({ error: 'Invalid address request.' }, { status: 400 });
     if (error instanceof CustomerDataConflictError) return Response.json({ error: error.message }, { status: 409 });
     return Response.json({ error: 'The address could not be deleted.' }, { status: 500 });
   }
