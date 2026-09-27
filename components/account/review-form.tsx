@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { ConfiguredFields, focusConfiguredField } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
 
@@ -73,7 +73,7 @@ export function ReviewForm({
         const explanation = result?.error ?? 'Review could not be submitted. Please try again.';
         if (typeof result?.fieldId === 'string') {
           setFieldErrors({ [result.fieldId]: explanation });
-          document.getElementById(`custom-${result.fieldId}`)?.focus();
+          focusConfiguredField(formElement, result.fieldId);
         }
         throw new Error(explanation);
       }

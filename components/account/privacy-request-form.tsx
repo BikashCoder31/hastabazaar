@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { ConfiguredFields, focusConfiguredField } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
 
@@ -50,7 +50,7 @@ export function PrivacyRequestForm() {
         const explanation = typeof result?.error === 'string' ? result.error : 'Request could not be submitted.';
         if (typeof result?.fieldId === 'string') {
           setFieldErrors({ [result.fieldId]: explanation });
-          document.getElementById(`custom-${result.fieldId}`)?.focus();
+          focusConfiguredField(form, result.fieldId);
         }
         throw new Error(explanation);
       }

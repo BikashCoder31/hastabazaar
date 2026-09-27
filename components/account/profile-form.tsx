@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { Check } from 'lucide-react';
-import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fields';
+import { ConfiguredFields, fieldDisplay, focusConfiguredField } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +29,7 @@ export function ProfileForm(props: {
   async function submit(event: { preventDefault(): void; currentTarget: HTMLFormElement }) {
     event.preventDefault();
     if (saving || !canSubmit || !config) return;
+    const form = event.currentTarget;
     let payload: ReturnType<typeof configuredJsonPayload>;
     try {
       const { answers } = readConfiguredSubmission(event.currentTarget, config, BASE_KEYS);
@@ -64,7 +65,8 @@ export function ProfileForm(props: {
           const errors = Object.create(null) as Record<string, string>;
           errors[result.fieldId] = explanation;
           setFieldErrors(errors);
-          document.getElementById(`custom-${result.fieldId}`)?.focus();
+          if (result.fieldId === 'displayName') form.querySelector<HTMLInputElement>('input[name="displayName"]')?.focus();
+          else focusConfiguredField(form, result.fieldId);
         }
         throw new Error(explanation);
       }

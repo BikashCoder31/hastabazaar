@@ -19,6 +19,13 @@ const config = (fields: readonly ConfiguredField[] = [field()]): PublishedFormCo
 // @ts-expect-error Published config alone cannot identify built-in fields.
 void createElement(ConfiguredFields, { config: config() });
 const render = (item: PublishedFormConfig) => renderToStaticMarkup(createElement(ConfiguredFields, { config: item, baseKeys: [] }));
+const controlId = (html: string, name: string): string => {
+  const inputs = html.match(/<(?:input|select|textarea)\b[^>]*>/g) ?? [];
+  const control = inputs.find((tag) => tag.includes(`name="custom.${name}"`));
+  const id = control?.match(/\bid="([^"]+)"/)?.[1];
+  assert.ok(id, `Missing configured ${name} control ID`);
+  return id;
+};
 function withFormEntries<T>(entries: readonly [string, string][], run: () => T): T {
   const previous = globalThis.FormData;
   globalThis.FormData = class extends FormData {
@@ -32,8 +39,26 @@ void test('field errors connect to their controls and are announced', () => {
     config: config(), baseKeys: [], errors: { delivery_note: 'Please add a delivery note.' },
   }));
   assert.match(html, /aria-invalid="true"/);
-  assert.match(html, /aria-describedby="custom-delivery_note-help custom-delivery_note-error"/);
-  assert.match(html, /id="custom-delivery_note-error"[^>]*role="alert"[^>]*>Please add a delivery note\./);
+  const id = controlId(html, 'delivery_note');
+  assert.ok(html.includes(`aria-describedby="${id}-help ${id}-error"`));
+  assert.ok(html.includes(`id="${id}-error" role="alert"`));
+  assert.match(html, /Please add a delivery note\./);
+});
+
+void test('two default configured forms give each label and error its own control', () => {
+  const html = renderToStaticMarkup(createElement('div', null,
+    createElement('form', null, createElement(ConfiguredFields, { config: config(), baseKeys: [], errors: { delivery_note: 'First error' } })),
+    createElement('form', null, createElement(ConfiguredFields, { config: config(), baseKeys: [], errors: { delivery_note: 'Second error' } })),
+  ));
+  const formHtml = [...html.matchAll(/<form>([\s\S]*?)<\/form>/g)].map((match) => match[1]);
+  assert.equal(formHtml.length, 2);
+  const ids = formHtml.map((markup) => controlId(markup, 'delivery_note'));
+  assert.ok(ids.every(Boolean));
+  assert.notEqual(ids[0], ids[1]);
+  for (const [index, markup] of formHtml.entries()) {
+    assert.ok(markup.includes(`<label for="${ids[index]}"`));
+    assert.ok(markup.includes(`id="${ids[index]}-error"`));
+  }
 });
 
 void test('prototype-shaped field IDs never inherit errors from an ordinary map', () => {
@@ -46,16 +71,19 @@ void test('prototype-shaped field IDs never inherit errors from an ordinary map'
   const own = Object.create(null) as Record<string, string>;
   Reflect.set(own, 'constructor', 'Please check this value.');
   const html = renderToStaticMarkup(createElement(ConfiguredFields, { config: hostile, baseKeys: [], errors: own }));
-  assert.match(html, /id="custom-constructor-error"[^>]*>Please check this value\./);
+  assert.ok(html.includes(`id="${controlId(html, 'constructor')}-error"`));
+  assert.match(html, /Please check this value\./);
   assert.doesNotMatch(html, /custom-toString-error/);
 });
 
 void test('active controls connect labels, help, and required cues without treating help as markup', () => {
   const html = render(config([field({ helpText: 'Leave at <side door>' })]));
-  assert.match(html, /<label[^>]*for="custom-delivery_note"[^>]*>Delivery note/);
+  const id = controlId(html, 'delivery_note');
+  assert.ok(html.includes(`<label for="${id}"`));
   assert.match(html, /name="custom\.delivery_note"/);
-  assert.match(html, /aria-describedby="custom-delivery_note-help"/);
-  assert.match(html, /id="custom-delivery_note-help"[^>]*>Leave at &lt;side door&gt;/);
+  assert.ok(html.includes(`aria-describedby="${id}-help"`));
+  assert.ok(html.includes(`id="${id}-help"`));
+  assert.match(html, /Leave at &lt;side door&gt;/);
   assert.match(html, /aria-required="true"/);
   assert.match(html, /required=""/);
   assert.match(html, /name="formVersion" value="3"/);
@@ -95,7 +123,7 @@ void test('required multiple choice announces one group requirement and rejects 
   assert.match(html, /<select[^>]*multiple=""/);
   assert.match(html, /<select[^>]*required=""/);
   assert.match(html, /<select[^>]*aria-required="true"/);
-  assert.match(html, /<label[^>]*for="custom-materials"[^>]*>Materials/);
+  assert.ok(html.includes(`<label for="${controlId(html, 'materials')}"`));
   assert.equal((html.match(/required=""/g) ?? []).length, 1);
   assert.throws(() => withFormEntries([['formVersion', '3']], () => readConfiguredSubmission({} as HTMLFormElement, config([multi]), [])), /required/i);
   assert.deepEqual(withFormEntries([['formVersion', '3'], ['custom.materials', 'wool']],

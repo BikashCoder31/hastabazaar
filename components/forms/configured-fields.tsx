@@ -1,4 +1,5 @@
 import type { ConfiguredField, PublishedFormConfig } from '@/lib/forms/types';
+import { useId } from 'react';
 import { canonicalKey } from '@/lib/forms/submission';
 
 export interface FieldDisplay {
@@ -15,8 +16,8 @@ export function fieldDisplay(config: PublishedFormConfig | null, baseKey: string
   return field ? { label: field.label, helpText: field.helpText, placeholder: field.placeholder, required: field.required } : null;
 }
 
-function ConfiguredFieldControl({ field, error }: { field: ConfiguredField; error?: string }) {
-  const id = `custom-${field.id}`;
+function ConfiguredFieldControl({ field, error, idPrefix }: { field: ConfiguredField; error?: string; idPrefix: string }) {
+  const id = `${idPrefix}custom-${field.id}`;
   const name = `custom.${field.key}`;
   const helpId = field.helpText ? `${id}-help` : undefined;
   const errorId = error ? `${id}-error` : undefined;
@@ -63,6 +64,7 @@ export function ConfiguredFields({ config, baseKeys, errors = {}, fieldIds, incl
   config: PublishedFormConfig; baseKeys: readonly string[]; errors?: Readonly<Record<string, string>>;
   fieldIds?: readonly string[]; includeVersion?: boolean;
 }) {
+  const idPrefix = `${useId()}-`;
   const builtIns = new Set(baseKeys.map(canonicalKey));
   const selected = fieldIds ? new Set(fieldIds) : null;
   const fields = config.fields.filter((field) => field.status === 'active' && !builtIns.has(canonicalKey(field.key)) && (!selected || selected.has(field.id)))
@@ -70,8 +72,17 @@ export function ConfiguredFields({ config, baseKeys, errors = {}, fieldIds, incl
   return <>
     {includeVersion ? <input type="hidden" name="formVersion" value={config.version} /> : null}
     <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-      {fields.map((field) => <ConfiguredFieldControl key={field.id} field={field}
+      {fields.map((field) => <ConfiguredFieldControl key={field.id} field={field} idPrefix={idPrefix}
         error={Object.hasOwn(errors, field.id) && typeof errors[field.id] === 'string' ? errors[field.id] : undefined} />)}
     </div>
   </>;
+}
+
+/** Focus the answer field within the form that reported a field-specific server error. */
+export function focusConfiguredField(form: HTMLFormElement, fieldId: string): boolean {
+  const wrapper = Array.from(form.querySelectorAll<HTMLElement>('[data-configured-field]'))
+    .find((element) => element.dataset.configuredField === fieldId);
+  const control = wrapper?.querySelector<HTMLElement>('input,select,textarea');
+  control?.focus();
+  return Boolean(control);
 }

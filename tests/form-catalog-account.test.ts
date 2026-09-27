@@ -766,7 +766,7 @@ void test('mounted privacy form focuses a published custom field after server fi
       import React from 'react';
       import { createRoot } from 'react-dom/client';
       import { PrivacyRequestForm } from './components/account/privacy-request-form';
-      createRoot(document.getElementById('root')!).render(<PrivacyRequestForm />);
+      createRoot(document.getElementById('root')!).render(<><PrivacyRequestForm /><PrivacyRequestForm /></>);
     `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'account-navigation', setup(builder) {
@@ -794,11 +794,100 @@ void test('mounted privacy form focuses a published custom field after server fi
     });
     await page.goto('https://account.test/');
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
-    await page.locator('input[name="custom.delivery_note"]').fill('Near the blue gate');
-    await page.locator('textarea[name="detail"]').fill('Please provide my account information.');
-    await page.getByRole('button', { name: 'Submit request' }).click();
+    const secondForm = page.locator('form[data-form-id="account.privacy-request"]').nth(1);
+    await secondForm.locator('input[name="custom.delivery_note"]').fill('Near the blue gate');
+    await secondForm.locator('textarea[name="detail"]').fill('Please provide my account information.');
+    await secondForm.getByRole('button', { name: 'Submit request' }).click();
     await page.waitForFunction(() => document.body.textContent?.includes('has an invalid answer.') === true);
-    assert.equal(await page.evaluate(() => document.activeElement?.id), 'custom-delivery_note');
-    assert.match(await page.locator('[data-configured-field="delivery_note"] [role="alert"]').innerText(), /invalid answer/i);
+    assert.equal(await secondForm.locator('input[name="custom.delivery_note"]').evaluate((node: Element) => node === document.activeElement), true);
+    assert.match(await secondForm.locator('[data-configured-field="delivery_note"] [role="alert"]').innerText(), /invalid answer/i);
+  } finally { await page.close(); await browser.close(); }
+});
+
+void test('mounted profile and address forms retain final focus in the submitted instance', async () => {
+  const playwrightPath = process.env.PLAYWRIGHT_MODULE ??
+    'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+  // oxlint-disable-next-line typescript/no-explicit-any -- Playwright is provided by the workspace runtime.
+  const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<any> } };
+  const bundle = await build({
+    stdin: { resolveDir: process.cwd(), sourcefile: 'account-focus-fixture.tsx', contents: `
+      import React from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { ProfileForm } from './components/account/profile-form';
+      import { AddressManager } from './components/account/address-manager';
+      createRoot(document.getElementById('root')!).render(<>
+        <section data-instance="first-profile"><ProfileForm displayName="First Person" phone={null} /></section>
+        <section data-instance="second-profile"><ProfileForm displayName="Second Person" phone={null} /></section>
+        <section data-instance="first-address"><AddressManager addresses={[]} /></section>
+        <section data-instance="second-address"><AddressManager addresses={[]} /></section>
+      </>);
+    `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
+    define: { 'process.env.NODE_ENV': '"production"' },
+    plugins: [{ name: 'account-focus-stubs', setup(builder) {
+      builder.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'account-focus' }));
+      builder.onResolve({ filter: /^@\/components\/delivery\/location-picker$/ }, () => ({ path: 'location', namespace: 'account-focus' }));
+      builder.onLoad({ filter: /.*/, namespace: 'account-focus' }, (args) => ({ contents: args.path === 'location'
+        ? 'export function LocationPicker(){return null}'
+        : 'export function useRouter(){return {refresh(){}}}', loader: 'js' }));
+    } }],
+  });
+  const browser = await chromium.launch({ headless: true,
+    executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
+  const page = await browser.newPage();
+  let addressAttempts = 0;
+  try {
+    await page.route('https://account.test/**', async (route: {
+      request(): { url(): string };
+      fulfill(input: { status: number; contentType: string; body: string }): Promise<void>;
+    }) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/') return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><div id="root"></div>' });
+      if (path === '/api/forms/account.profile' || path === '/api/forms/account.address') return route.fulfill({
+        status: 200, contentType: 'application/json', body: JSON.stringify({ config: {
+          formId: path.endsWith('account.profile') ? 'account.profile' : 'account.address',
+          version: 1, publishedAt: 1, fields: path.endsWith('account.address') ? [extra] : [],
+        } }),
+      });
+      if (path === '/api/account/profile') return route.fulfill({ status: 400, contentType: 'application/json',
+        body: JSON.stringify({ error: 'Name rejected', fieldId: 'displayName' }) });
+      if (path === '/api/account/addresses') {
+        addressAttempts++;
+        const fieldId = addressAttempts === 1 ? 'landmark' : addressAttempts === 2 ? extra.id : undefined;
+        return route.fulfill({ status: fieldId ? 400 : 500, contentType: 'application/json',
+          body: JSON.stringify({ error: fieldId ? 'Address field rejected' : 'Service unavailable', fieldId }) });
+      }
+      return route.fulfill({ status: 404, contentType: 'text/plain', body: 'Not found' });
+    });
+    await page.goto('https://account.test/');
+    await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    const secondProfile = page.locator('[data-instance="second-profile"] form');
+    await secondProfile.getByRole('button', { name: 'Save changes' }).click();
+    await secondProfile.getByRole('alert').waitFor();
+    await page.waitForTimeout(75);
+    assert.equal(await secondProfile.locator('input[name="displayName"]').evaluate((node: Element) => node === document.activeElement), true);
+
+    const firstAddress = page.locator('[data-instance="first-address"]');
+    const secondAddress = page.locator('[data-instance="second-address"]');
+    await firstAddress.getByRole('button', { name: 'Add address' }).click();
+    await secondAddress.getByRole('button', { name: 'Add address' }).click();
+    const secondForm = secondAddress.locator('form[data-form-id="account.address"]');
+    for (const [name, value] of Object.entries({ label: 'Home', recipientName: 'Second Person', phone: '9812345678',
+      district: 'Dhanusha', municipality: 'Janakpurdham', locality: 'Main Road', landmark: 'Blue gate',
+      'custom.delivery_note': 'Near the blue gate' })) await secondForm.locator(`[name="${name}"]`).fill(value);
+    for (const [fieldId, selector] of [
+      ['landmark', 'input[name="landmark"]'],
+      [extra.id, 'input[name="custom.delivery_note"]'],
+    ]) {
+      await secondForm.getByRole('button', { name: 'Save address' }).click();
+      await secondAddress.getByRole('alert').first().waitFor();
+      await page.waitForTimeout(75);
+      assert.equal(await secondForm.locator(selector).evaluate((node: Element) => node === document.activeElement), true,
+        `field-specific ${fieldId} error must keep focus in second address form after effects`);
+    }
+    await secondForm.getByRole('button', { name: 'Save address' }).click();
+    await secondAddress.getByRole('alert').first().getByText('Service unavailable').waitFor();
+    await page.waitForTimeout(75);
+    assert.equal(await secondAddress.locator('p[role="alert"][tabindex="-1"]').evaluate((node: Element) => node === document.activeElement), true,
+      'generic address error should focus its summary');
   } finally { await page.close(); await browser.close(); }
 });

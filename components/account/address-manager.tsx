@@ -21,7 +21,7 @@ import {
 import { sendJson } from '@/lib/http/client-request';
 import type { CustomerAddressRow } from '@/lib/db/repositories/customers';
 import { NEPAL_PROVINCES, DISTRICTS_BY_PROVINCE,normalizeProvince,normalizeDistrict } from '@/lib/checkout/nepal-address';
-import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fields';
+import { ConfiguredFields, fieldDisplay, focusConfiguredField } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
 
@@ -46,7 +46,7 @@ export function AddressManager({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  useEffect(()=>{if(error) errorSummary.current?.focus();},[error]);
+  useEffect(()=>{if(error && Object.keys(fieldErrors).length === 0) errorSummary.current?.focus();},[error, fieldErrors]);
   const [deleting, setDeleting] = useState<CustomerAddressRow | null>(null);
 
   async function save(event: {
@@ -55,6 +55,7 @@ export function AddressManager({
   }) {
     event.preventDefault();
     if (busy || !canSubmit || !config) return;
+    const form = event.currentTarget;
     let payload: ReturnType<typeof configuredJsonPayload>;
     try {
       const { answers } = readConfiguredSubmission(event.currentTarget, config, BASE_KEYS);
@@ -85,7 +86,8 @@ export function AddressManager({
         const explanation = typeof result?.error === 'string' ? result.error : 'Address could not be saved.';
         if (typeof result?.fieldId === 'string') {
           setFieldErrors({ [result.fieldId]: explanation });
-          document.getElementById(result.fieldId === 'landmark' ? 'landmark' : `custom-${result.fieldId}`)?.focus();
+          if (result.fieldId === 'landmark') form.querySelector<HTMLInputElement>('input[name="landmark"]')?.focus();
+          else focusConfiguredField(form, result.fieldId);
         }
         throw new Error(explanation);
       }
