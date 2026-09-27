@@ -31,6 +31,8 @@ import {
   NativeSelectOption,
 } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
+import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import type {
   CategoryRow,
   OccasionRow,
@@ -46,6 +48,10 @@ type SubmissionState =
   | { status: 'submitting' }
   | { status: 'error'; message: string }
   | { status: 'success' };
+
+const catalogBaseKeys = ['nameEn', 'descriptionEn', 'sku', 'price', 'pricePaisa', 'inventoryQuantity',
+  'image', 'video', 'reviewRequestId', 'categoryId', 'occasionIds', 'sellerId', 'producer', 'materials',
+  'requestId', 'formVersion', 'customAnswers'];
 
 interface ModelContext {
   registerTool(
@@ -365,6 +371,8 @@ export function ProductSubmissionForm({
   materialSuggestions?: readonly string[];
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const attemptId = useRef('');
+  const catalog = usePublishedFormConfig('seller.product-submission');
   const [state, setState] = useState<SubmissionState>({ status: 'idle' });
   const [price, setPrice] = useState(
     initial ? String(initial.pricePaisa / 100) : '',
@@ -462,23 +470,28 @@ export function ProductSubmissionForm({
     event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>,
   ) {
     event.preventDefault();
-    if (state.status === 'submitting') return;
+    if (state.status === 'submitting' || !catalog.canSubmit || !catalog.config) return;
     setState({ status: 'submitting' });
     const form = event.currentTarget;
     try {
+      const payload = new FormData(form);
+      attemptId.current ||= crypto.randomUUID();
+      payload.set('requestId', attemptId.current);
       const response = await fetch(
         initial
           ? `/api/seller/products/${encodeURIComponent(initial.id)}`
           : mode === 'draft' ? '/api/seller/products?intent=draft' : '/api/seller/products',
         {
           method: initial ? 'PATCH' : 'POST',
-          body: new FormData(form),
+          body: payload,
           headers: { Accept: 'application/json' },
         },
       );
-      const result = (await response.json()) as { error?: string };
+      const result = (await response.json()) as { error?: string; code?: string };
+      catalog.handleSubmissionResponse(response, result.code);
       if (!response.ok)
         throw new Error(result.error || 'Product submission failed.');
+      attemptId.current = '';
       form.reset();
       setPrice(initial ? String(initial.pricePaisa / 100) : '');
       setOriginalPrice(
@@ -586,7 +599,7 @@ export function ProductSubmissionForm({
           </Field>
           {initial ? <p className="text-sm">SKU: {initial.sku}</p> : null}
           <Field>
-            <FieldLabel htmlFor="nameEn">Product name — English *</FieldLabel>
+            <FieldLabel htmlFor="nameEn">{fieldDisplay(catalog.config, 'nameEn')?.label ?? 'Product name — English'} *</FieldLabel>
             <Input
               id="nameEn"
               name="nameEn"
@@ -633,7 +646,7 @@ export function ProductSubmissionForm({
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="descriptionEn">
-              Description — English *
+              {fieldDisplay(catalog.config, 'descriptionEn')?.label ?? 'Description — English'} *
             </FieldLabel>
             <Textarea
               id="descriptionEn"
@@ -1042,6 +1055,8 @@ export function ProductSubmissionForm({
         </Alert>
       ) : null}
 
+      {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={catalogBaseKeys} /> : null}
+      {catalog.status !== 'ready' ? <p role="alert" className="text-sm text-destructive">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}
       <div className="flex flex-col gap-4 border-t pt-6 sm:flex-row sm:items-center sm:justify-between">
         <p className="flex max-w-xl items-start gap-2 text-sm leading-6 text-muted-foreground">
           <ShieldCheck className="mt-1 size-4 shrink-0 text-primary" />
@@ -1052,7 +1067,7 @@ export function ProductSubmissionForm({
           type="submit"
           size="lg"
           className="h-11 px-6"
-          disabled={state.status === 'submitting'}
+          disabled={state.status === 'submitting' || !catalog.canSubmit}
         >
           {state.status === 'submitting' ? (
             <>

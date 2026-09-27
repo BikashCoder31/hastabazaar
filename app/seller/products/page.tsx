@@ -268,6 +268,9 @@ function ProductRow({
         </td>
         <td className="px-4 py-4">
           <div className="flex min-w-44 flex-col items-start gap-2">
+            <Link className="section-link" href={`/seller/products/${product.id}/answers`}>
+              Answer history
+            </Link>
             {product.status === 'published' ? (
               <Link className="section-link" href={`/products/${product.slug}`}>
                 View product

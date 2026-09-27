@@ -14,6 +14,10 @@ import {
   reviseAndResubmitProduct,
 } from '@/lib/db/repositories/products';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { configuredMultipartAnswers, digestMultipartRequest, FormRequestConflictError,
+  formRequestReplay, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { FormRuntimeError, resolvePublishedForm } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
 import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import {
   maximumProductSubmissionBytes,
@@ -53,25 +57,12 @@ export async function PATCH(
     const { id } = await context.params;
     const bindings = env as unknown as { DB?: D1Database; MEDIA?: R2Bucket };
     const database = requireDatabase(bindings);
-    const rateLimit = await consumeRequestRateLimit(database, request, {
-      scope: `seller-product-revision:${seller.sellerId}`,
-      limit: 20,
-      windowMs: 60 * 60_000,
-    });
-    if (!rateLimit.allowed) return rateLimitJson(rateLimit);
     const current = await getSellerProductForRevision(
       database,
       seller.sellerId,
       id,
     );
     if (!current) return json({ error: 'Product not found.' }, 404);
-    if (!['draft', 'needs_changes', 'rejected', 'approved', 'published'].includes(current.status)) {
-      return json(
-        { error: 'This product cannot be edited while it is in its current review state.' },
-        409,
-      );
-    }
-
     let formData: FormData;
     try {
       formData = await readBoundedForm(request, maximumProductSubmissionBytes);
@@ -79,7 +70,27 @@ export async function PATCH(
       if (error instanceof BodyTooLargeError) return json({ error: error.message }, 413);
       return json({ error: 'The product form could not be read.' }, 400);
     }
+    const rawRequestIds = formData.getAll('requestId');
+    if (rawRequestIds.length !== 1 || typeof rawRequestIds[0] !== 'string' ||
+      !/^[a-zA-Z0-9_-]{1,100}$/.test(rawRequestIds[0]))
+      return json({ error: 'A valid product request reference is required.' }, 400);
+    const requestId = rawRequestIds[0];
+    const requestDigest = await digestMultipartRequest(formData);
+    if (await formRequestReplay(database, { formId: 'seller.product-submission', requestId,
+      actorId: seller.userId, action: 'product.resubmitted', digest: requestDigest, subjectId: id }))
+      return json({ id, status: 'submitted', message: 'Product revised and resubmitted for approval.' }, 200);
+    const rateLimit = await consumeRequestRateLimit(database, request, {
+      scope: `seller-product-revision:${seller.sellerId}`, limit: 20, windowMs: 60 * 60_000,
+    });
+    if (!rateLimit.allowed) return rateLimitJson(rateLimit);
+    if (!['draft', 'needs_changes', 'rejected', 'approved', 'published'].includes(current.status)) {
+      return json({ error: 'This product cannot be edited while it is in its current review state.' }, 409);
+    }
     if(formData.get('reviewRequestId') !== (current.reviewRequestId ?? ''))return json({error:'This product review changed. Reload the form before resubmitting.'},409);
+    const config = await resolvePublishedForm(database, 'seller.product-submission');
+    const submitted = configuredMultipartAnswers(formData, config);
+    const form = await validateSellerFormSubmission(database, 'seller.product-submission',
+      submitted.version, submitted.customAnswers);
     // Removed seller fields retain their original persisted values on revision.
     formData.set('producer', current.producer);
     formData.set('materials', current.materials);
@@ -198,6 +209,7 @@ export async function PATCH(
       expectedStatus: current.status,
       expectedReviewRequestId: current.reviewRequestId,
       now: Date.now(),
+      form: { requestId, versionId: form.versionId, answers: form.answers, digest: requestDigest },
     });
     const removedKeys = ownedMedia
       .filter((media) => removedMediaIds.has(media.id))
@@ -227,6 +239,9 @@ export async function PATCH(
       return json({ error: error.message }, error.status);
     if (error instanceof ProductRevisionConflictError)
       return json({ error: error.message }, 409);
+    if (error instanceof FormRequestConflictError) return json({ error: error.message, code: 'request_id_conflict' }, 409);
+    if (error instanceof FormRuntimeError) return json({ error: error.message, code: error.code }, error.code === 'stale_version' ? 409 : 503);
+    if (error instanceof FormValidationError) return json({ error: error.message, fieldId: error.fieldId }, 400);
     const message = error instanceof Error ? error.message : '';
     if (/UNIQUE constraint failed|Duplicate entry/i.test(message))
       return json({ error: 'A unique product reference could not be reserved. Please reload and try again.' }, 409);

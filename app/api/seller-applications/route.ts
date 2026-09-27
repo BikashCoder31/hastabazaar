@@ -5,6 +5,10 @@ import { getCustomerUser, CustomerAuthorizationError } from '@/lib/auth/customer
 import { requireDatabase, requireMediaBucket } from '@/lib/db/d1';
 import { createSellerApplication } from '@/lib/db/repositories/seller-applications';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { configuredMultipartAnswers, digestMultipartRequest, FormRequestConflictError,
+  formRequestReplay, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { FormRuntimeError, resolvePublishedForm } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
 import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import { validateProductVideo } from '@/lib/media/product-video';
 import {
@@ -36,12 +40,6 @@ export async function POST(request: Request): Promise<Response> {
     return json({ error: 'Cross-site requests are not allowed.' }, 403);
   const bindings = env as unknown as { DB?: D1Database; MEDIA?: R2Bucket };
   const database = requireDatabase(bindings);
-  const rateLimit = await consumeRequestRateLimit(database, request, {
-    scope: 'seller-application',
-    limit: 5,
-    windowMs: 60 * 60_000,
-  });
-  if (!rateLimit.allowed) return rateLimitJson(rateLimit);
   const contentLength = Number(request.headers.get('content-length') ?? 0);
   if (contentLength > maximumApplicationBytes) {
     return json({ error: 'The application upload is too large.' }, 413);
@@ -70,10 +68,46 @@ export async function POST(request: Request): Promise<Response> {
   if (customer && parsed.input.email.toLowerCase() !== customer.email.toLowerCase()) {
     return json({ error: 'Use your signed-in account email for this application. To apply with a different account, sign in to that account first.' }, 409);
   }
-  if (!customer) {
-    const existing = await database.prepare('SELECT id FROM users WHERE lower(email) = ? LIMIT 1')
-      .bind(parsed.input.email.toLowerCase()).first();
-    if (existing) return json({ error: 'Sign in with this email before applying to sell, then return to this form.' }, 409);
+  const existing = !customer ? await database.prepare('SELECT id FROM users WHERE lower(email) = ? LIMIT 1')
+    .bind(parsed.input.email.toLowerCase()).first<{ id: string }>() : null;
+  const rawRequestId = formData.getAll('requestId');
+  if (rawRequestId.length !== 1 || typeof rawRequestId[0] !== 'string' ||
+    !/^[a-zA-Z0-9_-]{1,100}$/.test(rawRequestId[0]))
+    return json({ error: 'A valid application request reference is required.' }, 400);
+  const requestId = rawRequestId[0];
+  let requestDigest: string;
+  try {
+    requestDigest = await digestMultipartRequest(formData);
+    const replayActor = customer?.userId ?? existing?.id;
+    if (replayActor) {
+      const replay = await formRequestReplay(database, { formId: 'seller.application', requestId,
+        actorId: replayActor, action: 'seller.application.submitted', digest: requestDigest });
+      if (replay) {
+        const prior = await database.prepare('SELECT application_reference AS reference FROM seller_profiles WHERE id=? AND user_id=? LIMIT 1')
+          .bind(replay, replayActor).first<{ reference: string }>();
+        if (!prior) return json({ error: 'Application replay state is unavailable.' }, 503);
+        return json({ applicationReference: prior.reference, status: 'submitted',
+          message: 'Your seller application has been received for review.' }, 201);
+      }
+    }
+  } catch (error) {
+    if (error instanceof FormRequestConflictError) return json({ error: error.message, code: 'request_id_conflict' }, 409);
+    return json({ error: 'The application replay state is unavailable.' }, 503);
+  }
+  if (existing) return json({ error: 'Sign in with this email before applying to sell, then return to this form.' }, 409);
+  const rateLimit = await consumeRequestRateLimit(database, request, {
+    scope: 'seller-application', limit: 5, windowMs: 60 * 60_000,
+  });
+  if (!rateLimit.allowed) return rateLimitJson(rateLimit);
+  let form;
+  try {
+    const config = await resolvePublishedForm(database, 'seller.application');
+    const submitted = configuredMultipartAnswers(formData, config);
+    form = await validateSellerFormSubmission(database, 'seller.application', submitted.version, submitted.customAnswers);
+  } catch (error) {
+    if (error instanceof FormRuntimeError) return json({ error: error.message, code: error.code }, error.code === 'stale_version' ? 409 : 503);
+    if (error instanceof FormValidationError) return json({ error: error.message, fieldId: error.fieldId }, 400);
+    return json({ error: 'The application form configuration is unavailable.' }, 503);
   }
 
   const files: Array<{ file: File; kind: SellerApplicationDocument['kind'] }> =
@@ -178,6 +212,7 @@ export async function POST(request: Request): Promise<Response> {
       documents,
       profileMedia,
       now: Date.now(),
+      form: { requestId, versionId: form.versionId, answers: form.answers, digest: requestDigest! },
     });
   } catch (error) {
     if (bucket) await Promise.allSettled(uploadedKeys.map((key) => bucket.delete(key)));
@@ -191,6 +226,7 @@ export async function POST(request: Request): Promise<Response> {
         409,
       );
     }
+    if (error instanceof FormRequestConflictError) return json({ error: error.message, code: 'request_id_conflict' }, 409);
     return json(
       { error: 'The application could not be saved. Please try again.' },
       500,

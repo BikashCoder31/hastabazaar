@@ -21,6 +21,13 @@ import {
   NativeSelectOption,
 } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
+import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+
+const catalogBaseKeys = ['tradingName', 'businessDescription', 'legalName', 'representativeName',
+  'email', 'phone', 'applicantType', 'taxMode', 'taxRegistrationNumber', 'registrationNumber',
+  'registrationAuthority', 'document', 'profileImage', 'makerVideo', 'applicationAcknowledgement',
+  'participationRoute', 'website', 'requestId', 'formVersion', 'customAnswers'];
 
 type SubmissionState =
   | { status: 'idle' }
@@ -80,6 +87,8 @@ export function SellerApplicationForm({
     'business_pan_only',
   );
   const formRef = useRef<HTMLFormElement>(null);
+  const attemptId = useRef('');
+  const catalog = usePublishedFormConfig('seller.application');
   const [state, setState] = useState<SubmissionState>({ status: 'idle' });
 
   useEffect(() => {
@@ -153,10 +162,13 @@ export function SellerApplicationForm({
     event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>,
   ) {
     event.preventDefault();
+    if (!catalog.canSubmit || !catalog.config) return;
     setState({ status: 'submitting' });
 
     const form = event.currentTarget;
     const formData = new FormData(form);
+    attemptId.current ||= crypto.randomUUID();
+    formData.set('requestId', attemptId.current);
 
     try {
       const response = await fetch('/api/seller-applications', {
@@ -167,7 +179,9 @@ export function SellerApplicationForm({
       const body = (await response.json()) as {
         error?: string;
         applicationReference?: string;
+        code?: string;
       };
+      catalog.handleSubmissionResponse(response, body.code);
 
       if (!response.ok || !body.applicationReference) {
         throw new Error(
@@ -176,6 +190,7 @@ export function SellerApplicationForm({
       }
 
       setState({ status: 'success', reference: body.applicationReference });
+      attemptId.current = '';
       form.reset();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
@@ -269,7 +284,7 @@ export function SellerApplicationForm({
           </Field>
           <Field>
             <FieldLabel htmlFor="tradingName">
-              Shop or trading name <span aria-hidden="true">*</span>
+              {fieldDisplay(catalog.config, 'tradingName')?.label ?? 'Shop or trading name'} <span aria-hidden="true">*</span>
             </FieldLabel>
             <Input
               id="tradingName"
@@ -461,7 +476,7 @@ export function SellerApplicationForm({
           </Field>
           <Field>
             <FieldLabel htmlFor="businessDescription">
-              Tell us about your work
+              {fieldDisplay(catalog.config, 'businessDescription')?.label ?? 'Tell us about your work'}
               <span aria-hidden="true">*</span>
             </FieldLabel>
             <Textarea
@@ -582,6 +597,8 @@ export function SellerApplicationForm({
         </Alert>
       )}
 
+      {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={catalogBaseKeys} /> : null}
+      {catalog.status !== 'ready' ? <p role="alert" className="text-sm text-destructive">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}
       <div className="flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
         <p className="flex max-w-lg items-start gap-2 text-sm leading-6 text-muted-foreground">
           <ShieldCheck
@@ -595,7 +612,7 @@ export function SellerApplicationForm({
           type="submit"
           size="lg"
           className="h-11 px-6"
-          disabled={state.status === 'submitting'}
+          disabled={state.status === 'submitting' || !catalog.canSubmit}
         >
           {state.status === 'submitting' ? (
             <>

@@ -32,6 +32,12 @@ export async function formAnswerOwnerId(db: D1Database, answer: Pick<StoredFormA
       .bind(answer.subjectId).first<{ userId: string }>();
     return row?.userId ?? null;
   }
+  if (answer.subjectType === 'product') {
+    const row = await db.prepare(`SELECT seller_profiles.user_id AS userId FROM products
+      INNER JOIN seller_profiles ON seller_profiles.id=products.seller_id
+      WHERE products.id=? LIMIT 1`).bind(answer.subjectId).first<{ userId: string }>();
+    return row?.userId ?? null;
+  }
   if (answer.subjectType === 'rider') {
     const row = await db.prepare('SELECT user_id AS userId FROM rider_profiles WHERE user_id=? LIMIT 1')
       .bind(answer.subjectId).first<{ userId: string }>();

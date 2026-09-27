@@ -1,3 +1,7 @@
+import { buildFormAnswerInsert } from './form-answers';
+import type { FormAnswerSnapshot } from '@/lib/forms/types';
+import { digestFormRequest, formRequestReplay } from '@/lib/forms/submission';
+
 export class SellerProfileConflictError extends Error {}
 
 export interface EditableSellerProfile {
@@ -22,9 +26,15 @@ export async function getEditableSellerProfile(database: D1Database, sellerId: s
   ).bind(sellerId).first<EditableSellerProfile>()) ?? null;
 }
 
-export async function updateSellerProfile(database: D1Database, options: { sellerId: string; actorId: string; input: EditableSellerProfile; requestId: string; now: number }): Promise<void> {
-  if (await database.prepare(`SELECT id FROM audit_logs WHERE request_id = ? AND actor_id = ? LIMIT 1`).bind(options.requestId, options.actorId).first()) return;
+export async function updateSellerProfile(database: D1Database, options: { sellerId: string; actorId: string; input: EditableSellerProfile; requestId: string; now: number;
+  form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot } }): Promise<void> {
   const input = Object.fromEntries(Object.entries(options.input).map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value])) as unknown as EditableSellerProfile;
+  const catalogDigest = options.form ? await digestFormRequest({ sellerId: options.sellerId,
+    input, versionId: options.form.versionId, answers: options.form.answers }) : null;
+  if (options.form && await formRequestReplay(database, { formId: 'seller.profile',
+    requestId: options.form.requestId, actorId: options.actorId, action: 'seller.profile.updated',
+    digest: catalogDigest!, subjectId: options.sellerId })) return;
+  if (!options.form && await database.prepare(`SELECT id FROM audit_logs WHERE request_id = ? AND actor_id = ? LIMIT 1`).bind(options.requestId, options.actorId).first()) return;
   const required = [input.tradingName, input.supportPhone, input.supportEmail, input.province, input.district, input.municipality, input.locality];
   if (required.some((value) => !value || value.length > 160)) throw new SellerProfileConflictError('Complete each required field using 160 characters or fewer.');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.supportEmail)) throw new SellerProfileConflictError('Enter a valid support email.');
@@ -33,12 +43,20 @@ export async function updateSellerProfile(database: D1Database, options: { selle
   const current = await database.prepare(`SELECT id FROM seller_profiles WHERE id = ? AND status = 'approved'`).bind(options.sellerId).first();
   if (!current) throw new SellerProfileConflictError('Approved seller profile not found.');
   await database.batch([
+    ...(options.form ? [database.prepare(`SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
+      THEN 1 ELSE json_extract('invalid', '$') END`).bind(options.form.requestId)] : []),
     database.prepare(
       `UPDATE seller_profiles SET trading_name = ?, business_description = ?, product_categories = ?, support_phone = ?, support_email = ?, province = ?, district = ?, municipality = ?, ward = ?, locality = ?, updated_at = ? WHERE id = ? AND status = 'approved'`,
     ).bind(input.tradingName, input.businessDescription || null, input.productCategories || null, input.supportPhone, input.supportEmail.toLowerCase(), input.province, input.district, input.municipality, input.ward || null, input.locality, options.now, options.sellerId),
     database.prepare(
       `INSERT INTO audit_logs (id, actor_id, action, subject_type, subject_id, reason, previous_json, next_json, request_id, ip_hash, created_at)
        VALUES (?, ?, 'seller.profile.updated', 'seller_profile', ?, 'Seller updated public support and workshop profile fields', NULL, ?, ?, NULL, ?)`,
-    ).bind(crypto.randomUUID(), options.actorId, options.sellerId, JSON.stringify({ tradingName: input.tradingName, district: input.district, province: input.province }), options.requestId, options.now),
+    ).bind(crypto.randomUUID(), options.actorId, options.sellerId, JSON.stringify({ tradingName: input.tradingName,
+      district: input.district, province: input.province, ...(catalogDigest ? { catalogDigest } : {}) }), options.requestId, options.now),
+    ...(options.form ? [buildFormAnswerInsert(database, {
+      formId: 'seller.profile', requestId: options.form.requestId, versionId: options.form.versionId,
+      subjectType: 'seller', subjectId: options.sellerId, actorId: options.actorId,
+      answers: options.form.answers, now: options.now,
+    })] : []),
   ]);
 }

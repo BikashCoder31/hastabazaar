@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,13 @@ import { Textarea } from '@/components/ui/textarea';
 import type { EditableSellerProfile } from '@/lib/db/repositories/seller-profile';
 import { sendJson } from '@/lib/http/client-request';
 import { NEPAL_PROVINCES } from '@/lib/checkout/validation';
+import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+
+const catalogBaseKeys = ['tradingName', 'businessDescription', 'sellerId', 'idempotencyKey',
+  'legalName', 'payoutAccountReference', 'supportPhone', 'supportEmail', 'province', 'district',
+  'municipality', 'ward', 'locality', 'productCategories', 'requestId', 'formVersion', 'customAnswers'];
 
 export function SellerProfileForm({
   profile,
@@ -19,24 +26,30 @@ export function SellerProfileForm({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const attemptId = useRef('');
+  const catalog = usePublishedFormConfig('seller.profile');
   async function submit(event: {
     preventDefault(): void;
     currentTarget: HTMLFormElement;
   }) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || !catalog.canSubmit || !catalog.config) return;
     setBusy(true);
     setMessage('');
     const data = new FormData(event.currentTarget);
-    const next = Object.fromEntries(data.entries());
+    const next = Object.fromEntries([...data.entries()].filter(([key]) => key !== 'formVersion' && !key.startsWith('custom.')));
     try {
+      const configured = readConfiguredSubmission(event.currentTarget, catalog.config, catalogBaseKeys);
+      attemptId.current ||= crypto.randomUUID();
       await sendJson(
         '/api/seller/profile',
         'PATCH',
-        { profile: next, idempotencyKey: crypto.randomUUID() },
+        { profile: next, idempotencyKey: attemptId.current,
+          ...configuredJsonPayload(catalog.config, configured.answers, catalogBaseKeys) },
         'Profile could not be saved.',
       );
       setMessage('Seller profile saved.');
+      attemptId.current = '';
       router.refresh();
     } catch (reason) {
       setMessage(
@@ -55,7 +68,7 @@ export function SellerProfileForm({
     >
       <Field
         name="tradingName"
-        label="Public trading name"
+        label={fieldDisplay(catalog.config, 'tradingName')?.label ?? 'Public trading name'}
         defaultValue={profile.tradingName}
         required
       />
@@ -107,7 +120,7 @@ export function SellerProfileForm({
         required
       />
       <div className="space-y-2 sm:col-span-2">
-        <Label htmlFor="businessDescription">Maker story</Label>
+        <Label htmlFor="businessDescription">{fieldDisplay(catalog.config, 'businessDescription')?.label ?? 'Maker story'}</Label>
         <Textarea
           id="businessDescription"
           name="businessDescription"
@@ -126,10 +139,12 @@ export function SellerProfileForm({
           rows={3}
         />
       </div>
+      {catalog.config ? <div className="sm:col-span-2"><ConfiguredFields config={catalog.config} baseKeys={catalogBaseKeys} /></div> : null}
+      {catalog.status !== 'ready' ? <p role="alert" className="text-sm text-destructive sm:col-span-2">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}
       <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
         <Button
           type="submit"
-          disabled={busy}
+          disabled={busy || !catalog.canSubmit}
           className="min-h-11 rounded-full px-6"
         >
           {busy ? 'Saving…' : 'Save profile'}

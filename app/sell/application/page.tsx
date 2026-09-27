@@ -6,9 +6,12 @@ import { redirect } from 'next/navigation';
 import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
 import { MakerApplicationProfileForm } from '@/components/seller/maker-application-profile-form';
+import { AnswerDetails } from '@/components/forms/answer-details';
 import { requireCustomerPage } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
 import { getSellerParticipationForUser } from '@/lib/db/repositories/seller-applications';
+import { listFormAnswersForSubjectPage } from '@/lib/db/repositories/form-answers';
+import { authorizeFormAnswerRead } from '@/lib/forms/access';
 import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
 import { getManagedFinanceSummary } from '@/lib/db/repositories/managed-settlements';
 import { applicationCapabilities, managedMakerDisplayName } from '@/lib/sellers/participation';
@@ -27,11 +30,40 @@ const stageGuidance = {
   suspended: ['Existing obligations are handled according to the recorded suspension scope.', 'Hastabazaar'],
 } as const;
 
-export default async function SellerApplicationProgressPage() {
+function historyCursor(at?: string, id?: string) {
+  const timestamp = at ? Number(at) : NaN;
+  return Number.isSafeInteger(timestamp) && timestamp >= 0 && id && id.length <= 191
+    ? { createdAt: timestamp, id } : undefined;
+}
+
+export default async function SellerApplicationProgressPage({ searchParams }: {
+  searchParams?: Promise<{ appAt?: string; appId?: string; makerAt?: string; makerId?: string }>;
+} = {}) {
   const customer = await requireCustomerPage('/sell/application');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const profile = await getSellerParticipationForUser(database, customer.userId);
   if (!profile) redirect('/sell');
+  const query = await searchParams;
+  const [applications, makerProfiles] = await Promise.all([
+    listFormAnswersForSubjectPage(database, { subjectType: 'seller', subjectId: profile.sellerId,
+      formId: 'seller.application', after: historyCursor(query?.appAt, query?.appId) }),
+    listFormAnswersForSubjectPage(database, { subjectType: 'seller', subjectId: profile.sellerId,
+      formId: 'seller.maker-profile', after: historyCursor(query?.makerAt, query?.makerId) }),
+  ]);
+  const allowed = await Promise.all([...applications.answers, ...makerProfiles.answers]
+    .map((answer) => authorizeFormAnswerRead(database, { id: customer.userId, role: 'customer' }, answer)));
+  if (allowed.some((value) => !value)) redirect('/sell');
+  const nextHistory = (kind: 'app' | 'maker', next: { createdAt: number; id: string } | null) => {
+    if (!next) return null;
+    const link = new URLSearchParams();
+    link.set(`${kind}At`, String(next.createdAt));
+    link.set(`${kind}Id`, next.id);
+    const other = kind === 'app' ? 'maker' : 'app';
+    const otherAt = kind === 'app' ? query?.makerAt : query?.appAt;
+    const otherId = kind === 'app' ? query?.makerId : query?.appId;
+    if (otherAt && otherId) { link.set(`${other}At`, otherAt); link.set(`${other}Id`, otherId); }
+    return `/sell/application?${link.toString()}`;
+  };
   const clock = await database.prepare("SELECT unixepoch('now') * 1000 AS now").first<{ now: number }>();
   const program = await getEffectiveBusinessSetting(database, 'managed_maker_program_mode', Number(clock?.now ?? 0));
   const capabilities = applicationCapabilities(profile.applicationStage, program.value);
@@ -54,6 +86,18 @@ export default async function SellerApplicationProgressPage() {
       ['Calculated',finance.calculatedPaisa],['Earned',finance.earnedPaisa],['Held',finance.heldPaisa],['Eligible',finance.eligiblePaisa],['Paid',finance.paidPaisa],
     ].map(([label,value])=><div key={String(label)}><dt className="text-xs uppercase text-muted-foreground">{label}</dt><dd className="mt-1 font-semibold">NPR {(Number(value)/100).toFixed(2)}</dd></div>)}</dl></section> : null}
     {capabilities.editProfile ? <section><h2 className="font-heading text-2xl">Shared maker profile</h2><MakerApplicationProfileForm profile={profile} /></section> : null}
+    <section className="space-y-4" aria-label="Application answer history">
+      <h2 className="font-heading text-2xl">Application answer history</h2>
+      {applications.answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)}
+      {!applications.answers.length ? <p>No saved application answers yet.</p> : null}
+      {applications.nextCursor ? <Link className="section-link" href={nextHistory('app', applications.nextCursor)!}>Next 50 applications</Link> : null}
+    </section>
+    <section className="space-y-4" aria-label="Maker profile answer history">
+      <h2 className="font-heading text-2xl">Maker profile answer history</h2>
+      {makerProfiles.answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)}
+      {!makerProfiles.answers.length ? <p>No saved maker profile answers yet.</p> : null}
+      {makerProfiles.nextCursor ? <Link className="section-link" href={nextHistory('maker', makerProfiles.nextCursor)!}>Next 50 profile edits</Link> : null}
+    </section>
     <section className="rounded-2xl border bg-card p-6"><div className="flex flex-wrap items-center justify-between gap-4"><div><h2 className="font-heading text-2xl">Private product drafts</h2><p className="mt-2 text-sm text-muted-foreground">Product materials and origin stories remain attached to each product. Nothing here is published.</p></div>{capabilities.prepareProductDrafts ? <Link className="rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground" href="/sell/application/products/new">Prepare a product draft</Link> : null}</div>{drafts.length ? <ul className="mt-5 divide-y">{drafts.map((draft) => <li className="py-3" key={draft.id}>{draft.nameEn} · private draft</li>)}</ul> : <p className="mt-5 text-sm text-muted-foreground">No product drafts yet.</p>}</section>
   </main><SiteFooter /></div>;
 }

@@ -15,6 +15,11 @@ import type {
   ParticipationRoute,
 } from '@/lib/sellers/participation';
 import { parseCraftExperience, parseMakerSocialLinks } from '@/lib/sellers/participation';
+import { buildFormAnswerInsert } from './form-answers';
+import type { FormAnswerSnapshot } from '@/lib/forms/types';
+import { digestFormRequest, formRequestReplay } from '@/lib/forms/submission';
+
+type SellerFormLink = { requestId: string; versionId: string; answers: FormAnswerSnapshot; digest?: string };
 
 interface CreateSellerApplicationOptions {
   userId: string;
@@ -25,6 +30,7 @@ interface CreateSellerApplicationOptions {
   documents: readonly SellerApplicationDocument[];
   profileMedia?: readonly SellerProfileMediaUpload[];
   now: number;
+  form?: SellerFormLink;
 }
 
 export async function createSellerApplication(
@@ -33,6 +39,12 @@ export async function createSellerApplication(
 ): Promise<void> {
   const { userId, sellerId, applicationReference, input, documents, now } =
     options;
+  const catalogDigest = options.form ? options.form.digest ?? await digestFormRequest({ input,
+    documents: options.documents, profileMedia: options.profileMedia ?? [],
+    versionId: options.form.versionId, answers: options.form.answers }) : null;
+  if (options.form && await formRequestReplay(database, { formId: 'seller.application',
+    requestId: options.form.requestId, actorId: userId, action: 'seller.application.submitted',
+    digest: catalogDigest!, subjectId: sellerId })) return;
   const profileMedia = options.profileMedia ?? [];
   if (!['individual','company'].includes(input.applicantType) || !['PAN','VAT','BOTH','NONE'].includes(input.taxMode)) throw new Error('Choose a valid applicant and tax document type.');
   if (input.participationRoute === 'managed_maker' && (input.taxMode !== 'NONE' || input.taxRegistrationNumber || input.registrationNumber || input.registrationAuthority)) throw new Error('Managed Maker applications cannot store placeholder registration or tax identifiers.');
@@ -72,6 +84,8 @@ export async function createSellerApplication(
       .bind(userId, now),
   ];
   const statements: D1PreparedStatement[] = [
+    ...(options.form ? [database.prepare(`SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
+      THEN 1 ELSE json_extract('invalid', '$') END`).bind(options.form.requestId)] : []),
     ...accountStatements,
     database
       .prepare(
@@ -159,10 +173,11 @@ export async function createSellerApplication(
         `INSERT INTO audit_logs (
           id, actor_id, action, subject_type, subject_id, reason,
           previous_json, next_json, request_id, ip_hash, created_at
-        ) VALUES (?, NULL, 'seller.application.submitted', 'seller', ?,
-          'Public seller application submitted', NULL, NULL, NULL, NULL, ?)`,
+        ) VALUES (?, ?, 'seller.application.submitted', 'seller', ?,
+          'Public seller application submitted', NULL, ?, ?, NULL, ?)`,
       )
-      .bind(crypto.randomUUID(), sellerId, now),
+      .bind(crypto.randomUUID(), options.form ? userId : null, sellerId,
+        catalogDigest ? JSON.stringify({ catalogDigest }) : null, options.form?.requestId ?? null, now),
   ];
 
   for (const document of documents) {
@@ -208,6 +223,10 @@ export async function createSellerApplication(
   }
 
   statements.push(...await businessNotificationStatements(database,{eventId:sellerId,sourceType:'seller_application',sourceId:sellerId,status:'submitted',actorId:userId,now,kind:'submitted'}));
+  if (options.form) statements.push(buildFormAnswerInsert(database, {
+    formId: 'seller.application', requestId: options.form.requestId, versionId: options.form.versionId,
+    subjectType: 'seller', subjectId: sellerId, actorId: userId, answers: options.form.answers, now,
+  }));
   await database.batch(statements);
 }
 
@@ -347,6 +366,7 @@ export async function updateSellerParticipationPublicProfile(
     socialLinks: MakerSocialLinks;
     requestId: string;
     now: number;
+    form?: SellerFormLink;
   },
 ): Promise<void> {
   const publicName = options.publicName.trim();
@@ -362,7 +382,13 @@ export async function updateSellerParticipationPublicProfile(
     parseCraftExperience(entry.craft, entry.band),
   );
   const socialLinks = parseMakerSocialLinks(options.socialLinks);
-  if (await database.prepare(
+  const catalogDigest = options.form ? await digestFormRequest({ sellerId: options.sellerId,
+    expectedVersion: options.expectedVersion, publicName, publicCity, craftExperience, socialLinks,
+    versionId: options.form.versionId, answers: options.form.answers }) : null;
+  if (options.form && await formRequestReplay(database, { formId: 'seller.maker-profile',
+    requestId: options.form.requestId, actorId: options.actorId, action: 'seller.participation_profile.updated',
+    digest: catalogDigest!, subjectId: options.sellerId })) return;
+  if (!options.form && await database.prepare(
     `SELECT id FROM audit_logs WHERE request_id = ? AND actor_id = ? LIMIT 1`,
   ).bind(options.requestId, options.actorId).first()) return;
 
@@ -378,6 +404,8 @@ export async function updateSellerParticipationPublicProfile(
 
   const guardId = crypto.randomUUID();
   await database.batch([
+    ...(options.form ? [database.prepare(`SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
+      THEN 1 ELSE json_extract('invalid', '$') END`).bind(options.form.requestId)] : []),
     database.prepare(
       `INSERT INTO seller_participation_guards(id, valid)
        VALUES (?, CASE WHEN EXISTS(
@@ -415,10 +443,16 @@ export async function updateSellerParticipationPublicProfile(
       crypto.randomUUID(),
       options.actorId,
       options.sellerId,
-      JSON.stringify({ publicName, publicCity, craftExperience, socialLinks }),
+      JSON.stringify({ publicName, publicCity, craftExperience, socialLinks,
+        ...(catalogDigest ? { catalogDigest } : {}) }),
       options.requestId,
       options.now,
     ),
+    ...(options.form ? [buildFormAnswerInsert(database, {
+      formId: 'seller.maker-profile', requestId: options.form.requestId, versionId: options.form.versionId,
+      subjectType: 'seller', subjectId: options.sellerId, actorId: options.actorId,
+      answers: options.form.answers, now: options.now,
+    })] : []),
     database.prepare(`DELETE FROM seller_participation_guards WHERE id = ?`).bind(guardId),
   ]);
 }

@@ -16,6 +16,11 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
   'public.contact': { formId: 'public.contact', route: '/api/feedback', mode: 'collection' },
   'public.feedback': { formId: 'public.feedback', route: '/api/feedback', mode: 'collection' },
   'public.footer-feedback': { formId: 'public.footer-feedback', route: '/api/feedback', mode: 'collection' },
+  'seller.application': { formId: 'seller.application', route: '/api/seller-applications', mode: 'collection' },
+  'seller.maker-profile': { formId: 'seller.maker-profile', route: '/api/seller-applications/profile', mode: 'collection' },
+  'seller.profile': { formId: 'seller.profile', route: '/api/seller/profile', mode: 'collection' },
+  'seller.product-submission': { formId: 'seller.product-submission', route: '/api/seller/products', mode: 'collection' },
+  'seller.inventory': { formId: 'seller.inventory', route: '/api/seller/products/:id/inventory', mode: 'operation' },
 });
 
 // Inventory rows are ordered to match the 69 JSX sites in the frozen policy baseline.
@@ -213,6 +218,58 @@ function feedbackDefinition(id: 'public.contact' | 'public.feedback' | 'public.f
   } satisfies FormDefinition);
 }
 
+function sellerDefinition(id: 'seller.application' | 'seller.maker-profile' | 'seller.profile' | 'seller.product-submission' | 'seller.inventory'): FormDefinition {
+  const protectedField = (key: string, explanation: string) => ({ key, type: 'existing', label: key, capability: 'protected' as const, explanation });
+  const displayField = (key: string, type: 'short_text' | 'long_text' | 'email' | 'phone', required: boolean) => ({
+    key, type, label: key, required, status: 'active' as const, capability: 'display_editable' as const,
+    explanation: 'Safe presentation may change; the existing server parser still controls type, length, and requiredness.',
+  });
+  const common = [protectedField('requestId', 'A request key is required for exact replay.'),
+    protectedField('formVersion', 'The submitted publication version is server checked.'),
+    protectedField('customAnswers', 'Custom context is validated separately and cannot override domain fields.')];
+  let fields;
+  let route;
+  let mode: FormMode = 'collection';
+  if (id === 'seller.application') {
+    route = '/api/seller-applications';
+    fields = [displayField('tradingName', 'short_text', true), displayField('businessDescription', 'long_text', false),
+      ...['legalName', 'representativeName', 'email', 'phone', 'applicantType', 'taxMode', 'taxRegistrationNumber',
+        'registrationNumber', 'registrationAuthority', 'document', 'profileImage', 'makerVideo', 'applicationAcknowledgement',
+        'participationRoute', 'website'].map((key) => protectedField(key, 'Legal identity, consent, anti-abuse and private upload rules are not configurable.')),
+      ...common];
+  } else if (id === 'seller.maker-profile') {
+    route = '/api/seller-applications/profile';
+    fields = [displayField('publicName', 'short_text', true), displayField('publicCity', 'short_text', true),
+      ...['sellerId', 'expectedVersion', 'experienceCraft', 'experienceBand', 'facebookUrl', 'instagramUrl',
+        'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl', 'legalName'].map((key) =>
+        protectedField(key, 'Ownership, version, legal identity, social-link and craft validation stay server enforced.')),
+      ...common];
+  } else if (id === 'seller.profile') {
+    route = '/api/seller/profile';
+    fields = [displayField('tradingName', 'short_text', true), displayField('businessDescription', 'long_text', false),
+      ...['sellerId', 'idempotencyKey', 'legalName', 'payoutAccountReference', 'supportPhone', 'supportEmail',
+        'province', 'district', 'municipality', 'ward', 'locality', 'productCategories'].map((key) =>
+        protectedField(key, 'Approved-seller ownership, legal/financial identity and contact validation stay server enforced.')),
+      ...common];
+  } else if (id === 'seller.product-submission') {
+    route = '/api/seller/products';
+    fields = [displayField('nameEn', 'short_text', true), displayField('descriptionEn', 'long_text', true),
+      ...['sku', 'price', 'pricePaisa', 'inventoryQuantity', 'image', 'video', 'reviewRequestId', 'categoryId',
+        'occasionIds', 'sellerId', 'producer', 'materials'].map((key) => protectedField(key,
+        'SKU, price, inventory, taxonomy, ownership, draft/review state and private media checks stay server enforced.')),
+      ...common];
+  } else {
+    route = '/api/seller/products/:id/inventory'; mode = 'operation';
+    fields = [...['quantity', 'reason', 'productId', 'sellerId'].map((key) => protectedField(key,
+      'Stock quantity, audit reason and seller/product ownership stay server enforced.')), ...common];
+  }
+  return Object.freeze({ id, audience: 'seller', mode, route, adapterId: id,
+    baseFields: Object.freeze(fields),
+    capabilities: Object.freeze({ explanation: 'Safe custom context is recorded with the successful seller or product action; legal identity, money, stock, authorization, draft/review and private-media rules remain protected.',
+      customFieldTypes: ACCOUNT_CUSTOM_TYPES, answerBehavior: 'record' }),
+  } satisfies FormDefinition);
+}
+
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
   Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
     const item = row.startsWith('public.contact|') ? feedbackDefinition('public.contact')
@@ -221,6 +278,11 @@ export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.fr
       : row.startsWith('account.address|') ? accountDefinition('account.address')
       : row.startsWith('account.privacy-request|') ? accountDefinition('account.privacy-request')
       : row.startsWith('account.review|') ? accountDefinition('account.review')
+      : row.startsWith('seller.application|') ? sellerDefinition('seller.application')
+      : row.startsWith('seller.maker-profile|') ? sellerDefinition('seller.maker-profile')
+      : row.startsWith('seller.profile|') ? sellerDefinition('seller.profile')
+      : row.startsWith('seller.product-submission|') ? sellerDefinition('seller.product-submission')
+      : row.startsWith('seller.inventory|') ? sellerDefinition('seller.inventory')
       : row.startsWith('account.profile|') ? Object.freeze({
       id: 'account.profile', audience: 'customer', mode: 'collection', route: '/api/account/profile',
       baseFields: Object.freeze([

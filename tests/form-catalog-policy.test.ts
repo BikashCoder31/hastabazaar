@@ -77,7 +77,7 @@ void test('a future site cannot borrow a pending adapter from the frozen invento
   const fixture = await mkdtemp(join(tmpdir(), 'form-policy-'));
   try {
     await mkdir(join(fixture, 'components'), { recursive: true });
-    await writeFile(join(fixture, 'components', 'new-form.tsx'), 'export const NewForm = () => <form data-form-id="seller.application"><input name="name" /></form>;');
+    await writeFile(join(fixture, 'components', 'new-form.tsx'), 'export const NewForm = () => <form data-form-id="seller.payout-request"><input name="name" /></form>;');
     assert.ok((await scanFormSites(fixture)).some((violation) => violation.reason.includes('pending adapter')));
   } finally {
     await rm(fixture, { recursive: true, force: true });

@@ -13,6 +13,10 @@ import {
   isActiveCategory,
 } from '@/lib/db/repositories/products';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { configuredMultipartAnswers, digestMultipartRequest, FormRequestConflictError,
+  formRequestReplay, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { FormRuntimeError, resolvePublishedForm } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
 import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import {
   createProductSlug,
@@ -59,12 +63,6 @@ export async function POST(request: Request): Promise<Response> {
           return { sellerId: participation.sellerId, userId: customer.userId };
         })()
       : await requireSellerApi();
-    const rateLimit = await consumeRequestRateLimit(database, request, {
-      scope: `seller-product-submission:${seller.sellerId}`,
-      limit: 20,
-      windowMs: 60 * 60_000,
-    });
-    if (!rateLimit.allowed) return rateLimitJson(rateLimit);
     let formData: FormData;
     try {
       formData = await readBoundedForm(request, maximumProductSubmissionBytes);
@@ -72,6 +70,31 @@ export async function POST(request: Request): Promise<Response> {
       if (error instanceof BodyTooLargeError) return json({ error: error.message }, 413);
       return json({ error: 'The product form could not be read.' }, 400);
     }
+
+    const rawRequestIds = formData.getAll('requestId');
+    if (rawRequestIds.length !== 1 || typeof rawRequestIds[0] !== 'string' ||
+      !/^[a-zA-Z0-9_-]{1,100}$/.test(rawRequestIds[0]))
+      return json({ error: 'A valid product request reference is required.' }, 400);
+    const requestId = rawRequestIds[0];
+    const requestDigest = await digestMultipartRequest(formData);
+    const replay = await formRequestReplay(database, { formId: 'seller.product-submission',
+      requestId, actorId: seller.userId, action: draftIntent ? 'product.draft.created' : 'product.submitted',
+      digest: requestDigest });
+    if (replay) {
+      const prior = await database.prepare('SELECT id, slug, status FROM products WHERE id=? AND seller_id=? LIMIT 1')
+        .bind(replay, seller.sellerId).first<{ id: string; slug: string; status: string }>();
+      if (!prior) return json({ error: 'Product replay state is unavailable.' }, 503);
+      return json({ id: prior.id, slug: prior.slug, status: draftIntent ? 'draft' : 'submitted',
+        message: draftIntent ? 'Private product draft saved.' : 'Product submitted for review.' }, 201);
+    }
+    const rateLimit = await consumeRequestRateLimit(database, request, {
+      scope: `seller-product-submission:${seller.sellerId}`, limit: 20, windowMs: 60 * 60_000,
+    });
+    if (!rateLimit.allowed) return rateLimitJson(rateLimit);
+    const config = await resolvePublishedForm(database, 'seller.product-submission');
+    const submitted = configuredMultipartAnswers(formData, config);
+    const form = await validateSellerFormSubmission(database, 'seller.product-submission',
+      submitted.version, submitted.customAnswers);
 
     formData.set('sku', ''); // New SKUs are generated; revisions retain the persisted SKU.
     const parsed = parseProductSubmission(formData);
@@ -142,6 +165,7 @@ export async function POST(request: Request): Promise<Response> {
       images,
       intent: draftIntent ? 'draft' : 'submit',
       now: Date.now(),
+      form: { requestId, versionId: form.versionId, answers: form.answers, digest: requestDigest },
     });
     return json(
       {
@@ -165,6 +189,9 @@ export async function POST(request: Request): Promise<Response> {
     if (error instanceof CustomerAuthorizationError) {
       return json({ error: error.message }, error.status);
     }
+    if (error instanceof FormRequestConflictError) return json({ error: error.message, code: 'request_id_conflict' }, 409);
+    if (error instanceof FormRuntimeError) return json({ error: error.message, code: error.code }, error.code === 'stale_version' ? 409 : 503);
+    if (error instanceof FormValidationError) return json({ error: error.message, fieldId: error.fieldId }, 400);
     const message = error instanceof Error ? error.message : '';
     if (/UNIQUE constraint failed|Duplicate entry/i.test(message)) {
       return json({ error: 'A unique product reference could not be reserved. Please reload and try again.' }, 409);

@@ -1,11 +1,16 @@
 'use client';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Boxes } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { sendJson } from '@/lib/http/client-request';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+
+const catalogBaseKeys = ['quantity', 'reason', 'requestId', 'productId', 'sellerId', 'formVersion', 'customAnswers'];
 
 export function InventoryEditor({
   productId,
@@ -23,9 +28,11 @@ export function InventoryEditor({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  async function save(event: { preventDefault(): void }) {
+  const attemptId = useRef('');
+  const catalog = usePublishedFormConfig('seller.inventory');
+  async function save(event: { preventDefault(): void; currentTarget: HTMLFormElement }) {
     event.preventDefault();
-    if (busy || disabled) return;
+    if (busy || disabled || !catalog.canSubmit || !catalog.config) return;
     const next = Number(value);
     if (
       !value.trim() ||
@@ -40,13 +47,17 @@ export function InventoryEditor({
     setError('');
     setMessage('');
     try {
+      const configured = readConfiguredSubmission(event.currentTarget, catalog.config, catalogBaseKeys);
+      attemptId.current ||= crypto.randomUUID();
       await sendJson(
         '/api/seller/products/' + encodeURIComponent(productId) + '/inventory',
         'PATCH',
-        { quantity: next, reason: 'Seller stock count update' },
+        { quantity: next, reason: 'Seller stock count update', requestId: attemptId.current,
+          ...configuredJsonPayload(catalog.config, configured.answers, catalogBaseKeys) },
         'Inventory update failed.',
       );
       setMessage('Stock saved.');
+      attemptId.current = '';
       router.refresh();
     } catch (reason) {
       setError(
@@ -80,13 +91,15 @@ export function InventoryEditor({
         <Button
           type="submit"
           variant="outline"
-          disabled={busy || disabled || Number(value) === quantity}
+          disabled={busy || disabled || !catalog.canSubmit || Number(value) === quantity}
           className="min-h-11 rounded-xl"
         >
           <Boxes />
           {busy ? 'Saving…' : 'Update stock'}
         </Button>
       </div>
+      {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={catalogBaseKeys} /> : null}
+      {catalog.status !== 'ready' ? <p role="alert" className="text-sm text-destructive">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}
       {disabled ? (
         <p className="text-sm text-muted-foreground">
           Stock is locked for this listing status.

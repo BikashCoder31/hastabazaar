@@ -9,6 +9,11 @@ import type {
   ProductImageUpload,
   ProductSubmissionInput,
 } from '@/lib/products/submission';
+import { buildFormAnswerInsert } from './form-answers';
+import type { FormAnswerSnapshot } from '@/lib/forms/types';
+import { digestFormRequest, formRequestReplay } from '@/lib/forms/submission';
+
+type SellerProductFormLink = { requestId: string; versionId: string; answers: FormAnswerSnapshot; digest?: string };
 
 export interface CategoryRow {
   id: string;
@@ -112,14 +117,26 @@ export async function areActiveOccasions(
   return Number(row?.count ?? 0) === occasionIds.length;
 }
 
-export async function createProductSubmission(database: D1Database, options: Parameters<typeof insertProductSubmission>[1]): Promise<void> {
+export async function createProductSubmission(database: D1Database, options: Parameters<typeof insertProductSubmission>[1]): Promise<string> {
+  const action = options.intent === 'draft' ? 'product.draft.created' : 'product.submitted';
+  const catalogDigest = options.form ? options.form.digest ?? await digestFormRequest({ sellerId: options.sellerId,
+    intent: options.intent ?? 'submit', input: options.input, images: options.images,
+    versionId: options.form.versionId, answers: options.form.answers }) : null;
+  if (options.form) {
+    const replay = await formRequestReplay(database, { formId: 'seller.product-submission',
+      requestId: options.form.requestId, actorId: options.actorId, action, digest: catalogDigest! });
+    if (replay) return replay;
+  }
   for (let attempt = 0; attempt < 3; attempt++) {
-    try { await insertProductSubmission(database, { ...options, input: { ...options.input, sku: createProductSku() } }); return; }
+    try { await insertProductSubmission(database, { ...options,
+      form: options.form ? { ...options.form, digest: catalogDigest! } : undefined,
+      input: { ...options.input, sku: createProductSku() } }); return options.productId; }
     catch (error) {
       const message = error instanceof Error ? error.message : '';
       if (attempt === 2 || !/UNIQUE constraint failed|Duplicate entry/i.test(message)) throw error;
     }
   }
+  throw new Error('Product submission could not be created after retrying unique SKU generation.');
 }
 
 async function insertProductSubmission(
@@ -133,11 +150,14 @@ async function insertProductSubmission(
     images: readonly ProductImageUpload[];
     intent?: 'draft' | 'submit';
     now: number;
+    form?: SellerProductFormLink;
   },
 ): Promise<void> {
   const { productId, sellerId, actorId, slug, input, images, now } = options;
   const productStatus = options.intent === 'draft' ? 'draft' : 'submitted';
   const statements: D1PreparedStatement[] = [
+    ...(options.form ? [database.prepare(`SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
+      THEN 1 ELSE json_extract('invalid', '$') END`).bind(options.form.requestId)] : []),
     database
       .prepare(
         `INSERT INTO products (
@@ -210,7 +230,7 @@ async function insertProductSubmission(
         `INSERT INTO audit_logs (
           id, actor_id, action, subject_type, subject_id, reason,
           previous_json, next_json, request_id, ip_hash, created_at
-        ) VALUES (?, ?, ?, 'product', ?, ?, NULL, ?, NULL, NULL, ?)`,
+        ) VALUES (?, ?, ?, 'product', ?, ?, NULL, ?, ?, NULL, ?)`,
       )
       .bind(
         crypto.randomUUID(),
@@ -218,7 +238,9 @@ async function insertProductSubmission(
         productStatus === 'draft' ? 'product.draft.created' : 'product.submitted',
         productId,
         productStatus === 'draft' ? 'Applicant prepared a private product draft' : 'Seller submitted a product for review',
-        JSON.stringify({ status: productStatus, sku: input.sku }),
+        JSON.stringify({ status: productStatus, sku: input.sku,
+          ...(options.form?.digest ? { catalogDigest: options.form.digest } : {}) }),
+        options.form?.requestId ?? null,
         now,
       ),
   ];
@@ -259,6 +281,10 @@ async function insertProductSubmission(
   }
 
   if (productStatus === 'submitted') statements.push(...await businessNotificationStatements(database,{eventId:productId,sourceType:'product',sourceId:productId,status:'submitted',actorId,now,kind:'submitted'}));
+  if (options.form) statements.push(buildFormAnswerInsert(database, {
+    formId: 'seller.product-submission', requestId: options.form.requestId, versionId: options.form.versionId,
+    subjectType: 'product', subjectId: productId, actorId, answers: options.form.answers, now,
+  }));
   await database.batch(statements);
 }
 
@@ -469,8 +495,18 @@ export async function reviseAndResubmitProduct(
     previousInventory: number;
     expectedReviewRequestId?: string | null;
     now: number;
+    form?: SellerProductFormLink;
   },
 ): Promise<void> {
+  const catalogDigest = options.form ? options.form.digest ?? await digestFormRequest({
+    productId: options.productId, sellerId: options.sellerId, input: options.input,
+    images: options.images, removedMediaIds: options.removedMediaIds ?? [],
+    expectedStatus: options.expectedStatus, expectedReviewRequestId: options.expectedReviewRequestId,
+    versionId: options.form.versionId, answers: options.form.answers,
+  }) : null;
+  if (options.form && await formRequestReplay(database, { formId: 'seller.product-submission',
+    requestId: options.form.requestId, actorId: options.actorId, action: 'product.resubmitted',
+    digest: catalogDigest!, subjectId: options.productId })) return;
   const mutationId = crypto.randomUUID();
   const addedPhotos=options.images.filter(m=>m.mimeType.startsWith('image/')).length;
   const addedVideos=options.images.filter(m=>m.mimeType==='video/mp4').length;
@@ -537,6 +573,8 @@ export async function reviseAndResubmitProduct(
         ...removedMediaIds,
         addedVideos,
       ),
+    ...(options.form ? [database.prepare(`SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
+      THEN 1 ELSE json_extract('invalid', '$') END`).bind(options.form.requestId)] : []),
     database
       .prepare(
         `INSERT INTO audit_logs (
@@ -551,8 +589,9 @@ export async function reviseAndResubmitProduct(
         options.actorId,
         options.productId,
         JSON.stringify({ status: expectedStatus }),
-        JSON.stringify({ status: 'submitted', identityPreserved: true }),
-        mutationId,
+        JSON.stringify({ status: 'submitted', identityPreserved: true,
+          ...(catalogDigest ? { catalogDigest } : {}) }),
+        options.form?.requestId ?? mutationId,
         options.now,
         options.productId,
         mutationId,
@@ -651,6 +690,13 @@ export async function reviseAndResubmitProduct(
   }
 
   statements.push(...await businessNotificationStatements(database,{eventId:mutationId,sourceType:'product',sourceId:options.productId,status:'submitted',reviewRequestId:mutationId,actorId:options.actorId,now:options.now,kind:'submitted'}));
+  if (options.form) statements.push(
+    database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM products WHERE id=? AND seller_id=? AND review_request_id=?)
+      THEN 1 ELSE json_extract('invalid', '$') END`).bind(options.productId, options.sellerId, mutationId),
+    buildFormAnswerInsert(database, { formId: 'seller.product-submission', requestId: options.form.requestId,
+      versionId: options.form.versionId, subjectType: 'product', subjectId: options.productId,
+      actorId: options.actorId, answers: options.form.answers, now: options.now }),
+  );
   const results = await database.batch(statements);
   if ((results[0].meta.changes ?? 0) !== 1) {
     throw new ProductRevisionConflictError(
@@ -713,8 +759,15 @@ export async function setProductInventory(
     quantity: number;
     reason: string;
     now: number;
+    form?: SellerProductFormLink;
   },
 ): Promise<void> {
+  const catalogDigest = options.form ? await digestFormRequest({ productId: options.productId,
+    sellerId: options.sellerId, quantity: options.quantity, reason: options.reason,
+    versionId: options.form.versionId, answers: options.form.answers }) : null;
+  if (options.form && await formRequestReplay(database, { formId: 'seller.inventory',
+    requestId: options.form.requestId, actorId: options.actorId, action: 'product.inventory.updated',
+    digest: catalogDigest!, subjectId: options.productId })) return;
   const current = await database
     .prepare(
       `SELECT inventory_quantity AS inventoryQuantity, status
@@ -744,6 +797,8 @@ export async function setProductInventory(
         options.sellerId,
         current.inventoryQuantity,
       ),
+    ...(options.form ? [database.prepare(`SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
+      THEN 1 ELSE json_extract('invalid', '$') END`).bind(options.form.requestId)] : []),
     database
       .prepare(
         `INSERT INTO inventory_adjustments (
@@ -784,12 +839,17 @@ export async function setProductInventory(
         options.productId,
         options.reason,
         JSON.stringify({ inventoryQuantity: current.inventoryQuantity }),
-        JSON.stringify({ inventoryQuantity: options.quantity }),
-        mutationId,
+        JSON.stringify({ inventoryQuantity: options.quantity, ...(catalogDigest ? { catalogDigest } : {}) }),
+        options.form?.requestId ?? mutationId,
         options.now,
         options.productId,
         mutationId,
       ),
+    ...(options.form ? [database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM products WHERE id=? AND seller_id=? AND review_request_id=?)
+      THEN 1 ELSE json_extract('invalid', '$') END`).bind(options.productId, options.sellerId, mutationId),
+      buildFormAnswerInsert(database, { formId: 'seller.inventory', requestId: options.form.requestId,
+        versionId: options.form.versionId, subjectType: 'product', subjectId: options.productId,
+        actorId: options.actorId, answers: options.form.answers, now: options.now })] : []),
   ]);
   if ((results[0].meta.changes ?? 0) !== 1) {
     throw new InventoryConflictError(
