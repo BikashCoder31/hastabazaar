@@ -17,7 +17,10 @@ export async function formAnswerOwnerId(db: D1Database, answer: Pick<StoredFormA
   if (answer.subjectType === 'address') {
     const row = await db.prepare('SELECT user_id AS userId FROM addresses WHERE id=? LIMIT 1')
       .bind(answer.subjectId).first<{ userId: string }>();
-    return row?.userId ?? null;
+    if (row) return row.userId;
+    const deleted = await db.prepare(`SELECT user_id AS userId FROM address_answer_owner_tombstones
+      WHERE address_id=? LIMIT 1`).bind(answer.subjectId).first<{ userId: string }>();
+    return deleted?.userId ?? null;
   }
   if (answer.subjectType === 'product_review') {
     const row = await db.prepare('SELECT customer_id AS userId FROM product_reviews WHERE id=? LIMIT 1')

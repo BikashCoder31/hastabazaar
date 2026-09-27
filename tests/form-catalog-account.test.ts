@@ -10,9 +10,10 @@ import { build } from 'esbuild';
 import { listFormAnswersForSubject } from '../lib/db/repositories/form-answers';
 import { FORM_REGISTRY, IMPLEMENTED_FORM_ADAPTERS } from '../lib/forms/registry';
 import { authorizeFormAnswerRead } from '../lib/forms/access';
+import { collectFormAnswersForPrivacy } from '../lib/forms/privacy';
 import { FormValidationError, validateAnswersForDefinition, validateFormDraft } from '../lib/forms/validation';
 import { sharp } from '../lib/reviews/image-processor';
-import { listCustomerReviewAnswerHistory } from '../lib/db/repositories/customers';
+import { deleteCustomerAddress, listCustomerReviewAnswerHistory } from '../lib/db/repositories/customers';
 
 const safeTypes = ['short_text', 'long_text', 'number', 'date', 'single_choice', 'multiple_choice', 'checkbox', 'email', 'phone'];
 
@@ -97,7 +98,8 @@ async function fixture() {
     CREATE TABLE order_items(id TEXT PRIMARY KEY,order_id TEXT NOT NULL REFERENCES orders(id),product_id TEXT NOT NULL,fulfillment_status TEXT NOT NULL,quantity INTEGER NOT NULL);
     CREATE TABLE product_reviews(id TEXT PRIMARY KEY,product_id TEXT NOT NULL,customer_id TEXT NOT NULL REFERENCES users(id),order_item_id TEXT NOT NULL UNIQUE REFERENCES order_items(id),rating INTEGER NOT NULL,title TEXT,body TEXT NOT NULL,status TEXT NOT NULL,moderation_note TEXT,moderated_by TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
     CREATE TABLE products(id TEXT PRIMARY KEY,name_en TEXT NOT NULL,slug TEXT NOT NULL);
-    CREATE TABLE seller_profiles(id TEXT PRIMARY KEY,trading_name TEXT NOT NULL);
+    CREATE TABLE seller_profiles(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,trading_name TEXT NOT NULL);
+    CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY);
     CREATE TABLE review_replies(id TEXT PRIMARY KEY,review_id TEXT NOT NULL,body TEXT NOT NULL,version INTEGER NOT NULL,status TEXT NOT NULL,created_at INTEGER NOT NULL,seller_id TEXT NOT NULL);
     CREATE TABLE review_photos(id TEXT PRIMARY KEY,review_id TEXT NOT NULL REFERENCES product_reviews(id),object_key TEXT NOT NULL UNIQUE,mime_type TEXT NOT NULL,size_bytes INTEGER NOT NULL,sort_order INTEGER NOT NULL,created_at INTEGER NOT NULL);
     INSERT INTO orders VALUES ('order-1','HB-1001','customer','delivered','paid',10000,NULL,1,2,1),('order-other','HB-2002','other','delivered','paid',10000,NULL,1,2,1);
@@ -105,6 +107,8 @@ async function fixture() {
   sqlite.exec("INSERT INTO products VALUES ('product-1','Handmade Item','handmade-item')");
   const migration = await readFile(new URL('../drizzle/0056_form_catalog.sql', import.meta.url), 'utf8');
   for (const statement of migration.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
+  const tombstoneMigration = await readFile(new URL('../drizzle/0058_address_answer_owner_tombstones.sql', import.meta.url), 'utf8');
+  for (const statement of tombstoneMigration.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
   const db = new Database(sqlite);
   globalThis.accountCatalogDb = db as unknown as D1Database;
   globalThis.accountCatalogActor = { userId: 'customer' };
@@ -279,6 +283,124 @@ void test('one address request ID cannot be reused by another customer', async (
     assert.equal((await POST(jsonRequest('/api/account/addresses', 'POST', body))).status, 409);
     assert.equal(count(sqlite, 'addresses'), 1);
     assert.equal(count(sqlite, 'form_answer_sets'), 1);
+  } finally { sqlite.close(); }
+});
+
+void test('privacy export includes owned address and review snapshots, including archived answers', async () => {
+  const { sqlite } = await fixture();
+  try {
+    const { POST: createAddress } = await import('../app/api/account/addresses/route');
+    const { POST: createReview } = await import('../app/api/products/[id]/reviews/route');
+    seed(sqlite, 'account.address', 1, [extra]);
+    seed(sqlite, 'account.review', 1, [extra]);
+    const created = await createAddress(jsonRequest('/api/account/addresses', 'POST',
+      { address, idempotencyKey: 'export-address', formVersion: 1, customAnswers: answers }));
+    assert.equal(created.status, 201);
+    assert.equal((await createReview(await reviewRequest('export-review', answers),
+      { params: Promise.resolve({ id: 'product-1' }) })).status, 201);
+    seed(sqlite, 'account.address', 2, [{ ...extra, status: 'archived', required: false }]);
+    seed(sqlite, 'account.review', 2, [{ ...extra, status: 'archived', required: false }]);
+    globalThis.accountCatalogActor = { userId: 'other' };
+    assert.equal((await createAddress(jsonRequest('/api/account/addresses', 'POST',
+      { address, idempotencyKey: 'other-address', formVersion: 2, customAnswers: [] }))).status, 201);
+    const exported = await collectFormAnswersForPrivacy(globalThis.accountCatalogDb, 'customer');
+    assert.deepEqual(exported.map((row) => row.formId).sort(), ['account.address', 'account.review']);
+    assert.ok(exported.every((row) => row.historicalFieldIds.includes('delivery_note')));
+    assert.ok(exported.every((row) => row.answers.answers[0]?.value === 'Near the blue gate'));
+  } finally { sqlite.close(); }
+});
+
+void test('deleted address answers retain original ID, owner-only read, paged history, and access export', async () => {
+  const { sqlite } = await fixture();
+  try {
+    const { POST: createAddress } = await import('../app/api/account/addresses/route');
+    seed(sqlite, 'account.address', 1, [extra]);
+    const created = await createAddress(jsonRequest('/api/account/addresses', 'POST',
+      { address, idempotencyKey: 'delete-address', formVersion: 1, customAnswers: answers }));
+    const addressId = (await created.json() as { id: string }).id;
+    assert.equal(created.status, 201);
+    const original = (await listFormAnswersForSubject(globalThis.accountCatalogDb, 'address', addressId))[0];
+    await deleteCustomerAddress(globalThis.accountCatalogDb,
+      { userId: 'customer', addressId, requestId: 'delete-address-action', now: 100 });
+    assert.equal(count(sqlite, 'addresses'), 0);
+    assert.equal(original.subjectId, addressId);
+    assert.equal(await authorizeFormAnswerRead(globalThis.accountCatalogDb,
+      { id: 'customer', role: 'customer' }, original), true);
+    assert.equal(await authorizeFormAnswerRead(globalThis.accountCatalogDb,
+      { id: 'other', role: 'customer' }, original), false);
+    assert.deepEqual((await collectFormAnswersForPrivacy(globalThis.accountCatalogDb, 'customer'))
+      .map((row) => row.id), [original.id]);
+    const { default: AddressesPage } = await import('../app/account/addresses/page');
+    const html = renderToStaticMarkup(await AddressesPage());
+    assert.match(html, /previous address answers/);
+    assert.match(html, /Near the blue gate/);
+    globalThis.accountCatalogActor = { userId: 'other' };
+    assert.doesNotMatch(renderToStaticMarkup(await AddressesPage()), /Near the blue gate/);
+  } finally { sqlite.close(); }
+});
+
+void test('denied, failed, and replayed address deletions do not create a new owner tombstone', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    const { POST: createAddress } = await import('../app/api/account/addresses/route');
+    seed(sqlite, 'account.address', 1, [extra]);
+    const create = async (key: string) => {
+      const response = await createAddress(jsonRequest('/api/account/addresses', 'POST',
+        { address, idempotencyKey: key, formVersion: 1, customAnswers: answers }));
+      assert.equal(response.status, 201);
+      return (await response.json() as { id: string }).id;
+    };
+    const firstId = await create('tombstone-first');
+    const secondId = await create('tombstone-second');
+    await assert.rejects(deleteCustomerAddress(globalThis.accountCatalogDb,
+      { userId: 'other', addressId: firstId, requestId: 'denied-delete', now: 10 }));
+    assert.equal(count(sqlite, 'address_answer_owner_tombstones'), 0);
+    db.failStatement = 1;
+    await assert.rejects(deleteCustomerAddress(globalThis.accountCatalogDb,
+      { userId: 'customer', addressId: firstId, requestId: 'failed-delete', now: 11 }));
+    db.failStatement = null;
+    assert.equal(count(sqlite, 'address_answer_owner_tombstones'), 0);
+    assert.equal(count(sqlite, 'addresses'), 2);
+    await deleteCustomerAddress(globalThis.accountCatalogDb,
+      { userId: 'customer', addressId: firstId, requestId: 'successful-delete', now: 12 });
+    assert.equal(count(sqlite, 'address_answer_owner_tombstones'), 1);
+    await deleteCustomerAddress(globalThis.accountCatalogDb,
+      { userId: 'customer', addressId: firstId, requestId: 'successful-delete', now: 13 });
+    assert.equal(count(sqlite, 'address_answer_owner_tombstones'), 1);
+    await assert.rejects(deleteCustomerAddress(globalThis.accountCatalogDb,
+      { userId: 'customer', addressId: secondId, requestId: 'successful-delete', now: 14 }),
+    /already used/i);
+    assert.equal(count(sqlite, 'address_answer_owner_tombstones'), 1);
+    assert.equal((sqlite.prepare('SELECT id FROM addresses WHERE id=?').get(secondId) as { id: string }).id, secondId);
+  } finally { sqlite.close(); }
+});
+
+void test('deleted address owner history uses a bounded 50-row keyset page', async () => {
+  const { sqlite } = await fixture();
+  try {
+    seed(sqlite, 'account.address', 1, [extra]);
+    const tombstones = sqlite.prepare(`INSERT INTO address_answer_owner_tombstones
+      (address_id,user_id,deletion_request_id,deleted_at) VALUES (?,?,?,1)`);
+    const insert = sqlite.prepare(`INSERT INTO form_answer_sets
+      (id,form_id,request_id,config_version_id,subject_type,subject_id,actor_id,answers_json,created_at)
+      VALUES (?,'account.address',?,'account.address-v1','address',?,'customer',?,1)`);
+    const snapshot = JSON.stringify({ formId: 'account.address', version: 1, answers: [
+      { fieldId: 'delivery_note', label: 'Blue gate instruction', type: 'short_text', value: 'Near the blue gate' },
+    ] });
+    for (let index = 1; index <= 51; index++) {
+      const id = `removed-${String(index).padStart(3, '0')}`;
+      tombstones.run(id, 'customer', `remove-${index}`);
+      insert.run(`answer-${index}`, `submit-${index}`, id, snapshot);
+    }
+    const { default: AddressesPage } = await import('../app/account/addresses/page');
+    const first = renderToStaticMarkup(await AddressesPage());
+    assert.equal((first.match(/Near the blue gate/g) ?? []).length, 50);
+    assert.match(first, /Next 50 deleted addresses/);
+    const next = renderToStaticMarkup(await AddressesPage({ searchParams: Promise.resolve({ deletedAt: '1', deletedId: 'removed-050' }) }));
+    assert.equal((next.match(/Near the blue gate/g) ?? []).length, 1);
+    assert.doesNotMatch(next, /Next 50 deleted addresses/);
+    globalThis.accountCatalogActor = { userId: 'other' };
+    assert.doesNotMatch(renderToStaticMarkup(await AddressesPage()), /Near the blue gate/);
   } finally { sqlite.close(); }
 });
 

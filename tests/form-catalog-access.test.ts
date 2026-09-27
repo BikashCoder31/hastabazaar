@@ -98,6 +98,8 @@ async function fixture() {
       operation_request_id TEXT UNIQUE,created_at INTEGER);
     CREATE TABLE seller_profiles(id TEXT PRIMARY KEY, user_id TEXT NOT NULL);
     CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY);
+    CREATE TABLE addresses(id TEXT PRIMARY KEY,user_id TEXT NOT NULL);
+    CREATE TABLE product_reviews(id TEXT PRIMARY KEY,customer_id TEXT NOT NULL);
     INSERT INTO users VALUES ('owner','auth-owner','active'),('other','auth-other','active'),
       ('staff','auth-staff','active'),('staff-other','auth-staff-other','active'),
       ('seller','auth-seller','active'),('rider','auth-rider','active'),('inactive','auth-inactive','disabled');
@@ -110,7 +112,7 @@ async function fixture() {
     INSERT INTO data_rights_requests(id,customer_id,request_type,status,assigned_to)
       VALUES ('access-owner','owner','access','assigned','staff');
   `);
-  for (const path of ['../drizzle/0031_staff_permissions.sql', '../drizzle/0056_form_catalog.sql', '../drizzle/0057_data_rights_legal_holds.sql']) {
+  for (const path of ['../drizzle/0031_staff_permissions.sql', '../drizzle/0056_form_catalog.sql', '../drizzle/0057_data_rights_legal_holds.sql', '../drizzle/0058_address_answer_owner_tombstones.sql']) {
     const migration = await readFile(new URL(path, import.meta.url), 'utf8');
     for (const statement of migration.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
   }

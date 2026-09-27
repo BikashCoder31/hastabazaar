@@ -157,6 +157,27 @@ function normalizedAddress(input: CustomerAddressInput): CustomerAddressInput {
   return normalized;
 }
 
+export async function listDeletedCustomerAddressAnswerOwnersPage(database: D1Database, input: {
+  userId: string; after?: { deletedAt: number; addressId: string };
+}): Promise<{ addresses: readonly { addressId: string; deletedAt: number }[];
+  nextCursor: { deletedAt: number; addressId: string } | null }> {
+  if (input.after && (!Number.isSafeInteger(input.after.deletedAt) || input.after.deletedAt < 0 ||
+    !input.after.addressId || input.after.addressId.length > 191))
+    throw new CustomerDataConflictError('Deleted-address cursor is invalid.');
+  const rows = await database.prepare(`SELECT t.address_id AS addressId,t.deleted_at AS deletedAt
+    FROM address_answer_owner_tombstones t WHERE t.user_id=?
+      AND NOT EXISTS(SELECT 1 FROM addresses a WHERE a.id=t.address_id)
+      AND EXISTS(SELECT 1 FROM form_answer_sets f WHERE f.subject_type='address' AND f.subject_id=t.address_id)
+      AND (? IS NULL OR t.deleted_at>? OR (t.deleted_at=? AND t.address_id>?))
+    ORDER BY t.deleted_at,t.address_id LIMIT 51`)
+    .bind(input.userId, input.after?.deletedAt ?? null, input.after?.deletedAt ?? 0,
+      input.after?.deletedAt ?? 0, input.after?.addressId ?? '')
+    .all<{ addressId: string; deletedAt: number }>();
+  const addresses = rows.results.slice(0, 50);
+  const last = addresses.at(-1);
+  return { addresses, nextCursor: rows.results.length > 50 && last ? { ...last } : null };
+}
+
 type AddressFormSubmission = { formVersion: number; versionId: string; answers: FormAnswerSnapshot };
 
 function addressCore(input: CustomerAddressInput) {
@@ -285,15 +306,31 @@ export async function saveCustomerAddress(database: D1Database, options: { userI
 }
 
 export async function deleteCustomerAddress(database: D1Database, options: { userId: string; addressId: string; requestId: string; now: number }): Promise<void> {
-  const duplicate = await database.prepare(`SELECT id FROM audit_logs WHERE request_id = ? AND actor_id = ? LIMIT 1`).bind(options.requestId, options.userId).first();
-  if (duplicate) return;
+  const duplicate = await database.prepare(`SELECT actor_id AS actorId,action,subject_type AS subjectType,
+    subject_id AS subjectId FROM audit_logs WHERE request_id=? LIMIT 1`)
+    .bind(options.requestId).first<{ actorId: string; action: string; subjectType: string; subjectId: string }>();
+  if (duplicate) {
+    if (duplicate.actorId === options.userId && duplicate.action === 'account.address.deleted' &&
+      duplicate.subjectType === 'address' && duplicate.subjectId === options.addressId) return;
+    throw new CustomerDataConflictError('This request ID was already used for a different address action.');
+  }
   const existing = await database.prepare(`SELECT id FROM addresses WHERE id = ? AND user_id = ?`).bind(options.addressId, options.userId).first();
   if (!existing) throw new CustomerDataConflictError('Address not found.');
   await database.batch([
-    database.prepare(`DELETE FROM addresses WHERE id = ? AND user_id = ?`).bind(options.addressId, options.userId),
+    database.prepare(`INSERT INTO address_answer_owner_tombstones
+      (address_id,user_id,deletion_request_id,deleted_at)
+      SELECT a.id,a.user_id,?,? FROM addresses a WHERE a.id=? AND a.user_id=?
+        AND EXISTS(SELECT 1 FROM form_answer_sets f WHERE f.subject_type='address' AND f.subject_id=a.id)
+        AND NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)`)
+      .bind(options.requestId, options.now, options.addressId, options.userId, options.requestId),
+    database.prepare(`DELETE FROM addresses WHERE id=? AND user_id=?
+      AND NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)`)
+      .bind(options.addressId, options.userId, options.requestId),
     database.prepare(
       `INSERT INTO audit_logs (id, actor_id, action, subject_type, subject_id, reason, previous_json, next_json, request_id, ip_hash, created_at)
-       VALUES (?, ?, 'account.address.deleted', 'address', ?, 'Customer deleted own saved delivery address', NULL, NULL, ?, NULL, ?)`,
+       VALUES (?, ?, 'account.address.deleted', 'address',
+         CASE WHEN changes()=1 THEN ? ELSE json_extract('invalid address deletion','$') END,
+         'Customer deleted own saved delivery address', NULL, NULL, ?, NULL, ?)`,
     ).bind(crypto.randomUUID(), options.userId, options.addressId, options.requestId, options.now),
   ]);
 }

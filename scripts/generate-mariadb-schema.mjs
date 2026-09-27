@@ -62,6 +62,10 @@ const dataRightsLegalHoldsSql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-data-rights-legal-holds.sql'),
   'utf8',
 );
+const addressAnswerOwnerTombstonesSql = await readFile(
+  resolve(projectRoot, 'deployment/babal/mariadb-address-answer-owner-tombstones.sql'),
+  'utf8',
+);
 
 const quote = (value) => `\`${String(value).replaceAll('`', '``')}\``;
 
@@ -305,6 +309,7 @@ output.push(
   '',
   formCatalogSql.trim(),
   dataRightsLegalHoldsSql.trim(),
+  addressAnswerOwnerTombstonesSql.trim(),
   '',
   '-- Babal.Host password authentication and server-side sessions.',
   'CREATE TABLE IF NOT EXISTS `user_credentials` (',
@@ -388,6 +393,7 @@ await mkdir(dirname(outputPath), { recursive: true });
 const schemaSql = output.join('\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
+  'address_answer_owner_tombstones',
   'data_rights_legal_holds',
   'form_answer_sets',
   'form_config_versions',

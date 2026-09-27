@@ -837,6 +837,23 @@ export const addresses = sqliteTable(
   ],
 );
 
+/** Minimal owner link for address answers after the saved address is deleted. */
+export const addressAnswerOwnerTombstones = sqliteTable(
+  'address_answer_owner_tombstones',
+  {
+    addressId: text('address_id').primaryKey(),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+    deletionRequestId: text('deletion_request_id').notNull(),
+    deletedAt: timestamp('deleted_at').notNull(),
+  },
+  (table) => [
+    index('idx_address_answer_owner_tombstones_user').on(table.userId, table.deletedAt, table.addressId),
+    check('address_answer_owner_tombstones_address_length', sql`length(${table.addressId}) BETWEEN 1 AND 191`),
+    check('address_answer_owner_tombstones_request_length', sql`length(${table.deletionRequestId}) BETWEEN 1 AND 191`),
+    check('address_answer_owner_tombstones_time', sql`${table.deletedAt} >= 0`),
+  ],
+);
+
 export const wishlistItems = sqliteTable(
   'wishlist_items',
   {

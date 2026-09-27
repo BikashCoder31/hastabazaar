@@ -161,3 +161,25 @@ void test('legal holds store one active hold per customer and preserve released 
     assert.match(generated, /UNIQUE KEY `idx_data_rights_legal_holds_one_active`/);
   } finally { sqlite.close(); }
 });
+
+void test('deleted-address answer ownership survives its parent row in D1 and generated MariaDB schema', async () => {
+  const sqlite = await fixture();
+  try {
+    const migration = await readFile(new URL('../drizzle/0058_address_answer_owner_tombstones.sql', import.meta.url), 'utf8');
+    for (const statement of migration.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
+    sqlite.prepare(`INSERT INTO address_answer_owner_tombstones
+      (address_id,user_id,deletion_request_id,deleted_at) VALUES ('address-1','customer','delete-1',100)`).run();
+    assert.throws(() => sqlite.exec(`INSERT INTO address_answer_owner_tombstones
+      (address_id,user_id,deletion_request_id,deleted_at) VALUES ('address-1','admin','delete-2',101)`));
+    assert.throws(() => sqlite.exec(`INSERT INTO address_answer_owner_tombstones
+      (address_id,user_id,deletion_request_id,deleted_at) VALUES ('address-2','missing','delete-2',101)`));
+    assert.deepEqual({ ...sqlite.prepare(`SELECT address_id,user_id FROM address_answer_owner_tombstones
+      WHERE address_id='address-1'`).get() }, { address_id: 'address-1', user_id: 'customer' });
+    const generated = await readFile(new URL('../deployment/babal/mariadb-schema.sql', import.meta.url), 'utf8');
+    const recovery = await readFile(new URL('../deployment/babal/mariadb-reset-empty-import.sql', import.meta.url), 'utf8');
+    for (const ddl of [generated, recovery]) {
+      assert.match(ddl, /CREATE TABLE IF NOT EXISTS `address_answer_owner_tombstones`/);
+      assert.match(ddl, /KEY `idx_address_answer_owner_tombstones_user`/);
+    }
+  } finally { sqlite.close(); }
+});
