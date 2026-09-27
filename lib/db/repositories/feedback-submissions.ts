@@ -14,12 +14,13 @@ export interface FeedbackDeliveryJob {
   leaseToken: string | null;
   leaseExpiresAt: number | null;
   attemptCount: number;
+  createdAt: number;
 }
 
 export async function findFeedbackDeliveryJob(db: D1Database, requestId: string): Promise<FeedbackDeliveryJob | null> {
   return db.prepare(`SELECT id,request_id AS requestId,form_id AS formId,
     payload_hash AS payloadHash,feedback_json AS feedbackJson,status,lease_token AS leaseToken,
-    lease_expires_at AS leaseExpiresAt,attempt_count AS attemptCount
+    lease_expires_at AS leaseExpiresAt,attempt_count AS attemptCount,created_at AS createdAt
     FROM feedback_delivery_jobs WHERE request_id=? LIMIT 1`).bind(requestId).first<FeedbackDeliveryJob>();
 }
 
@@ -35,14 +36,10 @@ export async function listSupportFeedbackDeliveryJobs(db: D1Database,
   const rows = await db.prepare(`SELECT id,request_id AS requestId,form_id AS formId,
     payload_hash AS payloadHash,feedback_json AS feedbackJson,status,lease_token AS leaseToken,
     lease_expires_at AS leaseExpiresAt,attempt_count AS attemptCount,created_at AS createdAt
-    FROM feedback_delivery_jobs WHERE (status IN ('sent','sending')
-      OR (status='failed' AND attempt_count>=?)
-      OR (status='leased' AND attempt_count>=? AND lease_expires_at<=?))
-      AND (? IS NULL OR created_at<? OR (created_at=? AND id<?))
+    FROM feedback_delivery_jobs WHERE (? IS NULL OR created_at<? OR (created_at=? AND id<?))
     ORDER BY created_at DESC,id DESC LIMIT 51`)
-    .bind(FEEDBACK_MAX_ATTEMPTS, FEEDBACK_MAX_ATTEMPTS, Date.now(),
-      cursor?.createdAt ?? null, cursor?.createdAt ?? 0, cursor?.createdAt ?? 0, cursor?.id ?? '')
-    .all<FeedbackDeliveryJob & { createdAt: number }>();
+    .bind(cursor?.createdAt ?? null, cursor?.createdAt ?? 0, cursor?.createdAt ?? 0, cursor?.id ?? '')
+    .all<FeedbackDeliveryJob>();
   const jobs = rows.results.slice(0, 50);
   const last = rows.results.length > 50 ? jobs.at(-1) : null;
   return { jobs, nextCursor: last ? { createdAt: last.createdAt, id: last.id } : null };

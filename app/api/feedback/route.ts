@@ -104,9 +104,9 @@ async function deliver(db: D1Database, job: FeedbackDeliveryJob): Promise<Respon
   try {
     const answers = await listFormAnswersForSubject(db, 'feedback_submission', job.id);
     if (answers.length !== 1 || answers[0].formId !== job.formId || answers[0].requestId !== job.requestId)
-      return retryableDelivery();
+      return uncertainDelivery();
     feedback = decodeFeedbackJob(job);
-  } catch { return retryableDelivery(); }
+  } catch { return uncertainDelivery(); }
   const now = Date.now();
   const token = await claimFeedbackDelivery(db, job.id, now);
   if (!token || !(await beginFeedbackSend(db, job.id, token, Date.now()))) {
