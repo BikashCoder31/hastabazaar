@@ -100,6 +100,10 @@ export default async function AdminDashboardPage() {
           >
             View reports
           </Link>
+          {can(staff, 'support.manage') ? <Link
+            href="/admin/feedback"
+            className="inline-flex min-h-11 items-center rounded-full border px-5 text-sm font-semibold hover:bg-muted"
+          >Contact and feedback</Link> : null}
         </div>
       </section>
       <section aria-labelledby="queue-heading">

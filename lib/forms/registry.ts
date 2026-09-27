@@ -1,4 +1,5 @@
 import type { BaseFieldCapability, FormAudience, FormCapabilities, FormDefinition, FormId, FormMode } from './types';
+import { feedbackTopics } from '../feedback/customer-feedback';
 
 export interface ImplementedFormAdapter {
   readonly formId: FormId;
@@ -12,6 +13,9 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
   'account.address': { formId: 'account.address', route: '/api/account/addresses', mode: 'collection' },
   'account.privacy-request': { formId: 'account.privacy-request', route: '/api/account/privacy', mode: 'collection' },
   'account.review': { formId: 'account.review', route: '/api/products/:id/reviews', mode: 'collection' },
+  'public.contact': { formId: 'public.contact', route: '/api/feedback', mode: 'collection' },
+  'public.feedback': { formId: 'public.feedback', route: '/api/feedback', mode: 'collection' },
+  'public.footer-feedback': { formId: 'public.footer-feedback', route: '/api/feedback', mode: 'collection' },
 });
 
 // Inventory rows are ordered to match the 69 JSX sites in the frozen policy baseline.
@@ -110,6 +114,7 @@ export const PROGRAMMATIC_FORM_SITES = Object.freeze([
 const CONDITIONAL_SOURCE_ROWS = `
 commerce.gift-card-issue|staff|transaction|/api/admin/gift-cards|amount
 shipping.console-action-staff|staff|operation|/api/admin/shipping/:id|action
+public.feedback|public|collection|/api/feedback|message
 `.trim();
 
 const PROGRAMMATIC_ROWS = `
@@ -185,9 +190,35 @@ function accountDefinition(id: 'account.address' | 'account.privacy-request' | '
   } satisfies FormDefinition);
 }
 
+function feedbackDefinition(id: 'public.contact' | 'public.feedback' | 'public.footer-feedback'): FormDefinition {
+  const protectedField = (key: string, explanation: string) => ({ key, type: 'existing', label: key, capability: 'protected' as const, explanation });
+  const displayField = (key: string, type: 'short_text' | 'long_text' | 'email' | 'phone' | 'single_choice', required: boolean) => ({
+    key, type, label: key, capability: 'display_editable' as const, required, status: 'active' as const,
+    ...(key === 'topic' ? { choices: feedbackTopics.map((topic) => ({ value: topic, label: topic })) } : {}),
+    explanation: 'Label, help text, placeholder and position may change; the current server parser keeps type, requiredness and choices fixed.',
+  });
+  const shared = [displayField('name', 'short_text', true), displayField('email', 'email', true),
+    displayField('topic', 'single_choice', true), displayField('message', 'long_text', true),
+    protectedField('privacyAcknowledgement', 'Privacy consent remains required and server enforced.')];
+  const variant = id === 'public.feedback' ? ['subject', 'rating']
+    : id === 'public.contact' ? ['subject', 'orderReference'] : ['orderReference'];
+  return Object.freeze({
+    id, audience: 'public', mode: 'collection', route: '/api/feedback', adapterId: id,
+    baseFields: Object.freeze([...shared, ...(id === 'public.footer-feedback' ? [] : [displayField('phone', 'phone', false)]),
+      ...variant.map((key) => protectedField(key, 'The source-specific contact contract remains server enforced.')),
+      ...['kind', 'pagePath', 'website', 'requestId', 'formVersion'].map((key) =>
+        protectedField(key, 'Source, anti-abuse, version and request identity cannot be configured.'))]),
+    capabilities: Object.freeze({ explanation: 'Safe custom context is delivered with the query and retained for restricted support review. Routing, consent, anti-abuse and request identity stay protected.',
+      customFieldTypes: ACCOUNT_CUSTOM_TYPES, answerBehavior: 'record' }),
+  } satisfies FormDefinition);
+}
+
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
   Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
-    const item = row.startsWith('account.address|') ? accountDefinition('account.address')
+    const item = row.startsWith('public.contact|') ? feedbackDefinition('public.contact')
+      : row.startsWith('public.feedback|') ? feedbackDefinition('public.feedback')
+      : row.startsWith('public.footer-feedback|') ? feedbackDefinition('public.footer-feedback')
+      : row.startsWith('account.address|') ? accountDefinition('account.address')
       : row.startsWith('account.privacy-request|') ? accountDefinition('account.privacy-request')
       : row.startsWith('account.review|') ? accountDefinition('account.review')
       : row.startsWith('account.profile|') ? Object.freeze({

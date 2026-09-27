@@ -22,6 +22,9 @@ type FeedbackEmailEnvironment = {
 
 const feedbackRecipient = 'hastabazaar98@gmail.com';
 
+/** Raised only before the external transport is invoked. */
+export class FeedbackDeliveryUnavailableError extends Error {}
+
 export async function sendCustomerFeedbackEmail(
   feedback: CustomerFeedback,
 ): Promise<void> {
@@ -31,7 +34,7 @@ export async function sendCustomerFeedbackEmail(
     (current.EMAIL_DELIVERY_CONFIGURED !== 'true' &&
       current.EMAIL.configured !== true)
   ) {
-    throw new Error('Email delivery is not configured.');
+    throw new FeedbackDeliveryUnavailableError('Email delivery is not configured.');
   }
 
   await current.EMAIL.send({

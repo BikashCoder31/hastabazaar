@@ -2,9 +2,12 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { feedbackTopics } from '@/lib/feedback/customer-feedback';
+import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { readConfiguredSubmission } from '@/lib/forms/submission';
 
 type SubmissionState =
   | { kind: 'idle'; message: '' }
@@ -12,9 +15,12 @@ type SubmissionState =
 
 const fieldClass =
   'mt-1.5 min-h-11 w-full rounded-lg border border-white/25 bg-white/10 px-3 py-2 text-sm text-white outline-none placeholder:text-white/50 focus:border-[#f4c46b] focus:ring-2 focus:ring-[#f4c46b]/30 disabled:opacity-60';
+const displayKeys = ['name', 'email', 'topic', 'message'] as const;
 
 export function FooterFeedbackForm() {
   const pathname = usePathname();
+  const catalog = usePublishedFormConfig('public.footer-feedback');
+  const attemptId = useRef('');
   const [busy, setBusy] = useState(false);
   const [state, setState] = useState<SubmissionState>({
     kind: 'idle',
@@ -32,20 +38,27 @@ export function FooterFeedbackForm() {
     setState({ kind: 'idle', message: '' });
 
     try {
+      if (!catalog.config || !catalog.canSubmit) throw new Error(catalog.message || 'Form configuration is loading.');
+      readConfiguredSubmission(form, catalog.config, displayKeys);
+      if (!attemptId.current) attemptId.current = crypto.randomUUID();
+      const body = new FormData(form);
+      body.set('requestId', attemptId.current);
       const response = await fetch('/api/feedback', {
         method: 'POST',
-        body: new FormData(form),
+        body,
       });
       const result = (await response.json().catch(() => null)) as {
         ok?: boolean;
         error?: string;
       } | null;
+      catalog.handleSubmissionResponse(response);
       if (!response.ok || !result?.ok) {
         throw new Error(
           result?.error ?? 'Your query could not be sent. Please try again.',
         );
       }
       form.reset();
+      attemptId.current = '';
       setState({
         kind: 'success',
         message: 'Thank you. Your query has been sent to the HastaBazaar team.',
@@ -82,8 +95,11 @@ export function FooterFeedbackForm() {
           </p>
         </div>
 
-        <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+        <form data-form-id="public.footer-feedback" onSubmit={submit}
+          onInput={() => { if (state.kind === 'error') attemptId.current = ''; }}
+          className="grid gap-4 sm:grid-cols-2">
           <input type="hidden" name="pagePath" value={pathname || '/'} />
+          <input type="hidden" name="kind" value="footer" />
           <div
             aria-hidden="true"
             className="absolute -left-[10000px] h-px w-px overflow-hidden"
@@ -99,22 +115,25 @@ export function FooterFeedbackForm() {
           </div>
 
           <label className="block text-sm font-medium">
-            Your name <span aria-hidden="true">*</span>
+            {fieldDisplay(catalog.config, 'name')?.label ?? 'Your name'} <span aria-hidden="true">*</span>
             <input
               className={fieldClass}
               name="name"
+              placeholder={fieldDisplay(catalog.config, 'name')?.placeholder}
               autoComplete="name"
               minLength={2}
               maxLength={100}
               required
               disabled={busy}
             />
+            {fieldDisplay(catalog.config, 'name')?.helpText ? <span className="mt-1 block text-xs text-white/70">{fieldDisplay(catalog.config, 'name')?.helpText}</span> : null}
           </label>
           <label className="block text-sm font-medium">
-            Email address <span aria-hidden="true">*</span>
+            {fieldDisplay(catalog.config, 'email')?.label ?? 'Email address'} <span aria-hidden="true">*</span>
             <input
               className={fieldClass}
               name="email"
+              placeholder={fieldDisplay(catalog.config, 'email')?.placeholder}
               type="email"
               inputMode="email"
               autoComplete="email"
@@ -122,9 +141,10 @@ export function FooterFeedbackForm() {
               required
               disabled={busy}
             />
+            {fieldDisplay(catalog.config, 'email')?.helpText ? <span className="mt-1 block text-xs text-white/70">{fieldDisplay(catalog.config, 'email')?.helpText}</span> : null}
           </label>
           <label className="block text-sm font-medium">
-            Query type <span aria-hidden="true">*</span>
+            {fieldDisplay(catalog.config, 'topic')?.label ?? 'Query type'} <span aria-hidden="true">*</span>
             <select
               className={fieldClass}
               name="topic"
@@ -141,6 +161,7 @@ export function FooterFeedbackForm() {
                 </option>
               ))}
             </select>
+            {fieldDisplay(catalog.config, 'topic')?.helpText ? <span className="mt-1 block text-xs text-white/70">{fieldDisplay(catalog.config, 'topic')?.helpText}</span> : null}
           </label>
           <label className="block text-sm font-medium">
             Order reference (optional)
@@ -153,7 +174,7 @@ export function FooterFeedbackForm() {
             />
           </label>
           <label className="block text-sm font-medium sm:col-span-2">
-            Your query <span aria-hidden="true">*</span>
+            {fieldDisplay(catalog.config, 'message')?.label ?? 'Your query'} <span aria-hidden="true">*</span>
             <textarea
               className={`${fieldClass} min-h-28 resize-y`}
               name="message"
@@ -161,8 +182,9 @@ export function FooterFeedbackForm() {
               maxLength={2_000}
               required
               disabled={busy}
-              placeholder="Tell us what you need help with."
+              placeholder={fieldDisplay(catalog.config, 'message')?.placeholder ?? 'Tell us what you need help with.'}
             />
+            {fieldDisplay(catalog.config, 'message')?.helpText ? <span className="mt-1 block text-xs text-white/70">{fieldDisplay(catalog.config, 'message')?.helpText}</span> : null}
           </label>
           <label className="flex items-start gap-3 text-xs leading-5 text-white/70 sm:col-span-2">
             <input
@@ -185,14 +207,17 @@ export function FooterFeedbackForm() {
               .
             </span>
           </label>
+          {catalog.config ? <div className="sm:col-span-2 [&_[data-configured-field]_input]:text-foreground [&_[data-configured-field]_select]:text-foreground [&_[data-configured-field]_textarea]:text-foreground [&_[data-configured-field]_p]:text-white/70"><ConfiguredFields config={catalog.config} baseKeys={displayKeys} /></div> : null}
           <div className="flex flex-wrap items-center gap-4 sm:col-span-2">
             <button
               type="submit"
-              disabled={busy}
+              disabled={busy || !catalog.canSubmit}
               className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#f4c46b] px-6 text-sm font-semibold text-[#101f39] transition-colors hover:bg-[#ffd98f] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f4c46b] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {busy ? 'Sending…' : 'Send query'}
             </button>
+            {!catalog.canSubmit ? <output className="text-sm text-white/70">{catalog.message || 'Form configuration is loading.'}</output> : null}
+            {catalog.status === 'stale' ? <button type="button" onClick={catalog.refresh}>Refresh form</button> : null}
             <output
               aria-live="polite"
               className={

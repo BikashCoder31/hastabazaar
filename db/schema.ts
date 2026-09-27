@@ -3038,3 +3038,38 @@ export const dataRightsLegalHolds = sqliteTable(
     check('data_rights_legal_holds_release', sql`(${table.releasedBy} IS NULL AND ${table.releasedAt} IS NULL) OR (${table.releasedBy} IS NOT NULL AND ${table.releasedAt} IS NOT NULL AND ${table.releasedAt} >= ${table.placedAt})`),
   ],
 );
+
+export const feedbackDeliveryJobs = sqliteTable(
+  'feedback_delivery_jobs',
+  {
+    id: id(),
+    requestId: text('request_id').notNull().unique(),
+    formId: text('form_id').notNull(),
+    configVersionId: text('config_version_id').notNull(),
+    payloadHash: text('payload_hash').notNull(),
+    feedbackJson: text('feedback_json').notNull(),
+    status: text('status').notNull(),
+    leaseToken: text('lease_token'),
+    leaseExpiresAt: timestamp('lease_expires_at'),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
+    sentAt: timestamp('sent_at'),
+  },
+  (table) => [
+    foreignKey({ columns: [table.formId, table.configVersionId],
+      foreignColumns: [formConfigVersions.formId, formConfigVersions.id],
+      name: 'feedback_delivery_jobs_version_fk' }).onDelete('restrict'),
+    index('idx_feedback_delivery_jobs_status_lease').on(table.status, table.leaseExpiresAt, table.updatedAt),
+    index('idx_feedback_delivery_jobs_created').on(table.createdAt, table.id),
+    check('feedback_delivery_jobs_request_length', sql`length(${table.requestId}) BETWEEN 8 AND 191`),
+    check('feedback_delivery_jobs_form', sql`${table.formId} IN ('public.contact','public.feedback','public.footer-feedback')`),
+    check('feedback_delivery_jobs_hash_length', sql`length(${table.payloadHash}) = 64`),
+    check('feedback_delivery_jobs_json', sql`json_valid(${table.feedbackJson}) AND json_type(${table.feedbackJson}) = 'object' AND length(CAST(${table.feedbackJson} AS BLOB)) <= 8192`),
+    check('feedback_delivery_jobs_status', sql`${table.status} IN ('pending','leased','sending','failed','sent')`),
+    check('feedback_delivery_jobs_attempts', sql`${table.attemptCount} BETWEEN 0 AND 5`),
+    check('feedback_delivery_jobs_times', sql`${table.createdAt} >= 0 AND ${table.updatedAt} >= ${table.createdAt}`),
+    check('feedback_delivery_jobs_lease', sql`(${table.status} IN ('leased','sending') AND ${table.leaseToken} IS NOT NULL AND ${table.leaseExpiresAt} IS NOT NULL) OR (${table.status} IN ('pending','failed','sent') AND ${table.leaseToken} IS NULL AND ${table.leaseExpiresAt} IS NULL)`),
+    check('feedback_delivery_jobs_sent', sql`(${table.status} = 'sent' AND ${table.sentAt} IS NOT NULL) OR (${table.status} != 'sent' AND ${table.sentAt} IS NULL)`),
+  ],
+);

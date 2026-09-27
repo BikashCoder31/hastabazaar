@@ -74,6 +74,31 @@ void test('config versions enforce JSON, bounds, uniqueness, and immutable publi
   }
 });
 
+void test('feedback delivery job migration enforces one cross-source request and uncertain-send state', async () => {
+  const sqlite = await fixture();
+  try {
+    const migration = await readFile(new URL('../drizzle/0059_feedback_delivery_jobs.sql', import.meta.url), 'utf8');
+    for (const statement of migration.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
+    insertVersion(sqlite, 'contact-v1', 'public.contact', 1, 'published');
+    insertVersion(sqlite, 'footer-v1', 'public.footer-feedback', 1, 'published');
+    const add = (id: string, request: string, formId: string, versionId: string, status: string, token: string | null, expiry: number | null, sent: number | null) =>
+      sqlite.prepare(`INSERT INTO feedback_delivery_jobs(id,request_id,form_id,config_version_id,payload_hash,feedback_json,status,lease_token,lease_expires_at,attempt_count,created_at,updated_at,sent_at)
+        VALUES (?,?,?,?,?,'{}',?,?,?,1,100,100,?)`).run(id, request, formId, versionId, 'a'.repeat(64), status, token, expiry, sent);
+    add('job-1', 'shared-request', 'public.contact', 'contact-v1', 'sending', 'lease-1', 200, null);
+    assert.throws(() => add('job-2', 'shared-request', 'public.footer-feedback', 'footer-v1', 'pending', null, null, null));
+    assert.throws(() => add('job-3', 'another-request', 'public.contact', 'contact-v1', 'sent', null, null, null));
+    assert.throws(() => add('job-4', 'third-request', 'public.contact', 'footer-v1', 'pending', null, null, null));
+    assert.equal(sqlite.prepare("SELECT status FROM feedback_delivery_jobs WHERE id='job-1'").get()?.status, 'sending');
+    const generated = await readFile(new URL('../deployment/babal/mariadb-schema.sql', import.meta.url), 'utf8');
+    const recovery = await readFile(new URL('../deployment/babal/mariadb-reset-empty-import.sql', import.meta.url), 'utf8');
+    for (const source of [generated, recovery]) {
+      assert.match(source, /CREATE TABLE IF NOT EXISTS `feedback_delivery_jobs`/);
+      assert.match(source, /feedback_delivery_jobs_version_fk/);
+      assert.match(source, /idx_feedback_delivery_jobs_request/);
+    }
+  } finally { sqlite.close(); }
+});
+
 void test('answer sets enforce same-form version references, request idempotency, and snapshot bounds', async () => {
   const sqlite = await fixture();
   try {

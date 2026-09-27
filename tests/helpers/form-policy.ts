@@ -11,6 +11,7 @@ export interface FormSourceSite {
   readonly line: number;
   readonly fingerprint: string;
   readonly formId: string | null;
+  readonly formIds?: readonly string[];
 }
 
 export interface FormPolicyViolation {
@@ -68,8 +69,6 @@ components/commerce/customer-aftercare.tsx|2|d783a2bcada9085b|commerce.complaint
 components/commerce/gift-card-form.tsx|1|5342c96832a973ab|commerce.gift-card-redeem
 components/commerce/order-tracker.tsx|1|3afed58539121cfc|commerce.order-tracking
 components/delivery/delivery-assignment.tsx|1|95c4f5b2a77f5a06|staff.delivery-assignment
-components/layout/customer-contact-form.tsx|1|4321c70fb0b3f206|public.contact
-components/layout/footer-feedback-form.tsx|1|923b4401a95d993c|public.footer-feedback
 components/layout/site-header.tsx|1|ed4b8ecbf0b141e5|catalog.header-search
 components/rider/rider-code.tsx|1|038f0239202bc644|rider.code-verify
 components/rider/rider-forms.tsx|1|114a8494120aa500|rider.application
@@ -122,11 +121,17 @@ export async function collectFormSites(root: string): Promise<FormSourceSite[]> 
       if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && node.tagName.getText(ast) === 'form') {
         ordinal += 1;
         const idAttribute = node.attributes.properties.find((attribute) => ts.isJsxAttribute(attribute) && attribute.name.getText(ast) === 'data-form-id');
-        const formId = idAttribute && ts.isJsxAttribute(idAttribute) && idAttribute.initializer && ts.isStringLiteral(idAttribute.initializer) ? idAttribute.initializer.text : null;
+        const initializer = idAttribute && ts.isJsxAttribute(idAttribute) ? idAttribute.initializer : undefined;
+        const expression = initializer && ts.isJsxExpression(initializer) ? initializer.expression : undefined;
+        const formIds = initializer && ts.isStringLiteral(initializer) ? [initializer.text]
+          : expression && ts.isConditionalExpression(expression) &&
+            ts.isStringLiteral(expression.whenTrue) && ts.isStringLiteral(expression.whenFalse)
+            ? [expression.whenTrue.text, expression.whenFalse.text] : null;
+        const formId = formIds?.length === 1 ? formIds[0] : null;
         const formSource = ts.isJsxOpeningElement(node) && ts.isJsxElement(node.parent)
           ? node.parent.getText(ast)
           : node.getText(ast);
-        sites.push({ path: file.replaceAll('\\', '/'), ordinal, line: ast.getLineAndCharacterOfPosition(node.getStart(ast)).line + 1, fingerprint: createHash('sha256').update(formSource).digest('hex').slice(0, 16), formId });
+        sites.push({ path: file.replaceAll('\\', '/'), ordinal, line: ast.getLineAndCharacterOfPosition(node.getStart(ast)).line + 1, fingerprint: createHash('sha256').update(formSource).digest('hex').slice(0, 16), formId, ...(formIds ? { formIds } : {}) });
       }
       ts.forEachChild(node, visit);
     }
@@ -143,15 +148,18 @@ export async function scanFormSites(root: string, registry: Readonly<Record<Form
   }
   for (const site of await collectFormSites(resolve(root))) {
     const frozenId = baseline.get(`${site.path}|${site.ordinal}|${site.fingerprint}`);
-    const id = site.formId ?? frozenId;
-    if (!id || !registry[id]) {
+    const ids = site.formIds ?? (frozenId ? [frozenId] : []);
+    if (!ids.length || ids.some((id) => !registry[id])) {
       violations.push({ path: site.path, line: site.line, reason: 'Unregistered form site' });
-    } else if (frozenId && site.formId && site.formId !== frozenId) {
+    } else if (frozenId && site.formIds && (site.formIds.length !== 1 || site.formIds[0] !== frozenId)) {
       violations.push({ path: site.path, line: site.line, reason: `Form ID ${site.formId} does not match frozen site ${frozenId}` });
-    } else if (!frozenId && registry[id].adapterId.startsWith('pending:')) {
-      violations.push({ path: site.path, line: site.line, reason: `Unregistered future form ${id} cannot use a pending adapter` });
-    } else if (!frozenId && !hasImplementedAdapter(registry[id])) {
-      violations.push({ path: site.path, line: site.line, reason: `Form ${id} has no registered implemented adapter` });
+    } else if (!frozenId) {
+      for (const id of ids) {
+        if (registry[id].adapterId.startsWith('pending:'))
+          violations.push({ path: site.path, line: site.line, reason: `Unregistered future form ${id} cannot use a pending adapter` });
+        else if (!hasImplementedAdapter(registry[id]))
+          violations.push({ path: site.path, line: site.line, reason: `Form ${id} has no registered implemented adapter` });
+      }
     }
   }
   for (const [id, definition] of Object.entries(registry)) {

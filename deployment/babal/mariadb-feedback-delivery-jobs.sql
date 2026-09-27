@@ -1,0 +1,31 @@
+-- Durable public feedback delivery state. Sending is ambiguous until a confirmed
+-- transport result and durable sent write; never automatically reclaim it.
+CREATE TABLE IF NOT EXISTS `feedback_delivery_jobs` (
+  `id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `request_id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `form_id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `config_version_id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `payload_hash` VARCHAR(64) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `feedback_json` LONGTEXT NOT NULL,
+  `status` VARCHAR(16) NOT NULL,
+  `lease_token` VARCHAR(191) COLLATE utf8mb4_nopad_bin NULL,
+  `lease_expires_at` BIGINT NULL,
+  `attempt_count` BIGINT NOT NULL DEFAULT 0,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  `sent_at` BIGINT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_feedback_delivery_jobs_request` (`request_id`),
+  KEY `idx_feedback_delivery_jobs_status_lease` (`status`,`lease_expires_at`,`updated_at`),
+  KEY `idx_feedback_delivery_jobs_created` (`created_at`,`id`),
+  CONSTRAINT `feedback_delivery_jobs_version_fk` FOREIGN KEY (`form_id`,`config_version_id`) REFERENCES `form_config_versions` (`form_id`,`id`) ON DELETE RESTRICT,
+  CONSTRAINT `feedback_delivery_jobs_request_length` CHECK (CHAR_LENGTH(`request_id`) BETWEEN 8 AND 191),
+  CONSTRAINT `feedback_delivery_jobs_form` CHECK (`form_id` IN ('public.contact','public.feedback','public.footer-feedback')),
+  CONSTRAINT `feedback_delivery_jobs_hash_length` CHECK (CHAR_LENGTH(`payload_hash`)=64),
+  CONSTRAINT `feedback_delivery_jobs_json` CHECK (JSON_VALID(`feedback_json`) AND OCTET_LENGTH(`feedback_json`)<=8192),
+  CONSTRAINT `feedback_delivery_jobs_status` CHECK (`status` IN ('pending','leased','sending','failed','sent')),
+  CONSTRAINT `feedback_delivery_jobs_attempts` CHECK (`attempt_count` BETWEEN 0 AND 5),
+  CONSTRAINT `feedback_delivery_jobs_times` CHECK (`created_at`>=0 AND `updated_at`>=`created_at`),
+  CONSTRAINT `feedback_delivery_jobs_lease` CHECK ((`status` IN ('leased','sending') AND `lease_token` IS NOT NULL AND `lease_expires_at` IS NOT NULL) OR (`status` IN ('pending','failed','sent') AND `lease_token` IS NULL AND `lease_expires_at` IS NULL)),
+  CONSTRAINT `feedback_delivery_jobs_sent` CHECK ((`status`='sent' AND `sent_at` IS NOT NULL) OR (`status`<>'sent' AND `sent_at` IS NULL))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

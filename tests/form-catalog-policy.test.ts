@@ -15,6 +15,17 @@ void test('the frozen source inventory contains exactly 69 form elements in 51 f
   assert.deepEqual(await scanFormSites(root), []);
 });
 
+void test('the public contact source declares both live variant adapters and footer separately', async () => {
+  const sites = await collectFormSites(root);
+  const contact = sites.find((site) => site.path === 'components/layout/customer-contact-form.tsx');
+  const footer = sites.find((site) => site.path === 'components/layout/footer-feedback-form.tsx');
+  assert.deepEqual(contact?.formIds, ['public.feedback', 'public.contact']);
+  assert.deepEqual(footer?.formIds, ['public.footer-feedback']);
+  for (const id of [...(contact?.formIds ?? []), ...(footer?.formIds ?? [])]) {
+    assert.equal(FORM_REGISTRY[id].adapterId, id);
+  }
+});
+
 void test('a new JSX form cannot inherit a pre-existing exception', async () => {
   const fixture = await mkdtemp(join(tmpdir(), 'form-policy-'));
   try {

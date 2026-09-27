@@ -55,6 +55,29 @@ export async function authorizeFormAnswerRead(
     WHERE u.id=? AND u.status='active' AND r.role=? LIMIT 1`)
     .bind(viewer.id, viewer.role).first<{ valid: number }>();
   if (!identity) return false;
+  if (answerSet.subjectType === 'feedback_submission') {
+    if (viewer.role !== 'admin' && viewer.role !== 'super_admin') return false;
+    const safePermissions = `CASE WHEN json_valid(p.permissions_json) THEN p.permissions_json ELSE '[]' END`;
+    return Boolean(await db.prepare(`SELECT 1 AS valid FROM users u
+      JOIN user_roles r ON r.user_id=u.id
+      LEFT JOIN staff_permission_profiles p ON p.user_id=u.id
+      JOIN feedback_delivery_jobs job ON job.id=? AND job.status='sent'
+        AND job.form_id=? AND job.request_id=?
+      JOIN form_answer_sets answer ON answer.id=? AND answer.subject_type='feedback_submission'
+        AND answer.subject_id=job.id AND answer.form_id=job.form_id
+        AND answer.request_id=job.request_id
+      WHERE u.id=? AND u.status='active' AND r.role=?
+        AND (r.role='super_admin' OR p.user_id IS NULL OR (
+          json_type(${safePermissions})='array'
+          AND EXISTS(SELECT 1 FROM json_each(${safePermissions}) grant_item
+            WHERE grant_item.type='text' AND grant_item.value='support.manage')
+          AND NOT EXISTS(SELECT 1 FROM json_each(${safePermissions}) grant_item
+            WHERE grant_item.type<>'text' OR grant_item.value NOT IN
+              (SELECT value FROM json_each(?)))))
+      LIMIT 1`)
+      .bind(answerSet.subjectId, answerSet.formId, answerSet.requestId, answerSet.id,
+        viewer.id, viewer.role, JSON.stringify(configurableAdminPermissions)).first<{ valid: number }>());
+  }
   const ownerId = await formAnswerOwnerId(db, answerSet);
   if (!ownerId) return false;
   if (ownerId === viewer.id) return true;
