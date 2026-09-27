@@ -26,7 +26,7 @@ export default async function FormCatalogPage() {
   const versions = new Map(result.results.map((row) => [row.formId, row]));
   const forms = Object.values(FORM_REGISTRY);
   return <div className="grid min-w-0 gap-6">
-    <div><p className="eyebrow">Super Admin · Controls</p><h1 className="section-title">Form catalog</h1><p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">Review fields and capabilities for every registered form. Connected adapters can accept safe draft changes; protected fields keep their server rules.</p><Link href="/admin/form-submissions" className="mt-3 inline-flex text-sm font-medium text-primary underline-offset-4 hover:underline">Restricted identity request history</Link></div>
+    <div><p className="eyebrow">Super Admin · Controls</p><h1 className="section-title">Form catalog</h1><p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">Review fields and capabilities for every registered form. Connected adapters can accept safe draft changes; protected fields keep their server rules.</p><div className="mt-3 flex flex-wrap gap-4"><Link href="/admin/form-submissions" className="text-sm font-medium text-primary underline-offset-4 hover:underline">Restricted identity request history</Link><Link href="/admin/staff-form-history" className="text-sm font-medium text-primary underline-offset-4 hover:underline">Staff form history</Link></div></div>
     {audiences.map((audience) => {
       const group = forms.filter((form) => form.audience === audience);
       if (!group.length) return null;

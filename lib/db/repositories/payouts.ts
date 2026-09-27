@@ -505,16 +505,32 @@ export async function processPayoutRequest(
     note: string;
     requestId: string;
     now: number;
+    form?: {requestId:string;versionId:string;answers:FormAnswerSnapshot};
   },
 ): Promise<void> {
   const authority=await staffMutationGuard(database,options.actorId,'payout.prepare',PayoutConflictError,options.actorRole);
-  if (
-    await database
-      .prepare(`SELECT id FROM audit_logs WHERE request_id = ?`)
-      .bind(options.requestId)
-      .first()
-  )
+  if(options.form && options.form.requestId!==options.requestId)
+    throw new PayoutConflictError('Form request does not match the payout decision.');
+  const note=options.note.trim();
+  if (note.length < 8 || note.length > 1000)
+    throw new PayoutConflictError('Add an operational note of 8–1,000 characters.');
+  const formDigest=options.form?await digestFormRequest({id:options.id,actorId:options.actorId,
+    actorRole:options.actorRole,action:options.action,note,versionId:options.form.versionId,
+    answers:options.form.answers}):null;
+  const replay=await database.prepare('SELECT actor_id AS actorId,action,subject_type AS subjectType,subject_id AS subjectId,next_json AS nextJson FROM audit_logs WHERE request_id=?')
+    .bind(options.requestId).first<{actorId:string;action:string;subjectType:string;subjectId:string;nextJson:string}>();
+  if(replay){
+    if(options.form){
+      let digest:unknown=null;try{digest=JSON.parse(replay.nextJson)?.catalogDigest;}catch{}
+      const status=options.action==='prepare'?'prepared':'rejected';
+      const record=await database.prepare('SELECT id FROM payout_requests WHERE id=? AND status=? AND operation_request_id=? AND processed_by=?')
+        .bind(options.id,status,options.requestId,options.actorId).first();
+      if(!record||replay.actorId!==options.actorId||replay.action!==`payout.request.${status}`||
+        replay.subjectType!=='payout_request'||replay.subjectId!==options.id||digest!==formDigest)
+        throw new PayoutConflictError('Request reference was already used for another payout decision.');
+    }
     return;
+  }
   const request = await database
     .prepare(
       `SELECT seller_id AS sellerId, status, payout_id AS payoutId FROM payout_requests WHERE id = ?`,
@@ -525,11 +541,6 @@ export async function processPayoutRequest(
     throw new PayoutConflictError(
       'Only a submitted payout request can be processed.',
     );
-  const note = options.note.trim();
-  if (note.length < 8 || note.length > 1000)
-    throw new PayoutConflictError(
-      'Add an operational note of 8–1,000 characters.',
-    );
   if (options.action === 'prepare') {
     const payout = await prepareSellerPayout(database, {
       sellerId: request.sellerId,
@@ -538,7 +549,10 @@ export async function processPayoutRequest(
       note,
       requestId: `${options.requestId}:payout`,
       now: options.now,
+      ...(options.form?{requestTail:{id:options.id,requestId:options.requestId,note,
+        form:options.form,formDigest:formDigest!}}:{}),
     });
+    if(options.form)return;
     await database.batch([
       database
         .prepare(
@@ -569,6 +583,7 @@ export async function processPayoutRequest(
       ...authority.statements,
     ]);
   } else {
+    const guardId=crypto.randomUUID();
     await database.batch([
       database
         .prepare(
@@ -581,6 +596,9 @@ export async function processPayoutRequest(
           options.now,
           options.id,
         ),
+      ...(options.form?[database.prepare("INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM payout_requests WHERE id=? AND status='rejected' AND operation_request_id=? AND processed_by=?) THEN 1 ELSE 0 END")
+        .bind(guardId,options.id,options.requestId,options.actorId),
+        database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(guardId)]:[]),
       database
         .prepare(
           `INSERT INTO audit_logs (id, actor_id, action, subject_type, subject_id, reason, previous_json, next_json, request_id, ip_hash, created_at) VALUES (?, ?, 'payout.request.rejected', 'payout_request', ?, ?, ?, ?, ?, NULL, ?)`,
@@ -591,11 +609,14 @@ export async function processPayoutRequest(
           options.id,
           note,
           JSON.stringify({ status: 'submitted' }),
-          JSON.stringify({ status: 'rejected' }),
+          JSON.stringify({ status: 'rejected', ...(formDigest?{catalogDigest:formDigest}:{}) }),
           options.requestId,
           options.now,
         ),
         ...await operationalBusinessNotificationStatements(database,{kind:'payout.request.result',sourceId:options.id,eventId:options.requestId,actorId:options.actorId,now:options.now}),
+    ...(options.form?[buildFormAnswerInsert(database,{formId:'staff.payout-request-action',requestId:options.requestId,
+      versionId:options.form.versionId,subjectType:'payout_request',subjectId:options.id,
+      actorId:options.actorId,answers:options.form.answers,now:options.now})]:[]),
     ...authority.statements,
   ]);
   }
@@ -615,6 +636,7 @@ export async function prepareSellerPayout(
     note: string;
     requestId: string;
     now: number;
+    requestTail?:{id:string;requestId:string;note:string;form:{requestId:string;versionId:string;answers:FormAnswerSnapshot};formDigest:string};
   },
 ): Promise<{ id: string; duplicate: boolean }> {
   const authority=await staffMutationGuard(database,options.actorId,'payout.prepare',PayoutConflictError,options.actorRole);
@@ -622,7 +644,10 @@ export async function prepareSellerPayout(
     .prepare(`SELECT id FROM payouts WHERE created_request_id = ? LIMIT 1`)
     .bind(options.requestId)
     .first<{ id: string }>();
-  if (duplicate) return { id: duplicate.id, duplicate: true };
+  if (duplicate) {
+    if(options.requestTail)throw new PayoutConflictError('Payout request preparation was not committed atomically.');
+    return { id: duplicate.id, duplicate: true };
+  }
   const seller = await database
     .prepare(
       `SELECT payout_account_reference AS destinationReference FROM seller_profiles
@@ -663,7 +688,11 @@ export async function prepareSellerPayout(
     );
   const payoutId = crypto.randomUUID();
   const number = payoutNumber(options.now);
+  const requestGuardId=crypto.randomUUID();
   const statements: D1PreparedStatement[] = [
+    ...(options.requestTail?[database.prepare("INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM payout_requests WHERE id=? AND seller_id=? AND status='submitted') THEN 1 ELSE 0 END")
+      .bind(requestGuardId,options.requestTail.id,options.sellerId),
+      database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(requestGuardId)]:[]),
     database
       .prepare(
         `INSERT INTO payouts (
@@ -734,6 +763,22 @@ export async function prepareSellerPayout(
       ),
   );
   statements.push(...await operationalBusinessNotificationStatements(database,{kind:'payout.prepared',sourceId:payoutId,eventId:options.requestId,actorId:options.actorId,now:options.now}));
+  if(options.requestTail){
+    const tail=options.requestTail,decisionGuardId=crypto.randomUUID();
+    statements.push(database.prepare("UPDATE payout_requests SET status='prepared',payout_id=?,processed_by=?,processing_note=?,operation_request_id=?,updated_at=? WHERE id=? AND seller_id=? AND status='submitted'")
+      .bind(payoutId,options.actorId,tail.note,tail.requestId,options.now,tail.id,options.sellerId));
+    statements.push(database.prepare("INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM payout_requests WHERE id=? AND status='prepared' AND payout_id=? AND operation_request_id=? AND processed_by=?) THEN 1 ELSE 0 END")
+      .bind(decisionGuardId,tail.id,payoutId,tail.requestId,options.actorId),
+      database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(decisionGuardId));
+    statements.push(database.prepare("INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,ip_hash,created_at) VALUES (?,?,'payout.request.prepared','payout_request',?,?,?, ?, ?,NULL,?)")
+      .bind(crypto.randomUUID(),options.actorId,tail.id,tail.note,JSON.stringify({status:'submitted'}),
+        JSON.stringify({status:'prepared',payoutId,catalogDigest:tail.formDigest}),tail.requestId,options.now));
+    statements.push(...await operationalBusinessNotificationStatements(database,{kind:'payout.request.result',sourceId:tail.id,
+      eventId:tail.requestId,actorId:options.actorId,now:options.now}));
+    statements.push(buildFormAnswerInsert(database,{formId:'staff.payout-request-action',requestId:tail.requestId,
+      versionId:tail.form.versionId,subjectType:'payout_request',subjectId:tail.id,actorId:options.actorId,
+      answers:tail.form.answers,now:options.now}));
+  }
   statements.push(...authority.statements);
   await database.batch(statements);
   return { id: payoutId, duplicate: false };

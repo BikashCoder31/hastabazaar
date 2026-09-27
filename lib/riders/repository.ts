@@ -8,6 +8,7 @@ import { operationalBusinessNotificationStatements } from '../operations/busines
 import { staffMutationGuard } from '../db/repositories/staff-mutation-guard';
 import { buildFormAnswerInsert } from '../db/repositories/form-answers';
 import type { FormAnswerSnapshot } from '../forms/types';
+import { digestFormRequest } from '../forms/submission';
 import { normalizeDistrict } from '../checkout/nepal-address';
 import {
   can,
@@ -483,6 +484,8 @@ export async function reviewRider(
     status: string;
     note: string;
     now: number;
+    requestId?: string;
+    form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot };
   },
 ) {
   const authority = await staffMutationGuard(
@@ -498,6 +501,45 @@ export async function reviewRider(
   )
     throw new RiderError('Choose approval, rejection or suspension.');
   const note = riderText(o.note, 8, 500);
+  if (o.form) {
+    if (!o.requestId || o.form.requestId!==o.requestId)
+      throw new RiderError('Rider form request does not match the decision.');
+    const digest=await digestFormRequest({action:'review',actorId:o.actorId,userId:o.userId,
+      version:o.version,status:o.status,note,versionId:o.form.versionId,answers:o.form.answers});
+    const prior=await db.prepare(`SELECT actor_id AS actorId,subject_id AS subjectId,next_json AS nextJson
+      FROM audit_logs WHERE request_id=?`).bind(`staff.rider-control-1:${o.requestId}`)
+      .first<{actorId:string;subjectId:string;nextJson:string|null}>();
+    if (prior) {
+      const answer=await db.prepare(`SELECT 1 AS valid FROM form_answer_sets WHERE form_id='staff.rider-control-1'
+        AND request_id=? AND config_version_id=? AND subject_type='rider' AND subject_id=? AND actor_id=?`)
+        .bind(o.requestId,o.form.versionId,o.userId,o.actorId).first();
+      let recorded:unknown;try{recorded=JSON.parse(prior.nextJson??'')?.catalogDigest;}catch{}
+      if (prior.actorId!==o.actorId||prior.subjectId!==o.userId||recorded!==digest||!answer)
+        throw new RiderError('Rider request reference was used for another decision.');
+      return;
+    }
+    await db.batch([
+      db.prepare('UPDATE rider_profiles SET version=version WHERE user_id=?').bind(o.userId),
+      ...riderGuard(db,'EXISTS(SELECT 1 FROM rider_profiles WHERE user_id=? AND version=?)',[o.userId,o.version]),
+      db.prepare('UPDATE rider_profiles SET status=?,version=version+1,reviewed_by=?,review_note=?,updated_at=? WHERE user_id=?')
+        .bind(o.status,o.actorId,note,o.now,o.userId),
+      db.prepare("UPDATE shipping_parcels SET latitude=NULL,longitude=NULL,accuracy=NULL,position_at=NULL WHERE rider_user_id=? AND ?<>'approved'")
+        .bind(o.userId,o.status),
+      db.prepare("UPDATE delivery_assignments SET latitude=NULL,longitude=NULL,accuracy=NULL,position_at=NULL WHERE rider_user_id=? AND ?<>'approved'")
+        .bind(o.userId,o.status),
+      ...audit(db,o.actorId,o.userId,o.status,note,o.now),
+      ...(await riderNotifications(db,crypto.randomUUID(),'rider_profile',o.userId,o.userId,null,o.now,'Rider application '+o.status)),
+      db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at)
+        VALUES (?,?,'rider.review.configured','rider',?,'Configured rider review',?,?,?)`)
+        .bind(crypto.randomUUID(),o.actorId,o.userId,JSON.stringify({catalogDigest:digest}),
+          `staff.rider-control-1:${o.requestId}`,o.now),
+      buildFormAnswerInsert(db,{formId:'staff.rider-control-1',requestId:o.requestId,
+        versionId:o.form.versionId,subjectType:'rider',subjectId:o.userId,actorId:o.actorId,
+        answers:o.form.answers,now:o.now}),
+      ...authority.statements,
+    ]);
+    return;
+  }
   await db.batch([
     db
       .prepare('UPDATE rider_profiles SET version=version WHERE user_id=?')
@@ -545,6 +587,8 @@ export async function setRiderOpenBoxEligibility(
     eligible: boolean;
     note: string;
     now: number;
+    requestId?: string;
+    form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot };
   },
 ) {
   const authority = await staffMutationGuard(
@@ -557,6 +601,25 @@ export async function setRiderOpenBoxEligibility(
   const note = riderText(o.note, 8, 500);
   if (!Number.isSafeInteger(o.version))
     throw new RiderError('Refresh the rider record.');
+  if (o.form && (!o.requestId || o.form.requestId!==o.requestId))
+    throw new RiderError('Rider form request does not match the decision.');
+  const digest=o.form?await digestFormRequest({action:'open_box_eligibility',actorId:o.actorId,
+    userId:o.userId,version:o.version,eligible:o.eligible,note,versionId:o.form.versionId,
+    answers:o.form.answers}):null;
+  if (o.form) {
+    const prior=await db.prepare(`SELECT actor_id AS actorId,subject_id AS subjectId,next_json AS nextJson
+      FROM audit_logs WHERE request_id=?`).bind(`staff.rider-control-1:${o.requestId}`)
+      .first<{actorId:string;subjectId:string;nextJson:string|null}>();
+    if (prior) {
+      const answer=await db.prepare(`SELECT 1 AS valid FROM form_answer_sets WHERE form_id='staff.rider-control-1'
+        AND request_id=? AND config_version_id=? AND subject_type='rider' AND subject_id=? AND actor_id=?`)
+        .bind(o.requestId,o.form.versionId,o.userId,o.actorId).first();
+      let recorded:unknown;try{recorded=JSON.parse(prior.nextJson??'')?.catalogDigest;}catch{}
+      if (prior.actorId!==o.actorId||prior.subjectId!==o.userId||recorded!==digest||!answer)
+        throw new RiderError('Rider request reference was used for another decision.');
+      return;
+    }
+  }
   await db.batch([
     db
       .prepare('UPDATE rider_profiles SET version=version WHERE user_id=?')
@@ -579,6 +642,13 @@ export async function setRiderOpenBoxEligibility(
       note,
       o.now,
     ),
+    ...(o.form?[db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,
+      reason,next_json,request_id,created_at) VALUES (?,?,'rider.open_box.configured','rider',?,
+      'Configured rider eligibility',?,?,?)`).bind(crypto.randomUUID(),o.actorId,o.userId,
+        JSON.stringify({catalogDigest:digest}),`staff.rider-control-1:${o.requestId}`,o.now),
+      buildFormAnswerInsert(db,{formId:'staff.rider-control-1',requestId:o.requestId!,
+        versionId:o.form.versionId,subjectType:'rider',subjectId:o.userId,actorId:o.actorId,
+        answers:o.form.answers,now:o.now})]:[]),
     ...authority.statements,
   ]);
 }
@@ -604,6 +674,8 @@ export async function saveRiderPolicy(
     openBox: boolean;
     otpScope: string;
     now: number;
+    requestId?: string;
+    form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot };
   },
 ) {
   const authority = await staffMutationGuard(
@@ -620,6 +692,24 @@ export async function saveRiderPolicy(
     throw new RiderError(
       'Select a supported OTP scope. COD never requires OTP.',
     );
+  if (o.form && (!o.requestId || o.form.requestId!==o.requestId))
+    throw new RiderError('Rider policy form request does not match the decision.');
+  const digest=o.form?await digestFormRequest({action:'policy',actorId:o.actorId,version:o.version,
+    otpScope:o.otpScope,versionId:o.form.versionId,answers:o.form.answers}):null;
+  if (o.form) {
+    const prior=await db.prepare(`SELECT actor_id AS actorId,subject_id AS subjectId,next_json AS nextJson
+      FROM audit_logs WHERE request_id=?`).bind(`staff.rider-control-2:${o.requestId}`)
+      .first<{actorId:string;subjectId:string;nextJson:string|null}>();
+    if (prior) {
+      const answer=await db.prepare(`SELECT 1 AS valid FROM form_answer_sets WHERE form_id='staff.rider-control-2'
+        AND request_id=? AND config_version_id=? AND subject_type='rider_policy' AND subject_id='current'
+        AND actor_id=?`).bind(o.requestId,o.form.versionId,o.actorId).first();
+      let recorded:unknown;try{recorded=JSON.parse(prior.nextJson??'')?.catalogDigest;}catch{}
+      if (prior.actorId!==o.actorId||prior.subjectId!=='current'||recorded!==digest||!answer)
+        throw new RiderError('Rider policy request reference was used for another decision.');
+      return;
+    }
+  }
   await db.batch([
     db.prepare("UPDATE rider_policy SET version=version WHERE id='current'"),
     ...riderGuard(
@@ -645,6 +735,14 @@ export async function saveRiderPolicy(
       'Delivery proof remains required; updated optional prepaid OTP settings. Open-box uses Business Settings and rider eligibility snapshots.',
       o.now,
     ),
+    ...(o.form?[db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,
+      reason,next_json,request_id,created_at) VALUES (?,?,'rider.policy.configured',
+      'rider_policy','current','Configured rider policy',?,?,?)`)
+      .bind(crypto.randomUUID(),o.actorId,JSON.stringify({catalogDigest:digest}),
+        `staff.rider-control-2:${o.requestId}`,o.now),
+      buildFormAnswerInsert(db,{formId:'staff.rider-control-2',requestId:o.requestId!,
+        versionId:o.form.versionId,subjectType:'rider_policy',subjectId:'current',actorId:o.actorId,
+        answers:o.form.answers,now:o.now})]:[]),
     ...authority.statements,
   ]);
 }
@@ -897,7 +995,8 @@ export async function submitRiderReport(
 }
 export async function rejectRiderReport(
   db: D1Database,
-  o: { actorId: string; reportId: string; note: string; now: number },
+  o: { actorId: string; reportId: string; note: string; now: number;
+    requestId?: string; form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot } },
 ) {
   const authority = await staffMutationGuard(
     db,
@@ -909,9 +1008,28 @@ export async function rejectRiderReport(
     .prepare(reportSelect + ' WHERE r.id=?')
     .bind(o.reportId)
     .first<RiderReport>();
+  const note = riderText(o.note, 8, 500);
+  if (o.form && (!o.requestId || o.form.requestId!==o.requestId))
+    throw new RiderError('Rider report form request does not match the decision.');
+  const digest=o.form?await digestFormRequest({action:'reject',actorId:o.actorId,
+    reportId:o.reportId,note,versionId:o.form.versionId,answers:o.form.answers}):null;
+  if (o.form) {
+    const prior=await db.prepare(`SELECT actor_id AS actorId,subject_id AS subjectId,next_json AS nextJson
+      FROM audit_logs WHERE request_id=?`).bind(`staff.rider-control-1:${o.requestId}`)
+      .first<{actorId:string;subjectId:string;nextJson:string|null}>();
+    if (prior) {
+      const answer=await db.prepare(`SELECT 1 AS valid FROM form_answer_sets WHERE form_id='staff.rider-control-1'
+        AND request_id=? AND config_version_id=? AND subject_type='rider_report' AND subject_id=?
+        AND actor_id=?`).bind(o.requestId,o.form.versionId,o.reportId,o.actorId).first();
+      let recorded:unknown;try{recorded=JSON.parse(prior.nextJson??'')?.catalogDigest;}catch{}
+      if (!report || report.status!=='rejected' || report.reviewNote!==note ||
+        prior.actorId!==o.actorId||prior.subjectId!==o.reportId||recorded!==digest||!answer)
+        throw new RiderError('Rider report request reference was used for another decision.');
+      return;
+    }
+  }
   if (!report || report.status !== 'pending')
     throw new RiderError('This report is no longer pending.');
-  const note = riderText(o.note, 8, 500);
   await db.batch([
     db
       .prepare('UPDATE rider_reports SET status=status WHERE id=?')
@@ -945,6 +1063,14 @@ export async function rejectRiderReport(
       o.now,
       'Rider proof/report rejected: review and resubmit',
     )),
+    ...(o.form?[db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,
+      reason,next_json,request_id,created_at) VALUES (?,?,'rider.report.rejected.configured',
+      'rider_report',?,'Configured rider report rejection',?,?,?)`)
+      .bind(crypto.randomUUID(),o.actorId,o.reportId,JSON.stringify({catalogDigest:digest}),
+        `staff.rider-control-1:${o.requestId}`,o.now),
+      buildFormAnswerInsert(db,{formId:'staff.rider-control-1',requestId:o.requestId!,
+        versionId:o.form.versionId,subjectType:'rider_report',subjectId:o.reportId,actorId:o.actorId,
+        answers:o.form.answers,now:o.now})]:[]),
     ...authority.statements,
   ]);
 }

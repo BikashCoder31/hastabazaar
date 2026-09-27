@@ -368,7 +368,7 @@ void test('mounted access export can start a fresh attempt after an audited-ID c
       const payload = route.request().postDataJSON();
       if (!payload) return route.fulfill({ status: 404, contentType: 'text/plain', body: '' });
       requestIds.push(payload.requestId);
-      if (requestIds.length === 1 || requestIds[1] === requestIds[0])
+      if (requestIds.length === 1 || payload.requestId === requestIds[0])
         return route.fulfill({ status: 409, contentType: 'application/json',
           body: JSON.stringify({ error: 'This export request ID was already used. Start a new export to obtain current data.' }) });
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ answers: [] }) });
@@ -378,13 +378,24 @@ void test('mounted access export can start a fresh attempt after an audited-ID c
     const button = page.getByRole('button', { name: 'Export form answers' });
     await button.click();
     await page.getByRole('alert').getByText(/already used/).waitFor();
+    const repeatedConflict = page.waitForResponse((response: { url(): string }) => response.url().endsWith('/api/admin/privacy/access-owner'));
+    await button.click();
+    await repeatedConflict;
+    assert.equal(requestIds.length, 2);
+    assert.equal(requestIds[1], requestIds[0], 'a generic conflict keeps the uncertain request ID');
+    const reset = page.getByRole('button', { name: 'Start a new export attempt' });
+    await page.evaluate(() => { window.confirm = () => false; });
+    await reset.click();
+    assert.equal(requestIds.length, 2, 'canceling the duplicate-risk reset sends no request');
+    await page.evaluate(() => { window.confirm = () => true; });
+    await reset.click();
     const downloadReady = page.waitForEvent('download');
     await button.click();
     const download = await downloadReady;
     assert.equal(download.suggestedFilename(), 'form-answers-access-owner.json');
     await page.getByText('Form-answer export prepared. Request status is unchanged.').waitFor();
-    assert.equal(requestIds.length, 2);
-    assert.notEqual(requestIds[0], requestIds[1]);
+    assert.equal(requestIds.length, 3);
+    assert.notEqual(requestIds[0], requestIds[2]);
   } finally { await page.close(); await browser.close(); }
 });
 

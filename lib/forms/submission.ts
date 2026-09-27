@@ -80,6 +80,16 @@ async function digestFormBytes(bytes: ArrayBuffer): Promise<string> {
 
 export class FormRequestConflictError extends Error {}
 
+/** A rejected domain batch can expose a publication race after preflight validation. */
+export async function isValidatedFormVersionStale(db: D1Database, formId: FormId,
+  validatedVersionId: string | undefined): Promise<boolean> {
+  if (!validatedVersionId) return false;
+  const latest = await db.prepare(`SELECT id FROM form_config_versions WHERE form_id=?
+    AND status='published' ORDER BY version DESC LIMIT 1`)
+    .bind(formId).first<{ id: string }>();
+  return Boolean(latest && latest.id !== validatedVersionId);
+}
+
 export async function validateSellerFormSubmission(db: D1Database, formId: FormId,
   version: unknown, raw: unknown, replayRequestId?: string, builtInValues: Readonly<Record<string, unknown>> = {}) {
   let config = await resolvePublishedForm(db, formId);

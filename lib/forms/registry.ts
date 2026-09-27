@@ -45,6 +45,16 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
   'rider.remittance': { formId: 'rider.remittance', route: '/api/rider/remittances', mode: 'operation' },
   'rider.code-verify': { formId: 'rider.code-verify', route: '/api/rider/verify-code', mode: 'identity' },
   'staff.delivery-assignment': { formId: 'staff.delivery-assignment', route: '/api/admin/orders/:id/delivery', mode: 'operation' },
+  'staff.catalog': { formId: 'staff.catalog', route: '/api/admin/catalog', mode: 'operation' },
+  'staff.product-classification': { formId: 'staff.product-classification', route: '/api/admin/products/:id/classification', mode: 'operation' },
+  'staff.exception-work': { formId: 'staff.exception-work', route: '/api/admin/exception-work', mode: 'operation' },
+  'staff.invoice-adjustment': { formId: 'staff.invoice-adjustment', route: '/api/admin/invoices/:id/adjustments', mode: 'operation' },
+  'staff.managed-maker-activation': { formId: 'staff.managed-maker-activation', route: '/api/admin/managed-makers/:id/activate', mode: 'operation' },
+  'staff.parcel-control': { formId: 'staff.parcel-control', route: '/api/admin/orders/:id/parcels', mode: 'operation' },
+  'staff.payout-request-action': { formId: 'staff.payout-request-action', route: '/api/admin/payout-requests/:id', mode: 'operation' },
+  'staff.privacy-action': { formId: 'staff.privacy-action', route: '/api/admin/privacy/:id', mode: 'operation' },
+  'staff.rider-control-1': { formId: 'staff.rider-control-1', route: '/api/admin/riders', mode: 'operation' },
+  'staff.rider-control-2': { formId: 'staff.rider-control-2', route: '/api/admin/riders', mode: 'operation' },
   'shipping.console-request': { formId: 'shipping.console-request', route: '/api/seller/shipping', mode: 'operation' },
   'shipping.console-action-seller': { formId: 'shipping.console-action-seller', route: '/api/seller/shipping/:id', mode: 'operation' },
   'shipping.console-action-staff': { formId: 'shipping.console-action-staff', route: '/api/admin/shipping/:id', mode: 'operation' },
@@ -187,6 +197,34 @@ function definition(row: string): FormDefinition {
 }
 
 const ACCOUNT_CUSTOM_TYPES = Object.freeze(['short_text', 'long_text', 'number', 'date', 'single_choice', 'multiple_choice', 'checkbox', 'email', 'phone'] as const);
+
+const STAFF_OPERATION_KEYS = Object.freeze({
+  'staff.catalog': ['kind', 'id', 'slug', 'nameEn', 'nameNe', 'sortOrder', 'isActive', 'idempotencyKey', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.product-classification': ['productId', 'categoryId', 'occasionIds', 'idempotencyKey', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.exception-work': ['action', 'id', 'version', 'job', 'jobId', 'kind', 'cash', 'cashRecordId', 'owner', 'ownerId', 'next', 'nextAction', 'note', 'resolve', 'evidence', 'sourceReviewed', 'obligationsReviewed', 'followupComplete', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.invoice-adjustment': ['invoiceId', 'kind', 'amount', 'amountPaisa', 'reasonCode', 'note', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.managed-maker-activation': ['sellerId', 'model', 'legalSellerReference', 'invoiceIssuerReference', 'payoutBeneficiaryReference', 'agreementVersion', 'agreementLanguage', 'agreementAcceptedAt', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.parcel-control': ['orderId', 'jobId', 'version', 'action', 'note', 'method', 'riderEmail', 'courierName', 'trackingCode', 'trackingUrl', 'reference', 'amount', 'amountPaisa', 'cashRecordId', 'riderReportId', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.payout-request-action': ['payoutRequestId', 'action', 'note', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.privacy-action': ['privacyRequestId', 'action', 'status', 'note', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.rider-control-1': ['action', 'status', 'note', 'userId', 'reportId', 'version', 'eligible', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.rider-control-2': ['action', 'version', 'otpScope', 'openBox', 'requestId', 'formVersion', 'customAnswers'],
+} as const);
+type StaffOperationFormId = keyof typeof STAFF_OPERATION_KEYS;
+const staffOperationIds = new Set<string>(Object.keys(STAFF_OPERATION_KEYS));
+
+function staffOperationDefinition(id: StaffOperationFormId): FormDefinition {
+  const source = SOURCE_ROWS.split('\n').find((row) => row.startsWith(`${id}|`));
+  if (!source) throw new Error(`Missing staff operation definition: ${id}`);
+  const [, audience, mode, route] = source.split('|') as [string, FormAudience, FormMode, string];
+  return Object.freeze({ id, audience, mode, route, adapterId: id,
+    baseFields: Object.freeze(STAFF_OPERATION_KEYS[id].map((key) => ({ key, type: 'existing' as const,
+      label: key, capability: 'protected' as const,
+      explanation: 'Action, subject, amount, evidence, staff authority and replay remain server enforced.' }))),
+    capabilities: Object.freeze({ explanation: 'Safe custom staff context is recorded only with the committed action. All operational decisions and request identity remain protected.',
+      customFieldTypes: ACCOUNT_CUSTOM_TYPES, answerBehavior: 'record' }),
+  } satisfies FormDefinition);
+}
 
 type IdentityFormId = 'identity.register' | 'identity.login-password' |
   'identity.email-code-request' | 'identity.email-code-verify' |
@@ -439,6 +477,7 @@ function sellerCaseDefinition(id: 'seller.case-return-response' |
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
   Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
     const item = row.startsWith('identity.') ? identityDefinition(row.split('|')[0] as IdentityFormId)
+      : staffOperationIds.has(row.split('|')[0]) ? staffOperationDefinition(row.split('|')[0] as StaffOperationFormId)
       : row.startsWith('public.contact|') ? feedbackDefinition('public.contact')
       : row.startsWith('seller.case-return-response|') ? sellerCaseDefinition('seller.case-return-response')
       : row.startsWith('seller.case-complaint-response|') ? sellerCaseDefinition('seller.case-complaint-response')

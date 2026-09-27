@@ -1,7 +1,13 @@
 'use client';
-import { useState, type SyntheticEvent } from 'react';
+import { useRef, useState, type SyntheticEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Parcel } from '@/lib/operations/parcels';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
+const BASE_KEYS = ['jobId','version','action','note','method','riderEmail','courierName','trackingCode',
+  'trackingUrl','reference','amount','amountPaisa','cashRecordId','requestId'];
 const money = (n: number) =>
   new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR' }).format(
     n / 100,
@@ -46,21 +52,30 @@ export function ParcelControls({
   const router = useRouter();
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState('');
-  async function send(body: Record<string, unknown>) {
+  async function send(body: Record<string, unknown>): Promise<{ response: Response; code?: string; confirmed: boolean } | null> {
     setBusy(true);
     setMessage('');
     try {
       const response = await fetch(`/api/admin/orders/${orderId}/parcels`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...body, requestId: crypto.randomUUID() }),
+        body: JSON.stringify({ ...body, requestId: typeof body.requestId === 'string' ? body.requestId : crypto.randomUUID() }),
       });
-      const result = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(result.error ?? 'Update failed.');
+      const result = (await response.json().catch(() => null)) as { error?: string; code?: string; ok?: boolean } | null;
+      if (!response.ok) {
+        setMessage(result?.error ?? 'Update failed.');
+        return { response, code: result?.code, confirmed: false };
+      }
+      if (result?.ok !== true) {
+        setMessage('The response could not be verified. Retry with the same request.');
+        return { response, code: result?.code, confirmed: false };
+      }
       setMessage('Parcel record updated.');
       router.refresh();
+      return { response, code: result.code, confirmed: true };
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'Update failed.');
+      return null;
     } finally {
       setBusy(false);
     }
@@ -68,6 +83,7 @@ export function ParcelControls({
   return (
     <section className="space-y-4 rounded-2xl border bg-card p-5">
       <h2 className="font-heading text-2xl">Seller parcels and COD</h2>
+      <a className="text-sm underline" href="/admin/staff-form-history?kind=parcel-control">View parcel form history</a>
       <p className="text-sm">
         Each seller has one parcel. The order cash total is allocated
         proportionally; its saved delivery policy and recorded discounts remain
@@ -92,6 +108,7 @@ export function ParcelControls({
             <h3 className="font-semibold">
               {p.sellerName} · {p.status.replaceAll('_', ' ')}
             </h3>
+            <a className="text-sm underline" href={`/admin/staff-form-history?kind=parcel-control&id=${encodeURIComponent(p.id)}`}>View this parcel’s form history</a>
             <p>
               Allocated COD: {money(p.codDuePaisa)} · Collected:{' '}
               {money(p.collectedPaisa)} · Remitted: {money(p.remittedPaisa)}
@@ -226,19 +243,30 @@ function ParcelForm({
 }: {
   parcel: Parcel;
   busy: boolean;
-  send: (body: Record<string, unknown>) => Promise<void>;
+  send: (body: Record<string, unknown>) => Promise<{ response: Response; code?: string; confirmed: boolean } | null>;
 }) {
   const [action, setAction] = useState('assign');
+  const fingerprint = useRef<string | null>(null);
+  const attemptKey = sessionAttemptKey('staff.parcel-control', p.id);
+  const [attemptPresent, setAttemptPresent] = useState(() => hasSessionAttempt(attemptKey));
+  const [localError, setLocalError] = useState('');
+  const catalog = usePublishedFormConfig('staff.parcel-control');
   const field = (name: string) => p.id + '-' + name;
   async function submit(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy || !catalog.config || !catalog.canSubmit) return;
+    let configured: ReturnType<typeof configuredJsonPayload>;
+    try {
+      const submission = readConfiguredSubmission(event.currentTarget, catalog.config, BASE_KEYS);
+      configured = configuredJsonPayload(catalog.config, submission.answers, BASE_KEYS);
+    } catch (error) { setLocalError(error instanceof Error ? error.message : 'Review the configured fields.'); return; }
     const form = new FormData(event.currentTarget);
     const value = (name: string) => {
       const v = form.get(name);
       return typeof v === 'string' ? v : '';
     };
     const amount = value('amount');
-    await send({
+    const payload = {
       jobId: p.id,
       version: p.version,
       action,
@@ -250,10 +278,26 @@ function ParcelForm({
       trackingUrl: value('trackingUrl'),
       reference: value('reference'),
       ...(amount ? { amountPaisa: Math.round(Number(amount) * 100) } : {}),
-    });
+      ...configured,
+    };
+    const currentFingerprint = JSON.stringify(payload);
+    if (fingerprint.current && fingerprint.current !== currentFingerprint) {
+      setLocalError('This differs from the prior attempt. Check its outcome, then explicitly start a new attempt.');
+      return;
+    }
+    try {
+      const requestId = getOrCreateSessionAttempt(attemptKey);
+      setAttemptPresent(true); fingerprint.current = currentFingerprint; setLocalError('');
+      const outcome = await send({ ...payload, requestId });
+      if (outcome?.code === 'stale_version') catalog.handleSubmissionResponse(outcome.response, outcome.code);
+      if (outcome?.confirmed) {
+        clearSessionAttempt(attemptKey); setAttemptPresent(false); fingerprint.current = null;
+      }
+    } catch (error) { setLocalError(error instanceof Error ? error.message : 'Parcel update failed.'); }
   }
   return (
     <form
+      data-form-id="staff.parcel-control"
       onSubmit={(e) => void submit(e)}
       className="grid gap-3 sm:grid-cols-2"
     >
@@ -356,8 +400,16 @@ function ParcelForm({
           required
         />
       </label>
+      {catalog.config ? <div className="sm:col-span-2"><ConfiguredFields config={catalog.config} baseKeys={BASE_KEYS} /></div> : null}
+      {!catalog.canSubmit ? <output className="sm:col-span-2 text-sm">{catalog.message || 'Form configuration is loading.'}</output> : null}
+      {attemptPresent ? <p className="sm:col-span-2 text-xs text-muted-foreground">A prior parcel action may have succeeded. Retry only identical details, or check the parcel before starting a new attempt.</p> : null}
+      {attemptPresent ? <button type="button" disabled={busy} className="rounded border p-2 text-sm"
+        onClick={() => { if (window.confirm('A parcel action may already have succeeded. Check the parcel first. Start a new request reference?')) {
+          clearSessionAttempt(attemptKey); setAttemptPresent(false); fingerprint.current = null; setLocalError('');
+        } }}>Start a new attempt</button> : null}
+      {localError ? <p role="alert" className="sm:col-span-2 text-sm text-destructive">{localError}</p> : null}
       <button
-        disabled={busy}
+        disabled={busy || !catalog.canSubmit}
         className="rounded-lg bg-primary p-3 text-primary-foreground"
       >
         Save parcel action

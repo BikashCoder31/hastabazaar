@@ -7,10 +7,14 @@ import {
   saveTaxonomy,
 } from '@/lib/db/repositories/catalog-admin';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request): Promise<Response> {
+  let validatedVersionId: string | undefined;
   if (!isTrustedMutationRequest(request))
     return Response.json(
       { error: 'Cross-site requests are not allowed.' },
@@ -32,8 +36,12 @@ export async function POST(request: Request): Promise<Response> {
         { error: 'Valid taxonomy and idempotency key are required.' },
         { status: 400 },
       );
+    const database = requireDatabase(env as unknown as { DB?: D1Database });
+    const form = await validateSellerFormSubmission(database, 'staff.catalog',
+      body.formVersion, body.customAnswers, body.idempotencyKey);
+    validatedVersionId = form.versionId;
     const id = await saveTaxonomy(
-      requireDatabase(env as unknown as { DB?: D1Database }),
+      database,
       {
         kind: body.kind as 'category' | 'occasion',
         id: typeof body.id === 'string' && body.id ? body.id : undefined,
@@ -52,6 +60,7 @@ export async function POST(request: Request): Promise<Response> {
         },
         requestId: body.idempotencyKey,
         now: Date.now(),
+        form: { requestId: body.idempotencyKey, versionId: form.versionId, answers: form.answers },
       },
     );
     return Response.json({ id }, { status: 201 });
@@ -60,6 +69,13 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: error.message }, { status: error.status });
     if (error instanceof CatalogManagementConflictError)
       return Response.json({ error: error.message }, { status: 409 });
+    if (error instanceof FormRuntimeError)
+      return Response.json({ error: error.message, code: error.code }, { status: error.code === 'stale_version' ? 409 : 503 });
+    if (error instanceof FormValidationError)
+      return Response.json({ error: error.message, fieldId: error.fieldId }, { status: 400 });
+    if (validatedVersionId && await isValidatedFormVersionStale(requireDatabase(env as unknown as { DB?: D1Database }),
+      'staff.catalog', validatedVersionId))
+      return Response.json({ error: 'This form changed. Refresh it and review your answers.', code: 'stale_version' }, { status: 409 });
     return Response.json(
       { error: 'Catalogue taxonomy could not be saved.' },
       { status: 500 },

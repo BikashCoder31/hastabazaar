@@ -641,17 +641,37 @@ export async function operateDataRightsRequest(
     note: string;
     requestId: string;
     now: number;
+    form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot };
   },
 ): Promise<void> {
-  if (
-    await database
-      .prepare(
-        `SELECT id FROM data_rights_events WHERE operation_request_id = ?`,
-      )
-      .bind(options.requestId)
-      .first()
-  )
+  const authority = await staffMutationGuard(database, options.actorId, 'support.manage',
+    OperationsConflictError, options.actorRole);
+  if (options.form && options.form.requestId !== options.requestId)
+    throw new OperationsConflictError('Form request does not match the privacy decision.');
+  const note = options.note.trim();
+  const digest = options.form ? await digestFormRequest({ id: options.id,
+    actorId: options.actorId, actorRole: options.actorRole, action: options.action,
+    note, versionId: options.form.versionId, answers: options.form.answers }) : null;
+  const prior = await database.prepare(`SELECT data_rights_request_id AS requestId, actor_id AS actorId,
+    actor_role AS actorRole, action, note FROM data_rights_events WHERE operation_request_id=?`)
+    .bind(options.requestId).first<{requestId:string;actorId:string;actorRole:string;action:string;note:string}>();
+  if (prior) {
+    if (options.form) {
+      const audit = await database.prepare(`SELECT next_json AS nextJson FROM audit_logs
+        WHERE request_id=? AND actor_id=? AND subject_type='data_rights_request' AND subject_id=?`)
+        .bind(options.requestId+':audit',options.actorId,options.id).first<{nextJson:string|null}>();
+      const answer = await database.prepare(`SELECT 1 AS valid FROM form_answer_sets WHERE form_id='staff.privacy-action'
+        AND request_id=? AND config_version_id=? AND subject_type='data_rights_request'
+        AND subject_id=? AND actor_id=?`).bind(options.requestId,options.form.versionId,
+          options.id,options.actorId).first();
+      let recorded:unknown;try{recorded=JSON.parse(audit?.nextJson??'')?.catalogDigest;}catch{}
+      if (!answer || !audit || recorded!==digest || prior.requestId!==options.id ||
+        prior.actorId!==options.actorId || prior.actorRole!==options.actorRole ||
+        prior.action!==options.action || prior.note!==note)
+        throw new OperationsConflictError('Request reference was already used for another privacy decision.');
+    }
     return;
+  }
   const current = await database
     .prepare(
       `SELECT status, customer_id AS customerId, request_type AS requestType FROM data_rights_requests WHERE id = ?`,
@@ -688,24 +708,24 @@ export async function operateDataRightsRequest(
       'Record the separate form-answer export or erasure before completing this request.',
     );
   }
-  const note = options.note.trim();
   if (note.length < 8)
     throw new OperationsConflictError('Add a decision note.');
+  const ownedAnswerSql = `(answers.subject_type='user' AND answers.subject_id=data_rights_requests.customer_id)
+    OR (answers.subject_type='seller' AND EXISTS (SELECT 1 FROM seller_profiles seller
+      WHERE seller.id=answers.subject_id AND seller.user_id=data_rights_requests.customer_id))
+    OR (answers.subject_type='rider' AND EXISTS (SELECT 1 FROM rider_profiles rider
+      WHERE rider.user_id=answers.subject_id AND rider.user_id=data_rights_requests.customer_id))
+    OR (answers.subject_type='data_rights_request' AND EXISTS (SELECT 1 FROM data_rights_requests parent
+      WHERE parent.id=answers.subject_id AND parent.customer_id=data_rights_requests.customer_id))
+    OR (answers.subject_type NOT IN ('user','seller','rider','data_rights_request')
+      AND answers.actor_id=data_rights_requests.customer_id)`;
+  const guardId=crypto.randomUUID();
   const results = await database.batch([
     database
       .prepare(
         `UPDATE data_rights_requests SET status = ?, assigned_to = COALESCE(assigned_to, ?), resolution = CASE WHEN ? IN ('rejected','completed') THEN ? ELSE resolution END, operation_request_id = ?, updated_at = ?, completed_at = CASE WHEN ? = 'completed' THEN ? ELSE completed_at END WHERE id = ? AND status = ?
          AND (? <> 'completed' OR request_type <> 'deletion' OR NOT EXISTS (
-           SELECT 1 FROM form_answer_sets answers WHERE
-             (answers.subject_type='user' AND answers.subject_id=data_rights_requests.customer_id)
-             OR (answers.subject_type='seller' AND EXISTS (SELECT 1 FROM seller_profiles seller
-               WHERE seller.id=answers.subject_id AND seller.user_id=data_rights_requests.customer_id))
-             OR (answers.subject_type='rider' AND EXISTS (SELECT 1 FROM rider_profiles rider
-               WHERE rider.user_id=answers.subject_id AND rider.user_id=data_rights_requests.customer_id))
-             OR (answers.subject_type='data_rights_request' AND EXISTS (SELECT 1 FROM data_rights_requests parent
-               WHERE parent.id=answers.subject_id AND parent.customer_id=data_rights_requests.customer_id))
-             OR (answers.subject_type NOT IN ('user','seller','rider','data_rights_request')
-               AND answers.actor_id=data_rights_requests.customer_id)
+           SELECT 1 FROM form_answer_sets answers WHERE ${ownedAnswerSql}
          ))`,
       )
       .bind(
@@ -721,6 +741,11 @@ export async function operateDataRightsRequest(
         current.status,
         next,
       ),
+    database.prepare(`INSERT INTO staff_permission_guards(id,valid) SELECT ?,CASE WHEN EXISTS(
+      SELECT 1 FROM data_rights_requests WHERE id=? AND status=? AND operation_request_id=?
+        AND assigned_to IS NOT NULL) THEN 1 ELSE 0 END`)
+      .bind(guardId,options.id,next,options.requestId),
+    database.prepare('DELETE FROM staff_permission_guards WHERE id=?').bind(guardId),
     database
       .prepare(
         `INSERT INTO data_rights_events (id, data_rights_request_id, from_status, to_status, action, actor_id, actor_role, note, operation_request_id, created_at)
@@ -740,11 +765,39 @@ export async function operateDataRightsRequest(
         options.id,
         options.requestId,
       ),
-  workflowAudit(database,'privacy',options,options.id,options.action),
-    ]);
+    ...(options.form ? [database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,
+      subject_id,reason,previous_json,next_json,request_id,created_at)
+      SELECT ?,? ,?, 'data_rights_request', ?, 'Workflow step recorded',NULL,?, ?,?
+      FROM data_rights_events WHERE operation_request_id=?`)
+      .bind(crypto.randomUUID(),options.actorId,'privacy.'+options.action,options.id,
+        JSON.stringify({catalogDigest:digest}),options.requestId+':audit',options.now,options.requestId),
+      buildFormAnswerInsert(database,{formId:'staff.privacy-action',requestId:options.requestId,
+        versionId:options.form.versionId,subjectType:'data_rights_request',subjectId:options.id,
+        actorId:options.actorId,answers:options.form.answers,now:options.now})]
+      : [workflowAudit(database,'privacy',options,options.id,options.action)]),
+    ...authority.statements,
+    ]).catch(async (error: unknown) => {
+      // The transaction guard deliberately aborts a zero-row update. Re-read
+      // that precondition after rollback so a conflict is not reported as a
+      // storage failure; an unrelated database error still reaches the route.
+      const state = await database.prepare(`SELECT status FROM data_rights_requests WHERE id=?`)
+        .bind(options.id).first<{status:string}>();
+      if (!state || state.status !== current.status)
+        throw new OperationsConflictError('Data-rights request changed. Refresh and try again.');
+      if (options.action === 'complete' && current.requestType === 'deletion') {
+        const remaining = await database.prepare(`SELECT 1 AS valid FROM data_rights_requests
+          WHERE id=? AND EXISTS (SELECT 1 FROM form_answer_sets answers WHERE ${ownedAnswerSql}) LIMIT 1`)
+          .bind(options.id).first();
+        if (remaining) throw new OperationsConflictError(
+          'Erase the remaining linked form answers before completing this request.');
+      }
+      await staffMutationGuard(database, options.actorId, 'support.manage',
+        OperationsConflictError, options.actorRole);
+      throw error;
+    });
   if (
     (results[0].meta.changes ?? 0) !== 1 ||
-    (results[1].meta.changes ?? 0) !== 1
+    (results[3].meta.changes ?? 0) !== 1
   )
     throw new OperationsConflictError(
       'Data-rights request changed. Refresh and try again.',

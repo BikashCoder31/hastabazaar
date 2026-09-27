@@ -2,6 +2,10 @@ import type { ManagedMakerCommercialModel, ManagedMakerProgramMode } from '@/lib
 import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
 import type { RuntimeEnvironment } from '@/lib/staging/environment';
 import { assertSimulationAllowed, SIMULATED_RECORD_LABEL } from '@/lib/staging/environment';
+import { buildFormAnswerInsert } from '@/lib/db/repositories/form-answers';
+import { staffMutationGuard } from '@/lib/db/repositories/staff-mutation-guard';
+import { digestFormRequest } from '@/lib/forms/submission';
+import type { FormAnswerSnapshot } from '@/lib/forms/types';
 
 export interface ManagedActivationAssessment {
   environment: RuntimeEnvironment;
@@ -53,11 +57,46 @@ export async function activateManagedMakerForSimulation(
     requestId: string;
     now: number;
     environment: RuntimeEnvironment;
+    form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot };
   },
 ): Promise<void> {
   assertSimulationAllowed(options.environment);
-  const duplicate = await database.prepare('SELECT 1 FROM audit_logs WHERE request_id=?').bind(options.requestId).first();
-  if (duplicate) return;
+  if (options.form && options.form.requestId !== options.requestId)
+    throw new ManagedActivationError('Form request does not match activation.');
+  const permission = options.form
+    ? await staffMutationGuard(database, options.actorId, 'business_settings.approve', ManagedActivationError, 'super_admin')
+    : null;
+  const digestAt = (agreementAcceptedAt: number) => digestFormRequest({ sellerId: options.sellerId, actorId: options.actorId,
+    model: options.model, legalSellerReference: options.legalSellerReference, invoiceIssuerReference: options.invoiceIssuerReference,
+    payoutBeneficiaryReference: options.payoutBeneficiaryReference, agreementVersion: options.agreementVersion,
+    agreementLanguage: options.agreementLanguage, agreementAcceptedAt,
+    versionId: options.form?.versionId, answers: options.form?.answers });
+  const duplicate = await database.prepare("SELECT actor_id AS actorId,subject_id AS sellerId,next_json AS nextJson FROM audit_logs WHERE request_id=? AND action='managed_maker.simulation_activated' AND subject_type='seller'")
+    .bind(options.requestId).first<{actorId:string;sellerId:string;nextJson:string}>();
+  if (duplicate) {
+    let recorded: { formDigest?: unknown; agreementAcceptedAt?: unknown } = {};
+    try { recorded = JSON.parse(duplicate.nextJson) as typeof recorded; } catch { /* Corrupt audit cannot authorize replay. */ }
+    if (options.form) {
+      const acceptedAt = recorded.agreementAcceptedAt;
+      const participation = await database.prepare(`SELECT application_stage AS stage,
+        managed_agreement_accepted_at AS acceptedAt FROM seller_participation_profiles
+        WHERE seller_id=? AND participation_route='managed_maker' LIMIT 1`)
+        .bind(options.sellerId).first<{ stage: string; acceptedAt: number | null }>();
+      const answer = await database.prepare(`SELECT 1 AS valid FROM form_answer_sets
+        WHERE form_id='staff.managed-maker-activation' AND request_id=? AND config_version_id=?
+          AND subject_type='seller' AND subject_id=? AND actor_id=? LIMIT 1`)
+        .bind(options.requestId, options.form.versionId, options.sellerId, options.actorId).first();
+      if (duplicate.actorId !== options.actorId || duplicate.sellerId !== options.sellerId ||
+        !Number.isSafeInteger(acceptedAt) || Number(acceptedAt) <= 0 ||
+        participation?.stage !== 'active' || participation.acceptedAt !== acceptedAt || !answer ||
+        recorded.formDigest !== await digestAt(Number(acceptedAt)))
+        throw new ManagedActivationError('Request reference was already used for another activation.');
+    }
+    if (!options.form && recorded.formDigest !== undefined && recorded.formDigest !== null)
+      throw new ManagedActivationError('Request reference was already used for another activation.');
+    return;
+  }
+  const formDigest = options.form ? await digestAt(options.agreementAcceptedAt) : null;
   const [program, configuredModel, row] = await Promise.all([
     getEffectiveBusinessSetting(database, 'managed_maker_program_mode', options.now),
     getEffectiveBusinessSetting(database, 'managed_maker_active_model', options.now),
@@ -79,7 +118,14 @@ export async function activateManagedMakerForSimulation(
     agreementAcceptedAt: options.agreementAcceptedAt, approvedProductCount: Number(row.approvedProductCount),
   });
   if (outstanding.length) throw new ManagedActivationError(`Activation is not ready: ${outstanding.join(', ')}.`);
+  const stageGuardId = crypto.randomUUID();
   const results = await database.batch([
+    ...(permission?.statements ?? []),
+    ...(options.form ? [
+      database.prepare("INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM seller_participation_profiles WHERE seller_id=? AND participation_route='managed_maker' AND application_stage='approved_for_activation') THEN 1 ELSE 0 END")
+        .bind(stageGuardId,options.sellerId),
+      database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(stageGuardId),
+    ] : []),
     database.prepare(`UPDATE seller_participation_profiles SET application_stage='active', commercial_model=?,
       legal_seller_reference=?,invoice_issuer_reference=?,payout_beneficiary_reference=?,
       managed_agreement_version=?,managed_agreement_language=?,managed_agreement_accepted_at=?,
@@ -92,9 +138,14 @@ export async function activateManagedMakerForSimulation(
       VALUES (?,?,'managed_maker.simulation_activated','seller',?,'Activated only in disposable local staging',?,?,?,NULL,?)`).bind(
       crypto.randomUUID(), options.actorId, options.sellerId,
       JSON.stringify({applicationStage:'approved_for_activation'}),
-      JSON.stringify({applicationStage:'active',commercialModel:options.model,simulationLabel:SIMULATED_RECORD_LABEL}),
+      JSON.stringify({applicationStage:'active',commercialModel:options.model,simulationLabel:SIMULATED_RECORD_LABEL,
+        ...(formDigest?{formDigest,agreementAcceptedAt:options.agreementAcceptedAt}:{})}),
       options.requestId, options.now,
     ),
+    ...(options.form ? [buildFormAnswerInsert(database,{formId:'staff.managed-maker-activation',
+      requestId:options.requestId,versionId:options.form.versionId,subjectType:'seller',subjectId:options.sellerId,
+      actorId:options.actorId,answers:options.form.answers,now:options.now})] : []),
   ]);
-  if ((results[0].meta.changes ?? 0) !== 1) throw new ManagedActivationError('Application changed before activation.');
+  if ((results[(permission?.statements.length ?? 0) + (options.form ? 2 : 0)].meta.changes ?? 0) !== 1)
+    throw new ManagedActivationError('Application changed before activation.');
 }

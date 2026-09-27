@@ -1,4 +1,44 @@
+import { buildFormAnswerInsert } from './form-answers';
+import { staffMutationGuard } from './staff-mutation-guard';
+import { digestFormRequest } from '../../forms/submission';
+import type { FormAnswerSnapshot } from '../../forms/types';
+
 export class CatalogManagementConflictError extends Error {}
+
+function catalogBatchGuard(database: D1Database, predicate: string, values: readonly unknown[]): D1PreparedStatement[] {
+  const id = crypto.randomUUID();
+  return [database.prepare(`INSERT INTO operation_transaction_guards(id,valid)
+    SELECT ?,CASE WHEN ${predicate} THEN 1 ELSE 0 END`).bind(id, ...values),
+  database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(id)];
+}
+
+type StaffCatalogForm = { requestId: string; versionId: string; answers: FormAnswerSnapshot };
+
+async function catalogReplay(database: D1Database, input: {
+  requestId: string; actorId: string; action: string; subjectType: string;
+  subjectId?: string; formId: 'staff.catalog' | 'staff.product-classification';
+  versionId: string; digest: string;
+}): Promise<string | null> {
+  const rows = await database.prepare(`SELECT actor_id AS actorId,action,subject_type AS subjectType,
+    subject_id AS subjectId,next_json AS nextJson FROM audit_logs WHERE request_id=? LIMIT 2`)
+    .bind(input.requestId).all<{ actorId: string; action: string; subjectType: string; subjectId: string; nextJson: string | null }>();
+  if (!rows.results.length) return null;
+  const row = rows.results[0];
+  const answer = await database.prepare(`SELECT actor_id AS actorId,subject_type AS subjectType,
+    subject_id AS subjectId,config_version_id AS versionId FROM form_answer_sets
+    WHERE form_id=? AND request_id=? LIMIT 1`).bind(input.formId, input.requestId)
+    .first<{ actorId: string; subjectType: string; subjectId: string; versionId: string }>();
+  let recorded: unknown;
+  try { recorded = JSON.parse(row.nextJson ?? ''); } catch { /* Invalid audit cannot replay. */ }
+  if (rows.results.length !== 1 || row.actorId !== input.actorId || row.action !== input.action ||
+    row.subjectType !== input.subjectType || input.subjectId && row.subjectId !== input.subjectId ||
+    answer?.actorId !== input.actorId || answer.subjectType !== input.subjectType ||
+    answer.subjectId !== row.subjectId || answer.versionId !== input.versionId ||
+    !recorded || typeof recorded !== 'object' || !('catalogDigest' in recorded) ||
+    recorded.catalogDigest !== input.digest)
+    throw new CatalogManagementConflictError('Request reference was already used for different catalogue details.');
+  return row.subjectId;
+}
 
 export interface ManagedTaxonomyRow {
   id: string;
@@ -81,15 +121,33 @@ export async function saveTaxonomy(
     };
     requestId: string;
     now: number;
+    form?: StaffCatalogForm;
   },
 ): Promise<string> {
+  if (options.form && options.form.requestId !== options.requestId)
+    throw new CatalogManagementConflictError('Form request reference does not match the catalogue action.');
+  const authority = options.form
+    ? await staffMutationGuard(database, options.actorId, 'catalog.manage', CatalogManagementConflictError) : null;
+  const catalogDigest = options.form ? await digestFormRequest({ kind: options.kind,
+    id: options.id, input: options.input, versionId: options.form.versionId,
+    answers: options.form.answers }) : null;
+  if (options.form) {
+    const replay = await catalogReplay(database, { requestId: options.requestId,
+      actorId: options.actorId, action: `catalog.${options.kind}.${options.id ? 'updated' : 'created'}`,
+      subjectType: options.kind, subjectId: options.id, formId: 'staff.catalog',
+      versionId: options.form.versionId, digest: catalogDigest! });
+    if (replay) return replay;
+  }
   const duplicate = await database
     .prepare(
       `SELECT subject_id AS id FROM audit_logs WHERE request_id = ? LIMIT 1`,
     )
     .bind(options.requestId)
     .first<{ id: string }>();
-  if (duplicate) return duplicate.id;
+  if (duplicate) {
+    if (!options.form) return duplicate.id;
+    throw new CatalogManagementConflictError('Request reference was already used.');
+  }
   const input = cleanTaxonomy(options.input);
   const table = options.kind === 'category' ? 'categories' : 'occasions';
   const id = options.id ?? crypto.randomUUID();
@@ -105,6 +163,9 @@ export async function saveTaxonomy(
     );
   try {
     await database.batch([
+      ...(authority?.statements ?? []),
+      ...(options.form && existing ? catalogBatchGuard(database,
+        `EXISTS(SELECT 1 FROM ${table} WHERE id=?)`, [id]) : []),
       existing
         ? database
             .prepare(
@@ -159,10 +220,14 @@ export async function saveTaxonomy(
           `catalog.${options.kind}.${existing ? 'updated' : 'created'}`,
           options.kind,
           id,
-          JSON.stringify(input),
+          JSON.stringify(options.form ? { ...input, catalogDigest } : input),
           options.requestId,
           options.now,
         ),
+      ...(options.form ? [buildFormAnswerInsert(database, { formId: 'staff.catalog',
+        requestId: options.requestId, versionId: options.form.versionId,
+        subjectType: options.kind, subjectId: id, actorId: options.actorId,
+        answers: options.form.answers, now: options.now })] : []),
     ]);
   } catch (error) {
     if (error instanceof Error && error.message.includes('UNIQUE constraint'))
@@ -181,15 +246,32 @@ export async function classifyProduct(
     actorId: string;
     requestId: string;
     now: number;
+    form?: StaffCatalogForm;
   },
 ): Promise<void> {
+  if (options.form && options.form.requestId !== options.requestId)
+    throw new CatalogManagementConflictError('Form request reference does not match classification.');
+  const authority = options.form
+    ? await staffMutationGuard(database, options.actorId, 'catalog.manage', CatalogManagementConflictError) : null;
+  const catalogDigest = options.form ? await digestFormRequest({ productId: options.productId,
+    categoryId: options.categoryId, occasionIds: options.occasionIds,
+    versionId: options.form.versionId, answers: options.form.answers }) : null;
+  if (options.form) {
+    const replay = await catalogReplay(database, { requestId: options.requestId,
+      actorId: options.actorId, action: 'catalog.product.classified', subjectType: 'product',
+      subjectId: options.productId, formId: 'staff.product-classification',
+      versionId: options.form.versionId, digest: catalogDigest! });
+    if (replay) return;
+  }
   if (
     await database
       .prepare(`SELECT id FROM audit_logs WHERE request_id = ? LIMIT 1`)
       .bind(options.requestId)
       .first()
-  )
-    return;
+  ) {
+    if (!options.form) return;
+    throw new CatalogManagementConflictError('Request reference was already used.');
+  }
   const occasionIds = [...new Set(options.occasionIds)];
   if (occasionIds.length < 1 || occasionIds.length > 5)
     throw new CatalogManagementConflictError('Choose 1–5 active occasions.');
@@ -214,6 +296,12 @@ export async function classifyProduct(
       'Product, category or occasion selection is invalid.',
     );
   const statements: D1PreparedStatement[] = [
+    ...(authority?.statements ?? []),
+    ...(options.form ? catalogBatchGuard(database,
+      `EXISTS(SELECT 1 FROM products WHERE id=?)
+       AND EXISTS(SELECT 1 FROM categories WHERE id=? AND is_active=1)
+       AND (SELECT COUNT(*) FROM occasions WHERE is_active=1 AND id IN (${occasionIds.map(() => '?').join(',')}))=?`,
+      [options.productId, options.categoryId, ...occasionIds, occasionIds.length]) : []),
     database
       .prepare(
         `UPDATE products SET category_id = ?, updated_at = ? WHERE id = ?`,
@@ -241,10 +329,15 @@ export async function classifyProduct(
         crypto.randomUUID(),
         options.actorId,
         options.productId,
-        JSON.stringify({ categoryId: options.categoryId, occasionIds }),
+        JSON.stringify({ categoryId: options.categoryId, occasionIds, ...(options.form ? { catalogDigest } : {}) }),
         options.requestId,
         options.now,
       ),
   );
+  if (options.form) statements.push(buildFormAnswerInsert(database, {
+    formId: 'staff.product-classification', requestId: options.requestId,
+    versionId: options.form.versionId, subjectType: 'product', subjectId: options.productId,
+    actorId: options.actorId, answers: options.form.answers, now: options.now,
+  }));
   await database.batch(statements);
 }

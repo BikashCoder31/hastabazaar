@@ -1,4 +1,8 @@
 import { SIMULATED_RECORD_LABEL } from '@/lib/staging/environment';
+import { buildFormAnswerInsert } from './form-answers';
+import { staffMutationGuard } from './staff-mutation-guard';
+import { digestFormRequest } from '../../forms/submission';
+import type { FormAnswerSnapshot } from '../../forms/types';
 
 export async function issueManagedInvoiceGroups(
   database:D1Database,
@@ -55,6 +59,7 @@ export interface ManagedInvoiceAdjustment {
   simulationLabel:string;createdBy:string;issuedAt:number;
 }
 
+
 export class ManagedInvoiceAdjustmentError extends Error {}
 
 function adjustmentText(label:string,value:string,minimum:number,maximum:number):string{
@@ -67,6 +72,7 @@ function adjustmentText(label:string,value:string,minimum:number,maximum:number)
 export async function issueManagedInvoiceAdjustment(database:D1Database,options:{
   invoiceGroupId:string;kind:ManagedInvoiceAdjustmentKind;amountPaisa:number;reasonCode:string;
   note:string;actorId:string;requestId:string;now:number;approvedReasonCodes:readonly string[];
+  form?:{requestId:string;versionId:string;answers:FormAnswerSnapshot};
 }):Promise<{id:string;adjustmentNumber:string;created:boolean}>{
   if(options.kind!=='credit_note'&&options.kind!=='debit_note')throw new ManagedInvoiceAdjustmentError('Adjustment kind is invalid.');
   if(!Number.isSafeInteger(options.amountPaisa)||options.amountPaisa<=0||options.amountPaisa>1_000_000_000_000)throw new ManagedInvoiceAdjustmentError('Adjustment amount is invalid.');
@@ -75,8 +81,24 @@ export async function issueManagedInvoiceAdjustment(database:D1Database,options:
   if(!options.approvedReasonCodes.includes(reasonCode))throw new ManagedInvoiceAdjustmentError('Adjustment reason is not approved.');
   const note=adjustmentText('Adjustment note',options.note,12,500);
   const requestId=adjustmentText('Request id',options.requestId,8,191);
-  const duplicate=await database.prepare(`SELECT id,adjustment_number AS adjustmentNumber FROM managed_invoice_adjustments WHERE request_id=? LIMIT 1`).bind(requestId).first<{id:string;adjustmentNumber:string}>();
-  if(duplicate)return {...duplicate,created:false};
+  if(options.form?.requestId!==undefined && options.form.requestId!==requestId)throw new ManagedInvoiceAdjustmentError('Form request does not match the adjustment.');
+  const permission=options.form?await staffMutationGuard(database,options.actorId,'tax_policy.manage',ManagedInvoiceAdjustmentError):null;
+  const formDigest=options.form?await digestFormRequest({invoiceGroupId:options.invoiceGroupId,kind:options.kind,
+    amountPaisa:options.amountPaisa,reasonCode,note,actorId:options.actorId,versionId:options.form.versionId,
+    answers:options.form.answers}):null;
+  const duplicate=await database.prepare(`SELECT id,adjustment_number AS adjustmentNumber,invoice_group_id AS invoiceGroupId,
+    kind,amount_paisa AS amountPaisa,reason_code AS reasonCode,note,created_by AS actorId
+    FROM managed_invoice_adjustments WHERE request_id=? LIMIT 1`).bind(requestId).first<{id:string;adjustmentNumber:string;invoiceGroupId:string;kind:string;amountPaisa:number;reasonCode:string;note:string;actorId:string}>();
+  if(duplicate){
+    const audit=await database.prepare("SELECT next_json AS nextJson FROM audit_logs WHERE request_id=? AND action='invoice.adjustment.issued' AND subject_type='managed_invoice_adjustment' AND subject_id=? AND actor_id=?")
+      .bind(`${requestId}:audit`,duplicate.id,options.actorId).first<{nextJson:string}>();
+    let recordedDigest:unknown=null;try{recordedDigest=JSON.parse(audit?.nextJson??'null')?.formDigest;}catch{}
+    if(duplicate.invoiceGroupId!==options.invoiceGroupId||duplicate.kind!==options.kind||duplicate.amountPaisa!==options.amountPaisa||
+      duplicate.reasonCode!==reasonCode||duplicate.note!==note||duplicate.actorId!==options.actorId||
+      (options.form?recordedDigest!==formDigest:recordedDigest!==undefined&&recordedDigest!==null))
+      throw new ManagedInvoiceAdjustmentError('Request reference was already used for another adjustment.');
+    return {id:duplicate.id,adjustmentNumber:duplicate.adjustmentNumber,created:false};
+  }
   const invoice=await database.prepare(`SELECT g.id,g.invoice_number AS invoiceNumber,g.issuer_reference AS issuerReference,
     g.snapshot_json AS snapshotJson,g.simulation_label AS simulationLabel,o.order_number AS orderNumber,o.currency
     FROM managed_invoice_groups g JOIN orders o ON o.id=g.order_id
@@ -93,11 +115,17 @@ export async function issueManagedInvoiceAdjustment(database:D1Database,options:
     originalInvoiceNumber:invoice.invoiceNumber,orderNumber:invoice.orderNumber,issuerReference:invoice.issuerReference,
     currency:invoice.currency,kind:options.kind,amountPaisa:options.amountPaisa,reasonCode,note,issuedAt:options.now,
   };
+  const invoiceGuardId=crypto.randomUUID();
   await database.batch([
+    ...(permission?.statements??[]),
+    ...(options.form?[database.prepare("INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM managed_invoice_groups WHERE id=? AND status='issued' AND simulation_label=?) THEN 1 ELSE 0 END").bind(invoiceGuardId,invoice.id,SIMULATED_RECORD_LABEL),
+      database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(invoiceGuardId)]:[]),
     database.prepare(`INSERT INTO managed_invoice_adjustments(id,invoice_group_id,adjustment_number,kind,amount_paisa,reason_code,note,snapshot_json,simulation_label,request_id,created_by,issued_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,invoice.id,adjustmentNumber,options.kind,options.amountPaisa,reasonCode,note,JSON.stringify(snapshot),SIMULATED_RECORD_LABEL,requestId,options.actorId,options.now),
     database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,ip_hash,created_at)
-      VALUES (?,?,'invoice.adjustment.issued','managed_invoice_adjustment',?,?,NULL,?,?,NULL,?)`).bind(crypto.randomUUID(),options.actorId,id,note,JSON.stringify({invoiceGroupId:invoice.id,kind:options.kind,amountPaisa:options.amountPaisa,reasonCode,originalProductTotalPaisa:original.productTotalPaisa}),`${requestId}:audit`,options.now),
+      VALUES (?,?,'invoice.adjustment.issued','managed_invoice_adjustment',?,?,NULL,?,?,NULL,?)`).bind(crypto.randomUUID(),options.actorId,id,note,JSON.stringify({invoiceGroupId:invoice.id,kind:options.kind,amountPaisa:options.amountPaisa,reasonCode,originalProductTotalPaisa:original.productTotalPaisa,...(formDigest?{formDigest}:{})}),`${requestId}:audit`,options.now),
+    ...(options.form?[buildFormAnswerInsert(database,{formId:'staff.invoice-adjustment',requestId,versionId:options.form.versionId,
+      subjectType:'managed_invoice_adjustment',subjectId:id,actorId:options.actorId,answers:options.form.answers,now:options.now})]:[]),
   ]);
   return {id,adjustmentNumber,created:true};
 }

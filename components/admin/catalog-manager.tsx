@@ -1,10 +1,16 @@
 'use client';
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useAdminMutation } from '@/components/admin/use-admin-mutation';
+import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 import type { ManagedTaxonomyRow } from '@/lib/db/repositories/catalog-admin';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+
+const catalogBaseKeys = ['kind', 'id', 'slug', 'nameEn', 'nameNe', 'sortOrder', 'isActive', 'idempotencyKey'];
 
 export function CatalogManager({
   categories,
@@ -45,11 +51,28 @@ function TaxonomySection({
   title: string;
   rows: readonly ManagedTaxonomyRow[];
 }) {
-  const { send, pending, error } = useAdminMutation();
+  const router=useRouter();
+  const [pending,setPending]=useState(false),[error,setError]=useState(''),[retryPending,setRetryPending]=useState(false);
+  const catalog = usePublishedFormConfig('staff.catalog');
   const fieldId = useId();
   const [editing, setEditing] = useState<ManagedTaxonomyRow | null>(null);
   const [newMode, setNewMode] = useState(false);
   const [message, setMessage] = useState('');
+  const attemptKey=sessionAttemptKey('staff.catalog',`${kind}:${editing?.id??'new'}`);
+  useEffect(()=>setRetryPending(hasSessionAttempt(attemptKey)),[attemptKey]);
+  async function save(body:Record<string,unknown>){
+    if(pending)return;
+    setPending(true);setError('');
+    try{
+      const idempotencyKey=getOrCreateSessionAttempt(attemptKey);setRetryPending(true);
+      const response=await fetch('/api/admin/catalog',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...body,idempotencyKey})});
+      const result=await response.json().catch(()=>null) as {error?:string;code?:string;id?:unknown}|null;
+      if(!response.ok){if(response.status===409&&result?.code==='stale_version')catalog.handleSubmissionResponse(response,result.code);throw new Error(result?.error||'Catalogue entry could not be saved.');}
+      if(typeof result?.id!=='string'||!result.id)throw new Error('The response could not be verified. Retry with the same request.');
+      clearSessionAttempt(attemptKey);setRetryPending(false);setEditing(null);setNewMode(false);setMessage('Catalogue entry saved.');router.refresh();
+    }catch(cause){setError(cause instanceof Error?cause.message:'Catalogue entry could not be saved.');}
+    finally{setPending(false);}
+  }
   const active =
     editing ??
     (newMode
@@ -67,6 +90,9 @@ function TaxonomySection({
     <section className="rounded-2xl border bg-card p-5 sm:p-6">
       <div className="flex items-center justify-between gap-4">
         <h2 className="font-heading text-2xl">{title}</h2>
+        <a className="text-sm underline" href={`/admin/staff-form-history?kind=catalog-${kind}`}>
+          View form history
+        </a>
         <Button
           disabled={pending}
           onClick={() => {
@@ -87,13 +113,18 @@ function TaxonomySection({
       ) : null}
       {active ? (
         <form
+          data-form-id="staff.catalog"
           key={active.id || 'new'}
           onSubmit={(event) => {
             event.preventDefault();
+            if (!catalog.config || !catalog.canSubmit) { setMessage(catalog.message || 'Form configuration is unavailable.'); return; }
             const data = new FormData(event.currentTarget);
-            void send(
-              '/api/admin/catalog',
-              {
+            let configured: ReturnType<typeof configuredJsonPayload>;
+            try {
+              const submission = readConfiguredSubmission(event.currentTarget, catalog.config, catalogBaseKeys);
+              configured = configuredJsonPayload(catalog.config, submission.answers, catalogBaseKeys);
+            } catch (cause) { setMessage(cause instanceof Error ? cause.message : 'Review the configured fields.'); return; }
+            void save({
                 kind,
                 id: editing?.id,
                 slug: data.get('slug'),
@@ -101,21 +132,14 @@ function TaxonomySection({
                 nameNe: editing?.nameNe || data.get('nameEn'),
                 sortOrder: Number(data.get('sortOrder')),
                 isActive: data.get('isActive') === 'on',
-              },
-              'idempotencyKey',
-            ).then((ok) => {
-              if (ok) {
-                setEditing(null);
-                setNewMode(false);
-                setMessage('Catalogue entry saved.');
-              }
-            });
+                ...configured,
+              });
           }}
           className="mt-5 rounded-xl border bg-muted/35 p-4"
         >
 <p className="text-xs text-muted-foreground">* Required field</p>
 
-          <fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">
+          <fieldset disabled={pending || !catalog.canSubmit} className="grid gap-4 sm:grid-cols-2">
             <legend className="mb-4 font-semibold">
               {editing ? 'Edit ' + editing.nameEn : 'New ' + kind}
             </legend>
@@ -173,6 +197,7 @@ function TaxonomySection({
               />
               Active in discovery
             </label>
+            {catalog.config ? <div className="sm:col-span-2"><ConfiguredFields config={catalog.config} baseKeys={catalogBaseKeys} /></div> : null}
             {error ? (
               <p
                 role="alert"
@@ -198,6 +223,8 @@ function TaxonomySection({
               </Button>
             </div>
           </fieldset>
+          {!catalog.canSubmit ? <p role="alert" className="mt-3 text-sm text-destructive">{catalog.message || 'Loading form configuration…'}</p> : null}
+          {retryPending ? <div className="mt-3 space-y-2 text-sm"><p>A previous save may have succeeded. Check the catalogue before another attempt.</p><Button type="button" variant="outline" disabled={pending} onClick={()=>{if(!window.confirm('Starting a new attempt may duplicate a prior successful action. Check the catalogue entry first. Continue?'))return;clearSessionAttempt(attemptKey);setRetryPending(false);setError('');if(catalog.status==='stale')catalog.refresh();}}>Start a new attempt</Button></div> : null}
         </form>
       ) : null}
       <div className="mt-5 divide-y">

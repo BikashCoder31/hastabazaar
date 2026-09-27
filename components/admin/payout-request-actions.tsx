@@ -1,26 +1,57 @@
 'use client';
-import { useId } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useAdminMutation } from '@/components/admin/use-admin-mutation';
+import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+const BASE_KEYS=['action','note','requestId'];
 export function PayoutRequestActions({ id }: { id: string }) {
-  const { send, pending, error } = useAdminMutation();
+  const router=useRouter();
+  const [pending,setPending]=useState(false),[error,setError]=useState(''),[retryPending,setRetryPending]=useState(false);
+  const attemptKey=sessionAttemptKey('staff.payout-request-action',id);
+  useEffect(()=>setRetryPending(hasSessionAttempt(attemptKey)),[attemptKey]);
+  const catalog=usePublishedFormConfig('staff.payout-request-action');
+  const [fieldError,setFieldError]=useState('');
   const fieldId = useId();
+  async function save(body:Record<string,unknown>){
+    if(pending)return;
+    setPending(true);setError('');
+    try{
+      const requestId=getOrCreateSessionAttempt(attemptKey);setRetryPending(true);
+      const response=await fetch('/api/admin/payout-requests/'+encodeURIComponent(id),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...body,requestId})});
+      const result=await response.json().catch(()=>null) as {error?:string;code?:string;ok?:boolean}|null;
+      if(!response.ok){if(response.status===409&&result?.code==='stale_version')catalog.handleSubmissionResponse(response,result.code);throw new Error(result?.error||'The payout decision could not be saved.');}
+      if(result?.ok!==true)throw new Error('The response could not be verified. Retry with the same request.');
+      clearSessionAttempt(attemptKey);setRetryPending(false);router.refresh();
+    }catch(cause){setError(cause instanceof Error?cause.message:'The payout decision could not be saved.');}
+    finally{setPending(false);}
+  }
   return (
     <form
+      data-form-id="staff.payout-request-action"
       onSubmit={(event) => {
         event.preventDefault();
+        if(!catalog.config||!catalog.canSubmit)return;
+        let configured:ReturnType<typeof configuredJsonPayload>;
+        try{const submission=readConfiguredSubmission(event.currentTarget,catalog.config,BASE_KEYS);
+          configured=configuredJsonPayload(catalog.config,submission.answers,BASE_KEYS);setFieldError('');}
+        catch(cause){setFieldError(cause instanceof Error?cause.message:'Review the configured fields.');return;}
         const data = new FormData(event.currentTarget);
-        void send('/api/admin/payout-requests/' + encodeURIComponent(id), {
+        void save({
           action: data.get('action'),
           note: data.get('note'),
+          ...configured,
         });
       }}
       className="mt-4"
     >
+      <a className="text-sm underline" href={`/admin/staff-form-history?kind=payout-request-action&id=${encodeURIComponent(id)}`}>View payout request form history</a>
       <fieldset
-        disabled={pending}
+        disabled={pending||!catalog.canSubmit}
         className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] md:items-end"
       >
         <div>
@@ -45,6 +76,8 @@ export function PayoutRequestActions({ id }: { id: string }) {
             maxLength={1000}
           />
         </div>
+        {catalog.config?<div className="md:col-span-3"><ConfiguredFields config={catalog.config} baseKeys={BASE_KEYS}/></div>:null}
+        {!catalog.canSubmit?<output className="md:col-span-3 text-sm">{catalog.message||'Form configuration is loading.'}</output>:null}
         <Button type="submit" variant="outline" disabled={pending}>
           {pending ? 'Saving…' : 'Save decision'}
         </Button>
@@ -54,6 +87,8 @@ export function PayoutRequestActions({ id }: { id: string }) {
           {error}
         </p>
       ) : null}
+      {fieldError?<p role="alert" className="mt-2 text-sm text-destructive">{fieldError}</p>:null}
+      {retryPending?<div className="mt-3 space-y-2 text-sm"><p>A previous decision may have succeeded. Check the payout request before another attempt.</p><Button type="button" variant="outline" disabled={pending} onClick={()=>{if(!window.confirm('Starting a new attempt may duplicate a prior successful action. Check the payout request first. Continue?'))return;clearSessionAttempt(attemptKey);setRetryPending(false);setError('');if(catalog.status==='stale')catalog.refresh();}}>Start a new attempt</Button></div>:null}
     </form>
   );
 }

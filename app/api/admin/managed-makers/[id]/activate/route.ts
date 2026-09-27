@@ -6,10 +6,14 @@ import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { activateManagedMakerForSimulation, ManagedActivationError } from '@/lib/managed-commerce/activation';
 import { resolveRuntimeEnvironment } from '@/lib/staging/environment';
+import { isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  let validatedVersionId: string | undefined;
   if (!isTrustedMutationRequest(request)) return Response.json({error:'Cross-site requests are not allowed.'},{status:403});
   try {
     const actor = await requireStaffApi('business_settings.approve');
@@ -28,21 +32,36 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         ? 'managed_sale_linked_percentage_v1'
         : null;
     if (!model) return Response.json({error:'Select an implemented Managed Maker model.'},{status:400});
-    await activateManagedMakerForSimulation(requireDatabase(env as unknown as {DB?:D1Database}), {
+    const database = requireDatabase(env as unknown as {DB?:D1Database});
+    const requestId = value('requestId');
+    const form = await validateSellerFormSubmission(database,'staff.managed-maker-activation',
+      body.formVersion,body.customAnswers,requestId);
+    validatedVersionId = form.versionId;
+    // Acceptance time is server-owned; the immutable audit time is reused for exact retries.
+    const now = Date.now();
+    await activateManagedMakerForSimulation(database, {
       sellerId: id, actorId: actor.id, model,
       legalSellerReference: value('legalSellerReference'), invoiceIssuerReference: value('invoiceIssuerReference'),
       payoutBeneficiaryReference: value('payoutBeneficiaryReference'), agreementVersion: value('agreementVersion'),
       agreementLanguage: body.agreementLanguage === 'ne' ? 'ne' : 'en',
-      agreementAcceptedAt: Number(body.agreementAcceptedAt),
-      requestId: value('requestId') || crypto.randomUUID(), now: Date.now(), environment,
+      agreementAcceptedAt: now,
+      requestId, now, environment,
+      form:{requestId,versionId:form.versionId,answers:form.answers},
     });
     return Response.json({ok:true,simulation:true},{status:200});
   } catch (error) {
     if (error instanceof StaffAuthorizationError) return Response.json({error:error.message},{status:error.status});
     if (error instanceof BodyTooLargeError) return Response.json({error:error.message},{status:413});
+    if (error instanceof FormRuntimeError)
+      return Response.json({error:error.message,code:error.code},{status:error.code==='stale_version'?409:503});
+    if (error instanceof FormValidationError)
+      return Response.json({error:error.message,fieldId:error.fieldId},{status:400});
     if (error instanceof ManagedActivationError || error instanceof RangeError || error instanceof TypeError) {
       return Response.json({error:error.message},{status:409});
     }
+    if (validatedVersionId && await isValidatedFormVersionStale(requireDatabase(env as unknown as { DB?: D1Database }),
+      'staff.managed-maker-activation', validatedVersionId))
+      return Response.json({ error: 'This form changed. Refresh it and review your answers.', code: 'stale_version' }, { status: 409 });
     return Response.json({error:'Simulated activation was not completed.'},{status:400});
   }
 }

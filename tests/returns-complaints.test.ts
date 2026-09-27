@@ -4293,6 +4293,29 @@ void test('parcel cancellation restores stock once and a returned parcel holds t
     await f.dispose();
   }
 });
+void test('configured parcel cancellation retains one answer in its successful accounting batch', async () => {
+  const f = await parcelFixture(), db = f.db;
+  try {
+    await db.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+      VALUES ('staff.parcel-control-v1','staff.parcel-control',1,1,'published',?,'Fixture','admin-1',1,'admin-1',1,'admin-1',1,'parcel-form-seed')`)
+      .bind(JSON.stringify({formId:'staff.parcel-control',fields:[{id:'context_note',key:'context_note',type:'short_text',label:'Staff context',required:true,order:0,status:'active'}]})).run();
+    const [first, second] = await listParcels(db, 'order-1');
+    const form = (requestId:string,value:string) => ({requestId,versionId:'staff.parcel-control-v1',answers:{formId:'staff.parcel-control' as const,version:1,
+      answers:[{fieldId:'context_note',label:'Staff context',type:'short_text' as const,value}]}});
+    const action = {jobId:first.id,actorId:'admin-1',requestId:'configured-parcel-cancel',version:first.version,
+      action:'cancel',note:'Customer cancellation before handoff.',now:Date.now(),
+      form:form('configured-parcel-cancel','Reviewed cancellation evidence')};
+    await operateParcel(db,action);
+    await operateParcel(db,action);
+    await assert.rejects(operateParcel(db,{...action,form:form(action.requestId,'Changed cancellation answer')}));
+    const stored=await db.prepare("SELECT subject_type AS subjectType,subject_id AS subjectId,actor_id AS actorId FROM form_answer_sets WHERE form_id='staff.parcel-control'").all<{subjectType:string;subjectId:string;actorId:string}>();
+    assert.deepEqual(stored.results.map((row)=>[row.subjectType,row.subjectId,row.actorId]),[['shipping_job',first.id,'admin-1']]);
+    await assert.rejects(operateParcel(db,{...action,jobId:second.id,requestId:'configured-parcel-stale',version:second.version+99,
+      form:form('configured-parcel-stale','A stale cancellation attempt')}));
+    const count=await db.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE form_id='staff.parcel-control'").first<{count:number}>();
+    assert.equal(count?.count,1);
+  } finally { await f.dispose(); }
+});
 void test('queue attention identifies delayed retries and expired leases without SMTP detail', async () => {
   const f = await databaseFixture(),
     db = f.database as unknown as D1Database;

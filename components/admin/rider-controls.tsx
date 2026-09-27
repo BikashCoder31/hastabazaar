@@ -1,7 +1,13 @@
 'use client';
-import { useState, type SubmitEvent } from 'react';
+import { useEffect, useState, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import type { RiderPolicy } from '@/lib/riders/repository';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
+const BASE_KEYS=['action','status','note','userId','reportId','version','eligible','requestId'];
+const POLICY_KEYS=['action','version','otpScope','requestId'];
 export function RiderAdminAction({
   action,
   fields,
@@ -14,24 +20,33 @@ export function RiderAdminAction({
   const router = useRouter(),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false);
+  const catalog=usePublishedFormConfig('staff.rider-control-1');
+  const attemptKey=sessionAttemptKey('staff.rider-control-1',`${action}:${String(fields.userId??fields.reportId??'global')}`);
+  const [retryPending,setRetryPending]=useState(false);
+  useEffect(()=>setRetryPending(hasSessionAttempt(attemptKey)),[attemptKey]);
   async function submit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
+    if(busy||!catalog.config||!catalog.canSubmit)return;
+    let configured:ReturnType<typeof configuredJsonPayload>;
+    try{const submission=readConfiguredSubmission(e.currentTarget,catalog.config,BASE_KEYS);
+      configured=configuredJsonPayload(catalog.config,submission.answers,BASE_KEYS);}
+    catch(error){setMessage(error instanceof Error?error.message:'Review the configured fields.');return;}
     const f = new FormData(e.currentTarget);
+    const body={...fields,action,status:f.get('status'),note:f.get('note'),...configured};
     setBusy(true);
     try {
+      const requestId=getOrCreateSessionAttempt(attemptKey);setRetryPending(true);
       const r = await fetch('/api/admin/riders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...fields,
-            action,
-            status: f.get('status'),
-            note: f.get('note'),
-          }),
+          body: JSON.stringify({...body,requestId}),
         }),
-        data = (await r.json()) as { error?: string };
-      if (!r.ok) throw new Error(data.error ?? 'Update failed.');
+        data = (await r.json().catch(()=>null)) as { error?: string;code?:string;ok?:boolean } | null;
+      if(r.status===409&&data?.code==='stale_version')catalog.handleSubmissionResponse(r,data.code);
+      if (!r.ok) throw new Error(data?.error ?? 'Update failed.');
+      if(data?.ok!==true)throw new Error('The response could not be verified. Retry with the same request.');
       setMessage('Rider record updated.');
+      clearSessionAttempt(attemptKey);setRetryPending(false);
       router.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Update failed.');
@@ -40,7 +55,8 @@ export function RiderAdminAction({
     }
   }
   return (
-    <form className="my-3 space-y-2" onSubmit={(e) => void submit(e)}>
+    <form data-form-id="staff.rider-control-1" className="my-3 space-y-2" onSubmit={(e) => void submit(e)}>
+      <a className="text-sm underline" href={`/admin/staff-form-history?kind=${fields.reportId?'rider-report-control':'rider-control'}${fields.reportId||fields.userId?`&id=${encodeURIComponent(String(fields.reportId??fields.userId))}`:''}`}>View rider form history</a>
       {action === 'review' ? (
         <label className="block">
           Decision *
@@ -68,44 +84,58 @@ export function RiderAdminAction({
           reported COD collection; it does not record carrier remittance.
         </p>
       )}
-      <button disabled={busy} className="rounded-lg border px-4 py-2">
+      {catalog.config?<ConfiguredFields config={catalog.config} baseKeys={BASE_KEYS}/>:null}
+      {!catalog.canSubmit?<output className="block text-sm">{catalog.message||'Form configuration is loading.'}</output>:null}
+      <button type="submit" disabled={busy||!catalog.canSubmit} className="rounded-lg border px-4 py-2">
         {label}
       </button>
       <output className="block" aria-live="polite">
         {message}
       </output>
+      {retryPending?<div className="space-y-2 text-sm"><p>A previous update may have succeeded. Check the rider record before another attempt.</p><button type="button" disabled={busy} className="rounded border px-3 py-2" onClick={()=>{if(!window.confirm('Starting a new attempt may duplicate a prior successful action. Check the rider record first. Continue?'))return;clearSessionAttempt(attemptKey);setRetryPending(false);setMessage('');if(catalog.status==='stale')catalog.refresh();}}>Start a new attempt</button></div>:null}
     </form>
   );
 }
 export function RiderPolicyForm({ policy }: { policy: RiderPolicy }) {
   const router = useRouter(),
-    [message, setMessage] = useState('');
+    [message, setMessage] = useState(''),[busy,setBusy]=useState(false),[retryPending,setRetryPending]=useState(false);
+  const catalog=usePublishedFormConfig('staff.rider-control-2');
+  const attemptKey=sessionAttemptKey('staff.rider-control-2','policy');
+  useEffect(()=>setRetryPending(hasSessionAttempt(attemptKey)),[attemptKey]);
   return (
     <form
+      data-form-id="staff.rider-control-2"
       className="space-y-3 rounded-xl border p-4"
       onSubmit={(e) => {
         e.preventDefault();
+        if(busy||!catalog.config||!catalog.canSubmit)return;
+        let configured:ReturnType<typeof configuredJsonPayload>;
+        try{const submission=readConfiguredSubmission(e.currentTarget,catalog.config,POLICY_KEYS);
+          configured=configuredJsonPayload(catalog.config,submission.answers,POLICY_KEYS);}
+        catch(error){setMessage(error instanceof Error?error.message:'Review the configured fields.');return;}
         const f = new FormData(e.currentTarget);
+        const body={action:'policy',version:policy.version,otpScope:f.get('otpScope'),...configured};
+        let requestId:string;try{requestId=getOrCreateSessionAttempt(attemptKey);setRetryPending(true);}catch(error){setMessage(error instanceof Error?error.message:'Browser storage is unavailable.');return;}
+        setBusy(true);
         void fetch('/api/admin/riders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'policy',
-            version: policy.version,
-            otpScope: f.get('otpScope'),
-          }),
+          body: JSON.stringify({...body,requestId}),
         })
           .then(async (r) => {
-            const d = (await r.json()) as { error?: string };
+            const d = (await r.json().catch(()=>null)) as { error?: string;code?:string;ok?:boolean } | null;
+            if(r.status===409&&d?.code==='stale_version')catalog.handleSubmissionResponse(r,d.code);
             setMessage(
-              r.ok ? 'Rider settings saved.' : (d.error ?? 'Update failed.'),
+              r.ok&&d?.ok===true ? 'Rider settings saved.' : (d?.error ?? 'The response could not be verified. Retry with the same request.'),
             );
-            if (r.ok) router.refresh();
+            if (r.ok&&d?.ok===true) {clearSessionAttempt(attemptKey);setRetryPending(false);router.refresh();}
           })
-          .catch(() => setMessage('Settings could not be saved.'));
+          .catch(() => setMessage('Settings could not be saved.'))
+          .finally(()=>setBusy(false));
       }}
     >
       <h2 className="font-semibold">Delivery evidence settings</h2>
+      <a className="text-sm underline" href="/admin/staff-form-history?kind=rider-policy&id=current">View policy form history</a>
       <p>
         One handover photo or video is required. Evidence is retained; no
         automatic deletion runs.
@@ -131,10 +161,13 @@ export function RiderPolicyForm({ policy }: { policy: RiderPolicy }) {
         customer obtains the code from their protected receipt. No SMS or email
         is sent by this setting.
       </p>
-      <button className="rounded border p-2">Save settings</button>
+      {catalog.config?<ConfiguredFields config={catalog.config} baseKeys={POLICY_KEYS}/>:null}
+      {!catalog.canSubmit?<output className="block text-sm">{catalog.message||'Form configuration is loading.'}</output>:null}
+      <button type="submit" disabled={busy||!catalog.canSubmit} className="rounded border p-2">Save settings</button>
       <output className="block" aria-live="polite">
         {message}
       </output>
+      {retryPending?<div className="space-y-2 text-sm"><p>A previous save may have succeeded. Check settings before another attempt.</p><button type="button" disabled={busy} className="rounded border px-3 py-2" onClick={()=>{if(!window.confirm('Starting a new attempt may duplicate a prior successful action. Check rider settings first. Continue?'))return;clearSessionAttempt(attemptKey);setRetryPending(false);setMessage('');if(catalog.status==='stale')catalog.refresh();}}>Start a new attempt</button></div>:null}
     </form>
   );
 }

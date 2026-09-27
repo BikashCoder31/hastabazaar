@@ -10,6 +10,9 @@ import {
   riderNotifications,
 } from '../riders/repository';
 import { staffMutationGuard } from '../db/repositories/staff-mutation-guard';
+import { buildFormAnswerInsert } from '../db/repositories/form-answers';
+import { digestFormRequest } from '../forms/submission';
+import type { FormAnswerSnapshot } from '../forms/types';
 import { safeCourierUrl, parseLocation } from '../delivery/validation';
 import { buildEarningsAccrualStatements } from '../db/repositories/payouts';
 import { accrueManagedEntitlements } from '../db/repositories/managed-settlements';
@@ -421,6 +424,8 @@ export interface ParcelOperation {
   trackingUrl?: string;
   trackingCode?: string;
   riderReportId?: string;
+  form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot;
+    formId?: 'staff.parcel-control' | 'staff.rider-control-1' };
 }
 export async function operateParcel(db: D1Database, o: ParcelOperation) {
   const authority = await staffMutationGuard(
@@ -440,7 +445,16 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
     throw new ParcelConflictError(
       'Add a clear note and refresh the parcel version.',
     );
-  const payload = JSON.stringify({ ...o, now: undefined });
+  if (o.form && o.form.requestId !== o.requestId)
+    throw new ParcelConflictError('Form request does not match parcel operation.');
+  if (o.form?.formId === 'staff.rider-control-1' &&
+    (!o.riderReportId || !['deliver','fail'].includes(o.action)))
+    throw new ParcelConflictError('Rider confirmation requires the matching report action.');
+  const { form, ...operation } = o;
+  const catalogFormId=form?.formId??'staff.parcel-control';
+  const formDigest = form ? await digestFormRequest({ ...operation, now: undefined,
+    formId:catalogFormId, versionId: form.versionId, answers: form.answers }) : null;
+  const payload = JSON.stringify({ ...operation, now: undefined, ...(formDigest ? { formDigest } : {}) });
   if (await repeated(db, o.requestId, o.actorId, payload)) return;
   const p = await db
     .prepare(selectParcel + ' WHERE j.id=?')
@@ -515,6 +529,9 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
         ),
     );
     statements.push(parcelAudit(db, o, p.orderId, o.action));
+    if (form) statements.push(buildFormAnswerInsert(db,{formId:'staff.parcel-control',requestId:o.requestId,
+      versionId:form.versionId,subjectType:'shipping_job',subjectId:o.jobId,actorId:o.actorId,
+      answers:form.answers,now:o.now}));
     statements.push(...authority.statements);
     await transact(db, statements);
     return;
@@ -536,7 +553,7 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       requestId: o.requestId,
       note: o.note,
       now: o.now,
-      parcelContext: { jobId: o.jobId, payload },
+      parcelContext: { jobId: o.jobId, payload, ...(form?{form}:{}) },
     });
     return;
   }
@@ -1078,6 +1095,10 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       ),
   );
   statements.push(parcelAudit(db, o, p.orderId, o.action));
+  if (form) statements.push(buildFormAnswerInsert(db,{formId:catalogFormId,requestId:o.requestId,
+    versionId:form.versionId,subjectType:catalogFormId==='staff.rider-control-1'?'rider_report':'shipping_job',
+    subjectId:catalogFormId==='staff.rider-control-1'?o.riderReportId!:o.jobId,actorId:o.actorId,
+    answers:form.answers,now:o.now}));
   statements.push(...authority.statements);
   await transact(db, statements);
   await accrueManagedEntitlements(db, {

@@ -9,10 +9,14 @@ import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
 import { can, validateAdminPermissions } from '@/lib/marketplace/permissions';
 import { collectFormAnswersForPrivacy, eraseFormAnswersForPrivacy, FormPrivacyError } from '@/lib/forms/privacy';
+import { isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
+  let validatedVersionId: string | undefined;
   if (!isTrustedMutationRequest(request))
     return Response.json(
       { error: 'Cross-site requests are not allowed.' },
@@ -31,6 +35,8 @@ export async function POST(
         | 'erase_answers';
       note?: string;
       requestId?: string;
+      formVersion?: unknown;
+      customAnswers?: unknown;
     };
     try { body = JSON.parse(new TextDecoder().decode(await readBoundedBody(request, 4096))); }
     catch (error) {
@@ -110,6 +116,9 @@ export async function POST(
         answers: answer.answers, historicalFieldIds: answer.historicalFieldIds })) },
       { headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
     }
+    const form=await validateSellerFormSubmission(db,'staff.privacy-action',
+      body.formVersion,body.customAnswers,body.requestId);
+    validatedVersionId=form.versionId;
     await operateDataRightsRequest(
       db,
       {
@@ -120,6 +129,7 @@ export async function POST(
         note: body.note ?? '',
         requestId: body.requestId,
         now: Date.now(),
+        form:{requestId:body.requestId,versionId:form.versionId,answers:form.answers},
       },
     );
     return Response.json({ ok: true });
@@ -130,6 +140,13 @@ export async function POST(
       return Response.json({ error: error.message }, { status: 409 });
     if (error instanceof FormPrivacyError)
       return Response.json({ error: error.message }, { status: 409 });
+    if (error instanceof FormRuntimeError)
+      return Response.json({error:error.message,code:error.code},{status:error.code==='stale_version'?409:503});
+    if (error instanceof FormValidationError)
+      return Response.json({error:error.message,fieldId:error.fieldId},{status:400});
+    if (validatedVersionId && await isValidatedFormVersionStale(requireDatabase(env as unknown as { DB?: D1Database }),
+      'staff.privacy-action',validatedVersionId))
+      return Response.json({error:'This form changed. Refresh it and review your answers.',code:'stale_version'},{status:409});
     return Response.json(
       { error: 'Privacy request could not be updated.' },
       { status: 500 },

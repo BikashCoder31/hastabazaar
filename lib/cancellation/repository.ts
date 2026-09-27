@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto';
 import { allocateCancellationItems, calculateCancellation } from './accounting';
 import {DELIVERY_PRICING_POLICY,readDeliveryPricingSnapshot} from '../checkout/delivery-rates';
 import { staffMutationGuard } from '../db/repositories/staff-mutation-guard';
+import { buildFormAnswerInsert } from '../db/repositories/form-answers';
+import type { FormAnswerSnapshot } from '../forms/types';
 export class CancellationConflictError extends Error {}
 export interface CancellationAccess {
   orderNumber: string;
@@ -260,7 +262,8 @@ export async function cancelSelectedParcels(
     note: string;
     now: number;
     reviewId?: string;
-    parcelContext?: { jobId: string; payload: string };
+    parcelContext?: { jobId: string; payload: string;
+      form?: {requestId:string;versionId:string;answers:FormAnswerSnapshot} };
   },
 ) {
   if (
@@ -271,6 +274,9 @@ export async function cancelSelectedParcels(
     throw new CancellationConflictError(
       'Use a request reference and reason of 8–300 characters.',
     );
+  const parcelForm=o.parcelContext?.form;
+  if(parcelForm && (!a.actorId || parcelForm.requestId!==o.requestId))
+    throw new CancellationConflictError('Configured parcel cancellation requires its staff request.');
   const authorizedSource = await source(db, a);
   const existing = await db
     .prepare(
@@ -291,6 +297,12 @@ export async function cancelSelectedParcels(
       existing.note !== o.note
     )
       throw new CancellationConflictError('Request reference already used.');
+    if(parcelForm){
+      const event=await db.prepare('SELECT actor_id AS actorId,shipping_job_id AS jobId,payload_json AS payload FROM parcel_operation_events WHERE id=?')
+        .bind(o.requestId).first<{actorId:string;jobId:string;payload:string}>();
+      if(event?.actorId!==a.actorId||event?.jobId!==o.parcelContext?.jobId||event?.payload!==o.parcelContext?.payload)
+        throw new CancellationConflictError('Request reference already used.');
+    }
     return { status: 'cancelled', id: o.requestId };
   }
   const priorReview = await db
@@ -313,6 +325,12 @@ export async function cancelSelectedParcels(
       priorReview.note !== o.note.trim()
     )
       throw new CancellationConflictError('Request reference already used.');
+    if(parcelForm){
+      const audit=await db.prepare("SELECT next_json AS nextJson FROM audit_logs WHERE request_id=? AND action='cancellation.review_requested' AND subject_type='order' AND actor_id=?")
+        .bind(o.requestId+':parcel-form',a.actorId).first<{nextJson:string}>();
+      if(audit?.nextJson!==JSON.stringify({jobId:o.parcelContext?.jobId,payload:o.parcelContext?.payload}))
+        throw new CancellationConflictError('Request reference already used.');
+    }
     return { status: 'review_requested', id: o.requestId };
   }
   const p = await cancellationPreview(db, a, o.sellerIds);
@@ -368,15 +386,20 @@ export async function cancelSelectedParcels(
         ),
       db
         .prepare(
-          "INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,created_at) VALUES (?,?,'cancellation.review_requested','order',?,?,?)",
+          "INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at) VALUES (?,?,'cancellation.review_requested','order',?,?,?,?,?)",
         )
         .bind(
           crypto.randomUUID(),
           a.customerId ?? a.actorId ?? null,
           p.order.id,
           o.note,
+          parcelForm?JSON.stringify({jobId:o.parcelContext?.jobId,payload:o.parcelContext?.payload}):null,
+          parcelForm?o.requestId+':parcel-form':null,
           o.now,
         ),
+      ...(parcelForm?[buildFormAnswerInsert(db,{formId:'staff.parcel-control',requestId:o.requestId,
+        versionId:parcelForm.versionId,subjectType:'shipping_job',subjectId:o.parcelContext!.jobId,
+        actorId:a.actorId!,answers:parcelForm.answers,now:o.now})]:[]),
       ...(await cancellationNotifications(db, p.order.id, id, true, o.now)),
     ]);
     return { status: 'review_requested', id };
@@ -708,6 +731,9 @@ export async function cancelSelectedParcels(
           o.now,
         ),
     );
+  if(parcelForm) statements.push(buildFormAnswerInsert(db,{formId:'staff.parcel-control',requestId:o.requestId,
+    versionId:parcelForm.versionId,subjectType:'shipping_job',subjectId:o.parcelContext!.jobId,
+    actorId:a.actorId!,answers:parcelForm.answers,now:o.now}));
   if (authority) statements.push(...authority.statements);
   try {
     await db.batch(statements);

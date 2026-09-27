@@ -10,6 +10,9 @@ import {
 } from '@/lib/db/repositories/managed-documents';
 import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
 import {
   assertSimulationAllowed,
   resolveRuntimeEnvironment,
@@ -21,6 +24,7 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
+  let validatedVersionId: string | undefined;
   if (!isTrustedMutationRequest(request)) {
     return Response.json({ error: 'Cross-site requests are not allowed.' }, { status: 403 });
   }
@@ -45,6 +49,10 @@ export async function POST(
       now,
     );
     const { id } = await context.params;
+    const requestId = typeof body.requestId === 'string' ? body.requestId : '';
+    const form = await validateSellerFormSubmission(database, 'staff.invoice-adjustment',
+      body.formVersion, body.customAnswers, requestId);
+    validatedVersionId = form.versionId;
     const result = await issueManagedInvoiceAdjustment(database, {
       invoiceGroupId: id,
       kind: body.kind as ManagedInvoiceAdjustmentKind,
@@ -52,9 +60,10 @@ export async function POST(
       reasonCode: typeof body.reasonCode === 'string' ? body.reasonCode : '',
       note: typeof body.note === 'string' ? body.note : '',
       actorId: actor.id,
-      requestId: typeof body.requestId === 'string' ? body.requestId : '',
+      requestId,
       now,
       approvedReasonCodes: reasons.value,
+      form: { requestId, versionId: form.versionId, answers: form.answers },
     });
     return Response.json({ ...result, simulation: true }, { status: result.created ? 201 : 200 });
   } catch (error) {
@@ -64,6 +73,10 @@ export async function POST(
     if (error instanceof BodyTooLargeError) {
       return Response.json({ error: error.message }, { status: 413 });
     }
+    if (error instanceof FormRuntimeError)
+      return Response.json({ error: error.message, code: error.code }, { status: error.code === 'stale_version' ? 409 : 503 });
+    if (error instanceof FormValidationError)
+      return Response.json({ error: error.message, fieldId: error.fieldId }, { status: 400 });
     if (
       error instanceof ManagedInvoiceAdjustmentError ||
       error instanceof RangeError ||
@@ -72,6 +85,9 @@ export async function POST(
     ) {
       return Response.json({ error: error.message }, { status: 409 });
     }
+    if (validatedVersionId && await isValidatedFormVersionStale(requireDatabase(env as unknown as { DB?: D1Database }),
+      'staff.invoice-adjustment', validatedVersionId))
+      return Response.json({ error: 'This form changed. Refresh it and review your answers.', code: 'stale_version' }, { status: 409 });
     console.error('Simulated invoice adjustment failed', error);
     return Response.json({ error: 'The simulated correction document was not issued.' }, { status: 500 });
   }

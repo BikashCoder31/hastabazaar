@@ -154,11 +154,11 @@ const riderShippingSubjects = new Map([
   ['shipping.console-action-staff', 'shipping_job_event'],
 ]);
 
-async function currentStaffGrant(db: D1Database, viewer: FormAnswerViewer,
+export async function currentStaffGrant(db: D1Database, viewer: FormAnswerViewer,
   permission: Permission | null): Promise<boolean> {
   if (viewer.role !== 'admin' && viewer.role !== 'super_admin') return false;
   if (viewer.role === 'super_admin') return true;
-  if (!permission) return false;
+  if (!permission || !configurableAdminPermissions.includes(permission)) return false;
   const safePermissions = `CASE WHEN json_valid(p.permissions_json) THEN p.permissions_json ELSE '[]' END`;
   return Boolean(await db.prepare(`SELECT 1 AS valid FROM users u JOIN user_roles r ON r.user_id=u.id
     LEFT JOIN staff_permission_profiles p ON p.user_id=u.id
@@ -172,10 +172,172 @@ async function currentStaffGrant(db: D1Database, viewer: FormAnswerViewer,
     .first<{ valid: number }>());
 }
 
+type AnswerLink = Pick<StoredFormAnswer, 'id' | 'formId' | 'subjectType' | 'subjectId' | 'actorId' | 'requestId'>;
+
+/** These staff decisions are readable only through their exact committed parent action. */
+async function staffActionGrant(db: D1Database, viewer: FormAnswerViewer,
+  answer: AnswerLink): Promise<boolean | null> {
+  const { formId, subjectType, subjectId, requestId, actorId } = answer;
+  if (!formId.startsWith('staff.')) return null;
+  if (!actorId || !requestId) return false;
+  let permission: Permission;
+  let parentSql: string;
+  let values: unknown[] = [subjectId, requestId, actorId];
+  let superAdminOnly = false;
+  switch (formId) {
+    case 'staff.catalog':
+      if (subjectType !== 'category' && subjectType !== 'occasion') return false;
+      permission = 'catalog.manage';
+      parentSql = `SELECT 1 FROM ${subjectType === 'category' ? 'categories' : 'occasions'} parent
+        JOIN audit_logs audit ON audit.subject_type=? AND audit.subject_id=parent.id
+          AND audit.request_id=? AND audit.actor_id=?
+          AND audit.action IN (?,?) WHERE parent.id=? LIMIT 1`;
+      values = [subjectType, requestId, actorId,
+        `catalog.${subjectType}.created`, `catalog.${subjectType}.updated`, subjectId];
+      break;
+    case 'staff.product-classification':
+      if (subjectType !== 'product') return false;
+      permission = 'catalog.manage';
+      parentSql = `SELECT 1 FROM products parent JOIN audit_logs audit
+        ON audit.subject_type='product' AND audit.subject_id=parent.id
+          AND audit.request_id=? AND audit.actor_id=? AND audit.action='catalog.product.classified'
+        WHERE parent.id=? LIMIT 1`;
+      values = [requestId, actorId, subjectId];
+      break;
+    case 'staff.exception-work': {
+      if (subjectType !== 'exception_work') return false;
+      permission = 'order.manage';
+      const work = await db.prepare(`SELECT kind FROM exception_work_items WHERE id=? LIMIT 1`)
+        .bind(subjectId).first<{ kind: string }>();
+      if (!work || (work.kind === 'incorrect_cash' &&
+          !await currentStaffGrant(db, viewer, 'payout.prepare'))) return false;
+      parentSql = `SELECT 1 FROM exception_work_items parent
+        JOIN exception_work_events event ON event.work_id=parent.id
+          AND event.id=? AND event.actor_id=?
+          AND event.action IN ('created','assigned','updated','resolved')
+        JOIN audit_logs audit ON audit.subject_type='order' AND audit.subject_id=parent.order_id
+          AND audit.actor_id=event.actor_id AND audit.request_id=?
+          AND audit.action='exception.'||event.action
+        WHERE parent.id=? LIMIT 1`;
+      values = [requestId, actorId, `${requestId}:audit`, subjectId];
+      break;
+    }
+    case 'staff.invoice-adjustment':
+      if (subjectType !== 'managed_invoice_adjustment') return false;
+      permission = 'tax_policy.manage';
+      parentSql = `SELECT 1 FROM managed_invoice_adjustments parent
+        JOIN managed_invoice_groups invoice ON invoice.id=parent.invoice_group_id
+        JOIN audit_logs audit ON audit.subject_type='managed_invoice_adjustment'
+          AND audit.subject_id=parent.id AND audit.actor_id=parent.created_by
+          AND audit.action='invoice.adjustment.issued' AND audit.request_id=?
+        WHERE parent.id=? AND parent.request_id=? AND parent.created_by=? LIMIT 1`;
+      values = [`${requestId}:audit`, subjectId, requestId, actorId];
+      break;
+    case 'staff.managed-maker-activation':
+      if (subjectType !== 'seller') return false;
+      permission = 'business_settings.approve'; superAdminOnly = true;
+      parentSql = `SELECT 1 FROM seller_profiles parent
+        JOIN seller_participation_profiles participation ON participation.seller_id=parent.id
+        JOIN audit_logs audit ON audit.subject_type='seller' AND audit.subject_id=parent.id
+          AND audit.actor_id=? AND audit.request_id=?
+          AND audit.action='managed_maker.simulation_activated'
+        WHERE parent.id=? LIMIT 1`;
+      values = [actorId, requestId, subjectId];
+      break;
+    case 'staff.parcel-control':
+      if (subjectType !== 'shipping_job') return false;
+      permission = 'order.manage';
+      parentSql = `SELECT 1 FROM shipping_jobs parent WHERE parent.id=? AND (
+        EXISTS(SELECT 1 FROM parcel_operation_events event JOIN audit_logs audit
+          ON audit.subject_type='order' AND audit.subject_id=parent.order_id
+            AND audit.actor_id=event.actor_id AND audit.action='parcel.'||event.action
+            AND audit.request_id=?
+          WHERE event.shipping_job_id=parent.id AND event.id=? AND event.actor_id=?)
+        OR EXISTS(SELECT 1 FROM order_cancellation_reviews review JOIN audit_logs audit
+          ON audit.subject_type='order' AND audit.subject_id=review.order_id
+            AND audit.actor_id=review.requested_by
+            AND audit.action='cancellation.review_requested' AND audit.request_id=?
+          WHERE review.id=? AND review.order_id=parent.order_id AND review.requested_by=?
+            AND json_extract(audit.next_json,'$.jobId')=parent.id
+            AND json_extract(json_extract(audit.next_json,'$.payload'),'$.jobId')=parent.id
+            AND json_extract(json_extract(audit.next_json,'$.payload'),'$.requestId')=review.id
+            AND json_extract(json_extract(audit.next_json,'$.payload'),'$.actorId')=review.requested_by
+            AND json_extract(json_extract(audit.next_json,'$.payload'),'$.action')='cancel'
+            AND json_type(json_extract(audit.next_json,'$.payload'),'$.formDigest')='text')
+      ) LIMIT 1`;
+      values = [subjectId, `${requestId}:audit`, requestId, actorId,
+        `${requestId}:parcel-form`, requestId, actorId];
+      break;
+    case 'staff.payout-request-action':
+      if (subjectType !== 'payout_request') return false;
+      permission = 'payout.prepare';
+      parentSql = `SELECT 1 FROM payout_requests parent JOIN audit_logs audit
+        ON audit.subject_type='payout_request' AND audit.subject_id=parent.id
+          AND audit.request_id=? AND audit.actor_id=?
+          AND audit.action IN ('payout.request.prepared','payout.request.rejected')
+        WHERE parent.id=? AND parent.operation_request_id=? AND parent.processed_by=? LIMIT 1`;
+      values = [requestId, actorId, subjectId, requestId, actorId];
+      break;
+    case 'staff.privacy-action':
+      if (subjectType !== 'data_rights_request') return false;
+      permission = 'support.manage';
+      parentSql = `SELECT 1 FROM data_rights_requests parent
+        JOIN data_rights_events event ON event.data_rights_request_id=parent.id
+          AND event.operation_request_id=? AND event.actor_id=?
+          AND event.actor_role IN ('admin','super_admin')
+        JOIN audit_logs audit ON audit.subject_type='data_rights_request'
+          AND audit.subject_id=parent.id AND audit.actor_id=event.actor_id
+          AND audit.request_id=? AND audit.action='privacy.'||event.action
+        WHERE parent.id=? LIMIT 1`;
+      values = [requestId, actorId, `${requestId}:audit`, subjectId];
+      break;
+    case 'staff.rider-control-1':
+      if (subjectType === 'rider') {
+        permission = 'admin.invite'; superAdminOnly = true;
+        parentSql = `SELECT 1 FROM rider_profiles parent JOIN audit_logs audit
+          ON audit.subject_type='rider' AND audit.subject_id=parent.user_id
+            AND audit.request_id=? AND audit.actor_id=?
+            AND audit.action IN ('rider.review.configured','rider.open_box.configured')
+          WHERE parent.user_id=? LIMIT 1`;
+        values = [`staff.rider-control-1:${requestId}`, actorId, subjectId];
+      } else if (subjectType === 'rider_report') {
+        permission = 'order.manage';
+        parentSql = `SELECT 1 FROM rider_reports parent WHERE parent.id=? AND
+          ((EXISTS(SELECT 1 FROM audit_logs audit WHERE audit.subject_type='rider_report'
+            AND audit.subject_id=parent.id AND audit.actor_id=?
+            AND audit.request_id=? AND audit.action='rider.report.rejected.configured'))
+          OR (parent.status='accepted' AND parent.reviewed_by=? AND EXISTS(
+            SELECT 1 FROM parcel_operation_events event
+            JOIN audit_logs audit ON audit.subject_type='order'
+              AND audit.subject_id=event.order_id AND audit.actor_id=event.actor_id
+              AND audit.action='parcel.'||event.action AND audit.request_id=?
+            WHERE event.id=? AND event.actor_id=? AND event.shipping_job_id=parent.shipping_job_id
+              AND event.action IN ('deliver','fail')
+              AND json_extract(event.payload_json,'$.riderReportId')=parent.id))) LIMIT 1`;
+        values = [subjectId, actorId, `staff.rider-control-1:${requestId}`, actorId,
+          `${requestId}:audit`, requestId, actorId];
+      } else return false;
+      break;
+    case 'staff.rider-control-2':
+      if (subjectType !== 'rider_policy' || subjectId !== 'current') return false;
+      permission = 'admin.invite'; superAdminOnly = true;
+      parentSql = `SELECT 1 FROM rider_policy parent JOIN audit_logs audit
+        ON audit.subject_type='rider_policy' AND audit.subject_id=parent.id
+          AND audit.actor_id=? AND audit.request_id=? AND audit.action='rider.policy.configured'
+        WHERE parent.id='current' LIMIT 1`;
+      values = [actorId, `staff.rider-control-2:${requestId}`];
+      break;
+    default: return false;
+  }
+  if (superAdminOnly && viewer.role !== 'super_admin') return false;
+  if (!await currentStaffGrant(db, viewer, permission)) return false;
+  return Boolean(await db.prepare(parentSql).bind(...values).first());
+}
+
 export async function authorizeFormAnswerRead(
   db: D1Database,
   viewer: FormAnswerViewer,
-  answerSet: StoredFormAnswer,
+  answerSet: AnswerLink,
 ): Promise<boolean> {
   if (!viewer.id || !['customer', 'seller', 'rider', 'admin', 'super_admin'].includes(viewer.role)) return false;
   const identity = await db.prepare(`SELECT 1 AS valid FROM users u JOIN user_roles r ON r.user_id=u.id
@@ -276,6 +438,8 @@ export async function authorizeFormAnswerRead(
       .first<{ valid: number }>();
     return Boolean(parent) && currentStaffGrant(db, viewer, 'order.manage');
   }
+  const staffAction = await staffActionGrant(db, viewer, answerSet);
+  if (staffAction !== null) return staffAction;
   // Staff-authored answers need an explicit form-specific policy. Parent
   // ownership alone never grants customers the staff decision context.
   if (answerSet.formId.startsWith('staff.')) return false;

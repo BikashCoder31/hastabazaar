@@ -13,7 +13,12 @@ import {
   setRiderOpenBoxEligibility,
 } from '@/lib/riders/repository';
 import { operateParcel, ParcelConflictError } from '@/lib/operations/parcels';
+import { isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
 export async function POST(request: Request) {
+  let validatedVersionId: string | undefined;
+  let validatedFormId: 'staff.rider-control-1' | 'staff.rider-control-2' | undefined;
   const reply = (body: unknown, status = 200) =>
     Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
   if (!isTrustedMutationRequest(request))
@@ -32,6 +37,15 @@ export async function POST(request: Request) {
     const db = requireDatabase(env as unknown as { DB?: D1Database });
     const text = (key: string) =>
       typeof data[key] === 'string' ? (data[key] as string) : '';
+    const requestId=text('requestId');
+    if (!requestId || requestId.length>100)
+      return reply({error:'Request identifier is required.'},400);
+    const formId=data.action==='policy'?'staff.rider-control-2':'staff.rider-control-1';
+    const form=await validateSellerFormSubmission(db,formId,data.formVersion,
+      data.customAnswers,requestId);
+    validatedVersionId=form.versionId;
+    validatedFormId=formId;
+    const formOption={requestId,versionId:form.versionId,answers:form.answers};
     const now = Date.now();
     if (data.action === 'review')
       await reviewRider(db, {
@@ -41,6 +55,7 @@ export async function POST(request: Request) {
         status: text('status'),
         note: text('note'),
         now,
+        requestId,form:formOption,
       });
     else if (data.action === 'policy')
       await saveRiderPolicy(db, {
@@ -49,6 +64,7 @@ export async function POST(request: Request) {
         openBox: false,
         otpScope: text('otpScope'),
         now,
+        requestId,form:formOption,
       });
     else if (data.action === 'open_box_eligibility')
       await setRiderOpenBoxEligibility(db, {
@@ -58,6 +74,7 @@ export async function POST(request: Request) {
         eligible: data.eligible === true,
         note: text('note'),
         now,
+        requestId,form:formOption,
       });
     else if (data.action === 'reject')
       await rejectRiderReport(db, {
@@ -65,6 +82,7 @@ export async function POST(request: Request) {
         reportId: text('reportId'),
         note: text('note'),
         now,
+        requestId,form:formOption,
       });
     else if (data.action === 'confirm') {
       const r = await db
@@ -76,29 +94,22 @@ export async function POST(request: Request) {
         jobId: r.jobId,
         actorId: staff.id,
         version: Number(data.version),
-        requestId: 'rider-confirm:' + r.id,
+        requestId,
         riderReportId: r.id,
         action: r.kind === 'delivered' ? 'deliver' : 'fail',
         note: 'Staff reviewed rider evidence and reported COD amount.',
         now,
+        form:{...formOption,formId:'staff.rider-control-1'},
       });
     } else return reply({ error: 'Choose a supported rider action.' }, 400);
     return reply({ ok: true });
   } catch (e) {
-    return reply(
-      {
-        error:
-          e instanceof StaffAuthorizationError ||
-          e instanceof RiderError ||
-          e instanceof ParcelConflictError
-            ? e.message
-            : 'Rider update could not be completed.',
-      },
-      e instanceof StaffAuthorizationError
-        ? e.status
-        : e instanceof RiderError || e instanceof ParcelConflictError
-          ? 409
-          : 400,
-    );
+    if(e instanceof StaffAuthorizationError)return reply({error:e.message},e.status);
+    if(e instanceof RiderError || e instanceof ParcelConflictError)return reply({error:e.message},409);
+    if(e instanceof FormRuntimeError)return reply({error:e.message,code:e.code},e.code==='stale_version'?409:503);
+    if(e instanceof FormValidationError)return reply({error:e.message,fieldId:e.fieldId},400);
+    if(validatedFormId && await isValidatedFormVersionStale(requireDatabase(env as unknown as {DB?:D1Database}),
+      validatedFormId,validatedVersionId))return reply({error:'This form changed. Refresh it and review your answers.',code:'stale_version'},409);
+    return reply({error:'Rider update could not be completed.'},400);
   }
 }
