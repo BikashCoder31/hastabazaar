@@ -27,6 +27,159 @@ const config: PublishedFormConfig = { formId: 'account.profile', version: 1, pub
   { id: 'delivery_note', key: 'delivery_note', type: 'short_text', label: 'Delivery note', required: false, order: 0, status: 'active' },
 ] };
 
+async function mountConcurrencyEditor(versions: readonly CatalogVersion[]) {
+  const playwrightPath = process.env.PLAYWRIGHT_MODULE ?? 'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+  // oxlint-disable-next-line typescript/no-explicit-any -- Playwright lives in the bundled external runtime.
+  const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<any> } };
+  const bundle = await build({ stdin: { resolveDir: process.cwd(), sourcefile: 'catalog-concurrency-fixture.tsx', contents: `
+    import React from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { FormCatalogEditor } from './components/admin/form-catalog-editor';
+    createRoot(document.getElementById('root')!).render(<FormCatalogEditor form={${JSON.stringify(definition)}} versions={${JSON.stringify(versions)}} />);
+  `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife', define: { 'process.env.NODE_ENV': '"production"' } });
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
+  const page = await browser.newPage();
+  await page.route('https://form.test/', (route: { fulfill: (response: unknown) => Promise<void> }) => route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><html><head><meta charset="utf-8"></head><body><div id="root"></div></body></html>' }));
+  await page.goto('https://form.test/');
+  await page.addScriptTag({ content: bundle.outputFiles[0].text });
+  return { browser, page };
+}
+
+void test('publish conflict retains preview A until explicit reload adopts and publishes server draft B', async () => {
+  const draftA: CatalogVersion = { id: 'draft-2', version: 2, revision: 1, status: 'draft', reason: 'Local draft A', updatedAt: 2, publishedAt: null,
+    config: { formId: definition.id, fields: [{ ...config.fields[0], label: 'Local draft A' }] } };
+  const draftB: CatalogVersion = { ...draftA, revision: 2, reason: 'Other admin draft B', config: { ...draftA.config, fields: [{ ...config.fields[0], label: 'Server draft B' }] } };
+  const publishedB: CatalogVersion = { ...draftB, status: 'published', revision: 3, publishedAt: 3 };
+  const { browser, page } = await mountConcurrencyEditor([draftA]);
+  const publishBodies: { expectedDraftRevision: number; draftId: string }[] = [];
+  let historyReads = 0;
+  try {
+    // oxlint-disable-next-line typescript/no-explicit-any -- Playwright route type is external to this package.
+    await page.route('https://form.test/api/**', async (route: any) => {
+      if (route.request().method() === 'GET') {
+        historyReads++;
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ versions: [publishBodies.length > 1 ? publishedB : draftB] }) });
+      }
+      publishBodies.push(route.request().postDataJSON());
+      return route.fulfill(publishBodies.length === 1 ? { status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'Another admin revised this draft.' }) } :
+        { status: 200, contentType: 'application/json', body: JSON.stringify({ published: publishedB }) });
+    });
+    assert.match(await page.locator('[data-preview-mode="phone"]').textContent(), /Local draft A/);
+    await page.getByLabel('Reason for change').fill('Publish reviewed draft');
+    await page.getByRole('button', { name: 'Publish draft' }).click();
+    await page.getByRole('button', { name: 'Confirm publish' }).focus();
+    await page.keyboard.press('Enter');
+    await page.getByRole('alertdialog').getByText('Another admin revised this draft.').waitFor();
+    assert.equal(await page.locator('#delivery_note-label').inputValue(), 'Local draft A');
+    assert.match(await page.locator('[data-preview-mode="phone"]').textContent(), /Local draft A/);
+    assert.equal(historyReads, 0, 'a conflict cannot silently replace the reviewed draft');
+    assert.equal(await page.getByRole('button', { name: 'Confirm publish' }).isDisabled(), true, 'conflicted confirmation cannot publish again before reload');
+    await page.getByRole('button', { name: 'Cancel', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), true);
+    await page.getByRole('button', { name: 'Reload latest version' }).click();
+    await page.getByText('Version 2 · revision 2').waitFor();
+    assert.equal(await page.locator('#delivery_note-label').inputValue(), 'Server draft B');
+    assert.match(await page.locator('[data-preview-mode="phone"]').textContent(), /Server draft B/);
+    assert.doesNotMatch(await page.locator('[data-preview-mode="phone"]').textContent(), /Local draft A/);
+    assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), false, 'displayed fields and saved baseline now match the server draft');
+    await page.getByRole('button', { name: 'Publish draft' }).click();
+    await page.getByRole('button', { name: 'Confirm publish' }).focus();
+    await page.keyboard.press('Enter');
+    await page.getByText('Form published.').waitFor();
+    assert.deepEqual(publishBodies.map(({ draftId, expectedDraftRevision }) => [draftId, expectedDraftRevision]), [['draft-2', 1], ['draft-2', 2]]);
+  } finally { await page.close(); await browser.close(); }
+});
+
+void test('history request generations preserve newer mutation state and warnings when GETs finish out of order', async (t) => {
+  for (const action of ['draft', 'publish', 'restore'] as const) await t.test(action, async () => {
+    const published: CatalogVersion = { id: 'published-1', version: 1, revision: 1, status: 'published', reason: 'Initial', updatedAt: 1, publishedAt: 1, config: { formId: definition.id, fields: config.fields } };
+    const draft: CatalogVersion = { ...published, id: 'draft-2', version: 2, status: 'draft', publishedAt: null };
+    const { browser, page } = await mountConcurrencyEditor([draft, published]);
+    let versions = [draft, published];
+    // oxlint-disable-next-line typescript/no-explicit-any -- Deferred routes represent real HTTP response boundaries.
+    let receiveHistory: ((route: any) => void) | undefined;
+    // oxlint-disable-next-line typescript/no-explicit-any -- Playwright route type is external to this package.
+    const nextHistory = () => new Promise<any>((resolve) => { receiveHistory = resolve; });
+    // oxlint-disable-next-line typescript/no-explicit-any -- Playwright route type is external to this package.
+    async function finishHistory(route: any, responseVersions: CatalogVersion[] | null) {
+      await route.fulfill(responseVersions ? { status: 200, contentType: 'application/json', body: JSON.stringify({ versions: responseVersions }) } :
+        { status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'History unavailable.' }) });
+      await (await route.request().response()).finished();
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    }
+    try {
+      // oxlint-disable-next-line typescript/no-explicit-any -- Playwright route type is external to this package.
+      await page.route('https://form.test/api/**', async (route: any) => {
+        if (route.request().method() === 'GET') { receiveHistory?.(route); receiveHistory = undefined; return; }
+        const body = route.request().postDataJSON();
+        const mutation = route.request().url().split('/').at(-1);
+        const result: CatalogVersion = mutation === 'draft' ? { ...draft, revision: versions[0].revision + 1, config: body.config } :
+          mutation === 'publish' ? { ...versions[0], status: 'published', revision: versions[0].revision + 1, publishedAt: 3 } :
+            { ...published, id: 'restored-3', version: 3, reason: body.reason, updatedAt: 3, publishedAt: 3 };
+        versions = [result, ...versions.filter((entry) => entry.id !== result.id)];
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(mutation === 'draft' ? { draft: result } : { published: result }) });
+      });
+      await page.getByLabel('Reason for change').fill('Seed refresh warning');
+      const seedHistory = nextHistory();
+      await page.getByRole('button', { name: 'Save draft' }).click();
+      await finishHistory(await seedHistory, null);
+      await page.getByRole('button', { name: 'Retry history refresh' }).waitFor();
+      const staleVersions = structuredClone(versions);
+      const oldSuccessPending = nextHistory();
+      await page.getByRole('button', { name: 'Retry history refresh' }).click();
+      const oldSuccess = await oldSuccessPending;
+      const oldFailurePending = nextHistory();
+      await page.getByRole('button', { name: 'Retry history refresh' }).click();
+      const oldFailure = await oldFailurePending;
+      const oldWarningClearPending = nextHistory();
+      await page.getByRole('button', { name: 'Retry history refresh' }).click();
+      const oldWarningClear = await oldWarningClearPending;
+
+      await page.getByLabel('Reason for change').fill(`Newest ${action}`);
+      const mutationHistory = nextHistory();
+      if (action === 'draft') {
+        await page.locator('#delivery_note-label').fill('Newest saved label');
+        await page.getByRole('button', { name: 'Save draft' }).click();
+      } else {
+        await page.getByRole('button', { name: action === 'publish' ? 'Publish draft' : 'Restore', exact: true }).click();
+        await page.getByRole('button', { name: action === 'publish' ? 'Confirm publish' : 'Confirm restore' }).focus();
+        await page.keyboard.press('Enter');
+      }
+      const latestHistory = await mutationHistory;
+      const latestVersion = action === 'restore' ? 'Version 3 · revision 1' : 'Version 2 · revision 3';
+      await page.getByText(latestVersion).waitFor();
+      const success = action === 'draft' ? 'Draft saved.' : action === 'publish' ? 'Form published.' : 'Historical version restored as a new publication.';
+      await page.getByText(success, { exact: true }).waitFor();
+      await finishHistory(oldSuccess, staleVersions);
+      assert.equal(await page.getByText(latestVersion).count(), 1, 'mutation response wins even while its follow-up GET is pending');
+      assert.equal(await page.getByText(success, { exact: true }).count(), 1);
+      assert.equal(await page.locator('#delivery_note-label').inputValue(), action === 'draft' ? 'Newest saved label' : 'Delivery note');
+      assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), action !== 'draft', 'old GET cannot resurrect a published or stale draft');
+
+      await finishHistory(latestHistory, null);
+      const warning = `The ${action === 'draft' ? 'draft was saved' : action === 'publish' ? 'form was published' : 'form was restored'}, but version history could not refresh.`;
+      await page.getByText(warning, { exact: true }).waitFor();
+      await finishHistory(oldWarningClear, staleVersions);
+      assert.equal(await page.getByText(warning, { exact: true }).count(), 1, 'older successful retry cannot clear the newer mutation warning');
+      await finishHistory(oldFailure, null);
+      assert.equal(await page.getByText(warning, { exact: true }).count(), 1, 'older failed retry cannot replace the newer mutation warning');
+
+      const earlierRetryPending = nextHistory();
+      await page.getByRole('button', { name: 'Retry history refresh' }).click();
+      const earlierRetry = await earlierRetryPending;
+      const newerRetryPending = nextHistory();
+      await page.getByRole('button', { name: 'Retry history refresh' }).click();
+      await finishHistory(await newerRetryPending, versions);
+      assert.equal(await page.getByRole('button', { name: 'Retry history refresh' }).count(), 0);
+      await finishHistory(earlierRetry, staleVersions);
+      assert.equal(await page.getByText(latestVersion).count(), 1, 'newer GET wins over older GET');
+      assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), action !== 'draft');
+      assert.equal(await page.getByRole('button', { name: 'Retry history refresh' }).count(), 0, 'older response cannot change the newer warning state');
+    } finally { await page.close(); await browser.close(); }
+  });
+});
+
 void test('protected field controls explain their lock and preview uses the shared renderer with base keys', async () => {
   const { FormCatalogEditor } = await import('../components/admin/form-catalog-editor');
   const { FormCatalogPreview } = await import('../components/admin/form-catalog-preview');
