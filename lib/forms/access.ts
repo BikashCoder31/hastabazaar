@@ -244,6 +244,65 @@ async function staffActionGrant(db: D1Database, viewer: FormAnswerViewer,
         WHERE parent.id=? LIMIT 1`;
       values = [actorId, requestId, subjectId];
       break;
+    case 'staff.managed-supply-decision':
+      if (subjectType !== 'managed_supply') return false;
+      permission = 'seller.application.review'; superAdminOnly = true;
+      parentSql = `SELECT 1 FROM managed_supply_records parent JOIN audit_logs audit
+        ON audit.subject_type='managed_supply' AND audit.subject_id=parent.id
+          AND audit.actor_id=? AND audit.request_id=?
+          AND audit.action IN ('managed_supply.accept','managed_supply.reject','managed_supply.cancel')
+          AND json_type(audit.next_json,'$.catalogDigest')='text'
+        WHERE parent.id=? AND parent.decision_request_id=? AND parent.decided_by=? LIMIT 1`;
+      values = [actorId, requestId, subjectId, requestId, actorId];
+      break;
+    case 'staff.managed-adjustment':
+      if (subjectType !== 'managed_supply') return false;
+      permission = 'refund.approve.high_value'; superAdminOnly = true;
+      parentSql = `SELECT 1 FROM managed_supply_records parent
+        JOIN managed_supplier_adjustments adjustment ON adjustment.obligation_id=parent.id
+          AND adjustment.request_id=? AND adjustment.created_by=?
+        JOIN audit_logs audit ON audit.subject_type='managed_supply'
+          AND audit.subject_id=parent.id AND audit.actor_id=?
+          AND audit.request_id=? AND audit.action='managed_supply.adjusted'
+          AND json_type(audit.next_json,'$.catalogDigest')='text'
+        WHERE parent.id=? LIMIT 1`;
+      values = [requestId, actorId, actorId, `${requestId}:audit`, subjectId];
+      break;
+    case 'staff.managed-payment-preparation':
+      if (subjectType !== 'managed_supplier_payment') return false;
+      permission = 'payout.prepare'; superAdminOnly = true;
+      parentSql = `SELECT 1 FROM managed_supplier_payments parent JOIN audit_logs audit
+        ON audit.subject_type='managed_supplier_payment' AND audit.subject_id=parent.id
+          AND audit.actor_id=? AND audit.request_id=?
+          AND audit.action='managed_supplier_payment.prepared'
+          AND json_type(audit.next_json,'$.catalogDigest')='text'
+        WHERE parent.id=? AND parent.request_id=? AND parent.prepared_by=? LIMIT 1`;
+      values = [actorId, requestId, subjectId, requestId, actorId];
+      break;
+    case 'staff.managed-payment-action':
+      if (subjectType !== 'managed_supplier_payment') return false;
+      permission = 'payout.approve'; superAdminOnly = true;
+      parentSql = `SELECT 1 FROM managed_supplier_payments parent JOIN audit_logs audit
+        ON audit.subject_type='managed_supplier_payment' AND audit.subject_id=parent.id
+          AND audit.actor_id=? AND audit.request_id=?
+          AND ((audit.action='managed_supplier_payment.approved' AND parent.approved_by=?)
+            OR (audit.action='managed_supplier_payment.paid' AND parent.paid_at IS NOT NULL))
+          AND json_type(audit.next_json,'$.catalogDigest')='text'
+        WHERE parent.id=? LIMIT 1`;
+      values = [actorId, requestId, actorId, subjectId];
+      break;
+    case 'staff.managed-transition-decision':
+      if (subjectType !== 'seller_route_transition') return false;
+      permission = 'seller.application.review'; superAdminOnly = true;
+      parentSql = `SELECT 1 FROM seller_route_transition_applications parent JOIN audit_logs audit
+        ON audit.subject_type='seller_route_transition' AND audit.subject_id=parent.id
+          AND audit.actor_id=? AND audit.request_id=?
+          AND audit.action IN ('seller_route_transition.scheduled','seller_route_transition.rejected',
+            'seller_route_transition.changes_requested')
+          AND json_type(audit.next_json,'$.catalogDigest')='text'
+        WHERE parent.id=? AND parent.decision_request_id=? AND parent.reviewed_by=? LIMIT 1`;
+      values = [actorId, requestId, subjectId, requestId, actorId];
+      break;
     case 'staff.parcel-control':
       if (subjectType !== 'shipping_job') return false;
       permission = 'order.manage';

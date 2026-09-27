@@ -29,11 +29,6 @@ app/admin/homepage/page.tsx|1|237a866190d23266|staff.homepage-filter
 app/local-testing/page.tsx|1|6e9f8f1e61fdc654|system.local-testing-role
 app/seller/products/page.tsx|1|d5d574dcd78d58bb|seller.product-filter
 components/admin/delivery-rate-settings.tsx|1|9698f58ea30c192c|staff.delivery-rate
-components/admin/managed-program-review.tsx|1|c79c8a95622c2934|staff.managed-supply-decision
-components/admin/managed-program-review.tsx|2|f15650744e5a6642|staff.managed-adjustment
-components/admin/managed-program-review.tsx|3|acfeffa8d68fa09d|staff.managed-payment-preparation
-components/admin/managed-program-review.tsx|4|72d92c891a935e5a|staff.managed-payment-action
-components/admin/managed-program-review.tsx|5|11ce3f53a5768675|staff.managed-transition-decision
 components/admin/payout-actions.tsx|1|0c9e2e6be85357bc|staff.payout-1
 components/admin/payout-actions.tsx|2|1be0cb5fdc9b31f2|staff.payout-2
 components/admin/recorded-progress.tsx|1|f01e48a55389ad28|staff.recorded-progress-filter
