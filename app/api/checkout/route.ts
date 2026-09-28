@@ -20,11 +20,12 @@ import {
   consumePublicRequestRateLimit as consumeRequestRateLimit,
   rateLimitJson,
 } from '@/lib/http/rate-limit';
-import { getCustomerUser } from '@/lib/auth/customer';
+import { getCustomerUser, requireExistingCustomerApi, CustomerAuthorizationError } from '@/lib/auth/customer';
 import { WalletConflictError } from '@/lib/db/repositories/wallet';
 import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
+import { IncentiveError } from '@/lib/incentives/types';
 import { FormValidationError } from '@/lib/forms/validation';
 
 export const dynamic = 'force-dynamic';
@@ -62,8 +63,10 @@ export async function POST(request: Request): Promise<Response> {
         { error: 'Reload checkout to review current delivery rates.' },
         409,
       );
-    const customer = await getCustomerUser();
+    const customer = parsed.value.promoCode
+      ? await requireExistingCustomerApi() : await getCustomerUser();
     if (customer) parsed.value.customerEmail = customer.email;
+    if (customer && parsed.value.promoCode) parsed.value.customerAuthSubject = customer.authSubject;
     const configured = await validateSellerFormSubmission(database, 'commerce.checkout',
       parsed.value.formVersion, parsed.value.customAnswers, parsed.value.idempotencyKey);
     const [cartHash, receiptHash] = await Promise.all([
@@ -106,6 +109,10 @@ export async function POST(request: Request): Promise<Response> {
       error instanceof WalletConflictError
     )
       return json({ error: error.message }, 409);
+    if (error instanceof IncentiveError)
+      return json({error:error.message,code:error.code},error.code === 'invalid' ? 400 : error.code === 'unauthorized' ? 403 : 409);
+    if (error instanceof CustomerAuthorizationError)
+      return json({error:error.message},error.status);
     if (error instanceof SyntaxError)
       return json({ error: 'Invalid checkout request.' }, 400);
     if (error instanceof BodyTooLargeError)

@@ -20,6 +20,11 @@ export interface CheckoutInput {
   deliveryRateVersion?: string;
   useWallet?: boolean;
   referralCode?: string;
+  promoCode?: string;
+  promoRevision?: number;
+  promoQuoteIntent?: string;
+  /** Server-only authenticated subject; the public parser rejects this key. */
+  customerAuthSubject?: string;
   formVersion?: unknown;
   customAnswers?: unknown;
 }
@@ -65,6 +70,9 @@ export function parseCheckoutInput(body: unknown): CheckoutValidationResult {
     deliveryRateVersion: text(source.deliveryRateVersion) || undefined,
     useWallet: source.useWallet === true,
     referralCode: text(source.referralCode).toUpperCase(),
+    ...(source.promoCode !== undefined ? {promoCode: text(source.promoCode).toUpperCase()} : {}),
+    ...(source.promoRevision !== undefined ? {promoRevision: source.promoRevision as number} : {}),
+    ...(source.promoQuoteIntent !== undefined ? {promoQuoteIntent: text(source.promoQuoteIntent)} : {}),
     formVersion: source.formVersion,
     customAnswers: source.customAnswers,
     address: {
@@ -80,6 +88,14 @@ export function parseCheckoutInput(body: unknown): CheckoutValidationResult {
     },
   };
   const errors: string[] = [];
+  if (Object.hasOwn(source, 'customerAuthSubject')) errors.push('Invalid checkout request.');
+  if (source.promoCode !== undefined || source.promoRevision !== undefined || source.promoQuoteIntent !== undefined) {
+    if (!value.promoCode || typeof source.promoCode !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{2,31}$/.test(source.promoCode.trim()) ||
+      !Number.isSafeInteger(value.promoRevision) || Number(value.promoRevision) < 1 ||
+      !value.promoQuoteIntent || !/^[a-f0-9]{64}$/.test(value.promoQuoteIntent))
+      errors.push('Apply the promo again to review the current quote.');
+    if (value.referralCode) errors.push('A promo and referral code cannot be combined.');
+  }
   try { value.address.location = parseLocation(rawAddress.location); } catch { errors.push('Select a valid delivery map pin or remove it.'); }
   if (value.referralCode && !/^[A-Z0-9]{16}$/.test(value.referralCode))
     errors.push('Enter a valid 16-character referral code.');

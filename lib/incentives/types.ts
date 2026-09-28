@@ -202,3 +202,7 @@ export interface PromoRedemptionPage {
   readonly redemptions: readonly PromoRedemptionSummary[];
   readonly nextCursor: string | null;
 }
+
+/** Quote confirmation binds live cart lines and campaign terms; amounts are always rederived. */
+export interface CheckoutPromoQuote extends PromoQuote { readonly quoteIntent: string; }
+export interface PromoQuoteLine { readonly id:string; readonly productId:string; readonly sellerId:string; readonly pricePaisa:number; readonly quantity:number; }

@@ -10,6 +10,7 @@ export interface ImplementedFormAdapter {
 
 // Integrations add an entry here only when their server adapter exists and is tested.
 export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormAdapter>> = Object.freeze({
+  'commerce.promo-quote': { formId: 'commerce.promo-quote', route: '/api/checkout/promo', mode: 'transaction' },
   'staff.promo-code': { formId: 'staff.promo-code', route: '/api/admin/promo-codes', mode: 'operation' },
   'commerce.order-cancellation': { formId: 'commerce.order-cancellation', route: '/orders/:number/cancel', mode: 'transaction' },
   'commerce.add-to-cart': { formId: 'commerce.add-to-cart', route: '/api/cart', mode: 'transaction' },
@@ -568,7 +569,7 @@ function commerceDefinition(id: 'commerce.checkout' | 'commerce.return-request' 
       'selectedAddressId', 'saveAddressForFuture', 'saveAddressLabel', 'address', 'recipientName',
       'recipientPhone', 'province', 'district', 'municipality', 'ward', 'locality', 'landmark',
       'postalCode', 'location', 'latitude', 'longitude', 'termsAccepted', 'idempotencyKey',
-      'deliveryRateVersion', 'useWallet', 'referralCode', 'promoCode', 'promoRevision', 'cart', 'price', 'discount',
+      'deliveryRateVersion', 'useWallet', 'referralCode', 'promoCode', 'promoRevision', 'promoQuoteIntent', 'customerAuthSubject', 'cart', 'price', 'discount',
       'formVersion', 'customAnswers'],
     'commerce.return-request': ['orderNumber', 'orderItemId', 'quantity', 'reason',
       'requestedResolution', 'detail', 'originalSealIntact', 'locale', 'evidence',
@@ -611,7 +612,7 @@ function sellerCaseDefinition(id: 'seller.case-return-response' |
 }
 
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
-  Object.assign({ 'staff.promo-code': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.promo-code'], adapterId: 'staff.promo-code' }) }, Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
+  Object.assign({ 'commerce.promo-quote': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['commerce.promo-quote'], adapterId: 'commerce.promo-quote' }), 'staff.promo-code': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.promo-code'], adapterId: 'staff.promo-code' }) }, Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
     const item = Object.hasOwn(PROGRAMMATIC_KEYS, row.split('|')[0])
       ? programmaticDefinition(row.split('|')[0] as ProgrammaticFormId)
       : Object.hasOwn(QUERY_FIELDS, row.split('|')[0]) || row.startsWith('system.local-testing-role|')

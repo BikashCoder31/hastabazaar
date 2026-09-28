@@ -1,3 +1,6 @@
+import { quotePromo, preparePromoConsumption } from './promo-codes';
+import { promoQuoteIntent } from '@/lib/incentives/quote-intent';
+import { allocatePromoDiscount } from '@/lib/incentives/promo-policy';
 import { getDeliveryRates, rateVersionGuard } from './delivery-rates';
 import { buildFormAnswerInsert } from './form-answers';
 import { assertCommerceFormReplay, type CommerceForm } from './commerce-form-replay';
@@ -85,6 +88,8 @@ interface CheckoutCartItem {
 export interface OrderDocumentSnapshot {
   walletCreditPaisa?: number;
   referralDiscountPaisa?: number;
+  promoDiscountPaisa?: number;
+  promo?: {campaignId:string;revision:number;code:string;label:string};
   documentTitle: string;
   taxDocument: false;
   orderNumber: string;
@@ -139,6 +144,13 @@ function checkoutTermsSnapshot(sellerCommissionBps: number): Record<string, unkn
   };
 }
 
+function checkedCheckoutGuard(db:D1Database,predicate:string,values:readonly (string|number|null)[]) {
+ const id=crypto.randomUUID();return [db.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN ${predicate} THEN 1 ELSE 0 END`).bind(id,...values),db.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(id)];
+}
+function promoCustomerGuards(db:D1Database,userId:string,authSubject:string) {
+ return [db.prepare('UPDATE users SET updated_at=updated_at WHERE id=?').bind(userId),db.prepare("UPDATE user_roles SET assigned_at=assigned_at WHERE user_id=? AND role='customer'").bind(userId),...checkedCheckoutGuard(db,"EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=? AND u.auth_subject=? AND u.status='active' AND r.role='customer')",[userId,authSubject])];
+}
+
 export async function createCodOrder(
   database: D1Database,
   tokenHash: string,
@@ -148,6 +160,13 @@ export async function createCodOrder(
   customerId: string | null = null,
   form?: CommerceForm,
 ): Promise<CheckoutResult> {
+  if (input.promoCode) {
+    if (!customerId || typeof input.customerAuthSubject !== 'string' || !input.customerAuthSubject || input.referralCode || !Number.isSafeInteger(input.promoRevision) || !/^[a-f0-9]{64}$/.test(input.promoQuoteIntent ?? ''))
+      throw new CheckoutConflictError('Sign in and apply a single promo again to review the quote.');
+    const currentCustomer=await database.prepare("SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=? AND u.auth_subject=? AND u.status='active' AND r.role='customer'").bind(customerId,input.customerAuthSubject).first();
+    if(!currentCustomer)throw new CheckoutConflictError('An active customer account is required.');
+  } else if(input.promoRevision !== undefined || input.promoQuoteIntent !== undefined)
+    throw new CheckoutConflictError('Apply the promo again to review the quote.');
   const cartReference = `${tokenHash}:${input.idempotencyKey}`;
   const { formVersion: _formVersion, customAnswers: _customAnswers, ...coreInput } = input;
   const intentBytes = new TextEncoder().encode(JSON.stringify({ customerId, ...coreInput }));
@@ -160,13 +179,15 @@ export async function createCodOrder(
         shipments.estimated_max_days AS estimatedMaxDays,
         (SELECT json_extract(a.next_json,'$.checkoutIntentDigest') FROM audit_logs a
           WHERE a.action='order.placed' AND a.subject_type='order' AND a.subject_id=orders.id
-            AND a.request_id=? LIMIT 1) AS checkoutIntentDigest
+            AND a.request_id=? LIMIT 1) AS checkoutIntentDigest,
+        (SELECT json_extract(a.next_json,'$.checkoutResult') FROM audit_logs a
+          WHERE a.action='order.placed' AND a.subject_id=orders.id AND a.request_id=? LIMIT 1) AS originalResult
        FROM payments INNER JOIN orders ON orders.id = payments.order_id
        INNER JOIN shipments ON shipments.order_id = orders.id
        WHERE payments.idempotency_key = ? AND payments.provider_reference = ? LIMIT 1`,
     )
-    .bind(input.idempotencyKey, input.idempotencyKey, cartReference)
-    .first<CheckoutResult & { id: string; checkoutIntentDigest: string | null }>();
+    .bind(input.idempotencyKey, input.idempotencyKey, input.idempotencyKey, cartReference)
+    .first<CheckoutResult & { id: string; checkoutIntentDigest: string | null; originalResult: string | null }>();
   if (previous) {
     if (previous.checkoutIntentDigest !== intentDigest)
       throw new CheckoutConflictError('This checkout request was already used for different order details.');
@@ -180,7 +201,12 @@ export async function createCodOrder(
     await assertCommerceFormReplay(database, { formId: 'commerce.checkout',
       requestId: input.idempotencyKey, subjectType: 'order', subjectId: previous.id,
       actorId: customerId, form, conflictError: CheckoutConflictError });
-    const { id: _id, checkoutIntentDigest: _digest, ...result } = previous;
+    if(input.promoCode && customerId) {
+      try {await database.batch(promoCustomerGuards(database,customerId,input.customerAuthSubject!));} catch {throw new CheckoutConflictError('An active customer account is required.');}
+      if(!previous.originalResult)throw new CheckoutConflictError('The original order result is unavailable.');
+      return JSON.parse(previous.originalResult) as CheckoutResult;
+    }
+    const { id: _id, checkoutIntentDigest: _digest, originalResult: _original, ...result } = previous;
     return result;
   }
 
@@ -314,6 +340,11 @@ export async function createCodOrder(
     (total, item) => total + item.pricePaisa * item.quantity,
     0,
   );
+  if(!Number.isSafeInteger(itemSubtotalPaisa))throw new CheckoutConflictError('Review your cart total.');
+  const promo=input.promoCode && customerId ? await quotePromo(database,{userId:customerId,code:input.promoCode,subtotalPaisa:itemSubtotalPaisa,now}) : null;
+  if(promo && (promo.revision !== input.promoRevision || await promoQuoteIntent(customerId!,cartId,items,promo,input.customerAuthSubject!) !== input.promoQuoteIntent))
+    throw new CheckoutConflictError('Your promo quote changed. Apply it again to review the current total.');
+  const promoDiscountPaisa=promo?.discountPaisa ?? 0;
   const buyerFeePaisa =
     phaseOneMarketplacePolicy.value.fees.buyerPlatformFeePaisa;
   const credit = await quoteOrderCredit(database, {
@@ -322,14 +353,15 @@ export async function createCodOrder(
     useWallet: input.useWallet,
     referralCode: input.referralCode,
     phone: input.customerPhone,
+    ...(promo ? {merchandiseDiscountPaisa:promoDiscountPaisa} : {}),
     now,
   });
-  const grandTotalPaisa =
-    itemSubtotalPaisa +
-    delivery.chargePaisa +
-    buyerFeePaisa -
-    credit.walletPaisa -
-    credit.discountPaisa;
+  const total = BigInt(itemSubtotalPaisa) + BigInt(delivery.chargePaisa) +
+    BigInt(buyerFeePaisa) - BigInt(credit.walletPaisa) -
+    BigInt(credit.discountPaisa) - BigInt(promoDiscountPaisa);
+  if (total < BigInt(0) || total > BigInt(Number.MAX_SAFE_INTEGER))
+    throw new CheckoutConflictError('Review your cart total before placing the order.');
+  const grandTotalPaisa = Number(total);
   const id = crypto.randomUUID();
   const savedAddressId = input.saveAddressForFuture
     ? crypto.randomUUID()
@@ -341,11 +373,15 @@ export async function createCodOrder(
       key: item.id,
       productValuePaisa: item.pricePaisa * item.quantity,
     })),
-    credit.discountPaisa,
+    credit.discountPaisa + promoDiscountPaisa,
   );
+  const promoAllocations=promo ? allocatePromoDiscount(items.map(item=>({key:item.id,subtotalPaisa:item.pricePaisa*item.quantity})),promoDiscountPaisa) : {};
+  const checkoutResult:CheckoutResult={orderNumber:number,grandTotalPaisa,estimatedMinDays:delivery.estimatedMinDays,estimatedMaxDays:delivery.estimatedMaxDays};
   const statementSnapshot: OrderDocumentSnapshot = {
     walletCreditPaisa: credit.walletPaisa,
     referralDiscountPaisa: credit.discountPaisa,
+    promoDiscountPaisa,
+    ...(promo ? {promo:{campaignId:promo.campaignId,revision:promo.revision,code:promo.code,label:promo.label}} : {}),
     documentTitle: 'Order statement',
     taxDocument: false,
     orderNumber: number,
@@ -382,8 +418,10 @@ export async function createCodOrder(
           shipping_address_json, item_subtotal_paisa, seller_discount_paisa,
           delivery_charge_paisa, buyer_platform_fee_paisa, tax_total_paisa,
           grand_total_paisa, payment_mode, payment_status, placed_at,
-          delivered_at, cancelled_at, created_at, updated_at, wallet_credit_paisa, referral_discount_paisa
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, 'NPR', ?, ?, ?, ?, 0, ?, ?, 0, ?, 'cod', 'pending', ?, NULL, NULL, ?, ?, ?, ?)`,
+          delivered_at, cancelled_at, created_at, updated_at, wallet_credit_paisa, referral_discount_paisa,
+          promo_discount_paisa,promo_campaign_id,promo_revision,promo_code,promo_label,
+          current_total_paisa,current_subtotal_paisa,current_delivery_paisa,current_wallet_paisa,current_discount_paisa,current_promo_discount_paisa
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, 'NPR', ?, ?, ?, ?, 0, ?, ?, 0, ?, 'cod', 'pending', ?, NULL, NULL, ?, ?, ?, ?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .bind(
         id,
@@ -409,8 +447,21 @@ export async function createCodOrder(
         now,
         credit.walletPaisa,
         credit.discountPaisa,
+        promoDiscountPaisa,promo?.campaignId ?? null,promo?.revision ?? null,promo?.code ?? null,promo?.label ?? null,
+        promo ? grandTotalPaisa : null,promo ? itemSubtotalPaisa : null,promo ? delivery.chargePaisa : null,promo ? credit.walletPaisa : null,promo ? promoDiscountPaisa : null,promoDiscountPaisa,
       ),
   ];
+
+  const snapshotGuards:D1PreparedStatement[]=[
+    database.prepare('UPDATE carts SET updated_at=updated_at WHERE id=?').bind(cartId),
+    ...checkedCheckoutGuard(database,'EXISTS(SELECT 1 FROM carts WHERE id=? AND anonymous_token_hash=?) AND (SELECT COUNT(*) FROM cart_items WHERE cart_id=?)=?',[cartId,tokenHash,cartId,items.length]),
+  ];
+  for(const item of items) snapshotGuards.push(
+    database.prepare('UPDATE products SET price_paisa=price_paisa WHERE id=?').bind(item.productId),
+    database.prepare('UPDATE cart_items SET quantity=quantity WHERE id=?').bind(item.id),
+    ...checkedCheckoutGuard(database,`EXISTS(SELECT 1 FROM cart_items JOIN products ON products.id=cart_items.product_id WHERE cart_items.id=? AND cart_items.cart_id=? AND products.id=? AND products.seller_id=? AND products.price_paisa=? AND cart_items.quantity=? AND products.inventory_quantity>=cart_items.quantity AND ${publicProductEligibility('products',now)})`,[item.id,cartId,item.productId,item.sellerId,item.pricePaisa,item.quantity]),
+  );
+  statements.unshift(...(promo && customerId ? promoCustomerGuards(database,customerId,input.customerAuthSubject!) : []),...snapshotGuards);
 
   if (customerId && input.saveAddressForFuture && savedAddressId) {
     statements.push(
@@ -491,6 +542,8 @@ export async function createCodOrder(
   if (customerId) {
     // Serialize checkout for this customer before inserting the order or consuming credit.
     statements.unshift(
+      ...(promo ? [database.prepare(`INSERT OR IGNORE INTO wallet_accounts(user_id,referral_code,balance_paisa,created_at)
+        SELECT ?,?,0,? WHERE EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=? AND u.status='active' AND r.role='customer')`).bind(customerId,crypto.randomUUID().replaceAll('-', '').slice(0,16).toUpperCase(),now,customerId)] : []),
       database
         .prepare(
           'UPDATE wallet_accounts SET balance_paisa=balance_paisa WHERE user_id=?',
@@ -532,7 +585,7 @@ export async function createCodOrder(
     const orderItemId = crypto.randomUUID();
     const lineTotalPaisa = item.pricePaisa * item.quantity;
     const sellerDiscountPaisa = 0;
-    const platformDiscountPaisa = platformDiscounts.get(item.id) ?? 0;
+    const platformDiscountPaisa = promo ? promoAllocations[item.id] ?? 0 : platformDiscounts.get(item.id) ?? 0;
     const commissionBasePaisa = calculateCommissionBasePaisa({
       productValuePaisa: lineTotalPaisa,
       sellerFundedDiscountPaisa: sellerDiscountPaisa,
@@ -548,8 +601,8 @@ export async function createCodOrder(
             seller_discount_paisa, platform_discount_paisa,
             commission_base_paisa, commission_rule_version,
             seller_agreement_version, commission_bps, commission_paisa,
-            tax_paisa, line_total_paisa, return_eligible_snapshot, made_to_order_snapshot, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+            tax_paisa, line_total_paisa, return_eligible_snapshot, made_to_order_snapshot, created_at, promo_discount_paisa,current_promo_discount_paisa,referral_discount_paisa
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?,?,?,?)`,
         )
         .bind(
           orderItemId,
@@ -572,6 +625,7 @@ export async function createCodOrder(
           item.returnEligible,
           item.madeToOrder,
           now,
+          promoAllocations[item.id] ?? 0,promoAllocations[item.id] ?? 0,promo ? 0 : platformDiscountPaisa,
         ),
     );
     if (managed) {
@@ -626,6 +680,8 @@ export async function createCodOrder(
       );
     }
   }
+
+  if(promo && customerId) statements.push(...await preparePromoConsumption(database,{userId:customerId,orderId:id,requestId:input.idempotencyKey,quote:promo,now,payloadDigest:intentDigest,response:{...checkoutResult}}));
 
   statements.push(
     database
@@ -772,6 +828,7 @@ export async function createCodOrder(
           status: 'confirmed',
           paymentMode: 'cod',
           checkoutIntentDigest: intentDigest,
+          checkoutResult,
         }),
         input.idempotencyKey,
         now,
@@ -791,6 +848,7 @@ export async function createCodOrder(
     if (
       message.includes('operation_transaction_guards') ||
       message.includes('valid') ||
+      message.includes('promo_') ||
       message.includes('product_unavailable') ||
       message.includes('balance_paisa') ||
       message.includes('referral_first_order_only') ||
@@ -802,12 +860,7 @@ export async function createCodOrder(
     }
     throw error;
   }
-  return {
-    orderNumber: number,
-    grandTotalPaisa,
-    estimatedMinDays: delivery.estimatedMinDays,
-    estimatedMaxDays: delivery.estimatedMaxDays,
-  };
+  return checkoutResult;
 }
 
 export interface OrderReceiptItem {

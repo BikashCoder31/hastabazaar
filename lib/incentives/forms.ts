@@ -12,11 +12,11 @@ export type IncentiveFormId = typeof INCENTIVE_FORM_IDS[keyof typeof INCENTIVE_F
 // A contract is not a registry entry: downstream tested receivers add adapterId before registration.
 export type IncentiveFormContract = Omit<FormDefinition, 'id' | 'adapterId'> & { readonly id: IncentiveFormId };
 
-const commonKeys = ['actorId', 'userId', 'customerId', 'requestId', 'idempotencyKey', 'now', 'expectedVersion',
+const commonKeys = ['actorId', 'userId', 'customerId', 'customerAuthSubject', 'requestId', 'idempotencyKey', 'now', 'expectedVersion',
   'version', 'revision', 'formId', 'formVersion', 'formVersionId', 'versionId', 'customAnswers', 'answers',
   'reason', 'action', 'enabled', 'paused', 'campaignId', 'status', 'role', 'terms', 'form',
   'amount', 'amountPaisa', 'discount', 'price', 'balance', 'budget', 'rate'] as const;
-const promoKeys = ['draftRevision', 'publishedRevision', 'code', 'promoCode', 'promoRevision', 'label', 'kind', 'fixedPaisa', 'percentBps', 'maxDiscountPaisa',
+const promoKeys = ['draftRevision', 'publishedRevision', 'code', 'promoCode', 'promoRevision', 'promoQuoteIntent', 'quoteIntent', 'label', 'kind', 'fixedPaisa', 'percentBps', 'maxDiscountPaisa',
   'minimumSubtotalPaisa', 'startsAt', 'endsAt', 'totalUseLimit', 'perCustomerUseLimit', 'budgetPaisa',
   'usedCount', 'spentPaisa', 'maximumCustomerUsedCount', 'subtotalPaisa', 'discountPaisa', 'expiresAt'] as const;
 const loyaltyKeys = ['dailyPoints', 'pointsPerBlock', 'creditPaisaPerBlock', 'startsAt', 'endsAt', 'dailyBudgetPoints',

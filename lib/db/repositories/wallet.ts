@@ -152,14 +152,19 @@ export async function quoteOrderCredit(
     subtotalPaisa: number;
     useWallet?: boolean;
     referralCode?: string;
+    merchandiseDiscountPaisa?: number;
     phone: string;
     now: number;
   },
 ) {
   const { userId, subtotalPaisa, now } = options;
   const code = options.referralCode?.trim().toUpperCase() || '';
+  const merchandiseDiscountPaisa = options.merchandiseDiscountPaisa ?? 0;
+  if (!Number.isSafeInteger(merchandiseDiscountPaisa) || merchandiseDiscountPaisa < 0 || merchandiseDiscountPaisa > subtotalPaisa ||
+    (options.merchandiseDiscountPaisa !== undefined && code))
+    throw new WalletConflictError('Review the selected merchandise discount.');
   if (!userId) {
-    if (options.useWallet || code)
+    if (options.useWallet || code || options.merchandiseDiscountPaisa !== undefined)
       throw new WalletConflictError(
         'Sign in to use shopping credit or a referral code.',
       );
@@ -172,8 +177,11 @@ export async function quoteOrderCredit(
       phoneKey: '',
     };
   }
-  await ensureWallet(db, userId, now);
-  await releaseReferralRewards(db, userId, now);
+  // Promo checkout provisions its wallet in the order batch; financial preflight stays read-only.
+  if (options.merchandiseDiscountPaisa === undefined) {
+    await ensureWallet(db, userId, now);
+    await releaseReferralRewards(db, userId, now);
+  }
   let discountPaisa = 0;
   let referrerId: string | null = null;
   const campaign = await getReferralCampaign(db);
@@ -235,7 +243,7 @@ export async function quoteOrderCredit(
     .first<{ balance: number }>();
   return {
     walletPaisa: options.useWallet
-      ? Math.min(wallet?.balance ?? 0, subtotalPaisa - discountPaisa)
+      ? Math.min(wallet?.balance ?? 0, subtotalPaisa - discountPaisa - merchandiseDiscountPaisa)
       : 0,
     discountPaisa,
     referrerId,
