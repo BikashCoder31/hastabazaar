@@ -63,7 +63,11 @@ async function routes() {
   assert.ok(admin, 'actual admin loyalty receiver must exist');
   assert.ok(rewards, 'actual rewards receiver must exist');
   assert.ok(claim, 'actual claim receiver must exist');
-  return { admin, rewards, claim };
+  const redeem = await import('../app/api/account/rewards/redeem/route').catch(
+    () => null,
+  );
+  assert.ok(redeem, 'actual points redemption receiver must exist');
+  return { admin, rewards, claim, redeem };
 }
 function request(
   path: string,
@@ -590,4 +594,260 @@ void test('admin receiver binds current staff subject for fresh actions and exac
   } finally {
     await f.dispose();
   }
+});
+
+const redeemBody = { ...claimBody, requestId: 'route-redeem', points: 200 };
+void test('actual redemption receiver enforces bounded closed server authority no-answer origin and rate limits', async () => {
+  const route = await routes(),
+    f = await fixture(true, { dailyPoints: 200 });
+  globalThis.loyaltyRouteDb = f.db;
+  globalThis.loyaltyRouteCustomer = {
+    userId: 'customer',
+    authSubject: 'customer',
+  };
+  try {
+    await publishForm(f.db, 'account.points-redemption');
+    await (
+      await repo()
+    ).claimDailyPoints(f.db, {
+      userId: 'customer',
+      authSubject: 'customer',
+      requestId: 'route-fund',
+      expectedVersion: 1,
+      now: NOW,
+      formVersionId: 'account.daily-reward-v1',
+    });
+    for (const patch of [
+      { userId: 'other' },
+      { authSubject: 'other' },
+      { customerAuthSubject: 'other' },
+      { now: NOW },
+      { rate: 10 },
+      { creditPaisa: 999 },
+      { balancePoints: 999 },
+      { points: 0 },
+      { points: 99 },
+      { points: 101 },
+      { points: -100 },
+      { points: Number.MAX_SAFE_INTEGER + 1 },
+      { expectedVersion: 1.5 },
+      { formVersion: 0 },
+      { requestId: {} },
+      { customAnswers: [{ fieldId: 'note', value: 'forged' }] },
+    ])
+      assert.equal(
+        (
+          await route.redeem.POST(
+            request('/api/account/rewards/redeem', { ...redeemBody, ...patch }),
+          )
+        ).status,
+        400,
+      );
+    assert.equal(
+      (
+        await route.redeem.POST(
+          request(
+            '/api/account/rewards/redeem',
+            redeemBody,
+            'https://attacker.test',
+          ),
+        )
+      ).status,
+      403,
+    );
+    assert.equal(
+      (
+        await route.redeem.POST(
+          request('/api/account/rewards/redeem', {
+            padding: 'x'.repeat(270000),
+          }),
+        )
+      ).status,
+      413,
+    );
+    globalThis.loyaltyRouteCustomer = null;
+    assert.equal(
+      (
+        await route.redeem.POST(
+          request('/api/account/rewards/redeem', redeemBody),
+        )
+      ).status,
+      401,
+    );
+    globalThis.loyaltyRouteCustomer = {
+      userId: 'customer',
+      authSubject: 'customer',
+    };
+    const started = Date.now();
+    const first = await route.redeem.POST(
+      request('/api/account/rewards/redeem', redeemBody),
+    );
+    assert.equal(first.status, 200);
+    assert.equal(first.headers.get('cache-control'), 'no-store');
+    const original = await first.json();
+    const saved = await f.db
+      .prepare(
+        'SELECT user_id,actor_id,created_at,points,credit_paisa FROM loyalty_redemptions',
+      )
+      .first<{
+        user_id: string;
+        actor_id: string;
+        created_at: number;
+        points: number;
+        credit_paisa: number;
+      }>();
+    assert.ok(saved);
+    assert.equal(saved.user_id, 'customer');
+    assert.equal(saved.actor_id, 'customer');
+    assert.equal(saved.points, 200);
+    assert.equal(saved.credit_paisa, 2000);
+    assert.ok(saved.created_at >= started && saved.created_at <= Date.now());
+    await publishForm(f.db, 'account.points-redemption', 2);
+    await (await repo()).pauseLoyalty(f.db, ctx('pause-redemption'));
+    const replay = await route.redeem.POST(
+      request('/api/account/rewards/redeem', redeemBody),
+    );
+    assert.equal(replay.status, 200);
+    assert.deepEqual(await replay.json(), original);
+    assert.equal(
+      (
+        await route.redeem.POST(
+          request('/api/account/rewards/redeem', {
+            ...redeemBody,
+            points: 100,
+          }),
+        )
+      ).status,
+      409,
+    );
+    assert.equal(
+      (await f.db
+        .prepare(
+          "SELECT COUNT(*) n FROM form_answer_sets WHERE form_id='account.points-redemption'",
+        )
+        .first<{ n: number }>())!.n,
+      0,
+    );
+    let limited = false;
+    for (let i = 0; i < 25; i++) {
+      const response = await route.redeem.POST(
+        request('/api/account/rewards/redeem', {
+          ...redeemBody,
+          requestId: 'redeem-rate-' + i,
+          formVersion: 2,
+        }),
+      );
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+      if (response.status === 429) {
+        limited = true;
+        break;
+      }
+    }
+    assert.equal(limited, true);
+    assert.equal(
+      (await f.db
+        .prepare('SELECT COUNT(*) n FROM loyalty_redemptions')
+        .first<{ n: number }>())!.n,
+      1,
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+void test('actual redemption receiver fences identity at commit and corrupted published form', async () => {
+  const route = await routes();
+  for (const scenario of ['subject', 'fields']) {
+    const f = await fixture(true, { dailyPoints: 200 });
+    globalThis.loyaltyRouteDb = f.db;
+    globalThis.loyaltyRouteCustomer = {
+      userId: 'customer',
+      authSubject: 'customer',
+    };
+    try {
+      await publishForm(f.db, 'account.points-redemption');
+      await (
+        await repo()
+      ).claimDailyPoints(f.db, {
+        userId: 'customer',
+        authSubject: 'customer',
+        requestId: 'fund',
+        expectedVersion: 1,
+        now: NOW,
+        formVersionId: 'account.daily-reward-v1',
+      });
+      if (scenario === 'fields')
+        await publishForm(f.db, 'account.points-redemption', 2, [
+          {
+            id: 'note',
+            key: 'note',
+            label: 'Note',
+            type: 'short_text',
+            required: false,
+            status: 'active',
+            order: 0,
+          },
+        ]);
+      else
+        globalThis.loyaltyRouteDb = beforeBatch(f.db, () =>
+          f.db
+            .prepare(
+              "UPDATE users SET auth_subject='replacement' WHERE id='customer'",
+            )
+            .run(),
+        );
+      assert.equal(
+        (
+          await route.redeem.POST(
+            request('/api/account/rewards/redeem', {
+              ...redeemBody,
+              formVersion: scenario === 'fields' ? 2 : 1,
+            }),
+          )
+        ).status,
+        scenario === 'subject' ? 403 : 503,
+      );
+      assert.equal(
+        (await f.db
+          .prepare('SELECT COUNT(*) n FROM loyalty_redemptions')
+          .first<{ n: number }>())!.n,
+        0,
+      );
+      assert.equal(
+        (await (await repo()).getRewards(f.db, 'customer', NOW)).balancePoints,
+        200,
+      );
+    } finally {
+      await f.dispose();
+    }
+  }
+});
+void test('registered redemption receiver protects accounting fields and rejects any custom question', () => {
+  const id = 'account.points-redemption';
+  assert.ok(IMPLEMENTED_FORM_ADAPTERS[id]);
+  assert.equal(FORM_REGISTRY[id].capabilities.answerBehavior, 'none');
+  for (const key of [
+    'authSubject',
+    'points',
+    'creditPaisa',
+    'walletBalancePaisa',
+    'now',
+    'requestId',
+    'note',
+  ])
+    assert.throws(() =>
+      validateFormDraft(id, {
+        formId: id,
+        fields: [
+          {
+            id: key.toLowerCase(),
+            key,
+            label: 'Override',
+            type: 'short_text',
+            required: false,
+            status: 'active',
+            order: 0,
+          },
+        ],
+      }),
+    );
 });

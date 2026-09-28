@@ -87,3 +87,20 @@ export function validateLoyaltyTerms(raw: LoyaltyTerms): LoyaltyTerms {
     keys.map((key) => [key, raw[key]]),
   ) as unknown as LoyaltyTerms;
 }
+
+/** Exact positive whole blocks; BigInt prevents money multiplication from rounding. */
+export function calculateRedemption(
+  points: number,
+  terms: LoyaltyTerms,
+): number {
+  loyaltyInteger(points, 1);
+  loyaltyInteger(terms.pointsPerBlock, 1);
+  loyaltyInteger(terms.creditPaisaPerBlock, 1);
+  if (points % terms.pointsPerBlock !== 0) throw new IncentiveError('invalid');
+  const credit =
+    (BigInt(points) / BigInt(terms.pointsPerBlock)) *
+    BigInt(terms.creditPaisaPerBlock);
+  if (credit > BigInt(Number.MAX_SAFE_INTEGER))
+    throw new IncentiveError('invalid');
+  return Number(credit);
+}

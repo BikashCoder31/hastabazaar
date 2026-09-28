@@ -2,6 +2,8 @@ import {
   IncentiveError,
   type ClaimInput,
   type ClaimResult,
+  type RedeemInput,
+  type RedemptionResult,
   type CustomerLoyaltyState,
   type LoyaltyTerms,
   type LoyaltyState,
@@ -10,6 +12,7 @@ import {
   type RewardHistoryEntry,
 } from '../../incentives/types';
 import {
+  calculateRedemption,
   loyaltyInteger,
   nepalRewardDay,
   loyaltyLiability,
@@ -729,4 +732,182 @@ export async function getRewards(
           )
         : null,
   };
+}
+
+async function redemptionReplay(
+  db: D1Database,
+  input: RedeemInput,
+  digest: string,
+): Promise<RedemptionResult | null> {
+  await authority(db, input.userId, 'customer', input.authSubject);
+  const prior = await db
+    .prepare(
+      'SELECT actor_id,payload_digest,response_json FROM loyalty_redemptions WHERE user_id=? AND request_id=?',
+    )
+    .bind(input.userId, input.requestId)
+    .first<{
+      actor_id: string;
+      payload_digest: string;
+      response_json: string;
+    }>();
+  if (!prior) return null;
+  if (prior.actor_id !== input.userId || prior.payload_digest !== digest)
+    throw new IncentiveError('conflict');
+  try {
+    await db.batch([
+      ...customerLocks(db, input),
+      ...guard(db, customerSql, [input.userId, input.authSubject]),
+    ]);
+  } catch {
+    throw new IncentiveError('unauthorized');
+  }
+  return JSON.parse(prior.response_json) as RedemptionResult;
+}
+async function redemptionBalances(db: D1Database, userId: string) {
+  const points =
+    (
+      await db
+        .prepare(
+          'SELECT balance_points n FROM loyalty_accounts WHERE user_id=?',
+        )
+        .bind(userId)
+        .first<{ n: number }>()
+    )?.n ?? 0;
+  const wallet =
+    (
+      await db
+        .prepare('SELECT balance_paisa n FROM wallet_accounts WHERE user_id=?')
+        .bind(userId)
+        .first<{ n: number }>()
+    )?.n ?? 0;
+  return { points, wallet };
+}
+function redemptionEligibility(
+  row: Row,
+  input: RedeemInput,
+  balances: { points: number; wallet: number },
+) {
+  if (row.version !== input.expectedVersion) throw new IncentiveError('stale');
+  const credit = calculateRedemption(input.points, {
+    ...decode(row, 0).terms,
+    pointsPerBlock: row.locked_points_per_block ?? row.points_per_block,
+    creditPaisaPerBlock:
+      row.locked_credit_paisa_per_block ?? row.credit_paisa_per_block,
+  });
+  if (input.points > balances.points) throw new IncentiveError('insufficient');
+  // Subtraction validates headroom without unsafe Number addition.
+  if (
+    credit > Number.MAX_SAFE_INTEGER - balances.wallet ||
+    credit > Number.MAX_SAFE_INTEGER - row.credited_paisa
+  )
+    throw new IncentiveError('invalid');
+  return credit;
+}
+/** The immutable source INSERT owns all debit, credit and counter posting through reviewed triggers. */
+export async function redeemPoints(
+  db: D1Database,
+  input: RedeemInput,
+): Promise<RedemptionResult> {
+  id(input.userId);
+  id(input.authSubject);
+  id(input.requestId);
+  id(input.formVersionId);
+  loyaltyInteger(input.expectedVersion, 1);
+  loyaltyInteger(input.points, 1);
+  nepalRewardDay(input.now);
+  await authority(db, input.userId, 'customer', input.authSubject);
+  const digest = await digestFormRequest({
+    operation: 'points_redemption',
+    userId: input.userId,
+    authSubject: input.authSubject,
+    expectedVersion: input.expectedVersion,
+    formVersionId: input.formVersionId,
+    points: input.points,
+  });
+  const prior = await redemptionReplay(db, input, digest);
+  if (prior) return prior;
+  const row = await readRow(db),
+    balances = await redemptionBalances(db, input.userId);
+  const credit = redemptionEligibility(row, input, balances);
+  const result: RedemptionResult = {
+    redemptionId: crypto.randomUUID(),
+    points: input.points,
+    creditPaisa: credit,
+    balancePoints: balances.points - input.points,
+    walletBalancePaisa: balances.wallet + credit,
+  };
+  const formSql =
+    "EXISTS(SELECT 1 FROM form_config_versions v WHERE v.id=? AND v.form_id='account.points-redemption' AND v.status='published' AND v.version=(SELECT MAX(version) FROM form_config_versions WHERE form_id=v.form_id AND status='published') AND json_extract(v.config_json,'$.formId')=v.form_id AND json_type(v.config_json,'$.fields')='array' AND json_array_length(v.config_json,'$.fields')=0)";
+  const statements = [
+    // Match checkout/gift serialization: provision and lock wallet before locking customer, points and singleton.
+    db
+      .prepare(
+        `INSERT INTO wallet_accounts(user_id,referral_code,created_at) SELECT ?,?,? WHERE NOT EXISTS(SELECT 1 FROM wallet_accounts WHERE user_id=?) AND ${customerSql}`,
+      )
+      .bind(
+        input.userId,
+        crypto.randomUUID().replaceAll('-', '').slice(0, 16).toUpperCase(),
+        input.now,
+        input.userId,
+        input.userId,
+        input.authSubject,
+      ),
+    ...customerLocks(db, input),
+    ...guard(db, customerSql, [input.userId, input.authSubject]),
+    db
+      .prepare(
+        'UPDATE loyalty_accounts SET balance_points=balance_points WHERE user_id=?',
+      )
+      .bind(input.userId),
+    db.prepare("UPDATE loyalty_config SET version=version WHERE id='default'"),
+    ...guard(
+      db,
+      `${customerSql} AND EXISTS(SELECT 1 FROM loyalty_config c JOIN loyalty_revisions r ON r.revision=c.current_revision WHERE c.id='default' AND c.version=? AND c.current_revision=? AND COALESCE(c.locked_points_per_block,r.points_per_block)=? AND COALESCE(c.locked_credit_paisa_per_block,r.credit_paisa_per_block)=?) AND EXISTS(SELECT 1 FROM loyalty_accounts WHERE user_id=? AND balance_points=?) AND EXISTS(SELECT 1 FROM wallet_accounts WHERE user_id=? AND balance_paisa=?) AND ${formSql}`,
+      [
+        input.userId,
+        input.authSubject,
+        input.expectedVersion,
+        row.revision,
+        row.locked_points_per_block ?? row.points_per_block,
+        row.locked_credit_paisa_per_block ?? row.credit_paisa_per_block,
+        input.userId,
+        balances.points,
+        input.userId,
+        balances.wallet,
+        input.formVersionId,
+      ],
+    ),
+    db
+      .prepare(
+        'INSERT INTO loyalty_redemptions(id,user_id,actor_id,request_id,payload_digest,revision,points,credit_paisa,response_json,form_version_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+      )
+      .bind(
+        result.redemptionId,
+        input.userId,
+        input.userId,
+        input.requestId,
+        digest,
+        row.revision,
+        input.points,
+        credit,
+        JSON.stringify(result),
+        input.formVersionId,
+        input.now,
+      ),
+    ...guard(db, customerSql, [input.userId, input.authSubject]),
+  ];
+  try {
+    await db.batch(statements);
+  } catch {
+    await authority(db, input.userId, 'customer', input.authSubject);
+    const retry = await redemptionReplay(db, input, digest);
+    if (retry) return retry;
+    redemptionEligibility(
+      await readRow(db),
+      input,
+      await redemptionBalances(db, input.userId),
+    );
+    throw new IncentiveError('stale');
+  }
+  return result;
 }
