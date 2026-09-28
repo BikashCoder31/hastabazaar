@@ -1,3 +1,4 @@
+import { convertV4MiniflareOptions, Miniflare } from 'miniflare';
 import type { FixtureBrowser } from './helpers/browser-fixture-types';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -35,6 +36,8 @@ class Statement {
 }
 class Database {
   beforeBatch?: () => void;
+  includeTriggerMetadata = false;
+  observedChanges: number[] = [];
   constructor(readonly sqlite: DatabaseSync) {}
   prepare(sql: string) { return new Statement(this.sqlite.prepare(sql)); }
   async batch(statements: readonly Statement[]) {
@@ -42,7 +45,14 @@ class Database {
     this.sqlite.exec('BEGIN');
     try {
       const results = [];
-      for (const statement of statements) results.push(await statement.run());
+      for (const statement of statements) {
+        const beforeChanges = Number(this.sqlite.prepare('SELECT total_changes() AS n').get()?.n);
+        const result = await statement.run();
+        if (this.includeTriggerMetadata)
+          result.meta.changes = Number(this.sqlite.prepare('SELECT total_changes() AS n').get()?.n) - beforeChanges;
+        this.observedChanges.push(result.meta.changes);
+        results.push(result);
+      }
       this.sqlite.exec('COMMIT');
       return results;
     } catch (error) { this.sqlite.exec('ROLLBACK'); throw error; }
@@ -458,4 +468,65 @@ void test('mounted operation controls render a required field and send versioned
     assert.equal(bodies[3].path, '/api/admin/reviews/review-one/reply');
     assert.equal(bodies[3].body.version, 1);
   } finally { await page.close(); await browser.close(); }
+});
+
+void test('native D1 update metadata includes trigger writes while the atomic direct-row guard remains exact', async () => {
+  const mf = new Miniflare(convertV4MiniflareOptions({ modules: true,
+    script: 'export default {fetch(){return new Response("ok")}}', d1Databases: {DB:'fulfillment-trigger-metadata-test'} }));
+  try {
+    const db = await mf.getD1Database('DB');
+    await db.exec('CREATE TABLE parent(id TEXT PRIMARY KEY,status TEXT);CREATE TABLE outbox(id TEXT PRIMARY KEY,status TEXT);');
+    await db.prepare("CREATE TRIGGER changed AFTER UPDATE ON parent WHEN OLD.status<>NEW.status BEGIN INSERT INTO outbox VALUES(NEW.id,NEW.status); END").run();
+    await db.prepare("INSERT INTO parent VALUES('fictional','ready')").run();
+    const results = await db.batch([
+      db.prepare("UPDATE parent SET status='dispatched' WHERE id='fictional' AND status='ready'"),
+      db.prepare('SELECT changes() AS direct'),
+    ]);
+    assert.equal(results[0].meta.changes,2,'D1 metadata counts the parent plus its triggered outbox insert');
+    assert.equal((results[1].results[0] as {direct:number}).direct,1,'SQL changes() keeps the direct parent-row invariant');
+    assert.equal(await db.prepare('SELECT COUNT(*) AS n FROM outbox').first('n'),1);
+  } finally { await mf.dispose(); }
+});
+
+void test('fulfilment confirms trigger-bearing dispatch and delivery without a post-commit false conflict', async () => {
+  const {sqlite,wrapper,database}=fixture();
+  try {
+    wrapper.includeTriggerMetadata=true;
+    const dispatch={orderId:'order-one',actorId:'admin',action:'dispatch' as const,
+      note:'Fictional consignment verified',trackingCode:'SIM-TRIGGER',requestId:'trigger-dispatch',now:10,
+      form:form('staff.order-fulfillment','trigger-dispatch')};
+    await transitionAdminFulfillment(database,dispatch);
+    assert.equal(wrapper.observedChanges[0],2,'Real notification trigger adds to the D1-compatible mutation count');
+    assert.equal(sqlite.prepare("SELECT status FROM orders WHERE id='order-one'").get()?.status,'dispatched');
+    assert.equal(count(sqlite,'order_status_events',"request_id='trigger-dispatch'"),1);
+    assert.equal(count(sqlite,'audit_logs',"request_id='trigger-dispatch'"),1);
+    assert.equal(count(sqlite,'form_answer_sets',"request_id='trigger-dispatch'"),1);
+    await transitionAdminFulfillment(database,dispatch);
+    assert.equal(count(sqlite,'form_answer_sets',"request_id='trigger-dispatch'"),1);
+    wrapper.observedChanges=[];
+    await transitionAdminFulfillment(database,{orderId:'order-one',actorId:'admin',action:'deliver',
+      note:'Fictional COD receipt verified',requestId:'trigger-deliver',now:20,
+      form:form('staff.order-fulfillment','trigger-deliver')});
+    assert.ok(wrapper.observedChanges[0]>1);
+    assert.equal(sqlite.prepare("SELECT status FROM orders WHERE id='order-one'").get()?.status,'delivered');
+    assert.equal(count(sqlite,'order_documents',"order_id='order-one' AND kind='payment_receipt'"),1);
+    assert.equal(count(sqlite,'form_answer_sets',"request_id='trigger-deliver'"),1);
+  } finally {sqlite.close();}
+});
+
+void test('trigger-compatible fulfilment preserves zero-row race rollback before any answer or audit', async () => {
+  const {sqlite,wrapper,database}=fixture();
+  try {
+    wrapper.includeTriggerMetadata=true;
+    wrapper.beforeBatch=()=>sqlite.prepare("UPDATE order_items SET fulfillment_status='packing' WHERE id='item-one'").run();
+    const before=sqlite.prepare('SELECT COUNT(*) AS n FROM order_email_jobs').get()?.n;
+    await assert.rejects(transitionAdminFulfillment(database,{orderId:'order-one',actorId:'admin',action:'dispatch',
+      note:'Fictional raced consignment',trackingCode:'SIM-RACE',requestId:'trigger-race',now:10,
+      form:form('staff.order-fulfillment','trigger-race')}));
+    assert.equal(sqlite.prepare("SELECT status FROM orders WHERE id='order-one'").get()?.status,'ready_for_pickup');
+    assert.equal(count(sqlite,'order_status_events',"request_id='trigger-race'"),0);
+    assert.equal(count(sqlite,'audit_logs',"request_id='trigger-race'"),0);
+    assert.equal(count(sqlite,'form_answer_sets',"request_id='trigger-race'"),0);
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM order_email_jobs').get()?.n,before);
+  } finally {sqlite.close();}
 });

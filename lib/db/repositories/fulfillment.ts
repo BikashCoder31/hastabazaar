@@ -735,7 +735,8 @@ export async function transitionAdminFulfillment(
       actorId: options.actorId, answers: options.form.answers, now: options.now })] : []),
     ...authority.statements,
   ]);
-  if ((results[0].meta.changes ?? 0) !== 1) {
+  // D1 metadata includes trigger writes; the in-batch guard checks the direct row.
+  if ((results[0].meta.changes ?? 0) < 1) {
     throw new FulfillmentConflictError(
       'This action is no longer available. Refresh the order.',
     );

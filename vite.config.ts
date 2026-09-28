@@ -66,7 +66,13 @@ const localBindingConfig = {
     : [],
 };
 
-export default defineConfig(async () => {
+export default defineConfig(async ({ command }) => {
+  const localDecoderOptIn = process.env.HASTABAZAAR_LOCAL_RIDER_DECODER;
+  if (localDecoderOptIn && (command !== 'serve' || process.env.NODE_ENV === 'production' || process.env.DEPLOY_TARGET))
+    throw new Error('The local rider decoder is forbidden in builds and hosted runtimes.');
+  const localDecoder = localDecoderOptIn
+    ? await (await import('./scripts/staging/rider-media-plugin')).localRiderMediaPlugin(process.env, process.cwd())
+    : null;
   const isBabalBuild = process.env.DEPLOY_TARGET === 'babal';
   if (isBabalBuild) {
     return {
@@ -97,10 +103,12 @@ export default defineConfig(async () => {
 
   return {
     css: { postcss: { plugins: [tailwindcss()] } },
-    server: isCodexSeatbeltSandbox
+    server: localDecoder ? { host: '127.0.0.1', port: Number(new URL(process.env.APP_ORIGIN!).port || '80'), strictPort: true }
+      : isCodexSeatbeltSandbox
       ? { watch: { useFsEvents: false, usePolling: true } }
       : undefined,
     plugins: [
+      ...(localDecoder ? [localDecoder] : []),
       vinext(),
       sites(),
       cloudflare({

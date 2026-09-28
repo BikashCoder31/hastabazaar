@@ -8,13 +8,16 @@ type TestRoute = { request(): { url(): string; postData(): string | null };
 type TestLocator = { count(): Promise<number>; first(): TestLocator;
   locator(selector: string): TestLocator; getByLabel(label: string): TestLocator;
   getByRole(role: string, options: { name: string }): TestLocator;
-  fill(value: string): Promise<void>; click(): Promise<void>; isVisible(): Promise<boolean> };
+  fill(value: string): Promise<void>; click(): Promise<void>; isVisible(): Promise<boolean>;
+  waitFor(options: { state: 'visible' | 'hidden' }): Promise<void> };
 type TestPage = { route(pattern: string, handler: (route: TestRoute) => Promise<void>): Promise<void>;
   goto(url: string): Promise<unknown>; reload(): Promise<unknown>;
   addScriptTag(options: { content: string }): Promise<unknown>;
   locator(selector: string): TestLocator; getByRole(role: string, options: { name: string }): TestLocator;
-  evaluate<T>(fn: () => T): Promise<T>; once(event: string, handler: (dialog: { dismiss(): Promise<void>; accept(): Promise<void> }) => void): void;
-  waitForTimeout(ms: number): Promise<void>; close(): Promise<void> };
+  evaluate<T>(fn: () => T): Promise<T>;
+  evaluate<T, A>(fn: (arg: A) => T, arg: A): Promise<T>; once(event: string, handler: (dialog: { dismiss(): Promise<void>; accept(): Promise<void> }) => void): void;
+  waitForFunction(fn: () => boolean): Promise<unknown>;
+  waitForFunction<T>(fn: (arg: T) => boolean, arg: T): Promise<unknown>; close(): Promise<void> };
 type TestBrowser = { newPage(): Promise<TestPage>; close(): Promise<void> };
 
 const supplies = [
@@ -76,7 +79,17 @@ void test('all five managed decisions preserve opaque attempts across lost repli
           }
           return route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
         });
-        const mount = async () => { await page.goto('https://managed-retry.test/'); await page.addScriptTag({ content: bundle.outputFiles[0].text }); };
+        const mount = async () => {
+          await page.goto('https://managed-retry.test/');
+          await page.addScriptTag({ content: bundle.outputFiles[0].text });
+          await page.locator(`form[data-form-id="${formId}"]`).first().waitFor({ state: 'visible' });
+        };
+        const completed = async (message: string | null) => page.waitForFunction(({ formId, message }) => {
+          const form = document.querySelector<HTMLFormElement>(`form[data-form-id="${formId}"]`);
+          const output = document.querySelector('output')?.textContent?.trim();
+          const submit = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
+          return !!submit && !submit.disabled && !!output && (message === null || output === message);
+        }, { formId, message });
         await mount();
         let form = page.locator(`form[data-form-id="${formId}"]`).first();
         assert.equal(await form.count(), 1, formId);
@@ -93,12 +106,16 @@ void test('all five managed decisions preserve opaque attempts across lost repli
           : action === 'add_adjustment' ? 'Record adjustment'
             : action === 'prepare_payment' ? 'Prepare simulated payment'
               : action === 'approve_payment' ? 'Record payment action' : 'Record transition decision' }).click();
-        await page.waitForTimeout(80);
+        await completed(null);
         assert.equal(requests.length, 1, `${formId}: lost response sent once`);
         const firstId = requests[0].requestId;
         assert.match(String(firstId), /^[0-9a-f-]{36}$/i);
+        const attemptKey = await page.evaluate(id => Object.keys(sessionStorage).find(key =>
+          sessionStorage.getItem(key) === id), String(firstId));
+        assert.ok(attemptKey, `${formId}: the sent opaque attempt is persisted`);
         await mount();
         form = page.locator(`form[data-form-id="${formId}"]`).first();
+        await form.getByRole('button', { name: 'Start a new attempt' }).waitFor({ state: 'visible' });
         assert.equal(await form.getByRole('button', { name: 'Start a new attempt' }).count(), 1,
           `${formId}: reload must expose the pending attempt`);
         await form.getByLabel('Staff context').fill('SIMULATED changed context');
@@ -115,7 +132,7 @@ void test('all five managed decisions preserve opaque attempts across lost repli
           : action === 'add_adjustment' ? 'Record adjustment'
             : action === 'prepare_payment' ? 'Prepare simulated payment'
               : action === 'approve_payment' ? 'Record payment action' : 'Record transition decision' }).click();
-        await page.waitForTimeout(80);
+        await completed('Different content for prior request.');
         assert.equal(requests[1]?.requestId, firstId, `${formId}: changed retry must retain request ID`);
         assert.equal(await page.evaluate(() => (window as unknown as { __staleCalls?: number }).__staleCalls ?? 0), 0,
           `${formId}: ordinary conflict must not call stale handler`);
@@ -124,7 +141,7 @@ void test('all five managed decisions preserve opaque attempts across lost repli
           : action === 'add_adjustment' ? 'Record adjustment'
             : action === 'prepare_payment' ? 'Prepare simulated payment'
               : action === 'approve_payment' ? 'Record payment action' : 'Record transition decision' }).click();
-        await page.waitForTimeout(80);
+        await completed('Form changed.');
         assert.equal(requests[2]?.requestId, firstId);
         assert.equal(await page.evaluate(() => (window as unknown as { __staleCalls?: number }).__staleCalls ?? 0), 1);
         page.once('dialog', (dialog) => { void dialog.dismiss(); });
@@ -137,8 +154,10 @@ void test('all five managed decisions preserve opaque attempts across lost repli
           : action === 'add_adjustment' ? 'Record adjustment'
             : action === 'prepare_payment' ? 'Prepare simulated payment'
               : action === 'approve_payment' ? 'Record payment action' : 'Record transition decision' }).click();
-        await page.waitForTimeout(80);
+        await completed('Prepared simulated payment new-payment.');
         assert.notEqual(requests[3]?.requestId, firstId);
+        assert.equal(await page.evaluate(key => sessionStorage.getItem(key), attemptKey), null,
+          `${formId}: confirmed success removes its exact persisted attempt`);
         assert.equal(await page.evaluate(() => Object.values(sessionStorage).some((value) =>
           typeof value === 'string' && value.includes('SIMULATED'))), false,
         `${formId}: browser storage must not contain form values`);
