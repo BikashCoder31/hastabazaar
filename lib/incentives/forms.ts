@@ -19,7 +19,7 @@ const commonKeys = ['actorId', 'userId', 'customerId', 'customerAuthSubject', 'r
 const promoKeys = ['draftRevision', 'publishedRevision', 'code', 'promoCode', 'promoRevision', 'promoQuoteIntent', 'quoteIntent', 'label', 'kind', 'fixedPaisa', 'percentBps', 'maxDiscountPaisa',
   'minimumSubtotalPaisa', 'startsAt', 'endsAt', 'totalUseLimit', 'perCustomerUseLimit', 'budgetPaisa',
   'usedCount', 'spentPaisa', 'maximumCustomerUsedCount', 'subtotalPaisa', 'discountPaisa', 'expiresAt'] as const;
-const loyaltyKeys = ['dailyPoints', 'pointsPerBlock', 'creditPaisaPerBlock', 'startsAt', 'endsAt', 'dailyBudgetPoints',
+const loyaltyKeys = ['authSubject', 'draftRevision', 'publishedRevision', 'creditedPaisa', 'liability', 'maximumLiability', 'wholeBlocks', 'remainingPoints', 'dailyPoints', 'pointsPerBlock', 'creditPaisaPerBlock', 'startsAt', 'endsAt', 'dailyBudgetPoints',
   'lifetimeBudgetPoints', 'rateLocked', 'issuedPoints', 'redeemedPoints', 'outstandingPoints', 'issuedTodayPoints',
   'points', 'creditPaisa', 'balancePoints', 'walletBalancePaisa', 'localDate', 'date', 'claimId', 'redemptionId',
   'awardedPoints', 'claimedToday', 'nextClaimAt', 'amount', 'amountPaisa', 'rate', 'balance', 'budget'] as const;

@@ -66,18 +66,47 @@ export interface MutationContext {
   readonly form: IncentiveFormSubmission;
 }
 
+/** Staff identity is derived by the server and checked again when loyalty settings commit. */
+export interface LoyaltyMutationContext extends MutationContext {
+  readonly authSubject: string;
+}
+
 export interface LoyaltyTerms {
   readonly enabled: boolean;
   readonly dailyPoints: number;
   readonly pointsPerBlock: number;
   readonly creditPaisaPerBlock: number;
-  readonly startsAt: number;
-  readonly endsAt: number;
-  readonly dailyBudgetPoints: number;
-  readonly lifetimeBudgetPoints: number;
+  readonly startsAt: number | null;
+  readonly endsAt: number | null;
+  readonly dailyBudgetPoints: number | null;
+  readonly lifetimeBudgetPoints: number | null;
 }
 
+export interface LoyaltyLiability {
+  readonly wholeBlocks: number;
+  readonly creditPaisa: number;
+  readonly remainingPoints: number;
+}
+export interface CustomerLoyaltyState {
+  readonly version: number;
+  readonly revision: number;
+  readonly enabled: boolean;
+  readonly paused: boolean;
+  readonly dailyPoints: number;
+  readonly pointsPerBlock: number;
+  readonly creditPaisaPerBlock: number;
+  readonly startsAt: number | null;
+  readonly endsAt: number | null;
+  readonly status: 'active' | 'scheduled' | 'expired' | 'paused' | 'disabled' | 'exhausted';
+}
 export interface LoyaltyState {
+  readonly revision: number;
+  readonly publishedRevision: number;
+  readonly draftRevision: number | null;
+  readonly paused: boolean;
+  readonly creditedPaisa: number;
+  readonly liability: LoyaltyLiability;
+  readonly maximumLiability: LoyaltyLiability | null;
   readonly version: number;
   readonly terms: LoyaltyTerms;
   readonly rateLocked: boolean;
@@ -89,6 +118,7 @@ export interface LoyaltyState {
 
 /** userId and now must be derived by the server, never copied from client input. */
 export interface ClaimInput {
+  readonly authSubject: string;
   readonly userId: string;
   readonly requestId: string;
   readonly expectedVersion: number;
@@ -127,7 +157,7 @@ export interface RewardsView {
   readonly walletBalancePaisa: number;
   readonly claimedToday: boolean;
   readonly nextClaimAt: number;
-  readonly state: LoyaltyState;
+  readonly state: CustomerLoyaltyState;
   readonly history: readonly RewardHistoryEntry[];
   readonly nextCursor: string | null;
 }
