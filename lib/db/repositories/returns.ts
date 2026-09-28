@@ -449,6 +449,8 @@ export interface ReturnCaseRow {
   refundAmountPaisa: number | null;
   refundWalletPaisa: number | null;
   refundDiscountPaisa: number | null;
+  refundPromoPaisa: number | null;
+  refundCashPaisa: number | null;
   refundProviderReference: string | null;
 }
 
@@ -513,6 +515,8 @@ const returnSelect = `SELECT return_requests.id,
   refunds.amount_paisa AS refundAmountPaisa,
   refunds.wallet_credit_paisa AS refundWalletPaisa,
   refunds.referral_discount_paisa AS refundDiscountPaisa,
+  refunds.promo_discount_paisa AS refundPromoPaisa,
+  refunds.amount_paisa-refunds.wallet_credit_paisa-refunds.referral_discount_paisa-refunds.promo_discount_paisa AS refundCashPaisa,
   refunds.provider_reference AS refundProviderReference
   FROM return_requests
   INNER JOIN order_items ON order_items.id = return_requests.order_item_id
@@ -992,7 +996,7 @@ export async function reviewReturnAsAdmin(
     .prepare(
       `SELECT return_requests.status, return_requests.requested_by AS requestedBy,
         return_requests.quantity, return_requests.policy_snapshot_json AS policySnapshotJson,
-        orders.id AS orderId, orders.delivery_charge_paisa AS deliveryChargePaisa,
+        orders.id AS orderId, CASE WHEN orders.promo_discount_paisa>0 THEN orders.delivery_charge_paisa-COALESCE((SELECT SUM(json_extract(e.previous_json,'$.delivery')-json_extract(e.next_json,'$.delivery')) FROM order_cancellation_events e WHERE e.order_id=orders.id),0) ELSE orders.delivery_charge_paisa END AS deliveryChargePaisa,
         order_items.id AS orderItemId, order_items.seller_id AS sellerId,
         order_items.quantity AS itemQuantity, order_items.line_total_paisa AS lineTotalPaisa,
         order_items.tax_paisa AS taxPaisa,
@@ -1050,7 +1054,7 @@ export async function reviewReturnAsAdmin(
   let deliveryRefundPaisa = 0;
   let amountPaisa = 0;
   let commissionBaseRefundedPaisa = 0;
-  let refundCredit = { walletPaisa: 0, discountPaisa: 0, basePaisa: 0 };
+  let refundCredit: {walletPaisa:number;discountPaisa:number;basePaisa:number;promoPaisa?:number} = { walletPaisa: 0, discountPaisa: 0, basePaisa: 0 };
 
   if (options.action === 'approve') {
     if (!options.outcome || !options.responsibility)
@@ -1060,7 +1064,13 @@ export async function reviewReturnAsAdmin(
     if (options.outcome === 'refund') {
       itemRefundPaisa = options.itemRefundPaisa ?? 0;
       deliveryRefundPaisa = options.deliveryRefundPaisa ?? 0;
-      amountPaisa = itemRefundPaisa + deliveryRefundPaisa;
+      if (!Number.isSafeInteger(itemRefundPaisa) || itemRefundPaisa<0 ||
+          !Number.isSafeInteger(deliveryRefundPaisa) || deliveryRefundPaisa<0)
+        throw new ReturnConflictError('Refund amounts must be non-negative safe integers.');
+      const grossRefund=BigInt(itemRefundPaisa)+BigInt(deliveryRefundPaisa);
+      if (grossRefund>BigInt(Number.MAX_SAFE_INTEGER))
+        throw new ReturnConflictError('The refund total exceeds the supported amount.');
+      amountPaisa = Number(grossRefund);
       const maximumItemRefund = Math.round(
         ((current.lineTotalPaisa + current.taxPaisa) * current.quantity) /
           current.itemQuantity,
@@ -1069,7 +1079,7 @@ export async function reviewReturnAsAdmin(
         .prepare(
           `SELECT COALESCE(SUM(refunds.delivery_amount_paisa), 0) AS amount
            FROM refunds WHERE refunds.order_id = ?
-             AND refunds.status NOT IN ('rejected', 'failed')`,
+             AND refunds.status<>'rejected' AND (refunds.status<>'failed' OR EXISTS(SELECT 1 FROM orders WHERE orders.id=refunds.order_id AND orders.promo_discount_paisa>0))`,
         )
         .bind(current.orderId)
         .first<{ amount: number }>();
@@ -1136,6 +1146,7 @@ export async function reviewReturnAsAdmin(
         database,
         current.orderId,
         itemRefundPaisa,
+        current.orderItemId,
       );
     }
   }
@@ -1166,6 +1177,20 @@ export async function reviewReturnAsAdmin(
 
   if (refundId && refundStatus && options.responsibility) {
     statements.push(
+      // Distinct return cases can approve the same delivery cash after stale
+      // preflights. Serialize promo reservations and check retained capacity
+      // before inserting a refund or exposing its manual payout instruction.
+      database.prepare(`UPDATE orders SET updated_at=updated_at
+        WHERE id=? AND promo_discount_paisa>0`).bind(current.orderId),
+      database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM orders o WHERE o.id=?
+        AND (o.promo_discount_paisa=0 OR o.delivery_charge_paisa
+          -COALESCE((SELECT SUM(json_extract(e.previous_json,'$.delivery')
+            -json_extract(e.next_json,'$.delivery')) FROM order_cancellation_events e
+            WHERE e.order_id=o.id),0)
+          -COALESCE((SELECT SUM(r.delivery_amount_paisa) FROM refunds r
+            WHERE r.order_id=o.id AND r.status<>'rejected'),0)>=?))
+        THEN 1 ELSE json_extract('stale-delivery-refund-capacity','$') END`)
+        .bind(current.orderId,deliveryRefundPaisa),
       database
         .prepare(
           `INSERT INTO refunds (
@@ -1174,9 +1199,9 @@ export async function reviewReturnAsAdmin(
             approved_by, high_value_approved_by, processed_by, liability,
             is_high_value, operation_request_id, provider_reference,
             requested_at, approved_at, processed_at, wallet_credit_paisa,
-            referral_discount_paisa, credit_base_paisa,
+            referral_discount_paisa, promo_discount_paisa, credit_base_paisa,
             commission_base_refunded_paisa, commission_reversal_paisa
-          ) SELECT ?, ?, id, ?, ?, ?, ?, ?, ?, requested_by, ?, NULL, NULL, ?, ?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, 0
+          ) SELECT ?, ?, id, ?, ?, ?, ?, ?, ?, requested_by, ?, NULL, NULL, ?, ?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, 0
             FROM return_requests WHERE id = ? AND operation_request_id = ?`,
         )
         .bind(
@@ -1196,6 +1221,7 @@ export async function reviewReturnAsAdmin(
           isHighValue ? null : options.now,
           refundCredit.walletPaisa,
           refundCredit.discountPaisa,
+          refundCredit.promoPaisa ?? 0,
           refundCredit.basePaisa,
           commissionBaseRefundedPaisa,
           options.returnRequestId,
@@ -1265,6 +1291,10 @@ export async function reviewReturnAsAdmin(
           outcome: options.outcome,
           responsibility: options.responsibility,
           refundAmountPaisa: amountPaisa || undefined,
+          refundWalletPaisa: refundCredit.walletPaisa,
+          refundDiscountPaisa: refundCredit.discountPaisa,
+          refundPromoPaisa: refundCredit.promoPaisa ?? 0,
+          refundCashPaisa: amountPaisa-refundCredit.walletPaisa-refundCredit.discountPaisa-(refundCredit.promoPaisa ?? 0),
           ...(catalogDigest ? { catalogDigest } : {}),
         }),
         options.requestId,
@@ -1626,6 +1656,19 @@ export async function advanceReturnAsAdmin(
     refundTo = 'failed';
   }
 
+  type PromoAftercare = {subtotal:number;delivery:number;wallet:number;promo:number;total:number;refunded:number;itemRefund:number;deliveryRefund:number;walletRefund:number;promoRefund:number};
+  let promoAftercare: PromoAftercare | null = null;
+  if (refundTo==='paid' && current.refundId) {
+    promoAftercare = await database.prepare(`SELECT COALESCE(o.current_subtotal_paisa,o.item_subtotal_paisa) AS subtotal,
+      COALESCE(o.current_delivery_paisa,o.delivery_charge_paisa) AS delivery,COALESCE(o.current_wallet_paisa,o.wallet_credit_paisa) AS wallet,
+      CASE WHEN o.current_discount_paisa IS NULL THEN o.promo_discount_paisa ELSE o.current_promo_discount_paisa END AS promo,
+      COALESCE(o.current_total_paisa,o.grand_total_paisa) AS total,o.refunded_promo_discount_paisa AS refunded,
+      r.item_amount_paisa AS itemRefund,r.delivery_amount_paisa AS deliveryRefund,r.wallet_credit_paisa AS walletRefund,r.promo_discount_paisa AS promoRefund
+      FROM orders o JOIN refunds r ON r.order_id=o.id WHERE o.id=? AND r.id=? AND o.promo_discount_paisa>0`)
+      .bind(current.orderId,current.refundId).first<PromoAftercare>();
+    if (promoAftercare && !Object.values(promoAftercare).every(n=>Number.isSafeInteger(n)&&n>=0))
+      throw new ReturnConflictError('Remaining refund amounts require reconciliation.');
+  }
   const statements: D1PreparedStatement[] = [
     database
       .prepare(
@@ -1665,6 +1708,47 @@ export async function advanceReturnAsAdmin(
           current.refundId,
           refundFrom,
         ),
+      database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM refunds WHERE id=? AND status=?
+        AND operation_request_id=?) THEN 1 ELSE json_extract('stale-refund-transition','$') END`)
+        .bind(current.refundId,refundTo,options.requestId),
+    );
+  }
+  if (promoAftercare && current.refundId) {
+    const p=promoAftercare;
+    const bounded=(n:bigint)=>{
+      if(n<BigInt(0)||n>BigInt(Number.MAX_SAFE_INTEGER))throw new ReturnConflictError('Refund exceeds remaining order amounts.');
+      return Number(n);
+    };
+    const subtotal=bounded(BigInt(p.subtotal)-BigInt(p.itemRefund));
+    const delivery=bounded(BigInt(p.delivery)-BigInt(p.deliveryRefund));
+    const wallet=bounded(BigInt(p.wallet)-BigInt(p.walletRefund));
+    const promo=bounded(BigInt(p.promo)-BigInt(p.promoRefund));
+    const refunded=bounded(BigInt(p.refunded)+BigInt(p.promoRefund));
+    const total=bounded(BigInt(p.total)-BigInt(p.itemRefund)-BigInt(p.deliveryRefund)+BigInt(p.walletRefund)+BigInt(p.promoRefund));
+    statements.push(
+      // A zero-cash, zero-promo-offset payment can still change wallet and
+      // merchandise. Lock and bind every remaining aggregate, not just cash.
+      database.prepare('UPDATE orders SET updated_at=updated_at WHERE id=?').bind(current.orderId),
+      database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM orders WHERE id=?
+        AND COALESCE(current_subtotal_paisa,item_subtotal_paisa)=?
+        AND COALESCE(current_delivery_paisa,delivery_charge_paisa)=?
+        AND COALESCE(current_wallet_paisa,wallet_credit_paisa)=?
+        AND (CASE WHEN current_discount_paisa IS NULL THEN promo_discount_paisa ELSE current_promo_discount_paisa END)=?
+        AND COALESCE(current_total_paisa,grand_total_paisa)=? AND refunded_promo_discount_paisa=?)
+        THEN 1 ELSE json_extract('stale-promo-aggregate','$') END`)
+        .bind(current.orderId,p.subtotal,p.delivery,p.wallet,p.promo,p.total,p.refunded),
+      database.prepare(`UPDATE orders SET current_subtotal_paisa=?,current_delivery_paisa=?,current_wallet_paisa=?,
+        current_discount_paisa=?,current_promo_discount_paisa=?,refunded_promo_discount_paisa=?,current_total_paisa=?
+        WHERE id=? AND COALESCE(current_total_paisa,grand_total_paisa)=? AND refunded_promo_discount_paisa=?
+        AND EXISTS(SELECT 1 FROM refunds WHERE id=? AND status='paid' AND operation_request_id=?)`)
+        .bind(subtotal,delivery,wallet,promo,promo,refunded,total,current.orderId,p.total,p.refunded,current.refundId,options.requestId),
+      database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM orders WHERE id=? AND current_total_paisa=?
+        AND refunded_promo_discount_paisa=?) THEN 1 ELSE json_extract('stale-promo-refund','$') END`)
+        .bind(current.orderId,total,refunded),
+      database.prepare(`UPDATE order_items SET current_promo_discount_paisa=promo_discount_paisa-refunded_promo_discount_paisa-?,
+        refunded_promo_discount_paisa=refunded_promo_discount_paisa+? WHERE id=?
+        AND EXISTS(SELECT 1 FROM refunds WHERE id=? AND status='paid' AND operation_request_id=?)`)
+        .bind(p.promoRefund,p.promoRefund,current.orderItemId,current.refundId,options.requestId),
     );
   }
   if (resolvedOutcome) {
@@ -1774,7 +1858,7 @@ export async function advanceReturnAsAdmin(
       database
         .prepare(
           `UPDATE orders SET payment_status = CASE
-            WHEN (SELECT COALESCE(SUM(amount_paisa), 0) FROM refunds WHERE order_id = orders.id AND status = 'paid') >= COALESCE(current_total_paisa,grand_total_paisa) + COALESCE(current_wallet_paisa,wallet_credit_paisa) + COALESCE(current_discount_paisa,referral_discount_paisa) THEN 'refunded'
+            WHEN CASE WHEN promo_discount_paisa>0 THEN (SELECT COALESCE(SUM(item_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= item_subtotal_paisa-COALESCE((SELECT SUM(item_removed_paisa) FROM order_cancellation_events WHERE order_id=orders.id),0) AND (SELECT COALESCE(SUM(delivery_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= delivery_charge_paisa+buyer_platform_fee_paisa-COALESCE((SELECT SUM(json_extract(previous_json,'$.delivery')-json_extract(next_json,'$.delivery')) FROM order_cancellation_events WHERE order_id=orders.id),0) ELSE (SELECT COALESCE(SUM(amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= COALESCE(current_total_paisa,grand_total_paisa)+COALESCE(current_wallet_paisa,wallet_credit_paisa)+COALESCE(current_discount_paisa,referral_discount_paisa) END THEN 'refunded'
             ELSE 'part_refunded' END, updated_at = ? WHERE id = ?`,
         )
         .bind(options.now, current.orderId),
@@ -1784,7 +1868,7 @@ export async function advanceReturnAsAdmin(
       database
         .prepare(
           `UPDATE orders SET payment_status = CASE
-            WHEN (SELECT COALESCE(SUM(amount_paisa), 0) FROM refunds WHERE order_id = orders.id AND status = 'paid') >= COALESCE(current_total_paisa,grand_total_paisa) + COALESCE(current_wallet_paisa,wallet_credit_paisa) + COALESCE(current_discount_paisa,referral_discount_paisa) THEN 'refunded'
+            WHEN CASE WHEN promo_discount_paisa>0 THEN (SELECT COALESCE(SUM(item_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= item_subtotal_paisa-COALESCE((SELECT SUM(item_removed_paisa) FROM order_cancellation_events WHERE order_id=orders.id),0) AND (SELECT COALESCE(SUM(delivery_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= delivery_charge_paisa+buyer_platform_fee_paisa-COALESCE((SELECT SUM(json_extract(previous_json,'$.delivery')-json_extract(next_json,'$.delivery')) FROM order_cancellation_events WHERE order_id=orders.id),0) ELSE (SELECT COALESCE(SUM(amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= COALESCE(current_total_paisa,grand_total_paisa)+COALESCE(current_wallet_paisa,wallet_credit_paisa)+COALESCE(current_discount_paisa,referral_discount_paisa) END THEN 'refunded'
             ELSE 'part_refunded' END, updated_at = ? WHERE id = ?`,
         )
         .bind(options.now, current.orderId),
@@ -1925,7 +2009,7 @@ export async function advanceReturnAsAdmin(
     throw new ReturnConflictError(
       'The return request changed. Refresh and try again.',
     );
-  if (refundFrom && (results[1]?.meta.changes ?? 0) !== 1)
+  if (refundFrom && (results[1]?.meta.changes ?? 0) < 1)
     throw new ReturnConflictError('The refund changed. Refresh and try again.');
 }
 

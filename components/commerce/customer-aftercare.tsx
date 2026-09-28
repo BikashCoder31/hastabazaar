@@ -229,9 +229,10 @@ export function CustomerAftercare({
               ) : null}
               {item.refundAmountPaisa ? (
                 <p className="mt-3 text-sm font-semibold">
-                  Cash refund: {money(item.refundAmountPaisa - (item.refundWalletPaisa || 0) - (item.refundDiscountPaisa || 0))}
+                  Cash refund: {money(item.refundCashPaisa ?? 0)}
                   {item.refundWalletPaisa ? ` + ${money(item.refundWalletPaisa)} shopping credit` : ''} ·{' '}
                   {item.refundStatus?.replaceAll('_', ' ')}
+                  {item.refundPromoPaisa ? <span className="block font-normal">Promo savings: {money(item.refundPromoPaisa)} (not refundable)</span> : null}
                 </p>
               ) : null}
               {item.status === 'needs_customer_changes' ? (

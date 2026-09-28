@@ -192,10 +192,11 @@ export default async function AdminReturnCasePage({
               <dl className="mt-4 space-y-3 text-sm">
                 <div className="flex justify-between">
                   <dt>Cash to refund</dt>
-                  <dd>{money((item.refundAmountPaisa || 0) - (item.refundWalletPaisa || 0) - (item.refundDiscountPaisa || 0))}</dd>
+                  <dd>{money(item.refundCashPaisa ?? 0)}</dd>
                 </div>
                 <div className="flex justify-between"><dt>Shopping credit to restore</dt><dd>{money(item.refundWalletPaisa || 0)}</dd></div>
                 <div className="flex justify-between"><dt>Referral discount (not refundable)</dt><dd>{money(item.refundDiscountPaisa || 0)}</dd></div>
+                <div className="flex justify-between"><dt>Promo savings (not refundable)</dt><dd>{money(item.refundPromoPaisa || 0)}</dd></div>
                 <p className="text-xs leading-5 text-muted-foreground">Refund only the cash amount shown. Shopping credit is restored automatically when this refund is completed. For a credit-only refund, use an internal completion reference.</p>
                 <div className="flex justify-between">
                   <dt>Status</dt>

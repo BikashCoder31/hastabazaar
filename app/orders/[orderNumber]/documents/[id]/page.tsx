@@ -113,6 +113,12 @@ export default async function OrderDocumentPage({
             </table>
           </div>
           <dl className="ml-auto mt-7 max-w-sm space-y-3 text-sm">
+            {snapshot.promoDiscountPaisa ? (
+              <div className="flex justify-between">
+                <dt>Promo savings{snapshot.promo ? ` (${snapshot.promo.label}, revision ${snapshot.promo.revision})` : ''}</dt>
+                <dd>−{money(snapshot.promoDiscountPaisa)}</dd>
+              </div>
+            ) : null}
             {snapshot.referralDiscountPaisa ? (
               <div className="flex justify-between">
                 <dt>Referral discount</dt>

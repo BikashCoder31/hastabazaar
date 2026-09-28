@@ -1,3 +1,4 @@
+import { allocateCancellationItems } from '../../cancellation/accounting';
 export class WalletConflictError extends Error {}
 
 export interface ReferralCampaign {
@@ -259,10 +260,11 @@ export async function splitCreditRefund(
   db: D1Database,
   orderId: string,
   itemPaisa: number,
-) {
+  orderItemId?: string,
+): Promise<{basePaisa:number;walletPaisa:number;discountPaisa:number;promoPaisa?:number}> {
   const row = await db
     .prepare(`SELECT COALESCE(o.current_subtotal_paisa,o.item_subtotal_paisa) AS subtotal, COALESCE(o.current_wallet_paisa,o.wallet_credit_paisa) AS wallet,
-    COALESCE(o.current_discount_paisa,o.referral_discount_paisa) AS discount,
+    o.current_referral_discount_paisa AS discount, o.promo_discount_paisa AS originalPromo, o.wallet_credit_paisa AS originalWallet,
     COALESCE((SELECT SUM(r.item_amount_paisa) FROM refunds r WHERE r.order_id=o.id AND r.status <> 'rejected'),0) AS refunded,
     COALESCE((SELECT SUM(r.wallet_credit_paisa) FROM refunds r WHERE r.order_id=o.id AND r.status <> 'rejected'),0) AS walletRefunded,
     COALESCE((SELECT SUM(r.referral_discount_paisa) FROM refunds r WHERE r.order_id=o.id AND r.status <> 'rejected'),0) AS discountRefunded
@@ -272,11 +274,44 @@ export async function splitCreditRefund(
       subtotal: number;
       wallet: number;
       discount: number;
+      originalPromo: number;
+      originalWallet: number;
       refunded: number;
       walletRefunded: number;
       discountRefunded: number;
     }>();
   if (!row) throw new WalletConflictError('Order not found.');
+  if (row.originalPromo > 0) {
+    if (!Number.isSafeInteger(itemPaisa) || itemPaisa < 0)
+      throw new WalletConflictError('Refund allocation requires valid merchandise.');
+    const lines = (await db.prepare(`SELECT id,seller_id AS sellerId,line_total_paisa AS amount,
+      promo_discount_paisa AS promo,fulfillment_status AS status FROM order_items WHERE order_id=? ORDER BY id`)
+      .bind(orderId).all<{id:string;sellerId:string;amount:number;promo:number;status:string}>()).results;
+    const selected = orderItemId ? lines.find(line=>line.id===orderItemId) :
+      lines.filter(line=>line.status!=='cancelled').length===1 ? lines.find(line=>line.status!=='cancelled') : undefined;
+    if (!selected || selected.status==='cancelled' || selected.amount===0)
+      throw new WalletConflictError('Choose a remaining merchandise line for this refund.');
+    const allocation = allocateCancellationItems(lines,row.originalWallet,row.originalPromo).find(line=>line.id===selected.id)!;
+    const prior = await db.prepare(`SELECT COALESCE(SUM(r.item_amount_paisa),0) AS merchandise,
+      COALESCE(SUM(r.wallet_credit_paisa),0) AS wallet,COALESCE(SUM(r.promo_discount_paisa),0) AS promo
+      FROM refunds r JOIN return_requests rr ON rr.id=r.return_request_id
+      WHERE r.order_id=? AND rr.order_item_id=? AND r.status<>'rejected'`)
+      .bind(orderId,selected.id).first<{merchandise:number;wallet:number;promo:number}>();
+    const cumulative = BigInt(prior?.merchandise ?? 0)+BigInt(itemPaisa);
+    if (cumulative>BigInt(selected.amount))
+      throw new WalletConflictError('Refund exceeds remaining original merchandise.');
+    // Allocate the combined offset first so a fully funded line never invents
+    // cash between partial events. Preserve its sealed promo allocation and
+    // distribute cumulative residue exactly over its original wallet/promo split.
+    const combined = BigInt(allocation.wallet)+BigInt(selected.promo);
+    const allocated = combined*cumulative/BigInt(selected.amount);
+    const cumulativeWallet = combined ? allocated*BigInt(allocation.wallet)/combined : BigInt(0);
+    const wallet = Number(cumulativeWallet)-(prior?.wallet ?? 0);
+    const promo = Number(allocated-cumulativeWallet)-(prior?.promo ?? 0);
+    if (wallet<0 || promo<0 || BigInt(wallet)+BigInt(promo)>BigInt(itemPaisa))
+      throw new WalletConflictError('Refund offsets require reconciliation.');
+    return {basePaisa:row.refunded,walletPaisa:wallet,discountPaisa:0,promoPaisa:promo};
+  }
   if(![row.subtotal,row.wallet,row.discount,row.refunded,row.walletRefunded,row.discountRefunded,itemPaisa].every(n=>Number.isSafeInteger(n)&&n>=0)||row.subtotal===0)throw new WalletConflictError('Refund allocation requires valid remaining merchandise.');
   const subtotal=BigInt(row.subtotal),cumulative=BigInt(row.refunded)+BigInt(itemPaisa),total=BigInt(row.wallet)+BigInt(row.discount);
   const allocatedBig=total*(cumulative<subtotal?cumulative:subtotal)/subtotal;

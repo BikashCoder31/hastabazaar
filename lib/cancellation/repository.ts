@@ -24,6 +24,8 @@ interface Order {
   delivery: number;
   wallet: number;
   discount: number;
+  referral: number;
+  promo: number;
   total: number;
   version: number;
   currentTotal: number;
@@ -37,6 +39,8 @@ interface Item {
   productId: string | null;
   quantity: number;
   amount: number;
+  promo: number;
+  currentPromo: number;
   status: string;
   custom: number | null;
 }
@@ -71,7 +75,7 @@ async function source(db: D1Database, a: CancellationAccess) {
     );
   const order = await db
     .prepare(
-      'SELECT id,status,customer_id AS customerId,item_subtotal_paisa AS subtotal,delivery_charge_paisa AS delivery,wallet_credit_paisa AS wallet,referral_discount_paisa AS discount,grand_total_paisa AS total,cancellation_version AS version,COALESCE(current_total_paisa,grand_total_paisa) AS currentTotal,payment_mode AS paymentMode,delivery_rate_snapshot_json AS deliverySnapshot FROM orders WHERE order_number=? AND (? IS NOT NULL OR (? IS NOT NULL AND customer_id=?) OR (? IS NOT NULL AND receipt_token_hash=?))',
+      'SELECT id,status,customer_id AS customerId,item_subtotal_paisa AS subtotal,delivery_charge_paisa AS delivery,wallet_credit_paisa AS wallet,referral_discount_paisa+promo_discount_paisa AS discount,referral_discount_paisa AS referral,promo_discount_paisa AS promo,grand_total_paisa AS total,cancellation_version AS version,COALESCE(current_total_paisa,grand_total_paisa) AS currentTotal,payment_mode AS paymentMode,delivery_rate_snapshot_json AS deliverySnapshot FROM orders WHERE order_number=? AND (? IS NOT NULL OR (? IS NOT NULL AND customer_id=?) OR (? IS NOT NULL AND receipt_token_hash=?))',
     )
     .bind(
       a.orderNumber,
@@ -87,7 +91,7 @@ async function source(db: D1Database, a: CancellationAccess) {
   const items = (
     await db
       .prepare(
-        'SELECT id,seller_id AS sellerId,seller_name_snapshot AS sellerName,product_id AS productId,quantity,line_total_paisa AS amount,fulfillment_status AS status,made_to_order_snapshot AS custom FROM order_items WHERE order_id=? ORDER BY id',
+        'SELECT id,seller_id AS sellerId,seller_name_snapshot AS sellerName,product_id AS productId,quantity,line_total_paisa AS amount,promo_discount_paisa AS promo,current_promo_discount_paisa AS currentPromo,fulfillment_status AS status,made_to_order_snapshot AS custom FROM order_items WHERE order_id=? ORDER BY id',
       )
       .bind(order.id)
       .all<Item>()
@@ -186,7 +190,7 @@ export async function cancellationPreview(
       'Staff must finish the existing refund or rider-report review before changing COD.',
     );
   const allocations = allocateCancellationItems(
-    items.map((i) => ({ id: i.id, sellerId: i.sellerId, amount: i.amount })),
+    items.map((i) => ({ id: i.id, sellerId: i.sellerId, amount: i.amount, ...(order.promo ? {promo:i.promo} : {}) })),
     order.wallet,
     order.discount,
   );
@@ -487,13 +491,14 @@ export async function cancelSelectedParcels(
   statements.push(
     ...guard(
       db,
-      'EXISTS(SELECT 1 FROM orders WHERE id=? AND status=? AND grand_total_paisa=? AND wallet_credit_paisa=? AND referral_discount_paisa=?)',
+      'EXISTS(SELECT 1 FROM orders WHERE id=? AND status=? AND grand_total_paisa=? AND wallet_credit_paisa=? AND referral_discount_paisa=? AND promo_discount_paisa=?)',
       [
         p.order.id,
         p.order.status,
         p.order.total,
         p.order.wallet,
-        p.order.discount,
+        p.order.referral,
+        p.order.promo,
       ],
     ),
   );
@@ -540,8 +545,8 @@ export async function cancelSelectedParcels(
     statements.push(
       ...guard(
         db,
-        'EXISTS(SELECT 1 FROM order_items WHERE id=? AND fulfillment_status=? AND line_total_paisa=? AND COALESCE(made_to_order_snapshot,-1)=?)',
-        [i.id, i.status, i.amount, i.custom ?? -1],
+        'EXISTS(SELECT 1 FROM order_items WHERE id=? AND fulfillment_status=? AND line_total_paisa=? AND COALESCE(made_to_order_snapshot,-1)=? AND promo_discount_paisa=? AND current_promo_discount_paisa=?)',
+        [i.id, i.status, i.amount, i.custom ?? -1, i.promo, i.currentPromo],
       ),
     );
   for (const parcel of p.parcels) {
@@ -615,7 +620,7 @@ export async function cancelSelectedParcels(
         ),
       db
         .prepare(
-          "UPDATE order_items SET fulfillment_status='cancelled',fulfillment_request_id=? WHERE id=?",
+          "UPDATE order_items SET fulfillment_status='cancelled',current_promo_discount_paisa=0,fulfillment_request_id=? WHERE id=?",
         )
         .bind(o.requestId, i.id),
     );
@@ -681,7 +686,7 @@ export async function cancelSelectedParcels(
       ),
     db
       .prepare(
-        "UPDATE orders SET status=?,current_total_paisa=?,current_subtotal_paisa=?,current_delivery_paisa=?,current_wallet_paisa=?,current_discount_paisa=?,payment_status=CASE WHEN ?='cancelled' THEN 'cancelled' ELSE 'pending' END,cancelled_at=CASE WHEN ?='cancelled' THEN ? ELSE cancelled_at END,updated_at=? WHERE id=?",
+        "UPDATE orders SET status=?,current_total_paisa=?,current_subtotal_paisa=?,current_delivery_paisa=?,current_wallet_paisa=?,current_discount_paisa=?,current_promo_discount_paisa=?,payment_status=CASE WHEN ?='cancelled' THEN 'cancelled' ELSE 'pending' END,cancelled_at=CASE WHEN ?='cancelled' THEN ? ELSE cancelled_at END,updated_at=? WHERE id=?",
       )
       .bind(
         status,
@@ -690,6 +695,7 @@ export async function cancelSelectedParcels(
         p.next.delivery,
         p.next.wallet,
         p.next.discount,
+        p.next.promoDiscount,
         status,
         status,
         o.now,
@@ -904,7 +910,7 @@ export async function currentReceiptSnapshot(
 ) {
   const order = await db
     .prepare(
-      'SELECT cancellation_version AS version,current_total_paisa AS total,current_subtotal_paisa AS subtotal,current_delivery_paisa AS delivery,current_wallet_paisa AS wallet,current_discount_paisa AS discount FROM orders WHERE id=?',
+      'SELECT cancellation_version AS version,current_total_paisa AS total,current_subtotal_paisa AS subtotal,current_delivery_paisa AS delivery,current_wallet_paisa AS wallet,current_referral_discount_paisa AS discount,current_promo_discount_paisa AS promo,promo_discount_paisa AS originalPromo,refunded_promo_discount_paisa AS refundedPromo FROM orders WHERE id=?',
     )
     .bind(orderId)
     .first<{
@@ -914,8 +920,11 @@ export async function currentReceiptSnapshot(
       delivery: number;
       wallet: number;
       discount: number;
+      promo: number;
+      originalPromo: number;
+      refundedPromo: number;
     }>();
-  if (!order?.version) return original;
+  if (!order || (!order.version && !order.refundedPromo)) return original;
   const items = (
     await db
       .prepare(
@@ -932,6 +941,10 @@ export async function currentReceiptSnapshot(
     grandTotalPaisa: order.total,
     walletCreditPaisa: order.wallet,
     referralDiscountPaisa: order.discount,
+    promoDiscountPaisa: order.promo,
+    currentPromoDiscountPaisa: order.promo,
+    originalPromoDiscountPaisa: order.originalPromo,
+    refundedPromoDiscountPaisa: order.refundedPromo,
     cancellationVersion: order.version,
   };
 }

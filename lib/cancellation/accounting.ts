@@ -6,6 +6,7 @@ export interface CancellationItem {
   amount: number;
   wallet: number;
   discount: number;
+  promo?: number;
 }
 function safe(n: number) {
   if (!Number.isSafeInteger(n) || n < 0)
@@ -35,7 +36,7 @@ function split(total: number, rows: readonly { id: string; amount: number }[]) {
   return new Map(parts.map((r) => [r.id, r.amount]));
 }
 export function allocateCancellationItems(
-  source: readonly { id: string; sellerId: string; amount: number }[],
+  source: readonly { id: string; sellerId: string; amount: number; promo?: number }[],
   wallet: number,
   discount: number,
 ): CancellationItem[] {
@@ -47,6 +48,18 @@ export function allocateCancellationItems(
     promo = safe(wallet + discount);
   safe(subtotal);
   if (promo > subtotal) throw new Error('Credit exceeds merchandise.');
+  // Promo allocations were sealed at checkout using cart line keys. Never resplit
+  // those savings using the newly generated order-item IDs.
+  if (source.some((row) => row.promo !== undefined)) {
+    if (source.reduce((sum, row) => sum + safe(row.promo ?? 0), 0) !== discount)
+      throw new Error('Invalid original promo allocation.');
+    const rows = [...source].sort((a, b) => a.id.localeCompare(b.id));
+    const walletParts = split(wallet, rows.map((row) => ({
+      id: row.id, amount: safe(row.amount - safe(row.promo ?? 0)),
+    })));
+    return rows.map((row) => ({ ...row, promo: row.promo ?? 0,
+      wallet: walletParts.get(row.id)!, discount: row.promo ?? 0 }));
+  }
   const rows = [...source].sort((a, b) => a.id.localeCompare(b.id)),
     combined = split(promo, rows),
     walletParts = split(
@@ -96,12 +109,14 @@ export function calculateCancellation(
     wallet,
     discount,
     delivery,
+    promoDiscount: remaining.reduce((n, r) => n + (r.promo ?? 0), 0),
     total: safe(
       Number(
         BigInt(subtotal) + BigInt(delivery) - BigInt(wallet) - BigInt(discount),
       ),
     ),
     walletRestored: cancelled.reduce((n, r) => n + r.wallet, 0),
+    promoRemoved: cancelled.reduce((n, r) => n + (r.promo ?? 0), 0),
     discountRemoved: cancelled.reduce((n, r) => n + r.discount, 0),
     parcels: [...sellers]
       .sort(([a], [b]) => a.localeCompare(b))

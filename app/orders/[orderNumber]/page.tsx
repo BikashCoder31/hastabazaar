@@ -216,6 +216,8 @@ export default async function OrderReceiptPage({
               <aside>
                 <h2 className="font-heading text-2xl">Summary</h2>
                 <dl className="mt-4 space-y-3 text-sm">
+                  {receipt.promoDiscountPaisa>0?<div className="flex justify-between"><dt>Promo savings{receipt.promo ? ` (${receipt.promo.label}, revision ${receipt.promo.revision})` : ''}</dt><dd>−{money(receipt.promoDiscountPaisa)}</dd></div>:null}
+                  {receipt.refundedPromoDiscountPaisa>0?<div className="flex justify-between"><dt>Promo savings removed by refunds</dt><dd>{money(receipt.refundedPromoDiscountPaisa)}</dd></div>:null}
                   {receipt.referralDiscountPaisa>0?<div className="flex justify-between"><dt>Referral discount</dt><dd>−{money(receipt.referralDiscountPaisa)}</dd></div>:null}
                   {receipt.walletCreditPaisa>0?<div className="flex justify-between"><dt>Shopping credit used</dt><dd>−{money(receipt.walletCreditPaisa)}</dd></div>:null}
                   <div className="flex justify-between">

@@ -89,6 +89,9 @@ export interface OrderDocumentSnapshot {
   walletCreditPaisa?: number;
   referralDiscountPaisa?: number;
   promoDiscountPaisa?: number;
+  originalPromoDiscountPaisa?: number;
+  currentPromoDiscountPaisa?: number;
+  refundedPromoDiscountPaisa?: number;
   promo?: {campaignId:string;revision:number;code:string;label:string};
   documentTitle: string;
   taxDocument: false;
@@ -877,6 +880,15 @@ export interface OrderReceiptItem {
 export interface OrderReceipt {
   walletCreditPaisa: number;
   referralDiscountPaisa: number;
+  promoDiscountPaisa: number;
+  originalPromoDiscountPaisa: number;
+  refundedPromoDiscountPaisa: number;
+  originalReferralDiscountPaisa: number;
+  refundedReferralDiscountPaisa: number;
+  originalWalletCreditPaisa: number;
+  refundedWalletCreditPaisa: number;
+  originalGrandTotalPaisa: number;
+  promo?: OrderDocumentSnapshot['promo'];
   orderNumber: string;
   customerEmail: string;
   customerPhone: string;
@@ -926,7 +938,13 @@ export async function getOrderReceipt(
 ): Promise<OrderReceipt | null> {
   const order = await database
     .prepare(
-      `SELECT COALESCE(orders.current_wallet_paisa,orders.wallet_credit_paisa) AS walletCreditPaisa, COALESCE(orders.current_discount_paisa,orders.referral_discount_paisa) AS referralDiscountPaisa,
+      `SELECT COALESCE(orders.current_wallet_paisa,orders.wallet_credit_paisa) AS walletCreditPaisa, orders.current_referral_discount_paisa AS referralDiscountPaisa,
+        CASE WHEN orders.current_discount_paisa IS NULL THEN orders.promo_discount_paisa ELSE orders.current_promo_discount_paisa END AS promoDiscountPaisa,
+        orders.promo_discount_paisa AS originalPromoDiscountPaisa,orders.refunded_promo_discount_paisa AS refundedPromoDiscountPaisa,
+        orders.referral_discount_paisa AS originalReferralDiscountPaisa,orders.wallet_credit_paisa AS originalWalletCreditPaisa,orders.grand_total_paisa AS originalGrandTotalPaisa,
+        (SELECT COALESCE(SUM(r.wallet_credit_paisa),0) FROM refunds r WHERE r.order_id=orders.id AND r.status='paid') AS refundedWalletCreditPaisa,
+        (SELECT COALESCE(SUM(r.referral_discount_paisa),0) FROM refunds r WHERE r.order_id=orders.id AND r.status='paid') AS refundedReferralDiscountPaisa,
+        orders.promo_campaign_id AS promoCampaignId,orders.promo_revision AS promoRevision,orders.promo_code AS promoCode,orders.promo_label AS promoLabel,
         orders.order_number AS orderNumber, orders.customer_email AS customerEmail,
         orders.customer_phone AS customerPhone, orders.delivery_for AS deliveryFor,
         orders.recipient_email AS recipientEmail, orders.source_address_id AS sourceAddressId,
@@ -966,6 +984,10 @@ export async function getOrderReceipt(
         deliveryRateSnapshotJson: string | null;
         originalStoreCount: number;
         currentStoreCount: number;
+        promoCampaignId: string | null;
+        promoRevision: number | null;
+        promoCode: string | null;
+        promoLabel: string | null;
       }
     >();
   if (!order) return null;
@@ -1009,10 +1031,12 @@ export async function getOrderReceipt(
     deliveryRateSnapshotJson: _deliveryRateSnapshotJson,
     originalStoreCount,
     currentStoreCount,
+    promoCampaignId,promoRevision,promoCode,promoLabel,
     ...safeOrder
   } = order;
   return {
     ...safeOrder,
+    ...(promoCampaignId && promoRevision && promoCode && promoLabel ? {promo:{campaignId:promoCampaignId,revision:promoRevision,code:promoCode,label:promoLabel}} : {}),
     address: JSON.parse(addressJson) as CheckoutInput['address'],
     items: itemResult.results,
     documents: documentResult.results,

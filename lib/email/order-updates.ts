@@ -9,6 +9,9 @@ export interface OrderEmailData {
   collectedPaisa?: number;
   walletPaisa: number;
   discountPaisa: number;
+  promoPaisa?: number;
+  promoLabel?: string | null;
+  promoRevision?: number | null;
   trackingCode: string | null;
   occurredAt: number;
   attempts?: number;
@@ -70,6 +73,7 @@ export function buildOrderEmail(data: OrderEmailData, origin: string) {
     ...(data.discountPaisa
       ? [`Referral discount: ${money(data.discountPaisa)}.`]
       : []),
+    ...(data.promoPaisa ? [`Promo savings${data.promoLabel ? ` (${data.promoLabel}, revision ${data.promoRevision})` : ''}: ${money(data.promoPaisa)}.`] : []),
     ...(data.trackingCode ? [`Delivery reference: ${data.trackingCode}`] : []),
     'Track your order using your order number and the email address used at checkout.',
     trackingUrl.toString(),
@@ -142,7 +146,7 @@ export async function deliverOrderEmails(
         .prepare(`SELECT o.order_number AS orderNumber,o.customer_email AS email,o.status AS currentStatus,
     j.order_status AS eventStatus,j.attempts,j.created_at AS occurredAt,COALESCE(o.current_total_paisa,o.grand_total_paisa) AS cashPaisa,
     CASE WHEN EXISTS(SELECT 1 FROM shipping_jobs pj JOIN shipping_parcels pp ON pp.shipping_job_id=pj.id WHERE pj.order_id=o.id) THEN (SELECT SUM(pp.collected_paisa) FROM shipping_jobs pj JOIN shipping_parcels pp ON pp.shipping_job_id=pj.id WHERE pj.order_id=o.id) ELSE NULL END AS collectedPaisa,
-    COALESCE(o.current_wallet_paisa,o.wallet_credit_paisa) AS walletPaisa,COALESCE(o.current_discount_paisa,o.referral_discount_paisa) AS discountPaisa,s.tracking_code AS trackingCode
+    COALESCE(o.current_wallet_paisa,o.wallet_credit_paisa) AS walletPaisa,o.current_referral_discount_paisa AS discountPaisa,CASE WHEN o.current_discount_paisa IS NULL THEN o.promo_discount_paisa ELSE o.current_promo_discount_paisa END AS promoPaisa,o.promo_label AS promoLabel,o.promo_revision AS promoRevision,s.tracking_code AS trackingCode
     FROM order_email_jobs j INNER JOIN orders o ON o.id=j.order_id
     LEFT JOIN shipments s ON s.order_id=o.id WHERE j.id=? AND j.claim_token=?`)
         .bind(job.id, claim)

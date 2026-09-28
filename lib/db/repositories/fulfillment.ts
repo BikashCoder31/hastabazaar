@@ -455,12 +455,14 @@ export async function transitionAdminFulfillment(
   const order = await database
     .prepare(
       `SELECT status, order_number AS orderNumber,
-        wallet_credit_paisa AS walletCreditPaisa, referral_discount_paisa AS referralDiscountPaisa,
-        item_subtotal_paisa AS itemSubtotalPaisa,
-        delivery_charge_paisa AS deliveryChargePaisa,
+        COALESCE(current_wallet_paisa,wallet_credit_paisa) AS walletCreditPaisa, current_referral_discount_paisa AS referralDiscountPaisa,
+        CASE WHEN current_discount_paisa IS NULL THEN promo_discount_paisa ELSE current_promo_discount_paisa END AS promoDiscountPaisa,
+        promo_campaign_id AS promoCampaignId,promo_revision AS promoRevision,promo_code AS promoCode,promo_label AS promoLabel,
+        COALESCE(current_subtotal_paisa,item_subtotal_paisa) AS itemSubtotalPaisa,
+        COALESCE(current_delivery_paisa,delivery_charge_paisa) AS deliveryChargePaisa,
         buyer_platform_fee_paisa AS buyerPlatformFeePaisa,
         tax_total_paisa AS taxTotalPaisa,
-        grand_total_paisa AS grandTotalPaisa
+        COALESCE(current_total_paisa,grand_total_paisa) AS grandTotalPaisa
        FROM orders WHERE id = ? LIMIT 1`,
     )
     .bind(options.orderId)
@@ -468,6 +470,11 @@ export async function transitionAdminFulfillment(
       status: OrderStatus;
       walletCreditPaisa: number;
       referralDiscountPaisa: number;
+      promoDiscountPaisa: number;
+      promoCampaignId: string | null;
+      promoRevision: number | null;
+      promoCode: string | null;
+      promoLabel: string | null;
       orderNumber: string;
       itemSubtotalPaisa: number;
       deliveryChargePaisa: number;
@@ -527,7 +534,7 @@ export async function transitionAdminFulfillment(
         seller_name_snapshot AS sellerName, sku_snapshot AS sku,
         unit_price_paisa AS unitPricePaisa, quantity,
         line_total_paisa AS lineTotalPaisa
-       FROM order_items WHERE order_id = ? ORDER BY created_at ASC`,
+       FROM order_items WHERE order_id = ? AND fulfillment_status<>'cancelled' ORDER BY created_at ASC`,
       )
       .bind(options.orderId)
       .all<OrderDocumentSnapshot['items'][number]>();
@@ -547,6 +554,8 @@ export async function transitionAdminFulfillment(
       grandTotalPaisa: order.grandTotalPaisa,
       walletCreditPaisa: order.walletCreditPaisa,
       referralDiscountPaisa: order.referralDiscountPaisa,
+      promoDiscountPaisa: order.promoDiscountPaisa,
+      ...(order.promoCampaignId && order.promoRevision && order.promoCode && order.promoLabel ? {promo:{campaignId:order.promoCampaignId,revision:order.promoRevision,code:order.promoCode,label:order.promoLabel}} : {}),
     };
   }
   const results = await database.batch([
