@@ -114,20 +114,21 @@ export async function prepareFixedSupplierPayment(database:D1Database,options:{r
 
 export async function transitionFixedSupplierPayment(database:D1Database,options:{paymentId:string;actorId:string;action:'approve'|'mark_paid';requestId:string;now:number;environment:RuntimeEnvironment;form?:{requestId:string;versionId:string;answers:FormAnswerSnapshot}}):Promise<void>{
  assertSimulationAllowed(options.environment);
+ const active=await database.prepare("SELECT 1 FROM users JOIN user_roles ON user_roles.user_id=users.id WHERE users.id=? AND users.status='active' AND user_roles.role='super_admin'").bind(options.actorId).first();
+ if(!active)throw new FixedSupplyError('An active Super Admin must record this supplier payment action.');
  const authority=options.form?await staffMutationGuard(database,options.actorId,options.action==='approve'?'payout.approve':'payout.mark_paid',FixedSupplyError,'super_admin'):null;
  const to=options.action==='approve'?'approved':'paid',from=options.action==='approve'?'prepared':'approved';
  const catalogDigest=options.form?await digestFormRequest({paymentId:options.paymentId,action:options.action,versionId:options.form.versionId,answers:options.form.answers}):null;
  if(options.form){if(await decisionFormReplay(database,{formId:'staff.managed-payment-action',requestId:options.requestId,actorId:options.actorId,action:`managed_supplier_payment.${to}`,subjectType:'managed_supplier_payment',subjectId:options.paymentId,versionId:options.form.versionId,digest:catalogDigest!}))return;}
  else if(await database.prepare('SELECT 1 FROM audit_logs WHERE request_id=?').bind(options.requestId).first())return;
  const row=await database.prepare(`SELECT p.status,p.prepared_by AS preparedBy,p.approved_by AS approvedBy,EXISTS(SELECT 1 FROM users JOIN user_roles ON user_roles.user_id=users.id WHERE users.id=? AND users.status='active' AND user_roles.role='super_admin') AS authorized FROM managed_supplier_payments p WHERE p.id=?`).bind(options.actorId,options.paymentId).first<{status:string;preparedBy:string;approvedBy:string|null;authorized:number}>();if(!row||!row.authorized)throw new FixedSupplyError('An active Super Admin must record this supplier payment action.');
- if(row.status!==from)throw new FixedSupplyError(`Only a ${from} supplier payment can be ${to}.`);if(options.action==='approve'&&row.preparedBy===options.actorId)throw new FixedSupplyError('A different Super Admin must approve the prepared supplier payment.');
+ if(row.status!==from)throw new FixedSupplyError(`Only a ${from} supplier payment can be ${to}.`);
  const statements:D1PreparedStatement[]=[database.prepare(`UPDATE managed_supplier_payments SET status=?,approved_by=CASE WHEN ?='approved' THEN ? ELSE approved_by END,paid_at=CASE WHEN ?='paid' THEN ? ELSE paid_at END,updated_at=? WHERE id=? AND status=?`).bind(to,to,options.actorId,to,options.now,options.now,options.paymentId,from),database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,ip_hash,created_at) VALUES (?,?,?,'managed_supplier_payment',?,'Simulated fixed-supplier payment transition',?,CASE WHEN EXISTS(SELECT 1 FROM managed_supplier_payments WHERE id=? AND status=?) THEN ? ELSE json_extract('invalid','$') END,?,NULL,?)`).bind(crypto.randomUUID(),options.actorId,`managed_supplier_payment.${to}`,options.paymentId,JSON.stringify({status:from}),options.paymentId,to,JSON.stringify({status:to,simulationLabel:SIMULATED_RECORD_LABEL,...(options.form?{catalogDigest}:{})}),options.requestId,options.now)];
  if(options.form)statements.push(buildFormAnswerInsert(database,{formId:'staff.managed-payment-action',requestId:options.requestId,versionId:options.form.versionId,subjectType:'managed_supplier_payment',subjectId:options.paymentId,actorId:options.actorId,answers:options.form.answers,now:options.now}));
  if(options.form){const guardId=crypto.randomUUID();statements.unshift(
   database.prepare(`INSERT INTO staff_permission_guards(id,valid) SELECT ?,CASE WHEN EXISTS(
-   SELECT 1 FROM managed_supplier_payments WHERE id=? AND status=? AND prepared_by=?
-   ${options.action==='approve'?'AND prepared_by<>?':''}) THEN 1 ELSE 0 END`)
-   .bind(guardId,options.paymentId,from,row.preparedBy,...(options.action==='approve'?[options.actorId]:[])),
+   SELECT 1 FROM managed_supplier_payments WHERE id=? AND status=? AND prepared_by=?) THEN 1 ELSE 0 END`)
+   .bind(guardId,options.paymentId,from,row.preparedBy),
   database.prepare('DELETE FROM staff_permission_guards WHERE id=?').bind(guardId));}
  statements.push(...(authority?.statements??[]));
  const result=await database.batch(statements);if((result[options.form?2:0].meta.changes??0)!==1)throw new FixedSupplyError('Supplier payment changed before this action completed.');

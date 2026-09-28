@@ -1,5 +1,6 @@
 import { calculateManagedSaleLinkedRefundAmounts } from '@/lib/managed-makers/settlement';
 import { SIMULATED_RECORD_LABEL } from '@/lib/staging/environment';
+import { staffMutationGuard } from './staff-mutation-guard';
 
 const dayMs = 86_400_000;
 const kathmanduOffsetMs = (5 * 60 + 45) * 60_000;
@@ -120,18 +121,20 @@ export async function prepareManagedPayout(database:D1Database,options:{sellerId
 }
 
 export async function transitionManagedPayout(database:D1Database,options:{payoutId:string;actorId:string;action:'approve'|'mark_paid';requestId:string;providerReference?:string;now:number}):Promise<void>{
+  const authority=await staffMutationGuard(database,options.actorId,options.action==='approve'?'payout.approve':'payout.mark_paid',ManagedSettlementError,'super_admin');
   const duplicate=await database.prepare('SELECT 1 FROM audit_logs WHERE request_id=?').bind(options.requestId).first();
   if(duplicate)return;
   const row=await database.prepare('SELECT status,prepared_by AS preparedBy FROM managed_payouts WHERE id=?').bind(options.payoutId).first<{status:string;preparedBy:string}>();
   if(!row)throw new ManagedSettlementError('Managed payout not found.');
   if(options.action==='approve'){
-    if(row.status!=='prepared'||row.preparedBy===options.actorId)throw new ManagedSettlementError('A different authorized reviewer must approve a prepared payout.');
+    if(row.status!=='prepared')throw new ManagedSettlementError('Only a prepared payout can be approved.');
     await database.batch([
       database.prepare("UPDATE managed_payouts SET status='approved',approved_by=?,updated_at=? WHERE id=? AND status='prepared'").bind(options.actorId,options.now,options.payoutId),
       database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,ip_hash,created_at)
-        VALUES (?,?,'managed_payout.approved','managed_payout',?,'A different authorized reviewer approved the simulated payout',NULL,?,?,NULL,?)`).bind(
+        VALUES (?,?,'managed_payout.approved','managed_payout',?,'Super Admin approved the simulated payout',NULL,?,?,NULL,?)`).bind(
         crypto.randomUUID(),options.actorId,options.payoutId,JSON.stringify({status:'approved'}),options.requestId,options.now,
       ),
+      ...authority.statements,
     ]);return;
   }
   if(row.status!=='approved')throw new ManagedSettlementError('Only an approved payout can be marked paid.');
@@ -144,5 +147,6 @@ export async function transitionManagedPayout(database:D1Database,options:{payou
       VALUES (?,?,'managed_payout.paid','managed_payout',?,'Simulated payout completion recorded',NULL,?,?,NULL,?)`).bind(
       crypto.randomUUID(),options.actorId,options.payoutId,JSON.stringify({status:'paid',providerReference:reference}),options.requestId,options.now,
     ),
+    ...authority.statements,
   ]);
 }

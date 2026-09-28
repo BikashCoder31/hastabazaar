@@ -311,7 +311,7 @@ function publicationStatements(
       `EXISTS (
          SELECT 1 FROM business_setting_versions
          WHERE id = ? AND status = ? AND revision = ?
-           AND (? = 0 OR (submitted_by IS NOT NULL AND submitted_by <> ?))
+           AND (? = 0 OR submitted_by IS NOT NULL)
        ) AND NOT EXISTS (
          SELECT 1 FROM business_setting_versions
          WHERE setting_key = ? AND status = 'published' AND effective_from >= ?
@@ -321,7 +321,6 @@ function publicationStatements(
         input.fromStatus,
         input.expectedRevision,
         input.approved ? 1 : 0,
-        input.actorId,
         input.record.key,
         input.effectiveFrom,
       ],
@@ -536,7 +535,7 @@ export async function publishBusinessSettingDraft(
   }
   if (record.changeControl !== 'simple') {
     throw new BusinessSettingConflictError(
-      'Controlled settings require submission and independent approval.',
+      'Controlled settings require submission and Super Admin approval.',
     );
   }
   assertBusinessSettingPublicationReady(record.key, record.value, { simulationAllowed: options.simulationAllowed });
@@ -648,6 +647,16 @@ export async function submitBusinessSettingDraft(
   ]), options.form);
 }
 
+const activeSuperAdminPredicate = `EXISTS (SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id
+  WHERE u.id=? AND u.status='active' AND r.role='super_admin')`;
+
+async function decisionAuthority(database: D1Database, actorId: string): Promise<D1PreparedStatement[]> {
+  const current = await database.prepare('SELECT 1 AS allowed WHERE ' + activeSuperAdminPredicate)
+    .bind(actorId).first<{ allowed: number }>();
+  if (!current) throw new BusinessSettingConflictError('Current active Super Admin authority is required.');
+  return guard(database, activeSuperAdminPredicate, [actorId]);
+}
+
 export async function approveBusinessSettingChange(
   database: D1Database,
   options: {
@@ -662,6 +671,7 @@ export async function approveBusinessSettingChange(
     form?: BusinessSettingForm;
   },
 ): Promise<void> {
+  const authority = await decisionAuthority(database, options.actorId);
   const record = await getVersionById(database, options.id);
   const reason = normalizeReason(options.reason);
   const requestId = validateRequestId(options.requestId);
@@ -675,11 +685,10 @@ export async function approveBusinessSettingChange(
     !record ||
     record.status !== 'pending_approval' ||
     record.revision !== options.expectedRevision ||
-    !record.submittedBy ||
-    record.submittedBy === options.actorId
+    !record.submittedBy
   ) {
     throw new BusinessSettingConflictError(
-      'A different reviewer must approve the current pending version.',
+      'Only the current submitted pending version can be approved.',
     );
   }
   assertBusinessSettingPublicationReady(record.key, record.value, { simulationAllowed: options.simulationAllowed });
@@ -698,7 +707,7 @@ export async function approveBusinessSettingChange(
   await atomic(
     database,
     formStatements(database, record.key, options.form, options.actorId, requestId,
-      record.id, now, publicationStatements(database, {
+      record.id, now, [...authority, ...publicationStatements(database, {
       record,
       actorId: options.actorId,
       expectedRevision: options.expectedRevision,
@@ -708,7 +717,7 @@ export async function approveBusinessSettingChange(
       now,
       fromStatus: 'pending_approval',
       approved: true,
-      })),
+      })]),
     options.form,
   );
 }
@@ -725,6 +734,7 @@ export async function rejectBusinessSettingChange(
     form?: BusinessSettingForm;
   },
 ): Promise<void> {
+  const authority = await decisionAuthority(database, options.actorId);
   const record = await getVersionById(database, options.id);
   const reason = normalizeReason(options.reason);
   const requestId = validateRequestId(options.requestId);
@@ -737,24 +747,24 @@ export async function rejectBusinessSettingChange(
     !record ||
     record.status !== 'pending_approval' ||
     record.revision !== options.expectedRevision ||
-    !record.submittedBy ||
-    record.submittedBy === options.actorId
+    !record.submittedBy
   ) {
     throw new BusinessSettingConflictError(
-      'A different reviewer must reject the current pending version.',
+      'Only the current submitted pending version can be rejected.',
     );
   }
   const nextRevision = options.expectedRevision + 1;
   await atomic(database, formStatements(database, record.key, options.form,
     options.actorId, requestId, record.id, now, [
+    ...authority,
     ...guard(
       database,
       `EXISTS (
         SELECT 1 FROM business_setting_versions
         WHERE id = ? AND status = 'pending_approval' AND revision = ?
-          AND submitted_by <> ?
+          AND submitted_by IS NOT NULL
       )`,
-      [record.id, options.expectedRevision, options.actorId],
+      [record.id, options.expectedRevision],
     ),
     database
       .prepare(

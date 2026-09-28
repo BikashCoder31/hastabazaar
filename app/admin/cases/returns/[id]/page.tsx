@@ -172,7 +172,7 @@ export default async function AdminReturnCasePage({
             <h2 className="font-heading text-2xl">Decision and operations</h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               Amounts are entered in NPR and stored as integer paisa. Refunds at
-              or above NPR 10,000 require a different Super Admin.
+              or above NPR 10,000 require Super Admin approval.
             </p>
             <div className="mt-5">
               <ReturnCaseActions

@@ -359,11 +359,8 @@ void test('controlled setting submission, rejection, approval and reversal each 
       reason: 'Submit controlled change', requestId: 'controlled-submit', now: 110, form: context };
     await submitBusinessSettingDraft(database, submission);
     assert.equal(count(sqlite, 'form_answer_sets'), 2);
-    await assert.rejects(approveBusinessSettingChange(database, { id: draft.id, actorId: 'admin-a',
-      expectedRevision: 2, reason: 'Cannot self approve', requestId: 'controlled-self', now: 120,
-      effectiveFrom: 2_000_000_000, form: context }));
-    assert.equal(count(sqlite, 'form_answer_sets'), 2);
-    const rejection = { id: draft.id, actorId: 'admin-b', expectedRevision: 2,
+
+    const rejection = { id: draft.id, actorId: 'admin-a', expectedRevision: 2,
       reason: 'Needs supporting evidence', requestId: 'controlled-reject', now: 130, form: context };
     await rejectBusinessSettingChange(database, rejection);
     assert.equal(count(sqlite, 'form_answer_sets'), 3);
@@ -402,7 +399,7 @@ void test('simple publish and controlled approval/reversal retain exact action a
       now: 300, form: context });
     await submitBusinessSettingDraft(database, { id: controlled.id, actorId: 'admin-a', expectedRevision: 1,
       reason: 'Submit controlled change', requestId: 'approve-submit', now: 310, form: context });
-    const approval = { id: controlled.id, actorId: 'admin-b', expectedRevision: 2,
+    const approval = { id: controlled.id, actorId: 'admin-a', expectedRevision: 2,
       effectiveFrom: 2_000_000_000, reason: 'Independent review approved', requestId: 'approve-action',
       now: 320, form: context };
     await approveBusinessSettingChange(database, approval);
@@ -438,7 +435,7 @@ void test('revoked actor and newer publication abort setting and answer atomical
   } finally { sqlite.close(); }
 });
 
-void test('approval rechecks independent reviewer inside the transaction', async () => {
+void test('approval rechecks submission provenance inside the transaction', async () => {
   const { sqlite, database, db } = await fixture();
   try {
     const context = form('staff.business-settings-manager');
@@ -448,7 +445,7 @@ void test('approval rechecks independent reviewer inside the transaction', async
     await submitBusinessSettingDraft(database, { id: draft.id, actorId: 'admin-a', expectedRevision: 1,
       reason: 'Submit controlled change', requestId: 'race-submit', now: 110, form: context });
     db.beforeBatch = () => sqlite.prepare('UPDATE business_setting_versions SET submitted_by=? WHERE id=?')
-      .run('admin-b', draft.id);
+      .run(null, draft.id);
     await assert.rejects(approveBusinessSettingChange(database, { id: draft.id, actorId: 'admin-b',
       expectedRevision: 2, effectiveFrom: 2_000_000_000, reason: 'Independent review approved',
       requestId: 'race-approve', now: 120, form: context }));
@@ -556,4 +553,31 @@ void test('both settings routes accept a validated large custom snapshot while r
       assert.deepEqual(JSON.parse(answer.json),validated.answers);
     }finally{sqlite.close();globalThis.settingsRouteActor=null;}
   });
+});
+
+void test('same-Super-Admin decisions deny revoked authority and stale transaction revisions atomically', async (t) => {
+  for (const action of ['approve', 'reject'] as const) {
+    for (const mutation of ['ordinary_admin', 'suspended', 'revision', 'draft', 'missing_submitter'] as const) await t.test(action + ':' + mutation, async () => {
+      const { sqlite, database, db } = await fixture();
+      try {
+        const context = form('staff.business-settings-manager');
+        const draft = await createBusinessSettingDraft(database, { key: 'independent_seller_commission_bps', value: 1200, actorId: 'admin-a', reason: 'Controlled commission change', requestId: 'denial-draft', now: 100, form: context });
+        await submitBusinessSettingDraft(database, { id: draft.id, actorId: 'admin-a', expectedRevision: 1, reason: 'Submit controlled change', requestId: 'denial-submit', now: 110, form: context });
+        db.beforeBatch = () => {
+          if (mutation === 'ordinary_admin') sqlite.exec("UPDATE user_roles SET role='admin' WHERE user_id='admin-a'");
+          if (mutation === 'suspended') sqlite.exec("UPDATE users SET status='suspended' WHERE id='admin-a'");
+          if (mutation === 'revision') sqlite.prepare('UPDATE business_setting_versions SET revision=revision+1 WHERE id=?').run(draft.id);
+          if (mutation === 'draft') sqlite.prepare("UPDATE business_setting_versions SET status='draft' WHERE id=?").run(draft.id);
+          if (mutation === 'missing_submitter') sqlite.prepare('UPDATE business_setting_versions SET submitted_by=NULL WHERE id=?').run(draft.id);
+        };
+        const input = { id: draft.id, actorId: 'admin-a', expectedRevision: 2, effectiveFrom: 2_000_000_000, reason: 'Review controlled change', requestId: 'denial-action', now: 120, form: context };
+        await assert.rejects(action === 'approve' ? approveBusinessSettingChange(database, input) : rejectBusinessSettingChange(database, input));
+        const record = sqlite.prepare('SELECT status, approved_by FROM business_setting_versions WHERE id=?').get(draft.id);
+        assert.equal(record?.status, mutation === 'draft' ? 'draft' : 'pending_approval');
+        assert.equal(record?.approved_by, null);
+        assert.equal(count(sqlite, 'form_answer_sets'), 2);
+        assert.equal((sqlite.prepare("SELECT count(*) AS n FROM audit_logs WHERE request_id='denial-action'").get())?.n, 0);
+      } finally { sqlite.close(); }
+    });
+  }
 });

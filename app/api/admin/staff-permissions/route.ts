@@ -69,7 +69,7 @@ export async function POST(request: Request) {
         {
           id,
           message:
-            'Proposal saved. Effective access changes only after a different active Super Admin approves.',
+            'Proposal saved. Effective access changes only after an active Super Admin approves.',
         },
         201,
       );

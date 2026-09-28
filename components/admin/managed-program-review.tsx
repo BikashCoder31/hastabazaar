@@ -158,7 +158,7 @@ export function ManagedProgramReview({ sellerId, workspace }: { sellerId: string
           {fields('staff.managed-payment-preparation')}{formMessage('staff.managed-payment-preparation', supply.id, 'prepare_payment')}<Button type="submit" disabled={disabled('staff.managed-payment-preparation')}>Prepare simulated payment</Button>
         </form> : <form data-form-id="staff.managed-payment-action" className="space-y-2 rounded border p-3" onSubmit={send}>
           <input type="hidden" name="paymentId" value={supply.paymentId} /><p className="font-semibold">Payment {supply.paymentStatus} · {supply.paymentId}</p>
-          <select name="action" className="h-9 w-full rounded border px-2">{supply.paymentStatus === 'prepared' ? <option value="approve_payment">Approve (different Super Admin)</option> : null}{supply.paymentStatus === 'approved' ? <option value="mark_payment_paid">Mark simulated paid</option> : null}</select>
+          <select name="action" className="h-9 w-full rounded border px-2">{supply.paymentStatus === 'prepared' ? <option value="approve_payment">Approve payment</option> : null}{supply.paymentStatus === 'approved' ? <option value="mark_payment_paid">Mark simulated paid</option> : null}</select>
           {fields('staff.managed-payment-action')}{formMessage('staff.managed-payment-action', supply.paymentId, supply.paymentStatus === 'prepared' ? 'approve_payment' : 'mark_payment_paid')}<Button type="submit" disabled={disabled('staff.managed-payment-action') || supply.paymentStatus === 'paid'}>Record payment action</Button>
         </form>}
       </div> : null}

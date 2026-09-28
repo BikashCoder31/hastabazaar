@@ -43,6 +43,7 @@ export function ParcelControls({
   records,
   compensation,
   actorId,
+  isSuperAdmin = false,
   canPrepare,
 }: {
   orderId: string;
@@ -50,6 +51,7 @@ export function ParcelControls({
   records: Cash[];
   compensation: Compensation[];
   actorId: string;
+  isSuperAdmin?: boolean;
   canPrepare: boolean;
 }) {
   const router = useRouter();
@@ -170,14 +172,14 @@ export function ParcelControls({
                     <div className="mt-2 flex flex-wrap gap-3">
                       <button
                         className="rounded border p-2"
-                        disabled={busy || r.maker === actorId}
+                        disabled={busy || r.riderId === actorId || (r.maker === actorId && !isSuperAdmin)}
                         onClick={() =>
                           void send({
                             jobId: p.id,
                             version: p.version,
                             action: 'approve_remittance',
                             cashRecordId: r.id,
-                            note: 'Independent staff verified remittance evidence.',
+                            note: 'Staff verified remittance evidence.',
                           })
                         }
                       >
@@ -185,20 +187,20 @@ export function ParcelControls({
                       </button>
                       <button
                         className="rounded border p-2"
-                        disabled={busy || r.maker === actorId}
+                        disabled={busy || r.riderId === actorId || (r.maker === actorId && !isSuperAdmin)}
                         onClick={() =>
                           void send({
                             jobId: p.id,
                             version: p.version,
                             action: 'reject_remittance',
                             cashRecordId: r.id,
-                            note: 'Independent review rejected the remittance evidence.',
+                            note: 'Staff review rejected the remittance evidence.',
                           })
                         }
                       >
                         Reject
                       </button>
-                      {r.maker === actorId ? (
+                      {r.riderId === actorId || (r.maker === actorId && !isSuperAdmin) ? (
                         <span>
                           Another staff member must review this record.
                         </span>

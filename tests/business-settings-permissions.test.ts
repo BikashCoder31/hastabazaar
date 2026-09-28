@@ -24,7 +24,7 @@ void test('business settings remain Super-Admin-only even when an Admin forges d
   }
 });
 
-void test('controlled approval requires approval authority and a different actor', () => {
+void test('controlled approval permits the proposing Super Admin and retains role authority', () => {
   const proposer = {
     id: 'super-a',
     role: 'super_admin' as const,
@@ -38,13 +38,10 @@ void test('controlled approval requires approval authority and a different actor
       proposedBy: proposer.id,
     }),
   );
-  assert.throws(
-    () =>
-      assertBusinessSettingAuthorization(proposer, 'approve', {
-        proposedBy: proposer.id,
-      }),
-    BusinessSettingAuthorizationError,
-  );
+  assert.doesNotThrow(() => assertBusinessSettingAuthorization(proposer, 'approve', { proposedBy: proposer.id }));
+  for (const role of ['admin', 'customer', 'seller'] as const) {
+    assert.throws(() => assertBusinessSettingAuthorization({ id: proposer.id, role, permissions: ['business_settings.approve'] }, 'approve', { proposedBy: proposer.id }), BusinessSettingAuthorizationError);
+  }
   assert.throws(
     () =>
       assertBusinessSettingAuthorization(

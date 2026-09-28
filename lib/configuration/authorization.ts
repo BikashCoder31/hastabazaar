@@ -20,16 +20,12 @@ const actionPermission = {
 export function assertBusinessSettingAuthorization(
   actor: BusinessSettingActor,
   action: BusinessSettingAction,
-  context: Readonly<{ proposedBy?: string | null }> = {},
+  _context: Readonly<{ proposedBy?: string | null }> = {},
 ): void {
   if (!can(actor, actionPermission[action])) {
     throw new BusinessSettingAuthorizationError(
       'Only an authorized Super Admin can perform this business-settings action.',
     );
   }
-  if (action === 'approve' && context.proposedBy === actor.id) {
-    throw new BusinessSettingAuthorizationError(
-      'A different Super Admin must review a controlled setting change.',
-    );
-  }
+
 }

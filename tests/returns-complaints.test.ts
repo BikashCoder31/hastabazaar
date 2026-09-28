@@ -1003,11 +1003,11 @@ void test('staging staff bootstrap is identity-bound, idempotent, and maker-chec
   }
 });
 
-async function databaseFixture() {
+async function databaseFixture(includeApprovalUpgrade = true) {
   const sqlite = new DatabaseSync(':memory:');
   const database = new TestD1Database(sqlite);
   const names = (await readdir(new URL('../drizzle/', import.meta.url)))
-    .filter((name) => /^\d{4}_.+\.sql$/.test(name))
+    .filter((name) => /^\d{4}_.+\.sql$/.test(name) && (includeApprovalUpgrade || name < '0062'))
     .sort();
   for (const name of names) {
     const sql = await readFile(
@@ -1434,7 +1434,7 @@ void test('Admin queue counts include assigned and escalated complaints and coun
   }
 });
 
-void test('governance reads exclude restricted datasets for Admin and preserve independent promotion decisions', async () => {
+void test('governance reads exclude restricted datasets for Admin and allow the same Super Admin promotion decision', async () => {
   const fixture = await databaseFixture();
   const db = fixture.database as unknown as D1Database;
   try {
@@ -1493,21 +1493,32 @@ void test('governance reads exclude restricted datasets for Admin and preserve i
         () =>
           performGovernanceAction(db, {
             ...base,
+            actorId: 'admin-1',
+            actorRole: 'admin',
             action,
-            requestId: action + '-self',
+            requestId: action + '-ordinary-admin',
             data: { id: promotionId },
           }),
-        /maker cannot/,
+        /Super Admin approval/,
       );
+    await assert.rejects(() => performGovernanceAction(db, {
+      ...base, actorId: 'admin-1', action: 'promotion.approve',
+      requestId: 'gov-forged-super-role', data: { id: promotionId },
+    }), /authority|access|permission|role/i);
     const decision = {
       ...base,
-      actorId: 'super-2',
+      actorId: 'super-1',
       action: 'promotion.approve',
       requestId: 'gov-independent-approve',
       data: { id: promotionId },
     };
     await performGovernanceAction(db, decision);
     await performGovernanceAction(db, decision);
+    assert.deepEqual(
+      { ...await db.prepare('SELECT created_by AS createdBy, approved_by AS approvedBy, status FROM promotions WHERE id=?')
+        .bind(promotionId).first() },
+      { createdBy: 'super-1', approvedBy: 'super-1', status: 'active' },
+    );
     assert.equal(
       (await getAdminWorkSummary(db, 'super_admin')).approvals?.promotions,
       0,
@@ -3065,8 +3076,8 @@ void test('item return, refund liability, maker-checker, idempotency, and owners
     });
     await reviewReturnAsAdmin(db, {
       returnRequestId: high.id,
-      actorId: 'admin-1',
-      actorRole: 'admin',
+      actorId: 'super-1',
+      actorRole: 'super_admin',
       action: 'approve',
       note: 'The wrong item is documented and qualifies for a full refund.',
       publicMessageEn: 'Your refund is approved pending high-value review.',
@@ -3113,7 +3124,7 @@ void test('item return, refund liability, maker-checker, idempotency, and owners
       {
         status: 'approved',
         refundStatus: 'approved',
-        maker: 'admin-1',
+        maker: 'super-1',
         checker: 'super-1',
       },
     );
@@ -5850,4 +5861,89 @@ void test('customer cancellation retains submitted authorization when ownership 
   } finally {
     await f.dispose();
   }
+});
+
+void test('single Super Admin can review own carrier remittance with audit and exact replay', async () => {
+  const f = await parcelFixture(); const db = f.db;
+  try {
+    const p = (await listParcels(db, 'order-1'))[0];
+    let sequence = 0;
+    const operate = async (action: string, extra: Record<string, unknown> = {}, actorId = 'super-1') => {
+      const current = (await listParcels(db, 'order-1')).find(row => row.id === p.id)!;
+      const input = {jobId:p.id,actorId,action,version:current.version,note:'SIMULATED carrier receipt reviewed.',requestId:'single-sa-cash-'+sequence++,now:Date.now(),...extra};
+      await operateParcel(db,input); return input;
+    };
+    await operate('assign',{method:'courier',courierName:'Fictional carrier',trackingCode:'LOCAL-CASH'});
+    await db.prepare("UPDATE order_items SET fulfillment_status='ready_for_pickup' WHERE order_id='order-1'").run();
+    await operate('dispatch');
+    await operate('collect',{amountPaisa:100,reference:'LOCAL-COLLECTION'});
+    await operate('propose_remittance',{amountPaisa:100,reference:'LOCAL-REMITTANCE'});
+    const cash = (await parcelCashRecords(db,'order-1')).find(row => row.kind==='remittance' && row.status==='pending')!;
+    assert.equal(cash.maker,'super-1');
+    const input = await operate('approve_remittance',{cashRecordId:cash.id});
+    await operateParcel(db,input);
+    const row = await db.prepare('SELECT status,created_by AS maker,approved_by AS approver FROM parcel_cash_records WHERE id=?').bind(cash.id).first();
+    assert.deepEqual({...row},{status:'posted',maker:'super-1',approver:'super-1'});
+    assert.equal((await listParcels(db,'order-1')).find(row=>row.id===p.id)!.remittedPaisa,100);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM audit_logs WHERE request_id=?').bind(input.requestId+':audit').first<{n:number}>())?.n,1);
+    await assert.rejects(operateParcel(db,{...input,requestId:'single-sa-stale'}));
+    await assert.rejects(operateParcel(db,{...input,actorId:'admin-1'}));
+  } finally {await f.dispose();}
+});
+
+void test('carrier remittance keeps ordinary staff separation and rider self-review blocked', async () => {
+  const f=await parcelFixture(); const db=f.db;
+  try {
+    const p=(await listParcels(db,'order-1'))[0];
+    await db.prepare(`INSERT INTO parcel_cash_records(id,shipping_job_id,kind,amount_paisa,evidence_reference,status,created_by,created_at,rider_user_id)
+      VALUES ('staff-cash',?,'remittance',100,'LOCAL-STAFF','pending','admin-1',1,NULL),
+      ('rider-cash',?,'remittance',100,'LOCAL-RIDER','pending','super-1',1,'super-1')`).bind(p.id,p.id).run();
+    for(const [id,actorId] of [['staff-cash','admin-1'],['rider-cash','super-1']]) {
+      for(const action of ['approve_remittance','reject_remittance']) {
+        await assert.rejects(operateParcel(db,{jobId:p.id,actorId,action,cashRecordId:id,version:p.version,
+          requestId:id+action,note:'SIMULATED boundary regression.',now:Date.now()}), /authorized reviewer/);
+      }
+    }
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM parcel_cash_records WHERE status='pending'").first<{n:number}>())?.n,2);
+    assert.equal((await listParcels(db,'order-1'))[0].version,p.version);
+  } finally {await f.dispose();}
+});
+
+void test('approval migration preserves populated refunds, supplier payments and carrier cash with role and rider conflicts enforced',async()=>{
+  const f=await databaseFixture(false),db=f.database as unknown as D1Database;
+  try {
+    const seeds=[
+      `INSERT INTO refunds(id,order_id,status,amount_paisa,reason,requested_at,approved_by,high_value_approved_by)
+       VALUES('upgrade-refund','order-1','approved',1000,'SIMULATED original refund',1,'super-1','super-2')`,
+      `INSERT INTO managed_supply_records(id,seller_id,product_id,quantity_proposed,quantity_accepted,agreed_unit_paisa,accepted_total_paisa,status,possession_status,quality_status,ownership_record_status,risk_record_status,agreement_version,agreement_language,payout_beneficiary_reference,simulation_label,created_by,decided_by,proposal_request_id,created_at)
+       VALUES('upgrade-supply','seller-1','product-1',1,1,5000,5000,'accepted','received','accepted','simulated_terms_recorded','simulated_terms_recorded','SIM-V1','en','SIM-ACCOUNT','SIMULATED','seller-user-1','super-1','upgrade-supply',1)`,
+      `INSERT INTO managed_supplier_obligations(id,seller_id,original_amount_paisa,payout_beneficiary_reference,agreement_version,agreement_language,owed_at,eligible_at,created_at)
+       VALUES('upgrade-supply','seller-1',5000,'SIM-ACCOUNT','SIM-V1','en',1,1,1)`,
+      `INSERT INTO managed_supplier_payments(id,obligation_id,amount_paisa,status,destination_reference,simulation_label,prepared_by,approved_by,request_id,created_at,updated_at)
+       VALUES('upgrade-payment','upgrade-supply',5000,'approved','SIM-ACCOUNT','SIMULATED','super-1','super-2','upgrade-payment',1,1)`,
+      `INSERT INTO shipping_jobs(id,order_id,seller_id,direction,status,created_by,created_request_id,created_at,updated_at)
+       VALUES('upgrade-job','order-1','seller-1','outbound','delivered','super-1','upgrade-job',1,1)`,
+      `INSERT INTO shipping_parcels(shipping_job_id,cod_due_paisa,collected_paisa,method,created_at)
+       VALUES('upgrade-job',5000,5000,'courier',1)`,
+      `INSERT INTO parcel_cash_records(id,shipping_job_id,kind,amount_paisa,evidence_reference,status,created_by,approved_by,created_at)
+       VALUES('upgrade-cash','upgrade-job','remittance',5000,'SIM-UPGRADE-CASH','posted','super-1','super-2',1)`,
+    ];
+    for(const seed of seeds)await db.prepare(seed).run();
+    const tables=['refunds','managed_supply_records','managed_supplier_obligations','managed_supplier_payments','shipping_jobs','shipping_parcels','parcel_cash_records','orders','order_items','audit_logs'];
+    const before=await Promise.all(tables.map(table=>db.prepare(`SELECT * FROM ${table}`).all()));
+    const indexes=(await db.prepare("SELECT name FROM sqlite_master WHERE type IN ('index','trigger') AND name NOT LIKE 'sqlite_%'").all<{name:string}>()).results;
+    const sql=await readFile(new URL('../drizzle/0062_single_super_admin_approvals.sql',import.meta.url),'utf8');
+    for(const statement of sql.split('--> statement-breakpoint'))if(statement.trim()&&!statement.trim().startsWith('--'))await db.prepare(statement).run();
+    for(const [index,table] of tables.entries())assert.deepEqual((await db.prepare(`SELECT * FROM ${table}`).all()).results,before[index].results,table);
+    for(const {name} of indexes)assert.ok(await db.prepare('SELECT name FROM sqlite_master WHERE name=?').bind(name).first(),name);
+    assert.deepEqual((await db.prepare('PRAGMA foreign_key_check').all()).results,[]);
+    await db.prepare("UPDATE refunds SET high_value_approved_by='super-1' WHERE id='upgrade-refund'").run();
+    await db.prepare("UPDATE managed_supplier_payments SET approved_by='super-1' WHERE id='upgrade-payment'").run();
+    await assert.rejects(db.prepare("UPDATE refunds SET approved_by='admin-1',high_value_approved_by='admin-1' WHERE id='upgrade-refund'").run(),/active_super_admin/);
+    await assert.rejects(db.prepare("UPDATE managed_supplier_payments SET prepared_by='admin-1',approved_by='admin-1' WHERE id='upgrade-payment'").run(),/active_super_admin/);
+    await assert.rejects(db.prepare("INSERT INTO parcel_cash_records(id,shipping_job_id,kind,amount_paisa,evidence_reference,status,created_by,approved_by,rider_user_id,created_at) VALUES('rider-conflict','upgrade-job','remittance',1,'RIDER-CONFLICT','posted','super-1','super-1','super-1',1)").run(),/active_super_admin/);
+    await db.prepare("UPDATE users SET status='suspended' WHERE id='super-1'").run();
+    await db.prepare("UPDATE refunds SET status='processing' WHERE id='upgrade-refund'").run();
+    await assert.rejects(db.prepare("INSERT INTO managed_supplier_payments(id,obligation_id,amount_paisa,status,destination_reference,simulation_label,prepared_by,approved_by,request_id,created_at,updated_at) VALUES('disabled-payment','upgrade-supply',1,'approved','SIM-ACCOUNT','SIMULATED','super-1','super-1','disabled-payment',1,1)").run(),/active_super_admin/);
+  } finally {await f.dispose();}
 });

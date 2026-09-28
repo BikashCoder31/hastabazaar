@@ -858,15 +858,16 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
         )
         .bind(o.cashRecordId ?? '', o.jobId)
         .first<{ amount: number; maker: string; riderId: string | null }>();
-      if (!record || record.maker === o.actorId)
+      if (!record || record.riderId === o.actorId ||
+          (record.maker === o.actorId && authority.role !== 'super_admin'))
         throw new ParcelConflictError(
-          'Another staff member must review this pending remittance.',
+          'An authorized reviewer must review this pending remittance; staff cannot review their own rider cash.',
         );
       statements.push(
         ...assertion(
           db,
-          "EXISTS(SELECT 1 FROM parcel_cash_records WHERE id=? AND shipping_job_id=? AND status='pending' AND created_by<>?)",
-          [o.cashRecordId, o.jobId, o.actorId],
+          "EXISTS(SELECT 1 FROM parcel_cash_records WHERE id=? AND shipping_job_id=? AND status='pending' AND (rider_user_id IS NULL OR rider_user_id<>?) AND (created_by<>? OR ?='super_admin'))",
+          [o.cashRecordId, o.jobId, o.actorId, o.actorId, authority.role],
         ),
       );
       if (o.action === 'approve_remittance') {

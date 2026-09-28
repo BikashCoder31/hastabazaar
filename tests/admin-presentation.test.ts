@@ -78,7 +78,7 @@ void test('payout affordances follow state, role authority, and independent appr
     ]);
     assert.deepEqual(
       availablePayoutActions(status, { ...checker, isPreparer: true }),
-      [],
+      ['approve', 'reject'],
     );
   }
   for (const status of ['approved', 'failed']) {

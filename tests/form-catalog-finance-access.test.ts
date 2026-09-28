@@ -183,6 +183,21 @@ void test('invitation records one contextual snapshot with exact actor, role and
     assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM staff_invitations').get() as { count: number }).count, 1);
   } finally { sqlite.close(); }
 });
+void test('the sole active Super Admin can invite another Super Admin', async () => {
+  const { sqlite, database } = fixture('staff.staff-invitation');
+  try {
+    sqlite.exec("DELETE FROM user_roles WHERE user_id='sa2'");
+    const options = { email: 'additional-super@example.test', role: 'super_admin' as const,
+      invitedBy: 'sa1', now: 100, requestId: 'solo-super-invite',
+      form: answer('staff.staff-invitation', 'solo-super-invite') };
+    const invitation = await createStaffInvitation(database, options);
+    assert.deepEqual({ ...sqlite.prepare('SELECT role,status,invited_by AS invitedBy FROM staff_invitations WHERE id=?').get(invitation.id) },
+      { role: 'super_admin', status: 'pending', invitedBy: 'sa1' });
+    assert.equal((await createStaffInvitation(database, options)).duplicate, true);
+    await assert.rejects(createStaffInvitation(database, { ...options, invitedBy: 'admin1', requestId: 'admin-invite',
+      form: answer('staff.staff-invitation', 'admin-invite') }), /Super Admin authority/);
+  } finally { sqlite.close(); }
+});
 
 void test('referral route records contextual evidence once without changing protected amount validation', async () => {
   const { sqlite, database } = fixture('staff.referral-settings');

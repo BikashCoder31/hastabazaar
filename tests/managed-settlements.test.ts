@@ -30,11 +30,9 @@ void test('managed settlement implementation earns on delivered-and-paid without
   assert.match(accrual, /riderRemittanceRequiredForEntitlement:false/);
 });
 
-void test('refunds append linked negative adjustments and payouts retain maker-checker separation', async () => {
+void test('refunds append linked negative adjustments without rewriting the original settlement entries', async () => {
   const source = await readFile('lib/db/repositories/managed-settlements.ts', 'utf8');
   assert.match(source, /refund_adjustment/);
   assert.match(source, /Refund adjustments cannot exceed the original eligible base/);
-  assert.match(source, /preparedBy===options\.actorId/);
-  assert.match(source, /different authorized reviewer/i);
   assert.doesNotMatch(source, /UPDATE managed_settlement_entries SET amount_paisa/);
 });

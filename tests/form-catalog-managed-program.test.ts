@@ -116,6 +116,8 @@ async function fixture() {
       VALUES (?, ?, 1, 1, 'published', ?, 'Test publication', 'reviewer', 1, 'reviewer', 1, 'reviewer', 1, ?)`)
       .run(`${id}-v1`, id, JSON.stringify({ formId: id, fields: [] }), `publish-${id}`);
   }
+  const upgrade = await readFile(new URL('../drizzle/0062_single_super_admin_approvals.sql', import.meta.url), 'utf8');
+  sqlite.exec('PRAGMA foreign_keys=OFF;' + upgrade.split('-- BEGIN managed_supplier_payments')[1].split('-- END managed_supplier_payments')[0].replaceAll('--> statement-breakpoint', '') + 'PRAGMA foreign_keys=ON;');
   const db = new Database(sqlite);
   globalThis.managedProgramDb = db as unknown as D1Database;
   globalThis.managedProgramActor = { id: 'reviewer', role: 'super_admin' };
@@ -179,9 +181,9 @@ void test('payment preparation and both payment actions own separate exact repla
     assert.equal(await prepareFixedSupplierPayment(database, prepare), paymentId);
     await assert.rejects(prepareFixedSupplierPayment(database, { ...prepare, destinationReference: 'OTHER-ACCOUNT' }));
     const approveRequest = 'approve-one';
-    const approval = { paymentId, actorId: 'finance', action: 'approve' as const,
+    const approval = { paymentId, actorId: 'reviewer', action: 'approve' as const,
       requestId: approveRequest, now: 400, environment, form: form('staff.managed-payment-action', approveRequest) };
-    await assert.rejects(transitionFixedSupplierPayment(database, { ...approval, actorId: 'reviewer' }), /different Super Admin/i);
+    await assert.rejects(transitionFixedSupplierPayment(database, { ...approval, actorId: 'other' }), /Super Admin|permission/i);
     await transitionFixedSupplierPayment(database, approval);
     await transitionFixedSupplierPayment(database, approval);
     await assert.rejects(transitionFixedSupplierPayment(database, { ...approval, action: 'mark_paid' }));
@@ -461,8 +463,6 @@ void test('managed-program route validates each branch and persists answers only
     assert.equal(prepared.status, 200);
     const { paymentId } = await prepared.json() as { paymentId: string };
     assert.ok(paymentId);
-    assert.equal((await send({ action: 'approve_payment', paymentId, requestId: 'self-approve' })).status, 409);
-    globalThis.managedProgramActor = { id: 'finance', role: 'super_admin' };
     assert.equal((await send({ action: 'approve_payment', paymentId, requestId: 'route-approve' })).status, 200);
     assert.equal((await send({ action: 'mark_payment_paid', paymentId, requestId: 'route-paid' })).status, 200);
     const transition = await submitRegisteredSellerTransition(database, { sellerId: 'seller', actorId: 'maker',

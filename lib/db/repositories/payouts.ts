@@ -946,13 +946,9 @@ export async function operatePayout(
       throw new PayoutConflictError(
         'Only a prepared payout can be approved or rejected.',
       );
-    if (current.preparedBy === options.actorId)
-      throw new PayoutConflictError(
-        'The payout preparer cannot approve or reject their own payout.',
-      );
     if (options.actorRole !== 'super_admin')
       throw new PayoutConflictError(
-        'A Super Admin must make the independent payout decision.',
+        'A Super Admin must make the payout decision.',
       );
     toStatus = options.action === 'approve' ? 'approved' : 'rejected';
   } else if (options.action === 'start_processing') {
@@ -1021,9 +1017,9 @@ export async function operatePayout(
       ),
     ...(options.form?[database.prepare(`INSERT INTO operation_transaction_guards(id,valid)
       SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM payouts WHERE id=? AND status=?
-        AND operation_request_id=? AND prepared_by=?${options.action==='approve'||options.action==='reject'?' AND prepared_by<>?':''})
+        AND operation_request_id=? AND prepared_by=?)
         THEN 1 ELSE 0 END`).bind(stateGuardId,options.payoutId,toStatus,
-        options.requestId,current.preparedBy,...(options.action==='approve'||options.action==='reject'?[options.actorId]:[])),
+        options.requestId,current.preparedBy),
       database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(stateGuardId)]:[]),
     database
       .prepare(

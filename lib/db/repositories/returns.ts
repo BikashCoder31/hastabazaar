@@ -1338,8 +1338,8 @@ export async function decideHighValueRefund(
 ): Promise<void> {
   if (options.form && options.form.answers.formId !== 'staff.return-case-action')
     throw new ReturnConflictError('Return form context is invalid.');
-  const authority = options.form ? await staffMutationGuard(database, options.actorId,
-    'refund.approve.high_value', ReturnConflictError, 'super_admin') : null;
+  const authority = await staffMutationGuard(database, options.actorId,
+    'refund.approve.high_value', ReturnConflictError, 'super_admin');
   const catalogDigest = options.form ? await digestFormRequest({ caseId: options.returnRequestId,
     actorId: options.actorId, action: options.approve ? 'high_value_approve' : 'high_value_reject',
     note: options.note, publicMessageEn: options.publicMessageEn,
@@ -1373,12 +1373,9 @@ export async function decideHighValueRefund(
     throw new ReturnConflictError(
       'This refund is not awaiting Super Admin approval.',
     );
-  if (current.approvedBy === options.actorId)
-    throw new ReturnConflictError(
-      'A different Super Admin must approve this high-value refund.',
-    );
   const toStatus = options.approve ? 'approved' : 'rejected';
   const refundStatus = options.approve ? 'approved' : 'rejected';
+  const outcomeGuardId = crypto.randomUUID();
   const results = await database.batch([
     database
       .prepare(
@@ -1398,7 +1395,7 @@ export async function decideHighValueRefund(
       .prepare(
         `UPDATE refunds SET status = ?, high_value_approved_by = ?, approved_at = ?,
           operation_request_id = ? WHERE id = ? AND status = 'pending_high_value_approval'
-          AND approved_by != ?`,
+          AND ((approved_by = ?) OR (approved_by IS NULL AND ? IS NULL))`,
       )
       .bind(
         refundStatus,
@@ -1406,7 +1403,8 @@ export async function decideHighValueRefund(
         options.now,
         options.requestId,
         current.refundId,
-        options.actorId,
+        current.approvedBy,
+        current.approvedBy,
       ),
     database
       .prepare(
@@ -1453,6 +1451,15 @@ export async function decideHighValueRefund(
         current.refundId,
         options.requestId,
       ),
+    database.prepare(`INSERT INTO operation_transaction_guards(id,valid)
+      SELECT ?,CASE WHEN EXISTS (
+        SELECT 1 FROM return_requests c JOIN refunds f ON f.return_request_id=c.id
+        WHERE c.id=? AND c.status=? AND c.operation_request_id=?
+          AND f.id=? AND f.status=? AND f.operation_request_id=?
+          AND f.high_value_approved_by=?) THEN 1 ELSE 0 END`)
+      .bind(outcomeGuardId,options.returnRequestId,toStatus,options.requestId,
+        current.refundId,refundStatus,options.requestId,options.actorId),
+    database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(outcomeGuardId),
     ...returnFormStatements(database, options, toStatus, refundStatus),
     ...(authority?.statements ?? []),
     ...(await caseBusinessNotificationStatements(database, {

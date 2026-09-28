@@ -99,7 +99,7 @@ export function PreparePayoutButton({
           <DialogDescription>
             The displayed eligible balance is {amount}. The server rechecks the
             available balance when saving. Preparation reserves entries; it does
-            not send money. A different Super Admin must approve.
+            not send money. Super Admin approval is required.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -190,7 +190,7 @@ const actionLabels: Record<PayoutOperation, string> = {
 };
 const explanations: Record<PayoutOperation, string> = {
   approve:
-    'Confirm that you independently reviewed the prepared balance and destination. This records approval; it does not transfer money.',
+    'Confirm that you reviewed the prepared balance and destination. This records approval; it does not transfer money.',
   reject:
     'This rejects the prepared payout and releases its reserved ledger entries. The decision and note are retained.',
   start_processing:
@@ -240,11 +240,9 @@ export function PayoutWorkflowActions({
     return (
       <div className="space-y-2">
       <p className="rounded-xl bg-muted/60 p-4 text-sm leading-6 text-muted-foreground">
-        {isPreparer && (status === 'prepared' || status === 'scheduled')
-          ? 'You prepared this payout. A different Super Admin must approve or reject it.'
-          : status === 'paid' || status === 'rejected' || status === 'reversed'
+        {status === 'paid' || status === 'rejected' || status === 'reversed'
             ? 'This payout has no further actions at this stage. Its history remains available below.'
-            : 'No payout action is available for your role at this stage. A Super Admin handles independent approval and payment recording.'}
+            : 'No payout action is available for your role at this stage. A Super Admin handles approval and payment recording.'}
       </p>
       <Link href={`/admin/staff-form-history?kind=${canApprove || canProcess ? 'payout-action' : 'payout-preparation'}&id=${encodeURIComponent(payoutId)}`} className="block text-sm underline">View payout form history</Link>
       </div>

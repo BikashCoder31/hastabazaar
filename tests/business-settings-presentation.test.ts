@@ -72,13 +72,14 @@ void test('Business Settings presents current, draft, scheduled, preview, impact
     'Preview',
     'Affected areas',
     'Change history',
-    'Different Super Admin approval required',
+    'Super Admin approval required',
     '9% platform retention',
     '91% maker entitlement',
   ]) {
     assert.match(html, new RegExp(text, 'i'));
   }
   assert.match(html, /type="number"/);
+  assert.doesNotMatch(html, /Different Super Admin approval required/i);
   assert.doesNotMatch(html, /maker entitlement rate/i);
 });
 

@@ -692,12 +692,32 @@ void test('permission rejection notifies the proposer, while pending approval no
         'https://example.test',
         { now: 200 },
       ),
-      { accepted: 1, failed: 0, cancelled: 1 },
+      { accepted: 1, failed: 0, cancelled: 2 },
     );
     assert.deepEqual(sent, ['sa@example.test']);
   } finally {
     sqlite.close();
   }
+});
+void test('a sole Super Admin receives actionable promotion and permission proposal email for their own prepared work', async () => {
+  const { sqlite, db } = fixture();
+  try {
+    sqlite.exec("CREATE TABLE promotions(id TEXT PRIMARY KEY,created_by TEXT,status TEXT,created_request_id TEXT,operation_request_id TEXT);INSERT INTO promotions VALUES ('solo-promo','sa','pending_approval','solo-promotion',NULL);INSERT INTO staff_permission_requests(id,user_id,permissions_json,expected_version,reason,proposed_by,proposed_at,status) VALUES ('solo-permission','admin','[]',0,'A sufficiently clear reason','sa',1,'pending')");
+    for (const [kind, sourceId, eventId] of [
+      ['promotion.proposed', 'solo-promo', 'solo-promotion'],
+      ['permissions.proposed', 'solo-permission', 'solo-permission'],
+    ] as const) {
+      await db.batch(await operationalBusinessNotificationStatements(db, {
+        kind, sourceId, eventId, actorId: 'sa', now: 100,
+      }));
+    }
+    assert.deepEqual(sqlite.prepare("SELECT recipient_user_id AS id,related_type AS type FROM notification_messages WHERE channel='email' ORDER BY related_type").all().map(row => ({ ...row })), [
+      { id: 'sa', type: 'promotion' }, { id: 'sa', type: 'staff_permission_request' },
+    ]);
+    const sent: string[] = [];
+    assert.deepEqual(await deliverBusinessEmails(db, { send: async message => { sent.push(message.to); } }, 'https://example.test', { now: 200 }), { accepted: 2, failed: 0, cancelled: 0 });
+    assert.deepEqual(sent, ['sa@example.test', 'sa@example.test']);
+  } finally { sqlite.close(); }
 });
 void test('disabled accounts receive only their explicit factual account-status email and stale status emails cancel', async () => {
   const { sqlite, db } = fixture();

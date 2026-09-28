@@ -250,6 +250,29 @@ void test('new publication before the case batch rejects stale answers without c
   assert.equal(count(sqlite, 'form_answer_sets', "request_id='complaint-stale-publication'"), 0);
 });
 
+void test('legacy high-value approval and rejection roll back both records and events when maker or parent state races',async()=>{
+  for(const approve of [true,false])for(const race of ['maker','parent'] as const){
+    const {sqlite,wrapper,database}=fixture();
+    try{
+      sqlite.exec("UPDATE return_requests SET status='pending_high_value_approval' WHERE id='return-one'");
+      sqlite.exec(`INSERT INTO refunds(id,order_id,return_request_id,status,amount_paisa,reason,approved_by,requested_at)
+        VALUES('legacy-refund','order-one','return-one','pending_high_value_approval',1000,'Fictional review','admin',1)`);
+      wrapper.beforeBatch=()=>sqlite.exec(race==='maker'
+        ?"UPDATE refunds SET approved_by='super' WHERE id='legacy-refund'"
+        :"UPDATE return_requests SET status='under_investigation' WHERE id='return-one'");
+      const requestId=`legacy-highvalue-${approve}-${race}`;
+      await assert.rejects(decideHighValueRefund(database,{returnRequestId:'return-one',actorId:'super',approve,
+        note:'Fictional high-value decision',publicMessageEn:'Refund decision recorded.',publicMessageNe:'Refund decision recorded.',requestId,now:4}));
+      assert.equal((sqlite.prepare("SELECT status FROM return_requests WHERE id='return-one'").get() as {status:string}).status,
+        race==='maker'?'pending_high_value_approval':'under_investigation');
+      assert.equal((sqlite.prepare("SELECT status FROM refunds WHERE id='legacy-refund'").get() as {status:string}).status,'pending_high_value_approval');
+      assert.equal(count(sqlite,'return_request_events',`request_id='${requestId}'`),0);
+      assert.equal(count(sqlite,'audit_logs',`request_id='${requestId}'`),0);
+      assert.equal(count(sqlite,'form_answer_sets',`request_id='${requestId}'`),0);
+    }finally{sqlite.close();}
+  }
+});
+
 void test('case owners and sellers cannot read private staff decision answers through parent ownership', async () => {
   const { sqlite, database } = fixture();
   await reviewReturnAsAdmin(database, { returnRequestId: 'return-one', actorId: 'admin',

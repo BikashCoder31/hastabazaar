@@ -11,6 +11,10 @@ const recoveryOutputPath = resolve(
   'deployment/babal/mariadb-reset-empty-import.sql',
 );
 const snapshot = JSON.parse(await readFile(snapshotPath, 'utf8'));
+const singleSuperAdminSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-single-super-admin-approvals.sql'), 'utf8');
+const parcelOperationsSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-parcel-operations.sql'), 'utf8');
+const staffPermissionsSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-staff-permissions.sql'), 'utf8');
+const verifiedRidersSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-verified-riders.sql'), 'utf8');
 const sellerParticipationSql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-seller-participation.sql'),
   'utf8',
@@ -323,6 +327,7 @@ for (const [tableName, table] of Object.entries(snapshot.tables)) {
   }
   definitions.push(...generatedIndexes(tableName));
   for (const check of Object.values(table.checkConstraints ?? {})) {
+    if (['payouts_maker_checker','refunds_high_value_maker_checker','promotions_maker_checker'].includes(check.name)) continue;
     if (checkConflictsWithForeignKeyAction(table, check)) {
       output.push(
         `-- ${check.name} is enforced by application transactions because MariaDB 10.11 rejects CHECK columns changed by SET NULL/CASCADE foreign-key actions.`,
@@ -409,6 +414,9 @@ output.push(
   '',
   invoiceAdjustmentsSql.trim(),
   '',
+  parcelOperationsSql.trim(),
+  staffPermissionsSql.trim(),
+  verifiedRidersSql.trim(),
   riderOpenBoxFinanceSql.trim(),
   '',
   recentlyViewedSql.trim(),
@@ -500,6 +508,7 @@ output.push(
   ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;',
   "INSERT IGNORE INTO `hastabazaar_schema_versions` (`version`, `applied_at`) VALUES ('0020_snapshot', UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000);",
   '',
+  singleSuperAdminSql.trim(),
   'SET FOREIGN_KEY_CHECKS = 1;',
   '',
 );
@@ -508,6 +517,25 @@ await mkdir(dirname(outputPath), { recursive: true });
 const schemaSql = output.join('\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
+  'rider_assignment_snapshots',
+  'rider_remittance_allocations',
+  'rider_compensation_entries',
+  'rider_cash_obligations',
+  'rider_otp_challenges',
+  'rider_reports',
+  'rider_events',
+  'rider_applications',
+  'rider_profiles',
+  'rider_policy_versions',
+  'rider_policy',
+  'parcel_operation_events',
+  'parcel_cash_records',
+  'shipping_parcels',
+  'operation_transaction_guards',
+  'staff_permission_presets',
+  'staff_permission_requests',
+  'staff_permission_profiles',
+  'staff_permission_guards',
   'wallet_entries',
   'loyalty_points_entries',
   'loyalty_redemptions',

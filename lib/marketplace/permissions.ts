@@ -99,7 +99,7 @@ export function can(subject: MarketplaceRole | PermissionSubject, permission: Pe
   return effectivePermissions(typeof subject === 'string' ? { role: subject } : subject).includes(permission);
 }
 
-export const dualApprovalRequiredFor = [
+export const superAdminApprovalRequiredFor = [
   'commercial_policy.manage',
   'tax_policy.manage',
   'admin.permissions.manage',
@@ -110,10 +110,10 @@ export const dualApprovalRequiredFor = [
 ] as const satisfies readonly Permission[];
 
 export const nonDelegableProtections = [
-  'An actor cannot approve their own seller, product, refund, or payout action.',
+  'An actor cannot approve their own seller application or product, or review their own rider cash.',
   'An admin cannot change their own role or permissions.',
   'Only a super admin can grant or revoke admin access.',
-  'Payout preparation and payout approval must be performed by different actors.',
+  'An authorized active Super Admin may prepare and approve a payout; financial checks and audit records remain required.',
   'Audit records are append-only; even super admins cannot delete them through the application.',
-  'Controlled business settings must be proposed and approved by different Super Admins.',
+  'An authorized Super Admin may propose and approve controlled business settings; submission, validation and audit records remain required.',
 ] as const;

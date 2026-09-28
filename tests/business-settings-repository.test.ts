@@ -10,6 +10,7 @@ import test from 'node:test';
 import {
   BusinessSettingConflictError,
   approveBusinessSettingChange,
+  rejectBusinessSettingChange,
   createBusinessSettingDraft,
   createBusinessSettingReversalDraft,
   getEffectiveBusinessSetting,
@@ -66,15 +67,17 @@ async function fixture() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec(`
     PRAGMA foreign_keys = ON;
-    CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT NOT NULL);
+    CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, status TEXT DEFAULT 'active');
+    CREATE TABLE user_roles(user_id TEXT, role TEXT);
     CREATE TABLE audit_logs (
       id TEXT PRIMARY KEY, actor_id TEXT, action TEXT, subject_type TEXT,
       subject_id TEXT, reason TEXT, previous_json TEXT, next_json TEXT,
       request_id TEXT, ip_hash TEXT, created_at INTEGER
     );
     INSERT INTO users VALUES
-      ('admin-a', 'Super Admin A'),
-      ('admin-b', 'Super Admin B');
+      ('admin-a', 'Super Admin A', 'active'),
+      ('admin-b', 'Super Admin B', 'active');
+    INSERT INTO user_roles VALUES ('admin-a','super_admin'),('admin-b','super_admin');
   `);
   const migration = await readFile(
     new URL('../drizzle/0044_business_configuration.sql', import.meta.url),
@@ -140,7 +143,7 @@ void test('simple content moves from draft through publish and resolves from its
   }
 });
 
-void test('controlled financial changes require submission and a different approver', async () => {
+void test('controlled financial changes permit the submitted same-actor approval and preserve attribution', async () => {
   const { sqlite, database } = await fixture();
   try {
     const draft = await createBusinessSettingDraft(database, {
@@ -160,22 +163,9 @@ void test('controlled financial changes require submission and a different appro
       now: 1_100,
     });
 
-    await assert.rejects(
-      approveBusinessSettingChange(database, {
-        id: draft.id,
-        actorId: 'admin-a',
-        expectedRevision: 2,
-        effectiveFrom: 2_000,
-        reason: 'Attempt self approval.',
-        requestId: 'retention-approve-self',
-        now: 1_200,
-      }),
-      BusinessSettingConflictError,
-    );
-
     await approveBusinessSettingChange(database, {
       id: draft.id,
-      actorId: 'admin-b',
+      actorId: 'admin-a',
       expectedRevision: 2,
       effectiveFrom: 2_000,
       reason: 'Independently approve the simulated staging change.',
@@ -199,7 +189,13 @@ void test('controlled financial changes require submission and a different appro
       2_000,
     );
     assert.equal(effective.value, 800);
-    assert.equal(effective.approvedBy, 'admin-b');
+    assert.equal(effective.approvedBy, 'admin-a');
+    const approved = sqlite.prepare('SELECT submitted_by, approved_by, revision FROM business_setting_versions WHERE id=?').get(draft.id);
+    assert.deepEqual({ ...approved }, { submitted_by: 'admin-a', approved_by: 'admin-a', revision: 3 });
+    const audit = sqlite.prepare("SELECT actor_id, action, reason, subject_id FROM audit_logs WHERE request_id='retention-approve-1'").get();
+    assert.equal(audit?.actor_id, 'admin-a');
+    assert.equal(audit?.action, 'business_setting.approved');
+    assert.equal(audit?.subject_id, draft.id);
   } finally {
     sqlite.close();
   }
@@ -726,4 +722,40 @@ void test('occasion drafts, schedules, history, and restoration never mutate the
   } finally {
     sqlite.close();
   }
+});
+
+void test('same-actor rejection retains submitted revision, rejection audit and state guards', async () => {
+  const { sqlite, database } = await fixture();
+  try {
+    const draft = await createBusinessSettingDraft(database, { key: 'managed_sale_linked_platform_retention_bps', value: 800, actorId: 'admin-a', reason: 'Prepare controlled change', requestId: 'self-reject-draft', now: 1000 });
+    const input = { id: draft.id, actorId: 'admin-a', expectedRevision: 2, reason: 'Reject unsupported change', requestId: 'self-reject-action', now: 1200 };
+    await assert.rejects(rejectBusinessSettingChange(database, { ...input, expectedRevision: 1 }), BusinessSettingConflictError);
+    await submitBusinessSettingDraft(database, { id: draft.id, actorId: 'admin-a', expectedRevision: 1, reason: 'Submit controlled change', requestId: 'self-reject-submit', now: 1100 });
+    await assert.rejects(rejectBusinessSettingChange(database, { ...input, expectedRevision: 1 }), BusinessSettingConflictError);
+    await rejectBusinessSettingChange(database, input);
+    const row = sqlite.prepare('SELECT status, revision, submitted_by, approved_by, decision_note FROM business_setting_versions WHERE id=?').get(draft.id);
+    assert.deepEqual({ ...row }, { status: 'rejected', revision: 3, submitted_by: 'admin-a', approved_by: 'admin-a', decision_note: input.reason });
+    const audit = sqlite.prepare('SELECT actor_id, action, subject_id, reason FROM audit_logs WHERE request_id=?').get(input.requestId);
+    assert.deepEqual({ ...audit }, { actor_id: 'admin-a', action: 'business_setting.rejected', subject_id: draft.id, reason: input.reason });
+    await assert.rejects(rejectBusinessSettingChange(database, { ...input, requestId: 'reject-again' }), BusinessSettingConflictError);
+    assert.equal((sqlite.prepare("SELECT count(*) AS n FROM audit_logs WHERE action='business_setting.rejected'").get())?.n, 1);
+    assert.equal((await getEffectiveBusinessSetting(database, 'managed_sale_linked_platform_retention_bps', 2000)).value, 900);
+  } finally { sqlite.close(); }
+});
+
+void test('no-form setting decisions require current active Super Admin authority', async () => {
+ for (const action of [approveBusinessSettingChange,rejectBusinessSettingChange]) {
+  for(const blocked of ['ordinary','suspended']) {
+   const {sqlite,database}=await fixture();
+   try {
+    const draft=await createBusinessSettingDraft(database,{key:'managed_sale_linked_platform_retention_bps',value:900,actorId:'admin-a',reason:'SIMULATED same value regression.',requestId:'noform-draft',now:100});
+    await submitBusinessSettingDraft(database,{id:draft.id,actorId:'admin-a',expectedRevision:1,reason:'SIMULATED submission regression.',requestId:'noform-submit',now:200});
+    if(blocked==='ordinary')sqlite.exec("UPDATE user_roles SET role='admin' WHERE user_id='admin-a'");
+    else sqlite.exec("UPDATE users SET status='suspended' WHERE id='admin-a'");
+    await assert.rejects(action(database,{id:draft.id,actorId:'admin-a',expectedRevision:2,effectiveFrom:1000,reason:'SIMULATED authority regression.',requestId:'noform-decision',now:300}),/Super Admin authority/);
+    assert.equal(sqlite.prepare('SELECT status FROM business_setting_versions WHERE id=?').get(draft.id)?.status,'pending_approval');
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE request_id='noform-decision'").get()?.n,0);
+   }finally{sqlite.close();}
+  }
+ }
 });

@@ -271,7 +271,7 @@ function programmaticDefinition(id: ProgrammaticFormId): FormDefinition {
     capabilities: Object.freeze({ explanation: id === 'commerce.add-to-cart'
       ? 'Cart accepts only its existing product and quantity contract; custom form envelopes and answer recording are unavailable.'
       : id === 'staff.return-case-action'
-        ? 'Custom context is recorded with the successful case decision. /api/admin/returns/:id/review, /api/admin/returns/:id/high-value and /api/admin/returns/:id/operations keep their current distinct grants, independent approval and atomic state/financial rules.'
+        ? 'Custom context is recorded with the successful case decision. /api/admin/returns/:id/review, /api/admin/returns/:id/high-value and /api/admin/returns/:id/operations keep their current distinct grants, Super Admin approval for high-value refunds and atomic state/financial rules.'
         : 'Safe custom context is linked atomically to the committed record and immutable request provenance. Built-in controls and their order, current grants, conditional actions, money, evidence, parent identity and exact replay stay protected.',
       customFieldTypes: id === 'commerce.add-to-cart' ? Object.freeze([]) : ACCOUNT_CUSTOM_TYPES,
       answerBehavior: id === 'commerce.add-to-cart' ? 'none' : 'record' }),

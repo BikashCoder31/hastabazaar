@@ -6,7 +6,7 @@ export function availablePayoutActions(
   access: { canApprove: boolean; canProcess: boolean; isPreparer: boolean },
 ): readonly PayoutOperation[] {
   if (status === 'prepared' || status === 'scheduled')
-    return access.canApprove && !access.isPreparer ? ['approve', 'reject'] : [];
+    return access.canApprove ? ['approve', 'reject'] : [];
   if (!access.canProcess) return [];
   if (status === 'approved' || status === 'failed') return ['start_processing'];
   if (status === 'processing') return ['mark_paid', 'mark_failed'];

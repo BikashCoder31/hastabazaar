@@ -62,7 +62,7 @@ export function PayoutRequestActions({ id }: { id: string }) {
             name="action"
             className="mt-2 w-full rounded-lg border bg-background p-2"
           >
-            <option value="prepare">Prepare for independent approval</option>
+            <option value="prepare">Prepare for Super Admin approval</option>
             <option value="reject">Reject request</option>
           </select>
         </div>

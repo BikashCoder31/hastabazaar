@@ -39,6 +39,8 @@ async function fixture(){
  INSERT INTO seller_participation_profiles VALUES('seller','managed_maker','active','managed_fixed_supplier_price_v1','SIM-MAKER-ACCOUNT','SIM-FIXED-V1','ne',1);
  INSERT INTO products VALUES('product','seller');`);
  sqlite.exec((await readFile(new URL('../drizzle/0054_managed_fixed_supply.sql',import.meta.url),'utf8')).replaceAll('--> statement-breakpoint',''));
+ const upgrade=await readFile(new URL('../drizzle/0062_single_super_admin_approvals.sql',import.meta.url),'utf8');
+ sqlite.exec('PRAGMA foreign_keys=OFF;'+upgrade.split('-- BEGIN managed_supplier_payments')[1].split('-- END managed_supplier_payments')[0].replaceAll('--> statement-breakpoint','')+'PRAGMA foreign_keys=ON;');
  return {sqlite,database:new Database(sqlite) as unknown as D1Database};
 }
 
@@ -75,15 +77,17 @@ void test('defect adjustments append once and become recoverable after a complet
  }finally{f.sqlite.close();}
 });
 
-void test('fixed supplier payment is idempotent and requires a different approver',async()=>{
+void test('one active Super Admin can prepare, approve and pay a supplier payment idempotently',async()=>{
  const f=await fixture();try{
   const id=await createFixedSupplyRecord(f.database,{sellerId:'seller',productId:'product',quantity:1,agreedUnitPaisa:75_000,createdBy:'maker',agreementVersion:'SIM-FIXED-V1',agreementLanguage:'ne',payoutBeneficiaryReference:'SIM-MAKER-ACCOUNT',requestId:'proposal-pay',now:100,environment});
   await decideFixedSupplyRecord(f.database,{recordId:id,actorId:'reviewer',action:'accept',quantityAccepted:1,possessionStatus:'received',qualityStatus:'accepted',ownershipRecordStatus:'simulated_terms_recorded',riskRecordStatus:'simulated_terms_recorded',evidenceReference:'SIM-GRN-PAY',reason:'SIMULATED supply acceptance',requestId:'accept-pay',now:200,environment});
   const payment=await prepareFixedSupplierPayment(f.database,{recordId:id,actorId:'reviewer',destinationReference:'SIM-MAKER-ACCOUNT',requestId:'prepare-pay',now:300,environment});
   assert.equal(await prepareFixedSupplierPayment(f.database,{recordId:id,actorId:'reviewer',destinationReference:'SIM-MAKER-ACCOUNT',requestId:'prepare-pay',now:300,environment}),payment);
-  await assert.rejects(transitionFixedSupplierPayment(f.database,{paymentId:payment,actorId:'reviewer',action:'approve',requestId:'self-approve',now:400,environment}),/different Super Admin/i);
-  await transitionFixedSupplierPayment(f.database,{paymentId:payment,actorId:'finance',action:'approve',requestId:'approve-pay',now:400,environment});
-  await transitionFixedSupplierPayment(f.database,{paymentId:payment,actorId:'finance',action:'mark_paid',requestId:'complete-pay',now:500,environment});
+  await transitionFixedSupplierPayment(f.database,{paymentId:payment,actorId:'reviewer',action:'approve',requestId:'approve-pay',now:400,environment});
+  await transitionFixedSupplierPayment(f.database,{paymentId:payment,actorId:'reviewer',action:'approve',requestId:'approve-pay',now:400,environment});
+  await transitionFixedSupplierPayment(f.database,{paymentId:payment,actorId:'reviewer',action:'mark_paid',requestId:'complete-pay',now:500,environment});
   assert.deepEqual(await getFixedSupplyBalance(f.database,id),{originalOwedPaisa:75_000,adjustmentsPaisa:0,paidPaisa:75_000,balancePaisa:0,recoverablePaisa:0,status:'paid'});
+  f.sqlite.exec("DELETE FROM user_roles WHERE user_id='reviewer'");
+  await assert.rejects(transitionFixedSupplierPayment(f.database,{paymentId:payment,actorId:'reviewer',action:'approve',requestId:'approve-pay',now:400,environment}),/Super Admin/i);
  }finally{f.sqlite.close();}
 });

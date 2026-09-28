@@ -43,7 +43,7 @@ export default async function BusinessSettingsPage() {
         <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
           Review, preview, schedule, and audit routine business configuration
           without editing code. Financial, contractual, and sensitive changes
-          require a different Super Admin to approve them.
+          require Super Admin approval.
         </p>
       </div>
       <StaffFormHistoryLinks entries={[{kind:'business-settings',label:'Business setting answers'},

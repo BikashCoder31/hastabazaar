@@ -72,7 +72,7 @@ export function PayoutRequestForm({
         Request a payout
       </h2>
       <p className="mt-3 text-base leading-7 text-muted-foreground">
-        Admin prepares your payout, then a different Super Admin approves it.
+        Admin prepares your payout, then a Super Admin approves it.
         Submitting a request does not transfer money.
       </p>
       {blocked ? (

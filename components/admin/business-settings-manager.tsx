@@ -347,7 +347,7 @@ export function BusinessSettingsManager({
                 }
               >
                 {selected.changeControl === 'controlled'
-                  ? 'Different Super Admin approval required'
+                  ? 'Super Admin approval required'
                   : 'Simple publication'}
               </Badge>
             </div>

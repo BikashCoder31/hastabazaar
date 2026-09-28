@@ -47,6 +47,7 @@ const migrationNames = [
   'mariadb-homepage-hero-carousel.sql',
   'mariadb-promo-codes.sql',
   'mariadb-loyalty-points.sql',
+  'mariadb-single-super-admin-approvals.sql',
 ];
 const tables = {},
   triggers = {},
@@ -80,7 +81,7 @@ for (const name of migrationNames) {
     tables[m[1]] = [...new Set([...(tables[m[1]] ?? []), m[2]])].sort((a, b) =>
       a.localeCompare(b),
     );
-  for (const m of sql.matchAll(/CREATE TRIGGER\s+`?(\w+)`?/gi))
+  for (const m of sql.matchAll(/CREATE TRIGGER\s+(?:IF\s+NOT\s+EXISTS\s+)?`?(\w+)`?/gi))
     triggers[m[1]] = [];
 }
 triggers.order_items_require_available_inventory = [

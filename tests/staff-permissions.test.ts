@@ -65,6 +65,12 @@ function fixture() {
   const migration = readFileSync('drizzle/0031_staff_permissions.sql', 'utf8');
   sqlite.exec(migration);
   sqlite.exec(migration);
+  const approvalMigration = readFileSync('drizzle/0062_single_super_admin_approvals.sql', 'utf8');
+  const staffUpgrade = approvalMigration.split('-- BEGIN staff_permission_requests')[1]?.split('-- END staff_permission_requests')[0];
+  assert.ok(staffUpgrade, 'The versioned migration must include staff permission requests.');
+  sqlite.exec('PRAGMA foreign_keys=OFF;');
+  sqlite.exec(staffUpgrade);
+  sqlite.exec('PRAGMA foreign_keys=ON;');
   for (const [id, role] of [
     ['sa1', 'super_admin'],
     ['sa2', 'super_admin'],
@@ -121,7 +127,7 @@ const proposal = {
   presetName: 'Order desk',
   now: 100,
 };
-void test('proposal preserves legacy access; different Super Admin approval changes the next lookup and creates reusable snapshot', async () => {
+void test('proposal preserves legacy access; the same Super Admin approval changes the next lookup and creates reusable snapshot', async () => {
   const { db, sqlite } = fixture();
   try {
     assert.equal(
@@ -135,15 +141,6 @@ void test('proposal preserves legacy access; different Super Admin approval chan
     );
     await assert.rejects(() =>
       decideStaffPermissions(db, {
-        actorId: 'sa1',
-        requestId: id,
-        decision: 'approve',
-        reason: 'Attempt own approval.',
-        now: 101,
-      }),
-    );
-    await assert.rejects(() =>
-      decideStaffPermissions(db, {
         actorId: 'admin2',
         requestId: id,
         decision: 'approve',
@@ -152,7 +149,7 @@ void test('proposal preserves legacy access; different Super Admin approval chan
       }),
     );
     await decideStaffPermissions(db, {
-      actorId: 'sa2',
+      actorId: 'sa1',
       requestId: id,
       decision: 'approve',
       reason: 'Order desk scope reviewed.',
@@ -178,6 +175,8 @@ void test('proposal preserves legacy access; different Super Admin approval chan
     const changes = await listStaffPermissionChanges(db);
     assert.equal(changes.presets.length, 1);
     assert.equal(changes.requests[0].status, 'approved');
+    assert.equal(changes.requests[0].proposedBy, 'sa1');
+    assert.equal(changes.requests[0].decidedBy, 'sa1');
     assert.equal(
       sqlite
         .prepare(

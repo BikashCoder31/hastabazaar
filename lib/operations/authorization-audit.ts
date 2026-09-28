@@ -20,7 +20,7 @@ export async function recordStaffAuthorizationOutcome(
         'staff.authorization.' + options.outcome,
         options.subjectId ?? options.actorId,
         options.outcome === 'denied'
-          ? 'Staff capability or independent-approval boundary denied this action.'
+          ? 'Staff capability or approval boundary denied this action.'
           : 'Sensitive staff mutation failed its current-state or authority check.',
         JSON.stringify({
           permission: options.permission,

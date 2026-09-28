@@ -339,7 +339,7 @@ export function GovernanceConsole({
           <TabsContent value="promotions">
             <Panel
               title="Promotions & featured placement"
-              description="Prepare a placement, then ask a different Super Admin to approve it. This does not create a discount or change product prices."
+              description="Prepare a placement, then approve it as a Super Admin. This does not create a discount or change product prices."
             >
               <form
                 data-form-id="staff.governance-promotion-create"
@@ -402,7 +402,7 @@ export function GovernanceConsole({
                   {promotionCatalog.config ? <ConfiguredFields config={promotionCatalog.config} baseKeys={governanceBaseKeys} /> : null}
                   {!promotionCatalog.canSubmit ? <p role="alert">{promotionCatalog.message || 'Form configuration is unavailable.'}</p> : null}
                   {retryControl('promotion.create')}
-                  <Button type="submit" disabled={!promotionCatalog.canSubmit}>Submit for independent approval</Button>
+                  <Button type="submit" disabled={!promotionCatalog.canSubmit}>Submit for Super Admin approval</Button>
                 </div>
               </form>
               <div className="mt-6 divide-y">
@@ -422,12 +422,6 @@ export function GovernanceConsole({
                         {date(item.startsAt)} – {date(item.endsAt)} (Nepal time)
                       </p>
                       {superAdmin && item.status === 'pending_approval' ? (
-                        item.createdBy === actorId ? (
-                          <p className="text-sm text-muted-foreground">
-                            You prepared this promotion. A different Super Admin
-                            must decide.
-                          </p>
-                        ) : (
                           <div className="flex gap-2">
                             {(['approve', 'reject'] as const).map((action) => (
                               <Button
@@ -445,7 +439,7 @@ export function GovernanceConsole({
                                       '?',
                                     description:
                                       action === 'approve'
-                                        ? 'This authorizes the placement for its scheduled window. Your independent decision will be recorded.'
+                                        ? 'This authorizes the placement for its scheduled window. Your decision will be recorded.'
                                         : 'This closes the pending proposal as rejected. The proposal and audit history remain available.',
                                   })
                                 }
@@ -456,7 +450,6 @@ export function GovernanceConsole({
                               </Button>
                             ))}
                           </div>
-                        )
                       ) : null}
                     </article>
                   ))

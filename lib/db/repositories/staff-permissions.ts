@@ -320,7 +320,6 @@ export async function decideStaffPermissions(
   if (
     !request ||
     request.status !== 'pending' ||
-    request.proposedBy === options.actorId ||
     request.userId === options.actorId
   ) {
     await recordStaffAuthorizationOutcome(db, {
@@ -330,7 +329,7 @@ export async function decideStaffPermissions(
       outcome: 'denied',
     });
     throw new StaffPermissionConflictError(
-      'A different active Super Admin must decide a pending request.',
+      'An active Super Admin must decide a pending request for another staff member.',
     );
   }
   const permissions = validateAdminPermissions(
@@ -347,7 +346,7 @@ export async function decideStaffPermissions(
     ]),
     db
       .prepare(
-        "UPDATE staff_permission_requests SET status=?,decided_by=?,decided_at=?,decision_note=?,decision_token=? WHERE id=? AND status='pending' AND proposed_by<>?",
+        "UPDATE staff_permission_requests SET status=?,decided_by=?,decided_at=?,decision_note=?,decision_token=? WHERE id=? AND status='pending'",
       )
       .bind(
         options.decision === 'approve' ? 'approved' : 'rejected',
@@ -356,7 +355,6 @@ export async function decideStaffPermissions(
         reason,
         decisionToken,
         request.id,
-        options.actorId,
       ),
     ...guard(
       db,

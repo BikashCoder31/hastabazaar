@@ -487,7 +487,7 @@ export async function deliverBusinessEmails(
         )
           authorized = !!(await db
             .prepare(
-              "SELECT 1 FROM refunds WHERE return_request_id=? AND status='pending_high_value_approval' AND approved_by<>?",
+              "SELECT 1 FROM refunds WHERE return_request_id=? AND status='pending_high_value_approval' AND ? IS NOT NULL",
             )
             .bind(row.relatedId, row.userId)
             .first());
@@ -567,7 +567,7 @@ export async function deliverBusinessEmails(
           authorized = !!(await db
             .prepare(
               row.template === 'business.promotion.proposed'
-                ? "SELECT 1 FROM promotions WHERE id=? AND created_by<>? AND status='pending_approval'"
+                ? "SELECT 1 FROM promotions WHERE id=? AND status='pending_approval' AND EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=? AND u.status='active' AND r.role='super_admin')"
                 : "SELECT 1 FROM promotions WHERE id=? AND created_by=? AND status IN ('active','rejected')",
             )
             .bind(row.relatedId, row.userId)
@@ -591,7 +591,7 @@ export async function deliverBusinessEmails(
             .prepare(
               row.template === 'business.permissions.rejected'
                 ? "SELECT 1 FROM staff_permission_requests WHERE id=? AND proposed_by=? AND status='rejected'"
-                : "SELECT 1 FROM staff_permission_requests WHERE id=? AND proposed_by<>? AND status='pending'",
+                : "SELECT 1 FROM staff_permission_requests WHERE id=? AND status='pending' AND EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=? AND u.status='active' AND r.role='super_admin')",
             )
             .bind(row.relatedId, row.userId)
             .first());
@@ -800,7 +800,7 @@ export async function operationalBusinessNotificationStatements(
     relatedType = 'payout';
     subject =
       e.kind === 'payout.prepared'
-        ? 'Payout prepared for independent approval'
+        ? 'Payout prepared for Super Admin approval'
         : 'Payout update recorded: ' +
           (e.status ?? 'review available').replaceAll('_', ' ');
     const column =
@@ -820,7 +820,7 @@ export async function operationalBusinessNotificationStatements(
     relatedType = 'promotion';
     subject =
       e.kind === 'promotion.proposed'
-        ? 'Independent promotion approval needed'
+        ? 'Super Admin promotion approval needed'
         : 'Your promotion proposal has a decision';
     guard =
       'EXISTS(SELECT 1 FROM promotions WHERE id=? AND ' +
@@ -858,7 +858,7 @@ export async function operationalBusinessNotificationStatements(
     audience = 'customer';
   } else if (e.kind === 'permissions.proposed') {
     relatedType = 'staff_permission_request';
-    subject = 'Independent permission approval needed';
+    subject = 'Super Admin permission approval needed';
     guard =
       "EXISTS(SELECT 1 FROM staff_permission_requests WHERE id=? AND status='pending')";
     guardValues = [e.sourceId];
@@ -980,7 +980,7 @@ export async function operationalBusinessNotificationStatements(
       }>();
     const seen = new Set<string>();
     for (const row of rows.results) {
-      if (seen.has(row.id) || row.id === e.actorId) continue;
+      if (seen.has(row.id) || (row.id === e.actorId && !['payout.prepared', 'permissions.proposed', 'promotion.proposed'].includes(e.kind))) continue;
       seen.add(row.id);
       let selected: readonly Permission[] = configurableAdminPermissions;
       if (row.json !== null) {
@@ -1147,7 +1147,7 @@ export async function caseBusinessNotificationStatements(
     .all<{ id: string; role: 'admin' | 'super_admin'; json: string | null }>();
   const seen = new Set<string>();
   for (const row of rows.results) {
-    if (seen.has(row.id) || row.id === e.actorId) continue;
+    if (seen.has(row.id) || (row.id === e.actorId && !(isReturn && row.role === 'super_admin'))) continue;
     seen.add(row.id);
     if (isReturn && row.role === 'super_admin')
       await add(
@@ -1156,7 +1156,7 @@ export async function caseBusinessNotificationStatements(
         'staff',
         'refund.approve.high_value',
         'high-value:' + row.id,
-        "EXISTS(SELECT 1 FROM user_roles WHERE user_id=u.id AND role='super_admin') AND EXISTS(SELECT 1 FROM refunds WHERE return_request_id=? AND status='pending_high_value_approval' AND approved_by<>u.id)",
+        "EXISTS(SELECT 1 FROM user_roles WHERE user_id=u.id AND role='super_admin') AND EXISTS(SELECT 1 FROM refunds WHERE return_request_id=? AND status='pending_high_value_approval')",
         [e.sourceId],
       );
 

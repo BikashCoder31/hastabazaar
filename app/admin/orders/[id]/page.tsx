@@ -126,6 +126,7 @@ export default async function AdminOrderPage({
           records={cash}
           compensation={compensation}
           actorId={staff.id}
+          isSuperAdmin={staff.role === 'super_admin'}
           canPrepare={['confirmed', 'packing', 'ready_for_pickup'].includes(
             order.status,
           )}

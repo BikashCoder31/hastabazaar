@@ -1027,7 +1027,8 @@ export async function performGovernanceAction(
     throw new OperationsConflictError(
       'This action requires Super Admin approval.',
     );
-  const currentGrant = options.form ? await staffMutationGuard(database, options.actorId,
+  const currentGrant = options.form || options.action === 'promotion.approve' || options.action === 'promotion.reject'
+    ? await staffMutationGuard(database, options.actorId,
     'catalog.manage', OperationsConflictError, options.actorRole) : null;
   const catalogDigest = options.form ? await digestFormRequest({ action: options.action,
     data: options.data, versionId: options.form.versionId, answers: options.form.answers }) : null;
@@ -1185,10 +1186,6 @@ export async function performGovernanceAction(
     if (!target || target.status !== 'pending_approval')
       throw new OperationsConflictError(
         'Only a pending promotion can be decided.',
-      );
-    if (target.createdBy === options.actorId)
-      throw new OperationsConflictError(
-        'The promotion maker cannot approve their own promotion.',
       );
     const status =
       options.action === 'promotion.approve' ? 'active' : 'rejected';

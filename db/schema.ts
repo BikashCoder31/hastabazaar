@@ -1555,10 +1555,8 @@ export const refunds = sqliteTable(
       'refunds_components_valid',
       sql`${table.itemAmountPaisa} IS NULL OR (${table.itemAmountPaisa} >= 0 AND ${table.deliveryAmountPaisa} >= 0 AND ${table.itemAmountPaisa} + ${table.deliveryAmountPaisa} = ${table.amountPaisa})`,
     ),
-    check(
-      'refunds_high_value_maker_checker',
-      sql`${table.highValueApprovedBy} IS NULL OR ${table.approvedBy} IS NULL OR ${table.highValueApprovedBy} != ${table.approvedBy}`,
-    ),
+    // Current active Super Admin authority for same-author approval is enforced
+    // by the role-aware triggers in 0062_single_super_admin_approvals.sql.
   ],
 );
 
@@ -1725,10 +1723,6 @@ export const payouts = sqliteTable(
     index('idx_payouts_seller_status').on(table.sellerId, table.status),
     index('idx_payouts_status_scheduled').on(table.status, table.scheduledFor),
     check('payouts_amount_positive', sql`${table.amountPaisa} > 0`),
-    check(
-      'payouts_maker_checker',
-      sql`${table.approvedBy} IS NULL OR ${table.approvedBy} != ${table.preparedBy}`,
-    ),
   ],
 );
 
@@ -2182,10 +2176,6 @@ export const promotions = sqliteTable(
       table.endsAt,
     ),
     check('promotions_window_valid', sql`${table.endsAt} > ${table.startsAt}`),
-    check(
-      'promotions_maker_checker',
-      sql`${table.approvedBy} IS NULL OR ${table.approvedBy} != ${table.createdBy}`,
-    ),
   ],
 );
 
@@ -2609,7 +2599,7 @@ export const parcelCashRecords = sqliteTable(
     ),
     check(
       'parcel_cash_checker',
-      sql`${t.kind}<>'remittance' OR ${t.status}<>'posted' OR (${t.approvedBy} IS NOT NULL AND ${t.approvedBy}<>${t.createdBy})`,
+      sql`${t.kind}<>'remittance' OR ${t.status}<>'posted' OR ${t.approvedBy} IS NOT NULL`,
     ),
   ],
 );
@@ -2823,10 +2813,6 @@ export const managedPayouts = sqliteTable(
     uniqueIndex('idx_managed_payouts_request').on(t.requestId),
     index('idx_managed_payouts_status').on(t.status, t.scheduledFor),
     check('managed_payout_positive', sql`${t.amountPaisa}>0`),
-    check(
-      'managed_payout_maker_checker',
-      sql`${t.approvedBy} IS NULL OR ${t.approvedBy}<>${t.preparedBy}`,
-    ),
   ],
 );
 

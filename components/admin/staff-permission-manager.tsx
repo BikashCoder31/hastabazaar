@@ -103,10 +103,9 @@ export function StaffPermissionManager({
       <div>
         <h2 className="font-heading text-xl">Individual Admin permissions</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Existing Admin access stays in place until a change is approved by a
-          different active Super Admin. A single Super Admin cannot approve
-          their own proposal. Reserved Super Admin actions and independent
-          approval safeguards cannot be delegated.
+          Existing Admin access stays in place until an active Super Admin
+          approves the change. You can approve a proposal you prepared for
+          another staff member. Reserved Super Admin actions cannot be delegated.
         </p>
       </div>
       {members.length > 0 ? (
@@ -285,8 +284,8 @@ export function StaffPermissionManager({
             </p>
             {r.status !== 'pending' ? <Link href={`/admin/staff-form-history?kind=staff-permission-decision&id=${encodeURIComponent(r.id)}`} className="block text-sm underline">View permission decision form history</Link> : null}
             {r.status === 'pending' &&
-              (r.proposedBy === actorId ? (
-                <p className="text-sm">Awaiting another active Super Admin.</p>
+              (r.userId === actorId ? (
+                <p className="text-sm">You cannot change your own permissions.</p>
               ) : (
                 <form
                   data-form-id="staff.staff-permission-2"

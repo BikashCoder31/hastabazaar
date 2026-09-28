@@ -55,7 +55,7 @@ export default async function PayoutsPage() {
             Payout control
           </h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Admins prepare eligible balances. A different Super Admin approves
+            Admins prepare eligible balances. A Super Admin approves
             them before any payment can be recorded.
           </p>
         </div>
@@ -106,7 +106,7 @@ export default async function PayoutsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ShieldCheck className="size-5 text-primary" /> Pending
-              independent approval
+              Super Admin approval
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -120,8 +120,7 @@ export default async function PayoutsPage() {
               }
             </p>
             <p className="mt-2 text-sm text-muted-foreground">
-              Among the loaded payout history · maker-checker separation
-              enforced
+              Among the loaded payout history · Super Admin approval required
             </p>
           </CardContent>
         </Card>

@@ -77,6 +77,28 @@ void test('all five governance forms render their own published controls and ver
     assert.match(form, /name="formVersion" value="2"/);
   }
 });
+void test('Super Admin sees decisions on their own prepared promotion and staff proposal while own permission targets stay blocked', async () => {
+  globalThis.governanceCatalogConfigs = Object.fromEntries([...formIds, 'staff.staff-permission-1', 'staff.staff-permission-2'].map(formId => [formId, { formId, version: 1, publishedAt: 1, fields: [] }]));
+  const { GovernanceConsole } = await import('../components/admin/governance-console');
+  const data = { users: [], rules: [], products: [], incidents: [], backups: [], promotions: [{
+    id: 'same-super-promotion', nameEn: 'Prepared placement', nameNe: 'Prepared placement', placement: 'homepage', status: 'pending_approval',
+    startsAt: 100, endsAt: 200, createdBy: 'super-one', creatorName: 'Super Admin', approverName: null,
+  }] };
+  const superHtml = renderToStaticMarkup(createElement(GovernanceConsole, { data, superAdmin: true, actorId: 'super-one' }));
+  assert.match(superHtml, /Approve placement/);
+  assert.match(superHtml, /Reject proposal/);
+  const adminHtml = renderToStaticMarkup(createElement(GovernanceConsole, { data, superAdmin: false, actorId: 'admin-one' }));
+  assert.doesNotMatch(adminHtml, /Approve placement|Reject proposal/);
+  const { StaffPermissionManager } = await import('../components/admin/staff-permission-manager');
+  const request = { id: 'same-super-permission', userId: 'admin-one', permissionsJson: '[]', expectedVersion: 0,
+    presetName: null, reason: 'Restrict operational access', proposedBy: 'super-one', proposedAt: 100,
+    status: 'pending' as const, decidedBy: null, decisionNote: null };
+  const staffHtml = renderToStaticMarkup(createElement(StaffPermissionManager, { actorId: 'super-one', members: [], requests: [request], presets: [] }));
+  assert.match(staffHtml, /value="approve"/);
+  assert.match(staffHtml, /value="reject"/);
+  const ownHtml = renderToStaticMarkup(createElement(StaffPermissionManager, { actorId: 'super-one', members: [], requests: [{ ...request, userId: 'super-one' }], presets: [] }));
+  assert.doesNotMatch(ownHtml, /value="approve"|value="reject"/);
+});
 
 void test('governance route refuses an unversioned form before a domain action', async () => {
   globalThis.governanceActor = { id: 'admin-one', role: 'admin' };

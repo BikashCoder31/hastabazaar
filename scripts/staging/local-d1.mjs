@@ -33,10 +33,18 @@ export async function applyLocalD1Migrations(paths, projectRoot) {
         .get(name);
       if (exists) continue;
       const sql = await readFile(join(migrationDirectory, name), 'utf8');
+      // SQLite ignores foreign_keys changes inside a transaction. Rebuilds must
+      // disable them before BEGIN so DROP does not cascade through old parents.
+      const foreignKeys = sqlite.prepare('PRAGMA foreign_keys').get().foreign_keys;
+      const legacyAlter = sqlite.prepare('PRAGMA legacy_alter_table').get().legacy_alter_table;
+      if (/PRAGMA\s+foreign_keys\s*=\s*(?:OFF|0)\b/i.test(sql)) sqlite.exec('PRAGMA foreign_keys=OFF');
       sqlite.exec('BEGIN IMMEDIATE');
       try {
         for (const statement of sql.split('--> statement-breakpoint')) {
           if (statement.trim()) sqlite.exec(statement);
+        }
+        if (sqlite.prepare('PRAGMA foreign_key_check').all().length) {
+          throw new Error('The migrated schema contains invalid foreign-key relationships.');
         }
         sqlite
           .prepare('INSERT INTO _hastabazaar_local_migrations (name, applied_at) VALUES (?, ?)')
@@ -46,6 +54,8 @@ export async function applyLocalD1Migrations(paths, projectRoot) {
       } catch (error) {
         sqlite.exec('ROLLBACK');
         throw new Error(`Local staging migration ${basename(name)} failed.`, { cause: error });
+      } finally {
+        sqlite.exec(`PRAGMA foreign_keys=${foreignKeys}; PRAGMA legacy_alter_table=${legacyAlter}`);
       }
     }
     return { databasePath, applied, total: names.length };

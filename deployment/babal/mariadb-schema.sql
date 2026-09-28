@@ -485,8 +485,7 @@ CREATE TABLE IF NOT EXISTS `payouts` (
   UNIQUE KEY `idx_payouts_created_request_unique` (`created_request_id`),
   KEY `idx_payouts_seller_status` (`seller_id`, `status`),
   KEY `idx_payouts_status_scheduled` (`status`, `scheduled_for`),
-  CONSTRAINT `payouts_amount_positive` CHECK (`amount_paisa` > 0),
-  CONSTRAINT `payouts_maker_checker` CHECK (`approved_by` IS NULL OR `approved_by` != `prepared_by`)
+  CONSTRAINT `payouts_amount_positive` CHECK (`amount_paisa` > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `policy_versions` (
@@ -640,8 +639,7 @@ CREATE TABLE IF NOT EXISTS `promotions` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_promotions_created_request_unique` (`created_request_id`),
   KEY `idx_promotions_status_window` (`status`, `starts_at`, `ends_at`),
-  CONSTRAINT `promotions_window_valid` CHECK (`ends_at` > `starts_at`),
-  CONSTRAINT `promotions_maker_checker` CHECK (`approved_by` IS NULL OR `approved_by` != `created_by`)
+  CONSTRAINT `promotions_window_valid` CHECK (`ends_at` > `starts_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `refund_liability_entries` (
@@ -658,7 +656,6 @@ CREATE TABLE IF NOT EXISTS `refund_liability_entries` (
   CONSTRAINT `refund_liability_amount_positive` CHECK (`amount_paisa` > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- refunds_high_value_maker_checker is enforced by application transactions because MariaDB 10.11 rejects CHECK columns changed by SET NULL/CASCADE foreign-key actions.
 CREATE TABLE IF NOT EXISTS `refunds` (
   `id` VARCHAR(191) NOT NULL,
   `order_id` VARCHAR(191) NOT NULL,
@@ -1472,6 +1469,177 @@ CREATE TRIGGER `managed_invoice_adjustment_no_delete`
 BEFORE DELETE ON `managed_invoice_adjustments`
 FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='managed_invoice_adjustment_immutable';
 
+-- Additive. Stop traffic during trigger replacement. No historical backfill.
+CREATE TABLE IF NOT EXISTS shipping_parcels (
+ shipping_job_id VARCHAR(191) PRIMARY KEY REFERENCES shipping_jobs(id),
+ cod_due_paisa BIGINT NOT NULL CHECK(cod_due_paisa>=0),
+ collected_paisa BIGINT NOT NULL DEFAULT 0 CHECK(collected_paisa>=0 AND collected_paisa<=cod_due_paisa),
+ remitted_paisa BIGINT NOT NULL DEFAULT 0 CHECK(remitted_paisa>=0 AND remitted_paisa<=collected_paisa),
+ version BIGINT NOT NULL DEFAULT 0,
+ operation_request_id VARCHAR(191),
+ method VARCHAR(32),
+ rider_user_id VARCHAR(191) REFERENCES users(id),
+ courier_name VARCHAR(120),
+ tracking_url TEXT,
+ latitude DOUBLE,
+ longitude DOUBLE,
+ accuracy DOUBLE,
+ position_at BIGINT,
+ delivered_at BIGINT,
+ created_at BIGINT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS parcel_cash_records (
+ id VARCHAR(191) PRIMARY KEY,
+ shipping_job_id VARCHAR(191) NOT NULL REFERENCES shipping_parcels(shipping_job_id),
+ kind VARCHAR(32) NOT NULL CHECK(kind IN ('collection','remittance')),
+ amount_paisa BIGINT NOT NULL CHECK(amount_paisa>0),
+ evidence_reference VARCHAR(120) NOT NULL,
+ status VARCHAR(32) NOT NULL CHECK(status IN ('pending','posted','rejected')),
+ created_by VARCHAR(191) NOT NULL REFERENCES users(id),
+ approved_by VARCHAR(191) REFERENCES users(id),
+ created_at BIGINT NOT NULL,
+ approved_at BIGINT,
+ CHECK(kind<>'remittance' OR status<>'posted' OR (approved_by IS NOT NULL AND approved_by<>created_by)),
+ UNIQUE(kind,evidence_reference)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS parcel_operation_events (
+ id VARCHAR(191) PRIMARY KEY,
+ order_id VARCHAR(191) NOT NULL REFERENCES orders(id),
+ shipping_job_id VARCHAR(191) REFERENCES shipping_parcels(shipping_job_id),
+ actor_id VARCHAR(191) NOT NULL REFERENCES users(id),
+ action VARCHAR(40) NOT NULL,
+ payload_json TEXT NOT NULL,
+ note TEXT NOT NULL,
+ created_at BIGINT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX IF NOT EXISTS idx_parcel_cash_status ON parcel_cash_records(status,created_at);
+
+DROP TRIGGER IF EXISTS parcel_cash_posted_no_update;
+DELIMITER $$
+CREATE TRIGGER parcel_cash_posted_no_update BEFORE UPDATE ON parcel_cash_records FOR EACH ROW BEGIN IF OLD.status='posted' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='posted_cash_immutable'; END IF; END$$
+DELIMITER ;
+
+DROP TRIGGER IF EXISTS parcel_cash_posted_no_delete;
+DELIMITER $$
+CREATE TRIGGER parcel_cash_posted_no_delete BEFORE DELETE ON parcel_cash_records FOR EACH ROW BEGIN IF OLD.status='posted' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='posted_cash_immutable'; END IF; END$$
+DELIMITER ;
+
+DROP TRIGGER IF EXISTS clear_closed_parcel_location;
+DELIMITER $$
+CREATE TRIGGER clear_closed_parcel_location AFTER UPDATE ON shipping_jobs FOR EACH ROW BEGIN IF NEW.status<>'dispatched' THEN UPDATE shipping_parcels SET latitude=NULL,longitude=NULL,accuracy=NULL,position_at=NULL WHERE shipping_job_id=NEW.id; END IF; END$$
+DELIMITER ;
+
+CREATE TABLE IF NOT EXISTS operation_transaction_guards (
+ id VARCHAR(191) PRIMARY KEY,
+ valid BIGINT NOT NULL CHECK(valid=1)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+DROP TRIGGER IF EXISTS close_cancelled_order_parcels;
+DELIMITER $$
+CREATE TRIGGER close_cancelled_order_parcels AFTER UPDATE ON orders FOR EACH ROW BEGIN IF NEW.status='cancelled' AND OLD.status<>'cancelled' THEN UPDATE shipping_jobs SET status='cancelled',updated_at=NEW.updated_at WHERE order_id=NEW.id AND direction='outbound' AND status<>'cancelled'; END IF; END$$
+DELIMITER ;
+-- Additive: no overrides means existing Admin permissions are retained.
+CREATE TABLE IF NOT EXISTS staff_permission_profiles (
+ user_id VARCHAR(191) PRIMARY KEY NOT NULL REFERENCES users(id),
+ permissions_json TEXT NOT NULL,
+ last_request_id TEXT,
+ version BIGINT NOT NULL DEFAULT 0,
+ updated_by VARCHAR(191) NOT NULL REFERENCES users(id),
+ updated_at BIGINT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS staff_permission_requests (
+ id VARCHAR(191) PRIMARY KEY NOT NULL,
+ user_id VARCHAR(191) NOT NULL REFERENCES users(id),
+ permissions_json TEXT NOT NULL,
+ expected_version BIGINT NOT NULL,
+ preset_name TEXT,
+ reason TEXT NOT NULL,
+ proposed_by VARCHAR(191) NOT NULL REFERENCES users(id),
+ proposed_at BIGINT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+ decided_by VARCHAR(191) REFERENCES users(id),
+ decided_at BIGINT,
+ decision_note TEXT,
+ decision_token TEXT,
+ CHECK(decided_by IS NULL OR decided_by <> proposed_by)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS staff_permission_presets (
+ id VARCHAR(191) PRIMARY KEY NOT NULL REFERENCES staff_permission_requests(id),
+ name TEXT NOT NULL,
+ permissions_json TEXT NOT NULL,
+ created_by VARCHAR(191) NOT NULL REFERENCES users(id),
+ created_at BIGINT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS staff_permission_guards (
+ id VARCHAR(191) PRIMARY KEY NOT NULL,
+ valid BIGINT NOT NULL CHECK(valid = 1)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS rider_policy_versions (version BIGINT PRIMARY KEY,proof_required BIGINT NOT NULL CHECK(proof_required=1),open_box BIGINT NOT NULL,otp_scope VARCHAR(191) NOT NULL,created_by VARCHAR(191),created_at BIGINT NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+INSERT IGNORE INTO rider_policy_versions(version,proof_required,open_box,otp_scope,created_at) VALUES (0,1,0,'off',0);
+CREATE TABLE IF NOT EXISTS rider_profiles (
+ user_id VARCHAR(191) PRIMARY KEY REFERENCES users(id), status VARCHAR(191) NOT NULL DEFAULT 'submitted' CHECK(status IN ('submitted','approved','rejected','suspended')), application_id VARCHAR(191) NOT NULL, version BIGINT NOT NULL DEFAULT 0, reviewed_by VARCHAR(191), review_note TEXT, updated_at BIGINT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS rider_applications (
+ id VARCHAR(191) PRIMARY KEY, user_id VARCHAR(191) NOT NULL REFERENCES users(id), legal_name VARCHAR(191) NOT NULL, phone VARCHAR(191) NOT NULL, district VARCHAR(191) NOT NULL, identity_type VARCHAR(191) NOT NULL, identity_number VARCHAR(191) NOT NULL, object_key VARCHAR(500) NOT NULL, mime_type VARCHAR(191) NOT NULL, created_at BIGINT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS rider_policy (
+ id VARCHAR(191) PRIMARY KEY, version BIGINT NOT NULL DEFAULT 0, proof_required BIGINT NOT NULL DEFAULT 1 CHECK(proof_required=1), open_box BIGINT NOT NULL DEFAULT 0 CHECK(open_box IN (0,1)), otp_scope VARCHAR(191) NOT NULL DEFAULT 'off' CHECK(otp_scope IN ('off','prepaid_only')), updated_by VARCHAR(191), updated_at BIGINT NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+INSERT IGNORE INTO rider_policy(id) VALUES ('current');
+CREATE TABLE IF NOT EXISTS rider_reports (
+ id VARCHAR(191) PRIMARY KEY, shipping_job_id VARCHAR(191) NOT NULL REFERENCES shipping_jobs(id), rider_user_id VARCHAR(191) NOT NULL REFERENCES users(id), assignment_version BIGINT NOT NULL, kind VARCHAR(191) NOT NULL CHECK(kind IN ('delivered','failed_delivery','customer_unavailable')), note TEXT NOT NULL, object_key VARCHAR(191), mime_type VARCHAR(191), cash_paisa BIGINT NOT NULL DEFAULT 0 CHECK(cash_paisa>=0), status VARCHAR(191) NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','rejected')), reviewed_by VARCHAR(191), review_note TEXT, created_at BIGINT NOT NULL, reviewed_at BIGINT, request_id VARCHAR(191) NOT NULL UNIQUE, policy_version BIGINT NOT NULL, open_box BIGINT NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS rider_events (
+ id VARCHAR(191) PRIMARY KEY, user_id VARCHAR(191) NOT NULL, actor_id VARCHAR(191) NOT NULL, action VARCHAR(191) NOT NULL, report_id VARCHAR(191), note TEXT NOT NULL, created_at BIGINT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS rider_otp_challenges (
+ shipping_job_id VARCHAR(191) PRIMARY KEY REFERENCES shipping_jobs(id), rider_user_id VARCHAR(191) NOT NULL, assignment_version BIGINT NOT NULL, code_hash VARCHAR(191) NOT NULL, expires_at BIGINT NOT NULL, attempts BIGINT NOT NULL DEFAULT 0, consumed_at BIGINT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX IF NOT EXISTS idx_rider_reports_queue ON rider_reports(status,created_at);
+CREATE INDEX IF NOT EXISTS idx_rider_reports_assignment ON rider_reports(shipping_job_id,rider_user_id);
+
+DROP TRIGGER IF EXISTS rider_application_no_update;
+DELIMITER $$
+CREATE TRIGGER rider_application_no_update BEFORE UPDATE ON rider_applications FOR EACH ROW BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Rider evidence history is immutable'; END$$
+DELIMITER ;
+
+DROP TRIGGER IF EXISTS rider_application_no_delete;
+DELIMITER $$
+CREATE TRIGGER rider_application_no_delete BEFORE DELETE ON rider_applications FOR EACH ROW BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Rider evidence history is immutable'; END$$
+DELIMITER ;
+
+DROP TRIGGER IF EXISTS rider_events_no_update;
+DELIMITER $$
+CREATE TRIGGER rider_events_no_update BEFORE UPDATE ON rider_events FOR EACH ROW BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Rider evidence history is immutable'; END$$
+DELIMITER ;
+
+DROP TRIGGER IF EXISTS rider_events_no_delete;
+DELIMITER $$
+CREATE TRIGGER rider_events_no_delete BEFORE DELETE ON rider_events FOR EACH ROW BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Rider evidence history is immutable'; END$$
+DELIMITER ;
+
+DROP TRIGGER IF EXISTS rider_report_no_delete;
+DELIMITER $$
+CREATE TRIGGER rider_report_no_delete BEFORE DELETE ON rider_reports FOR EACH ROW BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Rider evidence history is immutable'; END$$
+DELIMITER ;
+
+DROP TRIGGER IF EXISTS rider_report_evidence_immutable;
+DELIMITER $$
+CREATE TRIGGER rider_report_evidence_immutable BEFORE UPDATE ON rider_reports FOR EACH ROW BEGIN IF (OLD.status IN ('accepted','rejected') AND NOT (NEW.status <=> OLD.status AND NEW.reviewed_by <=> OLD.reviewed_by AND NEW.review_note <=> OLD.review_note AND NEW.reviewed_at <=> OLD.reviewed_at)) OR NOT (NEW.id <=> OLD.id AND NEW.shipping_job_id <=> OLD.shipping_job_id AND NEW.rider_user_id <=> OLD.rider_user_id AND NEW.assignment_version <=> OLD.assignment_version AND NEW.kind <=> OLD.kind AND NEW.note <=> OLD.note AND NEW.object_key <=> OLD.object_key AND NEW.mime_type <=> OLD.mime_type AND NEW.cash_paisa <=> OLD.cash_paisa AND NEW.created_at <=> OLD.created_at AND NEW.request_id <=> OLD.request_id AND NEW.policy_version <=> OLD.policy_version AND NEW.open_box <=> OLD.open_box) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Rider report evidence is immutable'; END IF; END$$
+DELIMITER ;
+
+DROP TRIGGER IF EXISTS rider_policy_versions_no_update;
+DELIMITER $$
+CREATE TRIGGER rider_policy_versions_no_update BEFORE UPDATE ON rider_policy_versions FOR EACH ROW BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Rider policy history is immutable'; END$$
+DELIMITER ;
+
+DROP TRIGGER IF EXISTS rider_policy_versions_no_delete;
+DELIMITER $$
+CREATE TRIGGER rider_policy_versions_no_delete BEFORE DELETE ON rider_policy_versions FOR EACH ROW BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Rider policy history is immutable'; END$$
+DELIMITER ;
 -- Per-assignment open-box and rider-finance snapshots. This is additive and
 -- contains no production values or fictional records.
 ALTER TABLE `rider_profiles`
@@ -2615,4 +2783,62 @@ CREATE TABLE IF NOT EXISTS `hastabazaar_schema_versions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 INSERT IGNORE INTO `hastabazaar_schema_versions` (`version`, `applied_at`) VALUES ('0020_snapshot', UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000);
 
+-- Additive and repeatable: replace only staff maker/checker checks with active-role approval guards.
+-- Existing rows, balances, foreign keys, domain triggers and seller/rider conflicts are retained.
+DELIMITER $$
+DROP PROCEDURE IF EXISTS hb_single_sa_remove_checks$$
+CREATE PROCEDURE hb_single_sa_remove_checks()
+BEGIN
+ DECLARE finished INTEGER DEFAULT 0;
+ DECLARE target_table VARCHAR(64);
+ DECLARE target_constraint VARCHAR(64);
+ DECLARE matching CURSOR FOR
+ SELECT tc.TABLE_NAME,tc.CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS tc
+ JOIN information_schema.CHECK_CONSTRAINTS cc ON cc.CONSTRAINT_SCHEMA=tc.CONSTRAINT_SCHEMA AND cc.CONSTRAINT_NAME=tc.CONSTRAINT_NAME AND cc.TABLE_NAME=tc.TABLE_NAME
+ WHERE tc.CONSTRAINT_SCHEMA=DATABASE() AND tc.CONSTRAINT_TYPE='CHECK'
+ AND tc.TABLE_NAME IN ('payouts','refunds','promotions','managed_payouts','managed_supplier_payments','staff_permission_requests','parcel_cash_records')
+ AND LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(cc.CHECK_CLAUSE,CHAR(96),''),' ',''),'(',''),')',''),CHAR(10),''),CHAR(13),'')) IN ('approved_byisnullorapproved_by!=prepared_by','approved_byisnullorapproved_by<>prepared_by','approved_byisnullorapproved_by!=prepared_by','approved_byisnullorapproved_by<>prepared_by','approved_byisnullorapproved_by<>prepared_by','approved_byisnullorapproved_by!=prepared_by','high_value_approved_byisnullorapproved_byisnullorhigh_value_approved_by!=approved_by','high_value_approved_byisnullorapproved_byisnullorhigh_value_approved_by<>approved_by','high_value_approved_byisnullorapproved_byisnullorhigh_value_approved_by!=approved_by','approved_byisnullorapproved_by!=created_by','approved_byisnullorapproved_by<>created_by','approved_byisnullorapproved_by!=created_by','decided_byisnullordecided_by<>proposed_by','decided_byisnullordecided_by<>proposed_by','decided_byisnullordecided_by!=proposed_by','kind<>''remittance''orstatus<>''posted''orapproved_byisnotnullandapproved_by<>created_by','kind<>''remittance''orstatus<>''posted''orapproved_byisnotnullandapproved_by<>created_by','kind!=''remittance''orstatus!=''posted''orapproved_byisnotnullandapproved_by!=created_by');
+ DECLARE CONTINUE HANDLER FOR NOT FOUND SET finished=1;
+ OPEN matching;
+ remove_loop: LOOP
+ FETCH matching INTO target_table,target_constraint;
+ IF finished=1 THEN LEAVE remove_loop; END IF;
+ SET @hb_single_sa_ddl=CONCAT('ALTER TABLE ',CHAR(96),REPLACE(target_table,CHAR(96),CONCAT(CHAR(96),CHAR(96))),CHAR(96),' DROP CONSTRAINT ',CHAR(96),REPLACE(target_constraint,CHAR(96),CONCAT(CHAR(96),CHAR(96))),CHAR(96));
+ PREPARE hb_single_sa_statement FROM @hb_single_sa_ddl;
+ EXECUTE hb_single_sa_statement;
+ DEALLOCATE PREPARE hb_single_sa_statement;
+ END LOOP;
+ CLOSE matching;
+END$$
+CALL hb_single_sa_remove_checks()$$
+DROP PROCEDURE hb_single_sa_remove_checks$$
+DROP TRIGGER IF EXISTS payouts_single_sa_insert$$
+CREATE TRIGGER payouts_single_sa_insert BEFORE INSERT ON payouts FOR EACH ROW BEGIN IF (NEW.approved_by=NEW.prepared_by AND NOT EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=NEW.approved_by AND u.status='active' AND r.role='super_admin')) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='payouts_approval_requires_active_super_admin'; END IF; END$$
+DROP TRIGGER IF EXISTS payouts_single_sa_update$$
+CREATE TRIGGER payouts_single_sa_update BEFORE UPDATE ON payouts FOR EACH ROW BEGIN IF (NOT(NEW.approved_by<=>OLD.approved_by) OR NOT(NEW.prepared_by<=>OLD.prepared_by) OR (NEW.status='approved' AND OLD.status<>'approved')) AND (NEW.approved_by=NEW.prepared_by AND NOT EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=NEW.approved_by AND u.status='active' AND r.role='super_admin')) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='payouts_approval_requires_active_super_admin'; END IF; END$$
+DROP TRIGGER IF EXISTS refunds_single_sa_insert$$
+CREATE TRIGGER refunds_single_sa_insert BEFORE INSERT ON refunds FOR EACH ROW BEGIN IF (NEW.high_value_approved_by=NEW.approved_by AND NOT EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=NEW.high_value_approved_by AND u.status='active' AND r.role='super_admin')) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='refunds_approval_requires_active_super_admin'; END IF; END$$
+DROP TRIGGER IF EXISTS refunds_single_sa_update$$
+CREATE TRIGGER refunds_single_sa_update BEFORE UPDATE ON refunds FOR EACH ROW BEGIN IF (NOT(NEW.high_value_approved_by<=>OLD.high_value_approved_by) OR NOT(NEW.approved_by<=>OLD.approved_by) OR (NEW.status='approved' AND OLD.status<>'approved')) AND (NEW.high_value_approved_by=NEW.approved_by AND NOT EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=NEW.high_value_approved_by AND u.status='active' AND r.role='super_admin')) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='refunds_approval_requires_active_super_admin'; END IF; END$$
+DROP TRIGGER IF EXISTS promotions_single_sa_insert$$
+CREATE TRIGGER promotions_single_sa_insert BEFORE INSERT ON promotions FOR EACH ROW BEGIN IF (NEW.approved_by=NEW.created_by AND NOT EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=NEW.approved_by AND u.status='active' AND r.role='super_admin')) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='promotions_approval_requires_active_super_admin'; END IF; END$$
+DROP TRIGGER IF EXISTS promotions_single_sa_update$$
+CREATE TRIGGER promotions_single_sa_update BEFORE UPDATE ON promotions FOR EACH ROW BEGIN IF (NOT(NEW.approved_by<=>OLD.approved_by) OR NOT(NEW.created_by<=>OLD.created_by) OR (NEW.status='approved' AND OLD.status<>'approved')) AND (NEW.approved_by=NEW.created_by AND NOT EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=NEW.approved_by AND u.status='active' AND r.role='super_admin')) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='promotions_approval_requires_active_super_admin'; END IF; END$$
+DROP TRIGGER IF EXISTS managed_payouts_single_sa_insert$$
+CREATE TRIGGER managed_payouts_single_sa_insert BEFORE INSERT ON managed_payouts FOR EACH ROW BEGIN IF (NEW.approved_by=NEW.prepared_by AND NOT EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=NEW.approved_by AND u.status='active' AND r.role='super_admin')) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='managed_payouts_approval_requires_active_super_admin'; END IF; END$$
+DROP TRIGGER IF EXISTS managed_payouts_single_sa_update$$
+CREATE TRIGGER managed_payouts_single_sa_update BEFORE UPDATE ON managed_payouts FOR EACH ROW BEGIN IF (NOT(NEW.approved_by<=>OLD.approved_by) OR NOT(NEW.prepared_by<=>OLD.prepared_by) OR (NEW.status='approved' AND OLD.status<>'approved')) AND (NEW.approved_by=NEW.prepared_by AND NOT EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=NEW.approved_by AND u.status='active' AND r.role='super_admin')) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='managed_payouts_approval_requires_active_super_admin'; END IF; END$$
+DROP TRIGGER IF EXISTS managed_supplier_payments_single_sa_insert$$
+CREATE TRIGGER managed_supplier_payments_single_sa_insert BEFORE INSERT ON managed_supplier_payments FOR EACH ROW BEGIN IF (NEW.approved_by=NEW.prepared_by AND NOT EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=NEW.approved_by AND u.status='active' AND r.role='super_admin')) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='managed_supplier_payments_approval_requires_active_super_admin'; END IF; END$$
+DROP TRIGGER IF EXISTS managed_supplier_payments_single_sa_update$$
+CREATE TRIGGER managed_supplier_payments_single_sa_update BEFORE UPDATE ON managed_supplier_payments FOR EACH ROW BEGIN IF (NOT(NEW.approved_by<=>OLD.approved_by) OR NOT(NEW.prepared_by<=>OLD.prepared_by) OR (NEW.status='approved' AND OLD.status<>'approved')) AND (NEW.approved_by=NEW.prepared_by AND NOT EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=NEW.approved_by AND u.status='active' AND r.role='super_admin')) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='managed_supplier_payments_approval_requires_active_super_admin'; END IF; END$$
+DROP TRIGGER IF EXISTS staff_permission_requests_single_sa_insert$$
+CREATE TRIGGER staff_permission_requests_single_sa_insert BEFORE INSERT ON staff_permission_requests FOR EACH ROW BEGIN IF (NEW.decided_by=NEW.proposed_by AND NOT EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=NEW.decided_by AND u.status='active' AND r.role='super_admin')) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='staff_permission_requests_approval_requires_active_super_admin'; END IF; END$$
+DROP TRIGGER IF EXISTS staff_permission_requests_single_sa_update$$
+CREATE TRIGGER staff_permission_requests_single_sa_update BEFORE UPDATE ON staff_permission_requests FOR EACH ROW BEGIN IF (NOT(NEW.decided_by<=>OLD.decided_by) OR NOT(NEW.proposed_by<=>OLD.proposed_by) OR (NEW.status='approved' AND OLD.status<>'approved')) AND (NEW.decided_by=NEW.proposed_by AND NOT EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=NEW.decided_by AND u.status='active' AND r.role='super_admin')) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='staff_permission_requests_approval_requires_active_super_admin'; END IF; END$$
+DROP TRIGGER IF EXISTS parcel_cash_records_single_sa_insert$$
+CREATE TRIGGER parcel_cash_records_single_sa_insert BEFORE INSERT ON parcel_cash_records FOR EACH ROW BEGIN IF (NEW.kind='remittance' AND NEW.status='posted' AND (NEW.approved_by IS NULL OR (NEW.rider_user_id IS NOT NULL AND NEW.rider_user_id=NEW.approved_by) OR (NEW.approved_by=NEW.created_by AND NOT EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=NEW.approved_by AND u.status='active' AND r.role='super_admin')))) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='parcel_cash_records_approval_requires_active_super_admin'; END IF; END$$
+DROP TRIGGER IF EXISTS parcel_cash_records_single_sa_update$$
+CREATE TRIGGER parcel_cash_records_single_sa_update BEFORE UPDATE ON parcel_cash_records FOR EACH ROW BEGIN IF (NEW.kind='remittance' AND NEW.status='posted' AND (NEW.approved_by IS NULL OR (NEW.rider_user_id IS NOT NULL AND NEW.rider_user_id=NEW.approved_by) OR (NEW.approved_by=NEW.created_by AND NOT EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=NEW.approved_by AND u.status='active' AND r.role='super_admin')))) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='parcel_cash_records_approval_requires_active_super_admin'; END IF; END$$
+DELIMITER ;
 SET FOREIGN_KEY_CHECKS = 1;
