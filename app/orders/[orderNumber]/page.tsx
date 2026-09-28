@@ -282,6 +282,7 @@ export default async function OrderReceiptPage({
                       key={document.id}
                       className="h-auto max-w-full whitespace-normal break-all py-2 text-left"
                       variant="outline"
+                      nativeButton={false}
                       render={
                         <Link
                           href={document.kind === 'simulated_invoice'
@@ -342,7 +343,7 @@ export default async function OrderReceiptPage({
               }>Older cancellation answers</Link> : null}
             </section> : null}
             <div className="mt-7 flex flex-wrap gap-3">
-              <Button render={<Link href="/shop" />} className="rounded-full">
+              <Button nativeButton={false} render={<Link href="/shop" />} className="rounded-full">
                 Continue shopping
               </Button>
               {['confirmed','packing','ready_for_pickup','dispatched'].includes(receipt.status) ? (

@@ -3,9 +3,10 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { readFile, readdir, realpath, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { INCENTIVE_FORM_IDS } from '../lib/incentives/forms.ts';
 
 import {
   assertDisposableStagingContext,
@@ -15,6 +16,7 @@ import {
 import { locateLocalD1Database } from './staging/local-d1.mjs';
 
 const APPROVED_CHECKOUT = resolve('C:/Users/abinash/.codex/worktrees/hastabazaar-v1-2-1-staging/Hatskala');
+async function main() {
 const project = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 assert.equal(project, APPROVED_CHECKOUT, 'QA setup is restricted to the approved isolated checkout.');
 assert.equal(resolve(process.cwd()), APPROVED_CHECKOUT, 'Run from the approved checkout root.');
@@ -29,13 +31,14 @@ assert.equal(origin.username + origin.password, '', 'APP_ORIGIN cannot contain c
 assert.ok(process.version.startsWith('v22.') && Number(process.versions.node.split('.')[1]) >= 13,
   'Node 22.13 or later in the Node 22 line is required.');
 
-const modes = new Set(['--plan', '--publish-matrix-configs', '--prepare-buyer-cart']);
+const modes = new Set(['--plan', '--publish-matrix-configs', '--publish-incentive-configs', '--prepare-buyer-cart']);
 const mode = process.argv[2];
 assert.ok(modes.has(mode) && process.argv.length === 3,
-  'Explicitly select --plan, --publish-matrix-configs, or --prepare-buyer-cart.');
+  'Explicitly select --plan, --publish-matrix-configs, --publish-incentive-configs, or --prepare-buyer-cart.');
 
 const databasePath = await locateLocalD1Database(paths);
 assert.ok(resolve(databasePath).startsWith(`${paths.state}${sep}`), 'D1 escaped disposable state.');
+assert.equal(await realpath(databasePath), databasePath, 'D1 path cannot redirect outside marked state.');
 const db = new DatabaseSync(databasePath, { readOnly: true });
 const matrixFormIds = Object.freeze([
   'public.contact', 'account.privacy-request', 'account.profile',
@@ -215,8 +218,258 @@ async function prepareBuyerCart() {
 if (mode === '--plan') {
   process.stdout.write(JSON.stringify({
     checkout: relative(project, paths.root), database: relative(project, databasePath),
-    ...readiness, matrixFormIds,
+    ...readiness, matrixFormIds, incentivePhase: 'promo',
+    incentiveFormIds: [INCENTIVE_FORM_IDS.promoCode, INCENTIVE_FORM_IDS.promoQuote],
     pendingContract: 'Order/assignment requires a real checkout and staff parcel workflow; this script never fabricates an order, answer, audit, or rider assignment.',
   }, null, 2) + '\n');
 } else if (mode === '--publish-matrix-configs') await publishMatrixConfigs();
-else await prepareBuyerCart();
+else if (mode === '--publish-incentive-configs') {
+    let cookie;
+    const result = await initializeIncentiveConfigs({
+      projectRoot: project,
+      environment: process.env,
+      request: async (path, options) => {
+        if (!cookie) {
+          await serverReady();
+          cookie = 'hastabazaar_local_test_role=super_admin';
+        }
+        return responseJson(
+          await localRequest(path, { ...options, cookie }),
+          path,
+          path.endsWith('/draft') ? 201 : 200,
+        );
+      },
+      readSnapshot: async () => readIncentiveSetupSnapshot(databasePath),
+    });
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+  } else await prepareBuyerCart();
+}
+
+
+/** This read-only preflight must finish before an injected API can be called. */
+export async function verifyIncentiveSetupContext({
+  environment,
+  projectRoot,
+}) {
+  assertDisposableStagingContext(environment);
+  const origin = new URL(environment.APP_ORIGIN);
+  assert.equal(origin.protocol, 'http:', 'Loopback HTTP is required.');
+  assert.ok(
+    ['localhost', '127.0.0.1'].includes(origin.hostname),
+    'Loopback host is required.',
+  );
+  assert.equal(
+    origin.pathname + origin.search + origin.hash,
+    '/',
+    'APP_ORIGIN must be bare.',
+  );
+  assert.equal(
+    origin.username + origin.password,
+    '',
+    'Origin credentials are forbidden.',
+  );
+  const paths = resolveDisposableStagingPaths(projectRoot, environment);
+  await readAndVerifyStagingMarker(paths);
+  assert.equal(
+    await realpath(paths.root),
+    paths.root,
+    'Staging root cannot be a symlink.',
+  );
+  assert.equal(
+    await realpath(paths.state),
+    paths.state,
+    'Staging state cannot be a symlink.',
+  );
+  return { paths, origin };
+}
+
+export function readIncentiveSetupSnapshot(databasePath) {
+  const db = new DatabaseSync(databasePath, { readOnly: true });
+  try {
+    const tables = [
+      'users',
+      'user_roles',
+      'seller_profiles',
+      'products',
+      'orders',
+      'order_items',
+      'carts',
+      'cart_items',
+      'wallet_accounts',
+      'wallet_entries',
+      'promo_campaigns',
+      'promo_revisions',
+      'promo_redemptions',
+      'promo_customer_usage',
+      'order_email_jobs',
+      'seller_restrictions',
+      'seller_restriction_events',
+      'seller_ledger_entries',
+    ];
+    const present = new Set(
+      db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+        .all()
+        .map((r) => r.name),
+    );
+    const domain = Object.fromEntries(
+      tables
+        .filter((t) => present.has(t))
+        .map((t) => [
+          t,
+          db.prepare(`SELECT * FROM "${t}" ORDER BY rowid`).all(),
+        ]),
+    );
+    return {
+      published: db
+        .prepare(
+          "SELECT * FROM form_config_versions WHERE status='published' ORDER BY id",
+        )
+        .all(),
+      domain,
+    };
+  } finally {
+    db.close();
+  }
+}
+
+/** Initialize only actual connected promo receivers; contracts alone never imply readiness. */
+export async function initializeIncentiveConfigs({
+  environment,
+  projectRoot,
+  request,
+  readSnapshot,
+  phase = 'promo',
+}) {
+  await verifyIncentiveSetupContext({ environment, projectRoot });
+  assert.equal(
+    phase,
+    'promo',
+    'Combined initialization is reserved for Task 12.',
+  );
+  const before = await readSnapshot();
+  const listing = await request('/api/admin/forms');
+  assert.ok(Array.isArray(listing.forms), 'Catalog must return forms.');
+  const byId = new Map(listing.forms.map((row) => [row.definition?.id, row]));
+  assert.equal(
+    byId.size,
+    listing.forms.length,
+    'Catalog contains duplicate IDs.',
+  );
+  const actualIds = [
+    INCENTIVE_FORM_IDS.promoCode,
+    INCENTIVE_FORM_IDS.promoQuote,
+  ];
+  const absentFutureIds = Object.values(INCENTIVE_FORM_IDS).filter(
+    (id) => !byId.has(id),
+  );
+  for (const formId of actualIds) {
+    const row = byId.get(formId);
+    const expectedBehavior =
+      formId === INCENTIVE_FORM_IDS.promoCode ? 'record' : 'none';
+    assert.ok(
+      row &&
+        row.definition.adapterId === formId &&
+        row.definition.capabilities?.answerBehavior === expectedBehavior,
+      `${formId} must have its actual connected adapter.`,
+    );
+    if (expectedBehavior === 'none')
+      assert.deepEqual(
+        row.definition.capabilities.customFieldTypes,
+        [],
+        `${formId} cannot accept custom questions or answers.`,
+      );
+    assert.ok(
+      Number.isSafeInteger(row.publishedVersion) && row.publishedVersion >= 0,
+      `${formId} has an invalid published version.`,
+    );
+    if (row.publishedVersion === 0)
+      assert.equal(
+        row.draftVersion ?? 0,
+        0,
+        `${formId} already has an unpublished draft; resolve it before setup.`,
+      );
+  }
+  const initializedFormIds = [];
+  for (const formId of actualIds) {
+    if (byId.get(formId).publishedVersion > 0) continue;
+    const reason =
+      'SIMULATED local incentive presentation baseline for ' + formId;
+    const draft = await request(
+      `/api/admin/forms/${encodeURIComponent(formId)}/draft`,
+      {
+        method: 'POST',
+        json: {
+          requestId: randomUUID(),
+          reason,
+          expectedPublishedVersion: 0,
+          config: { formId, fields: [] },
+        },
+      },
+    );
+    assert.ok(
+      typeof draft.draft?.id === 'string' &&
+        Number.isSafeInteger(draft.draft.revision),
+      `${formId} returned an ambiguous draft; inspect before retrying.`,
+    );
+    const publication = await request(
+      `/api/admin/forms/${encodeURIComponent(formId)}/publish`,
+      {
+        method: 'POST',
+        json: {
+          requestId: randomUUID(),
+          reason,
+          expectedPublishedVersion: 0,
+          draftId: draft.draft.id,
+          expectedDraftRevision: draft.draft.revision,
+        },
+      },
+    );
+    assert.ok(
+      publication.published?.status === 'published' &&
+        publication.published.id === draft.draft.id &&
+        publication.published.version === 1,
+      `${formId} returned an ambiguous publication; inspect before retrying.`,
+    );
+    initializedFormIds.push(formId);
+  }
+  const after = await readSnapshot();
+  assert.deepEqual(
+    after.published.filter((row) =>
+      before.published.some((old) => old.id === row.id),
+    ),
+    before.published,
+    'Existing published configurations changed.',
+  );
+  assert.deepEqual(
+    after.domain,
+    before.domain,
+    'Configuration setup changed business domain state.',
+  );
+  const current = await request('/api/admin/forms');
+  const missingFormIds = actualIds.filter(
+    (id) =>
+      !current.forms.some(
+        (row) => row.definition?.id === id && row.publishedVersion > 0,
+      ),
+  );
+  assert.deepEqual(
+    missingFormIds,
+    [],
+    'Connected incentive forms remain uninitialized.',
+  );
+  return {
+    phase,
+    initializedFormIds,
+    missingFormIds,
+    absentFutureIds,
+    domainMutationCount: 0,
+    existingPublishedPreserved: before.published.length,
+  };
+}
+
+if (
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+)
+  await main();
