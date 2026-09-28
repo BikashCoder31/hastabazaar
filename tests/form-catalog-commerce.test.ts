@@ -978,9 +978,19 @@ void test('checkout client submits the published answer with the core order payl
     await page.getByText('Correct the delivery details.').waitFor();
     await form.getByLabel('Contact phone').fill('9822222222');
     await form.getByRole('button', { name: 'Place COD order' }).click();
+    await form.getByText(/differs from the prior attempt/).waitFor();
+    assert.equal(payloads.length, 1, 'changed intent must not reuse an uncertain order attempt');
+    page.once('dialog', (dialog) => dialog.dismiss());
+    await form.getByRole('button', { name: 'Start a new order attempt' }).click();
+    await form.getByRole('button', { name: 'Place COD order' }).click();
+    await form.getByText(/differs from the prior attempt/).waitFor();
+    assert.equal(payloads.length, 1, 'cancelled reset retains the original attempt');
+    page.once('dialog', (dialog) => dialog.accept());
+    await form.getByRole('button', { name: 'Start a new order attempt' }).click();
+    await form.getByRole('button', { name: 'Place COD order' }).click();
     await page.waitForFunction(() => document.body.textContent?.includes('Correct the delivery details.') === false);
-    assert.equal(payloads.length, 2, 'checkout remained submittable after a domain conflict');
-    assert.equal(payloads[0].idempotencyKey, payloads[1].idempotencyKey);
+    assert.equal(payloads.length, 2, 'explicit new attempt remains submittable after a domain conflict');
+    assert.notEqual(payloads[0].idempotencyKey, payloads[1].idempotencyKey);
     assert.equal(payloads[1].formVersion, 1);
     assert.deepEqual(payloads[1].customAnswers,
       [{ fieldId: 'context_note', value: 'Call before delivery' }]);

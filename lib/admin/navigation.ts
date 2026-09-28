@@ -80,6 +80,14 @@ const destinations: readonly {
     permission: 'admin.invite',
   },
   {
+    href: '/admin/promo-codes',
+    label: 'Promo codes',
+    group: 'Controls',
+    icon: 'commission',
+    permission: 'admin.invite',
+    role: 'super_admin',
+  },
+  {
     href: '/admin/commission',
     label: 'Commission',
     group: 'Controls',
