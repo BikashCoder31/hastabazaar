@@ -112,6 +112,23 @@ async function fixture() {
     CREATE TABLE gift_cards(id TEXT PRIMARY KEY, issued_by TEXT, redeemed_by TEXT);
     CREATE TABLE order_cancellation_events(id TEXT PRIMARY KEY,order_id TEXT,actor_id TEXT);
     CREATE TABLE order_cancellation_reviews(id TEXT PRIMARY KEY,order_id TEXT,requested_by TEXT);
+    -- Empty incentive parents keep this partial fixture compatible with financial privacy exports.
+    CREATE TABLE promo_campaigns(id TEXT PRIMARY KEY,code TEXT);
+    CREATE TABLE promo_revisions(campaign_id TEXT,revision INTEGER,label TEXT,kind TEXT,
+      fixed_paisa INTEGER,percent_bps INTEGER,max_discount_paisa INTEGER);
+    CREATE TABLE promo_redemptions(id TEXT PRIMARY KEY,campaign_id TEXT,revision INTEGER,
+      customer_id TEXT,order_id TEXT,request_id TEXT,discount_paisa INTEGER,
+      subtotal_paisa INTEGER,created_at INTEGER);
+    CREATE TABLE loyalty_revisions(revision INTEGER PRIMARY KEY,points_per_block INTEGER,
+      credit_paisa_per_block INTEGER);
+    CREATE TABLE loyalty_daily_claims(id TEXT PRIMARY KEY,user_id TEXT,request_id TEXT,
+      revision INTEGER,local_date TEXT,awarded_points INTEGER,form_version_id TEXT,created_at INTEGER);
+    CREATE TABLE loyalty_points_entries(id TEXT PRIMARY KEY,user_id TEXT,points INTEGER,kind TEXT,
+      claim_id TEXT,redemption_id TEXT,created_at INTEGER);
+    CREATE TABLE loyalty_redemptions(id TEXT PRIMARY KEY,user_id TEXT,request_id TEXT,
+      revision INTEGER,points INTEGER,credit_paisa INTEGER,form_version_id TEXT,created_at INTEGER);
+    CREATE TABLE wallet_entries(id TEXT PRIMARY KEY,user_id TEXT,loyalty_redemption_id TEXT,
+      amount_paisa INTEGER,kind TEXT,created_at INTEGER);
     CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY);
     CREATE TABLE rider_applications(id TEXT PRIMARY KEY,user_id TEXT NOT NULL);
     CREATE TABLE rider_reports(id TEXT PRIMARY KEY,rider_user_id TEXT NOT NULL);

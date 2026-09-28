@@ -29,6 +29,7 @@ const links = [
   { href: '/account', label: 'Overview', icon: House },
   { href: '/account/orders', label: 'My orders', icon: Package },
   { href: '/account/wallet', label: 'My wallet', icon: Wallet },
+  { href: '/account/rewards', label: 'My Rewards', icon: Gift },
   { href: '/account/referrals', label: 'Refer & earn', icon: Gift },
   { href: '/account/wishlist', label: 'Wishlist', icon: Heart },
   { href: '/rider', label: 'Assigned deliveries', icon: Package },

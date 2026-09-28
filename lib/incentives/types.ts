@@ -99,6 +99,10 @@ export interface CustomerLoyaltyState {
   readonly endsAt: number | null;
   readonly status: 'active' | 'scheduled' | 'expired' | 'paused' | 'disabled' | 'exhausted';
 }
+export interface LoyaltyDenomination {
+  readonly pointsPerBlock: number;
+  readonly creditPaisaPerBlock: number;
+}
 export interface LoyaltyState {
   readonly revision: number;
   readonly publishedRevision: number;
@@ -106,10 +110,12 @@ export interface LoyaltyState {
   readonly paused: boolean;
   readonly creditedPaisa: number;
   readonly liability: LoyaltyLiability;
+  /** Null for disabled defaults or an unrepresentable saved draft budget at the locked rate. */
   readonly maximumLiability: LoyaltyLiability | null;
   readonly version: number;
   readonly terms: LoyaltyTerms;
   readonly rateLocked: boolean;
+  readonly lockedDenomination: LoyaltyDenomination | null;
   readonly issuedPoints: number;
   readonly redeemedPoints: number;
   readonly outstandingPoints: number;

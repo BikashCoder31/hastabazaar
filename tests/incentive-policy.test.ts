@@ -115,3 +115,50 @@ void test('claim, redemption and promo quote reject custom questions and forged 
     assert.throws(() => validateAnswersForDefinition(definition, { ...config, version: 1, publishedAt: 1 }, [{ fieldId: 'points', value: 100000 }]));
   }
 });
+
+void test('locked denomination cannot become a custom administrative question', () => {
+  const id = 'staff.loyalty-settings';
+  const definition = { ...INCENTIVE_FORM_CONTRACTS[id], adapterId: id };
+  assert.doesNotThrow(() =>
+    validateFormDraftForDefinition(
+      definition,
+      {
+        formId: id,
+        fields: [
+          {
+            id: 'exchange_context',
+            key: 'exchange_context',
+            type: 'short_text',
+            label: 'Exchange context',
+            required: false,
+            status: 'active',
+            order: 0,
+          },
+        ],
+      },
+      true,
+    ),
+  );
+  for (const key of ['lockeddenomination', 'locked_denomination']) {
+    assert.throws(() =>
+      validateFormDraftForDefinition(
+        definition,
+        {
+          formId: id,
+          fields: [
+            {
+              id: key,
+              key,
+              type: 'short_text',
+              label: 'Exchange context',
+              required: false,
+              status: 'active',
+              order: 0,
+            },
+          ],
+        },
+        true,
+      ),
+    );
+  }
+});

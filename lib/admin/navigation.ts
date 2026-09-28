@@ -88,6 +88,14 @@ const destinations: readonly {
     role: 'super_admin',
   },
   {
+    href: '/admin/loyalty',
+    label: 'Daily loyalty points',
+    group: 'Controls',
+    icon: 'commission',
+    permission: 'admin.invite',
+    role: 'super_admin',
+  },
+  {
     href: '/admin/commission',
     label: 'Commission',
     group: 'Controls',

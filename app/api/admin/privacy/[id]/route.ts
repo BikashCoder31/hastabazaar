@@ -1,3 +1,4 @@
+import { collectIncentivePrivacyData } from '@/lib/incentives/privacy';
 import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
@@ -74,7 +75,11 @@ export async function POST(
       const prior = await db.prepare(`SELECT id FROM audit_logs WHERE request_id=? LIMIT 1`)
         .bind(auditKey).first();
       if (prior) return Response.json({ error: 'This export request ID was already used. Start a new export to obtain current data.' }, { status: 409 });
-      const answers = await collectFormAnswersForPrivacy(db, requestRow.customerId);
+      const [answers, incentives] = await Promise.all([
+        collectFormAnswersForPrivacy(db, requestRow.customerId),
+        collectIncentivePrivacyData(db, requestRow.customerId),
+      ]);
+      const incentiveRecordCount = Object.values(incentives).reduce((total, rows) => total + rows.length, 0);
       const permissionProfile = staff.role === 'admin'
         ? await db.prepare(`SELECT permissions_json AS permissionsJson,version
           FROM staff_permission_profiles WHERE user_id=? LIMIT 1`)
@@ -91,7 +96,7 @@ export async function POST(
       const audit = await db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,
         reason,previous_json,next_json,request_id,created_at)
         SELECT ?,?,'form.answers.exported','data_rights_request',?,
-          'Approved form-answer access export generated',NULL,json_object('answerCount',?),?,?
+          'Approved form-answer and incentive access export generated',NULL,?,?,?
         FROM data_rights_requests WHERE id=? AND customer_id=? AND assigned_to=?
           AND request_type='access' AND status='approved'
           AND NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
@@ -101,7 +106,7 @@ export async function POST(
             (?=0 AND NOT EXISTS(SELECT 1 FROM staff_permission_profiles WHERE user_id=?)) OR
             (?=1 AND EXISTS(SELECT 1 FROM staff_permission_profiles
               WHERE user_id=? AND version=? AND permissions_json=?)))`)
-        .bind(crypto.randomUUID(), staff.id, id, answers.length, auditKey, Date.now(),
+        .bind(crypto.randomUUID(), staff.id, id, JSON.stringify({ answerCount: answers.length, incentivesIncluded: true, incentiveRecordCount }), auditKey, Date.now(),
           id, requestRow.customerId, staff.id, auditKey, staff.id, staff.role,
           staff.role, permissionProfile ? 1 : 0, staff.id,
           permissionProfile ? 1 : 0, staff.id, permissionProfile?.version ?? -1,
@@ -112,7 +117,7 @@ export async function POST(
         if (claimed) return Response.json({ error: 'This export request ID was already used. Start a new export to obtain current data.' }, { status: 409 });
         return Response.json({ error: 'Request assignment or staff access changed. Retry.' }, { status: 409 });
       }
-      return Response.json({ answers: answers.map((answer) => ({ id: answer.id,
+      return Response.json({ incentives, answers: answers.map((answer) => ({ id: answer.id,
         formId: answer.formId, createdAt: answer.createdAt,
         answers: answer.answers, historicalFieldIds: answer.historicalFieldIds })) },
       { headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });

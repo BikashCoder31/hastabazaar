@@ -7,6 +7,7 @@ import {
   type CustomerLoyaltyState,
   type LoyaltyTerms,
   type LoyaltyState,
+  type LoyaltyDenomination,
   type LoyaltyMutationContext,
   type RewardsView,
   type RewardHistoryEntry,
@@ -137,6 +138,24 @@ function decode(row: Row, today: number): LoyaltyState {
     dailyBudgetPoints: row.daily_budget_points,
     lifetimeBudgetPoints: row.lifetime_budget_points,
   };
+  const lockedDenomination: LoyaltyDenomination | null =
+    row.issued_points > 0
+      ? {
+          pointsPerBlock: row.locked_points_per_block!,
+          creditPaisaPerBlock: row.locked_credit_paisa_per_block!,
+        }
+      : null;
+  const denomination = lockedDenomination ?? terms;
+  // A draft saved before issuance may have a budget safe only at its old rate.
+  const unrepresentableDraftExposure =
+    lockedDenomination !== null &&
+    row.draft_revision === row.revision &&
+    (row.points_per_block !== lockedDenomination.pointsPerBlock ||
+      row.credit_paisa_per_block !== lockedDenomination.creditPaisaPerBlock) &&
+    row.lifetime_budget_points !== null &&
+    (BigInt(row.lifetime_budget_points) / BigInt(denomination.pointsPerBlock)) *
+      BigInt(denomination.creditPaisaPerBlock) >
+      BigInt(Number.MAX_SAFE_INTEGER);
   const outstandingPoints = row.issued_points - row.redeemed_points;
   return {
     version: row.version,
@@ -146,6 +165,7 @@ function decode(row: Row, today: number): LoyaltyState {
     paused: row.paused === 1,
     terms,
     rateLocked: row.issued_points > 0,
+    lockedDenomination,
     issuedPoints: row.issued_points,
     redeemedPoints: row.redeemed_points,
     creditedPaisa: row.credited_paisa,
@@ -153,16 +173,16 @@ function decode(row: Row, today: number): LoyaltyState {
     issuedTodayPoints: today,
     liability: loyaltyLiability(
       outstandingPoints,
-      row.locked_points_per_block ?? row.points_per_block,
-      row.locked_credit_paisa_per_block ?? row.credit_paisa_per_block,
+      denomination.pointsPerBlock,
+      denomination.creditPaisaPerBlock,
     ),
     maximumLiability:
-      row.lifetime_budget_points === null
+      row.lifetime_budget_points === null || unrepresentableDraftExposure
         ? null
         : loyaltyLiability(
             row.lifetime_budget_points,
-            row.points_per_block,
-            row.credit_paisa_per_block,
+            denomination.pointsPerBlock,
+            denomination.creditPaisaPerBlock,
           ),
   };
 }
@@ -285,6 +305,13 @@ async function mutate(
     before = decode(row, await todayIssued(db, c.now));
   if (row.version !== c.expectedVersion) throw new IncentiveError('stale');
   if (action === 'publish' && row.draft_revision === null)
+    throw new IncentiveError('invalid');
+  if (
+    action === 'publish' &&
+    row.issued_points > 0 &&
+    (row.points_per_block !== row.locked_points_per_block ||
+      row.credit_paisa_per_block !== row.locked_credit_paisa_per_block)
+  )
     throw new IncentiveError('invalid');
   const maxDay = (await db
     .prepare(

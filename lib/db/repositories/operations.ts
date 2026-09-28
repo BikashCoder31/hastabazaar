@@ -1,3 +1,4 @@
+import { retainedIncentiveProofForRequestSql } from '../../incentives/privacy';
 import {riderNotificationSourceSql} from '../../operations/rider-notification-access';
 import { operationalBusinessNotificationStatements } from '../../operations/business-notifications';
 import type { StaffRole } from '@/lib/auth/staff';
@@ -697,8 +698,11 @@ export async function operateDataRightsRequest(
     );
   if (options.action === 'complete' && (current.requestType === 'access' || current.requestType === 'deletion')) {
     const evidence = current.requestType === 'access'
-      ? await database.prepare(`SELECT 1 AS valid FROM audit_logs WHERE action='form.answers.exported'
-          AND subject_type='data_rights_request' AND subject_id=? LIMIT 1`)
+      ? await database.prepare(`SELECT 1 AS valid FROM audit_logs
+          JOIN data_rights_requests ON data_rights_requests.id=audit_logs.subject_id
+          WHERE action='form.answers.exported' AND subject_type='data_rights_request' AND subject_id=?
+            AND (json_extract(next_json,'$.incentivesIncluded')=1
+              OR NOT ${retainedIncentiveProofForRequestSql}) LIMIT 1`)
         .bind(options.id).first<{ valid: number }>()
       : await database.prepare(`SELECT 1 AS valid FROM audit_logs WHERE action='form.answers.erased'
           AND subject_type='user' AND subject_id=?
@@ -719,6 +723,8 @@ export async function operateDataRightsRequest(
       WHERE parent.id=answers.subject_id AND parent.customer_id=data_rights_requests.customer_id))
     OR (answers.subject_type NOT IN ('user','seller','rider','data_rights_request')
       AND answers.actor_id=data_rights_requests.customer_id)`;
+  const retainedFinancialGuard = options.action === 'complete' && current.requestType === 'deletion'
+    ? ` AND NOT ${retainedIncentiveProofForRequestSql}` : '';
   const guardId=crypto.randomUUID();
   const results = await database.batch([
     database
@@ -726,7 +732,7 @@ export async function operateDataRightsRequest(
         `UPDATE data_rights_requests SET status = ?, assigned_to = COALESCE(assigned_to, ?), resolution = CASE WHEN ? IN ('rejected','completed') THEN ? ELSE resolution END, operation_request_id = ?, updated_at = ?, completed_at = CASE WHEN ? = 'completed' THEN ? ELSE completed_at END WHERE id = ? AND status = ?
          AND (? <> 'completed' OR request_type <> 'deletion' OR NOT EXISTS (
            SELECT 1 FROM form_answer_sets answers WHERE ${ownedAnswerSql}
-         ))`,
+         ))${retainedFinancialGuard}`,
       )
       .bind(
         next,
@@ -785,6 +791,10 @@ export async function operateDataRightsRequest(
       if (!state || state.status !== current.status)
         throw new OperationsConflictError('Data-rights request changed. Refresh and try again.');
       if (options.action === 'complete' && current.requestType === 'deletion') {
+        const retained = await database.prepare(`SELECT 1 AS valid FROM data_rights_requests
+          WHERE id=? AND ${retainedIncentiveProofForRequestSql} LIMIT 1`).bind(options.id).first();
+        if (retained) throw new OperationsConflictError(
+          'Retained financial incentive proof prevents full deletion completion.');
         const remaining = await database.prepare(`SELECT 1 AS valid FROM data_rights_requests
           WHERE id=? AND EXISTS (SELECT 1 FROM form_answer_sets answers WHERE ${ownedAnswerSql}) LIMIT 1`)
           .bind(options.id).first();

@@ -20,7 +20,7 @@ const promoKeys = ['draftRevision', 'publishedRevision', 'code', 'promoCode', 'p
   'minimumSubtotalPaisa', 'startsAt', 'endsAt', 'totalUseLimit', 'perCustomerUseLimit', 'budgetPaisa',
   'usedCount', 'spentPaisa', 'maximumCustomerUsedCount', 'subtotalPaisa', 'discountPaisa', 'expiresAt'] as const;
 const loyaltyKeys = ['authSubject', 'draftRevision', 'publishedRevision', 'creditedPaisa', 'liability', 'maximumLiability', 'wholeBlocks', 'remainingPoints', 'dailyPoints', 'pointsPerBlock', 'creditPaisaPerBlock', 'startsAt', 'endsAt', 'dailyBudgetPoints',
-  'lifetimeBudgetPoints', 'rateLocked', 'issuedPoints', 'redeemedPoints', 'outstandingPoints', 'issuedTodayPoints',
+  'lifetimeBudgetPoints', 'rateLocked', 'lockedDenomination', 'issuedPoints', 'redeemedPoints', 'outstandingPoints', 'issuedTodayPoints',
   'points', 'creditPaisa', 'balancePoints', 'walletBalancePaisa', 'localDate', 'date', 'claimId', 'redemptionId',
   'awardedPoints', 'claimedToday', 'nextClaimAt', 'amount', 'amountPaisa', 'rate', 'balance', 'budget'] as const;
 const contextTypes = Object.freeze(['short_text', 'long_text', 'number', 'date', 'single_choice', 'multiple_choice', 'checkbox', 'email', 'phone'] as const);

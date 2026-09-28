@@ -12,21 +12,27 @@ import {
 } from 'lucide-react';
 import { AccountEmpty } from '@/components/account/account-ui';
 import { CustomerOrderList } from '@/components/account/order-list';
-import { requireCustomerPage } from '@/lib/auth/customer';
+import { requireCustomerPage, type CustomerUser } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
+import { getRewards } from '@/lib/db/repositories/loyalty';
 import {
   listCustomerAddresses,
   listCustomerOrders,
   listWishlist,
 } from '@/lib/db/repositories/customers';
 
+function readRewardsSummary(database: D1Database, customer: CustomerUser) {
+  return getRewards(database, customer.userId, Date.now(), undefined, 1, customer.authSubject);
+}
+
 export default async function AccountPage() {
   const customer = await requireCustomerPage('/account');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const [orders, addresses, wishlist] = await Promise.all([
+  const [orders, addresses, wishlist, rewards] = await Promise.all([
     listCustomerOrders(database, customer.userId, 3),
     listCustomerAddresses(database, customer.userId),
     listWishlist(database, customer.userId),
+    readRewardsSummary(database, customer),
   ]);
   const defaultAddress = addresses.find((address) => address.isDefault);
   return (
@@ -53,6 +59,7 @@ export default async function AccountPage() {
       <div className="grid gap-3 sm:grid-cols-3">
         {[
           { label: 'Refer & earn', detail: 'Get your code, invite friends and track rewards', href: '/account/referrals', icon: Gift },
+          { label: 'My Rewards', detail: rewards.balancePoints + ' points available · Claim daily points and exchange for shopping credit', href: '/account/rewards', icon: Gift },
           { label: 'My wallet', detail: 'View shopping credit and activity', href: '/account/wallet', icon: Wallet },
           {
             label: 'My orders',

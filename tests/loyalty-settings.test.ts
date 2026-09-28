@@ -328,3 +328,362 @@ void test('loyalty settings bind staff subject before reads receipt lookup and r
     await f.dispose();
   }
 });
+
+void test('locked denomination exposes live rate after a predating draft without rewriting history', async (t) => {
+  const r = await repo(),
+    f = await fixture(false);
+  const A = { ...TERMS, pointsPerBlock: 5, creditPaisaPerBlock: 1000 };
+  const B = { ...TERMS, pointsPerBlock: 10, creditPaisaPerBlock: 500 };
+  const proof = async () => ({
+    config: await f.db.prepare('SELECT * FROM loyalty_config').first(),
+    revisions: (
+      await f.db
+        .prepare('SELECT * FROM loyalty_revisions ORDER BY revision')
+        .all()
+    ).results,
+    claims: (
+      await f.db.prepare('SELECT * FROM loyalty_daily_claims ORDER BY id').all()
+    ).results,
+    entries: (
+      await f.db
+        .prepare('SELECT * FROM loyalty_points_entries ORDER BY id')
+        .all()
+    ).results,
+    accounts: (
+      await f.db
+        .prepare('SELECT * FROM loyalty_accounts ORDER BY user_id')
+        .all()
+    ).results,
+    days: (
+      await f.db
+        .prepare('SELECT * FROM loyalty_day_issuance ORDER BY local_date')
+        .all()
+    ).results,
+    audits: (
+      await f.db
+        .prepare(
+          "SELECT * FROM audit_logs WHERE action LIKE 'loyalty.%' ORDER BY id",
+        )
+        .all()
+    ).results,
+    answers: (
+      await f.db
+        .prepare(
+          "SELECT * FROM form_answer_sets WHERE form_id='staff.loyalty-settings' ORDER BY id",
+        )
+        .all()
+    ).results,
+  });
+  try {
+    await t.test(
+      'disabled defaults expose no locked denomination',
+      async () => {
+        const state = await r.getLoyaltyState(f.db, 'super', NOW, 'super');
+        assert.equal(state.rateLocked, false);
+        assert.equal(state.lockedDenomination, null);
+      },
+    );
+    const draftA = await r.saveLoyaltyDraft(f.db, ctx('rate-live-A'), A);
+    const publishContext = ctx('rate-publish-A', draftA.version);
+    const publishedA = await r.publishLoyalty(f.db, publishContext);
+    const draftContext = ctx('rate-draft-B', publishedA.version);
+    const draftB = await r.saveLoyaltyDraft(f.db, draftContext, B);
+    await t.test(
+      'unissued draft exposure uses its selected denomination',
+      async () => {
+        assert.equal(draftB.lockedDenomination, null);
+        assert.equal(draftB.rateLocked, false);
+        assert.deepEqual(draftB.maximumLiability, {
+          wholeBlocks: 1000,
+          creditPaisa: 500000,
+          remainingPoints: 0,
+        });
+      },
+    );
+    const claimInput = claim('rate-claim-A', draftB.version);
+    const receipt = await r.claimDailyPoints(f.db, claimInput);
+    const state = await r.getLoyaltyState(f.db, 'super', NOW, 'super');
+    const before = await proof();
+    await t.test(
+      'selected immutable draft differs from explicit locked live denomination',
+      async () => {
+        assert.equal(state.version, draftB.version);
+        assert.equal(state.revision, draftB.revision);
+        assert.equal(state.publishedRevision, publishedA.revision);
+        assert.equal(state.rateLocked, true);
+        assert.deepEqual(state.terms, B);
+        assert.deepEqual(state.lockedDenomination, {
+          pointsPerBlock: 5,
+          creditPaisaPerBlock: 1000,
+        });
+        assert.deepEqual(state.liability, {
+          wholeBlocks: 2,
+          creditPaisa: 2000,
+          remainingPoints: 0,
+        });
+        const rewards = await r.getRewards(
+          f.db,
+          'customer',
+          NOW,
+          undefined,
+          20,
+          'customer',
+        );
+        assert.equal(rewards.state.revision, publishedA.revision);
+        assert.equal(rewards.state.pointsPerBlock, 5);
+        assert.equal(rewards.state.creditPaisaPerBlock, 1000);
+        assert.equal(Object.hasOwn(rewards.state, 'lockedDenomination'), false);
+      },
+    );
+    await t.test(
+      'selected budget exposure uses the effective locked denomination',
+      async () => {
+        assert.deepEqual(state.maximumLiability, {
+          wholeBlocks: 2000,
+          creditPaisa: 2000000,
+          remainingPoints: 0,
+        });
+      },
+    );
+    await t.test(
+      'fresh incompatible saved draft is invalid before the native mutation batch',
+      async () => {
+        let batched = false;
+        const db = beforeBatch(f.db, async () => {
+          batched = true;
+        });
+        const error = await r
+          .publishLoyalty(db, ctx('rate-publish-B', state.version))
+          .then(
+            () => null,
+            (reason: unknown) => reason as { code: string },
+          );
+        assert.deepEqual(await proof(), before);
+        assert.equal(error?.code, 'invalid');
+        assert.equal(batched, false);
+      },
+    );
+    await t.test(
+      'authorized exact prelock receipts retain their original snapshots',
+      async () => {
+        assert.deepEqual(
+          await r.saveLoyaltyDraft(f.db, draftContext, B),
+          draftB,
+        );
+        assert.deepEqual(
+          await r.publishLoyalty(f.db, publishContext),
+          publishedA,
+        );
+        assert.deepEqual(await proof(), before);
+      },
+    );
+    await t.test(
+      'new locked-rate draft repairs publication while preserving old history',
+      async () => {
+        await assert.rejects(
+          r.saveLoyaltyDraft(f.db, ctx('rate-fresh-B', state.version), B),
+          { code: 'invalid' },
+        );
+        const repaired = await r.saveLoyaltyDraft(
+          f.db,
+          ctx('rate-repair-A', state.version),
+          A,
+        );
+        assert.deepEqual(repaired.lockedDenomination, {
+          pointsPerBlock: 5,
+          creditPaisaPerBlock: 1000,
+        });
+        const published = await r.publishLoyalty(
+          f.db,
+          ctx('rate-repair-publish', repaired.version),
+        );
+        assert.equal(published.draftRevision, null);
+        assert.equal(published.publishedRevision, repaired.revision);
+        assert.equal(published.issuedPoints, 10);
+        const after = await proof();
+        assert.deepEqual(
+          after.revisions.slice(0, before.revisions.length),
+          before.revisions,
+        );
+        assert.deepEqual(after.claims, before.claims);
+        assert.deepEqual(after.entries, before.entries);
+        assert.deepEqual(after.accounts, before.accounts);
+        assert.deepEqual(after.days, before.days);
+        assert.deepEqual(await r.claimDailyPoints(f.db, claimInput), receipt);
+      },
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+void test('first claim after publish preflight still fences an incompatible draft atomically', async () => {
+  const r = await repo(),
+    f = await fixture(true, { pointsPerBlock: 5, creditPaisaPerBlock: 1000 });
+  const proof = async () => ({
+    config: await f.db.prepare('SELECT * FROM loyalty_config').first(),
+    revisions: (
+      await f.db
+        .prepare('SELECT * FROM loyalty_revisions ORDER BY revision')
+        .all()
+    ).results,
+    claims: (
+      await f.db.prepare('SELECT * FROM loyalty_daily_claims ORDER BY id').all()
+    ).results,
+    entries: (
+      await f.db
+        .prepare('SELECT * FROM loyalty_points_entries ORDER BY id')
+        .all()
+    ).results,
+    audits: (
+      await f.db
+        .prepare(
+          "SELECT * FROM audit_logs WHERE action LIKE 'loyalty.%' ORDER BY id",
+        )
+        .all()
+    ).results,
+    answers: (
+      await f.db
+        .prepare(
+          "SELECT * FROM form_answer_sets WHERE form_id='staff.loyalty-settings' ORDER BY id",
+        )
+        .all()
+    ).results,
+  });
+  try {
+    const draft = await r.saveLoyaltyDraft(f.db, ctx('race-draft-B'), {
+      ...TERMS,
+      pointsPerBlock: 10,
+      creditPaisaPerBlock: 500,
+    });
+    let afterClaim: Awaited<ReturnType<typeof proof>> | undefined;
+    const db = beforeBatch(f.db, async () => {
+      await r.claimDailyPoints(f.db, claim('race-claim-A', draft.version));
+      afterClaim = await proof();
+    });
+    await assert.rejects(
+      r.publishLoyalty(db, ctx('race-publish-B', draft.version)),
+      { code: 'stale' },
+    );
+    assert.ok(afterClaim);
+    assert.deepEqual(await proof(), afterClaim);
+  } finally {
+    await f.dispose();
+  }
+});
+
+void test('unrepresentable predating draft exposure stays readable and repairable without weakening issuance', async () => {
+  const r = await repo(),
+    f = await fixture(true, { pointsPerBlock: 5, creditPaisaPerBlock: 1000 });
+  const A = { ...TERMS, pointsPerBlock: 5, creditPaisaPerBlock: 1000 };
+  const B = {
+    ...TERMS,
+    pointsPerBlock: 1000000,
+    creditPaisaPerBlock: 1,
+    lifetimeBudgetPoints: 100000000000000,
+  };
+  const proof = async () => ({
+    config: await f.db.prepare('SELECT * FROM loyalty_config').first(),
+    revisions: (
+      await f.db
+        .prepare('SELECT * FROM loyalty_revisions ORDER BY revision')
+        .all()
+    ).results,
+    claims: (
+      await f.db.prepare('SELECT * FROM loyalty_daily_claims ORDER BY id').all()
+    ).results,
+    entries: (
+      await f.db
+        .prepare('SELECT * FROM loyalty_points_entries ORDER BY id')
+        .all()
+    ).results,
+    audits: (
+      await f.db
+        .prepare(
+          "SELECT * FROM audit_logs WHERE action LIKE 'loyalty.%' ORDER BY id",
+        )
+        .all()
+    ).results,
+    answers: (
+      await f.db
+        .prepare(
+          "SELECT * FROM form_answer_sets WHERE form_id='staff.loyalty-settings' ORDER BY id",
+        )
+        .all()
+    ).results,
+  });
+  try {
+    const draftContext = ctx('overflow-draft-B');
+    const draft = await r.saveLoyaltyDraft(f.db, draftContext, B);
+    assert.deepEqual(draft.maximumLiability, {
+      wholeBlocks: 100000000,
+      creditPaisa: 100000000,
+      remainingPoints: 0,
+    });
+    const input = claim('overflow-claim-A', draft.version);
+    const receipt = await r.claimDailyPoints(f.db, input);
+    const before = await proof();
+    const state = await r.getLoyaltyState(f.db, 'super', NOW, 'super');
+    assert.deepEqual(await proof(), before);
+    assert.deepEqual(state.terms, B);
+    assert.deepEqual(state.lockedDenomination, {
+      pointsPerBlock: 5,
+      creditPaisaPerBlock: 1000,
+    });
+    assert.deepEqual(state.liability, {
+      wholeBlocks: 2,
+      creditPaisa: 2000,
+      remainingPoints: 0,
+    });
+    assert.equal(state.maximumLiability, null);
+    assert.equal(state.terms.lifetimeBudgetPoints, 100000000000000);
+    await assert.rejects(
+      r.publishLoyalty(f.db, ctx('overflow-publish-B', state.version)),
+      { code: 'invalid' },
+    );
+    await assert.rejects(
+      r.saveLoyaltyDraft(f.db, ctx('overflow-draft-unsafe-A', state.version), {
+        ...A,
+        lifetimeBudgetPoints: B.lifetimeBudgetPoints,
+      }),
+      { code: 'invalid' },
+    );
+    assert.deepEqual(await proof(), before);
+    assert.deepEqual(await r.saveLoyaltyDraft(f.db, draftContext, B), draft);
+    const repaired = await r.saveLoyaltyDraft(
+      f.db,
+      ctx('overflow-repair-A', state.version),
+      A,
+    );
+    assert.deepEqual(repaired.maximumLiability, {
+      wholeBlocks: 2000,
+      creditPaisa: 2000000,
+      remainingPoints: 0,
+    });
+    const published = await r.publishLoyalty(
+      f.db,
+      ctx('overflow-repair-publish', repaired.version),
+    );
+    assert.equal(published.publishedRevision, repaired.revision);
+    const after = await proof();
+    assert.deepEqual(
+      after.revisions.slice(0, before.revisions.length),
+      before.revisions,
+    );
+    assert.deepEqual(after.claims, before.claims);
+    assert.deepEqual(after.entries, before.entries);
+    assert.deepEqual(await r.claimDailyPoints(f.db, input), receipt);
+    const rewards = await r.getRewards(
+      f.db,
+      'customer',
+      NOW,
+      undefined,
+      20,
+      'customer',
+    );
+    assert.equal(rewards.state.pointsPerBlock, 5);
+    assert.equal(rewards.state.creditPaisaPerBlock, 1000);
+  } finally {
+    await f.dispose();
+  }
+});
