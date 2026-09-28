@@ -31,7 +31,7 @@ assert.equal(origin.username + origin.password, '', 'APP_ORIGIN cannot contain c
 assert.ok(process.version.startsWith('v22.') && Number(process.versions.node.split('.')[1]) >= 13,
   'Node 22.13 or later in the Node 22 line is required.');
 
-const modes = new Set(['--plan', '--publish-matrix-configs', '--publish-incentive-configs', '--prepare-buyer-cart']);
+const modes = new Set(['--plan', '--publish-matrix-configs', '--publish-incentive-configs', '--publish-combined-incentive-configs', '--prepare-buyer-cart']);
 const mode = process.argv[2];
 assert.ok(modes.has(mode) && process.argv.length === 3,
   'Explicitly select --plan, --publish-matrix-configs, --publish-incentive-configs, or --prepare-buyer-cart.');
@@ -223,10 +223,11 @@ if (mode === '--plan') {
     pendingContract: 'Order/assignment requires a real checkout and staff parcel workflow; this script never fabricates an order, answer, audit, or rider assignment.',
   }, null, 2) + '\n');
 } else if (mode === '--publish-matrix-configs') await publishMatrixConfigs();
-else if (mode === '--publish-incentive-configs') {
+else if (mode === '--publish-incentive-configs' || mode === '--publish-combined-incentive-configs') {
     let cookie;
     const result = await initializeIncentiveConfigs({
       projectRoot: project,
+      phase: mode === '--publish-combined-incentive-configs' ? 'combined' : 'promo',
       environment: process.env,
       request: async (path, options) => {
         if (!cookie) {
@@ -301,6 +302,13 @@ export function readIncentiveSetupSnapshot(databasePath) {
       'promo_revisions',
       'promo_redemptions',
       'promo_customer_usage',
+      'loyalty_config',
+      'loyalty_revisions',
+      'loyalty_accounts',
+      'loyalty_daily_claims',
+      'loyalty_points_entries',
+      'loyalty_redemptions',
+      'loyalty_day_issuance',
       'order_email_jobs',
       'seller_restrictions',
       'seller_restriction_events',
@@ -342,11 +350,7 @@ export async function initializeIncentiveConfigs({
   phase = 'promo',
 }) {
   await verifyIncentiveSetupContext({ environment, projectRoot });
-  assert.equal(
-    phase,
-    'promo',
-    'Combined initialization is reserved for Task 12.',
-  );
+  assert.ok(['promo', 'combined'].includes(phase), 'Explicit implemented incentive phase required.');
   const before = await readSnapshot();
   const listing = await request('/api/admin/forms');
   assert.ok(Array.isArray(listing.forms), 'Catalog must return forms.');
@@ -356,17 +360,14 @@ export async function initializeIncentiveConfigs({
     listing.forms.length,
     'Catalog contains duplicate IDs.',
   );
-  const actualIds = [
-    INCENTIVE_FORM_IDS.promoCode,
-    INCENTIVE_FORM_IDS.promoQuote,
-  ];
+  const actualIds = phase === 'combined' ? Object.values(INCENTIVE_FORM_IDS) : [INCENTIVE_FORM_IDS.promoCode, INCENTIVE_FORM_IDS.promoQuote];
   const absentFutureIds = Object.values(INCENTIVE_FORM_IDS).filter(
     (id) => !byId.has(id),
   );
   for (const formId of actualIds) {
     const row = byId.get(formId);
     const expectedBehavior =
-      formId === INCENTIVE_FORM_IDS.promoCode ? 'record' : 'none';
+      [INCENTIVE_FORM_IDS.promoCode, INCENTIVE_FORM_IDS.loyaltySettings].includes(formId) ? 'record' : 'none';
     assert.ok(
       row &&
         row.definition.adapterId === formId &&

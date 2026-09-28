@@ -11,7 +11,7 @@ export default async function PromoCodesPage() {
   if (staff.role !== 'super_admin') redirect('/staff-access-denied');
   const initialPage = await listPromoCampaigns(
     requireDatabase(env as unknown as { DB?: D1Database }),
-    { actorId: staff.id },
+    { actorId: staff.id, authSubject: staff.authSubject },
   );
   return (
     <div className="grid min-w-0 gap-6">

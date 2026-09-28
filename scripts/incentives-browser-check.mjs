@@ -30,7 +30,8 @@ const hash = (value) =>
 function inspect(databasePath, fn) {
   const db = new DatabaseSync(databasePath, { readOnly: true });
   try {
-    const value=fn(db);return value===undefined?undefined:JSON.parse(JSON.stringify(value));
+    const value = fn(db);
+    return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
   } finally {
     db.close();
   }
@@ -54,6 +55,7 @@ function inventory(db) {
 export async function preflightLocalPromo({
   apply = false,
   makeBackup = false,
+  phase = 'promo',
 } = {}) {
   assert.equal(
     resolve(process.cwd()),
@@ -119,12 +121,14 @@ export async function preflightLocalPromo({
         accounts: accounts.map((a) => a.id),
       };
     });
+  assert.ok(['promo', 'combined'].includes(phase));
+  const pendingMigration =
+    phase === 'combined' ? '0061_loyalty_points.sql' : '0060_promo_codes.sql';
   const before = read();
   assert.ok(
     before.pending.length === 0 ||
-      (before.pending.length === 1 &&
-        before.pending[0] === '0060_promo_codes.sql'),
-    'Only pending 0060 is authorized; helper otherwise applies all pending migrations.',
+      (before.pending.length === 1 && before.pending[0] === pendingMigration),
+    'Only the explicit phase migration is authorized; helper otherwise applies all pending migrations.',
   );
   const output = join(paths.root, 'artifacts', 'incentives');
   await mkdir(output, { recursive: true });
@@ -174,7 +178,7 @@ export async function preflightLocalPromo({
   if (makeBackup || apply) {
     const destination = join(
       output,
-      `pre-0060-${Date.now()}-${randomUUID()}.sqlite`,
+      `pre-${pendingMigration.slice(0, 4)}-${Date.now()}-${randomUUID()}.sqlite`,
     );
     const source = new DatabaseSync(databasePath, { readOnly: true });
     try {
@@ -235,7 +239,7 @@ export async function preflightLocalPromo({
       );
     evidence.after = after;
     await writeFile(
-      join(output, 'migration-0060.json'),
+      join(output, `migration-${pendingMigration.slice(0, 4)}.json`),
       JSON.stringify(evidence, null, 2),
     );
   }
@@ -245,17 +249,33 @@ export async function preflightLocalPromo({
 async function main() {
   const args = process.argv.slice(2);
   assert.ok(
-    args.includes('--phase=promo') &&
+    (args.includes('--phase=promo') || args.includes('--phase=combined')) &&
       args.every((a) =>
-        ['--phase=promo', '--preflight', '--apply-pending-0060'].includes(a),
+        [
+          '--phase=promo',
+          '--phase=combined',
+          '--preflight',
+          '--apply-pending-0060',
+          '--apply-pending-0061',
+        ].includes(a),
       ),
-    'Explicit --phase=promo is required; combined belongs to Task 12.',
+    'Explicit implemented phase is required.',
   );
+  const phase = args.includes('--phase=combined') ? 'combined' : 'promo';
+  assert.ok(!args.includes('--apply-pending-0060') || phase === 'promo');
+  assert.ok(!args.includes('--apply-pending-0061') || phase === 'combined');
   const ready = await preflightLocalPromo({
+    phase,
     makeBackup: args.includes('--preflight'),
-    apply: args.includes('--apply-pending-0060'),
+    apply:
+      args.includes('--apply-pending-0060') ||
+      args.includes('--apply-pending-0061'),
   });
-  if (args.includes('--preflight') || args.includes('--apply-pending-0060')) {
+  if (
+    args.includes('--preflight') ||
+    args.includes('--apply-pending-0060') ||
+    args.includes('--apply-pending-0061')
+  ) {
     console.log(JSON.stringify(ready.evidence, null, 2));
     return;
   }
@@ -264,7 +284,8 @@ async function main() {
     [],
     'Apply guarded local 0060 before the browser journey.',
   );
-  await runPromoJourney(ready);
+  if (phase === 'combined') await runPromoJourney(await combinedFixture(ready));
+  else await runPromoJourney(ready);
 }
 function fixtureRows(db) {
   const tables = [
@@ -285,7 +306,10 @@ function fixtureRows(db) {
   return Object.fromEntries(
     tables.map((t) => [
       t,
-      db.prepare(`SELECT * FROM "${t}" ORDER BY rowid`).all().map(row=>({...row})),
+      db
+        .prepare(`SELECT * FROM "${t}" ORDER BY rowid`)
+        .all()
+        .map((row) => ({ ...row })),
     ]),
   );
 }
@@ -404,29 +428,48 @@ function awaitlessAgreement() {
   return sellerAgreement;
 }
 
-async function runPromoJourney({ paths, origin, databasePath, output }) {
+async function runPromoJourney({
+  paths,
+  origin,
+  databasePath,
+  output,
+  combined = false,
+  fixtureMarker,
+}) {
   const attestation = JSON.parse(
     await readFile(join(output, 'runtime-attestation.json'), 'utf8'),
   );
-  assert.equal(attestation.state, paths.state);
+  assert.equal(attestation.state, combined ? fixtureMarker.state : paths.state);
   assert.equal(attestation.guardedLaunch, true);
   const migration = JSON.parse(
-    await readFile(join(output, 'migration-0060.json'), 'utf8'),
+    await readFile(
+      join(
+        combined ? join(paths.root, 'artifacts', 'incentives') : output,
+        combined ? 'migration-0061.json' : 'migration-0060.json',
+      ),
+      'utf8',
+    ),
   );
-  assert.equal(migration.databasePath, databasePath);
+  assert.equal(
+    migration.databasePath,
+    combined ? fixtureMarker.canonicalDatabasePath : databasePath,
+  );
   assert.equal(migration.backup.integrity, 'ok');
   const policy = await readFile(
     join(APPROVED_CHECKOUT, 'lib/content/legal-policies.ts'),
     'utf8',
   );
   sellerAgreement = policy.match(/SELLER_AGREEMENT_VERSION\s*=\s*'([^']+)'/)[1];
-  const statePath = join(output, 'promo-run-state.json');
+  const statePath = join(
+    output,
+    combined ? 'combined-run-state.json' : 'promo-run-state.json',
+  );
   let state;
   try {
     state = JSON.parse(await readFile(statePath, 'utf8'));
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
-    const id = randomUUID().slice(0, 8);
+    const id = combined ? fixtureMarker.id : randomUUID().slice(0, 8);
     state = {
       schemaVersion: 1,
       id,
@@ -464,6 +507,8 @@ async function runPromoJourney({ paths, origin, databasePath, output }) {
     product: 'sim-promo-product-' + state.id,
   });
   state.consoleErrors = [];
+  state.networkFailures = [];
+  state.expectedNavigationAborts = 0;
   state.failures = [];
   state.screenshots = [];
   delete state.error;
@@ -521,6 +566,15 @@ async function runPromoJourney({ paths, origin, databasePath, output }) {
         await c.addCookies(stored);
       } catch (error) {
         if (error.code !== 'ENOENT') throw error;
+        await c.addCookies([
+          {
+            name: 'hastabazaar_cart',
+            value: randomUUID() + randomUUID(),
+            url: origin.origin,
+            httpOnly: true,
+            sameSite: 'Lax',
+          },
+        ]);
       }
     }
     await c.addCookies([
@@ -535,6 +589,26 @@ async function runPromoJourney({ paths, origin, databasePath, output }) {
     return c;
   }
   function listen(page, label) {
+    page.on('response', (r) => {
+      if (r.status() >= 400 && new URL(r.url()).origin === origin.origin)
+        state.networkFailures.push({
+          label,
+          path: new URL(r.url()).pathname,
+          status: r.status(),
+        });
+    });
+    page.on('requestfailed', (r) => {
+      const reason = r.failure()?.errorText ?? 'unknown';
+      if (/ERR_ABORTED|blockedbyclient|ERR_BLOCKED_BY_CLIENT/.test(reason)) {
+        state.expectedNavigationAborts++;
+        return;
+      }
+      state.networkFailures.push({
+        label,
+        path: new URL(r.url()).pathname,
+        reason,
+      });
+    });
     page.on('pageerror', (e) =>
       state.consoleErrors.push({
         label,
@@ -555,7 +629,7 @@ async function runPromoJourney({ paths, origin, databasePath, output }) {
     });
     page.on('dialog', (d) => d.accept());
   }
-  async function visit(page, path) {
+  async function visit(page, path, { hydrate = true } = {}) {
     const response = await page.goto(localPath(path), {
       waitUntil: 'domcontentloaded',
       timeout: 60000,
@@ -564,14 +638,15 @@ async function runPromoJourney({ paths, origin, databasePath, output }) {
       response && response.status() < 400,
       `${path} did not render (${response?.status()}).`,
     );
-    await page.waitForFunction(
-      () =>
-        [...document.querySelectorAll('form,button,input')].some((n) =>
-          Object.keys(n).some((k) => k.startsWith('__reactFiber')),
-        ),
-      undefined,
-      { timeout: 45000 },
-    );
+    if (hydrate)
+      await page.waitForFunction(
+        () =>
+          [...document.querySelectorAll('form,button,input')].some((n) =>
+            Object.keys(n).some((k) => k.startsWith('__reactFiber')),
+          ),
+        undefined,
+        { timeout: 45000 },
+      );
     await page.evaluate(() => document.fonts.ready);
     assert.equal(
       new URL(page.url()).pathname,
@@ -599,6 +674,18 @@ async function runPromoJourney({ paths, origin, databasePath, output }) {
       assert.equal(new URL(route.request().url()).origin, origin.origin);
       const response = await route.fetch({ maxRedirects: 0 });
       captured = { status: response.status(), body: await response.json() };
+      state.mutations ??= [];
+      state.mutations.push({
+        path,
+        request: route
+          .request()
+          .headers()
+          ['content-type']?.includes('application/json')
+          ? route.request().postDataJSON()
+          : null,
+        response: captured,
+      });
+      await save();
       await route.fulfill({ response });
     };
     await page.route(localPath(path), handler);
@@ -714,6 +801,19 @@ async function runPromoJourney({ paths, origin, databasePath, output }) {
       p = await customer.newPage();
     listen(a, 'admin');
     listen(p, 'customer');
+    if (combined)
+      await combinedRewards({
+        a,
+        p,
+        api,
+        mutate,
+        visit,
+        capture,
+        state,
+        save,
+        databasePath,
+        fixtureMarker,
+      });
     await visit(a, '/admin/promo-codes');
     const form = a.locator('form[data-form-id="staff.promo-code"]');
     const known = inspect(databasePath, (db) =>
@@ -771,6 +871,18 @@ async function runPromoJourney({ paths, origin, databasePath, output }) {
     }
     const promoNav = a.getByRole('link', { name: 'Promo codes', exact: true });
     assert.equal(await promoNav.getAttribute('href'), '/admin/promo-codes');
+    await a.mouse.move(0, 0);
+    state.activeNavigation = await a
+      .locator('a[aria-current="page"]')
+      .evaluateAll((nodes) =>
+        nodes.map((n) => ({
+          href: n.getAttribute('href'),
+          active: n.getAttribute('data-active'),
+          color: getComputedStyle(n).color,
+          background: getComputedStyle(n).backgroundColor,
+          weight: getComputedStyle(n).fontWeight,
+        })),
+      );
     state.navigation = {
       href: await promoNav.getAttribute('href'),
       ariaCurrent: await promoNav.getAttribute('aria-current'),
@@ -854,6 +966,10 @@ async function runPromoJourney({ paths, origin, databasePath, output }) {
         '1000',
       );
       state.checks.push('actual quote remove reapply');
+      if (combined)
+        await checkout
+          .getByRole('checkbox', { name: /Use shopping credit/ })
+          .check();
       await capture(p, 'checkout-applied', checkout, 'Let’s bring them home.');
       const fields = {
         recipientName: 'SIMULATED promo recipient',
@@ -874,6 +990,10 @@ async function runPromoJourney({ paths, origin, databasePath, output }) {
       assert.equal(typeof saved.orderNumber, 'string');
       state.orderNumber = saved.orderNumber;
       await save();
+      if (combined) {
+        state.checkoutReplayPending = true;
+        await save();
+      }
     }
     if (!state.promoRegionCaptured) {
       await visit(p, '/checkout');
@@ -977,6 +1097,16 @@ async function runPromoJourney({ paths, origin, databasePath, output }) {
     }
     const orderPath = '/orders/' + encodeURIComponent(state.orderNumber);
     await visit(p, orderPath);
+    if (combined && !state.checkoutReplayed) {
+      const last = state.mutations.findLast((m) => m.path === '/api/checkout');
+      assert.ok(last);
+      const replay = await api(p, '/api/checkout', last.request);
+      assert.equal(replay.status, last.response.status);
+      assert.equal(replay.body.orderNumber, state.orderNumber);
+      state.checkoutReplayed = true;
+      state.checks.push('checkout exact-request replay returns same order');
+      await save();
+    }
     await p
       .getByText(/Promo savings/)
       .first()
@@ -1037,7 +1167,12 @@ async function runPromoJourney({ paths, origin, databasePath, output }) {
     assert.equal(before.campaign.spent_paisa, 1000);
     assert.equal(before.customer.used_count, 1);
     assert.equal(before.redemptions.length, 1);
-    await capture(p, 'receipt', p.locator('main'), 'Your order is confirmed.');
+    await capture(
+      p,
+      'receipt',
+      p.locator('main'),
+      (await p.getByRole('heading', { level: 1 }).innerText()).trim(),
+    );
     if (!state.cancelled) {
       await p
         .getByRole('button', {
@@ -1077,9 +1212,26 @@ async function runPromoJourney({ paths, origin, databasePath, output }) {
         .waitFor();
       state.cancelled = true;
       await save();
+      if (combined) {
+        const last = state.mutations.at(-1);
+        const replay = await api(p, orderPath + '/cancel', last.request);
+        assert.equal(replay.status, 200);
+        state.checks.push('cancellation exact-request replay');
+      }
     }
     await visit(p, orderPath);
-    const after = accounting();
+    const after =
+      combined &&
+      state.afterCancellation &&
+      inspect(databasePath, (db) =>
+        db
+          .prepare(
+            "SELECT COUNT(*) n FROM refunds r JOIN return_requests t ON t.id=r.return_request_id JOIN order_items i ON i.id=t.order_item_id WHERE i.order_id=? AND r.status='paid'",
+          )
+          .get(state.orderId ?? before.order.id),
+      ).n > 0
+        ? state.afterCancellation
+        : accounting();
     state.afterCancellation = after;
     assert.equal(after.order.grand_total_paisa, before.order.grand_total_paisa);
     assert.equal(after.order.current_subtotal_paisa, 10000);
@@ -1104,29 +1256,53 @@ async function runPromoJourney({ paths, origin, databasePath, output }) {
     }
     assert.equal(
       after.wallet.balance_paisa,
-      before.wallet.balance_paisa,
-      'No promo-created wallet credit',
+      before.wallet.balance_paisa +
+        (combined
+          ? before.order.wallet_credit_paisa - after.order.current_wallet_paisa
+          : 0),
+      'Only spent shopping credit restored',
     );
     assert.equal(
       before.order.wallet_credit_paisa,
-      0,
-      'No artificial fixture credit',
+      combined ? 2000 : 0,
+      'Only legitimate redeemed fixture credit',
     );
     state.checks.push(
       'actual simulated COD checkout and receipt',
       'partial seller cancellation original gross/commission retained',
       'promo usage/budget/customer use retained',
-      'wallet restored only actual spend (zero)',
+      combined
+        ? 'positive spent wallet credit restored with no points reaward'
+        : 'wallet restored only actual spend (zero)',
     );
     await capture(
       p,
       'partial-cancelled',
       p.locator('main'),
-      'Your order is confirmed.',
+      (await p.getByRole('heading', { level: 1 }).innerText()).trim(),
     );
+    if (combined)
+      await combinedRefund({
+        a,
+        p,
+        api,
+        mutate,
+        visit,
+        capture,
+        state,
+        save,
+        databasePath,
+        createContext: context,
+        listen,
+      });
     assert.ok(
       state.consoleErrors.every((e) => e.type === 'warning'),
       'Relevant browser console/page errors found; inspect evidence.',
+    );
+    assert.deepEqual(
+      state.networkFailures,
+      [],
+      'Unexpected same-origin network failures.',
     );
     assert.deepEqual(
       state.failures,
@@ -1142,13 +1318,13 @@ async function runPromoJourney({ paths, origin, databasePath, output }) {
     inspect(databasePath, (db) => {
       for (const row of baselineCarts)
         assert.deepEqual(
-          {...db.prepare('SELECT * FROM carts WHERE id=?').get(row.id)},
+          { ...db.prepare('SELECT * FROM carts WHERE id=?').get(row.id) },
           row,
           'Existing user cart changed',
         );
       for (const row of baselineItems)
         assert.deepEqual(
-          {...db.prepare('SELECT * FROM cart_items WHERE id=?').get(row.id)},
+          { ...db.prepare('SELECT * FROM cart_items WHERE id=?').get(row.id) },
           row,
           'Existing user cart item changed',
         );
@@ -1189,11 +1365,619 @@ async function runPromoJourney({ paths, origin, databasePath, output }) {
   } finally {
     await save();
     await writeFile(
-      join(output, 'promo-results.json'),
+      join(output, combined ? 'combined-results.json' : 'promo-results.json'),
       JSON.stringify(state, null, 2),
     );
     await browser.close();
   }
+}
+
+async function combinedFixture(ready) {
+  const selected = JSON.parse(
+    await readFile(join(ready.output, 'task12-active-fixture.json'), 'utf8'),
+  );
+  assert.match(selected.id, /^[0-9a-f]{8}$/);
+  const expected = join(ready.output, 'task12-' + selected.id);
+  assert.equal(selected.marker, join(expected, 'fixture-marker.json'));
+  const marker = JSON.parse(await readFile(selected.marker, 'utf8'));
+  assert.equal(marker.id, selected.id);
+  assert.equal(marker.project, APPROVED_CHECKOUT);
+  assert.equal(marker.origin, 'http://localhost:4174');
+  assert.equal(marker.output, expected);
+  assert.equal(marker.state, join(expected, 'fixture-state'));
+  assert.equal(await realpath(marker.state), marker.state);
+  assert.equal(
+    marker.databasePath,
+    join(marker.state, 'v3', 'd1', 'miniflare-D1DatabaseObject', CANONICAL_DB),
+  );
+  assert.equal(await realpath(marker.databasePath), marker.databasePath);
+  assert.equal(marker.canonicalDatabasePath, ready.databasePath);
+  assert.equal(marker.neverSyncBack, true);
+  assert.equal(marker.fixtureOnlyDates, true);
+  const attestation = JSON.parse(
+    await readFile(join(expected, 'runtime-attestation.json'), 'utf8'),
+  );
+  for (const [key, value] of Object.entries({
+    project: APPROVED_CHECKOUT,
+    origin: marker.origin,
+    state: marker.state,
+    runtime: 'local_staging',
+    mail: 'capture',
+    payment: 'simulated',
+    recipients: 'local.hastabazaar.test',
+    remoteBindings: false,
+    forbiddenBindingsAbsent: true,
+    noLocalEnvFiles: true,
+    guardedLaunch: true,
+    disposableFixture: true,
+    neverSyncBack: true,
+  }))
+    assert.equal(attestation[key], value);
+  assert.equal((await fetch(marker.origin + '/health/live')).status, 200);
+  return {
+    ...ready,
+    origin: new URL(marker.origin),
+    databasePath: marker.databasePath,
+    output: expected,
+    combined: true,
+    fixtureMarker: marker,
+  };
+}
+async function combinedRewards({
+  a,
+  p,
+  api,
+  mutate,
+  visit,
+  capture,
+  state,
+  save,
+  databasePath,
+  fixtureMarker,
+}) {
+  if (state.rewardsPassed) return;
+  await visit(a, '/admin/loyalty');
+  const form = a.locator('form[data-form-id="staff.loyalty-settings"]');
+  const earning = await api(a, '/api/admin/loyalty');
+  assert.equal(earning.status, 200);
+  if (!state.loyaltyAdminPublished) {
+    for (const [name, value] of Object.entries({
+      dailyPoints: '10',
+      dailyBudgetPoints: '1000',
+      lifetimeBudgetPoints: '10000',
+      startsAt: new Date(Date.now() - 25 * 86400000).toISOString().slice(0, 16),
+      endsAt: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 16),
+      reason: 'SIMULATED combined fixture admin publication ' + state.id,
+    }))
+      await form.locator('[name="' + name + '"]').fill(value);
+    await form.locator('[name="enabled"]').check();
+    await mutate(
+      a,
+      '/api/admin/loyalty',
+      form.getByRole('button', { name: 'Save draft', exact: true }),
+    );
+    await form
+      .locator('[name="reason"]')
+      .fill('SIMULATED publish combined fixture ' + state.id);
+    await mutate(
+      a,
+      '/api/admin/loyalty',
+      form.getByRole('button', { name: 'Publish draft', exact: true }),
+    );
+    state.loyaltyAdminPublished = true;
+    await save();
+  }
+  assert.equal(
+    await form.locator('[name="pointsPerBlock"]').getAttribute('readonly'),
+    '',
+  );
+  await capture(a, 'loyalty-admin', form, 'Daily loyalty points');
+  await visit(p, '/account/rewards');
+  const claim = p.locator('form[data-form-id="account.daily-reward"]'),
+    exchange = p.locator('form[data-form-id="account.points-redemption"]');
+  await p.locator('[data-config-ready="true"]').waitFor();
+  const current = await api(p, '/api/account/rewards');
+  assert.equal(current.status, 200);
+  if (!current.body.claimedToday) {
+    await p.evaluate(() => {
+      Date.now = () => 0;
+    });
+    const fail = (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '{}',
+      });
+    await p.route(
+      new URL('/api/account/rewards/claim', fixtureMarker.origin).href,
+      fail,
+    );
+    await claim
+      .getByRole('button', { name: 'Claim daily points', exact: true })
+      .click();
+    await p
+      .getByText(
+        'The claim response could not be verified. Retry the original attempt.',
+        { exact: true },
+      )
+      .waitFor();
+    await p.unroute(
+      new URL('/api/account/rewards/claim', fixtureMarker.origin).href,
+      fail,
+    );
+    await capture(p, 'claim-error-retry', p.locator('main'), 'My Rewards');
+    const result = await mutate(
+      p,
+      '/api/account/rewards/claim',
+      claim.getByRole('button', { name: 'Retry original claim', exact: true }),
+    );
+    assert.equal(result.awardedPoints, 10);
+    assert.equal(result.balancePoints, 200);
+    state.dailyClaim = result;
+    await save();
+    const last = state.mutations.at(-1);
+    const replay = await api(p, '/api/account/rewards/claim', last.request);
+    assert.equal(replay.status, 200);
+    assert.deepEqual(replay.body, result);
+  }
+  await claim
+    .getByRole('button', { name: 'Claim daily points', exact: true })
+    .waitFor();
+  assert.equal(
+    await claim
+      .getByRole('button', { name: 'Claim daily points', exact: true })
+      .isDisabled(),
+    true,
+  );
+  await capture(p, 'rewards-claimed', p.locator('main'), 'My Rewards');
+  const redemption = inspect(databasePath, (db) =>
+    db
+      .prepare(
+        "SELECT * FROM loyalty_redemptions WHERE user_id='local-test-customer'",
+      )
+      .all(),
+  );
+  if (!redemption.length) {
+    await p.getByLabel('Points to exchange', { exact: true }).fill('199');
+    await exchange
+      .getByRole('button', { name: 'Review exchange', exact: true })
+      .click();
+    await p
+      .getByText(
+        'Enter whole blocks of 100 points within your available balance.',
+        { exact: true },
+      )
+      .waitFor();
+    state.checks.push('invalid whole-block error preserves entered199');
+    await p.getByLabel('Points to exchange', { exact: true }).fill('200');
+    await exchange
+      .getByRole('button', { name: 'Review exchange', exact: true })
+      .click();
+    await p
+      .getByRole('heading', { name: 'Confirm points exchange', exact: true })
+      .waitFor();
+    await p.getByText('Points after exchange: 0', { exact: true }).waitFor();
+    let committed;
+    const lost = async (route) => {
+      const response = await route.fetch({ maxRedirects: 0 });
+      committed = {
+        request: route.request().postDataJSON(),
+        body: await response.json(),
+        status: response.status(),
+      };
+      state.retainedExchange = committed;
+      await save();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '{}',
+      });
+    };
+    const redeemUrl = new URL(
+      '/api/account/rewards/redeem',
+      fixtureMarker.origin,
+    ).href;
+    await p.route(redeemUrl, lost);
+    await p
+      .getByRole('button', { name: 'Confirm exchange', exact: true })
+      .click();
+    await p
+      .getByText(
+        'The exchange response could not be verified. Retry the original attempt.',
+        { exact: true },
+      )
+      .waitFor();
+    await p.unroute(redeemUrl, lost);
+    assert.equal(committed.status, 200);
+    assert.equal(committed.body.points, 200);
+    await capture(
+      p,
+      'exchange-result-recovery',
+      p.locator('main'),
+      'My Rewards',
+    );
+    await exchange
+      .getByRole('button', { name: 'Review original exchange', exact: true })
+      .click();
+    const result = await mutate(
+      p,
+      '/api/account/rewards/redeem',
+      p.getByRole('button', { name: 'Confirm exchange', exact: true }),
+    );
+    assert.deepEqual(state.mutations.at(-1).request, committed.request);
+    assert.deepEqual(result, committed.body);
+    assert.equal(result.points, 200);
+    assert.equal(result.creditPaisa, 2000);
+    assert.equal(result.balancePoints, 0);
+    state.exchange = result;
+    await save();
+    const last = state.mutations.at(-1);
+    const replay = await api(p, '/api/account/rewards/redeem', last.request);
+    assert.equal(replay.status, 200);
+    assert.deepEqual(replay.body, result);
+  }
+  await p.getByRole('button', { name: 'Refresh rewards', exact: true }).click();
+  await p.getByText(/Exchange:.*200 points/).waitFor();
+  await capture(p, 'rewards-exchanged', p.locator('main'), 'My Rewards');
+  await visit(a, '/admin/loyalty');
+  await form
+    .locator('[name="reason"]')
+    .fill('SIMULATED pause disposable fixture only');
+  const paused = await api(a, '/api/admin/loyalty');
+  if (!paused.body.paused)
+    await mutate(
+      a,
+      '/api/admin/loyalty',
+      form.getByRole('button', { name: 'Pause earning', exact: true }),
+    );
+  await visit(p, '/account/rewards');
+  await p
+    .getByText(
+      'Daily earning is paused. Your existing points remain redeemable.',
+      { exact: true },
+    )
+    .waitFor();
+  const conserved = inspect(databasePath, (db) => ({
+    points: db
+      .prepare(
+        "SELECT balance_points FROM loyalty_accounts WHERE user_id='local-test-customer'",
+      )
+      .get(),
+    redemptions: db
+      .prepare(
+        "SELECT points,credit_paisa FROM loyalty_redemptions WHERE user_id='local-test-customer'",
+      )
+      .all(),
+    credit: db
+      .prepare(
+        "SELECT amount_paisa FROM wallet_entries WHERE user_id='local-test-customer' AND kind='loyalty_redemption'",
+      )
+      .all(),
+  }));
+  assert.equal(conserved.points.balance_points, 0);
+  assert.equal(conserved.redemptions.length, 1);
+  assert.deepEqual(conserved.redemptions, [
+    { points: 200, credit_paisa: 2000 },
+  ]);
+  assert.deepEqual(conserved.credit, [{ amount_paisa: 2000 }]);
+  state.pointsConservation = conserved;
+  state.fixtureAcquisition = {
+    claimCount: fixtureMarker.claims.length,
+    testOnlyDates: fixtureMarker.claims.map((c) => c.testServerTime),
+    serverClockUnchanged: true,
+  };
+  state.checks.push(
+    'admin locked-rate draft/publish/pause',
+    'actual today claim ignores spoofed browserclock',
+    'claim and redemption exact-request retries',
+    '200 points debit links one2000paisa wallet credit',
+    'history and paused earning',
+  );
+  state.rewardsPassed = true;
+  await save();
+}
+
+async function combinedRefund({
+  a,
+  p,
+  api,
+  mutate,
+  visit,
+  capture,
+  state,
+  save,
+  databasePath,
+  createContext,
+  listen,
+}) {
+  const owned = inspect(databasePath, (db) => ({
+    order: db
+      .prepare('SELECT * FROM orders WHERE order_number=?')
+      .get(state.orderNumber),
+    item: db
+      .prepare(
+        "SELECT i.* FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.order_number=? AND i.seller_id='local-test-seller-profile'",
+      )
+      .get(state.orderNumber),
+  }));
+  assert.ok(owned.order && owned.item);
+  assert.equal(owned.order.customer_id, 'local-test-customer');
+  assert.equal(owned.order.promo_campaign_id, state.campaignId);
+  if (!state.deliveryPrepared) {
+    const seller = await createContext('seller'),
+      page = await seller.newPage();
+    listen(page, 'fixture-seller');
+    const sellerPage = await page.goto(
+      new URL('/seller/orders', new URL(p.url()).origin).href,
+      { waitUntil: 'domcontentloaded' },
+    );
+    assert.equal(sellerPage.status(), 200);
+    for (const [action, target] of [
+      ['start_packing', 'packing'],
+      ['ready_for_pickup', 'ready_for_pickup'],
+    ]) {
+      const status = inspect(databasePath, (db) =>
+        db
+          .prepare('SELECT fulfillment_status FROM order_items WHERE id=?')
+          .get(owned.item.id),
+      ).fulfillment_status;
+      if (status === target || status === 'ready_for_pickup') continue;
+      const result = await api(
+        page,
+        '/api/seller/orders/' + owned.order.id + '/fulfillment',
+        { action, note: 'SIMULATED combined fixture delivery prerequisite' },
+      );
+      assert.equal(result.status, 200, JSON.stringify(result));
+    }
+    await seller.close();
+    const version = inspect(databasePath, (db) =>
+      db
+        .prepare(
+          "SELECT version FROM form_config_versions WHERE form_id='staff.order-fulfillment' AND status='published' ORDER BY version DESC LIMIT 1",
+        )
+        .get(),
+    ).version;
+    for (const [action, target] of [
+      ['dispatch', 'dispatched'],
+      ['deliver', 'delivered'],
+    ]) {
+      const status = inspect(databasePath, (db) =>
+        db.prepare('SELECT status FROM orders WHERE id=?').get(owned.order.id),
+      ).status;
+      if (status === target || status === 'delivered') continue;
+      const result = await api(
+        a,
+        '/api/admin/orders/' + owned.order.id + '/fulfillment',
+        {
+          action,
+          note: 'SIMULATED controlled fixture COD delivery',
+          trackingCode: 'SIMULATED-' + state.id,
+          requestId: 'task12-' + state.id + '-' + action,
+          formVersion: version,
+          customAnswers: [],
+        },
+      );
+      assert.equal(result.status, 200, JSON.stringify(result));
+    }
+    state.deliveryPrepared = {
+      mode: 'actual controlled seller/staff fulfillment APIs',
+      orderId: owned.order.id,
+      itemId: owned.item.id,
+    };
+    await save();
+  }
+  const old = inspect(databasePath, (db) =>
+    db
+      .prepare(
+        'SELECT r.* FROM return_requests r JOIN order_items i ON i.id=r.order_item_id WHERE i.order_id=?',
+      )
+      .all(owned.order.id),
+  );
+  assert.ok(old.length <= 1);
+  if (old.length) state.returnId = old[0].id;
+  if (!state.returnId) {
+    await visit(p, '/orders/' + state.orderNumber);
+    await p
+      .getByRole('button', { name: 'Return or replace an item', exact: true })
+      .click();
+    const form = p.locator('form[data-form-id="commerce.return-request"]');
+    await form.locator('[name="orderItemId"]').selectOption(owned.item.id);
+    await form.locator('[name="reason"]').selectOption('defective');
+    await form.locator('[name="requestedResolution"]').selectOption('refund');
+    await form
+      .locator('[name="detail"]')
+      .fill(
+        'SIMULATED disposable fixture defect for refund accounting acceptance only. ' +
+          state.id,
+      );
+    const returned = await mutate(
+      p,
+      '/orders/' + state.orderNumber + '/returns',
+      form.getByRole('button', { name: 'Send return request', exact: true }),
+    );
+    assert.equal(typeof returned.id, 'string');
+    state.returnId = returned.id;
+    await save();
+  }
+  const casePath = '/admin/cases/returns/' + state.returnId;
+  await visit(a, casePath, {
+    hydrate:
+      inspect(databasePath, (db) =>
+        db
+          .prepare('SELECT status FROM return_requests WHERE id=?')
+          .get(state.returnId),
+      ).status !== 'resolved',
+  });
+  const status = inspect(databasePath, (db) =>
+    db
+      .prepare('SELECT status FROM return_requests WHERE id=?')
+      .get(state.returnId),
+  ).status;
+  if (status === 'requested') {
+    const form = a.locator('form[data-form-id="staff.return-case-action"]');
+    await form
+      .getByText('Decision', { exact: true })
+      .locator('..')
+      .locator('input,select,textarea')
+      .first()
+      .selectOption('approve');
+    await form
+      .getByText('Outcome', { exact: true })
+      .locator('..')
+      .locator('input,select,textarea')
+      .first()
+      .selectOption('refund');
+    await form
+      .getByText('Responsible party', { exact: true })
+      .locator('..')
+      .locator('input,select,textarea')
+      .first()
+      .selectOption('seller');
+    await form
+      .getByText('Item refund (NPR)', { exact: true })
+      .locator('..')
+      .locator('input,select,textarea')
+      .first()
+      .fill('100');
+    await form
+      .getByText('Delivery refund (NPR)', { exact: true })
+      .locator('..')
+      .locator('input,select,textarea')
+      .first()
+      .fill('0');
+    await form
+      .getByText('Internal investigation note', { exact: true })
+      .locator('..')
+      .locator('input,select,textarea')
+      .first()
+      .fill('SIMULATED verified disposable fixture defect');
+    await form
+      .getByText('Customer message', { exact: true })
+      .locator('..')
+      .locator('input,select,textarea')
+      .first()
+      .fill('SIMULATED refund approved for this fixture.');
+    await mutate(
+      a,
+      '/api/admin/returns/' + state.returnId + '/review',
+      form.getByRole('button', { name: 'Save decision', exact: true }),
+    );
+    await visit(a, casePath);
+  }
+  for (const [action, label] of [
+    ['start_refund', 'Start refund processing'],
+    ['complete_refund', 'Mark refund paid'],
+  ]) {
+    const current = inspect(databasePath, (db) =>
+      db
+        .prepare('SELECT status FROM refunds WHERE return_request_id=?')
+        .get(state.returnId),
+    );
+    if (
+      current.status === 'paid' ||
+      (action === 'start_refund' && current.status === 'processing')
+    )
+      continue;
+    const form = a.locator('form[data-form-id="staff.return-case-action"]');
+    await form
+      .getByText('Operation', { exact: true })
+      .locator('..')
+      .locator('input,select,textarea')
+      .first()
+      .selectOption(action);
+    await form
+      .getByText('Internal investigation note', { exact: true })
+      .locator('..')
+      .locator('input,select,textarea')
+      .first()
+      .fill('SIMULATED controlled refund accounting ' + action);
+    await form
+      .getByText('Customer message', { exact: true })
+      .locator('..')
+      .locator('input,select,textarea')
+      .first()
+      .fill('SIMULATED refund operation verified for fixture.');
+    if (action === 'complete_refund')
+      await form
+        .getByText('Shipment, replacement, or payment reference', {
+          exact: true,
+        })
+        .locator('..')
+        .locator('input,select,textarea')
+        .first()
+        .fill('SIMULATED-TRANSFER-' + state.id);
+    await mutate(
+      a,
+      '/api/admin/returns/' + state.returnId + '/operations',
+      form.getByRole('button', { name: label, exact: true }),
+    );
+    await visit(a, casePath, { hydrate: action !== 'complete_refund' });
+  }
+  const result = inspect(databasePath, (db) => ({
+    refund: db
+      .prepare(
+        'SELECT status,amount_paisa,item_amount_paisa,delivery_amount_paisa,wallet_credit_paisa,promo_discount_paisa FROM refunds WHERE return_request_id=?',
+      )
+      .get(state.returnId),
+    wallet: db
+      .prepare(
+        "SELECT balance_paisa FROM wallet_accounts WHERE user_id='local-test-customer'",
+      )
+      .get(),
+    points: db
+      .prepare(
+        "SELECT balance_points FROM loyalty_accounts WHERE user_id='local-test-customer'",
+      )
+      .get(),
+    credit: db
+      .prepare(
+        "SELECT kind,amount_paisa FROM wallet_entries WHERE user_id='local-test-customer' ORDER BY created_at,id",
+      )
+      .all(),
+    campaign: db
+      .prepare('SELECT used_count,spent_paisa FROM promo_campaigns WHERE id=?')
+      .get(state.campaignId),
+    redemptionCount: db
+      .prepare(
+        "SELECT COUNT(*) n FROM loyalty_redemptions WHERE user_id='local-test-customer'",
+      )
+      .get().n,
+  }));
+  assert.equal(result.refund.status, 'paid');
+  assert.equal(result.refund.amount_paisa, 10000);
+  assert.equal(result.refund.wallet_credit_paisa, 1000);
+  result.cashRefundPaisa =
+    result.refund.amount_paisa -
+    result.refund.wallet_credit_paisa -
+    result.refund.promo_discount_paisa;
+  assert.equal(result.cashRefundPaisa, 8500);
+  await a.getByText(/NPR\s*85\.00/, { exact: true }).waitFor();
+  assert.equal(result.refund.item_amount_paisa, 10000);
+  assert.equal(result.refund.delivery_amount_paisa, 0);
+  assert.equal(result.refund.promo_discount_paisa, 500);
+  assert.equal(result.wallet.balance_paisa, 2000);
+  assert.equal(result.points.balance_points, 0);
+  assert.equal(result.redemptionCount, 1);
+  assert.deepEqual(result.campaign, { used_count: 1, spent_paisa: 1000 });
+  state.refundAccounting = result;
+  state.checks.push(
+    'actual customer return/admin review/start/complete refund',
+    'refund cash8500 plus1000 spentwallet restoration; promo500 not refunded; no points reaward',
+  );
+  await capture(
+    a,
+    'refund-paid',
+    a.locator('main'),
+    owned.item.product_name_snapshot,
+  );
+  await visit(p, '/orders/' + state.orderNumber);
+  await capture(
+    p,
+    'receipt-after-refund',
+    p.locator('main'),
+    (await p.getByRole('heading', { level: 1 }).innerText()).trim(),
+  );
+  await save();
 }
 
 if (

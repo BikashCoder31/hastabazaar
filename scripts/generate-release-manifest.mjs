@@ -46,6 +46,7 @@ const migrationNames = [
   'mariadb-managed-fixed-supply.sql',
   'mariadb-homepage-hero-carousel.sql',
   'mariadb-promo-codes.sql',
+  'mariadb-loyalty-points.sql',
 ];
 const tables = {},
   triggers = {},
@@ -107,11 +108,21 @@ const requiredChecks = {
     'order_spend',
     'cancellation',
     'refund',
+    'loyalty_redemption',
   ],
   'wallet_entries.chk_wallet_gift_source': [
     'gift_card',
     'order_id',
     'gift_card_id',
+    'loyalty_redemption',
+    'loyalty_redemption_id',
+  ],
+  'wallet_entries.chk_wallet_safe_amount': [
+    'amount_paisa',
+    'platform_amount_paisa',
+    'between',
+    '-9007199254740991',
+    '9007199254740991',
   ],
 };
 const manifest = {

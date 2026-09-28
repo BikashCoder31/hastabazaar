@@ -86,6 +86,7 @@ async function fixture(options: {price?:number; delivery?:number; minimum?:numbe
   await f.db.prepare("UPDATE products SET price_paisa=? WHERE id='product'").bind(options.price ?? 10000).run();
   const context = {
     actorId: 'super',
+    authSubject: 'super',
     requestId: 'draft',
     expectedVersion: 0,
     now: 100,

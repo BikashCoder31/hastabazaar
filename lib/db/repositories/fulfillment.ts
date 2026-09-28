@@ -566,9 +566,13 @@ export async function transitionAdminFulfillment(
           delivered_at = CASE WHEN ? = 'delivered' THEN ? ELSE delivered_at END,
           updated_at = ?
          WHERE id = ? AND status = ?
+           AND EXISTS (
+             SELECT 1 FROM order_items WHERE order_id = orders.id
+               AND fulfillment_status = ?
+           )
            AND NOT EXISTS (
              SELECT 1 FROM order_items WHERE order_id = orders.id
-               AND fulfillment_status != ?
+               AND fulfillment_status NOT IN (?, 'cancelled')
            )`,
       )
       .bind(
@@ -580,6 +584,7 @@ export async function transitionAdminFulfillment(
         options.now,
         options.orderId,
         from,
+        itemFrom,
         itemFrom,
       ),
     ...(options.form ? [database.prepare(`INSERT INTO operation_transaction_guards(id,valid)

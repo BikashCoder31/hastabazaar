@@ -1,6 +1,6 @@
 import {
   IncentiveError,
-  type MutationContext,
+  type PromoMutationContext,
   type PromoTerms,
   type PromoQuote,
   type PromoState,
@@ -22,6 +22,7 @@ import { buildFormAnswerInsert } from './form-answers';
 const MAX_TIME = 253402300799999;
 const FORM = 'staff.promo-code';
 const authoritySql = `EXISTS(SELECT 1 FROM users u JOIN user_roles role ON role.user_id=u.id WHERE u.id=? AND u.status='active' AND role.role=?)`;
+const staffSql = `EXISTS(SELECT 1 FROM users u JOIN user_roles role ON role.user_id=u.id WHERE u.id=? AND u.auth_subject=? AND u.status='active' AND role.role='super_admin')`;
 function integer(n: number, min = 0, max = Number.MAX_SAFE_INTEGER) {
   if (!Number.isSafeInteger(n) || n < min || n > max)
     throw new IncentiveError('invalid');
@@ -34,6 +35,21 @@ async function authority(db: D1Database, id: string, role = 'super_admin') {
   identifier(id);
   if (
     !(await db.prepare(`SELECT 1 WHERE ${authoritySql}`).bind(id, role).first())
+  )
+    throw new IncentiveError('unauthorized');
+}
+async function staffAuthority(
+  db: D1Database,
+  actorId: string,
+  authSubject: string,
+) {
+  identifier(actorId);
+  identifier(authSubject);
+  if (
+    !(await db
+      .prepare(`SELECT 1 WHERE ${staffSql}`)
+      .bind(actorId, authSubject)
+      .first())
   )
     throw new IncentiveError('unauthorized');
 }
@@ -139,8 +155,9 @@ async function state(db: D1Database, id: string) {
   if (!row) throw new IncentiveError('unavailable');
   return decode(row);
 }
-function validateContext(c: MutationContext) {
+function validateContext(c: PromoMutationContext) {
   identifier(c.actorId);
+  identifier(c.authSubject);
   identifier(c.requestId);
   integer(c.now, 0, MAX_TIME);
   integer(c.expectedVersion);
@@ -200,9 +217,10 @@ function normalizeTerms(raw: PromoTerms): PromoTerms {
 }
 async function replay(
   db: D1Database,
-  c: MutationContext,
+  c: PromoMutationContext,
   digest: string,
 ): Promise<PromoState | null> {
+  await staffAuthority(db, c.actorId, c.authSubject);
   const rows = await db
     .prepare(
       `SELECT l.actor_id,l.action,l.next_json,a.form_id FROM audit_logs l LEFT JOIN form_answer_sets a ON a.request_id=l.request_id AND a.form_id=? WHERE l.request_id=? LIMIT 2`,
@@ -242,21 +260,31 @@ async function replay(
     !saved.response
   )
     throw new IncentiveError('conflict');
+  try {
+    await db.batch([
+      ...lockActor(db, c.actorId, 'super_admin'),
+      ...guard(db, staffSql, [c.actorId, c.authSubject]),
+    ]);
+  } catch {
+    throw new IncentiveError('unauthorized');
+  }
   return saved.response;
 }
 async function mutation(
   db: D1Database,
-  c: MutationContext,
+  c: PromoMutationContext,
   action: 'draft' | 'publish' | 'pause',
   campaignId?: string,
   raw?: PromoTerms,
 ): Promise<PromoState> {
   validateContext(c);
-  await authority(db, c.actorId);
+  await staffAuthority(db, c.actorId, c.authSubject);
   if (campaignId !== undefined) identifier(campaignId);
   const terms = action === 'draft' ? normalizeTerms(raw!) : undefined;
   const digest = await digestFormRequest({
     action,
+    actorId: c.actorId,
+    authSubject: c.authSubject,
     campaignId: campaignId ?? null,
     expectedVersion: c.expectedVersion,
     reason: c.reason.trim(),
@@ -319,7 +347,7 @@ async function mutation(
               }
             : { paused: true }),
         };
-  const check = `${authoritySql} AND ${before ? 'EXISTS(SELECT 1 FROM promo_campaigns WHERE id=? AND version=? AND used_count=? AND spent_paisa=?)' : 'NOT EXISTS(SELECT 1 FROM promo_campaigns WHERE id=?)'}`;
+  const check = `${staffSql} AND ${before ? 'EXISTS(SELECT 1 FROM promo_campaigns WHERE id=? AND version=? AND used_count=? AND spent_paisa=?)' : 'NOT EXISTS(SELECT 1 FROM promo_campaigns WHERE id=?)'}`;
   const statements = [
     ...lockActor(db, c.actorId, 'super_admin'),
     ...(before
@@ -331,7 +359,7 @@ async function mutation(
       : []),
     ...guard(db, check, [
       c.actorId,
-      'super_admin',
+      c.authSubject,
       id,
       ...(before
         ? [c.expectedVersion, before.usedCount, before.spentPaisa]
@@ -400,8 +428,8 @@ async function mutation(
   statements.push(
     ...guard(
       db,
-      `${authoritySql} AND EXISTS(SELECT 1 FROM promo_campaigns WHERE id=? AND version=?)`,
-      [c.actorId, 'super_admin', id, version],
+      `${staffSql} AND EXISTS(SELECT 1 FROM promo_campaigns WHERE id=? AND version=?)`,
+      [c.actorId, c.authSubject, id, version],
     ),
   );
   statements.push(
@@ -440,7 +468,7 @@ async function mutation(
   try {
     await db.batch(statements);
   } catch {
-    await authority(db, c.actorId);
+    await staffAuthority(db, c.actorId, c.authSubject);
     const retry = await replay(db, c, digest);
     if (retry) return retry;
     if (before && (await state(db, id)).version !== c.expectedVersion)
@@ -459,18 +487,18 @@ async function mutation(
 }
 export const savePromoDraft = (
   db: D1Database,
-  context: MutationContext,
+  context: PromoMutationContext,
   terms: PromoTerms,
   campaignId?: string,
 ) => mutation(db, context, 'draft', campaignId, terms);
 export const publishPromo = (
   db: D1Database,
-  context: MutationContext,
+  context: PromoMutationContext,
   campaignId: string,
 ) => mutation(db, context, 'publish', campaignId);
 export const pausePromo = (
   db: D1Database,
-  context: MutationContext,
+  context: PromoMutationContext,
   campaignId: string,
 ) => mutation(db, context, 'pause', campaignId);
 
@@ -644,15 +672,17 @@ export async function getPromoCampaign(
   db: D1Database,
   input: PromoDetailInput,
 ): Promise<PromoState> {
-  await authority(db, input.actorId);
+  await staffAuthority(db, input.actorId, input.authSubject);
   identifier(input.campaignId);
-  return state(db, input.campaignId);
+  const result = await state(db, input.campaignId);
+  await staffAuthority(db, input.actorId, input.authSubject);
+  return result;
 }
 export async function listPromoCampaigns(
   db: D1Database,
   input: PromoListInput,
 ): Promise<PromoCampaignPage> {
-  await authority(db, input.actorId);
+  await staffAuthority(db, input.actorId, input.authSubject);
   const scope = 'campaigns';
   const { limit, cursor } = pagination(input, scope);
   const rows = await db
@@ -667,6 +697,7 @@ export async function listPromoCampaigns(
       limit + 1,
     )
     .all<CampaignRow>();
+  await staffAuthority(db, input.actorId, input.authSubject);
   const page = rows.results.slice(0, limit);
   return {
     campaigns: page.map(decode),
@@ -680,7 +711,7 @@ export async function listPromoRedemptions(
   db: D1Database,
   input: PromoRedemptionListInput,
 ): Promise<PromoRedemptionPage> {
-  await authority(db, input.actorId);
+  await staffAuthority(db, input.actorId, input.authSubject);
   identifier(input.campaignId);
   await state(db, input.campaignId);
   const scope = `redemptions:${input.campaignId}`;
@@ -704,6 +735,7 @@ export async function listPromoRedemptions(
       discount_paisa: number;
       created_at: number;
     }>();
+  await staffAuthority(db, input.actorId, input.authSubject);
   const page = rows.results.slice(0, limit);
   return {
     redemptions: page.map((row) => ({

@@ -99,6 +99,7 @@ export async function POST(request: Request) {
     );
     const context = {
       actorId: actor.id,
+      authSubject: actor.authSubject,
       requestId: body.requestId,
       reason: body.reason,
       expectedVersion: Number(body.expectedVersion),
@@ -154,6 +155,7 @@ export async function GET(request: Request) {
       throw new IncentiveError('invalid');
     const input = {
       actorId: actor.id,
+      authSubject: actor.authSubject,
       ...(params.has('cursor') ? { cursor: params.get('cursor')! } : {}),
       ...(rawLimit !== null ? { limit: Number(rawLimit) } : {}),
     };
@@ -162,7 +164,11 @@ export async function GET(request: Request) {
       return json(
         view === 'history'
           ? await listPromoRedemptions(db, { ...input, campaignId })
-          : await getPromoCampaign(db, { actorId: actor.id, campaignId }),
+          : await getPromoCampaign(db, {
+              actorId: actor.id,
+              authSubject: actor.authSubject,
+              campaignId,
+            }),
       );
     return json(await listPromoCampaigns(db, input));
   } catch (error) {

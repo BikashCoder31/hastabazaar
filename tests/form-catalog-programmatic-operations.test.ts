@@ -9,6 +9,8 @@ import { build } from 'esbuild';
 
 import { moderateProductReview } from '../lib/db/repositories/customers';
 import { transitionAdminFulfillment } from '../lib/db/repositories/fulfillment';
+import { createIncentiveDb } from './helpers/incentive-db';
+import { beforeBatch } from './helpers/loyalty-fixture';
 import { moderateSellerReply } from '../lib/db/repositories/review-extras';
 import { getFormAnswerById } from '../lib/db/repositories/form-answers';
 import { authorizeFormAnswerRead } from '../lib/forms/access';
@@ -529,4 +531,145 @@ void test('trigger-compatible fulfilment preserves zero-row race rollback before
     assert.equal(count(sqlite,'form_answer_sets',"request_id='trigger-race'"),0);
     assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM order_email_jobs').get()?.n,before);
   } finally {sqlite.close();}
+});
+
+/** Real migrated native D1 fixture for retained-cancellation fulfillment, separate from browser state. */
+async function nativeCancelledFulfillmentFixture(status: 'ready_for_pickup' | 'dispatched' = 'ready_for_pickup') {
+  const native = await createIncentiveDb();
+  const { sqlite } = fixture();
+  try {
+    const clone = (table: string, id: string, changes: Record<string, SQLInputValue>) => {
+      const original = sqlite.prepare('SELECT * FROM ' + table + ' WHERE id=?').get(id)!;
+      const row = { ...original, ...changes };
+      const columns = sqlite.prepare('PRAGMA table_info(' + table + ')').all().map(column => String(column.name));
+      sqlite.prepare('INSERT INTO ' + table + '(' + columns.join(',') + ') VALUES (' + columns.map(() => '?').join(',') + ')').run(...columns.map(column => row[column]));
+    };
+    clone('users', 'seller', { id: 'cancelled-seller-user', email: 'cancelled-seller@example.test' });
+    sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('cancelled-seller-user','seller',1)").run();
+    clone('seller_profiles', 'seller-one', { id: 'cancelled-seller', user_id: 'cancelled-seller-user', registration_number: 'SIM-CANCELLED', tax_registration_number: 'SIM-CANCELLED-TAX' });
+    clone('products', 'product-one', { id: 'cancelled-product', seller_id: 'cancelled-seller', slug: 'cancelled-product', sku: 'cancelled-product' });
+    clone('order_items', 'item-one', { id: 'item-cancelled', product_id: 'cancelled-product', seller_id: 'cancelled-seller', fulfillment_status: 'cancelled', fulfillment_request_id: 'fixture-prior-cancellation' });
+    sqlite.prepare("UPDATE orders SET status=?,item_subtotal_paisa=2000,grand_total_paisa=2000,cancellation_version=1,current_subtotal_paisa=1000,current_delivery_paisa=0,current_wallet_paisa=0,current_discount_paisa=0,current_promo_discount_paisa=0,current_total_paisa=1000 WHERE id='order-one'").run(status);
+    sqlite.prepare("UPDATE order_items SET fulfillment_status=? WHERE id='item-one'").run(status);
+    // Copy only fictional seed rows; native schema/checks/triggers were applied by createIncentiveDb.
+    for (const table of ['users','user_roles','seller_profiles','categories','products','orders','order_items','shipments','form_config_versions']) {
+      const seedIds: Record<string,string[]> = {
+        users:['admin','other','buyer','seller','cancelled-seller-user'],
+        user_roles:['admin','other','buyer','seller','cancelled-seller-user'],
+        seller_profiles:['seller-one','cancelled-seller'],categories:['cat'],
+        products:['product-one','cancelled-product'],orders:['order-one'],
+        order_items:['item-one','item-cancelled'],shipments:['ship-one'],
+        form_config_versions:['staff.order-fulfillment-v1','staff.review-moderation-v1'],
+      };
+      const ids=seedIds[table];
+      for (const row of sqlite.prepare('SELECT * FROM ' + table + ' WHERE '+(table==='user_roles'?'user_id':'id')+' IN ('+ids.map(()=>'?').join(',')+')').all(...ids)) {
+        const columns = sqlite.prepare('PRAGMA table_info(' + table + ')').all().map(column => String(column.name));
+        await native.db.prepare('INSERT INTO ' + table + '(' + columns.join(',') + ') VALUES (' + columns.map(() => '?').join(',') + ')').bind(...columns.map(column => row[column])).run();
+      }
+    }
+    globalThis.programmaticDb = native.db;
+    globalThis.programmaticActor = { id: 'admin', role: 'admin' };
+    return native;
+  } catch (error) {
+    await native.dispose();
+    throw error;
+  } finally { sqlite.close(); }
+}
+async function nativeFulfillmentProof(db: D1Database) {
+  const result: Record<string, unknown> = {};
+  for (const table of ['orders','order_items','shipments','payments','order_documents','order_status_events','order_item_status_events','shipment_events','seller_ledger_entries','audit_logs','form_answer_sets','order_email_jobs'])
+    result[table] = (await db.prepare('SELECT * FROM ' + table + ' ORDER BY rowid').all()).results;
+  return result;
+}
+async function nativeFulfillmentReceiver() {
+  const { POST } = await import('../app/api/admin/orders/[id]/fulfillment/route');
+  return (body: unknown) => POST(request('/api/admin/orders/order-one/fulfillment', body), { params: Promise.resolve({ id: 'order-one' }) });
+}
+const retainedFulfillmentBody = {
+  action: 'dispatch', note: 'Fictional retained cancellation consignment', trackingCode: 'SIM-RETAINED',
+  requestId: 'retained-dispatch', formVersion: 1,
+  customAnswers: [{ fieldId: 'context_note', value: 'Fictional preserved cancellation evidence' }],
+};
+void test('configured native fulfillment dispatch retains cancelled parcel and delivers only the active parcel', async () => {
+  const f = await nativeCancelledFulfillmentFixture();
+  try {
+    const send = await nativeFulfillmentReceiver();
+    const cancelled = await f.db.prepare("SELECT * FROM order_items WHERE id='item-cancelled'").first();
+    const finance = () => f.db.prepare("SELECT item_subtotal_paisa,grand_total_paisa,current_subtotal_paisa,current_delivery_paisa,current_wallet_paisa,current_discount_paisa,current_promo_discount_paisa,current_total_paisa,cancellation_version FROM orders WHERE id='order-one'").first();
+    const beforeFinance = await finance();
+    assert.equal((await send(retainedFulfillmentBody)).status, 200);
+    assert.equal((await f.db.prepare("SELECT status FROM orders WHERE id='order-one'").first<{status:string}>())!.status, 'dispatched');
+    assert.equal((await f.db.prepare("SELECT fulfillment_status FROM order_items WHERE id='item-one'").first<{fulfillment_status:string}>())!.fulfillment_status, 'dispatched');
+    assert.deepEqual(await f.db.prepare("SELECT * FROM order_items WHERE id='item-cancelled'").first(), cancelled);
+    assert.deepEqual(await finance(), beforeFinance);
+    const dispatched = await nativeFulfillmentProof(f.db);
+    assert.equal((await send(retainedFulfillmentBody)).status, 200);
+    assert.deepEqual(await nativeFulfillmentProof(f.db), dispatched, 'exact dispatch replay cannot duplicate effects');
+    const deliver = { ...retainedFulfillmentBody, action: 'deliver', requestId: 'retained-deliver' };
+    assert.equal((await send(deliver)).status, 200);
+    assert.equal((await f.db.prepare("SELECT status FROM orders WHERE id='order-one'").first<{status:string}>())!.status, 'delivered');
+    assert.deepEqual(await f.db.prepare("SELECT * FROM order_items WHERE id='item-cancelled'").first(), cancelled);
+    assert.deepEqual(await finance(), beforeFinance);
+    const receipt = await f.db.prepare("SELECT snapshot_json FROM order_documents WHERE order_id='order-one' AND kind='payment_receipt'").first<{snapshot_json:string}>();
+    assert.ok(receipt);const document = JSON.parse(receipt.snapshot_json);
+    assert.equal(document.items.length, 1);assert.equal(document.itemSubtotalPaisa, 1000);assert.equal(document.grandTotalPaisa, 1000);
+    assert.equal((await f.db.prepare("SELECT COUNT(*) n FROM seller_ledger_entries WHERE order_item_id='item-cancelled'").first<{n:number}>())!.n, 0);
+    assert.equal((await f.db.prepare("SELECT COUNT(*) n FROM form_answer_sets WHERE form_id='staff.order-fulfillment' AND subject_id='order-one'").first<{n:number}>())!.n, 2);
+    assert.equal((await f.db.prepare("SELECT COUNT(*) n FROM audit_logs WHERE subject_id='order-one' AND action IN ('order.dispatch','order.deliver')").first<{n:number}>())!.n, 2);
+    const delivered = await nativeFulfillmentProof(f.db);
+    assert.equal((await send(deliver)).status, 200);assert.deepEqual(await nativeFulfillmentProof(f.db), delivered);
+  } finally { await f.dispose(); }
+});
+void test('configured native fulfillment delivery accepts preexisting dispatched parcel beside retained cancellation', async () => {
+  const f = await nativeCancelledFulfillmentFixture('dispatched');
+  try {
+    const send = await nativeFulfillmentReceiver();
+    const cancelled = await f.db.prepare("SELECT * FROM order_items WHERE id='item-cancelled'").first();
+    assert.equal((await send({ ...retainedFulfillmentBody, action:'deliver',requestId:'retained-direct-deliver' })).status, 200);
+    assert.equal((await f.db.prepare("SELECT status FROM orders WHERE id='order-one'").first<{status:string}>())!.status,'delivered');
+    assert.deepEqual(await f.db.prepare("SELECT * FROM order_items WHERE id='item-cancelled'").first(),cancelled);
+  } finally { await f.dispose(); }
+});
+void test('configured native fulfillment rejects active unready, all cancelled, missing items and lost authority atomically', async t => {
+  const f = await nativeCancelledFulfillmentFixture();
+  try {
+    const send = await nativeFulfillmentReceiver();
+    const originalItems = (await f.db.prepare("SELECT * FROM order_items WHERE order_id='order-one'").all()).results;
+    const itemColumns = (await f.db.prepare('PRAGMA table_info(order_items)').all<{name:string}>()).results.map(column => column.name);
+    let sequence = 0;
+    for (const action of ['dispatch','deliver'] as const) {
+      for (const scenario of ['active unready','all cancelled','no items'] as const) {
+        await t.test(action+' '+scenario,async()=>{
+          await f.db.prepare("DELETE FROM order_items WHERE order_id='order-one'").run();
+          for (const row of originalItems) {
+            const columns=itemColumns;
+            await f.db.prepare('INSERT INTO order_items('+columns.join(',')+') VALUES ('+columns.map(()=>'?').join(',')+')').bind(...columns.map(column => row[column])).run();
+          }
+          await f.db.prepare("UPDATE orders SET status=? WHERE id='order-one'").bind(action==='dispatch'?'ready_for_pickup':'dispatched').run();
+          if(scenario==='no items')await f.db.prepare("DELETE FROM order_items WHERE order_id='order-one'").run();
+          else await f.db.prepare("UPDATE order_items SET fulfillment_status=? WHERE id='item-one'").bind(scenario==='all cancelled'?'cancelled':action==='dispatch'?'packing':'ready_for_pickup').run();
+          const before=await nativeFulfillmentProof(f.db);
+          const response=await send({...retainedFulfillmentBody,action,requestId:'retained-denied-'+sequence++});
+          const after=await nativeFulfillmentProof(f.db);
+          assert.ok(response.status>=400,'ineligible active set must refuse fulfillment');
+          assert.deepEqual(after,before,'refusal must roll back every operation/answer/audit/financial effect');
+        });
+      }
+    }
+    await t.test('current staff revocation aborts checked native operation',async()=>{
+      for(const row of originalItems){const columns=itemColumns;await f.db.prepare('INSERT INTO order_items('+columns.join(',')+') VALUES ('+columns.map(()=>'?').join(',')+')').bind(...columns.map(column => row[column])).run();}
+      await f.db.prepare("UPDATE orders SET status='ready_for_pickup' WHERE id='order-one'").run();
+      const before=await nativeFulfillmentProof(f.db);
+      globalThis.programmaticDb=beforeBatch(f.db,()=>f.db.prepare("UPDATE users SET status='suspended' WHERE id='admin'").run());
+      const response=await send({...retainedFulfillmentBody,requestId:'retained-authority'});
+      assert.ok(response.status>=400);assert.deepEqual(await nativeFulfillmentProof(f.db),before);
+      globalThis.programmaticDb=f.db;
+      await f.db.prepare("UPDATE users SET status='active' WHERE id='admin'").run();
+    });
+    await t.test('configured answer failure preserves current financial/order proof',async()=>{
+      const before=await nativeFulfillmentProof(f.db);
+      const response=await send({...retainedFulfillmentBody,requestId:'retained-no-answer',customAnswers:[]});
+      assert.equal(response.status,400);assert.deepEqual(await nativeFulfillmentProof(f.db),before);
+    });
+  } finally { await f.dispose(); }
 });

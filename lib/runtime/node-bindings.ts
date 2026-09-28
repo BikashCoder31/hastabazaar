@@ -47,6 +47,8 @@ function databasePool(): Pool {
     user: requiredEnvironment('DB_USER'),
     password: requiredEnvironment('DB_PASSWORD'),
     charset: 'utf8mb4',
+    // D1 returns JSON as TEXT; keep financial receipts exact for repository parsing.
+    jsonStrings: true,
     connectionLimit: Math.max(1, Number(process.env.DB_POOL_SIZE ?? '4')),
     decimalNumbers: true,
     enableKeepAlive: true,
@@ -57,6 +59,15 @@ function databasePool(): Pool {
 
 export function translateSqliteSql(sql: string): string {
   return sql
+    // Exact new claim/redemption empty-field predicates; retain the array type guard.
+    .replace(
+      /json_type\(v\.config_json,'\$\.fields'\)='array'/g,
+      "JSON_TYPE(JSON_EXTRACT(v.config_json,'$.fields'))='ARRAY'",
+    )
+    .replace(
+      /json_array_length\(v\.config_json,'\$\.fields'\)=0/g,
+      "JSON_LENGTH(JSON_EXTRACT(v.config_json,'$.fields'))=0",
+    )
     .replace(/lower\(hex\(randomblob\(16\)\)\)/gi, "LOWER(REPLACE(UUID(), '-', ''))")
     .replace(/'reward:'\s*\|\|\s*r\.order_id/g, "CONCAT('reward:', r.order_id)")
     .replace(/\bINSERT\s+OR\s+IGNORE\b/gi, 'INSERT IGNORE')

@@ -194,7 +194,7 @@ registerHooks({
     if (specifier === '@/lib/auth/customer')
       return {
         url: sourceUrl(
-          'export class CustomerAuthorizationError extends Error{};export async function requireCustomerApi(){return {userId:"customer-one",email:"buyer@hastabazaar.local"}};export async function getCustomerUser(){return {userId:"customer-one",email:"buyer@hastabazaar.local"}}',
+          'export class CustomerAuthorizationError extends Error{};export async function requireCustomerApi(){return {userId:"customer-one",authSubject:"customer-auth",email:"buyer@hastabazaar.local"}};export const requireExistingCustomerApi=requireCustomerApi;export async function getCustomerUser(){return {userId:"customer-one",authSubject:"customer-auth",email:"buyer@hastabazaar.local"}}',
         ),
         shortCircuit: true,
       };

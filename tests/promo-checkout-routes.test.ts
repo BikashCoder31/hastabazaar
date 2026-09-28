@@ -106,6 +106,7 @@ void test('actual quote derives live cart/customer/time, records no financial st
         .run();
     const context = {
       actorId: 'super',
+      authSubject: 'super',
       requestId: 'route-draft',
       expectedVersion: 0,
       now: 100,

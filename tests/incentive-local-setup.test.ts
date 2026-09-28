@@ -17,8 +17,15 @@ const safe = {
   HASTABAZAAR_RECIPIENT_DOMAIN: 'local.hastabazaar.test',
 };
 const ids = ['staff.promo-code', 'commerce.promo-quote'];
+const combinedIds = [
+  ...ids,
+  'staff.loyalty-settings',
+  'account.daily-reward',
+  'account.points-redemption',
+];
 async function fixture(
   options: {
+    phase?: 'promo' | 'combined';
     marked?: boolean;
     existing?: boolean;
     draft?: boolean;
@@ -39,13 +46,17 @@ async function fixture(
       status: 'published',
     },
   ];
-  const forms = ids.map((id, index) => ({
+  const phase = options.phase ?? 'promo';
+  const fixtureIds = phase === 'combined' ? combinedIds : ids;
+  const forms = fixtureIds.map((id, index) => ({
     definition: {
       id,
       adapterId: options.disconnected ? undefined : id,
       capabilities: {
-        answerBehavior: index === 0 ? 'record' : 'none',
-        customFieldTypes: index === 0 ? ['short_text'] : [],
+        answerBehavior:
+          index === 0 || id === 'staff.loyalty-settings' ? 'record' : 'none',
+        customFieldTypes:
+          index === 0 || id === 'staff.loyalty-settings' ? ['short_text'] : [],
       },
     },
     publishedVersion: options.existing ? 3 : 0,
@@ -68,7 +79,7 @@ async function fixture(
     if (!options?.method || options.method === 'GET') return { forms };
     assert.match(
       path,
-      /^\/api\/admin\/forms\/(staff\.promo-code|commerce\.promo-quote)\/(draft|publish)$/,
+      /^\/api\/admin\/forms\/(staff\.promo-code|commerce\.promo-quote|staff\.loyalty-settings|account\.daily-reward|account\.points-redemption)\/(draft|publish)$/,
     );
     mutations.push(path);
     const formId = path.split('/')[4];
@@ -106,7 +117,7 @@ async function fixture(
         published: structuredClone(configRows),
         domain: structuredClone(domain),
       }),
-      phase: 'promo',
+      phase,
     },
     cleanup: () => rm(projectRoot, { recursive: true, force: true }),
   };
@@ -194,6 +205,60 @@ void test('promo phase requires both real adapters and refuses future combined r
       initializeIncentiveConfigs({ ...f.input, phase: 'combined' }),
     );
     assert.equal(f.mutations.length, 0);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+void test('combined initialization preserves existing configuration and domain state and repeats without writes', async () => {
+  const f = await fixture({ phase: 'combined' });
+  try {
+    const existingBefore = structuredClone(f.existing);
+    const domainBefore = structuredClone(f.domain);
+    const result = await initializeIncentiveConfigs(f.input);
+    assert.equal(result.phase, 'combined');
+    assert.deepEqual(
+      [...result.initializedFormIds].sort(),
+      [...combinedIds].sort(),
+    );
+    assert.deepEqual(result.missingFormIds, []);
+    assert.deepEqual(result.absentFutureIds, []);
+    assert.deepEqual(
+      f.configRows.filter((row) => row.id === 'existing'),
+      existingBefore,
+    );
+    assert.deepEqual(f.domain, domainBefore);
+    assert.equal(f.mutations.length, 10);
+    assert.ok(f.forms.every((form) => form.publishedVersion === 1));
+    const publishedBeforeRepeat = structuredClone(f.configRows);
+    const repeated = await initializeIncentiveConfigs(f.input);
+    assert.deepEqual(repeated.initializedFormIds, []);
+    assert.equal(
+      f.mutations.length,
+      10,
+      'repeat initialization publishes nothing',
+    );
+    assert.deepEqual(f.configRows, publishedBeforeRepeat);
+    assert.deepEqual(f.domain, domainBefore);
+  } finally {
+    await f.cleanup();
+  }
+});
+void test('combined initialization refuses a disconnected required loyalty adapter before any write', async () => {
+  const f = await fixture({ phase: 'combined' });
+  try {
+    f.forms.find(
+      (form) => form.definition.id === 'staff.loyalty-settings',
+    )!.definition.adapterId = undefined;
+    const publishedBefore = structuredClone(f.configRows);
+    const domainBefore = structuredClone(f.domain);
+    await assert.rejects(
+      () => initializeIncentiveConfigs(f.input),
+      /staff\.loyalty-settings must have its actual connected adapter/,
+    );
+    assert.equal(f.mutations.length, 0);
+    assert.deepEqual(f.configRows, publishedBefore);
+    assert.deepEqual(f.domain, domainBefore);
   } finally {
     await f.cleanup();
   }

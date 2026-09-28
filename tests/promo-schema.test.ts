@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { createHash } from 'node:crypto';
 import {
   createIncentiveDb,
   seedIncentiveCustomer,
@@ -884,7 +885,7 @@ void test('native D1 enforces promo lifetime counters, immutable revisions, snap
   }
 });
 
-void test('MariaDB generator ships promo tables after canonical prerequisites and preserves FK collation', async () => {
+void test('MariaDB generator ships promo tables after canonical prerequisites and preserves FK collation', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'hastabazaar-promo-schema-'));
   const run = promisify(execFile);
   try {
@@ -1007,6 +1008,96 @@ void test('MariaDB generator ships promo tables after canonical prerequisites an
     assert.ok(manifest.requiredTables.promo_campaigns.includes('spent_paisa'));
     assert.ok(manifest.requiredTables.orders.includes('promo_discount_paisa'));
     assert.ok('promo_redemption_consume' in manifest.requiredTriggers);
+    await t.test('additive loyalty migration follows promo once with canonical source hashes', async () => {
+      const names = ['mariadb-promo-codes.sql', 'mariadb-loyalty-points.sql'];
+      const offsets = names.map((name) => manifest.migrations.findIndex(
+        (m: { path: string }) => m.path === `deployment/babal/${name}`,
+      ));
+      assert.ok(offsets[0] >= 0);
+      assert.equal(offsets[1], offsets[0] + 1);
+      for (const name of names) {
+        const entries = manifest.migrations.filter((m: { path: string }) => m.path === `deployment/babal/${name}`);
+        assert.equal(entries.length, 1, name);
+        assert.equal(entries[0].usage, 'additive-maintenance');
+        const sql = await readFile(join(root, 'deployment', 'babal', name));
+        assert.equal(entries[0].sha256, createHash('sha256').update(sql).digest('hex'));
+      }
+      for (const table of ['loyalty_config', 'loyalty_revisions', 'loyalty_accounts', 'loyalty_daily_claims', 'loyalty_redemptions', 'loyalty_points_entries', 'loyalty_day_issuance']) {
+        assert.ok(table in manifest.requiredTables, table);
+      }
+      assert.ok(manifest.requiredTables.wallet_entries.includes('loyalty_redemption_id'));
+      for (const trigger of ['wallet_loyalty_source_guard', 'wallet_entry_safe_balance', 'loyalty_redemption_post']) {
+        assert.ok(trigger in manifest.requiredTriggers, trigger);
+      }
+    });
+    // Execute the actual readiness module against its generated manifest. Only the
+    // read-only information-schema boundary is replaced with controlled metadata.
+    const checkSources = [
+      ['orders', 'chk_cancellation_totals', 'mariadb-partial-cancellation.sql'],
+      ['notification_messages', 'chk_notification_guest_shape', 'mariadb-guest-business-notifications.sql'],
+      ['wallet_entries', 'chk_wallet_kind', 'mariadb-loyalty-points.sql'],
+      ['wallet_entries', 'chk_wallet_gift_source', 'mariadb-loyalty-points.sql'],
+      ['wallet_entries', 'chk_wallet_safe_amount', 'mariadb-loyalty-points.sql'],
+    ];
+    const checks = await Promise.all(checkSources.map(async ([tableName, name, file]) => {
+      const sql = await readFile(join(root, 'deployment', 'babal', file), 'utf8');
+      const match = sql.match(new RegExp(`CONSTRAINT IF NOT EXISTS ${name} CHECK\\s*(\\([^;]+\\));`, 'i'));
+      assert.ok(match, `${file}: ${name}`);
+      return { tableName, name, definition: match[1] };
+    }));
+    const columns = Object.entries(manifest.requiredTables).flatMap(([tableName, names]) =>
+      (names as string[]).map((columnName) => ({ tableName, columnName })),
+    );
+    const migrationSql = (await Promise.all(manifest.migrations.map((m: { path: string }) => readFile(join(root, m.path), 'utf8')))).join('\n');
+    const triggers = Object.keys(manifest.requiredTriggers).map((name) => {
+      const match = migrationSql.match(new RegExp('CREATE TRIGGER `?' + name + '`?[\\s\\S]*?END(?:\\$\\$|;)', 'i'));
+      assert.ok(match, name);
+      return { name, definition: match[0] };
+    });
+    const legacySql = await readFile(join(root, 'deployment', 'babal', 'mariadb-gift-cards.sql'), 'utf8');
+    const cases = [
+      { name: 'canonical', checks },
+      ...['chk_wallet_kind', 'chk_wallet_gift_source'].map((name) => {
+        const match = legacySql.match(new RegExp(`CONSTRAINT IF NOT EXISTS ${name} CHECK\\s*(\\([^;]+\\));`, 'i'));
+        assert.ok(match, name);
+        return { name, checks: checks.map((check) => check.name === name ? { ...check, definition: match[1] } : check) };
+      }),
+      { name: 'chk_wallet_safe_amount', checks: checks.filter((check) => check.name !== 'chk_wallet_safe_amount') },
+    ];
+    await mkdir(join(root, 'lib', 'operations'), { recursive: true });
+    await cp(new URL('../lib/operations/readiness.ts', import.meta.url), join(root, 'lib', 'operations', 'readiness.ts'));
+    await writeFile(join(root, 'readiness-fixtures.json'), JSON.stringify({ columns, triggers, cases }));
+    await writeFile(join(root, 'inspect-readiness.mjs'), [
+      "import { readFile } from 'node:fs/promises';",
+      "import { inspectReadiness } from './lib/operations/readiness.ts';",
+      "const fixture = JSON.parse(await readFile(new URL('./readiness-fixtures.json', import.meta.url), 'utf8'));",
+      'const results = {};',
+      'for (const scenario of fixture.cases) {',
+      '  const db = { prepare(sql) {',
+      '    let rows;',
+      "    if (sql.includes('FROM information_schema.COLUMNS ')) rows = fixture.columns;",
+      "    else if (sql.includes('FROM information_schema.TRIGGERS ')) rows = fixture.triggers;",
+      "    else if (sql.includes('FROM information_schema.CHECK_CONSTRAINTS ')) rows = scenario.checks;",
+      "    else throw new Error('Unexpected readiness query: ' + sql);",
+      '    return { async all() { return { results: rows }; } };',
+      '  } };',
+      "  results[scenario.name] = await inspectReadiness(db, 'mariadb');",
+      '}',
+      'console.log(JSON.stringify(results));',
+    ].join('\n'));
+    const readinessRun = await run(process.execPath, ['--import', import.meta.resolve('tsx'), join(root, 'inspect-readiness.mjs')], { cwd: root });
+    const readiness = JSON.parse(readinessRun.stdout);
+    await t.test('readiness accepts canonical named wallet checks', () => {
+      assert.deepEqual(readiness.canonical, { ready: true, missing: [] });
+    });
+    for (const name of ['chk_wallet_kind', 'chk_wallet_gift_source', 'chk_wallet_safe_amount']) {
+      await t.test(`readiness rejects legacy or absent ${name}`, () => {
+        assert.deepEqual(readiness[name], {
+          ready: false,
+          missing: [`${name === 'chk_wallet_safe_amount' ? 'check' : 'check-version'}:wallet_entries.${name}`],
+        });
+      });
+    }
     // Refuse an ambiguous source instead of guessing a financial column definition.
     const canonicalPath = join(
       root,

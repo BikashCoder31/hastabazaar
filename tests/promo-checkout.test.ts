@@ -86,6 +86,7 @@ export async function fixture() {
     .run();
   const context = {
     actorId: 'super',
+    authSubject: 'super',
     requestId: 'draft',
     expectedVersion: 0,
     now: 100,
@@ -274,6 +275,7 @@ void test('concurrent last-use, per-customer and final-budget batches allow only
     ] as const) {
       const context = {
         actorId: 'super',
+        authSubject: 'super',
         requestId: code + '-draft',
         expectedVersion: 0,
         now: 100,
@@ -858,6 +860,7 @@ void test('promo totals preserve safe merchandise-bound integers and reject unsa
     const campaign = async (code: string, discount: number) => {
       const context = {
         actorId: 'super',
+        authSubject: 'super',
         requestId: code + '-draft',
         expectedVersion: 0,
         now: 100,

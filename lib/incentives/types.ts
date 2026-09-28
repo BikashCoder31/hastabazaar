@@ -66,6 +66,11 @@ export interface MutationContext {
   readonly form: IncentiveFormSubmission;
 }
 
+/** Promo administrative identity is derived by the server and checked at commit/replay. */
+export interface PromoMutationContext extends MutationContext {
+  readonly authSubject: string;
+}
+
 /** Staff identity is derived by the server and checked again when loyalty settings commit. */
 export interface LoyaltyMutationContext extends MutationContext {
   readonly authSubject: string;
@@ -213,11 +218,13 @@ export interface PromoConsumptionInput {
 }
 export interface PromoListInput {
   readonly actorId: string;
+  readonly authSubject: string;
   readonly cursor?: string;
   readonly limit?: number;
 }
 export interface PromoDetailInput {
   readonly actorId: string;
+  readonly authSubject: string;
   readonly campaignId: string;
 }
 export interface PromoRedemptionListInput extends PromoListInput {

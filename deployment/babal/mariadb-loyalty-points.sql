@@ -92,7 +92,7 @@ CREATE INDEX IF NOT EXISTS idx_loyalty_redemptions_user ON loyalty_redemptions(u
 CREATE INDEX IF NOT EXISTS idx_loyalty_entries_user ON loyalty_points_entries(user_id,created_at,id);
 
 -- Replace both restrictive gift-era checks; preserve gift uniqueness, conservation/sign and historical posting triggers.
-ALTER TABLE wallet_entries ADD COLUMN IF NOT EXISTS loyalty_redemption_id VARCHAR(191) NULL REFERENCES loyalty_redemptions(id);
+ALTER TABLE wallet_entries ADD COLUMN IF NOT EXISTS loyalty_redemption_id VARCHAR(191) NULL, ADD FOREIGN KEY IF NOT EXISTS wallet_entries_loyalty_redemption_fk (loyalty_redemption_id) REFERENCES loyalty_redemptions(id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_wallet_entries_loyalty ON wallet_entries(loyalty_redemption_id);
 ALTER TABLE wallet_entries DROP CONSTRAINT IF EXISTS chk_wallet_kind;
 ALTER TABLE wallet_entries DROP CONSTRAINT IF EXISTS chk_wallet_gift_source;

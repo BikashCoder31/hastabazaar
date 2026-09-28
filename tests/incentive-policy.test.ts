@@ -3,7 +3,7 @@ import test from 'node:test';
 import { allocatePromoDiscount, calculatePromoDiscount, normalizePromoCode } from '../lib/incentives/promo-policy';
 import { INCENTIVE_FORM_CONTRACTS } from '../lib/incentives/forms';
 import { IncentiveError, type PromoTerms } from '../lib/incentives/types';
-import { validateAnswersForDefinition, validateFormDraftForDefinition } from '../lib/forms/validation';
+import { FormValidationError, validateAnswersForDefinition, validateFormDraft, validateFormDraftForDefinition } from '../lib/forms/validation';
 
 const terms: PromoTerms = {
   code: 'SAVE_10', label: 'Save on merchandise', kind: 'percentage', percentBps: 1250,
@@ -113,6 +113,25 @@ void test('claim, redemption and promo quote reject custom questions and forged 
     assert.deepEqual(validateAnswersForDefinition(definition, { ...config, version: 1, publishedAt: 1 }, []).answers, []);
     assert.throws(() => validateFormDraftForDefinition(definition, { formId: id, fields: [{ id: 'context', key: 'context', type: 'short_text', label: 'Context', required: false, status: 'active', order: 0 }] }, true));
     assert.throws(() => validateAnswersForDefinition(definition, { ...config, version: 1, publishedAt: 1 }, [{ fieldId: 'points', value: 100000 }]));
+  }
+});
+
+void test('promo administration reserves authentication subject aliases while retaining explanatory answers', async (t) => {
+  const formId = 'staff.promo-code';
+  const safe = { id: 'support_context', key: 'support_context', type: 'short_text', label: 'Context', required: false, status: 'active', order: 0 };
+  const config = validateFormDraft(formId, { formId, fields: [safe] });
+  assert.deepEqual(validateAnswersForDefinition(
+    { ...INCENTIVE_FORM_CONTRACTS[formId], adapterId: formId },
+    { ...config, version: 1, publishedAt: 1 },
+    [{ fieldId: 'support_context', value: 'Approved explanation' }],
+  ).answers, [{ fieldId: 'support_context', label: 'Context', type: 'short_text', value: 'Approved explanation' }]);
+  for (const key of ['authSubject', 'authsubject', 'auth_subject']) {
+    await t.test(key, () => {
+      assert.throws(
+        () => validateFormDraft(formId, { formId, fields: [{ ...safe, id: key, key }] }),
+        (error) => error instanceof FormValidationError && error.code === 'invalid_draft',
+      );
+    });
   }
 });
 

@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { beforeBatch } from './helpers/loyalty-fixture';
+import { digestFormRequest } from '../lib/forms/submission';
+import { buildFormAnswerInsert } from '../lib/db/repositories/form-answers';
 import * as promoRepository from '../lib/db/repositories/promo-codes';
 import {
   createIncentiveDb,
@@ -8,7 +11,7 @@ import {
   incentiveItem,
 } from './helpers/incentive-db';
 import type {
-  MutationContext,
+  PromoMutationContext,
   PromoTerms,
   PromoQuote,
 } from '../lib/incentives/types';
@@ -61,9 +64,10 @@ function ctx(
   expectedVersion = 0,
   actorId = 'super',
   version = 1,
-): MutationContext {
+): PromoMutationContext {
   return {
     actorId,
+    authSubject: actorId,
     requestId,
     expectedVersion,
     now: 100,
@@ -335,6 +339,7 @@ void test('republishing never replenishes consumed campaign budget', async () =>
     );
     let state = await r.getPromoCampaign(f.db, {
       actorId: 'super',
+      authSubject: 'super',
       campaignId: s.campaignId,
     });
     assert.equal(state.usedCount, 1);
@@ -406,6 +411,7 @@ void test('republishing never replenishes consumed campaign budget', async () =>
     );
     const history = await r.listPromoRedemptions(f.db, {
       actorId: 'super',
+      authSubject: 'super',
       campaignId: s.campaignId,
       limit: 2,
     });
@@ -414,6 +420,7 @@ void test('republishing never replenishes consumed campaign budget', async () =>
     assert.equal('customerId' in history.redemptions[0], false);
     const rest = await r.listPromoRedemptions(f.db, {
       actorId: 'super',
+      authSubject: 'super',
       campaignId: s.campaignId,
       limit: 2,
       cursor: history.nextCursor!,
@@ -431,6 +438,7 @@ void test('republishing never replenishes consumed campaign budget', async () =>
     await assert.rejects(
       r.listPromoRedemptions(f.db, {
         actorId: 'other',
+        authSubject: 'other',
         campaignId: s.campaignId,
         cursor: history.nextCursor!,
       }),
@@ -574,12 +582,14 @@ void test('bounded stable read pagination requires current active Super Admin an
       });
     const first = await r.listPromoCampaigns(f.db, {
       actorId: 'super',
+      authSubject: 'super',
       limit: 2,
     });
     assert.equal(first.campaigns.length, 2);
     assert.ok(first.nextCursor);
     const next = await r.listPromoCampaigns(f.db, {
       actorId: 'super',
+      authSubject: 'super',
       limit: 2,
       cursor: first.nextCursor!,
     });
@@ -593,20 +603,26 @@ void test('bounded stable read pagination requires current active Super Admin an
     await assert.rejects(
       r.listPromoCampaigns(f.db, {
         actorId: 'other',
+        authSubject: 'other',
         cursor: first.nextCursor!,
       }),
       { code: 'invalid' },
     );
     await assert.rejects(
-      r.listPromoCampaigns(f.db, { actorId: 'super', limit: 51 }),
+      r.listPromoCampaigns(f.db, {
+        actorId: 'super',
+        authSubject: 'super',
+        limit: 51,
+      }),
       { code: 'invalid' },
     );
-    await assert.rejects(r.listPromoCampaigns(f.db, { actorId: 'admin' }), {
+    await assert.rejects(r.listPromoCampaigns(f.db, { actorId: 'admin', authSubject: 'admin' }), {
       code: 'unauthorized',
     });
     await assert.rejects(
       r.getPromoCampaign(f.db, {
         actorId: 'admin',
+        authSubject: 'admin',
         campaignId: first.campaigns[0].campaignId,
       }),
       { code: 'unauthorized' },
@@ -614,9 +630,276 @@ void test('bounded stable read pagination requires current active Super Admin an
     await assert.rejects(
       r.listPromoRedemptions(f.db, {
         actorId: 'admin',
+        authSubject: 'admin',
         campaignId: first.campaigns[0].campaignId,
       }),
       { code: 'unauthorized' },
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+void test('promo settings require authenticated staff subject for preflight, receipt and SELECT-only reads', async (t) => {
+  const r = await repository(),
+    f = await fixture();
+  try {
+    const context = ctx('subject-original');
+    const original = await r.savePromoDraft(f.db, context, terms);
+    const snapshot = async () => ({
+      campaigns: (
+        await f.db.prepare('SELECT * FROM promo_campaigns ORDER BY id').all()
+      ).results,
+      revisions: (
+        await f.db
+          .prepare(
+            'SELECT * FROM promo_revisions ORDER BY campaign_id,revision',
+          )
+          .all()
+      ).results,
+      counts: await counts(f.db),
+    });
+    await t.test('missing subject is invalid', async () => {
+      const before = await snapshot();
+      const { authSubject: _, ...withoutSubject } =
+        context as typeof context & { authSubject: string };
+      await assert.rejects(
+        r.savePromoDraft(f.db, withoutSubject as PromoMutationContext, terms),
+        { code: 'invalid' },
+      );
+      assert.deepEqual(await snapshot(), before);
+    });
+    await f.db
+      .prepare("UPDATE users SET auth_subject='replacement' WHERE id='super'")
+      .run();
+    await t.test(
+      'obsolete subject rejects fresh mutation and exact receipt',
+      async () => {
+        const before = await snapshot();
+        await assert.rejects(r.savePromoDraft(f.db, context, terms), {
+          code: 'unauthorized',
+        });
+        await assert.rejects(
+          r.pausePromo(
+            f.db,
+            ctx('subject-new', original.version),
+            original.campaignId,
+          ),
+          { code: 'unauthorized' },
+        );
+        assert.deepEqual(await snapshot(), before);
+      },
+    );
+    await t.test(
+      'replacement subject cannot reuse prior identity receipt',
+      async () => {
+        const before = await snapshot();
+        await assert.rejects(
+          r.savePromoDraft(
+            f.db,
+            { ...context, authSubject: 'replacement' },
+            terms,
+          ),
+          { code: 'conflict' },
+        );
+        assert.deepEqual(await snapshot(), before);
+      },
+    );
+    for (const view of ['list', 'detail', 'history'] as const)
+      await t.test('read ' + view + ' checks subject', async () => {
+        const before = await snapshot();
+        const input = {
+          actorId: 'super',
+          authSubject: 'super',
+          campaignId: original.campaignId,
+        };
+        await assert.rejects(
+          view === 'list'
+            ? r.listPromoCampaigns(f.db, input)
+            : view === 'detail'
+              ? r.getPromoCampaign(f.db, input)
+              : r.listPromoRedemptions(f.db, input),
+          { code: 'unauthorized' },
+        );
+        assert.deepEqual(await snapshot(), before);
+      });
+    await f.db
+      .prepare("UPDATE users SET auth_subject='super' WHERE id='super'")
+      .run();
+    for (const view of ['list', 'detail', 'history'] as const)
+      await t.test(
+        'read ' + view + ' rechecks before returning without batch writes',
+        async () => {
+          const before = await snapshot();
+          let changed = false;
+          const db = new Proxy(f.db, {
+            get(target, key) {
+              if (key === 'batch')
+                return () => {
+                  throw new Error('Administrative read must stay SELECT-only');
+                };
+              if (key === 'prepare')
+                return (sql: string) => {
+                  const statement = target.prepare(sql);
+                  if (
+                    !sql.startsWith(
+                      view === 'history'
+                        ? 'SELECT id,order_id,revision'
+                        : 'SELECT c.*,r.*',
+                    )
+                  )
+                    return statement;
+                  return new Proxy(statement, {
+                    get(v, p) {
+                      if (p === 'bind')
+                        return (...args: (string | number | null)[]) =>
+                          wrap(v.bind(...args));
+                      const member = Reflect.get(v, p);
+                      return typeof member === 'function'
+                        ? member.bind(v)
+                        : member;
+                    },
+                  });
+                  function wrap(
+                    value: D1PreparedStatement,
+                  ): D1PreparedStatement {
+                    return new Proxy(value, {
+                      get(v, p) {
+                        if (p === 'first' || p === 'all')
+                          return async (...args: unknown[]) => {
+                            const result = await (
+                              Reflect.get(v, p) as (
+                                ...args: unknown[]
+                              ) => unknown
+                            ).apply(v, args);
+                            if (!changed) {
+                              changed = true;
+                              await f.db
+                                .prepare(
+                                  "UPDATE users SET auth_subject='replacement' WHERE id='super'",
+                                )
+                                .run();
+                            }
+                            return result;
+                          };
+                        const member = Reflect.get(v, p);
+                        return typeof member === 'function'
+                          ? member.bind(v)
+                          : member;
+                      },
+                    });
+                  }
+                };
+              const member = Reflect.get(target, key);
+              return typeof member === 'function'
+                ? member.bind(target)
+                : member;
+            },
+          });
+          const input = {
+            actorId: 'super',
+            authSubject: 'super',
+            campaignId: original.campaignId,
+          };
+          await assert.rejects(
+            view === 'list'
+              ? r.listPromoCampaigns(db, input)
+              : view === 'detail'
+                ? r.getPromoCampaign(db, input)
+                : r.listPromoRedemptions(db, input),
+            { code: 'unauthorized' },
+          );
+          assert.equal(changed, true);
+          assert.deepEqual(await snapshot(), before);
+          await f.db
+            .prepare("UPDATE users SET auth_subject='super' WHERE id='super'")
+            .run();
+        },
+      );
+    await t.test(
+      'replay staff role change after lookup rejects under checked native batch',
+      async () => {
+        const before = await snapshot();
+        await assert.rejects(
+          r.savePromoDraft(
+            beforeBatch(f.db, () =>
+              f.db
+                .prepare(
+                  "DELETE FROM user_roles WHERE user_id='super' AND role='super_admin'",
+                )
+                .run(),
+            ),
+            context,
+            terms,
+          ),
+          { code: 'unauthorized' },
+        );
+        assert.deepEqual(await snapshot(), before);
+      },
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+void test('legacy promo receipt without authenticated subject proof fails closed for original and replacement identity', async () => {
+  const r = await repository(),
+    f = await fixture();
+  try {
+    const original = await r.savePromoDraft(f.db, ctx('legacy-seed'), terms);
+    const context = ctx('legacy-receipt');
+    // Seed the genuine predecessor receipt shape; retain current domain state and native provenance checks.
+    const digest = await digestFormRequest({
+      action: 'draft',
+      campaignId: null,
+      expectedVersion: context.expectedVersion,
+      reason: context.reason.trim(),
+      terms,
+      form: context.form,
+    });
+    await f.db.batch([
+      f.db
+        .prepare(
+          "INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,ip_hash,created_at) VALUES (?,'super','promo.draft','promo_campaign',?,?,NULL,?,?,NULL,100)",
+        )
+        .bind(
+          'legacy-receipt-audit',
+          original.campaignId,
+          context.reason,
+          JSON.stringify({ digest, response: original }),
+          context.requestId,
+        ),
+      buildFormAnswerInsert(f.db, {
+        formId: 'staff.promo-code',
+        requestId: context.requestId,
+        versionId: context.form.versionId,
+        subjectType: 'promo_campaign',
+        subjectId: original.campaignId,
+        actorId: 'super',
+        answers: context.form.answers,
+        now: 100,
+      }),
+    ]);
+    const before = await counts(f.db);
+    await assert.rejects(r.savePromoDraft(f.db, context, terms), {
+      code: 'conflict',
+    });
+    assert.deepEqual(await counts(f.db), before);
+    await f.db
+      .prepare("UPDATE users SET auth_subject='replacement' WHERE id='super'")
+      .run();
+    await assert.rejects(
+      r.savePromoDraft(f.db, { ...context, authSubject: 'replacement' }, terms),
+      { code: 'conflict' },
+    );
+    assert.deepEqual(await counts(f.db), before);
+    assert.deepEqual(
+      await r.getPromoCampaign(f.db, {
+        actorId: 'super',
+        authSubject: 'replacement',
+        campaignId: original.campaignId,
+      }),
+      original,
     );
   } finally {
     await f.dispose();

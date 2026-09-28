@@ -3,15 +3,34 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
-import { FORM_REGISTRY, PROGRAMMATIC_FORM_SITES } from '../lib/forms/registry';
+import { FORM_REGISTRY, IMPLEMENTED_FORM_ADAPTERS, PROGRAMMATIC_FORM_SITES } from '../lib/forms/registry';
 import { collectFormSites, scanFormSites } from './helpers/form-policy';
 
 const root = resolve(import.meta.dirname, '..');
 
-void test('the reviewed source inventory contains 83 form elements in 65 files', async () => {
+void test('the reviewed source inventory adds four incentive forms to 83 forms in 65 files', async () => {
   const sites = await collectFormSites(root);
-  assert.equal(sites.length, 83);
-  assert.equal(new Set(sites.map((site) => site.path)).size, 65);
+  const incentiveSites = [
+    { path: 'components/account/rewards-panel.tsx', ordinal: 1, formId: 'account.daily-reward' },
+    { path: 'components/account/rewards-panel.tsx', ordinal: 2, formId: 'account.points-redemption' },
+    { path: 'components/admin/loyalty-manager.tsx', ordinal: 1, formId: 'staff.loyalty-settings' },
+    { path: 'components/admin/promo-code-manager.tsx', ordinal: 1, formId: 'staff.promo-code' },
+  ] as const;
+  const incentivePaths = new Set<string>(incentiveSites.map((site) => site.path));
+  assert.deepEqual(sites.filter((site) => incentivePaths.has(site.path))
+    .map(({ path, ordinal, formId }) => ({ path, ordinal, formId })), incentiveSites);
+  for (const site of incentiveSites) {
+    const definition = FORM_REGISTRY[site.formId];
+    assert.equal(definition.adapterId, site.formId);
+    assert.deepEqual(IMPLEMENTED_FORM_ADAPTERS[definition.adapterId], {
+      formId: site.formId, route: definition.route, mode: definition.mode,
+    });
+  }
+  const originalSites = sites.filter((site) => !incentivePaths.has(site.path));
+  assert.equal(originalSites.length, 83);
+  assert.equal(new Set(originalSites.map((site) => site.path)).size, 65);
+  assert.equal(sites.length, 83 + incentiveSites.length);
+  assert.equal(new Set(sites.map((site) => site.path)).size, 65 + incentivePaths.size);
   assert.deepEqual(await scanFormSites(root), []);
 });
 

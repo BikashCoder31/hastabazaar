@@ -158,6 +158,18 @@ for (const [mode, formId] of modes) void test(`${formId} retains attempts and in
       assert.equal(payloads.at(-1)?.id, firstId, `${formId}: reload must retain opaque attempt`);
     }
     await form.getByLabel('Case context').fill('SIMULATED corrected context');
+    if (mode === 'checkout') {
+      const priorRequests = payloads.length;
+      const priorCompleted = await page.evaluate(() => (window as unknown as { __completed: number }).__completed);
+      await form.getByRole('button', { name: 'Place COD order' }).click();
+      await form.getByText(/This order differs from the prior attempt/).waitFor();
+      assert.equal(payloads.length, priorRequests, 'changed checkout context must not dispatch a POST');
+      assert.equal(await page.evaluate(() => (window as unknown as { __completed: number }).__completed), priorCompleted);
+      assert.equal(payloads.at(-1)?.id, firstId, 'blocked changed context retains the original attempt');
+      assert.equal(await form.getByLabel('Case context').inputValue(), 'SIMULATED corrected context');
+      assert.equal(await form.getByRole('button', { name: 'Place COD order' }).isEnabled(), true);
+      await form.getByLabel('Case context').fill('SIMULATED retained context');
+    }
     reply = { status: 200, body: '{"error":"Current config changed.","code":"stale_version"}' };
     // A 2xx error-shaped body cannot masquerade as success, even with a stale code.
     await submitAttempt(page, form);
