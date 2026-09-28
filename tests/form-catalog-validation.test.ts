@@ -65,9 +65,9 @@ for (const [name, fields] of [
   void test(`draft rejects ${name}`, () => assert.throws(() => validateFormDraftForDefinition(definition, fields), errorCode('invalid_draft')));
 }
 
-void test('unknown and pending form IDs fail closed', () => {
+void test('unknown forms and unsupported live query criteria fail closed', () => {
   assert.throws(() => validateFormDraft('invented.form', { formId: 'invented.form', fields: [] }), errorCode('unknown_form'));
-  assert.throws(() => validateFormDraft('seller.product-filter', { formId: 'seller.product-filter', fields: [field('note', 'short_text')] }), errorCode('adapter_unavailable'));
+  assert.throws(() => validateFormDraft('seller.product-filter', { formId: 'seller.product-filter', fields: [field('note', 'short_text')] }), errorCode('invalid_draft'));
 });
 
 for (const [name, raw] of [

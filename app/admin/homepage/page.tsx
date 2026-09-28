@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
+import { loadQueryPresentationConfig, queryFieldPresentation } from '@/lib/catalog/shop-query';
 import {
   getEffectiveBusinessSetting,
   listBusinessSettingHistory,
@@ -65,6 +66,7 @@ export default async function HomepageProductControlsPage({
     heroMedia,
     occasionSlides,
     occasionHistory,
+    filterPresentation,
   ] = await Promise.all([
     listHomepageProductControls(database, {
       query,
@@ -77,7 +79,11 @@ export default async function HomepageProductControlsPage({
     listHomepageHeroMediaForAdmin(database),
     getEffectiveBusinessSetting(database, 'homepage_occasion_slides', asOf),
     listBusinessSettingHistory(database, 'homepage_occasion_slides'),
+    loadQueryPresentationConfig(database, 'staff.homepage-filter'),
   ]);
+  const searchField = queryFieldPresentation('staff.homepage-filter', filterPresentation.config, 'q', {
+    label: 'Search products', placeholder: 'Search product, SKU, or seller' });
+  const visibilityField = queryFieldPresentation('staff.homepage-filter', filterPresentation.config, 'visibility', { label: 'Homepage visibility' });
   const pageCount = Math.max(1, Math.ceil(result.total / result.pageSize));
 
   return (
@@ -110,24 +116,27 @@ export default async function HomepageProductControlsPage({
       <Card>
         <CardContent className="space-y-4 p-4">
           <form
+            data-form-id="staff.homepage-filter"
             className="grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem_auto]"
             action="/admin/homepage"
           >
             <label className="relative">
-              <span className="sr-only">Search products</span>
+              <span className="sr-only">{searchField.label}</span>
               <Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" />
               <input
                 name="q"
                 defaultValue={query}
                 maxLength={100}
-                placeholder="Search product, SKU, or seller"
+                placeholder={searchField.placeholder}
+                aria-describedby={searchField.helpText ? 'homepage-query-help' : undefined}
                 className="h-10 w-full rounded-md border bg-background pl-9 pr-3 text-sm"
               />
             </label>
             <select
               name="visibility"
               defaultValue={visibility}
-              aria-label="Homepage visibility"
+              aria-label={visibilityField.label}
+              aria-describedby={visibilityField.helpText ? 'homepage-visibility-help' : undefined}
               className="h-10 rounded-md border bg-background px-3 text-sm"
             >
               <option value="all">All products</option>
@@ -136,6 +145,9 @@ export default async function HomepageProductControlsPage({
             </select>
             <Button type="submit">Apply filters</Button>
           </form>
+          {searchField.helpText ? <p id="homepage-query-help" className="text-sm text-muted-foreground">{searchField.helpText}</p> : null}
+          {visibilityField.helpText ? <p id="homepage-visibility-help" className="text-sm text-muted-foreground">{visibilityField.helpText}</p> : null}
+          {filterPresentation.unavailable ? <output className="block text-sm text-muted-foreground">Filter presentation is unavailable. Standard filters remain available.</output> : null}
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
             <p>
               {result.total} published product{result.total === 1 ? '' : 's'}{' '}

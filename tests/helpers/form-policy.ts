@@ -24,14 +24,6 @@ export interface FormPolicyViolation {
 // fingerprint frozen; adding a form or changing one requires an explicit review.
 // The final column names its inventory definition, never a live adapter.
 const FROZEN_BASELINE = `
-app/admin/activity/page.tsx|1|7ba21c3206cc05a2|staff.activity-filter
-app/admin/homepage/page.tsx|1|237a866190d23266|staff.homepage-filter
-app/local-testing/page.tsx|1|6e9f8f1e61fdc654|system.local-testing-role
-app/seller/products/page.tsx|1|d5d574dcd78d58bb|seller.product-filter
-components/admin/recorded-progress.tsx|1|f01e48a55389ad28|staff.recorded-progress-filter
-components/catalog/catalog-filters.tsx|1|f69d92f8b2083c49|catalog.filters
-components/commerce/order-tracker.tsx|1|3afed58539121cfc|commerce.order-tracking
-components/layout/site-header.tsx|1|ed4b8ecbf0b141e5|catalog.header-search
 components/seller/inventory-editor.tsx|1|8b247e4b170098a3|seller.inventory
 components/seller/maker-application-profile-form.tsx|1|9625a6332c0dfcaf|seller.maker-profile
 components/seller/product-submission-form.tsx|1|e6535dffb04ca89f|seller.product-submission

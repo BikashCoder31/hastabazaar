@@ -13,6 +13,7 @@ import { requireSellerPage } from '@/lib/auth/seller';
 import { requireDatabase } from '@/lib/db/d1';
 import { listSellerProducts } from '@/lib/db/repositories/products';
 import { mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
+import { loadQueryPresentationConfig, queryFieldPresentation } from '@/lib/catalog/shop-query';
 import {
   canEditSellerInventory,
   sellerDate,
@@ -51,10 +52,13 @@ export default async function SellerProductsPage({
     : 'all';
   const search = (params.q ?? '').trim().slice(0, 160);
   const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const products = await listSellerProducts(database, seller.sellerId, {
-    status: activeStatus === 'all' ? undefined : activeStatus,
-    search,
-  });
+  const [products, presentation] = await Promise.all([
+    listSellerProducts(database, seller.sellerId, {
+      status: activeStatus === 'all' ? undefined : activeStatus, search,
+    }), loadQueryPresentationConfig(database, 'seller.product-filter'),
+  ]);
+  const searchField = queryFieldPresentation('seller.product-filter', presentation.config, 'q', {
+    label: 'Search products', placeholder: 'Search products by name or SKU' });
   const closure = new Map(
     await Promise.all(
       products
@@ -118,6 +122,7 @@ export default async function SellerProductsPage({
           })}
         </nav>
         <form
+          data-form-id="seller.product-filter"
           className="flex flex-col gap-2 sm:flex-row"
           action="/seller/products"
         >
@@ -128,7 +133,7 @@ export default async function SellerProductsPage({
             htmlFor="seller-product-search"
             className="relative min-w-0 flex-1"
           >
-            <span className="sr-only">Search products</span>
+            <span className="sr-only">{searchField.label}</span>
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               id="seller-product-search"
@@ -136,7 +141,8 @@ export default async function SellerProductsPage({
               type="search"
               defaultValue={search}
               maxLength={160}
-              placeholder="Search products by name or SKU"
+              placeholder={searchField.placeholder}
+              aria-describedby={searchField.helpText ? 'seller-product-search-help' : undefined}
               className="pl-9"
             />
           </label>
@@ -144,6 +150,8 @@ export default async function SellerProductsPage({
             Search products
           </Button>
         </form>
+        {searchField.helpText ? <p id="seller-product-search-help" className="text-sm text-muted-foreground">{searchField.helpText}</p> : null}
+        {presentation.unavailable ? <output className="block text-sm text-muted-foreground">Search presentation is unavailable. Standard search remains available.</output> : null}
       </section>
 
       {products.length ? (

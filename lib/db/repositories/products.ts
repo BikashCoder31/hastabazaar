@@ -1267,6 +1267,7 @@ export interface PublicCatalogueFilters {
   query?: string;
   categorySlugs?: readonly string[];
   occasionSlugs?: readonly string[];
+  minimumPricePaisa?: number;
   limit?: number;
   page?: number;
   sort?: 'newest' | 'price-low' | 'price-high' | 'name';
@@ -1758,6 +1759,12 @@ export async function listPublishedProducts(
     `categories.is_active = 1`,
   ];
   const bindings: Array<string | number> = [];
+  if (filters.minimumPricePaisa !== undefined) {
+    if (!Number.isSafeInteger(filters.minimumPricePaisa) || filters.minimumPricePaisa < 0 || filters.minimumPricePaisa > 100_000_000_000)
+      throw new RangeError('Minimum price must be valid integer paisa.');
+    conditions.push('products.price_paisa >= ?');
+    bindings.push(filters.minimumPricePaisa);
+  }
   const query = filters.query?.trim().slice(0, 100);
   if (query) {
     const pattern = `%${escapeLike(query)}%`;
@@ -1851,6 +1858,12 @@ export async function countPublishedProducts(
     `categories.is_active = 1`,
   ];
   const bindings: Array<string | number> = [];
+  if (filters.minimumPricePaisa !== undefined) {
+    if (!Number.isSafeInteger(filters.minimumPricePaisa) || filters.minimumPricePaisa < 0 || filters.minimumPricePaisa > 100_000_000_000)
+      throw new RangeError('Minimum price must be valid integer paisa.');
+    conditions.push('products.price_paisa >= ?');
+    bindings.push(filters.minimumPricePaisa);
+  }
   const query = filters.query?.trim().slice(0, 100);
   if (query) {
     const pattern = `%${escapeLike(query)}%`;

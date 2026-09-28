@@ -74,6 +74,7 @@ export default async function LocalTestingPage() {
           <div className="mt-8 grid gap-4 sm:grid-cols-2">
             {roles.map(({ value, label, detail, icon: Icon }) => (
               <form
+                data-form-id="system.local-testing-role"
                 key={value}
                 action="/api/local-testing/session"
                 method="post"

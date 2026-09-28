@@ -10,6 +10,7 @@ import { MobileCatalogFilters } from '@/components/catalog/mobile-catalog-filter
 import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
 import { requireDatabase } from '@/lib/db/d1';
+import { loadShopQueryConfig, parseShopQueryCriteria } from '@/lib/catalog/shop-query';
 import {
   countPublishedProducts,
   listActiveOccasions,
@@ -54,10 +55,20 @@ export default async function ShopPage({
 }) {
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const params = await searchParams;
-  const [categories, occasions] = await Promise.all([
+  const [categories, occasions, formState] = await Promise.all([
     listPublicDiscoveryCategories(database),
     listActiveOccasions(database),
+    loadShopQueryConfig(database).then((config) => ({ config, unavailable: false }),
+      () => ({ config: { formId: 'catalog.filters', version: 0, publishedAt: 0, fields: [] }, unavailable: true })),
   ]);
+  const formConfig = formState.config;
+  let priceCriteria: ReturnType<typeof parseShopQueryCriteria> = {};
+  let queryError = formState.unavailable ? 'Shop filters are unavailable. Refresh the page and try again.' : '';
+  try {
+    if (!formState.unavailable) priceCriteria = parseShopQueryCriteria(formConfig, params);
+  } catch (error) {
+    queryError = error instanceof Error ? error.message : 'Shop filters are unavailable.';
+  }
   const query =
     (Array.isArray(params.q) ? params.q[0] : params.q)?.trim().slice(0, 100) ??
     '';
@@ -87,18 +98,20 @@ export default async function ShopPage({
     query,
     categorySlugs: selectedCategories,
     occasionSlugs: selectedOccasions,
+    minimumPricePaisa: priceCriteria.minimumPricePaisa,
   };
-  const total = await countPublishedProducts(database, filterValues);
+  const total = queryError ? 0 : await countPublishedProducts(database, filterValues);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, totalPages);
-  const products = await listPublishedProducts(database, {
+  const products = queryError ? [] : await listPublishedProducts(database, {
     ...filterValues,
     sort,
     page: safePage,
     limit: pageSize,
   });
   const isFiltered = Boolean(
-    query || selectedCategories.length || selectedOccasions.length,
+    query || selectedCategories.length || selectedOccasions.length ||
+    priceCriteria.minimumPricePaisa !== undefined || queryError,
   );
   const filterProps = {
     query,
@@ -107,6 +120,9 @@ export default async function ShopPage({
     selectedCategories,
     selectedOccasions,
     sort,
+    config: formConfig,
+    unavailable: formState.unavailable,
+    minimumPriceNpr: priceCriteria.minimumPriceNpr,
   };
   return (
     <div className="min-h-screen bg-background">
@@ -143,7 +159,8 @@ export default async function ShopPage({
                 activeCount={
                   selectedCategories.length +
                   selectedOccasions.length +
-                  (query ? 1 : 0)
+                  (query ? 1 : 0) +
+                  (priceCriteria.minimumPricePaisa !== undefined ? 1 : 0)
                 }
               >
                 <CatalogueFilters
@@ -163,6 +180,7 @@ export default async function ShopPage({
                 {total} {total === 1 ? 'product' : 'products'}
               </p>
             </div>
+            {queryError ? <p role="alert" className="mb-5 rounded-xl border border-destructive p-4 text-sm text-destructive">{queryError} Clear the filter and try again.</p> : null}
             {products.length === 0 ? (
               <div className="rounded-3xl border bg-card px-6 py-16 text-center">
                 <PackageOpen className="mx-auto size-10 text-primary" />

@@ -87,6 +87,10 @@ function validField(value: unknown, definition: FormDefinition, adapterGrantsBui
   const { id, key, type, label, helpText, placeholder, required, order, choices, status, min, max, integerOnly } = value;
   if (typeof id !== 'string') return false;
   const base = definition.baseFields.find((item) => canonicalName(item.key) === canonicalName(id));
+  // Query forms grant no decorative criteria. Only the shop's named numeric
+  // parser has a corresponding effect on results and count.
+  if (definition.mode === 'query' && !base &&
+    !(definition.id === 'catalog.filters' && id === 'minimum_price_npr' && type === 'number')) return false;
   const registeredSafeBuiltIn = adapterGrantsBuiltInEdits && base !== undefined && base.key === id && base.capability !== 'protected';
   if (!boundedString(id, 100) || (!/^[a-z][a-z0-9_]*$/.test(id) && !registeredSafeBuiltIn) || key !== id || isUnsafeName(id)) return false;
   if (!FIELD_TYPES.includes(type as CustomFieldType) || !definition.capabilities.customFieldTypes.includes(type as CustomFieldType)) return false;

@@ -4,6 +4,8 @@ import { Search, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { CategoryRow, OccasionRow } from '@/lib/db/repositories/products';
+import type { PublishedFormConfig } from '@/lib/forms/types';
+import { queryFieldPresentation } from '@/lib/catalog/shop-query';
 
 interface CatalogueFiltersProps {
   query: string;
@@ -12,23 +14,35 @@ interface CatalogueFiltersProps {
   selectedCategories: readonly string[];
   selectedOccasions: readonly string[];
   sort: string;
+  config: PublishedFormConfig;
+  minimumPriceNpr?: string;
   idPrefix?: string;
+  unavailable?: boolean;
 }
 
 export function CatalogueFilters(props: CatalogueFiltersProps) {
   const idPrefix = props.idPrefix ?? 'catalogue';
+  const search = queryFieldPresentation('catalog.filters', props.config, 'q', { label: 'Search', placeholder: 'Product, material, or maker' });
+  const sort = queryFieldPresentation('catalog.filters', props.config, 'sort', { label: 'Sort by' });
+  const category = queryFieldPresentation('catalog.filters', props.config, 'category', { label: 'Category' });
+  const occasion = queryFieldPresentation('catalog.filters', props.config, 'occasion', { label: 'Gift occasion' });
+  const priceField = props.config.fields.find((field) =>
+    field.status === 'active' && field.key === 'minimum_price_npr');
   const hasFilters = Boolean(
     props.query ||
     props.selectedCategories.length ||
-    props.selectedOccasions.length,
+    props.selectedOccasions.length ||
+    props.minimumPriceNpr,
   );
   return (
     <form
+      data-form-id="catalog.filters"
       key={JSON.stringify([
         props.query,
         props.selectedCategories,
         props.selectedOccasions,
         props.sort,
+        props.minimumPriceNpr,
       ])}
       action="/shop"
       method="get"
@@ -51,7 +65,7 @@ export function CatalogueFilters(props: CatalogueFiltersProps) {
         htmlFor={`${idPrefix}-search`}
         className="mt-5 block text-sm font-semibold"
       >
-        Search
+        {search.label}
       </label>
       <div className="relative mt-2">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -60,20 +74,23 @@ export function CatalogueFilters(props: CatalogueFiltersProps) {
           name="q"
           defaultValue={props.query}
           maxLength={100}
-          placeholder="Product, material, or maker"
+          placeholder={search.placeholder}
+          aria-describedby={search.helpText ? `${idPrefix}-search-help` : undefined}
           className="pl-9"
         />
       </div>
+      {search.helpText ? <p id={`${idPrefix}-search-help`} className="mt-2 text-sm text-muted-foreground">{search.helpText}</p> : null}
       <label
         htmlFor={`${idPrefix}-sort`}
         className="mt-5 block text-sm font-semibold"
       >
-        Sort by
+        {sort.label}
       </label>
       <select
         id={`${idPrefix}-sort`}
         name="sort"
         defaultValue={props.sort}
+        aria-describedby={sort.helpText ? `${idPrefix}-sort-help` : undefined}
         className="mt-2 h-10 w-full rounded-lg border bg-background px-3 text-sm"
       >
         <option value="newest">Newest</option>
@@ -81,8 +98,33 @@ export function CatalogueFilters(props: CatalogueFiltersProps) {
         <option value="price-high">Price: high to low</option>
         <option value="name">Name</option>
       </select>
+      {sort.helpText ? <p id={`${idPrefix}-sort-help`} className="mt-2 text-sm text-muted-foreground">{sort.helpText}</p> : null}
 
-      <FilterGroup legend="Gift occasion">
+      {priceField ? (
+        <div className="mt-5">
+          <label htmlFor={`${idPrefix}-minimum-price`} className="block text-sm font-semibold">
+            {priceField.label}{priceField.required ? <span aria-hidden="true"> *</span> : null}
+          </label>
+          <input
+            id={`${idPrefix}-minimum-price`}
+            name="custom.minimum_price_npr"
+            type="number"
+            inputMode="decimal"
+            min={Math.max(0, priceField.min ?? 0)}
+            max={Math.min(1_000_000_000, priceField.max ?? 1_000_000_000)}
+            step={priceField.integerOnly ? '1' : '0.01'}
+            required={priceField.required}
+            aria-required={priceField.required}
+            defaultValue={props.minimumPriceNpr ?? ''}
+            placeholder={priceField.placeholder ?? 'NPR'}
+            aria-describedby={priceField.helpText ? `${idPrefix}-minimum-price-help` : undefined}
+            className="mt-2 h-10 w-full rounded-lg border bg-background px-3 text-sm"
+          />
+          {priceField.helpText ? <p id={`${idPrefix}-minimum-price-help`} className="mt-2 text-sm text-muted-foreground">{priceField.helpText}</p> : null}
+        </div>
+      ) : null}
+
+      <FilterGroup legend={occasion.label} helpText={occasion.helpText}>
         {props.occasions.map((occasion) => (
           <FilterOption
             key={occasion.id}
@@ -95,7 +137,7 @@ export function CatalogueFilters(props: CatalogueFiltersProps) {
         ))}
       </FilterGroup>
 
-      <FilterGroup legend="Category">
+      <FilterGroup legend={category.label} helpText={category.helpText}>
         {props.categories.map((category) => (
           <FilterOption
             key={category.id}
@@ -108,7 +150,7 @@ export function CatalogueFilters(props: CatalogueFiltersProps) {
         ))}
       </FilterGroup>
 
-      <Button type="submit" className="mt-6 w-full">
+      <Button type="submit" disabled={props.unavailable} className="mt-6 w-full">
         Show matching products
       </Button>
     </form>
@@ -118,13 +160,16 @@ export function CatalogueFilters(props: CatalogueFiltersProps) {
 function FilterGroup({
   legend,
   children,
+  helpText,
 }: {
   legend: string;
   children: React.ReactNode;
+  helpText?: string;
 }) {
   return (
     <fieldset className="mt-6 border-t pt-5">
       <legend className="pr-3 text-sm font-semibold">{legend}</legend>
+      {helpText ? <p className="mt-2 text-sm text-muted-foreground">{helpText}</p> : null}
       <div className="mt-3 space-y-2.5">{children}</div>
     </fieldset>
   );

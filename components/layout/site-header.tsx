@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import {
   Heart,
@@ -16,9 +17,12 @@ import { MobileNavigation } from '@/components/layout/mobile-navigation';
 import { Input } from '@/components/ui/input';
 import { storefrontNavigation } from '@/lib/catalog/storefront-navigation';
 import { mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
+import { loadQueryPresentationConfig, queryFieldPresentation } from '@/lib/catalog/shop-query';
+import type { PublishedFormConfig } from '@/lib/forms/types';
 
 export async function SiteHeader() {
-  const identity = await getAuthenticatedUser();
+  const [identity, searchPresentation] = await Promise.all([getAuthenticatedUser(),
+    loadQueryPresentationConfig((env as unknown as { DB?: D1Database }).DB, 'catalog.header-search')]);
   return (
     <>
       <div className="bg-[#142d56] text-white">
@@ -63,7 +67,7 @@ export async function SiteHeader() {
           </div>
 
           <div className="hidden min-w-0 max-w-xl flex-1 lg:block">
-            <HeaderSearch id="desktop-product-search" />
+            <HeaderSearch id="desktop-product-search" {...searchPresentation} />
           </div>
 
           <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
@@ -116,7 +120,7 @@ export async function SiteHeader() {
           </div>
         </div>
         <div className="shell pb-3 lg:hidden">
-          <HeaderSearch id="mobile-product-search" />
+          <HeaderSearch id="mobile-product-search" {...searchPresentation} />
         </div>
         <div className="hidden border-t border-border/60 lg:block">
           <div className="shell flex min-h-12 items-center justify-between gap-4">
@@ -166,10 +170,13 @@ export function HeaderOrdersLink({
   );
 }
 
-function HeaderSearch({ id }: { id: string }) {
+function HeaderSearch({ id, config, unavailable }: { id: string; config: PublishedFormConfig | null; unavailable: boolean }) {
+  const search = queryFieldPresentation('catalog.header-search', config, 'q', {
+    label: 'Search products, materials, or makers', placeholder: 'Search gifts, crafts & makers…' });
   return (
     <search aria-label="Search handmade products">
       <form
+        data-form-id="catalog.header-search"
         action="/shop"
         method="get"
         className="flex min-h-11 items-center gap-2 rounded-full border border-border bg-muted/60 py-1 pl-4 pr-1 transition-colors focus-within:border-primary focus-within:bg-card"
@@ -179,14 +186,15 @@ function HeaderSearch({ id }: { id: string }) {
           aria-hidden="true"
         />
         <label htmlFor={id} className="sr-only">
-          Search products, materials, or makers
+          {search.label}
         </label>
         <Input
           id={id}
           type="search"
           name="q"
           maxLength={100}
-          placeholder="Search gifts, crafts & makers…"
+          placeholder={search.placeholder}
+          aria-describedby={search.helpText ? `${id}-help` : undefined}
           className="h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 py-1.5 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 md:text-base"
         />
         <button
@@ -196,6 +204,8 @@ function HeaderSearch({ id }: { id: string }) {
           Search
         </button>
       </form>
+      {search.helpText ? <p id={`${id}-help`} className="mt-1 text-xs text-muted-foreground">{search.helpText}</p> : null}
+      {unavailable ? <output className="block mt-1 text-xs text-muted-foreground">Search presentation is unavailable. Standard search remains available.</output> : null}
     </search>
   );
 }

@@ -9,6 +9,14 @@ export interface ImplementedFormAdapter {
 
 // Integrations add an entry here only when their server adapter exists and is tested.
 export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormAdapter>> = Object.freeze({
+  'catalog.header-search': { formId: 'catalog.header-search', route: '/shop', mode: 'query' },
+  'catalog.filters': { formId: 'catalog.filters', route: '/shop', mode: 'query' },
+  'commerce.order-tracking': { formId: 'commerce.order-tracking', route: '/api/orders/track', mode: 'query' },
+  'seller.product-filter': { formId: 'seller.product-filter', route: '/seller/products', mode: 'query' },
+  'staff.homepage-filter': { formId: 'staff.homepage-filter', route: '/admin/homepage', mode: 'query' },
+  'staff.activity-filter': { formId: 'staff.activity-filter', route: '/admin/activity', mode: 'query' },
+  'staff.recorded-progress-filter': { formId: 'staff.recorded-progress-filter', route: '/admin/progress', mode: 'query' },
+  'system.local-testing-role': { formId: 'system.local-testing-role', route: '/api/local-testing/session', mode: 'system' },
   'identity.register': { formId: 'identity.register', route: '/api/auth/register', mode: 'identity' },
   'identity.login-password': { formId: 'identity.login-password', route: '/api/auth/login', mode: 'identity' },
   'identity.email-code-request': { formId: 'identity.email-code-request', route: '/api/auth/email-code/request', mode: 'identity' },
@@ -214,6 +222,45 @@ function definition(row: string): FormDefinition {
 }
 
 const ACCOUNT_CUSTOM_TYPES = Object.freeze(['short_text', 'long_text', 'number', 'date', 'single_choice', 'multiple_choice', 'checkbox', 'email', 'phone'] as const);
+const QUERY_FIELDS = {
+  'catalog.header-search': [['q', 'short_text']],
+  'catalog.filters': [['q', 'short_text'], ['sort', 'single_choice'], ['category', 'short_text'], ['occasion', 'short_text']],
+  'commerce.order-tracking': [['orderNumber', 'short_text'], ['email', 'email']],
+  'seller.product-filter': [['q', 'short_text']],
+  'staff.homepage-filter': [['q', 'short_text'], ['visibility', 'single_choice']],
+  'staff.activity-filter': [['action', 'short_text'], ['actor', 'short_text'], ['type', 'short_text'], ['from', 'date'], ['to', 'date']],
+  'staff.recorded-progress-filter': [['from', 'date'], ['to', 'date'], ['action', 'short_text']],
+} as const;
+type QueryFormId = keyof typeof QUERY_FIELDS;
+function queryDefinition(id: QueryFormId | 'system.local-testing-role'): FormDefinition {
+  const source = SOURCE_ROWS.split('\n').find((row) => row.startsWith(`${id}|`));
+  if (!source) throw new Error(`Missing query definition: ${id}`);
+  const [, audience, mode, route] = source.split('|') as [string, FormAudience, FormMode, string];
+  const protect = (key: string) => ({ key, type: 'existing', label: key, capability: 'protected' as const,
+    explanation: 'Current authorization, identity, staging eligibility and receiving query keys remain server controlled.' });
+  if (id === 'system.local-testing-role') return Object.freeze({ id, audience, mode, route, adapterId: id,
+    baseFields: Object.freeze(['role', 'requestId'].map(protect)), capabilities: Object.freeze({
+      explanation: 'The local role control is staging-only and unavailable in production; its fixed role enumeration and origin checks cannot be customized.',
+      customFieldTypes: Object.freeze([]), answerBehavior: 'none' }),
+  } satisfies FormDefinition);
+  const fields = QUERY_FIELDS[id].map(([key, type]) => ({ key, type, label: key,
+    capability: 'display_editable' as const, required: id === 'commerce.order-tracking', status: 'active' as const,
+    explanation: 'Only labels, help text and placeholders may change; existing keys, types, requiredness, choices and rendered order are fixed.',
+    ...(key === 'sort' ? { choices: [{ value: 'newest', label: 'Newest' }, { value: 'price-low', label: 'Price: low to high' },
+      { value: 'price-high', label: 'Price: high to low' }, { value: 'name', label: 'Name' }] } : key === 'visibility'
+      ? { choices: [{ value: 'all', label: 'All products' }, { value: 'visible', label: 'Homepage eligible' }, { value: 'hidden', label: 'Hidden from homepage' }] } : {}),
+  }));
+  const protectedKeys = ['query', 'status', 'actorId', 'customerId', 'sellerId', 'orderId', 'order_number',
+    'formVersion', 'customAnswers', 'requestId', ...(id === 'staff.recorded-progress-filter' ? ['actor', 'type'] : [])];
+  return Object.freeze({ id, audience, mode, route, adapterId: id,
+    baseFields: Object.freeze([...fields, ...protectedKeys.map(protect)]),
+    capabilities: Object.freeze({ explanation: id === 'catalog.filters'
+      ? 'Safe built-in presentation and the named minimum_price_npr numeric query criterion are supported. The same paisa threshold filters results and counts, and no answer is stored.'
+      : 'Safe built-in presentation is supported. Existing query semantics, lookup privacy and current access checks stay fixed; additional criteria and answer storage are unavailable.',
+      customFieldTypes: Object.freeze([...new Set(fields.map((field) => field.type)),
+        ...(id === 'catalog.filters' ? ['number' as const] : [])]), answerBehavior: 'query' }),
+  } satisfies FormDefinition);
+}
 const GOVERNANCE_KEYS = Object.freeze(['action', 'requestId', 'formVersion', 'customAnswers',
   'id', 'code', 'titleEn', 'titleNe', 'descriptionEn', 'descriptionNe', 'severity',
   'isActive', 'nameEn', 'nameNe', 'placement', 'startsAt', 'endsAt', 'note',
@@ -514,7 +561,9 @@ function sellerCaseDefinition(id: 'seller.case-return-response' |
 
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
   Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
-    const item = row.startsWith('identity.') ? identityDefinition(row.split('|')[0] as IdentityFormId)
+    const item = Object.hasOwn(QUERY_FIELDS, row.split('|')[0]) || row.startsWith('system.local-testing-role|')
+      ? queryDefinition(row.split('|')[0] as QueryFormId | 'system.local-testing-role')
+      : row.startsWith('identity.') ? identityDefinition(row.split('|')[0] as IdentityFormId)
       : staffOperationIds.has(row.split('|')[0]) ? staffOperationDefinition(row.split('|')[0] as StaffOperationFormId)
       : row.startsWith('public.contact|') ? feedbackDefinition('public.contact')
       : row.startsWith('seller.case-return-response|') ? sellerCaseDefinition('seller.case-return-response')

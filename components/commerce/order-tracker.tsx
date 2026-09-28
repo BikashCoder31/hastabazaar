@@ -5,6 +5,9 @@ import { Check, Package, Truck } from 'lucide-react';
 import type { OrderTracking } from '@/lib/db/repositories/order-tracking';
 import { orderProgress, orderStages } from '@/lib/orders/progress';
 import { sendJson } from '@/lib/http/client-request';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { queryFieldPresentation } from '@/lib/catalog/shop-query';
+import type { PublishedFormConfig } from '@/lib/forms/types';
 
 const date = (value: number) =>
   new Intl.DateTimeFormat('en-NP', {
@@ -12,7 +15,11 @@ const date = (value: number) =>
     timeStyle: 'short',
     timeZone: 'Asia/Kathmandu',
   }).format(value);
-export function OrderTracker({ initialOrder }: { initialOrder: string }) {
+export function OrderTracker({ initialOrder, presentationConfig }: { initialOrder: string; presentationConfig?: PublishedFormConfig }) {
+  const published = usePublishedFormConfig('commerce.order-tracking');
+  const config = presentationConfig ?? published.config;
+  const orderField = queryFieldPresentation('commerce.order-tracking', config, 'orderNumber', { label: 'Order number', placeholder: 'e.g. HK-…' });
+  const emailField = queryFieldPresentation('commerce.order-tracking', config, 'email', { label: 'Checkout email', placeholder: 'you@example.com' });
   const [orderNumber, setOrder] = useState(initialOrder);
   const [email, setEmail] = useState('');
   const [tracking, setTracking] = useState<OrderTracking | null>(null);
@@ -41,12 +48,12 @@ export function OrderTracker({ initialOrder }: { initialOrder: string }) {
   const progress = tracking ? orderProgress(tracking.status) : null;
   return (
     <div className="mt-8 space-y-6">
-      <form onSubmit={lookup} className="rounded-3xl border bg-card p-6 sm:p-8">
+      <form data-form-id="commerce.order-tracking" onSubmit={lookup} className="rounded-3xl border bg-card p-6 sm:p-8">
 <p className="text-xs text-muted-foreground">* Required field</p>
 
         <div className="grid gap-5 sm:grid-cols-2">
           <label className="text-sm font-semibold">
-            Order number
+            {orderField.label}
              <span aria-hidden="true">*</span><input
               name="orderNumber"
               disabled={busy}
@@ -57,12 +64,14 @@ export function OrderTracker({ initialOrder }: { initialOrder: string }) {
                 setOrder(e.target.value);
                 setTracking(null);
               }}
-              placeholder="e.g. HK-…"
+              placeholder={orderField.placeholder}
+              aria-describedby={orderField.helpText ? 'tracking-order-help' : undefined}
               className="mt-2 w-full rounded-xl border bg-background px-4 py-3"
             />
+            {orderField.helpText ? <span id="tracking-order-help" className="mt-1 block text-xs text-muted-foreground">{orderField.helpText}</span> : null}
           </label>
           <label className="text-sm font-semibold">
-            Checkout email
+            {emailField.label}
              <span aria-hidden="true">*</span><input
               name="email"
               disabled={busy}
@@ -75,11 +84,14 @@ export function OrderTracker({ initialOrder }: { initialOrder: string }) {
                 setEmail(e.target.value);
                 setTracking(null);
               }}
-              placeholder="you@example.com"
+              placeholder={emailField.placeholder}
+              aria-describedby={emailField.helpText ? 'tracking-email-help' : undefined}
               className="mt-2 w-full rounded-xl border bg-background px-4 py-3"
             />
+            {emailField.helpText ? <span id="tracking-email-help" className="mt-1 block text-xs text-muted-foreground">{emailField.helpText}</span> : null}
           </label>
         </div>
+        {!presentationConfig && published.status === 'unavailable' ? <output className="block mt-3 text-sm text-muted-foreground">Tracking presentation is unavailable. Standard order lookup remains available.</output> : null}
         <p className="mt-3 text-sm text-muted-foreground">
           You’ll find your order number on your confirmation page or email.
         </p>

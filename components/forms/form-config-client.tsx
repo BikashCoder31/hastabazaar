@@ -12,6 +12,8 @@ const configKeys = new Set(['formId', 'fields', 'version', 'publishedAt']);
 // Keep this identifier policy aligned with Task 3 without importing its
 // server registry into public client bundles.
 const camelCaseDisplayFields = new Map<string, ReadonlyMap<string, { type: CustomFieldType; required: boolean }>>([
+  ['commerce.order-tracking', new Map([['orderNumber', { type: 'short_text', required: true }],
+    ['email', { type: 'email', required: true }]])],
   ['seller.application', new Map([['tradingName', { type: 'short_text', required: true }],
     ['businessDescription', { type: 'long_text', required: true }]])],
   ['seller.maker-profile', new Map([['publicName', { type: 'short_text', required: true }],
@@ -58,6 +60,7 @@ function optionalText(value: unknown, limit: number): value is string {
 function validField(value: unknown, formId: string): value is ConfiguredField {
   if (!record(value) || Object.keys(value).some((key) => !fieldKeys.has(key))) return false;
   const registeredDisplay = typeof value.id === 'string' ? camelCaseDisplayFields.get(formId)?.get(value.id) : undefined;
+  if (formId === 'commerce.order-tracking' && !registeredDisplay) return false;
   if (!boundedText(value.id, 100) ||
     !(/^[a-z][a-z0-9_]*$/.test(value.id) || registeredDisplay) ||
     value.key !== value.id || unsafeName(value.id) ||
