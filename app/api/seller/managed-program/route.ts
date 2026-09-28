@@ -1,8 +1,9 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 
 import { requireSellerApi, SellerAuthorizationError } from '@/lib/auth/seller';
 import { requireDatabase } from '@/lib/db/d1';
-import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { createFixedSupplyRecord, FixedSupplyError } from '@/lib/managed-commerce/fixed-supply';
 import { RouteTransitionError, submitRegisteredSellerTransition } from '@/lib/managed-commerce/route-transition';
@@ -19,7 +20,7 @@ export async function POST(request:Request){
   if(!isTrustedMutationRequest(request))return reply({error:'Cross-site requests are not allowed.'},403);
   try{
     const seller=await requireSellerApi();
-    const body=JSON.parse(new TextDecoder().decode(await readBoundedBody(request,24*1024))) as Record<string,unknown>;
+    const body=await readBoundedJsonObject(request) as Record<string,unknown>;
     const bindings=env as unknown as Record<string,string>;
     const environment=resolveRuntimeEnvironment({runtimeEnvironment:bindings.HASTABAZAAR_RUNTIME_ENV,nodeEnvironment:process.env.NODE_ENV,appOrigin:bindings.APP_ORIGIN});
     const database=requireDatabase(env as unknown as {DB?:D1Database});

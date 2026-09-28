@@ -9,6 +9,20 @@ export interface ImplementedFormAdapter {
 
 // Integrations add an entry here only when their server adapter exists and is tested.
 export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormAdapter>> = Object.freeze({
+  'commerce.order-cancellation': { formId: 'commerce.order-cancellation', route: '/orders/:number/cancel', mode: 'transaction' },
+  'commerce.add-to-cart': { formId: 'commerce.add-to-cart', route: '/api/cart', mode: 'transaction' },
+  'staff.return-case-action': { formId: 'staff.return-case-action', route: '/api/admin/returns/:id/review', mode: 'operation' },
+  'staff.complaint-case-action': { formId: 'staff.complaint-case-action', route: '/api/admin/complaints/:id', mode: 'operation' },
+  'staff.cancellation-review': { formId: 'staff.cancellation-review', route: '/api/admin/cancellations', mode: 'operation' },
+  'staff.seller-review-action': { formId: 'staff.seller-review-action', route: '/api/admin/seller-applications/:id/review', mode: 'operation' },
+  'staff.homepage-hero-manager': { formId: 'staff.homepage-hero-manager', route: '/api/admin/business-settings', mode: 'operation' },
+  'staff.homepage-occasion-manager': { formId: 'staff.homepage-occasion-manager', route: '/api/admin/business-settings', mode: 'operation' },
+  'staff.business-settings-manager': { formId: 'staff.business-settings-manager', route: '/api/admin/business-settings', mode: 'operation' },
+  'staff.homepage-visibility': { formId: 'staff.homepage-visibility', route: '/api/admin/products/:id/homepage', mode: 'operation' },
+  'staff.order-fulfillment': { formId: 'staff.order-fulfillment', route: '/api/admin/orders/:id/fulfillment', mode: 'operation' },
+  'staff.review-moderation': { formId: 'staff.review-moderation', route: '/api/admin/reviews/:id', mode: 'operation' },
+  'staff.seller-governance': { formId: 'staff.seller-governance', route: '/api/admin/sellers/:id/governance', mode: 'operation' },
+  'staff.product-review': { formId: 'staff.product-review', route: '/api/admin/products/:id/review', mode: 'operation' },
   'catalog.header-search': { formId: 'catalog.header-search', route: '/shop', mode: 'query' },
   'catalog.filters': { formId: 'catalog.filters', route: '/shop', mode: 'query' },
   'commerce.order-tracking': { formId: 'commerce.order-tracking', route: '/api/orders/track', mode: 'query' },
@@ -85,7 +99,7 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
   'shipping.console-action-staff': { formId: 'shipping.console-action-staff', route: '/api/admin/shipping/:id', mode: 'operation' },
 });
 
-// Inventory rows are ordered to match the 69 JSX sites in the frozen policy baseline.
+// Inventory rows follow the source policy inventory; live adapters are explicit below.
 // A pending adapter is deliberately not a live configuration adapter.
 const SOURCE_ROWS = `
 staff.activity-filter|staff|query|/admin/activity|action
@@ -222,6 +236,41 @@ function definition(row: string): FormDefinition {
 }
 
 const ACCOUNT_CUSTOM_TYPES = Object.freeze(['short_text', 'long_text', 'number', 'date', 'single_choice', 'multiple_choice', 'checkbox', 'email', 'phone'] as const);
+const PROGRAMMATIC_KEYS = {
+  'commerce.order-cancellation': ['action', 'sellerIds', 'fingerprint', 'reason', 'orderNumber', 'orderId', 'customerId', 'receiptTokenHash', 'receiptToken'],
+  'commerce.add-to-cart': ['productId', 'quantity', 'returnTo', 'redirect'],
+  'staff.return-case-action': ['action', 'decision', 'outcome', 'responsibility', 'itemRefundPaisa', 'deliveryRefundPaisa', 'reference', 'restockQuantity', 'note', 'publicMessageEn', 'publicMessageNe', 'returnRequestId', 'refundId', 'amountPaisa'],
+  'staff.complaint-case-action': ['action', 'note', 'publicMessageEn', 'publicMessageNe', 'resolutionEn', 'resolutionNe', 'complaintId'],
+  'staff.cancellation-review': ['action', 'sellerIds', 'fingerprint', 'reviewId', 'note', 'clientAttemptId', 'orderId', 'orderNumber'],
+  'staff.seller-review-action': ['action', 'decision', 'reason', 'sellerId', 'payoutAccountReference', 'settlementTermsReference'],
+  'staff.homepage-hero-manager': ['key', 'value', 'slides', 'reason', 'action', 'revision', 'expectedRevision', 'effectiveFrom', 'supersedesId', 'sourceVersionId', 'position', 'eyebrow', 'headingLead', 'highlightedPhrase', 'headingTail', 'body', 'primaryActionLabel', 'primaryActionHref', 'secondaryActionLabel', 'secondaryActionHref', 'mediaType', 'mediaId', 'imageAlt', 'posterMediaId', 'videoDescription', 'imageNote', 'file', 'desktopMediaId', 'mobileMediaId', 'imageUrl', 'videoUrl', 'altTextEn', 'altTextNe', 'titleEn', 'titleNe', 'subtitleEn', 'subtitleNe', 'href', 'enabled', 'sortOrder'],
+  'staff.homepage-occasion-manager': ['key', 'value', 'occasions', 'reason', 'action', 'revision', 'expectedRevision', 'effectiveFrom', 'supersedesId', 'sourceVersionId', 'position', 'eyebrow', 'headingLead', 'highlightedPhrase', 'headingTail', 'body', 'supportingNote', 'cards', 'kicker', 'title', 'destination', 'icon', 'theme', 'occasionId', 'slug', 'titleEn', 'titleNe', 'imageUrl', 'altTextEn', 'altTextNe', 'href', 'enabled', 'sortOrder'],
+  'staff.business-settings-manager': ['key', 'value', 'setting', 'reason', 'action', 'revision', 'expectedRevision', 'effectiveFrom', 'supersedesId', 'sourceVersionId'],
+  'staff.homepage-visibility': ['action', 'reason', 'hidden', 'expectedVersion', 'productId'],
+  'staff.order-fulfillment': ['action', 'note', 'trackingCode', 'orderId', 'orderNumber', 'sellerIds', 'fingerprint'],
+  'staff.review-moderation': ['action', 'note', 'version', 'reviewId', 'replyId', 'productId'],
+  'staff.seller-governance': ['action', 'mode', 'suspendedUntil', 'obligationMode', 'reasonCode', 'reason', 'expectedVersion', 'sellerId'],
+  'staff.product-review': ['action', 'reason', 'productId'],
+} as const;
+type ProgrammaticFormId = keyof typeof PROGRAMMATIC_KEYS;
+function programmaticDefinition(id: ProgrammaticFormId): FormDefinition {
+  const source = PROGRAMMATIC_ROWS.split('\n').find((row) => row.startsWith(`${id}|`));
+  if (!source) throw new Error(`Missing programmatic definition: ${id}`);
+  const [, audience, mode, route] = source.split('|') as [string, FormAudience, FormMode, string];
+  const keys = new Set<string>([...PROGRAMMATIC_KEYS[id], 'id', 'status', 'version', 'requestId', 'idempotencyKey',
+    'formVersion', 'customAnswers', 'sourceFormId', 'actorId', 'actorRole', 'userId']);
+  return Object.freeze({ id, audience, mode, route, adapterId: id,
+    baseFields: Object.freeze([...keys].map((key) => ({ key, type: 'existing', label: key, capability: 'protected' as const,
+      explanation: 'Existing built-in controls, aliases, state, identity, money, evidence and current authorization remain server enforced; their rendered order is fixed.' }))),
+    capabilities: Object.freeze({ explanation: id === 'commerce.add-to-cart'
+      ? 'Cart accepts only its existing product and quantity contract; custom form envelopes and answer recording are unavailable.'
+      : id === 'staff.return-case-action'
+        ? 'Custom context is recorded with the successful case decision. /api/admin/returns/:id/review, /api/admin/returns/:id/high-value and /api/admin/returns/:id/operations keep their current distinct grants, independent approval and atomic state/financial rules.'
+        : 'Safe custom context is linked atomically to the committed record and immutable request provenance. Built-in controls and their order, current grants, conditional actions, money, evidence, parent identity and exact replay stay protected.',
+      customFieldTypes: id === 'commerce.add-to-cart' ? Object.freeze([]) : ACCOUNT_CUSTOM_TYPES,
+      answerBehavior: id === 'commerce.add-to-cart' ? 'none' : 'record' }),
+  } satisfies FormDefinition);
+}
 const QUERY_FIELDS = {
   'catalog.header-search': [['q', 'short_text']],
   'catalog.filters': [['q', 'short_text'], ['sort', 'single_choice'], ['category', 'short_text'], ['occasion', 'short_text']],
@@ -374,7 +423,7 @@ function feedbackDefinition(id: 'public.contact' | 'public.feedback' | 'public.f
   const displayField = (key: string, type: 'short_text' | 'long_text' | 'email' | 'phone' | 'single_choice', required: boolean) => ({
     key, type, label: key, capability: 'display_editable' as const, required, status: 'active' as const,
     ...(key === 'topic' ? { choices: feedbackTopics.map((topic) => ({ value: topic, label: topic })) } : {}),
-    explanation: 'Label, help text, placeholder and position may change; the current server parser keeps type, requiredness and choices fixed.',
+    explanation: 'Labels, help text and placeholders may change; the current parser keeps type, requiredness, choices and rendered built-in order fixed.',
   });
   const shared = [displayField('name', 'short_text', true), displayField('email', 'email', true),
     displayField('topic', 'single_choice', true), displayField('message', 'long_text', true),
@@ -387,7 +436,7 @@ function feedbackDefinition(id: 'public.contact' | 'public.feedback' | 'public.f
       ...variant.map((key) => protectedField(key, 'The source-specific contact contract remains server enforced.')),
       ...['kind', 'pagePath', 'website', 'requestId', 'formVersion'].map((key) =>
         protectedField(key, 'Source, anti-abuse, version and request identity cannot be configured.'))]),
-    capabilities: Object.freeze({ explanation: 'Safe custom context is delivered with the query and retained for restricted support review. Routing, consent, anti-abuse and request identity stay protected.',
+    capabilities: Object.freeze({ explanation: 'Safe custom context is retained with the feedback delivery record for restricted support review. Delivery/retry routing, consent, anti-abuse and request identity stay protected.',
       customFieldTypes: ACCOUNT_CUSTOM_TYPES, answerBehavior: 'record' }),
   } satisfies FormDefinition);
 }
@@ -561,7 +610,9 @@ function sellerCaseDefinition(id: 'seller.case-return-response' |
 
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
   Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
-    const item = Object.hasOwn(QUERY_FIELDS, row.split('|')[0]) || row.startsWith('system.local-testing-role|')
+    const item = Object.hasOwn(PROGRAMMATIC_KEYS, row.split('|')[0])
+      ? programmaticDefinition(row.split('|')[0] as ProgrammaticFormId)
+      : Object.hasOwn(QUERY_FIELDS, row.split('|')[0]) || row.startsWith('system.local-testing-role|')
       ? queryDefinition(row.split('|')[0] as QueryFormId | 'system.local-testing-role')
       : row.startsWith('identity.') ? identityDefinition(row.split('|')[0] as IdentityFormId)
       : staffOperationIds.has(row.split('|')[0]) ? staffOperationDefinition(row.split('|')[0] as StaffOperationFormId)
@@ -601,15 +652,15 @@ export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.fr
       id: 'account.profile', audience: 'customer', mode: 'collection', route: '/api/account/profile',
       baseFields: Object.freeze([
         { key: 'displayName', type: 'short_text', label: 'Your name', capability: 'display_editable',
-          explanation: 'Only its display text and position can change; a name of 2–100 characters remains required.', required: true, status: 'active' },
+          explanation: 'Only its label, help text and placeholder can change; its rendered position and required 2–100 character name remain fixed.', required: true, status: 'active' },
         { key: 'phone', type: 'phone', label: 'Nepal mobile number', capability: 'display_editable',
-          explanation: 'Only its display text and position can change; the Nepal mobile check remains server enforced.', required: false, status: 'active' },
+          explanation: 'Only its label, help text and placeholder can change; its rendered position and Nepal mobile check remain fixed.', required: false, status: 'active' },
         { key: 'locale', type: 'existing', label: 'Language', capability: 'protected',
           explanation: 'The supported language choices are enforced by the profile endpoint.' },
         { key: 'idempotencyKey', type: 'existing', label: 'Request ID', capability: 'protected',
           explanation: 'Request deduplication is required for profile changes.' },
       ] as const),
-      capabilities: Object.freeze({ explanation: 'Profile display text and order may change; custom answers are linked to the customer account. Name, Nepal phone, language, and request deduplication rules remain enforced.',
+      capabilities: Object.freeze({ explanation: 'Profile labels, help text and placeholders may change; built-in order remains fixed and custom answers are linked to the account. Name, Nepal phone, language and request deduplication rules remain enforced.',
         customFieldTypes: Object.freeze(['short_text', 'long_text', 'number', 'date', 'single_choice', 'multiple_choice', 'checkbox', 'email', 'phone'] as const), answerBehavior: 'record' }),
       adapterId: 'account.profile',
     } satisfies FormDefinition) : definition(row);

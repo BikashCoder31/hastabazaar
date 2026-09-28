@@ -1,5 +1,6 @@
 'use client';
-import { useRef, useState, type SyntheticEvent } from 'react';
+import Link from 'next/link';
+import { useRef, useState, useSyncExternalStore, type SyntheticEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Parcel } from '@/lib/operations/parcels';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
@@ -8,6 +9,8 @@ import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/sub
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 const BASE_KEYS = ['jobId','version','action','note','method','riderEmail','courierName','trackingCode',
   'trackingUrl','reference','amount','amountPaisa','cashRecordId','requestId'];
+// Hydrate the absent server snapshot; own attempt mutations rerender the client.
+const subscribeToAttempt = () => () => undefined;
 const money = (n: number) =>
   new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR' }).format(
     n / 100,
@@ -83,7 +86,7 @@ export function ParcelControls({
   return (
     <section className="space-y-4 rounded-2xl border bg-card p-5">
       <h2 className="font-heading text-2xl">Seller parcels and COD</h2>
-      <a className="text-sm underline" href="/admin/staff-form-history?kind=parcel-control">View parcel form history</a>
+      <Link className="text-sm underline" href="/admin/staff-form-history?kind=parcel-control">View parcel form history</Link>
       <p className="text-sm">
         Each seller has one parcel. The order cash total is allocated
         proportionally; its saved delivery policy and recorded discounts remain
@@ -108,7 +111,7 @@ export function ParcelControls({
             <h3 className="font-semibold">
               {p.sellerName} · {p.status.replaceAll('_', ' ')}
             </h3>
-            <a className="text-sm underline" href={`/admin/staff-form-history?kind=parcel-control&id=${encodeURIComponent(p.id)}`}>View this parcel’s form history</a>
+            <Link className="text-sm underline" href={`/admin/staff-form-history?kind=parcel-control&id=${encodeURIComponent(p.id)}`}>View this parcel’s form history</Link>
             <p>
               Allocated COD: {money(p.codDuePaisa)} · Collected:{' '}
               {money(p.collectedPaisa)} · Remitted: {money(p.remittedPaisa)}
@@ -248,7 +251,9 @@ function ParcelForm({
   const [action, setAction] = useState('assign');
   const fingerprint = useRef<string | null>(null);
   const attemptKey = sessionAttemptKey('staff.parcel-control', p.id);
-  const [attemptPresent, setAttemptPresent] = useState(() => hasSessionAttempt(attemptKey));
+  const [, setAttemptRevision] = useState(0);
+  const attemptPresent = useSyncExternalStore(subscribeToAttempt,
+    () => hasSessionAttempt(attemptKey), () => false);
   const [localError, setLocalError] = useState('');
   const catalog = usePublishedFormConfig('staff.parcel-control');
   const field = (name: string) => p.id + '-' + name;
@@ -287,11 +292,11 @@ function ParcelForm({
     }
     try {
       const requestId = getOrCreateSessionAttempt(attemptKey);
-      setAttemptPresent(true); fingerprint.current = currentFingerprint; setLocalError('');
+      setAttemptRevision((revision) => revision + 1); fingerprint.current = currentFingerprint; setLocalError('');
       const outcome = await send({ ...payload, requestId });
       if (outcome?.code === 'stale_version') catalog.handleSubmissionResponse(outcome.response, outcome.code);
       if (outcome?.confirmed) {
-        clearSessionAttempt(attemptKey); setAttemptPresent(false); fingerprint.current = null;
+        clearSessionAttempt(attemptKey); setAttemptRevision((revision) => revision + 1); fingerprint.current = null;
       }
     } catch (error) { setLocalError(error instanceof Error ? error.message : 'Parcel update failed.'); }
   }
@@ -405,7 +410,8 @@ function ParcelForm({
       {attemptPresent ? <p className="sm:col-span-2 text-xs text-muted-foreground">A prior parcel action may have succeeded. Retry only identical details, or check the parcel before starting a new attempt.</p> : null}
       {attemptPresent ? <button type="button" disabled={busy} className="rounded border p-2 text-sm"
         onClick={() => { if (window.confirm('A parcel action may already have succeeded. Check the parcel first. Start a new request reference?')) {
-          clearSessionAttempt(attemptKey); setAttemptPresent(false); fingerprint.current = null; setLocalError('');
+          clearSessionAttempt(attemptKey); setAttemptRevision((revision) => revision + 1); fingerprint.current = null; setLocalError('');
+          if (catalog.status === 'stale') catalog.refresh();
         } }}>Start a new attempt</button> : null}
       {localError ? <p role="alert" className="sm:col-span-2 text-sm text-destructive">{localError}</p> : null}
       <button

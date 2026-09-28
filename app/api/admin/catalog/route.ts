@@ -1,3 +1,5 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
 
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
@@ -22,7 +24,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   try {
     const staff = await requireStaffApi('catalog.manage');
-    const body = (await request.json().catch(() => null)) as Record<
+    const body = (await readBoundedJsonObject(request)) as Record<
       string,
       unknown
     > | null;
@@ -65,6 +67,8 @@ export async function POST(request: Request): Promise<Response> {
     );
     return Response.json({ id }, { status: 201 });
   } catch (error) {
+    if (error instanceof BodyTooLargeError) return Response.json({ error: error.message }, { status: 413, headers: { 'Cache-Control': 'no-store' } });
+    if (error instanceof SyntaxError) return Response.json({ error: 'Invalid JSON request.' }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
     if (error instanceof StaffAuthorizationError)
       return Response.json({ error: error.message }, { status: error.status });
     if (error instanceof CatalogManagementConflictError)

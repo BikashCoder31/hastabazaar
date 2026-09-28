@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff } from 'lucide-react';
 
@@ -16,6 +16,13 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
+
+const FORM_ID = 'staff.homepage-visibility';
+const BASE_KEYS = ['hidden', 'expectedVersion', 'reason', 'requestId', 'formVersion'];
 
 export function HomepageVisibilityControl({
   productId,
@@ -31,17 +38,20 @@ export function HomepageVisibilityControl({
   lastReason: string | null;
 }) {
   const router = useRouter();
+  const catalog = usePublishedFormConfig(FORM_ID);
+  const formRef = useRef<HTMLFormElement>(null);
+  const fingerprint = useRef<string | null>(null);
+  const attemptKey = sessionAttemptKey(FORM_ID, productId);
+  const [attemptPresent, setAttemptPresent] = useState(() => hasSessionAttempt(attemptKey));
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
-  const [requestId, setRequestId] = useState('');
   const nextHidden = !hidden;
 
   function prepare() {
-    setReason('');
+    if (!attemptPresent) setReason('');
     setError('');
-    setRequestId(crypto.randomUUID());
     setOpen(true);
   }
 
@@ -51,25 +61,35 @@ export function HomepageVisibilityControl({
       setError('Add a clear reason of at least 8 characters.');
       return;
     }
+    if (!catalog.canSubmit || !catalog.config || !formRef.current) {
+      setError(catalog.message || 'Form configuration is unavailable.'); return;
+    }
     setPending(true);
     setError('');
     try {
+      const configured = readConfiguredSubmission(formRef.current, catalog.config, BASE_KEYS);
+      const payload = { hidden: nextHidden, expectedVersion: version, reason,
+        ...configuredJsonPayload(catalog.config, configured.answers, BASE_KEYS) };
+      const currentFingerprint = JSON.stringify(payload);
+      if (fingerprint.current && fingerprint.current !== currentFingerprint)
+        throw new Error('This differs from the prior attempt. Check its outcome, then explicitly start a new attempt.');
+      const requestId = getOrCreateSessionAttempt(attemptKey);
+      setAttemptPresent(true); fingerprint.current = currentFingerprint;
       const response = await fetch(
         `/api/admin/products/${encodeURIComponent(productId)}/homepage`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            hidden: nextHidden,
-            expectedVersion: version,
-            reason,
-            requestId,
-          }),
+          body: JSON.stringify({ ...payload, requestId }),
         },
       );
-      const result = (await response.json()) as { error?: string };
+      const result = (await response.json().catch(() => null)) as { hidden?: unknown; version?: unknown; error?: string; code?: string } | null;
+      if (result?.code === 'stale_version') catalog.handleSubmissionResponse(response, result.code);
       if (!response.ok)
-        throw new Error(result.error || 'Homepage visibility could not be updated.');
+        throw new Error(result?.error || 'Homepage visibility could not be updated.');
+      if (result?.hidden !== nextHidden || !Number.isSafeInteger(result.version) || result.version !== version + 1)
+        throw new Error('The response could not confirm this visibility decision. Retry the same attempt.');
+      clearSessionAttempt(attemptKey); setAttemptPresent(false); fingerprint.current = null;
       setOpen(false);
       router.refresh();
     } catch (caught) {
@@ -117,6 +137,7 @@ export function HomepageVisibilityControl({
       ) : null}
       <AlertDialog open={open} onOpenChange={(value) => !pending && setOpen(value)}>
         <AlertDialogContent>
+          <form ref={formRef} data-form-id={FORM_ID} className="space-y-4" onSubmit={(event) => event.preventDefault()}>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {nextHidden ? 'Hide' : 'Show'} {productName} on the homepage?
@@ -142,6 +163,14 @@ export function HomepageVisibilityControl({
             <p className="text-xs text-muted-foreground">
               Required. This decision is recorded in the staff audit log.
             </p>
+            {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={BASE_KEYS} /> : null}
+            {catalog.message ? <p role="alert" className="text-sm text-destructive">{catalog.message}</p> : null}
+            {attemptPresent ? <p className="text-xs text-muted-foreground">A prior homepage decision may have succeeded. Retry only identical details, or check the product before starting a new attempt.</p> : null}
+            {attemptPresent ? <Button type="button" variant="outline" disabled={pending}
+              onClick={() => { if (window.confirm('A homepage decision may already have succeeded. Check the product first. Start a new request reference?')) {
+                clearSessionAttempt(attemptKey); setAttemptPresent(false); fingerprint.current = null; setError('');
+                if (catalog.status === 'stale') catalog.refresh();
+              } }}>Start a new attempt</Button> : null}
             {error ? (
               <p role="alert" className="text-sm font-medium text-destructive">
                 {error}
@@ -152,7 +181,7 @@ export function HomepageVisibilityControl({
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               variant={nextHidden ? 'destructive' : 'default'}
-              disabled={pending}
+              disabled={pending || !catalog.canSubmit}
               onClick={submit}
             >
               {pending
@@ -162,6 +191,7 @@ export function HomepageVisibilityControl({
                   : 'Show on homepage'}
             </AlertDialogAction>
           </AlertDialogFooter>
+          </form>
         </AlertDialogContent>
       </AlertDialog>
     </div>

@@ -1,3 +1,4 @@
+import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import { env } from 'cloudflare:workers';
 import { ReviewModerationActions } from '@/components/admin/review-moderation-actions';
 import { requireStaffPage } from '@/lib/auth/staff';
@@ -32,6 +33,8 @@ export default async function AdminReviewsPage() {
         positive and negative experiences equally. Remove private information,
         abuse, spam or unrelated content; every decision is recorded.
       </p>
+      <StaffFormHistoryLinks entries={[{kind:'review-moderation',label:'Review decision answers'},
+        {kind:'reply-moderation',label:'Reply decision answers'}]} />
       <div className="mt-7 grid gap-4 lg:grid-cols-2">
         {reviews.map((review, index) => {
           const reply = extras.replies.find((r) => r.reviewId === review.id);

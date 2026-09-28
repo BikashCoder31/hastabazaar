@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -32,7 +33,7 @@ export function PrivacyActions({
   const exportKey=sessionAttemptKey('staff.privacy-export',id);
   const eraseKey=sessionAttemptKey('staff.privacy-erase',id);
   const [decisionRetry,setDecisionRetry]=useState(false),[exportRetry,setExportRetry]=useState(false),[eraseRetry,setEraseRetry]=useState(false);
-  useEffect(()=>{setDecisionRetry(hasSessionAttempt(decisionKey));setExportRetry(hasSessionAttempt(exportKey));setEraseRetry(hasSessionAttempt(eraseKey));},[decisionKey,exportKey,eraseKey]);
+  useEffect(() => { const timer = window.setTimeout(() => { setDecisionRetry(hasSessionAttempt(decisionKey)); setExportRetry(hasSessionAttempt(exportKey)); setEraseRetry(hasSessionAttempt(eraseKey)); }, 0); return () => window.clearTimeout(timer); }, [decisionKey, exportKey, eraseKey]);
   const catalog=usePublishedFormConfig('staff.privacy-action');
   const [fieldError,setFieldError]=useState('');
   const decisionPayload=useRef<ReturnType<typeof configuredJsonPayload>|null>(null);
@@ -111,12 +112,12 @@ export function PrivacyActions({
     return (
       <div className="mt-4 text-sm text-muted-foreground">
         <p>This request is closed. Its records remain retained.</p>
-        <a className="underline" href={`/admin/staff-form-history?kind=privacy-action&id=${encodeURIComponent(id)}`}>View form history</a>
+        <Link className="underline" href={`/admin/staff-form-history?kind=privacy-action&id=${encodeURIComponent(id)}`}>View form history</Link>
       </div>
     );
   return (
     <div className="mt-5">
-      <a className="text-sm underline" href={`/admin/staff-form-history?kind=privacy-action&id=${encodeURIComponent(id)}`}>View form history</a>
+      <Link className="text-sm underline" href={`/admin/staff-form-history?kind=privacy-action&id=${encodeURIComponent(id)}`}>View form history</Link>
       {status === 'approved' && assignedToCurrentStaff && requestType === 'access' ? (
         <div className="mb-5 rounded-xl border p-4">
           <p className="text-sm text-muted-foreground">Prepare a JSON copy of the customer’s stored form answers. This action does not close the request.</p>

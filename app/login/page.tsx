@@ -46,7 +46,7 @@ export default async function LoginPage({
         {error ? <p className="mt-5 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</p> : null}
         {!passwordConfig && !emailRequestConfig ? <p role="alert" className="mt-5 text-sm text-destructive">Sign-in forms are temporarily unavailable. Please try again later.</p> : null}
         {passwordConfig ? <>
-        <form action="/api/auth/login" method="post" className="mt-6 space-y-4">
+        <form data-form-id="identity.login-password" action="/api/auth/login" method="post" className="mt-6 space-y-4">
 <p className="text-xs text-muted-foreground">* Required field</p>
 
           <input type="hidden" name="return_to" value={returnTo} />
@@ -58,12 +58,12 @@ export default async function LoginPage({
         </form>
         <Link className="my-4 inline-flex min-h-11 items-center text-sm font-semibold text-primary" href={`/forgot-password?return_to=${encodeURIComponent(returnTo)}`}>Forgot password?</Link>
         </> : <p className="mt-5 text-sm text-muted-foreground">Password sign-in is temporarily unavailable.</p>}
-        <div className="my-6 flex items-center gap-3" aria-hidden="true">
+        {passwordConfig && emailRequestConfig ? <div className="my-6 flex items-center gap-3" aria-hidden="true">
           <span className="h-px flex-1 bg-border" />
           <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">or</span>
           <span className="h-px flex-1 bg-border" />
-        </div>
-        {emailRequestConfig ? <form action="/api/auth/email-code/request" method="post" className="space-y-4">
+        </div> : null}
+        {emailRequestConfig ? <form data-form-id="identity.email-code-request" action="/api/auth/email-code/request" method="post" className="space-y-4">
 <p className="text-xs text-muted-foreground">* Required field</p>
 
           <input type="hidden" name="return_to" value={returnTo} />

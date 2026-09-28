@@ -1,3 +1,5 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
 
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
@@ -14,7 +16,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   let validatedVersionId: string | undefined;
   if (!isTrustedMutationRequest(request)) return Response.json({ error: 'Cross-site requests are not allowed.' }, { status: 403 });
   try {
-    const [staff, { id }] = await Promise.all([requireStaffApi('catalog.manage'), params]); const body = await request.json().catch(() => null) as { categoryId?: string; occasionIds?: string[]; idempotencyKey?: string; formVersion?: unknown; customAnswers?: unknown } | null;
+    const [staff, { id }] = await Promise.all([requireStaffApi('catalog.manage'), params]); const body = await readBoundedJsonObject(request) as { categoryId?: string; occasionIds?: string[]; idempotencyKey?: string; formVersion?: unknown; customAnswers?: unknown } | null;
     if (!body?.categoryId || !Array.isArray(body.occasionIds) || !body.idempotencyKey) return Response.json({ error: 'Category, occasions and idempotency key are required.' }, { status: 400 });
     const database = requireDatabase(env as unknown as { DB?: D1Database });
     const form = await validateSellerFormSubmission(database, 'staff.product-classification', body.formVersion,
@@ -25,6 +27,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       form: { requestId: body.idempotencyKey, versionId: form.versionId, answers: form.answers } });
     return Response.json({ ok: true });
   } catch (error) {
+    if (error instanceof BodyTooLargeError) return Response.json({ error: error.message }, { status: 413, headers: { 'Cache-Control': 'no-store' } });
+    if (error instanceof SyntaxError) return Response.json({ error: 'Invalid JSON request.' }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
     if (error instanceof StaffAuthorizationError) return Response.json({ error: error.message }, { status: error.status });
     if (error instanceof CatalogManagementConflictError) return Response.json({ error: error.message }, { status: 409 });
     if (error instanceof FormRuntimeError) return Response.json({ error: error.message, code: error.code }, { status: error.code === 'stale_version' ? 409 : 503 });

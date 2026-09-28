@@ -12,6 +12,7 @@ import type {
 import { buildFormAnswerInsert } from './form-answers';
 import type { FormAnswerSnapshot } from '@/lib/forms/types';
 import { digestFormRequest, formRequestReplay } from '@/lib/forms/submission';
+import { staffMutationGuard } from './staff-mutation-guard';
 
 type SellerProductFormLink = { requestId: string; versionId: string; answers: FormAnswerSnapshot; digest?: string };
 
@@ -1119,6 +1120,42 @@ const reviewTransitions: Record<
 
 export class ProductReviewConflictError extends Error {}
 
+function productActionGuard(database: D1Database, predicate: string, values: readonly unknown[]): D1PreparedStatement[] {
+  const id = crypto.randomUUID();
+  return [
+    database.prepare(`INSERT INTO operation_transaction_guards(id,valid)
+      SELECT ?,CASE WHEN ${predicate} THEN 1 ELSE 0 END`).bind(id, ...values),
+    database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(id),
+  ];
+}
+
+async function productActionReplay(database: D1Database, input: {
+  formId: 'staff.product-review' | 'staff.homepage-visibility'; requestId: string;
+  actorId: string; action: string; productId: string; versionId: string; digest: string;
+}): Promise<boolean> {
+  const audit = await database.prepare(`SELECT actor_id AS actorId,action,subject_type AS subjectType,
+      subject_id AS subjectId,next_json AS nextJson FROM audit_logs WHERE request_id=? LIMIT 1`)
+    .bind(input.requestId).first<{ actorId: string; action: string; subjectType: string;
+      subjectId: string; nextJson: string | null }>();
+  if (!audit) {
+    const orphan = await database.prepare('SELECT 1 AS used FROM form_answer_sets WHERE request_id=? LIMIT 1')
+      .bind(input.requestId).first();
+    if (orphan) throw new Error('Request reference is already used.');
+    return false;
+  }
+  const answer = await database.prepare(`SELECT 1 AS valid FROM form_answer_sets
+    WHERE form_id=? AND request_id=? AND config_version_id=? AND subject_type='product'
+      AND subject_id=? AND actor_id=? LIMIT 1`)
+    .bind(input.formId, input.requestId, input.versionId, input.productId, input.actorId).first();
+  let recorded: unknown;
+  try { recorded = audit.nextJson ? JSON.parse(audit.nextJson).catalogDigest : null; }
+  catch { /* Corrupt metadata cannot authorize replay. */ }
+  if (audit.actorId !== input.actorId || audit.action !== input.action ||
+    audit.subjectType !== 'product' || audit.subjectId !== input.productId ||
+    !answer || recorded !== input.digest) throw new Error('Request reference was reused.');
+  return true;
+}
+
 export async function reviewProduct(
   database: D1Database,
   options: {
@@ -1128,8 +1165,14 @@ export async function reviewProduct(
     reason: string;
     requestId: string;
     now: number;
+    form?: { versionId: string; answers: FormAnswerSnapshot };
   },
 ): Promise<ProductStatus> {
+  const transition = reviewTransitions[options.action];
+  if (!transition) throw new ProductReviewConflictError('Choose a supported review action.');
+  const authority = options.form ? await staffMutationGuard(database, options.actorId,
+    options.action === 'publish' ? 'product.publish' : 'product.review',
+    ProductReviewConflictError, options.action === 'unpublish' ? 'super_admin' : undefined) : null;
   if (options.action === 'unpublish') {
     const allowed = await database.prepare(
       `SELECT 1 FROM users JOIN user_roles ON user_roles.user_id = users.id
@@ -1137,7 +1180,29 @@ export async function reviewProduct(
     ).bind(options.actorId).first();
     if (!allowed) throw new ProductReviewConflictError('Only an active Super Admin can unpublish products.');
   }
-  const transition = reviewTransitions[options.action];
+  const catalogDigest = options.form ? await digestFormRequest({ productId: options.productId,
+    actorId: options.actorId, action: options.action, reason: options.reason,
+    versionId: options.form.versionId, answers: options.form.answers }) : null;
+  if (options.form) {
+    try {
+      const replay = await productActionReplay(database, { formId: 'staff.product-review',
+        requestId: options.requestId, actorId: options.actorId, action: transition.auditAction,
+        productId: options.productId, versionId: options.form.versionId, digest: catalogDigest! });
+      if (replay) {
+        const currentReplay = await database.prepare(`SELECT products.status,
+          products.review_request_id AS requestId,seller_profiles.user_id AS sellerUserId
+          FROM products JOIN seller_profiles ON seller_profiles.id=products.seller_id
+          WHERE products.id=? LIMIT 1`).bind(options.productId)
+          .first<{ status: ProductStatus; requestId: string | null; sellerUserId: string }>();
+        if (currentReplay?.status !== transition.to || currentReplay.requestId !== options.requestId ||
+          currentReplay.sellerUserId === options.actorId)
+          throw new Error('The product has changed after the prior review.');
+        return transition.to;
+      }
+    } catch {
+      throw new ProductReviewConflictError('This request reference was reused for different review details.');
+    }
+  }
   const current = await database
     .prepare(
       `SELECT products.status, seller_profiles.user_id AS sellerUserId
@@ -1162,7 +1227,7 @@ export async function reviewProduct(
     );
   }
 
-  const results = await database.batch([
+  const statements: D1PreparedStatement[] = [
     database
       .prepare(
         `UPDATE products SET status = ?, review_note = ?, review_request_id = ?,
@@ -1181,6 +1246,8 @@ export async function reviewProduct(
         options.productId,
         transition.from,
       ),
+    ...(options.form ? productActionGuard(database, `EXISTS(SELECT 1 FROM products WHERE id=?
+      AND status=? AND review_request_id=?)`, [options.productId, transition.to, options.requestId]) : []),
     database
       .prepare(
         `INSERT INTO moderation_events (
@@ -1214,14 +1281,26 @@ export async function reviewProduct(
         options.productId,
         options.reason,
         JSON.stringify({ status: transition.from }),
-        JSON.stringify({ status: transition.to }),
+        JSON.stringify({ status: transition.to, ...(catalogDigest ? { catalogDigest } : {}) }),
         options.requestId,
         options.now,
         options.productId,
         options.requestId,
       ),
     ...(options.action==='start_review'?[]:await businessNotificationStatements(database,{eventId:options.requestId,sourceType:'product',sourceId:options.productId,status:transition.to,reviewRequestId:options.requestId,actorId:options.actorId,now:options.now,kind:'result'})),
-  ]);
+    ...(options.form ? [buildFormAnswerInsert(database, { formId: 'staff.product-review',
+      requestId: options.requestId, versionId: options.form.versionId,
+      subjectType: 'product', subjectId: options.productId, actorId: options.actorId,
+      answers: options.form.answers, now: options.now })] : []),
+    ...(authority?.statements ?? []),
+  ];
+  let results;
+  try { results = await database.batch(statements); }
+  catch (error) {
+    if (error instanceof Error && error.message.includes('operation_transaction_guards'))
+      throw new ProductReviewConflictError('Product changed. Refresh and try again.');
+    throw error;
+  }
   if ((results[0].meta.changes ?? 0) !== 1) {
     throw new ProductReviewConflictError(
       'Product changed. Refresh and try again.',
@@ -1615,6 +1694,7 @@ export async function setHomepageProductVisibility(
     reason: string;
     requestId: string;
     now: number;
+    form?: { versionId: string; answers: FormAnswerSnapshot };
   },
 ): Promise<{ hidden: boolean; version: number }> {
   const reason = options.reason.trim();
@@ -1640,6 +1720,11 @@ export async function setHomepageProductVisibility(
     throw new HomepageVisibilityConflictError(
       'Only an active Super Admin can control homepage visibility.',
     );
+  const authority = options.form ? await staffMutationGuard(database, options.actorId,
+    'admin.invite', HomepageVisibilityConflictError, 'super_admin') : null;
+  const catalogDigest = options.form ? await digestFormRequest({ productId: options.productId,
+    actorId: options.actorId, hidden: options.hidden, expectedVersion: options.expectedVersion,
+    reason, versionId: options.form.versionId, answers: options.form.answers }) : null;
 
   const current = await database
     .prepare(
@@ -1649,7 +1734,7 @@ export async function setHomepageProductVisibility(
        FROM products
        LEFT JOIN homepage_product_controls
          ON homepage_product_controls.product_id = products.id
-       WHERE products.id = ?
+       WHERE products.id = ? AND products.status = 'published'
          AND NOT EXISTS (
            SELECT 1 FROM product_deletions
            WHERE product_deletions.product_id = products.id
@@ -1661,14 +1746,28 @@ export async function setHomepageProductVisibility(
   if (current.lastRequestId === options.requestId) {
     if (Boolean(current.hidden) !== options.hidden)
       throw new HomepageVisibilityConflictError('Homepage request identifier was reused.');
+    if (options.form) {
+      try {
+        const replay = await productActionReplay(database, { formId: 'staff.homepage-visibility',
+          requestId: options.requestId, actorId: options.actorId,
+          action: options.hidden ? 'homepage.product.hidden' : 'homepage.product.shown',
+          productId: options.productId, versionId: options.form.versionId, digest: catalogDigest! });
+        if (!replay || current.version !== options.expectedVersion + 1)
+          throw new Error('The visibility decision has changed.');
+      } catch {
+        throw new HomepageVisibilityConflictError('Homepage request identifier was reused for different details.');
+      }
+    }
     return { hidden: options.hidden, version: current.version };
   }
   if (current.version !== options.expectedVersion)
     throw new HomepageVisibilityConflictError(
       'Homepage visibility changed. Refresh and try again.',
     );
-  if (Boolean(current.hidden) === options.hidden)
+  if (Boolean(current.hidden) === options.hidden) {
+    if (options.form) throw new HomepageVisibilityConflictError('Homepage visibility is already set. Refresh and review the current product.');
     return { hidden: options.hidden, version: current.version };
+  }
 
   const nextVersion = current.version + 1;
   const mutation = current.version === 0
@@ -1678,7 +1777,7 @@ export async function setHomepageProductVisibility(
           last_request_id, created_at, updated_at
         ) SELECT ?, ?, ?, 1, ?, ?, ?, ?
         WHERE EXISTS (
-          SELECT 1 FROM products WHERE products.id = ?
+          SELECT 1 FROM products WHERE products.id = ? AND products.status = 'published'
             AND NOT EXISTS (
               SELECT 1 FROM product_deletions
               WHERE product_deletions.product_id = products.id
@@ -1699,6 +1798,8 @@ export async function setHomepageProductVisibility(
          SET is_hidden = ?, reason = ?, version = version + 1,
            updated_by = ?, last_request_id = ?, updated_at = ?
          WHERE product_id = ? AND version = ?
+           AND EXISTS(SELECT 1 FROM products WHERE id=? AND status='published'
+             AND NOT EXISTS(SELECT 1 FROM product_deletions WHERE product_id=products.id))
            AND EXISTS (
              SELECT 1 FROM users
              INNER JOIN user_roles ON user_roles.user_id = users.id
@@ -1707,9 +1808,14 @@ export async function setHomepageProductVisibility(
            )`,
       ).bind(options.hidden ? 1 : 0, reason, options.actorId,
         options.requestId, options.now, options.productId, current.version,
-        options.actorId);
-  const results = await database.batch([
+        options.productId, options.actorId);
+  const statements: D1PreparedStatement[] = [
     mutation,
+    ...(options.form ? productActionGuard(database, `EXISTS(SELECT 1 FROM homepage_product_controls control
+      JOIN products ON products.id=control.product_id WHERE control.product_id=?
+      AND control.version=? AND control.last_request_id=? AND products.status='published'
+      AND NOT EXISTS(SELECT 1 FROM product_deletions WHERE product_id=products.id))`,
+      [options.productId, nextVersion, options.requestId]) : []),
     database.prepare(
       `INSERT INTO audit_logs (
         id, actor_id, action, subject_type, subject_id, reason,
@@ -1721,10 +1827,23 @@ export async function setHomepageProductVisibility(
       options.hidden ? 'homepage.product.hidden' : 'homepage.product.shown',
       options.productId, reason,
       JSON.stringify({ homepageHidden: Boolean(current.hidden), version: current.version }),
-      JSON.stringify({ homepageHidden: options.hidden, version: nextVersion }),
+      JSON.stringify({ homepageHidden: options.hidden, version: nextVersion,
+        ...(catalogDigest ? { catalogDigest } : {}) }),
       options.requestId, options.now, options.productId, nextVersion,
       options.requestId),
-  ]);
+    ...(options.form ? [buildFormAnswerInsert(database, { formId: 'staff.homepage-visibility',
+      requestId: options.requestId, versionId: options.form.versionId,
+      subjectType: 'product', subjectId: options.productId, actorId: options.actorId,
+      answers: options.form.answers, now: options.now })] : []),
+    ...(authority?.statements ?? []),
+  ];
+  let results;
+  try { results = await database.batch(statements); }
+  catch (error) {
+    if (error instanceof Error && error.message.includes('operation_transaction_guards'))
+      throw new HomepageVisibilityConflictError('Homepage visibility changed. Refresh and try again.');
+    throw error;
+  }
   if ((results[0].meta.changes ?? 0) !== 1)
     throw new HomepageVisibilityConflictError(
       'Homepage visibility changed. Refresh and try again.',

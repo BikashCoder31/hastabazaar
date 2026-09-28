@@ -81,7 +81,7 @@ export function CustomerContactForm({
     <form
       data-form-id={kind === 'feedback' ? 'public.feedback' : 'public.contact'}
       onSubmit={submit}
-      className="grid gap-5 rounded-3xl border bg-card p-6 shadow-sm sm:grid-cols-2 sm:p-8"
+      className="grid min-w-0 grid-cols-1 gap-5 rounded-3xl border bg-card p-6 shadow-sm sm:grid-cols-2 sm:p-8"
     >
       <input
         type="hidden"
@@ -227,7 +227,7 @@ export function CustomerContactForm({
         </Button>
         {!catalog.canSubmit ? <output className="text-sm text-muted-foreground">{catalog.message || 'Form configuration is loading.'}</output> : null}
         {catalog.status === 'stale' ? <Button type="button" onClick={catalog.refresh}>Refresh form</Button> : null}
-        <Button type="button" disabled={busy} onClick={(event) => {
+        <Button type="button" className="h-auto min-h-8 max-w-full whitespace-normal" disabled={busy} onClick={(event) => {
           const form = event.currentTarget.closest('form');
           if (form) startNewMessage(form);
         }}>Start a new message after contacting support</Button>
@@ -256,7 +256,7 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <label className="grid gap-2 text-sm font-semibold">
+    <label className="grid min-w-0 gap-2 text-sm font-semibold">
       <span>{label}</span>
       {children}
       {helpText ? <span className="text-xs font-normal text-muted-foreground">{helpText}</span> : null}

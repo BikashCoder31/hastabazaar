@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 
 import { StaffAuthorizationError, requireStaffApi } from '@/lib/auth/staff';
@@ -10,6 +11,10 @@ import {
   type SellerRestrictionMode,
 } from '@/lib/db/repositories/seller-governance';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
+import { isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +33,7 @@ export async function POST(
     return reply({ error: 'Request origin was not accepted.' }, 403);
   }
 
+  let validatedVersionId: string | undefined;
   try {
     const staff = await requireStaffApi('seller.suspend');
     const { id } = await context.params;
@@ -35,11 +41,7 @@ export async function POST(
       return reply({ error: 'Invalid seller.' }, 400);
     }
 
-    const raw = await request.text();
-    if (raw.length > 5_000) {
-      return reply({ error: 'Request is too large.' }, 413);
-    }
-    const body = JSON.parse(raw) as Record<string, unknown>;
+    const body = await readBoundedJsonObject(request) as Record<string, unknown>;
     const database = requireDatabase(env as unknown as { DB?: D1Database });
     const requestId =
       typeof body.requestId === 'string' && body.requestId.length <= 150
@@ -59,6 +61,11 @@ export async function POST(
     if (body.action !== 'set_restriction') {
       return reply({ error: 'Select a supported governance action.' }, 400);
     }
+    if (typeof body.requestId !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(body.requestId))
+      return reply({ error: 'A stable request reference is required.' }, 400);
+    const form = await validateSellerFormSubmission(database, 'staff.seller-governance',
+      body.formVersion, body.customAnswers, body.requestId);
+    validatedVersionId = form.versionId;
 
     return reply({
       restriction: await applySellerRestriction(database, {
@@ -74,12 +81,20 @@ export async function POST(
           typeof body.expectedVersion === 'number' ? body.expectedVersion : -1,
         requestId,
         now: Date.now(),
+        form: { versionId: form.versionId, answers: form.answers },
       }),
     });
   } catch (error) {
     if (error instanceof StaffAuthorizationError) {
       return reply({ error: error.message }, error.status);
     }
+    if (error instanceof BodyTooLargeError) return reply({ error: error.message }, 413);
+    if (error instanceof FormRuntimeError)
+      return reply({ error: error.message, code: error.code }, error.code === 'stale_version' ? 409 : 503);
+    if (error instanceof FormValidationError)
+      return reply({ error: error.message, fieldId: error.fieldId }, 400);
+    if (validatedVersionId && await isValidatedFormVersionStale(requireDatabase(env as unknown as { DB?: D1Database }), 'staff.seller-governance', validatedVersionId))
+      return reply({ error: 'This form changed. Refresh it and review your answers.', code: 'stale_version' }, 409);
     if (error instanceof SellerGovernanceConflictError) {
       return reply({ error: error.message }, 409);
     }

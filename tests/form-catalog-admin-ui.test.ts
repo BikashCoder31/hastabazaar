@@ -1056,6 +1056,7 @@ void test('ambiguous save retries one request while busy edits lock and successf
     await page.getByRole('button', { name: 'Confirm publish' }).focus();
     await page.keyboard.press('Enter');
     await page.getByText('Form published.').waitFor({ timeout: 3000 });
+    await page.getByRole('alertdialog').waitFor({ state: 'detached' });
     assert.equal(await page.getByRole('alertdialog').count(), 0, 'successful publish closes confirmation before history GET finishes');
     releasePublishHistory();
     await page.getByRole('button', { name: 'Retry history refresh' }).waitFor();

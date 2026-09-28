@@ -1,3 +1,4 @@
+import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -76,6 +77,8 @@ export default async function SellerApplicationPage({
 
   return (
     <div className="space-y-7">
+      <StaffFormHistoryLinks entries={[{kind:'seller-review-action',subjectId:id,label:'Seller review answers'},
+        ...(staff.role === 'super_admin' ? [{kind:'seller-governance' as const,subjectId:id,label:'Seller governance answers'}] : [])]} />
       <Link
         href="/admin/sellers"
         className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"

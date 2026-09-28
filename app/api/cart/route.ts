@@ -61,7 +61,11 @@ export async function POST(request: Request): Promise<Response> {
     return json({ error: 'Request origin was not accepted.' }, 403);
   const identity = await cartIdentity(request);
   try {
-    const body = (await request.json()) as Record<string, unknown>;
+    const submitted: unknown = await request.json();
+    if (!submitted || typeof submitted !== 'object' || Array.isArray(submitted) ||
+      Object.keys(submitted).some((key) => key !== 'productId' && key !== 'quantity'))
+      return json({ error: 'Cart actions accept only a product and quantity.' }, 400, identity.cookie);
+    const body = submitted as Record<string, unknown>;
     const productId = typeof body.productId === 'string' ? body.productId : '';
     if (!productId || productId.length > 64)
       return json(

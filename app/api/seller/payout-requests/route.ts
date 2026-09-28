@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 import { requireSellerApi, SellerAuthorizationError } from '@/lib/auth/seller';
 import { requireDatabase } from '@/lib/db/d1';
@@ -6,7 +7,7 @@ import {
   requestSellerPayout,
 } from '@/lib/db/repositories/payouts';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { FormRequestConflictError, validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
     );
   try {
     const seller = await requireSellerApi();
-    const body = JSON.parse(new TextDecoder().decode(await readBoundedBody(request, 131_072))) as Record<string, unknown>;
+    const body = await readBoundedJsonObject(request) as Record<string, unknown>;
     if (!body || Array.isArray(body) || Object.keys(body).some((key) =>
       !['note', 'requestId', 'formVersion', 'customAnswers'].includes(key)) ||
       typeof body.note !== 'string' || typeof body.requestId !== 'string' ||

@@ -1,3 +1,4 @@
+import { stubFixtureLink } from './helpers/browser-fixture-link';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createRequire, registerHooks } from 'node:module';
@@ -385,17 +386,17 @@ void test('only successful parcel-code verification records a code-free answer',
 async function renderForm(entry: string, exported: string, props: Record<string, unknown>) {
   const compiled = await build({ entryPoints: [entry], bundle: true, write: false,
     platform: 'node', format: 'cjs', external: ['react', 'react/*', 'react-dom', 'react-dom/*'],
-    plugins: [{ name: 'rider-form-test-boundaries', setup(b) {
+    plugins: [{ name: 'rider-form-test-boundaries', setup(b) { stubFixtureLink(b);
       b.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'rider-test' }));
       b.onLoad({ filter: /^navigation$/, namespace: 'rider-test' }, () => ({ contents: 'exports.useRouter=()=>({refresh(){}});', loader: 'js' }));
       b.onResolve({ filter: /^@\/components\/forms\/form-config-client$/ }, () => ({ path: 'config', namespace: 'rider-test' }));
       b.onLoad({ filter: /^config$/, namespace: 'rider-test' }, () => ({ contents: `exports.usePublishedFormConfig=(id)=>({config:{formId:id,version:3,publishedAt:1,fields:[{id:'handover_context',key:'handover_context',type:'short_text',label:'Handover context',required:true,order:0,status:'active'}]},status:'ready',canSubmit:true,message:'',refresh(){},handleSubmissionResponse(){return true}});`, loader: 'js' }));
     } }],
   });
-  const module = { exports: {} as Record<string, ComponentType<Record<string, unknown>>> };
-  runInNewContext(compiled.outputFiles[0].text, { require: createRequire(import.meta.url), module,
-    exports: module.exports, process, crypto });
-  return renderToStaticMarkup(createElement(module.exports[exported], props));
+  const fixtureModule = { exports: {} as Record<string, ComponentType<Record<string, unknown>>> };
+  runInNewContext(compiled.outputFiles[0].text, { require: createRequire(import.meta.url), module: fixtureModule,
+    exports: fixtureModule.exports, process, crypto });
+  return renderToStaticMarkup(createElement(fixtureModule.exports[exported], props));
 }
 
 void test('all five independent rider and delivery forms render their published field and version', async () => {
@@ -1143,7 +1144,7 @@ void test('mounted shipping console preserves lost action ID and requires confir
     `, loader: 'tsx' },
     bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
-    plugins: [{ name: 'console-navigation-fixture', setup(bundler) {
+    plugins: [{ name: 'console-navigation-fixture', setup(bundler) { stubFixtureLink(bundler);
       bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'fixture' }));
       bundler.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
         contents: 'export function useRouter(){return {refresh(){}}}', loader: 'js',

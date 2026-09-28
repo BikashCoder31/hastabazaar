@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,8 @@ import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sess
 
 const BASE_KEYS = ['model', 'legalSellerReference', 'invoiceIssuerReference', 'payoutBeneficiaryReference',
   'agreementVersion', 'agreementLanguage', 'agreementAcceptedAt', 'requestId'];
+// Hydrate the absent server snapshot; own attempt mutations rerender the client.
+const subscribeToAttempt = () => () => undefined;
 
 export function ManagedMakerActivationForm({ sellerId }: { sellerId: string }) {
   const router = useRouter();
@@ -18,7 +20,9 @@ export function ManagedMakerActivationForm({ sellerId }: { sellerId: string }) {
   const [busy, setBusy] = useState(false);
   const fingerprint = useRef<string | null>(null);
   const attemptKey = sessionAttemptKey('staff.managed-maker-activation', sellerId);
-  const [attemptPresent, setAttemptPresent] = useState(() => hasSessionAttempt(attemptKey));
+  const [, setAttemptRevision] = useState(0);
+  const attemptPresent = useSyncExternalStore(subscribeToAttempt,
+    () => hasSessionAttempt(attemptKey), () => false);
   const catalog = usePublishedFormConfig('staff.managed-maker-activation');
   async function submit(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,7 +44,7 @@ export function ManagedMakerActivationForm({ sellerId }: { sellerId: string }) {
     setBusy(true); setMessage('');
     try {
       const requestId = getOrCreateSessionAttempt(attemptKey);
-      setAttemptPresent(true);
+      setAttemptRevision((revision) => revision + 1);
       fingerprint.current = currentFingerprint;
       const response = await fetch(`/api/admin/managed-makers/${encodeURIComponent(sellerId)}/activate`, {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -51,7 +55,7 @@ export function ManagedMakerActivationForm({ sellerId }: { sellerId: string }) {
       if (!response.ok) throw new Error(result?.error ?? 'Activation failed.');
       if (result?.ok !== true || result.simulation !== true)
         throw new Error('The response could not be verified. Retry with the same request.');
-      clearSessionAttempt(attemptKey); setAttemptPresent(false); fingerprint.current = null;
+      clearSessionAttempt(attemptKey); setAttemptRevision((revision) => revision + 1); fingerprint.current = null;
       setMessage('Simulated Managed Maker route activated for local staging.'); router.refresh();
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Activation failed.'); }
     finally { setBusy(false); }
@@ -73,7 +77,8 @@ export function ManagedMakerActivationForm({ sellerId }: { sellerId: string }) {
     {attemptPresent ? <p>A prior activation may have succeeded. Retry only identical details, or check the seller record before starting a new attempt.</p> : null}
     {attemptPresent ? <Button type="button" variant="outline" disabled={busy}
       onClick={() => { if (window.confirm('This activation may already have succeeded. Check the seller record first. Start a new request reference?')) {
-        clearSessionAttempt(attemptKey); setAttemptPresent(false); fingerprint.current = null; setMessage('');
+        clearSessionAttempt(attemptKey); setAttemptRevision((revision) => revision + 1); fingerprint.current = null; setMessage('');
+        if (catalog.status === 'stale') catalog.refresh();
       } }}>Start a new attempt</Button> : null}
     <Button type="submit" disabled={busy || !catalog.canSubmit}>{busy?'Activating…':'Activate simulated route'}</Button>
     <output className="block" aria-live="polite">{message}</output>

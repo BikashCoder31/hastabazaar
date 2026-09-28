@@ -18,6 +18,7 @@ import { parseCraftExperience, parseMakerSocialLinks } from '@/lib/sellers/parti
 import { buildFormAnswerInsert } from './form-answers';
 import type { FormAnswerSnapshot } from '@/lib/forms/types';
 import { digestFormRequest, formRequestReplay } from '@/lib/forms/submission';
+import { staffMutationGuard } from './staff-mutation-guard';
 
 type SellerFormLink = { requestId: string; versionId: string; answers: FormAnswerSnapshot; digest?: string };
 
@@ -854,9 +855,33 @@ export async function reviewSellerApplication(
     now: number;
     payoutAccountReference?: string;
     settlementTermsReference?: string;
+    form?: { versionId: string; answers: FormAnswerSnapshot };
   },
 ): Promise<{ from: string; to: string }> {
   const transition = reviewTransitions[options.action];
+  if (!transition && options.action !== 'approve_for_activation')
+    throw new SellerReviewConflictError('Choose a supported review action.');
+  const replayTransition = transition ?? { from: 'under_review', to: 'approved_for_activation',
+    auditAction: 'seller.application.approved_for_activation' };
+  const authority = await staffMutationGuard(database, options.actorId,
+    'seller.application.review', SellerReviewConflictError);
+  const requestId = options.requestId ?? crypto.randomUUID();
+  const payoutAccountReference = options.payoutAccountReference?.trim() ?? '';
+  const settlementTermsReference = options.settlementTermsReference?.trim() ?? '';
+  const catalogDigest = options.form ? await digestFormRequest({ sellerId: options.sellerId,
+    actorId: options.actorId, action: options.action, reason: options.reason,
+    payoutAccountReference, settlementTermsReference, versionId: options.form.versionId,
+    answers: options.form.answers }) : null;
+  if (options.form) {
+    try {
+      const replay = await formRequestReplay(database, { formId: 'staff.seller-review-action',
+        requestId, actorId: options.actorId, action: replayTransition.auditAction,
+        subjectId: options.sellerId, digest: catalogDigest! });
+      if (replay) return { from: replayTransition.from, to: replayTransition.to };
+    } catch {
+      throw new SellerReviewConflictError('This request reference was already used for different review details.');
+    }
+  }
   const current = await database
     .prepare(
       `SELECT user_id AS userId, status,
@@ -901,7 +926,6 @@ export async function reviewSellerApplication(
     if (current.participationRoute !== 'managed_maker' || current.status !== 'under_review' || current.applicationStage !== 'under_review') {
       throw new SellerReviewConflictError('Only a Managed Maker under review can be approved for activation.');
     }
-    const requestId = options.requestId ?? crypto.randomUUID();
     const statements: D1PreparedStatement[] = [
       database.prepare(
         `UPDATE seller_participation_profiles SET application_stage = 'approved_for_activation',
@@ -923,9 +947,13 @@ export async function reviewSellerApplication(
       ).bind(
         crypto.randomUUID(), options.actorId, options.sellerId, options.reason,
         JSON.stringify({ applicationStage: 'under_review' }),
-        JSON.stringify({ applicationStage: 'approved_for_activation' }),
+        JSON.stringify({ applicationStage: 'approved_for_activation', ...(catalogDigest ? { catalogDigest } : {}) }),
         requestId, options.now,
       ),
+      ...(options.form ? [buildFormAnswerInsert(database, { formId: 'staff.seller-review-action',
+        requestId, versionId: options.form.versionId, subjectType: 'seller',
+        subjectId: options.sellerId, actorId: options.actorId, answers: options.form.answers,
+        now: options.now })] : []),
       ...await businessNotificationStatements(database, {
         eventId: requestId,
         sourceType: 'seller_application',
@@ -936,8 +964,24 @@ export async function reviewSellerApplication(
         now: options.now,
         kind: 'result',
       }),
+      ...authority.statements,
     ];
-    const results = await database.batch(statements);
+    const managedGuardId = crypto.randomUUID();
+    statements.splice(2, 0,
+      database.prepare(`INSERT INTO operation_transaction_guards(id,valid)
+        SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM seller_profiles WHERE id=?
+          AND review_request_id=? AND status='under_review')
+          AND EXISTS(SELECT 1 FROM seller_participation_profiles WHERE seller_id=?
+            AND application_stage='approved_for_activation') THEN 1 ELSE 0 END`)
+        .bind(managedGuardId, options.sellerId, requestId, options.sellerId),
+      database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(managedGuardId));
+    let results;
+    try { results = await database.batch(statements); }
+    catch (error) {
+      if (error instanceof Error && error.message.includes('operation_transaction_guards'))
+        throw new SellerReviewConflictError('The application changed while it was being reviewed. Refresh and try again.');
+      throw error;
+    }
     if ((results[0].meta.changes ?? 0) !== 1 || (results[1].meta.changes ?? 0) !== 1) {
       throw new SellerReviewConflictError('The application changed while it was being reviewed. Refresh and try again.');
     }
@@ -947,8 +991,6 @@ export async function reviewSellerApplication(
   if (current.participationRoute === 'managed_maker' && options.action === 'approve') {
     throw new SellerReviewConflictError('Managed Makers require approval for activation; Registered Seller approval cannot be used.');
   }
-  const payoutAccountReference = options.payoutAccountReference?.trim() ?? '';
-  const settlementTermsReference = options.settlementTermsReference?.trim() ?? '';
   if (options.action === 'approve') {
     if (
       current.sellerAgreementVersion !== SELLER_AGREEMENT_VERSION ||
@@ -979,8 +1021,8 @@ export async function reviewSellerApplication(
   const nextJson = JSON.stringify({
     status: transition.to,
     reviewNote: options.reason,
+    ...(catalogDigest ? { catalogDigest } : {}),
   });
-  const requestId = options.requestId ?? crypto.randomUUID();
   const statements: D1PreparedStatement[] = [
     database
       .prepare(
@@ -1065,6 +1107,14 @@ export async function reviewSellerApplication(
       ),
   ];
 
+  const reviewGuardId = crypto.randomUUID();
+  statements.splice(1, 0,
+    database.prepare(`INSERT INTO operation_transaction_guards(id,valid)
+      SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM seller_profiles WHERE id=?
+        AND review_request_id=? AND status=?) THEN 1 ELSE 0 END`)
+      .bind(reviewGuardId, options.sellerId, requestId, transition.to),
+    database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(reviewGuardId));
+
   if (options.action === 'approve') {
     statements.push(
       database
@@ -1095,7 +1145,19 @@ export async function reviewSellerApplication(
   }
 
   if(options.action!=='start_review')statements.push(...await businessNotificationStatements(database,{eventId:requestId,sourceType:'seller_application',sourceId:options.sellerId,status:transition.to,reviewRequestId:requestId,actorId:options.actorId,now:options.now,kind:'result'}));
-  const results = await database.batch(statements);
+  if (options.form) statements.push(buildFormAnswerInsert(database, {
+    formId: 'staff.seller-review-action', requestId, versionId: options.form.versionId,
+    subjectType: 'seller', subjectId: options.sellerId, actorId: options.actorId,
+    answers: options.form.answers, now: options.now,
+  }));
+  statements.push(...authority.statements);
+  let results;
+  try { results = await database.batch(statements); }
+  catch (error) {
+    if (error instanceof Error && error.message.includes('operation_transaction_guards'))
+      throw new SellerReviewConflictError('The application changed while it was being reviewed. Refresh and try again.');
+    throw error;
+  }
   if ((results[0].meta.changes ?? 0) !== 1) {
     throw new SellerReviewConflictError(
       'The application changed while it was being reviewed. Refresh and try again.',

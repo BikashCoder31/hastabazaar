@@ -3,6 +3,22 @@ import { authorizeFormAnswerRead, currentStaffGrant, type FormAnswerViewer } fro
 import type { Permission } from '../marketplace/permissions';
 
 export const STAFF_HISTORY_KINDS = [
+  { kind: 'return-case-action', label: 'Return case decisions', formId: 'staff.return-case-action', subjectType: 'return_request', permission: 'refund.approve.standard' },
+  { kind: 'complaint-case-action', label: 'Complaint case decisions', formId: 'staff.complaint-case-action', subjectType: 'complaint', permission: 'support.manage' },
+  { kind: 'cancellation-approved', label: 'Cancellation approvals', formId: 'staff.cancellation-review', subjectType: 'order_cancellation_event', permission: 'order.manage' },
+  { kind: 'cancellation-rejected', label: 'Cancellation rejections', formId: 'staff.cancellation-review', subjectType: 'order_cancellation_review', permission: 'order.manage' },
+  { kind: 'seller-review-action', label: 'Seller application decisions', formId: 'staff.seller-review-action', subjectType: 'seller', permission: 'seller.application.review' },
+  { kind: 'homepage-hero-settings', label: 'Homepage hero settings', formId: 'staff.homepage-hero-manager', subjectType: 'business_setting', permission: 'business_settings.approve', superAdminOnly: true },
+  { kind: 'homepage-occasion-settings', label: 'Homepage occasion settings', formId: 'staff.homepage-occasion-manager', subjectType: 'business_setting', permission: 'business_settings.approve', superAdminOnly: true },
+  { kind: 'business-settings', label: 'Business settings', formId: 'staff.business-settings-manager', subjectType: 'business_setting', permission: 'business_settings.approve', superAdminOnly: true },
+  { kind: 'homepage-visibility', label: 'Homepage visibility decisions', formId: 'staff.homepage-visibility', subjectType: 'product', permission: 'admin.invite', superAdminOnly: true },
+  { kind: 'order-fulfillment', label: 'Order fulfillment', formId: 'staff.order-fulfillment', subjectType: 'order', permission: 'order.manage' },
+  { kind: 'order-fulfillment-cancellation', label: 'Fulfillment cancellations', formId: 'staff.order-fulfillment', subjectType: 'order_cancellation_event', permission: 'order.manage' },
+  { kind: 'order-fulfillment-cancellation-review', label: 'Fulfillment cancellation requests', formId: 'staff.order-fulfillment', subjectType: 'order_cancellation_review', permission: 'order.manage' },
+  { kind: 'review-moderation', label: 'Product review moderation', formId: 'staff.review-moderation', subjectType: 'product_review', permission: 'product.review' },
+  { kind: 'reply-moderation', label: 'Seller reply moderation', formId: 'staff.review-moderation', subjectType: 'review_reply', permission: 'product.review' },
+  { kind: 'seller-governance', label: 'Seller restrictions', formId: 'staff.seller-governance', subjectType: 'seller', permission: 'seller.suspend', superAdminOnly: true },
+  { kind: 'product-review', label: 'Product review decisions', formId: 'staff.product-review', subjectType: 'product', permission: 'product.review', anyPermission: 'product.publish' },
   { kind: 'delivery-rate', label: 'Delivery rate changes', formId: 'staff.delivery-rate', subjectType: 'delivery_rate_version', permission: 'admin.invite', superAdminOnly: true },
   { kind: 'referral-settings', label: 'Referral offer changes', formId: 'staff.referral-settings', subjectType: 'referral_campaign', permission: 'admin.invite', superAdminOnly: true },
   { kind: 'staff-invitation', label: 'Staff invitations', formId: 'staff.staff-invitation', subjectType: 'staff_invitation', permission: 'admin.invite', superAdminOnly: true },
@@ -47,7 +63,8 @@ async function mayList(db: D1Database, viewer: FormAnswerViewer, rule: StaffHist
     WHERE u.id=? AND u.status='active' AND r.role=? LIMIT 1`)
     .bind(viewer.id, viewer.role).first();
   if (!active || ('superAdminOnly' in rule && rule.superAdminOnly && viewer.role !== 'super_admin')) return false;
-  return currentStaffGrant(db, viewer, rule.permission as Permission);
+  return await currentStaffGrant(db, viewer, rule.permission as Permission) ||
+    ('anyPermission' in rule && await currentStaffGrant(db, viewer, rule.anyPermission as Permission));
 }
 
 export async function availableStaffHistoryKinds(db: D1Database,

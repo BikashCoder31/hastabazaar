@@ -8,10 +8,10 @@ import { collectFormSites, scanFormSites } from './helpers/form-policy';
 
 const root = resolve(import.meta.dirname, '..');
 
-void test('the reviewed source inventory contains 70 form elements in 52 files', async () => {
+void test('the reviewed source inventory contains 83 form elements in 65 files', async () => {
   const sites = await collectFormSites(root);
-  assert.equal(sites.length, 70);
-  assert.equal(new Set(sites.map((site) => site.path)).size, 52);
+  assert.equal(sites.length, 83);
+  assert.equal(new Set(sites.map((site) => site.path)).size, 65);
   assert.deepEqual(await scanFormSites(root), []);
 });
 
@@ -39,14 +39,13 @@ void test('a new JSX form cannot inherit a pre-existing exception', async () => 
   }
 });
 
-void test('replacing a frozen form body while preserving its opening tag is rejected', async () => {
+void test('a formerly frozen path cannot hide a new unregistered form', async () => {
   const fixture = await mkdtemp(join(tmpdir(), 'form-policy-'));
   try {
     const path = 'components/seller/seller-profile-form.tsx';
     const original = await readFile(join(root, path), 'utf8');
-    assert.match(original, /<form\s+onSubmit=\{submit\}/);
-    assert.match(original, /name="tradingName"/);
-    const replacement = original.replace('name="tradingName"', 'name="newUnapprovedField"');
+    assert.match(original, /data-form-id="seller.profile"/);
+    const replacement = original + '\nexport const Unapproved = () => <form><input name="unapproved" /></form>;';
     await mkdir(join(fixture, 'components', 'seller'), { recursive: true });
     await writeFile(join(fixture, path), replacement);
     const violations = await scanFormSites(fixture);

@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 import {
   RECEIPT_COOKIE,
@@ -14,7 +15,7 @@ import {
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import { getCustomerUser } from '@/lib/auth/customer';
-import { readBoundedBody, BodyTooLargeError } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
@@ -42,7 +43,7 @@ export async function POST(
     });
     if (!rateLimit.allowed) return rateLimitJson(rateLimit);
     const { orderNumber } = await context.params;
-    const body = JSON.parse(new TextDecoder().decode(await readBoundedBody(request, 131_072))) as Record<string, unknown>;
+    const body = await readBoundedJsonObject(request) as Record<string, unknown>;
     if (!body || typeof body !== 'object' || Array.isArray(body) ||
       !Number.isSafeInteger(body.formVersion) || !Array.isArray(body.customAnswers))
       return json({ error: 'Form version and answers are required.' }, 400);

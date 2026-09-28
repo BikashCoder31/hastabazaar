@@ -25,7 +25,7 @@ export function GiftCardForm({ issue = false }: { issue?: boolean }) {
       id: string;
       amountPaisa: number;
     } | null>(null);
-  async function submit(e: React.FormEvent<HTMLFormElement>) {
+  async function submit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     if (busy) return;
     setBusy(true);
@@ -139,7 +139,7 @@ export function GiftCardForm({ issue = false }: { issue?: boolean }) {
             />
           </label>
           {published.config ? <ConfiguredFields config={published.config} baseKeys={['amount', 'code']} /> : null}
-          {!published.canSubmit ? <p role="status" className="text-sm">{published.message || 'Loading form…'}</p> : null}
+          {!published.canSubmit ? <output className="text-sm">{published.message || 'Loading form…'}</output> : null}
           <button
             disabled={busy || !published.canSubmit}
             className="rounded-lg bg-primary px-5 py-3 text-primary-foreground disabled:opacity-50"

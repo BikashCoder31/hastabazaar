@@ -1,8 +1,9 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
-import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { addFixedSupplyAdjustment, decideFixedSupplyRecord, FixedSupplyError, prepareFixedSupplierPayment, transitionFixedSupplierPayment } from '@/lib/managed-commerce/fixed-supply';
 import { reviewRouteTransition, RouteTransitionError } from '@/lib/managed-commerce/route-transition';
@@ -21,7 +22,7 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
  if(!isTrustedMutationRequest(request))return reply({error:'Cross-site requests are not allowed.'},403);
  try{
   let raw:unknown;
-  try{raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await readBoundedBody(request,24*1024)));}
+  try{raw=await readBoundedJsonObject(request);}
   catch(error){if(error instanceof BodyTooLargeError)throw error;return reply({error:'Invalid JSON request.'},400);}
   if(!raw||typeof raw!=='object'||Array.isArray(raw))return reply({error:'Invalid program-review request.'},400);
   const body=raw as Record<string,unknown>;

@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
@@ -6,7 +7,7 @@ import {
   performGovernanceAction,
 } from '@/lib/db/repositories/operations';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
@@ -37,8 +38,7 @@ export async function POST(request: Request) {
       customAnswers?: unknown;
     };
     try {
-      body = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(
-        await readBoundedBody(request, 64 * 1024))) as typeof body;
+      body = await readBoundedJsonObject(request) as typeof body;
     } catch (error) {
       if (error instanceof BodyTooLargeError) throw error;
       return Response.json({ error: 'Valid JSON is required.' }, { status: 400 });
@@ -80,6 +80,7 @@ export async function POST(request: Request) {
     );
     return Response.json({ ok: true });
   } catch (error) {
+    if (error instanceof SyntaxError) return Response.json({ error: 'Invalid JSON request.' }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
     if (error instanceof BodyTooLargeError)
       return Response.json({ error: 'Governance request is too large.' }, { status: 413 });
     if (error instanceof StaffAuthorizationError)

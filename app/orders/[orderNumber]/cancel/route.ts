@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 import {
   RECEIPT_COOKIE,
@@ -7,7 +8,10 @@ import {
 import { requireDatabase } from '@/lib/db/d1';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { getCustomerUser } from '@/lib/auth/customer';
-import { readBoundedBody, BodyTooLargeError } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
+import { isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
 import {
   cancellationChoices,
   cancellationPreview,
@@ -52,21 +56,37 @@ export async function POST(
 ) {
   if (!isTrustedMutationRequest(request))
     return json({ error: 'Request origin was not accepted.' }, 403);
+  let db: D1Database | null = null;
+  let validatedVersionId: string | undefined;
   try {
     const a = await access(request, context),
-      db = requireDatabase(env as unknown as { DB?: D1Database }),
-      body = JSON.parse(
-        new TextDecoder().decode(await readBoundedBody(request, 4096)),
-      ) as Record<string, unknown>;
+      database = requireDatabase(env as unknown as { DB?: D1Database }),
+      body = await readBoundedJsonObject(request) as unknown;
+    db = database;
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+      Object.keys(body).some((key) => !['action','sellerIds','fingerprint','requestId',
+        'reason','formVersion','customAnswers'].includes(key)))
+      return json({ error: 'Invalid cancellation request.' }, 400);
+    const input = body as Record<string, unknown>;
     if (
-      !Array.isArray(body.sellerIds) ||
-      body.sellerIds.length > 50 ||
-      body.sellerIds.some((v) => typeof v !== 'string')
+      !Array.isArray(input.sellerIds) ||
+      input.sellerIds.length > 50 ||
+      input.sellerIds.some((v) => typeof v !== 'string')
     )
       return json({ error: 'Choose seller parcels.' }, 400);
-    const sellerIds = body.sellerIds as string[];
-    if (body.action === 'preview') {
-      const p = await cancellationPreview(db, a, sellerIds);
+    const sellerIds = input.sellerIds as string[];
+    if (!['preview', 'confirm'].includes(String(input.action)) ||
+      !Number.isSafeInteger(input.formVersion) || !Array.isArray(input.customAnswers))
+      return json({ error: 'Review the current cancellation form.' }, 400);
+    const form = await validateSellerFormSubmission(database, 'commerce.order-cancellation',
+      input.formVersion, input.customAnswers,
+      input.action === 'confirm' && typeof input.requestId === 'string' ? input.requestId : undefined);
+    validatedVersionId = form.versionId;
+    if (input.action === 'preview') {
+      if (input.requestId !== undefined || input.fingerprint !== undefined ||
+        input.reason !== undefined && typeof input.reason !== 'string')
+        return json({ error: 'Preview only the current selection.' }, 400);
+      const p = await cancellationPreview(database, a, sellerIds);
       return json({
         fingerprint: p.fingerprint,
         reviewRequired: p.reviewRequired,
@@ -79,27 +99,37 @@ export async function POST(
       });
     }
     if (
-      body.action !== 'confirm' ||
-      typeof body.fingerprint !== 'string' ||
-      typeof body.requestId !== 'string' ||
-      typeof body.reason !== 'string'
+      input.action !== 'confirm' ||
+      typeof input.fingerprint !== 'string' ||
+      typeof input.requestId !== 'string' ||
+      typeof input.reason !== 'string'
     )
       return json(
         { error: 'Review the current amounts before confirming.' },
         400,
       );
     return json(
-      await cancelSelectedParcels(db, a, {
+      await cancelSelectedParcels(database, a, {
         sellerIds,
-        fingerprint: body.fingerprint,
-        requestId: body.requestId,
-        note: body.reason,
+        fingerprint: input.fingerprint,
+        requestId: input.requestId,
+        note: input.reason,
         now: Date.now(),
+        form: { formId: 'commerce.order-cancellation', requestId: input.requestId,
+          versionId: form.versionId, answers: form.answers },
       }),
     );
   } catch (error) {
     if (error instanceof BodyTooLargeError)
       return json({ error: 'Request too large.' }, 413);
+    if (error instanceof SyntaxError) return json({ error: 'Invalid cancellation request.' }, 400);
+    if (error instanceof FormValidationError)
+      return json({ error: error.message, fieldId: error.fieldId }, 400);
+    if (error instanceof FormRuntimeError)
+      return json({ error: error.message, code: error.code }, error.code === 'stale_version' ? 409 : 503);
+    if (db && validatedVersionId && await isValidatedFormVersionStale(db,
+      'commerce.order-cancellation', validatedVersionId))
+      return json({ error: 'This form changed. Refresh it and review your answers.', code: 'stale_version' }, 409);
     return json(
       {
         error:

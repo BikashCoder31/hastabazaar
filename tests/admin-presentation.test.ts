@@ -155,9 +155,10 @@ void test('homepage controls present Hero slides first with every approved edita
     page,
     /requireStaffPage\('\/admin\/homepage', 'business_settings\.view'\)/,
   );
-  assert.ok(
-    page.indexOf('<HomepageHeroManager') < page.indexOf('Search products'),
-  );
+  const heroPosition = page.indexOf('<HomepageHeroManager');
+  const searchPosition = page.indexOf('data-form-id="staff.homepage-filter"');
+  assert.ok(heroPosition >= 0 && searchPosition >= 0, 'Both hero editor and registered product search must exist.');
+  assert.ok(heroPosition < searchPosition, 'Hero editor stays before product search regardless of configured label.');
   const helperFields = new Set([
     'eyebrow',
     'headingLead',

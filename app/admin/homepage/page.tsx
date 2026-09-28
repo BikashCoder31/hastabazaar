@@ -1,3 +1,4 @@
+import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import { env } from 'cloudflare:workers';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -88,6 +89,9 @@ export default async function HomepageProductControlsPage({
 
   return (
     <div className="space-y-7">
+      <StaffFormHistoryLinks entries={[{kind:'homepage-hero-settings',label:'Homepage hero answers'},
+        {kind:'homepage-occasion-settings',label:'Homepage occasion answers'},
+        {kind:'homepage-visibility',label:'Product visibility answers'}]} />
       <HomepageHeroManager
         initialSlides={hero.value}
         initialMedia={heroMedia}

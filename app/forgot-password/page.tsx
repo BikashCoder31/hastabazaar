@@ -36,6 +36,7 @@ export default async function ForgotPassword({
           </p>
         ) : null}
         <form
+          data-form-id="identity.password-reset-request"
           action="/api/auth/password-reset/request"
           method="post"
           className="mt-6 space-y-5"

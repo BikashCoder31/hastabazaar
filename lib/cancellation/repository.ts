@@ -5,6 +5,7 @@ import { allocateCancellationItems, calculateCancellation } from './accounting';
 import {DELIVERY_PRICING_POLICY,readDeliveryPricingSnapshot} from '../checkout/delivery-rates';
 import { staffMutationGuard } from '../db/repositories/staff-mutation-guard';
 import { buildFormAnswerInsert } from '../db/repositories/form-answers';
+import { digestFormRequest } from '../forms/submission';
 import type { FormAnswerSnapshot } from '../forms/types';
 export class CancellationConflictError extends Error {}
 export interface CancellationAccess {
@@ -13,6 +14,8 @@ export interface CancellationAccess {
   receiptTokenHash?: string | null;
   actorId?: string;
 }
+type CancellationForm = { formId: 'commerce.order-cancellation' | 'staff.cancellation-review' |
+  'staff.order-fulfillment'; requestId: string; versionId: string; answers: FormAnswerSnapshot };
 interface Order {
   id: string;
   status: string;
@@ -262,6 +265,7 @@ export async function cancelSelectedParcels(
     note: string;
     now: number;
     reviewId?: string;
+    form?: CancellationForm;
     parcelContext?: { jobId: string; payload: string;
       form?: {requestId:string;versionId:string;answers:FormAnswerSnapshot} };
   },
@@ -277,7 +281,53 @@ export async function cancelSelectedParcels(
   const parcelForm=o.parcelContext?.form;
   if(parcelForm && (!a.actorId || parcelForm.requestId!==o.requestId))
     throw new CancellationConflictError('Configured parcel cancellation requires its staff request.');
+  const form = o.form;
+  if (form && (parcelForm || form.requestId !== o.requestId ||
+    form.answers.formId !== form.formId ||
+    (form.formId === 'commerce.order-cancellation' && (a.actorId || o.reviewId)) ||
+    (form.formId === 'staff.cancellation-review' && (!a.actorId || !o.reviewId ||
+      o.requestId !== `review:${o.reviewId}`)) ||
+    (form.formId === 'staff.order-fulfillment' && (!a.actorId || o.reviewId || o.parcelContext))))
+    throw new CancellationConflictError('Configured cancellation request does not match its action.');
   const authorizedSource = await source(db, a);
+  const actorId = a.actorId ?? (authorizedSource.order.customerId === a.customerId ? a.customerId : null) ?? null;
+  const selectedIds = [...new Set(o.sellerIds)].sort();
+  const formAction = o.reviewId ? 'approve' : 'confirm';
+  const formDigest = form ? await digestFormRequest({ formId: form.formId,
+    action: formAction, orderId: authorizedSource.order.id, actorId, selectedIds,
+    note: o.note.trim(), fingerprint: o.fingerprint, reviewId: o.reviewId ?? null,
+    versionId: form.versionId, answers: form.answers }) : null;
+  const catalogAuditId = `${o.requestId}:catalog`;
+  const catalogAudit = () => db.prepare(`INSERT INTO audit_logs
+    (id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at)
+    VALUES (?,?,'cancellation.form_submitted','order',?,?,?,?,?)`)
+    .bind(crypto.randomUUID(), actorId, authorizedSource.order.id, o.note,
+      JSON.stringify({ catalogDigest: formDigest, formId: form?.formId,
+        action: formAction, fingerprint: o.fingerprint }),
+      catalogAuditId, o.now);
+  async function assertFormReplay(subjectType: 'order_cancellation_event' | 'order_cancellation_review') {
+    const audit = await db.prepare(`SELECT actor_id AS actorId,subject_id AS subjectId,
+      next_json AS nextJson FROM audit_logs WHERE request_id=? AND action='cancellation.form_submitted'
+      AND subject_type='order' LIMIT 1`).bind(catalogAuditId)
+      .first<{ actorId: string | null; subjectId: string; nextJson: string | null }>();
+    if (!form) {
+      if (audit) throw new CancellationConflictError('Request reference already used.');
+      return;
+    }
+    const answer = await db.prepare(`SELECT form_id AS formId,config_version_id AS versionId,
+      subject_type AS subjectType,subject_id AS subjectId,actor_id AS actorId
+      FROM form_answer_sets WHERE request_id=? AND form_id=? LIMIT 1`)
+      .bind(o.requestId, form.formId).first<{ formId: string; versionId: string;
+        subjectType: string; subjectId: string; actorId: string | null }>();
+    let saved: { catalogDigest?: string; formId?: string; action?: string } | null = null;
+    try { saved = JSON.parse(audit?.nextJson ?? 'null'); } catch { /* malformed audit conflicts */ }
+    if (!audit || audit.actorId !== actorId || audit.subjectId !== authorizedSource.order.id ||
+      saved?.catalogDigest !== formDigest || saved?.formId !== form.formId ||
+      saved?.action !== formAction || answer?.versionId !== form.versionId ||
+      answer?.subjectType !== subjectType || answer?.subjectId !== o.requestId ||
+      answer?.actorId !== actorId)
+      throw new CancellationConflictError('Request reference already used.');
+  }
   const existing = await db
     .prepare(
       'SELECT order_id AS orderId,actor_id AS actorId,seller_ids_json AS sellers,note FROM order_cancellation_events WHERE id=?',
@@ -292,7 +342,7 @@ export async function cancelSelectedParcels(
   if (existing) {
     if (
       existing.orderId !== authorizedSource.order.id ||
-      existing.actorId !== (a.actorId ?? a.customerId ?? null) ||
+      existing.actorId !== actorId ||
       existing.sellers !== JSON.stringify([...new Set(o.sellerIds)].sort()) ||
       existing.note !== o.note
     )
@@ -303,6 +353,7 @@ export async function cancelSelectedParcels(
       if(event?.actorId!==a.actorId||event?.jobId!==o.parcelContext?.jobId||event?.payload!==o.parcelContext?.payload)
         throw new CancellationConflictError('Request reference already used.');
     }
+    await assertFormReplay('order_cancellation_event');
     return { status: 'cancelled', id: o.requestId };
   }
   const priorReview = await db
@@ -319,7 +370,7 @@ export async function cancelSelectedParcels(
   if (priorReview) {
     if (
       priorReview.orderId !== authorizedSource.order.id ||
-      priorReview.actorId !== (a.customerId ?? a.actorId ?? null) ||
+      priorReview.actorId !== actorId ||
       priorReview.sellers !==
         JSON.stringify([...new Set(o.sellerIds)].sort()) ||
       priorReview.note !== o.note.trim()
@@ -331,6 +382,7 @@ export async function cancelSelectedParcels(
       if(audit?.nextJson!==JSON.stringify({jobId:o.parcelContext?.jobId,payload:o.parcelContext?.payload}))
         throw new CancellationConflictError('Request reference already used.');
     }
+    await assertFormReplay('order_cancellation_review');
     return { status: 'review_requested', id: o.requestId };
   }
   const p = await cancellationPreview(db, a, o.sellerIds);
@@ -350,6 +402,10 @@ export async function cancelSelectedParcels(
       : null;
     await db.batch([
       ...(reviewAuthority?.statements ?? []),
+      ...(!a.actorId ? guard(db,
+        'EXISTS(SELECT 1 FROM orders WHERE id=? AND ((? IS NOT NULL AND customer_id=?) OR (? IS NOT NULL AND receipt_token_hash=?)))',
+        [p.order.id, a.customerId ?? null, a.customerId ?? null,
+          a.receiptTokenHash ?? null, a.receiptTokenHash ?? null]) : []),
       ...p.items
         .filter((i) => p.selected.includes(i.sellerId))
         .flatMap((i) =>
@@ -381,7 +437,7 @@ export async function cancelSelectedParcels(
           p.order.id,
           JSON.stringify(p.selected),
           o.note.trim(),
-          a.customerId ?? a.actorId ?? null,
+          actorId,
           o.now,
         ),
       db
@@ -390,7 +446,7 @@ export async function cancelSelectedParcels(
         )
         .bind(
           crypto.randomUUID(),
-          a.customerId ?? a.actorId ?? null,
+          actorId,
           p.order.id,
           o.note,
           parcelForm?JSON.stringify({jobId:o.parcelContext?.jobId,payload:o.parcelContext?.payload}):null,
@@ -400,6 +456,10 @@ export async function cancelSelectedParcels(
       ...(parcelForm?[buildFormAnswerInsert(db,{formId:'staff.parcel-control',requestId:o.requestId,
         versionId:parcelForm.versionId,subjectType:'shipping_job',subjectId:o.parcelContext!.jobId,
         actorId:a.actorId!,answers:parcelForm.answers,now:o.now})]:[]),
+      ...(form ? [catalogAudit(), buildFormAnswerInsert(db, { formId: form.formId,
+        requestId: o.requestId, versionId: form.versionId,
+        subjectType: 'order_cancellation_review', subjectId: o.requestId,
+        actorId, answers: form.answers, now: o.now })] : []),
       ...(await cancellationNotifications(db, p.order.id, id, true, o.now)),
     ]);
     return { status: 'review_requested', id };
@@ -472,6 +532,8 @@ export async function cancelSelectedParcels(
           "UPDATE order_cancellation_reviews SET status='approved',reviewed_by=?,review_note=?,reviewed_at=? WHERE id=?",
         )
         .bind(a.actorId, o.note, o.now, o.reviewId),
+      ...guard(db, "EXISTS(SELECT 1 FROM order_cancellation_reviews WHERE id=? AND status='approved' AND reviewed_by=? AND reviewed_at=?)",
+        [o.reviewId, a.actorId, o.now]),
     );
   }
   for (const i of p.items)
@@ -547,7 +609,7 @@ export async function cancelSelectedParcels(
           i.id,
           i.status,
           o.note,
-          a.actorId ?? a.customerId ?? null,
+          actorId,
           o.requestId + ':' + i.id,
           o.now,
         ),
@@ -605,7 +667,7 @@ export async function cancelSelectedParcels(
       .bind(
         o.requestId,
         p.order.id,
-        a.actorId ?? a.customerId ?? null,
+        actorId,
         p.order.version + 1,
         JSON.stringify(p.selected),
         JSON.stringify(p.allocations),
@@ -652,7 +714,7 @@ export async function cancelSelectedParcels(
         p.order.status,
         status,
         o.note,
-        a.actorId ?? a.customerId ?? null,
+        actorId,
         o.requestId,
         o.now,
       ),
@@ -662,7 +724,7 @@ export async function cancelSelectedParcels(
       )
       .bind(
         crypto.randomUUID(),
-        a.actorId ?? a.customerId ?? null,
+        actorId,
         p.order.id,
         o.note,
         JSON.stringify(p.previous),
@@ -734,6 +796,10 @@ export async function cancelSelectedParcels(
   if(parcelForm) statements.push(buildFormAnswerInsert(db,{formId:'staff.parcel-control',requestId:o.requestId,
     versionId:parcelForm.versionId,subjectType:'shipping_job',subjectId:o.parcelContext!.jobId,
     actorId:a.actorId!,answers:parcelForm.answers,now:o.now}));
+  if (form) statements.push(catalogAudit(), buildFormAnswerInsert(db, {
+    formId: form.formId, requestId: o.requestId, versionId: form.versionId,
+    subjectType: 'order_cancellation_event', subjectId: o.requestId,
+    actorId, answers: form.answers, now: o.now }));
   if (authority) statements.push(...authority.statements);
   try {
     await db.batch(statements);
@@ -746,7 +812,8 @@ export async function cancelSelectedParcels(
 }
 export async function rejectCancellationReview(
   db: D1Database,
-  o: { id: string; actorId: string; note: string; now: number },
+  o: { id: string; actorId: string; note: string; fingerprint?: string; now: number;
+    form?: CancellationForm },
 ) {
   if (o.note.trim().length < 8 || o.note.length > 300)
     throw new CancellationConflictError(
@@ -758,13 +825,42 @@ export async function rejectCancellationReview(
     'order.manage',
     CancellationConflictError,
   );
+  const requestId = `review-reject:${o.id}`;
+  if (o.form && (o.form.formId !== 'staff.cancellation-review' ||
+    o.form.requestId !== requestId || o.form.answers.formId !== o.form.formId))
+    throw new CancellationConflictError('Configured rejection request does not match its review.');
   const row = await db
     .prepare(
-      "SELECT order_id AS orderId FROM order_cancellation_reviews WHERE id=? AND status='pending'",
+      'SELECT order_id AS orderId,status,reviewed_by AS reviewedBy,review_note AS reviewNote FROM order_cancellation_reviews WHERE id=?',
     )
     .bind(o.id)
-    .first<{ orderId: string }>();
+    .first<{ orderId: string; status: string; reviewedBy: string | null; reviewNote: string | null }>();
   if (!row) throw new CancellationConflictError('Review is no longer pending.');
+  const formDigest = o.form ? await digestFormRequest({ formId: o.form.formId,
+    action: 'reject', reviewId: o.id, orderId: row.orderId, actorId: o.actorId,
+    note: o.note.trim(), fingerprint: o.fingerprint ?? null,
+    versionId: o.form.versionId, answers: o.form.answers }) : null;
+  if (row.status === 'rejected' && o.form) {
+    const audit = await db.prepare(`SELECT actor_id AS actorId,subject_id AS subjectId,
+      next_json AS nextJson FROM audit_logs WHERE request_id=?
+      AND action='cancellation.review_rejected' AND subject_type='order' LIMIT 1`)
+      .bind(requestId).first<{ actorId: string; subjectId: string; nextJson: string | null }>();
+    const answer = await db.prepare(`SELECT config_version_id AS versionId,subject_type AS subjectType,
+      subject_id AS subjectId,actor_id AS actorId FROM form_answer_sets
+      WHERE form_id='staff.cancellation-review' AND request_id=? LIMIT 1`)
+      .bind(requestId).first<{ versionId: string; subjectType: string;
+        subjectId: string; actorId: string }>();
+    let savedDigest: unknown;
+    try { savedDigest = JSON.parse(audit?.nextJson ?? '').catalogDigest; } catch { /* conflict below */ }
+    if (row.reviewedBy !== o.actorId || row.reviewNote !== o.note ||
+      audit?.actorId !== o.actorId || audit?.subjectId !== row.orderId ||
+      savedDigest !== formDigest || answer?.versionId !== o.form.versionId ||
+      answer?.subjectType !== 'order_cancellation_review' || answer?.subjectId !== o.id ||
+      answer?.actorId !== o.actorId)
+      throw new CancellationConflictError('Request reference already used.');
+    return;
+  }
+  if (row.status !== 'pending') throw new CancellationConflictError('Review is no longer pending.');
   await db.batch([
     db
       .prepare('UPDATE orders SET updated_at=updated_at WHERE id=?')
@@ -776,14 +872,21 @@ export async function rejectCancellationReview(
     ),
     db
       .prepare(
-        "UPDATE order_cancellation_reviews SET status='rejected',reviewed_by=?,review_note=?,reviewed_at=? WHERE id=?",
+        "UPDATE order_cancellation_reviews SET status='rejected',reviewed_by=?,review_note=?,reviewed_at=? WHERE id=? AND status='pending'",
       )
       .bind(o.actorId, o.note, o.now, o.id),
+    ...guard(db, "EXISTS(SELECT 1 FROM order_cancellation_reviews WHERE id=? AND status='rejected' AND reviewed_by=? AND reviewed_at=?)",
+      [o.id, o.actorId, o.now]),
     db
       .prepare(
-        "INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,created_at) VALUES (?,?,'cancellation.review_rejected','order',?,?,?)",
+        "INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at) VALUES (?,?,'cancellation.review_rejected','order',?,?,?,?,?)",
       )
-      .bind(crypto.randomUUID(), o.actorId, row.orderId, o.note, o.now),
+      .bind(crypto.randomUUID(), o.actorId, row.orderId, o.note,
+        o.form ? JSON.stringify({ catalogDigest: formDigest }) : null,
+        o.form ? requestId : null, o.now),
+    ...(o.form ? [buildFormAnswerInsert(db, { formId: o.form.formId,
+      requestId, versionId: o.form.versionId, subjectType: 'order_cancellation_review',
+      subjectId: o.id, actorId: o.actorId, answers: o.form.answers, now: o.now })] : []),
     ...(await cancellationNotifications(
       db,
       row.orderId,

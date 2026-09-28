@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
-import { register } from 'node:module';
+import { register, registerHooks } from 'node:module';
 import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { build } from 'esbuild';
+import { stubFixtureLink } from './helpers/browser-fixture-link';
 
 import { authorizeFormAnswerRead } from '../lib/forms/access';
 import { collectFormAnswersForPrivacy, eraseFormAnswersForPrivacy,
@@ -14,11 +15,17 @@ import { AnswerDetails } from '../components/forms/answer-details';
 import { getFormAnswerById, listFormAnswersForSubject } from '../lib/db/repositories/form-answers';
 
 declare global {
+  var answerTestCreateElement: typeof createElement;
   var answerTestDb: D1Database;
   var answerTestSubject: string | null;
   var answerTestStaffPermissions: readonly string[];
   var answerTestStaffActor: { id: string; role: 'admin' | 'super_admin'; permissions: readonly string[] } | null;
 }
+globalThis.answerTestCreateElement = createElement;
+registerHooks({ resolve(specifier, context, nextResolve) {
+  if (specifier === 'next/link') return { url: 'data:text/javascript,export default function Link({children,...props}){return globalThis.answerTestCreateElement("a",props,children)}', shortCircuit: true };
+  return nextResolve(specifier, context);
+} });
 
 register(`data:text/javascript,${encodeURIComponent(`
 export async function resolve(specifier, context, nextResolve) {
@@ -103,6 +110,8 @@ async function fixture() {
     CREATE TABLE return_requests(id TEXT PRIMARY KEY, order_item_id TEXT NOT NULL);
     CREATE TABLE complaints(id TEXT PRIMARY KEY, order_id TEXT NOT NULL, seller_id TEXT NOT NULL);
     CREATE TABLE gift_cards(id TEXT PRIMARY KEY, issued_by TEXT, redeemed_by TEXT);
+    CREATE TABLE order_cancellation_events(id TEXT PRIMARY KEY,order_id TEXT,actor_id TEXT);
+    CREATE TABLE order_cancellation_reviews(id TEXT PRIMARY KEY,order_id TEXT,requested_by TEXT);
     CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY);
     CREATE TABLE rider_applications(id TEXT PRIMARY KEY,user_id TEXT NOT NULL);
     CREATE TABLE rider_reports(id TEXT PRIMARY KEY,rider_user_id TEXT NOT NULL);
@@ -351,6 +360,7 @@ void test('mounted access export can start a fresh attempt after an audited-ID c
       status="approved" requestType="access" assignedToCurrentStaff={true} canDecide={false} />);
   `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
   define: { 'process.env.NODE_ENV': '"production"' }, plugins: [{ name: 'privacy-navigation', setup(build) {
+    stubFixtureLink(build);
     build.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'privacy-fixture' }));
     build.onLoad({ filter: /.*/, namespace: 'privacy-fixture' }, () => ({ contents: 'export function useRouter(){return {refresh(){}}}', loader: 'js' }));
   } }] });

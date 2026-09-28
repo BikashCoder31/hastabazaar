@@ -114,7 +114,10 @@ void test('local mail capture rejects real recipients and cannot replace the pro
 void test('invoice correction API is bounded, Super-Admin tax-authorized, and simulation-only',async()=>{
   const source=await readFile('app/api/admin/invoices/[id]/adjustments/route.ts','utf8');
   assert.match(source,/requireStaffApi\('tax_policy\.manage'\)/);
-  assert.match(source,/readBoundedBody\(request, 8 \* 1024\)/);
+  assert.match(source,/readBoundedJsonObject\(request\)/);
+  const reader=await readFile('lib/http/form-json-body.ts','utf8');
+  assert.match(reader,/readBoundedBody\(request, FORM_JSON_BODY_BYTES\)/);
+  assert.match(reader,/FORM_JSON_BODY_BYTES = 256 \* 1024/);
   assert.match(source,/assertSimulationAllowed/);
   assert.match(source,/managed_adjustment_reason_codes/);
 });

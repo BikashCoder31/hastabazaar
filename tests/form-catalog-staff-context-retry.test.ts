@@ -1,3 +1,4 @@
+import { stubFixtureLink } from './helpers/browser-fixture-link';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
@@ -18,6 +19,7 @@ void test('staff classification keeps an opaque request across lost response and
   `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
   define: { 'process.env.NODE_ENV': '"production"' },
   plugins: [{ name: 'staff-context-stubs', setup(bundler) {
+    stubFixtureLink(bundler);
     bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'fixture' }));
     bundler.onResolve({ filter: /^@\/components\/forms\/form-config-client$/ }, () => ({ path: 'config', namespace: 'fixture' }));
     bundler.onLoad({ filter: /.*/, namespace: 'fixture' }, (args) => ({
@@ -97,6 +99,7 @@ void test('staff catalogue, exception, payout, privacy and both rider sites requ
   `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
   define: { 'process.env.NODE_ENV': '"production"' },
   plugins: [{ name: 'staff-context-retry-stubs', setup(bundler) {
+    stubFixtureLink(bundler);
     bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'fixture' }));
     bundler.onResolve({ filter: /^@\/components\/forms\/form-config-client$/ }, () => ({ path: 'config', namespace: 'fixture' }));
     bundler.onResolve({ filter: /^@\/components\/admin\/confirm-operation$/ }, () => ({ path: 'confirm', namespace: 'fixture' }));

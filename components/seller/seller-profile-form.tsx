@@ -80,6 +80,7 @@ export function SellerProfileForm({
   }
   return (
     <form
+      data-form-id="seller.profile"
       onSubmit={submit}
       className="seller-form mt-7 grid gap-5 rounded-2xl border bg-card p-6 sm:grid-cols-2"
     >

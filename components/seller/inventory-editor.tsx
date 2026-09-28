@@ -1,16 +1,18 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { Boxes } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { sendJson } from '@/lib/http/client-request';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 const catalogBaseKeys = ['quantity', 'reason', 'requestId', 'productId', 'sellerId', 'formVersion', 'customAnswers'];
+// This component rerenders after its own attempt mutations; hydration starts with the server's absent snapshot.
+const subscribeToAttempt = () => () => undefined;
 
 export function InventoryEditor({
   productId,
@@ -28,7 +30,10 @@ export function InventoryEditor({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const attemptId = useRef('');
+  const attemptKey = sessionAttemptKey('seller.inventory', productId);
+  const [, setAttemptRevision] = useState(0);
+  const attemptPresent = useSyncExternalStore(subscribeToAttempt,
+    () => hasSessionAttempt(attemptKey), () => false);
   const catalog = usePublishedFormConfig('seller.inventory');
   async function save(event: { preventDefault(): void; currentTarget: HTMLFormElement }) {
     event.preventDefault();
@@ -48,16 +53,21 @@ export function InventoryEditor({
     setMessage('');
     try {
       const configured = readConfiguredSubmission(event.currentTarget, catalog.config, catalogBaseKeys);
-      attemptId.current ||= crypto.randomUUID();
-      await sendJson(
-        '/api/seller/products/' + encodeURIComponent(productId) + '/inventory',
-        'PATCH',
-        { quantity: next, reason: 'Seller stock count update', requestId: attemptId.current,
-          ...configuredJsonPayload(catalog.config, configured.answers, catalogBaseKeys) },
-        'Inventory update failed.',
-      );
+      const requestId = getOrCreateSessionAttempt(attemptKey);
+      setAttemptRevision((revision) => revision + 1);
+      const response = await fetch('/api/seller/products/' + encodeURIComponent(productId) + '/inventory', {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ quantity: next, reason: 'Seller stock count update', requestId,
+          ...configuredJsonPayload(catalog.config, configured.answers, catalogBaseKeys) }),
+      });
+      const result = await response.json().catch(() => null) as { quantity?: unknown; message?: unknown; error?: string; code?: string } | null;
+      if (result?.code === 'stale_version') catalog.handleSubmissionResponse(response, result.code);
+      if (!response.ok) throw new Error(result?.error || 'Inventory update failed.');
+      if (result?.quantity !== next || result.message !== 'Inventory updated.')
+        throw new Error('The response could not be verified. Retry with the same request.');
       setMessage('Stock saved.');
-      attemptId.current = '';
+      clearSessionAttempt(attemptKey);
+      setAttemptRevision((revision) => revision + 1);
       router.refresh();
     } catch (reason) {
       setError(
@@ -68,7 +78,7 @@ export function InventoryEditor({
     }
   }
   return (
-    <form onSubmit={save} className="min-w-0 space-y-2">
+    <form data-form-id="seller.inventory" onSubmit={save} className="min-w-0 space-y-2">
       <Label htmlFor={'stock-' + productId}>
         Available stock<span className="sr-only"> for {productName}</span>
       </Label>
@@ -105,6 +115,12 @@ export function InventoryEditor({
           Stock is locked for this listing status.
         </p>
       ) : null}
+      {attemptPresent ? <p className="text-sm text-muted-foreground">A prior stock update may already have succeeded. Retry identical details, or check the stock before starting a new attempt.</p> : null}
+      {attemptPresent ? <Button type="button" variant="outline" disabled={busy || disabled}
+        onClick={() => { if (window.confirm('A stock update may already have succeeded. Check the stock first to avoid a duplicate update. Start a new request reference?')) {
+          clearSessionAttempt(attemptKey); setAttemptRevision((revision) => revision + 1); setError(''); setMessage('');
+          if (catalog.status === 'stale') catalog.refresh();
+        } }}>Start a new attempt</Button> : null}
       {message ? (
         <output className="block text-sm text-primary">{message}</output>
       ) : null}

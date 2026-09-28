@@ -3,6 +3,7 @@ import { CustomerDataConflictError } from './customers';
 import { buildFormAnswerInsert } from './form-answers';
 import type { FormAnswerSnapshot } from '@/lib/forms/types';
 import { digestFormRequest, formRequestReplay, FormRequestConflictError } from '@/lib/forms/submission';
+import { staffMutationGuard } from './staff-mutation-guard';
 export interface ReviewPhoto {
   id: string;
   reviewId: string;
@@ -186,6 +187,7 @@ export async function moderateSellerReply(
     note: string;
     requestId: string;
     now: number;
+    form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot };
   },
 ) {
   const note = o.note.trim();
@@ -195,15 +197,33 @@ export async function moderateSellerReply(
     );
   if (!['publish', 'reject', 'hide'].includes(o.action))
     throw new CustomerDataConflictError('Invalid moderation action.');
-  if (
-    await db
-      .prepare(
-        'SELECT id FROM audit_logs WHERE request_id=? AND actor_id=? AND subject_id=? AND action=?',
-      )
-      .bind(o.requestId, o.actorId, o.reviewId, `review.reply_${o.action}`)
-      .first()
-  )
+  if (o.form && o.form.requestId !== o.requestId)
+    throw new CustomerDataConflictError('Form request reference does not match the reply decision.');
+  const digest = o.form ? await digestFormRequest({ reviewId: o.reviewId, actorId: o.actorId,
+    action: o.action, version: o.version, note, versionId: o.form.versionId, answers: o.form.answers }) : null;
+  const authority = o.form ? await staffMutationGuard(db, o.actorId, 'product.review', CustomerDataConflictError) : null;
+  const prior = await db.prepare(`SELECT actor_id AS actorId,action,subject_type AS subjectType,
+    subject_id AS subjectId,next_json AS nextJson FROM audit_logs WHERE request_id=? LIMIT 1`)
+    .bind(o.requestId).first<{ actorId: string; action: string; subjectType: string;
+      subjectId: string; nextJson: string | null }>();
+  if (prior) {
+    if (!o.form && prior.actorId === o.actorId && prior.action === `review.reply_${o.action}` &&
+      prior.subjectType === 'product_review' && prior.subjectId === o.reviewId) return;
+    let savedDigest: unknown;
+    try { savedDigest = JSON.parse(prior.nextJson ?? '').catalogDigest; } catch { /* conflict below */ }
+    const answer = o.form && await db.prepare(`SELECT actor_id AS actorId,config_version_id AS versionId,
+      subject_type AS subjectType,subject_id AS subjectId FROM form_answer_sets
+      WHERE form_id='staff.review-moderation' AND request_id=? LIMIT 1`)
+      .bind(o.requestId).first<{ actorId: string; versionId: string; subjectType: string; subjectId: string }>();
+    const reply = answer && await db.prepare('SELECT review_id AS reviewId,version FROM review_replies WHERE id=? LIMIT 1')
+      .bind(answer.subjectId).first<{ reviewId: string; version: number }>();
+    if (!o.form || prior.actorId !== o.actorId || prior.action !== `review.reply_${o.action}` ||
+      prior.subjectType !== 'product_review' || prior.subjectId !== o.reviewId || savedDigest !== digest ||
+      answer?.actorId !== o.actorId || answer?.versionId !== o.form.versionId ||
+      answer?.subjectType !== 'review_reply' || reply?.reviewId !== o.reviewId || reply?.version !== o.version)
+      throw new CustomerDataConflictError('Request reference already used for different reply content.');
     return;
+  }
   const current = await db
     .prepare(
       'SELECT id,version,status FROM review_replies WHERE review_id=? ORDER BY version DESC LIMIT 1',
@@ -224,15 +244,22 @@ export async function moderateSellerReply(
       : o.action === 'reject'
         ? 'rejected'
         : 'hidden';
+  const guardId = crypto.randomUUID();
   const results = await db.batch([
     db
       .prepare(
         'UPDATE review_replies SET status=?,moderated_by=?,moderation_note=? WHERE id=? AND status=?',
       )
       .bind(next, o.actorId, note, current.id, current.status),
+    ...(o.form ? [db.prepare(`INSERT INTO operation_transaction_guards(id,valid)
+      SELECT ?,CASE WHEN changes()=1 AND EXISTS(SELECT 1 FROM review_replies reply WHERE reply.id=? AND reply.review_id=?
+        AND reply.version=? AND reply.status=? AND reply.moderated_by=? AND reply.moderation_note=?
+        AND NOT EXISTS(SELECT 1 FROM review_replies newer WHERE newer.review_id=reply.review_id AND newer.version>reply.version))
+      THEN 1 ELSE 0 END`).bind(guardId, current.id, o.reviewId, o.version, next, o.actorId, note),
+      db.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(guardId)] : []),
     db
       .prepare(
-        "INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,request_id,created_at) VALUES (?,?,?,'product_review',?,?,?,?)",
+        "INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at) VALUES (?,?,?,'product_review',?,?,?,?,?)",
       )
       .bind(
         crypto.randomUUID(),
@@ -240,9 +267,13 @@ export async function moderateSellerReply(
         `review.reply_${o.action}`,
         o.reviewId,
         note,
+        digest ? JSON.stringify({ catalogDigest: digest, replyId: current.id, replyVersion: o.version }) : null,
         o.requestId,
         o.now,
       ),
+    ...(o.form ? [buildFormAnswerInsert(db, { formId: 'staff.review-moderation', requestId: o.requestId,
+      versionId: o.form.versionId, subjectType: 'review_reply', subjectId: current.id,
+      actorId: o.actorId, answers: o.form.answers, now: o.now }), ...(authority?.statements ?? [])] : []),
   ]);
   if (!results[0].meta.changes)
     throw new CustomerDataConflictError(

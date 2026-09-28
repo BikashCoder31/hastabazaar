@@ -139,3 +139,76 @@ for (const kind of ['contact', 'footer'] as const) {
     } finally { await page.close(); await browser.close(); }
   });
 }
+
+void test('footer puts a server custom-field error beside its control and retains the uncertain attempt', async () => {
+  // oxlint-disable-next-line typescript/no-explicit-any -- Playwright is supplied by the bundled runtime.
+  const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<any> } };
+  const bundle = await build({
+    stdin: { resolveDir: process.cwd(), loader: 'tsx', contents: `
+      import React from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { FooterFeedbackForm } from './components/layout/footer-feedback-form';
+      createRoot(document.getElementById('root')).render(<FooterFeedbackForm />);
+    ` }, bundle: true, write: false, platform: 'browser', format: 'iife',
+    define: { 'process.env.NODE_ENV': '"production"' },
+    plugins: [{ name: 'footer-next-shims', setup(bundler) {
+      bundler.onResolve({ filter: /^next\/(link|navigation)$/ }, (args) => ({ path: args.path, namespace: 'footer-next-shims' }));
+      bundler.onLoad({ filter: /.*/, namespace: 'footer-next-shims' }, (args) => ({
+        contents: args.path === 'next/link'
+          ? 'import React from "react"; export default function Link(props){return React.createElement("a", {href:props.href}, props.children)}'
+          : 'export function usePathname(){return "/products/fictional-item"}',
+        loader: 'tsx', resolveDir: process.cwd(),
+      }));
+    } }],
+  });
+  const browser = await chromium.launch({ headless: true,
+    executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
+  const page = await browser.newPage();
+  const requestIds: string[] = [];
+  try {
+    // oxlint-disable-next-line typescript/no-explicit-any -- Browser route type belongs to bundled Playwright.
+    await page.route('https://footer-field.test/**', async (route: any) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (path === '/') return route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
+      if (path.startsWith('/api/forms/')) return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ config: { formId: 'public.footer-feedback', version: 1, publishedAt: 1,
+          fields: [{ id: 'context_note', key: 'context_note', label: 'Context note', type: 'short_text',
+            required: true, order: 0, status: 'active' }] } }) });
+      const body = request.postData();
+      assert.ok(body);
+      const form = await new Request('https://footer-field.test/api/feedback', { method: 'POST',
+        headers: { 'content-type': request.headers()['content-type'] }, body }).formData();
+      const requestId = form.get('requestId');
+      if (typeof requestId !== 'string') throw new Error('Missing feedback request ID');
+      requestIds.push(requestId);
+      return route.fulfill({ status: requestIds.length === 1 ? 400 : 200,
+        contentType: 'application/json', body: requestIds.length === 1
+          ? JSON.stringify({ error: 'Add more context to this answer.', fieldId: 'context_note' })
+          : JSON.stringify({ ok: true }) });
+    });
+    await page.goto('https://footer-field.test/');
+    await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    const form = page.locator('form[data-form-id="public.footer-feedback"]');
+    await form.locator('[name="name"]').fill('Asha Rai');
+    await form.locator('[name="email"]').fill('asha@example.test');
+    await form.locator('[name="topic"]').selectOption('General question');
+    await form.locator('[name="message"]').fill('Fictional message with enough context.');
+    await form.locator('[name="privacyAcknowledgement"]').check();
+    const custom = form.locator('[data-configured-field="context_note"]');
+    await custom.locator('input').fill('Short context');
+    await form.locator('button[type="submit"]').click();
+    await custom.getByText('Add more context to this answer.').waitFor();
+    assert.equal(await custom.locator('[role="alert"]').count(), 1);
+    assert.equal(await custom.locator('input').getAttribute('aria-invalid'), 'true');
+    assert.match(String(await custom.locator('input').getAttribute('aria-describedby')), /error/);
+    assert.equal(await custom.locator('input').evaluate((input: HTMLInputElement) =>
+      document.activeElement === input), true, 'server field error must focus its matching control');
+    await custom.locator('input').fill('Corrected fictional context with more detail');
+    await form.locator('button[type="submit"]').click();
+    await form.getByText(/Thank you/).waitFor();
+    assert.equal(await custom.getByRole('alert').count(), 0);
+    assert.equal(requestIds.length, 2);
+    assert.equal(requestIds[0], requestIds[1]);
+  } finally { await page.close(); await browser.close(); }
+});

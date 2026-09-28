@@ -1,9 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Plus, Trash2, Upload } from 'lucide-react';
 
 import { HomepageHeroPreview } from '@/components/admin/homepage-hero-preview';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -17,6 +19,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import type { BusinessSettingVersion } from '@/lib/db/repositories/business-settings';
 import type { HomepageHeroMediaRecord } from '@/lib/db/repositories/homepage-hero';
+import { configuredMultipartAnswers } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 import {
   addHomepageHeroSlide,
   homepageHeroReadiness,
@@ -24,12 +28,14 @@ import {
   removeHomepageHeroSlide,
   setHomepageHeroSlideEnabled,
 } from '@/lib/homepage/hero-editor';
-import type {
-  HomepageHeroSlide,
-  HomepageHeroSlides,
+import {
+  validateHomepageHeroDraft,
+  type HomepageHeroSlide,
+  type HomepageHeroSlides,
 } from '@/lib/homepage/hero-slides';
 
 type HeroVersion = BusinessSettingVersion<'homepage_hero_slides'>;
+type SettingsResponse = { error?: string; code?: string; ok?: unknown; action?: unknown; draft?: Partial<HeroVersion> };
 
 function optional(value: string): string | null {
   const trimmed = value.trim();
@@ -103,8 +109,37 @@ export function HomepageHeroManager({
   const [effectiveFrom, setEffectiveFrom] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const formRef = useRef<HTMLFormElement>(null);
+  const latestAttemptKey = useRef<string | null>(null);
+  const [failedAttemptKey, setFailedAttemptKey] = useState<string | null>(null);
+  const catalog = usePublishedFormConfig('staff.homepage-hero-manager');
+  function verifyResponse(response: Response, result: SettingsResponse | null, action: 'save' | 'publish' | 'reverse', fallback: string) {
+    if (result?.code === 'stale_version') catalog.handleSubmissionResponse(response, result.code);
+    if (!response.ok) throw new Error(result?.error || fallback);
+    const draft = result?.draft;
+    let validValue = false;
+    if (draft) { try { validateHomepageHeroDraft(draft.value); validValue = true; } catch { /* Unverified response retains the attempt. */ } }
+    const confirmed = action === 'save' || action === 'reverse'
+      ? validValue && draft && typeof draft.id === 'string' && draft.id.trim().length > 0 && draft.key === 'homepage_hero_slides'
+        && draft.status === 'draft' && Number.isSafeInteger(draft.version) && Number(draft.version) > 0
+        && Number.isSafeInteger(draft.revision) && Number(draft.revision) > 0 && (action === 'save' || result?.action === action)
+      : result?.ok === true && result.action === action;
+    if (!confirmed || result?.error) throw new Error('The response could not be verified. Retry with the same request.');
+  }
   const readiness = useMemo(() => homepageHeroReadiness(slides), [slides]);
   const preview = slides.find((slide) => slide.id === previewId) ?? slides[0];
+
+  function catalogPayload(action: string, subjectId: string) {
+    if (!catalog.canSubmit || !catalog.config || !formRef.current)
+      throw new Error('Form configuration is unavailable. Please try again.');
+    const data = new FormData(formRef.current);
+    const attemptKey = sessionAttemptKey('staff.homepage-hero-manager', `${action}:${subjectId}`);
+    latestAttemptKey.current = attemptKey;
+    data.set('requestId', getOrCreateSessionAttempt(attemptKey));
+    const { version, ...answers } = configuredMultipartAnswers(data, catalog.config);
+    return { sourceFormId: 'staff.homepage-hero-manager',
+      formVersion: version, ...answers };
+  }
 
   function updateSlide(id: string, patch: Partial<HomepageHeroSlide>) {
     setSlides((current) =>
@@ -153,6 +188,8 @@ export function HomepageHeroManager({
   async function saveDraft() {
     setBusy(true);
     setMessage('');
+    setFailedAttemptKey(null);
+    latestAttemptKey.current = null;
     try {
       const response = await fetch('/api/admin/business-settings', {
         method: 'POST',
@@ -161,16 +198,18 @@ export function HomepageHeroManager({
           key: 'homepage_hero_slides',
           value: slides,
           reason,
-          requestId: crypto.randomUUID(),
+          ...catalogPayload('save', 'homepage_hero_slides'),
         }),
       });
       const result = (await response.json().catch(() => null)) as
-        | { error?: string }
+        | SettingsResponse
         | null;
-      if (!response.ok) throw new Error(result?.error || 'Hero draft could not be saved.');
+      verifyResponse(response, result, 'save', 'Hero draft could not be saved.');
+      if (latestAttemptKey.current) clearSessionAttempt(latestAttemptKey.current);
       setMessage('Draft saved. Refreshing the authoritative version history…');
       window.location.reload();
     } catch (error) {
+      setFailedAttemptKey(latestAttemptKey.current);
       setMessage(error instanceof Error ? error.message : 'Hero draft could not be saved.');
     } finally {
       setBusy(false);
@@ -180,6 +219,8 @@ export function HomepageHeroManager({
   async function changeVersion(version: HeroVersion, action: 'publish' | 'reverse') {
     setBusy(true);
     setMessage('');
+    setFailedAttemptKey(null);
+    latestAttemptKey.current = null;
     try {
       const response = await fetch(
         `/api/admin/business-settings/changes/${encodeURIComponent(version.id)}`,
@@ -194,14 +235,15 @@ export function HomepageHeroManager({
                 ? new Date(effectiveFrom).getTime()
                 : undefined,
             reason,
-            requestId: crypto.randomUUID(),
+            ...catalogPayload(action, version.id),
           }),
         },
       );
       const result = (await response.json().catch(() => null)) as
-        | { error?: string }
+        | SettingsResponse
         | null;
-      if (!response.ok) throw new Error(result?.error || 'Hero change could not be recorded.');
+      verifyResponse(response, result, action, 'Hero change could not be recorded.');
+      if (latestAttemptKey.current) clearSessionAttempt(latestAttemptKey.current);
       setMessage(
         action === 'reverse'
           ? 'Restoration draft created without changing published history.'
@@ -209,6 +251,7 @@ export function HomepageHeroManager({
       );
       window.location.reload();
     } catch (error) {
+      setFailedAttemptKey(latestAttemptKey.current);
       setMessage(error instanceof Error ? error.message : 'Hero change could not be recorded.');
     } finally {
       setBusy(false);
@@ -216,7 +259,8 @@ export function HomepageHeroManager({
   }
 
   return (
-    <section id="hero-slides" className="space-y-6">
+    <form ref={formRef} data-form-id="staff.homepage-hero-manager" id="hero-slides"
+      className="space-y-6" onSubmit={(event) => event.preventDefault()}>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="eyebrow">Customer homepage</p>
@@ -351,6 +395,8 @@ export function HomepageHeroManager({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={['slides']} /> : null}
+          {!catalog.canSubmit ? <output className="block text-sm">{catalog.message || 'Loading form configuration…'}</output> : null}
           <div className="space-y-2">
             <Label htmlFor="hero-change-reason">Reason and expected impact</Label>
             <Textarea
@@ -371,9 +417,17 @@ export function HomepageHeroManager({
             />
           </div>
           {message ? <output className="block text-sm font-medium">{message}</output> : null}
+          {failedAttemptKey ? <Button type="button" variant="outline" disabled={busy}
+            onClick={() => {
+              if (!window.confirm('This attempt may already have succeeded. Check the latest history before starting a new attempt, which could duplicate the action. Continue?')) return;
+              clearSessionAttempt(failedAttemptKey);
+              if (catalog.status === 'stale') catalog.refresh();
+              setFailedAttemptKey(null);
+              setMessage('New attempt ready. Review the latest history before submitting again.');
+            }}>Start a new attempt</Button> : null}
           <Button
             type="button"
-            disabled={busy || !readiness.draftValid || reason.trim().length < 8}
+            disabled={busy || !catalog.canSubmit || !readiness.draftValid || reason.trim().length < 8}
             onClick={() => void saveDraft()}
           >
             Save private draft
@@ -417,6 +471,7 @@ export function HomepageHeroManager({
                         size="sm"
                         disabled={
                           busy ||
+                          !catalog.canSubmit ||
                           !effectiveFrom ||
                           reason.trim().length < 8 ||
                           !homepageHeroReadiness(version.value).publicationReady
@@ -431,7 +486,7 @@ export function HomepageHeroManager({
                         type="button"
                         size="sm"
                         variant="outline"
-                        disabled={busy || reason.trim().length < 8}
+                        disabled={busy || !catalog.canSubmit || reason.trim().length < 8}
                         onClick={() => void changeVersion(version, 'reverse')}
                       >
                         Create restoration draft
@@ -448,7 +503,7 @@ export function HomepageHeroManager({
           )}
         </CardContent>
       </Card>
-    </section>
+    </form>
   );
 }
 

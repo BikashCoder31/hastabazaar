@@ -1,5 +1,6 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { sanitizeReviewPhoto, InvalidReviewPhotoError } from '@/lib/reviews/sanitize-photo';
-import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
 
 import {
@@ -103,7 +104,7 @@ export async function POST(
       if (typeof customAnswers !== 'string') return Response.json({ error: 'Invalid review answers.' }, { status: 400 });
       (raw as Record<string, unknown>).customAnswers = JSON.parse(customAnswers);
     } else {
-      raw = JSON.parse(new TextDecoder().decode(await readBoundedBody(request, 64*1024))) as unknown;
+      raw = await readBoundedJsonObject(request) as unknown;
     }
     const body = raw as {
       orderItemId?: string;

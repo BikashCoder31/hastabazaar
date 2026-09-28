@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 import { requireSellerApi, SellerAuthorizationError } from '@/lib/auth/seller';
 import { requireDatabase } from '@/lib/db/d1';
@@ -5,7 +6,7 @@ import { saveSellerReply } from '@/lib/db/repositories/review-extras';
 import { CustomerDataConflictError } from '@/lib/db/repositories/customers';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
-import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { FormRequestConflictError, validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
@@ -28,7 +29,7 @@ export async function POST(
     });
     if (!limit.allowed) return rateLimitJson(limit);
     const { id } = await params;
-    const body = JSON.parse(new TextDecoder().decode(await readBoundedBody(request, 131_072))) as Record<string, unknown> | null;
+    const body = await readBoundedJsonObject(request) as Record<string, unknown> | null;
     if (
       !body || Array.isArray(body) || Object.keys(body).some((key) =>
         !['body', 'idempotencyKey', 'version', 'formVersion', 'customAnswers'].includes(key)) ||

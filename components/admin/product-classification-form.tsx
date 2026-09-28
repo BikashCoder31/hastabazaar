@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -28,7 +29,7 @@ export function ProductClassificationForm({
   const [error, setError] = useState('');
   const [retryPending, setRetryPending] = useState(false);
   const attemptKey = sessionAttemptKey('staff.product-classification', productId);
-  useEffect(() => setRetryPending(hasSessionAttempt(attemptKey)), [attemptKey]);
+  useEffect(() => { const timer = window.setTimeout(() => setRetryPending(hasSessionAttempt(attemptKey)), 0); return () => window.clearTimeout(timer); }, [attemptKey]);
   const catalog = usePublishedFormConfig('staff.product-classification');
   const [message, setMessage] = useState('');
   const [validation, setValidation] = useState('');
@@ -81,7 +82,7 @@ export function ProductClassificationForm({
       }}
       className="space-y-4"
     >
-      <a className="text-sm underline" href={`/admin/staff-form-history?kind=product-classification&id=${encodeURIComponent(productId)}`}>View form history</a>
+      <Link className="text-sm underline" href={`/admin/staff-form-history?kind=product-classification&id=${encodeURIComponent(productId)}`}>View form history</Link>
 <p className="text-xs text-muted-foreground">* Required field</p>
 
       <fieldset disabled={pending || !catalog.canSubmit} className="space-y-4">

@@ -98,6 +98,11 @@ async function fixture() {
     CREATE TABLE order_items(id TEXT PRIMARY KEY,order_id TEXT NOT NULL REFERENCES orders(id),product_id TEXT NOT NULL,fulfillment_status TEXT NOT NULL,quantity INTEGER NOT NULL);
     CREATE TABLE product_reviews(id TEXT PRIMARY KEY,product_id TEXT NOT NULL,customer_id TEXT NOT NULL REFERENCES users(id),order_item_id TEXT NOT NULL UNIQUE REFERENCES order_items(id),rating INTEGER NOT NULL,title TEXT,body TEXT NOT NULL,status TEXT NOT NULL,moderation_note TEXT,moderated_by TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
     CREATE TABLE products(id TEXT PRIMARY KEY,name_en TEXT NOT NULL,slug TEXT NOT NULL,seller_id TEXT);
+    CREATE TABLE return_requests(id TEXT PRIMARY KEY,order_item_id TEXT);
+    CREATE TABLE complaints(id TEXT PRIMARY KEY,order_id TEXT,seller_id TEXT);
+    CREATE TABLE gift_cards(id TEXT PRIMARY KEY,issued_by TEXT,redeemed_by TEXT);
+    CREATE TABLE order_cancellation_events(id TEXT PRIMARY KEY,order_id TEXT,actor_id TEXT);
+    CREATE TABLE order_cancellation_reviews(id TEXT PRIMARY KEY,order_id TEXT,requested_by TEXT);
     CREATE TABLE seller_profiles(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,trading_name TEXT NOT NULL);
     CREATE TABLE shipping_jobs(id TEXT PRIMARY KEY,seller_id TEXT NOT NULL);
     CREATE TABLE shipping_job_events(id TEXT PRIMARY KEY,shipping_job_id TEXT NOT NULL);
@@ -114,6 +119,7 @@ async function fixture() {
     INSERT INTO orders VALUES ('order-1','HB-1001','customer','delivered','paid',10000,NULL,1,2,1),('order-other','HB-2002','other','delivered','paid',10000,NULL,1,2,1);
     INSERT INTO order_items VALUES ('item-1','order-1','product-1','delivered',1),('item-other','order-other','product-1','delivered',1);`);
   sqlite.exec("INSERT INTO products(id,name_en,slug) VALUES ('product-1','Handmade Item','handmade-item')");
+  sqlite.exec('ALTER TABLE order_items ADD COLUMN seller_id TEXT');
   const migration = await readFile(new URL('../drizzle/0056_form_catalog.sql', import.meta.url), 'utf8');
   for (const statement of migration.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
   const tombstoneMigration = await readFile(new URL('../drizzle/0058_address_answer_owner_tombstones.sql', import.meta.url), 'utf8');
@@ -734,7 +740,7 @@ void test('review answer history pages all 51 owned snapshots without including 
   const { sqlite } = await fixture();
   try {
     seed(sqlite, 'account.review', 1, [extra]);
-    const item = sqlite.prepare('INSERT INTO order_items VALUES (?,?,?,?,?)');
+    const item = sqlite.prepare('INSERT INTO order_items(id,order_id,product_id,fulfillment_status,quantity) VALUES (?,?,?,?,?)');
     const review = sqlite.prepare(`INSERT INTO product_reviews(id,product_id,customer_id,order_item_id,rating,title,body,status,moderation_note,moderated_by,created_at,updated_at)
       VALUES (?,?,?,?,5,NULL,'A verified purchase review.','pending',NULL,NULL,?,?)`);
     const answer = sqlite.prepare(`INSERT INTO form_answer_sets(id,form_id,request_id,config_version_id,subject_type,subject_id,actor_id,answers_json,created_at)

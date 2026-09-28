@@ -1,8 +1,9 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
-import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { activateManagedMakerForSimulation, ManagedActivationError } from '@/lib/managed-commerce/activation';
 import { resolveRuntimeEnvironment } from '@/lib/staging/environment';
@@ -17,7 +18,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!isTrustedMutationRequest(request)) return Response.json({error:'Cross-site requests are not allowed.'},{status:403});
   try {
     const actor = await requireStaffApi('business_settings.approve');
-    const body = JSON.parse(new TextDecoder().decode(await readBoundedBody(request, 12 * 1024))) as Record<string, unknown>;
+    const body = await readBoundedJsonObject(request) as Record<string, unknown>;
     const value = (key: string) => typeof body[key] === 'string' ? body[key] as string : '';
     const bindings = env as unknown as Record<string, string>;
     const environment = resolveRuntimeEnvironment({
@@ -50,6 +51,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     });
     return Response.json({ok:true,simulation:true},{status:200});
   } catch (error) {
+    if (error instanceof SyntaxError) return Response.json({ error: 'Invalid JSON request.' }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
     if (error instanceof StaffAuthorizationError) return Response.json({error:error.message},{status:error.status});
     if (error instanceof BodyTooLargeError) return Response.json({error:error.message},{status:413});
     if (error instanceof FormRuntimeError)

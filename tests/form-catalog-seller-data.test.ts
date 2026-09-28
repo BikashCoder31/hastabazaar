@@ -1144,3 +1144,18 @@ void test('seller owner changed at the batch boundary cannot commit a stale acto
     assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE request_id='profile-owner-race'").get() as { count: number }).count, 0);
   } finally { sqlite.close(); }
 });
+
+void test('inventory oversized bodies return413 while malformed input stays400 with no writes', async () => {
+  const { sqlite } = await fixture();
+  try {
+    const { PATCH } = await import('../app/api/seller/products/[id]/inventory/route');
+    const send = (body: string, declared?: string) => PATCH(new Request('http://localhost:3000/api/seller/products/no-mutation/inventory', {
+      method: 'PATCH', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json', ...(declared ? {'content-length':declared} : {}) }, body,
+    }), {params:Promise.resolve({id:'no-mutation'})});
+    assert.equal((await send(' ', '262145')).status,413,'declared body limit');
+    assert.equal((await send(' '.repeat(262145))).status,413,'streamed body limit');
+    assert.equal((await send('{')).status,400,'malformed JSON');
+    assert.equal((sqlite.prepare('SELECT COUNT(*) AS n FROM form_answer_sets').get() as {n:number}).n,0);
+    assert.equal((sqlite.prepare('SELECT COUNT(*) AS n FROM inventory_adjustments').get() as {n:number}).n,0);
+  }finally{sqlite.close();}
+});

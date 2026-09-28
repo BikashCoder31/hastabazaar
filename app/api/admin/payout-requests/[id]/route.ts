@@ -1,3 +1,5 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
@@ -21,7 +23,7 @@ export async function POST(
     );
   try {
     const staff = await requireStaffApi('payout.prepare');
-    const body = (await request.json()) as {
+    const body = (await readBoundedJsonObject(request)) as {
       action?: 'prepare' | 'reject';
       note?: string;
       requestId?: string;
@@ -53,6 +55,8 @@ export async function POST(
     );
     return Response.json({ ok: true });
   } catch (error) {
+    if (error instanceof BodyTooLargeError) return Response.json({ error: error.message }, { status: 413, headers: { 'Cache-Control': 'no-store' } });
+    if (error instanceof SyntaxError) return Response.json({ error: 'Invalid JSON request.' }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
     if (error instanceof StaffAuthorizationError)
       return Response.json({ error: error.message }, { status: error.status });
     if (validatedVersionId && await isValidatedFormVersionStale(requireDatabase(env as unknown as {DB?:D1Database}),

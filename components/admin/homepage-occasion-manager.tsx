@@ -1,9 +1,11 @@
 'use client';
 
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { HomepageOccasionCarousel } from '@/components/homepage/homepage-occasion-carousel';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -16,6 +18,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import type { BusinessSettingVersion } from '@/lib/db/repositories/business-settings';
+import { configuredMultipartAnswers } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 import {
   addHomepageOccasionSlide,
   moveHomepageOccasionSlide,
@@ -33,6 +37,7 @@ import {
 } from '@/lib/homepage/occasion-slides';
 
 type OccasionVersion = BusinessSettingVersion<'homepage_occasion_slides'>;
+type SettingsResponse = { error?: string; code?: string; ok?: unknown; action?: unknown; draft?: Partial<OccasionVersion> };
 
 function clone(slides: HomepageOccasionSlides): HomepageOccasionSlide[] {
   return slides.map((slide) => ({
@@ -89,6 +94,35 @@ export function HomepageOccasionManager({
   const [effectiveFrom, setEffectiveFrom] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const formRef = useRef<HTMLFormElement>(null);
+  const latestAttemptKey = useRef<string | null>(null);
+  const [failedAttemptKey, setFailedAttemptKey] = useState<string | null>(null);
+  const catalog = usePublishedFormConfig('staff.homepage-occasion-manager');
+  function verifyResponse(response: Response, result: SettingsResponse | null, action: 'save' | 'publish' | 'reverse', fallback: string) {
+    if (result?.code === 'stale_version') catalog.handleSubmissionResponse(response, result.code);
+    if (!response.ok) throw new Error(result?.error || fallback);
+    const draft = result?.draft;
+    let validValue = false;
+    if (draft) { try { validateHomepageOccasionDraft(draft.value); validValue = true; } catch { /* Unverified response retains the attempt. */ } }
+    const confirmed = action === 'save' || action === 'reverse'
+      ? validValue && draft && typeof draft.id === 'string' && draft.id.trim().length > 0 && draft.key === 'homepage_occasion_slides'
+        && draft.status === 'draft' && Number.isSafeInteger(draft.version) && Number(draft.version) > 0
+        && Number.isSafeInteger(draft.revision) && Number(draft.revision) > 0 && (action === 'save' || result?.action === action)
+      : result?.ok === true && result.action === action;
+    if (!confirmed || result?.error) throw new Error('The response could not be verified. Retry with the same request.');
+  }
+
+  function catalogPayload(action: string, subjectId: string) {
+    if (!catalog.canSubmit || !catalog.config || !formRef.current)
+      throw new Error('Form configuration is unavailable. Please try again.');
+    const data = new FormData(formRef.current);
+    const attemptKey = sessionAttemptKey('staff.homepage-occasion-manager', `${action}:${subjectId}`);
+    latestAttemptKey.current = attemptKey;
+    data.set('requestId', getOrCreateSessionAttempt(attemptKey));
+    const { version, ...answers } = configuredMultipartAnswers(data, catalog.config);
+    return { sourceFormId: 'staff.homepage-occasion-manager',
+      formVersion: version, ...answers };
+  }
   const readiness = useMemo(() => {
     try {
       const validated = validateHomepageOccasionDraft(slides);
@@ -161,6 +195,8 @@ export function HomepageOccasionManager({
   async function saveDraft() {
     setBusy(true);
     setMessage('');
+    setFailedAttemptKey(null);
+    latestAttemptKey.current = null;
     try {
       const response = await fetch('/api/admin/business-settings', {
         method: 'POST',
@@ -169,16 +205,15 @@ export function HomepageOccasionManager({
           key: 'homepage_occasion_slides',
           value: slides,
           reason,
-          requestId: crypto.randomUUID(),
+          ...catalogPayload('save', 'homepage_occasion_slides'),
         }),
       });
-      const result = (await response.json().catch(() => null)) as {
-        error?: string;
-      } | null;
-      if (!response.ok)
-        throw new Error(result?.error || 'Gifting draft could not be saved.');
+      const result = (await response.json().catch(() => null)) as SettingsResponse | null;
+      verifyResponse(response, result, 'save', 'Gifting draft could not be saved.');
+      if (latestAttemptKey.current) clearSessionAttempt(latestAttemptKey.current);
       window.location.reload();
     } catch (error) {
+      setFailedAttemptKey(latestAttemptKey.current);
       setMessage(
         error instanceof Error
           ? error.message
@@ -195,6 +230,8 @@ export function HomepageOccasionManager({
   ) {
     setBusy(true);
     setMessage('');
+    setFailedAttemptKey(null);
+    latestAttemptKey.current = null;
     try {
       const response = await fetch(
         `/api/admin/business-settings/changes/${encodeURIComponent(version.id)}`,
@@ -209,19 +246,16 @@ export function HomepageOccasionManager({
                 ? new Date(effectiveFrom).getTime()
                 : undefined,
             reason,
-            requestId: crypto.randomUUID(),
+            ...catalogPayload(action, version.id),
           }),
         },
       );
-      const result = (await response.json().catch(() => null)) as {
-        error?: string;
-      } | null;
-      if (!response.ok)
-        throw new Error(
-          result?.error || 'Gifting change could not be recorded.',
-        );
+      const result = (await response.json().catch(() => null)) as SettingsResponse | null;
+      verifyResponse(response, result, action, 'Gifting change could not be recorded.');
+      if (latestAttemptKey.current) clearSessionAttempt(latestAttemptKey.current);
       window.location.reload();
     } catch (error) {
+      setFailedAttemptKey(latestAttemptKey.current);
       setMessage(
         error instanceof Error
           ? error.message
@@ -233,7 +267,8 @@ export function HomepageOccasionManager({
   }
 
   return (
-    <section id="occasion-slides" className="space-y-6 border-t pt-8">
+    <form ref={formRef} data-form-id="staff.homepage-occasion-manager" id="occasion-slides"
+      className="space-y-6 border-t pt-8" onSubmit={(event) => event.preventDefault()}>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="eyebrow">Customer homepage</p>
@@ -357,6 +392,8 @@ export function HomepageOccasionManager({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={['occasions']} /> : null}
+          {!catalog.canSubmit ? <output className="block text-sm">{catalog.message || 'Loading form configuration…'}</output> : null}
           <div className="space-y-2">
             <Label htmlFor="occasion-change-reason">
               Reason and expected impact
@@ -382,9 +419,17 @@ export function HomepageOccasionManager({
           {message ? (
             <output className="block text-sm font-medium">{message}</output>
           ) : null}
+          {failedAttemptKey ? <Button type="button" variant="outline" disabled={busy}
+            onClick={() => {
+              if (!window.confirm('This attempt may already have succeeded. Check the latest history before starting a new attempt, which could duplicate the action. Continue?')) return;
+              clearSessionAttempt(failedAttemptKey);
+              if (catalog.status === 'stale') catalog.refresh();
+              setFailedAttemptKey(null);
+              setMessage('New attempt ready. Review the latest history before submitting again.');
+            }}>Start a new attempt</Button> : null}
           <Button
             type="button"
-            disabled={busy || !readiness.draftValid || reason.trim().length < 8}
+            disabled={busy || !catalog.canSubmit || !readiness.draftValid || reason.trim().length < 8}
             onClick={() => void saveDraft()}
           >
             Save private draft
@@ -431,6 +476,7 @@ export function HomepageOccasionManager({
                         size="sm"
                         disabled={
                           busy ||
+                          !catalog.canSubmit ||
                           !effectiveFrom ||
                           reason.trim().length < 8 ||
                           !isPublicationReady(version.value)
@@ -445,7 +491,7 @@ export function HomepageOccasionManager({
                         type="button"
                         size="sm"
                         variant="outline"
-                        disabled={busy || reason.trim().length < 8}
+                        disabled={busy || !catalog.canSubmit || reason.trim().length < 8}
                         onClick={() => void changeVersion(version, 'reverse')}
                       >
                         Create restoration draft
@@ -463,7 +509,7 @@ export function HomepageOccasionManager({
           )}
         </CardContent>
       </Card>
-    </section>
+    </form>
   );
 }
 

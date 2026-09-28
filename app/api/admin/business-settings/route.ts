@@ -10,7 +10,10 @@ import {
   BusinessSettingConflictError,
   createBusinessSettingDraft,
   getEffectiveBusinessSetting,
+  validateBusinessSettingForm,
 } from '@/lib/db/repositories/business-settings';
+import { FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
 import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 
@@ -20,11 +23,16 @@ const json = (body: unknown, status: number) =>
   Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
 
 async function requestBody(request: Request): Promise<Record<string, unknown>> {
-  const bytes = await readBoundedBody(request, 32 * 1024);
+  // 128 KiB answer snapshots plus the original domain budget and JSON overhead.
+  const bytes = await readBoundedBody(request, 256 * 1024);
   const value = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new TypeError('Invalid request.');
   }
+  // Custom answers have their own validator/storage bound; domain data retains
+  // the pre-catalog request budget.
+  const { customAnswers: _customAnswers, ...domain } = value as Record<string, unknown>;
+  if (new TextEncoder().encode(JSON.stringify(domain)).length > 32 * 1024) throw new BodyTooLargeError();
   return value as Record<string, unknown>;
 }
 
@@ -68,18 +76,19 @@ export async function POST(request: Request): Promise<Response> {
     const actor = await requireStaffApi('business_settings.manage');
     const body = await requestBody(request);
     const key = parseBusinessSettingKey(body.key);
+    const database = requireDatabase(env as unknown as { DB?: D1Database });
+    const requestId = typeof body.requestId === 'string' ? body.requestId : '';
+    const form = await validateBusinessSettingForm(database, key, body, requestId);
     const draft = await createBusinessSettingDraft(
-      requireDatabase(env as unknown as { DB?: D1Database }),
+      database,
       {
         key,
         value: body.value,
         actorId: actor.id,
         reason: typeof body.reason === 'string' ? body.reason : '',
-        requestId:
-          typeof body.requestId === 'string'
-            ? body.requestId
-            : crypto.randomUUID(),
+        requestId,
         now: Date.now(),
+        form,
       },
     );
     return json({ draft }, 201);
@@ -92,6 +101,12 @@ export async function POST(request: Request): Promise<Response> {
     }
     if (error instanceof BusinessSettingConflictError) {
       return json({ error: error.message }, 409);
+    }
+    if (error instanceof FormRuntimeError) {
+      return json({ error: error.message, code: error.code }, error.retryable ? 503 : 409);
+    }
+    if (error instanceof FormValidationError) {
+      return json({ error: error.message, fieldId: error.fieldId }, 400);
     }
     if (error instanceof RangeError || error instanceof TypeError) {
       return json({ error: error.message }, 400);

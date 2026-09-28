@@ -1,6 +1,8 @@
 import { caseBusinessNotificationStatements } from '../../operations/business-notifications';
 import { buildFormAnswerInsert } from './form-answers';
 import { assertCommerceFormReplay, type CommerceForm } from './commerce-form-replay';
+import { staffMutationGuard } from './staff-mutation-guard';
+import { digestFormRequest } from '@/lib/forms/submission';
 import type { StaffRole } from '@/lib/auth/staff';
 import { splitCreditRefund } from './wallet';
 import type { SupportedLocale } from '@/lib/marketplace/types';
@@ -900,6 +902,50 @@ export type AdminReturnReviewAction = 'request_changes' | 'reject' | 'approve';
 export type ReturnResponsibility = 'buyer' | 'seller' | 'carrier' | 'platform';
 export type ReturnOutcome = 'refund' | 'replacement' | 'return_to_origin';
 
+async function assertStaffReturnReplay(database: D1Database, options: {
+  requestId: string; returnRequestId: string; actorId: string; eventAction: string;
+  auditAction: string; digest: string; form: CommerceForm;
+}): Promise<boolean> {
+  const event = await database.prepare(`SELECT return_request_id AS caseId, actor_id AS actorId,
+    action FROM return_request_events WHERE request_id=? LIMIT 1`).bind(options.requestId)
+    .first<{ caseId: string; actorId: string; action: string }>();
+  if (!event) return false;
+  const audit = await database.prepare(`SELECT actor_id AS actorId, action, next_json AS nextJson
+    FROM audit_logs WHERE request_id=? LIMIT 1`).bind(options.requestId)
+    .first<{ actorId: string; action: string; nextJson: string | null }>();
+  let savedDigest: unknown;
+  try { savedDigest = JSON.parse(audit?.nextJson ?? '').catalogDigest; } catch { /* Conflict below. */ }
+  if (event.caseId !== options.returnRequestId || event.actorId !== options.actorId ||
+    event.action !== options.eventAction || audit?.actorId !== options.actorId ||
+    audit.action !== options.auditAction || savedDigest !== options.digest)
+    throw new ReturnConflictError('This request reference was already used for different return content.');
+  await assertCommerceFormReplay(database, { formId: 'staff.return-case-action', requestId: options.requestId,
+    subjectType: 'return_request', subjectId: options.returnRequestId, actorId: options.actorId,
+    form: options.form, conflictError: ReturnConflictError });
+  return true;
+}
+
+function returnFormStatements(database: D1Database, options: { returnRequestId: string;
+  actorId: string; requestId: string; now: number; form?: CommerceForm }, expectedStatus: string,
+  expectedRefundStatus?: string | null): D1PreparedStatement[] {
+  if (!options.form) return [];
+  return [database.prepare(`SELECT CASE WHEN (SELECT id FROM form_config_versions
+    WHERE form_id='staff.return-case-action' AND status='published'
+    ORDER BY version DESC LIMIT 1)=? THEN 1
+    ELSE json_extract('stale-staff-return-form', '$') END`).bind(options.form.versionId),
+  database.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM return_requests
+    WHERE id=? AND operation_request_id=? AND status=?) THEN 1
+    ELSE json_extract('invalid-staff-return-transition', '$') END`)
+    .bind(options.returnRequestId, options.requestId, expectedStatus),
+  ...(expectedRefundStatus ? [database.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM refunds
+    WHERE return_request_id=? AND operation_request_id=? AND status=?) THEN 1
+    ELSE json_extract('invalid-staff-refund-transition', '$') END`)
+    .bind(options.returnRequestId, options.requestId, expectedRefundStatus)] : []),
+  buildFormAnswerInsert(database, { formId: 'staff.return-case-action', requestId: options.requestId,
+    versionId: options.form.versionId, subjectType: 'return_request', subjectId: options.returnRequestId,
+    actorId: options.actorId, answers: options.form.answers, now: options.now })];
+}
+
 export async function reviewReturnAsAdmin(
   database: D1Database,
   options: {
@@ -916,8 +962,23 @@ export async function reviewReturnAsAdmin(
     deliveryRefundPaisa?: number;
     requestId: string;
     now: number;
+    form?: CommerceForm;
   },
 ): Promise<void> {
+  if (options.form && options.form.answers.formId !== 'staff.return-case-action')
+    throw new ReturnConflictError('Return form context is invalid.');
+  const authority = options.form ? await staffMutationGuard(database, options.actorId,
+    'refund.approve.standard', ReturnConflictError, options.actorRole) : null;
+  const catalogDigest = options.form ? await digestFormRequest({ caseId: options.returnRequestId,
+    actorId: options.actorId, actorRole: options.actorRole, action: options.action, note: options.note,
+    publicMessageEn: options.publicMessageEn, publicMessageNe: options.publicMessageNe,
+    responsibility: options.responsibility ?? null, outcome: options.outcome ?? null,
+    itemRefundPaisa: options.itemRefundPaisa ?? null, deliveryRefundPaisa: options.deliveryRefundPaisa ?? null,
+    versionId: options.form.versionId, answers: options.form.answers }) : null;
+  if (options.form && await assertStaffReturnReplay(database, { requestId: options.requestId,
+    returnRequestId: options.returnRequestId, actorId: options.actorId,
+    eventAction: `admin_${options.action}`, auditAction: `return.admin.${options.action}`,
+    digest: catalogDigest!, form: options.form })) return;
   if (
     await database
       .prepare(
@@ -1204,6 +1265,7 @@ export async function reviewReturnAsAdmin(
           outcome: options.outcome,
           responsibility: options.responsibility,
           refundAmountPaisa: amountPaisa || undefined,
+          ...(catalogDigest ? { catalogDigest } : {}),
         }),
         options.requestId,
         options.now,
@@ -1212,6 +1274,8 @@ export async function reviewReturnAsAdmin(
       ),
   );
   statements.push(
+    ...returnFormStatements(database, options, toStatus, refundStatus),
+    ...(authority?.statements ?? []),
     ...(await caseBusinessNotificationStatements(database, {
       sourceType: 'return_request',
       sourceId: options.returnRequestId,
@@ -1239,8 +1303,23 @@ export async function decideHighValueRefund(
     publicMessageNe: string;
     requestId: string;
     now: number;
+    form?: CommerceForm;
   },
 ): Promise<void> {
+  if (options.form && options.form.answers.formId !== 'staff.return-case-action')
+    throw new ReturnConflictError('Return form context is invalid.');
+  const authority = options.form ? await staffMutationGuard(database, options.actorId,
+    'refund.approve.high_value', ReturnConflictError, 'super_admin') : null;
+  const catalogDigest = options.form ? await digestFormRequest({ caseId: options.returnRequestId,
+    actorId: options.actorId, action: options.approve ? 'high_value_approve' : 'high_value_reject',
+    note: options.note, publicMessageEn: options.publicMessageEn,
+    publicMessageNe: options.publicMessageNe, versionId: options.form.versionId,
+    answers: options.form.answers }) : null;
+  if (options.form && await assertStaffReturnReplay(database, { requestId: options.requestId,
+    returnRequestId: options.returnRequestId, actorId: options.actorId,
+    eventAction: options.approve ? 'high_value_approved' : 'high_value_rejected',
+    auditAction: options.approve ? 'refund.high_value.approved' : 'refund.high_value.rejected',
+    digest: catalogDigest!, form: options.form })) return;
   if (
     await database
       .prepare(
@@ -1338,12 +1417,14 @@ export async function decideHighValueRefund(
         current.refundId,
         options.note,
         JSON.stringify({ status: 'pending_high_value_approval' }),
-        JSON.stringify({ status: refundStatus }),
+        JSON.stringify({ status: refundStatus, ...(catalogDigest ? { catalogDigest } : {}) }),
         options.requestId,
         options.now,
         current.refundId,
         options.requestId,
       ),
+    ...returnFormStatements(database, options, toStatus, refundStatus),
+    ...(authority?.statements ?? []),
     ...(await caseBusinessNotificationStatements(database, {
       sourceType: 'return_request',
       sourceId: options.returnRequestId,
@@ -1384,8 +1465,23 @@ export async function advanceReturnAsAdmin(
     restockQuantity?: number;
     requestId: string;
     now: number;
+    form?: CommerceForm;
   },
 ): Promise<void> {
+  if (options.form && options.form.answers.formId !== 'staff.return-case-action')
+    throw new ReturnConflictError('Return form context is invalid.');
+  const authority = options.form ? await staffMutationGuard(database, options.actorId,
+    'refund.approve.standard', ReturnConflictError, options.actorRole) : null;
+  const catalogDigest = options.form ? await digestFormRequest({ caseId: options.returnRequestId,
+    actorId: options.actorId, actorRole: options.actorRole, action: options.action,
+    note: options.note, publicMessageEn: options.publicMessageEn,
+    publicMessageNe: options.publicMessageNe, reference: options.reference?.trim() || null,
+    restockQuantity: options.restockQuantity ?? 0, versionId: options.form.versionId,
+    answers: options.form.answers }) : null;
+  if (options.form && await assertStaffReturnReplay(database, { requestId: options.requestId,
+    returnRequestId: options.returnRequestId, actorId: options.actorId,
+    eventAction: options.action, auditAction: `return.operations.${options.action}`,
+    digest: catalogDigest!, form: options.form })) return;
   if (
     await database
       .prepare(
@@ -1804,7 +1900,8 @@ export async function advanceReturnAsAdmin(
         `return.operations.${options.action}`,
         options.note,
         JSON.stringify({ returnStatus: fromStatus, refundStatus: refundFrom }),
-        JSON.stringify({ returnStatus: toStatus, refundStatus: refundTo }),
+        JSON.stringify({ returnStatus: toStatus, refundStatus: refundTo,
+          ...(catalogDigest ? { catalogDigest } : {}) }),
         options.requestId,
         options.now,
         options.returnRequestId,
@@ -1812,6 +1909,8 @@ export async function advanceReturnAsAdmin(
       ),
   );
   statements.push(
+    ...returnFormStatements(database, options, toStatus, refundTo),
+    ...(authority?.statements ?? []),
     ...(await caseBusinessNotificationStatements(database, {
       sourceType: 'return_request',
       sourceId: options.returnRequestId,

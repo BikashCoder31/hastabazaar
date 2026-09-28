@@ -6,8 +6,9 @@ import { authorizeFormAnswerRead } from '@/lib/forms/access';
 import { FORM_REGISTRY } from '@/lib/forms/registry';
 import type { FormAnswerSnapshot, PublishedFormConfig } from '@/lib/forms/types';
 import { FormRuntimeError, resolvePublishedForm } from '@/lib/forms/runtime';
-import { canonicalKey } from '@/lib/forms/submission';
+import { canonicalKey, digestFormRequest } from '@/lib/forms/submission';
 import { FormValidationError, validateAnswersForDefinition, validateFormDraft } from '@/lib/forms/validation';
+import { staffMutationGuard } from './staff-mutation-guard';
 export class CustomerDataConflictError extends Error {}
 
 export interface CustomerOrderRow {
@@ -631,20 +632,49 @@ export async function listReviewsForModeration(database: D1Database, limit = 100
   return result.results;
 }
 
-export async function moderateProductReview(database: D1Database, options: { reviewId: string; actorId: string; action: 'publish' | 'reject' | 'hide'; note: string; requestId: string; now: number }): Promise<void> {
-  if (await database.prepare(`SELECT id FROM audit_logs WHERE request_id = ? LIMIT 1`).bind(options.requestId).first()) return;
+export async function moderateProductReview(database: D1Database, options: { reviewId: string; actorId: string; action: 'publish' | 'reject' | 'hide'; note: string; requestId: string; now: number;
+  form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot } }): Promise<void> {
   const note = options.note.trim();
   if (note.length < 8 || note.length > 1000) throw new CustomerDataConflictError('Add a moderation note of 8â€“1,000 characters.');
+  if (options.form && options.form.requestId !== options.requestId) throw new CustomerDataConflictError('Form request reference does not match the moderation request.');
+  const digest = options.form ? await digestFormRequest({ reviewId: options.reviewId, actorId: options.actorId,
+    action: options.action, note, versionId: options.form.versionId, answers: options.form.answers }) : null;
+  const authority = options.form ? await staffMutationGuard(database, options.actorId, 'product.review', CustomerDataConflictError) : null;
+  const prior = await database.prepare(`SELECT actor_id AS actorId,action,subject_type AS subjectType,subject_id AS subjectId,next_json AS nextJson
+    FROM audit_logs WHERE request_id=? LIMIT 1`).bind(options.requestId).first<{
+      actorId: string; action: string; subjectType: string; subjectId: string; nextJson: string | null }>();
+  if (prior) {
+    if (!options.form) return;
+    let savedDigest: unknown;
+    try { savedDigest = JSON.parse(prior.nextJson ?? '').catalogDigest; } catch { /* invalid audit is a conflict */ }
+    const answer = await database.prepare(`SELECT actor_id AS actorId,config_version_id AS versionId,subject_type AS subjectType,subject_id AS subjectId
+      FROM form_answer_sets WHERE form_id='staff.review-moderation' AND request_id=? LIMIT 1`)
+      .bind(options.requestId).first<{ actorId: string; versionId: string; subjectType: string; subjectId: string }>();
+    if (prior.actorId !== options.actorId || prior.action !== `review.${options.action}` ||
+      prior.subjectType !== 'product_review' || prior.subjectId !== options.reviewId ||
+      savedDigest !== digest || answer?.actorId !== options.actorId ||
+      answer?.versionId !== options.form.versionId || answer?.subjectType !== 'product_review' ||
+      answer?.subjectId !== options.reviewId) throw new CustomerDataConflictError('Request reference already used for different review content.');
+    return;
+  }
   const current = await database.prepare(`SELECT status FROM product_reviews WHERE id = ? LIMIT 1`).bind(options.reviewId).first<{ status: string }>();
   if (!current) throw new CustomerDataConflictError('Review not found.');
   const next = options.action === 'publish' ? 'published' : options.action === 'reject' ? 'rejected' : 'hidden';
   if ((options.action === 'publish' || options.action === 'reject') && current.status !== 'pending') throw new CustomerDataConflictError('Only a pending review can receive this decision.');
   if (options.action === 'hide' && current.status !== 'published') throw new CustomerDataConflictError('Only a published review can be hidden.');
+  const guardId = crypto.randomUUID();
   await database.batch([
     database.prepare(`UPDATE product_reviews SET status = ?, moderation_note = ?, moderated_by = ?, updated_at = ? WHERE id = ? AND status = ?`).bind(next, note, options.actorId, options.now, options.reviewId, current.status),
+    ...(options.form ? [database.prepare(`INSERT INTO operation_transaction_guards(id,valid)
+      SELECT ?,CASE WHEN changes()=1 AND EXISTS(SELECT 1 FROM product_reviews WHERE id=? AND status=? AND moderated_by=? AND updated_at=? AND moderation_note=?) THEN 1 ELSE 0 END`)
+      .bind(guardId, options.reviewId, next, options.actorId, options.now, note),
+      database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(guardId)] : []),
     database.prepare(
       `INSERT INTO audit_logs (id, actor_id, action, subject_type, subject_id, reason, previous_json, next_json, request_id, ip_hash, created_at)
        VALUES (?, ?, ?, 'product_review', ?, ?, ?, ?, ?, NULL, ?)`,
-    ).bind(crypto.randomUUID(), options.actorId, `review.${options.action}`, options.reviewId, note, JSON.stringify({ status: current.status }), JSON.stringify({ status: next }), options.requestId, options.now),
+    ).bind(crypto.randomUUID(), options.actorId, `review.${options.action}`, options.reviewId, note, JSON.stringify({ status: current.status }), JSON.stringify({ status: next, ...(digest ? { catalogDigest: digest } : {}) }), options.requestId, options.now),
+    ...(options.form ? [buildFormAnswerInsert(database, { formId: 'staff.review-moderation', requestId: options.requestId,
+      versionId: options.form.versionId, subjectType: 'product_review', subjectId: options.reviewId,
+      actorId: options.actorId, answers: options.form.answers, now: options.now }), ...(authority?.statements ?? [])] : []),
   ]);
 }

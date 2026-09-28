@@ -28,6 +28,9 @@ void test('privacy export follows product seller profile ownership for submissio
       CREATE TABLE return_requests(id TEXT PRIMARY KEY, order_item_id TEXT NOT NULL);
       CREATE TABLE complaints(id TEXT PRIMARY KEY, order_id TEXT NOT NULL, seller_id TEXT NOT NULL);
       CREATE TABLE gift_cards(id TEXT PRIMARY KEY, issued_by TEXT, redeemed_by TEXT);
+      CREATE TABLE order_cancellation_events(id TEXT PRIMARY KEY,order_id TEXT,actor_id TEXT);
+      CREATE TABLE order_cancellation_reviews(id TEXT PRIMARY KEY,order_id TEXT,requested_by TEXT);
+      CREATE TABLE audit_logs(actor_id TEXT,action TEXT,subject_type TEXT,subject_id TEXT,request_id TEXT,next_json TEXT);
       CREATE TABLE addresses(id TEXT PRIMARY KEY, user_id TEXT NOT NULL);
       CREATE TABLE address_answer_owner_tombstones(address_id TEXT PRIMARY KEY, user_id TEXT NOT NULL);
       CREATE TABLE product_reviews(id TEXT PRIMARY KEY, customer_id TEXT NOT NULL, product_id TEXT);

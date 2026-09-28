@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 
 import { CustomerAuthorizationError, requireCustomerApi } from '@/lib/auth/customer';
@@ -7,7 +8,7 @@ import {
   SellerParticipationConflictError,
   updateSellerParticipationPublicProfile,
 } from '@/lib/db/repositories/seller-applications';
-import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { parseCraftExperience, parseMakerSocialLinks } from '@/lib/sellers/participation';
 import { FormRequestConflictError, validateSellerFormSubmission } from '@/lib/forms/submission';
@@ -28,7 +29,7 @@ export async function PATCH(request: Request): Promise<Response> {
     const database = requireDatabase(env as unknown as { DB?: D1Database });
     const participation = await getSellerParticipationForUser(database, customer.userId);
     if (!participation) return reply({ error: 'Seller or maker application not found.' }, 404);
-    const raw = JSON.parse(new TextDecoder().decode(await readBoundedBody(request, 131_072))) as Record<string, unknown>;
+    const raw = await readBoundedJsonObject(request) as Record<string, unknown>;
     if (!raw || Array.isArray(raw)) return reply({ error: 'Invalid profile request.' }, 400);
     const allowed = new Set(['publicName', 'publicCity', 'experienceCraft', 'experienceBand',
       'facebookUrl', 'instagramUrl', 'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl',

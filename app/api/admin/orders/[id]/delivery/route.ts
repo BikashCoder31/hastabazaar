@@ -1,9 +1,10 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { assignDelivery, DeliveryError } from '@/lib/delivery/repository';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { readBoundedBody, BodyTooLargeError } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { digestFormRequest, validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
@@ -14,7 +15,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     const staff = await requireStaffApi('order.manage');
     const { id } = await context.params;
-    const data = JSON.parse(new TextDecoder().decode(await readBoundedBody(request, 65536))) as unknown;
+    const data = await readBoundedJsonObject(request) as unknown;
     if (!data || typeof data !== 'object' || Array.isArray(data) ||
       Object.keys(data).some((key) => !['method', 'riderEmail', 'courierName',
         'trackingUrl', 'trackingReference', 'requestId', 'formVersion', 'customAnswers'].includes(key)))
@@ -44,6 +45,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         answers: form.answers, digest } });
     return Response.json({ ok: true });
   } catch (error) {
+    if (error instanceof SyntaxError) return Response.json({ error: 'Invalid JSON request.' }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
     if (error instanceof StaffAuthorizationError)
       return Response.json({ error: error.message }, { status: error.status });
     if (error instanceof BodyTooLargeError)

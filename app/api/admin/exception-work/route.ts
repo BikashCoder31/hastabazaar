@@ -1,3 +1,5 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import {env} from 'cloudflare:workers';
 import {requireStaffApi,StaffAuthorizationError} from '@/lib/auth/staff';
 import {requireDatabase} from '@/lib/db/d1';
@@ -9,7 +11,7 @@ import {FormValidationError} from '@/lib/forms/validation';
 export async function POST(request:Request){
  let validatedVersionId:string|undefined;
  if(!isTrustedMutationRequest(request))return Response.json({error:'Request origin was not accepted.'},{status:403});
- try{const staff=await requireStaffApi('order.manage');const raw:unknown=await request.json();
+ try{const staff=await requireStaffApi('order.manage');const raw:unknown=await readBoundedJsonObject(request);
  if(!raw||typeof raw!=='object'||Array.isArray(raw))return Response.json({error:'Invalid exception follow-up.'},{status:400});
  const data=raw as Record<string,unknown>;
  if(!data||typeof data!=='object'||(data.action!=='create'&&data.action!=='update')||typeof data.requestId!=='string'||typeof data.nextAction!=='string'||(data.ownerId!==null&&data.ownerId!==undefined&&typeof data.ownerId!=='string'))return Response.json({error:'Invalid exception follow-up.'},{status:400});
@@ -25,6 +27,8 @@ export async function POST(request:Request){
  const checks=data.checks&&typeof data.checks==='object'?data.checks as Record<string,unknown>:{};
  await updateExceptionWork(db,{...common,id:data.id,version:data.version,note:data.note,resolve:data.resolve,evidence:data.evidence,checks:{sourceReviewed:checks.sourceReviewed===true,obligationsReviewed:checks.obligationsReviewed===true,followupComplete:checks.followupComplete===true}});return Response.json({ok:true});
  }catch(e){
+    if (e instanceof BodyTooLargeError) return Response.json({ error: e.message }, { status: 413, headers: { 'Cache-Control': 'no-store' } });
+    if (e instanceof SyntaxError) return Response.json({ error: 'Invalid JSON request.' }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
  if(e instanceof FormRuntimeError)return Response.json({error:e.message,code:e.code},{status:e.code==='stale_version'?409:503});
  if(e instanceof FormValidationError)return Response.json({error:e.message,fieldId:e.fieldId},{status:400});
  if(validatedVersionId && await isValidatedFormVersionStale(requireDatabase(env as unknown as {DB?:D1Database}),

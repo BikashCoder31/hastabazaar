@@ -1,10 +1,11 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 import {
   requireCustomerApi,
   CustomerAuthorizationError,
 } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
-import { readBoundedBody, BodyTooLargeError } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import {
@@ -35,14 +36,14 @@ export async function POST(request: Request) {
       windowMs: 3_600_000,
     });
     if (!rate.allowed) return rateLimitJson(rate);
-    const bytes = await readBoundedBody(request, 4096);
     let data: Record<string, unknown>;
     try {
-      data = JSON.parse(new TextDecoder().decode(bytes)) as Record<
+      data = await readBoundedJsonObject(request) as Record<
         string,
         unknown
       >;
-    } catch {
+    } catch (error) {
+      if (error instanceof BodyTooLargeError) throw error;
       return json({ error: 'Use a valid remittance request.' }, 400);
     }
     if (!data || typeof data !== 'object' || Array.isArray(data) ||
@@ -67,6 +68,7 @@ export async function POST(request: Request) {
     });
     return json(result, 201);
   } catch (error) {
+    if (error instanceof SyntaxError) return Response.json({ error: 'Invalid JSON request.' }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
     if (error instanceof CustomerAuthorizationError)
       return json({ error: error.message }, error.status);
     if (error instanceof BodyTooLargeError)

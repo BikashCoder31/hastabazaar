@@ -1,3 +1,5 @@
+import { stubFixtureLink } from './helpers/browser-fixture-link';
+import type { FixtureBrowser } from './helpers/browser-fixture-types';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
@@ -12,7 +14,7 @@ const actions = [
 
 void test('all five mounted governance forms retain opaque attempts through uncertain, changed and reload retries', async () => {
   const playwrightPath = 'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
-  const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<any> } };
+  const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<FixtureBrowser> } };
   const bundle = await build({ stdin: { contents: `
     import React from 'react';
     import {createRoot} from 'react-dom/client';
@@ -23,7 +25,7 @@ void test('all five mounted governance forms retain opaque attempts through unce
     createRoot(document.getElementById('root')).render(<GovernanceConsole data={data} superAdmin={true} actorId="super-one"/>);
   `, resolveDir: process.cwd(), loader: 'tsx' }, bundle: true, write: false,
     platform: 'browser', format: 'iife', define: { 'process.env.NODE_ENV': '"production"' },
-    plugins: [{ name: 'governance-retry-stubs', setup(bundler) {
+    plugins: [{ name: 'governance-retry-stubs', setup(bundler) { stubFixtureLink(bundler);
       bundler.onResolve({ filter: /^@\/components\/forms\/form-config-client$/ }, () => ({ path: 'form-config', namespace: 'governance-stub' }));
       bundler.onResolve({ filter: /^@\/components\/ui\/tabs$/ }, () => ({ path: 'tabs', namespace: 'governance-stub' }));
       bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'governance-stub' }));
@@ -47,7 +49,7 @@ void test('all five mounted governance forms retain opaque attempts through unce
   const page = await browser.newPage();
   const seen = new Map<string, Record<string, unknown>[]>();
   try {
-    await page.route('https://governance-retry.test/**', (route: any) => {
+    await page.route('https://governance-retry.test/**', (route) => {
       if (route.request().method() === 'POST') {
         const body = JSON.parse(route.request().postData() ?? '{}') as Record<string, unknown>;
         const action = String(body.action);

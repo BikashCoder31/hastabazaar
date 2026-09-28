@@ -1,7 +1,8 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
-import { readBoundedBody } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import {
   reviewRider,
@@ -24,9 +25,7 @@ export async function POST(request: Request) {
   if (!isTrustedMutationRequest(request))
     return reply({ error: 'Cross-site request rejected.' }, 403);
   try {
-    const data = JSON.parse(
-      new TextDecoder().decode(await readBoundedBody(request, 8192)),
-    ) as Record<string, unknown>;
+    const data = await readBoundedJsonObject(request) as Record<string, unknown>;
     const staff = await requireStaffApi(
       data.action === 'review' ||
         data.action === 'policy' ||
@@ -104,6 +103,8 @@ export async function POST(request: Request) {
     } else return reply({ error: 'Choose a supported rider action.' }, 400);
     return reply({ ok: true });
   } catch (e) {
+    if (e instanceof BodyTooLargeError) return Response.json({ error: e.message }, { status: 413, headers: { 'Cache-Control': 'no-store' } });
+    if (e instanceof SyntaxError) return Response.json({ error: 'Invalid JSON request.' }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
     if(e instanceof StaffAuthorizationError)return reply({error:e.message},e.status);
     if(e instanceof RiderError || e instanceof ParcelConflictError)return reply({error:e.message},409);
     if(e instanceof FormRuntimeError)return reply({error:e.message,code:e.code},e.code==='stale_version'?409:503);

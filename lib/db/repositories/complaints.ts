@@ -1,6 +1,8 @@
 import { caseBusinessNotificationStatements } from '../../operations/business-notifications';
 import { buildFormAnswerInsert } from './form-answers';
 import { assertCommerceFormReplay, type CommerceForm } from './commerce-form-replay';
+import { staffMutationGuard } from './staff-mutation-guard';
+import { digestFormRequest } from '@/lib/forms/submission';
 import type { StaffRole } from '@/lib/auth/staff';
 import type { SupportedLocale } from '@/lib/marketplace/types';
 
@@ -660,8 +662,39 @@ export async function updateComplaintAsAdmin(
     resolutionNe?: string;
     requestId: string;
     now: number;
+    form?: CommerceForm;
   },
 ): Promise<void> {
+  if (options.form && options.form.answers.formId !== 'staff.complaint-case-action')
+    throw new ComplaintConflictError('Complaint form context is invalid.');
+  const authority = options.form ? await staffMutationGuard(database, options.actorId,
+    'support.manage', ComplaintConflictError, options.actorRole) : null;
+  const catalogDigest = options.form ? await digestFormRequest({ caseId: options.complaintId,
+    actorId: options.actorId, actorRole: options.actorRole, action: options.action,
+    note: options.note, publicMessageEn: options.publicMessageEn,
+    publicMessageNe: options.publicMessageNe, resolutionEn: options.resolutionEn ?? null,
+    resolutionNe: options.resolutionNe ?? null, versionId: options.form.versionId,
+    answers: options.form.answers }) : null;
+  if (options.form) {
+    const prior = await database.prepare(`SELECT complaint_id AS caseId, actor_id AS actorId,
+      action FROM complaint_events WHERE request_id=? LIMIT 1`).bind(options.requestId)
+      .first<{ caseId: string; actorId: string; action: string }>();
+    if (prior) {
+      const audit = await database.prepare(`SELECT actor_id AS actorId, action,
+        next_json AS nextJson FROM audit_logs WHERE request_id=? LIMIT 1`).bind(options.requestId)
+        .first<{ actorId: string; action: string; nextJson: string | null }>();
+      let savedDigest: unknown;
+      try { savedDigest = JSON.parse(audit?.nextJson ?? '').catalogDigest; } catch { /* Conflict below. */ }
+      if (prior.caseId !== options.complaintId || prior.actorId !== options.actorId ||
+        prior.action !== `admin_${options.action}` || audit?.actorId !== options.actorId ||
+        audit.action !== `complaint.admin.${options.action}` || savedDigest !== catalogDigest)
+        throw new ComplaintConflictError('This request reference was already used for different complaint content.');
+      await assertCommerceFormReplay(database, { formId: 'staff.complaint-case-action',
+        requestId: options.requestId, subjectType: 'complaint', subjectId: options.complaintId,
+        actorId: options.actorId, form: options.form, conflictError: ComplaintConflictError });
+      return;
+    }
+  }
   if (
     await database
       .prepare(`SELECT id FROM complaint_events WHERE request_id = ? LIMIT 1`)
@@ -809,12 +842,26 @@ export async function updateComplaintAsAdmin(
         `complaint.admin.${options.action}`,
         options.note,
         JSON.stringify({ status: current.status }),
-        JSON.stringify({ status: toStatus, assignedTo, escalatedTo }),
+        JSON.stringify({ status: toStatus, assignedTo, escalatedTo,
+          ...(catalogDigest ? { catalogDigest } : {}) }),
         options.requestId,
         options.now,
         options.complaintId,
         options.requestId,
       ),
+    ...(options.form ? [database.prepare(`SELECT CASE WHEN (SELECT id FROM form_config_versions
+      WHERE form_id='staff.complaint-case-action' AND status='published'
+      ORDER BY version DESC LIMIT 1)=? THEN 1
+      ELSE json_extract('stale-staff-complaint-form', '$') END`).bind(options.form.versionId),
+    database.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM complaints
+      WHERE id=? AND operation_request_id=? AND status=?) THEN 1
+      ELSE json_extract('invalid-staff-complaint-transition', '$') END`)
+      .bind(options.complaintId, options.requestId, toStatus),
+    buildFormAnswerInsert(database, { formId: 'staff.complaint-case-action',
+      requestId: options.requestId, versionId: options.form.versionId, subjectType: 'complaint',
+      subjectId: options.complaintId, actorId: options.actorId, answers: options.form.answers,
+      now: options.now })] : []),
+    ...(authority?.statements ?? []),
     ...(await caseBusinessNotificationStatements(database, {
       sourceType: 'complaint',
       sourceId: options.complaintId,

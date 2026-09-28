@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 import {
   requireCustomerApi,
@@ -5,7 +6,7 @@ import {
 } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { readBoundedBody, BodyTooLargeError } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import { parseRiderCodeRequest } from '@/lib/riders/customer-code';
 import {
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
       windowMs: 15 * 60000,
     });
     if (!limit.allowed) return rateLimitJson(limit);
-    const raw = JSON.parse(new TextDecoder().decode(await readBoundedBody(request, 131072))) as unknown;
+    const raw = await readBoundedJsonObject(request) as unknown;
     if (!raw || typeof raw !== 'object' || Array.isArray(raw) ||
       Object.keys(raw).some((key) => !['jobId', 'version', 'code', 'requestId',
         'formVersion', 'customAnswers'].includes(key)))
@@ -74,6 +75,7 @@ export async function POST(request: Request) {
       verified ? 200 : 409,
     );
   } catch (error) {
+    if (error instanceof SyntaxError) return json({ error: 'Invalid JSON request.' }, 400);
     if (error instanceof BodyTooLargeError)
       return json({ error: 'Request is too large.' }, 413);
     if (error instanceof CustomerAuthorizationError)

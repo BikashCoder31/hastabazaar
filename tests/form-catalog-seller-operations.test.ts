@@ -144,11 +144,11 @@ void test('seller actions bound request bodies and reject unauthenticated abuse 
         'content-length': String(size) }, body: '{}',
     });
     globalThis.sellerOperationActor = null;
-    assert.equal((await shipping(oversized('/api/seller/shipping', 131_073))).status, 401);
-    assert.equal((await managed(oversized('/api/seller/managed-program', 24 * 1024 + 1))).status, 401);
+    assert.equal((await shipping(oversized('/api/seller/shipping', 262_145))).status, 401);
+    assert.equal((await managed(oversized('/api/seller/managed-program', 262_145))).status, 401);
     globalThis.sellerOperationActor = { sellerId: 'seller-one', userId: 'seller-user' };
-    assert.equal((await shipping(oversized('/api/seller/shipping', 131_073))).status, 413);
-    assert.equal((await managed(oversized('/api/seller/managed-program', 24 * 1024 + 1))).status, 413);
+    assert.equal((await shipping(oversized('/api/seller/shipping', 262_145))).status, 413);
+    assert.equal((await managed(oversized('/api/seller/managed-program', 262_145))).status, 413);
     assert.equal((sqlite.prepare('SELECT COUNT(*) AS n FROM form_answer_sets').get() as { n: number }).n, 0);
   } finally { sqlite.close(); }
 });

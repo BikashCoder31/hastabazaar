@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { Children, isValidElement, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -81,7 +82,8 @@ export function GovernanceConsole({
     const keys = [attemptKey('rule.create'), attemptKey('promotion.create'),
       attemptKey('incident.create'), attemptKey('backup.verify'),
       ...data.incidents.map((item) => attemptKey('incident.update', item.id))];
-    setActiveAttempts(Object.fromEntries(keys.filter(hasSessionAttempt).map((key) => [key, true])));
+    const timer = window.setTimeout(() => setActiveAttempts(Object.fromEntries(keys.filter(hasSessionAttempt).map((key) => [key, true]))), 0);
+    return () => window.clearTimeout(timer);
   }, [data.incidents]);
   function retryControl(action: GovernanceFormAction, subjectId = 'new') {
     const key = attemptKey(action, subjectId);
@@ -91,6 +93,7 @@ export function GovernanceConsole({
       <Button type="button" variant="outline" disabled={pending} onClick={() => {
         if (!window.confirm('This governance action may already have succeeded. Check its record first. Start a new request reference?')) return;
         clearSessionAttempt(key);
+        if (catalogs[action].status === 'stale') catalogs[action].refresh();
         setActiveAttempts((prior) => ({ ...prior, [key]: false }));
         setValidation('');
       }}>Start a new attempt</Button>
@@ -200,12 +203,12 @@ export function GovernanceConsole({
   return (
     <div className="space-y-4">
       <nav className="flex flex-wrap gap-3 text-sm" aria-label="Governance form history">
-        <a className="underline" href="/admin/staff-form-history?kind=governance-rule-create">Rule form history</a>
-        <a className="underline" href="/admin/staff-form-history?kind=governance-promotion-create">Promotion form history</a>
+        <Link className="underline" href="/admin/staff-form-history?kind=governance-rule-create">Rule form history</Link>
+        <Link className="underline" href="/admin/staff-form-history?kind=governance-promotion-create">Promotion form history</Link>
         {superAdmin ? <>
-          <a className="underline" href="/admin/staff-form-history?kind=governance-incident-create">Incident reports</a>
-          <a className="underline" href="/admin/staff-form-history?kind=governance-incident-update">Incident updates</a>
-          <a className="underline" href="/admin/staff-form-history?kind=governance-backup-verify">Backup verification history</a>
+          <Link className="underline" href="/admin/staff-form-history?kind=governance-incident-create">Incident reports</Link>
+          <Link className="underline" href="/admin/staff-form-history?kind=governance-incident-update">Incident updates</Link>
+          <Link className="underline" href="/admin/staff-form-history?kind=governance-backup-verify">Backup verification history</Link>
         </> : null}
       </nav>
       {message ? (
@@ -252,7 +255,7 @@ export function GovernanceConsole({
               description="Maintain the guidance used when reviewing listings. Changes are recorded in the audit log."
             >
               <form
-                data-form-id={governanceForms['rule.create']}
+                data-form-id="staff.governance-rule-create"
                 onSubmit={(event) => void submit(event, 'rule.create')}
                 className="grid gap-4 sm:grid-cols-2"
               >
@@ -339,7 +342,7 @@ export function GovernanceConsole({
               description="Prepare a placement, then ask a different Super Admin to approve it. This does not create a discount or change product prices."
             >
               <form
-                data-form-id={governanceForms['promotion.create']}
+                data-form-id="staff.governance-promotion-create"
                 onSubmit={(event) => void submit(event, 'promotion.create')}
                 className="grid gap-4 sm:grid-cols-2"
               >
@@ -543,7 +546,7 @@ export function GovernanceConsole({
                   description="Record operational issues and the actual response. This register does not run monitoring or contact external services."
                 >
                   <form
-                    data-form-id={governanceForms['incident.create']}
+                    data-form-id="staff.governance-incident-create"
                     onSubmit={(event) => void submit(event, 'incident.create')}
                     className="grid gap-4 sm:grid-cols-2"
                   >
@@ -601,7 +604,7 @@ export function GovernanceConsole({
                           ) : null}
                           {item.status !== 'resolved' ? (
                             <form
-                              data-form-id={governanceForms['incident.update']}
+                              data-form-id="staff.governance-incident-update"
                               onSubmit={(event) =>
                                 void submit(event, 'incident.update')
                               }
@@ -645,7 +648,7 @@ export function GovernanceConsole({
                   description="Record checks you have actually performed. Saving here does not create, download, or restore a backup."
                 >
                   <form
-                    data-form-id={governanceForms['backup.verify']}
+                    data-form-id="staff.governance-backup-verify"
                     onSubmit={(event) => void submit(event, 'backup.verify')}
                     className="grid gap-4 sm:grid-cols-2"
                   >

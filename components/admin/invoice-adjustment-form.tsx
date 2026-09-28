@@ -1,13 +1,15 @@
 'use client';
+import Link from 'next/link';
 
-import { useRef, useState, type FormEvent } from 'react';
+import { useRef, useState, useSyncExternalStore, type SyntheticEvent } from 'react';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 const BASE_KEYS = ['invoiceId', 'kind', 'amount', 'amountPaisa', 'reasonCode', 'note', 'requestId'];
-const ATTEMPT_KEY = sessionAttemptKey('staff.invoice-adjustment', 'issue');
+// Selection and attempt mutations rerender this component; hydrate against the absent server snapshot first.
+const subscribeToAttempt = () => () => undefined;
 
 type InvoiceOption = Readonly<{
   id: string;
@@ -32,12 +34,17 @@ export function InvoiceAdjustmentForm({
 }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const fingerprint = useRef<string | null>(null);
-  const [attemptPresent, setAttemptPresent] = useState(() => hasSessionAttempt(ATTEMPT_KEY));
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState(invoices[0]?.id ?? '');
+  const invoiceId = invoices.some((invoice) => invoice.id === selectedInvoiceId) ? selectedInvoiceId : invoices[0]?.id ?? '';
+  const attemptKey = sessionAttemptKey('staff.invoice-adjustment', `issue:${invoiceId}`);
+  const fingerprints = useRef(new Map<string, string>());
+  const [, setAttemptRevision] = useState(0);
+  const attemptPresent = useSyncExternalStore(subscribeToAttempt,
+    () => hasSessionAttempt(attemptKey), () => false);
   const catalog = usePublishedFormConfig('staff.invoice-adjustment');
   if (!invoices.length) return null;
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy || !catalog.config || !catalog.canSubmit) return;
     let configured: ReturnType<typeof configuredJsonPayload>;
@@ -59,15 +66,16 @@ export function InvoiceAdjustmentForm({
     const payload = { kind: text('kind'), amountPaisa, reasonCode: text('reasonCode'),
       note: text('note'), ...configured };
     const currentFingerprint = JSON.stringify({ invoiceId, ...payload });
-    if (fingerprint.current && fingerprint.current !== currentFingerprint) {
+    const priorFingerprint = fingerprints.current.get(invoiceId);
+    if (priorFingerprint && priorFingerprint !== currentFingerprint) {
       setMessage('This differs from the prior attempt. Check its outcome, then explicitly start a new attempt.');
       return;
     }
     setBusy(true); setMessage('');
     try {
-      const requestId = getOrCreateSessionAttempt(ATTEMPT_KEY);
-      setAttemptPresent(true);
-      fingerprint.current = currentFingerprint;
+      const requestId = getOrCreateSessionAttempt(attemptKey);
+      setAttemptRevision((revision) => revision + 1);
+      fingerprints.current.set(invoiceId, currentFingerprint);
       const response = await fetch(`/api/admin/invoices/${encodeURIComponent(invoiceId)}/adjustments`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -78,7 +86,7 @@ export function InvoiceAdjustmentForm({
       if (!response.ok) throw new Error(result?.error || 'Correction document was not issued.');
       if (typeof result?.id !== 'string' || !result.id || typeof result.adjustmentNumber !== 'string' || !result.adjustmentNumber || typeof result.created !== 'boolean' || result.simulation !== true)
         throw new Error('The response could not be verified. Retry with the same request.');
-      clearSessionAttempt(ATTEMPT_KEY); setAttemptPresent(false); fingerprint.current = null;
+      clearSessionAttempt(attemptKey); setAttemptRevision((revision) => revision + 1); fingerprints.current.delete(invoiceId);
       setMessage(`${result.adjustmentNumber} was issued as a simulated append-only document.`);
       window.location.reload();
     } catch (error) {
@@ -92,12 +100,13 @@ export function InvoiceAdjustmentForm({
     <form data-form-id="staff.invoice-adjustment" onSubmit={(event) => void submit(event)}
       className="mt-4 space-y-3 rounded-xl border p-4">
       <p className="text-sm font-semibold">Issue simulated correction document</p>
-      <a className="text-sm underline" href="/admin/staff-form-history?kind=invoice-adjustment">View correction form history</a>
+      <Link className="text-sm underline" href="/admin/staff-form-history?kind=invoice-adjustment">View correction form history</Link>
       <p className="text-xs leading-5 text-muted-foreground">
         This creates an immutable credit/debit document. It does not edit the invoice, refund a customer, change a settlement, or move money. Record the matching financial event in its own approved workflow.
       </p>
       <label className="block text-sm">Invoice
-        <select name="invoiceId" required className="mt-1 block w-full rounded border p-2">
+        <select name="invoiceId" required value={invoiceId} disabled={busy}
+          onChange={(event) => { setSelectedInvoiceId(event.target.value); setMessage(''); }} className="mt-1 block w-full rounded border p-2">
           {invoices.map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.invoiceNumber} · {invoice.issuerReference} · {invoice.adjustmentCount} corrections</option>)}
         </select>
       </label>
@@ -120,7 +129,8 @@ export function InvoiceAdjustmentForm({
       {attemptPresent ? <p className="text-xs text-muted-foreground">A prior correction may have been issued. Retry only identical details, or check the invoice before starting a new attempt.</p> : null}
       {attemptPresent ? <button type="button" disabled={busy} className="rounded border px-3 py-2 text-sm"
         onClick={() => { if (window.confirm('A correction may already have been issued. Check the invoice first. Start a new request reference?')) {
-          clearSessionAttempt(ATTEMPT_KEY); setAttemptPresent(false); fingerprint.current = null; setMessage('');
+          clearSessionAttempt(attemptKey); setAttemptRevision((revision) => revision + 1); fingerprints.current.delete(invoiceId); setMessage('');
+          if (catalog.status === 'stale') catalog.refresh();
         } }}>Start a new attempt</button> : null}
       {message ? <output className="block text-sm font-medium">{message}</output> : null}
       <button disabled={busy || !reasonCodes.length || !catalog.canSubmit} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{busy ? 'Issuing…' : 'Issue simulated document'}</button>

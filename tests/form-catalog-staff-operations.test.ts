@@ -1,3 +1,5 @@
+import { stubFixtureLink } from './helpers/browser-fixture-link';
+import type { FixtureBrowser } from './helpers/browser-fixture-types';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { registerHooks } from 'node:module';
@@ -18,7 +20,7 @@ import { reviewRider, saveRiderPolicy, setRiderOpenBoxEligibility, rejectRiderRe
 import { FORM_REGISTRY, IMPLEMENTED_FORM_ADAPTERS } from '../lib/forms/registry';
 import { validateFormDraft } from '../lib/forms/validation';
 
-test('all ten staff operations expose protected, configurable record adapters', () => {
+void test('all ten staff operations expose protected, configurable record adapters', () => {
   const ids = ['staff.catalog', 'staff.product-classification', 'staff.exception-work',
     'staff.invoice-adjustment', 'staff.managed-maker-activation', 'staff.parcel-control',
     'staff.payout-request-action', 'staff.privacy-action', 'staff.rider-control-1',
@@ -35,7 +37,7 @@ test('all ten staff operations expose protected, configurable record adapters', 
   }
 });
 
-test('staff drafts cannot publish any client built-in key under a canonical alias', () => {
+void test('staff drafts cannot publish any client built-in key under a canonical alias', () => {
   const clientKeys = {
     'staff.catalog': ['kind','id','slug','nameEn','nameNe','sortOrder','isActive','idempotencyKey'],
     'staff.product-classification': ['categoryId','occasionIds','idempotencyKey'],
@@ -765,7 +767,7 @@ void test('staff catalogue routes validate published context and protect domain 
   try {
     const { POST } = await import('../app/api/admin/catalog/route');
     const { PUT } = await import('../app/api/admin/products/[id]/classification/route');
-    const request = (path: string, body: unknown, method = 'POST') => new Request(`http://localhost:3000${path}`, {
+    const request = (path: string, body: unknown, method: 'POST' | 'PUT' | 'PATCH' = 'POST') => new Request(`http://localhost:3000${path}`, {
       method, headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' }, body: JSON.stringify(body),
     });
     const catalogBody = { kind: 'category', slug: 'route-entry', nameEn: 'Route Entry', sortOrder: 3,
@@ -812,7 +814,7 @@ void test('catalogue publication between route validation and batch commit retur
 });
 
 void test('every staff operation route reports a commit-time publication race as stale without an answer', async () => {
-  const request = (path: string, body: unknown, method = 'POST') => new Request(`http://localhost:3000${path}`, {
+  const request = (path: string, body: unknown, method: 'POST' | 'PUT' | 'PATCH' = 'POST') => new Request(`http://localhost:3000${path}`, {
     method, headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' }, body: JSON.stringify(body),
   });
   const customAnswers = [{ fieldId: 'context_note', value: 'Reviewed before publication changed' }];
@@ -902,7 +904,7 @@ void test('exception route rejects unauthorized staff and persists only successf
 void test('mounted staff marketplace, parcel, and payout forms send published context', async () => {
   const playwrightPath = process.env.PLAYWRIGHT_MODULE ??
     'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
-  const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<any> } };
+  const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<FixtureBrowser> } };
   const bundle = await build({
     stdin: { resolveDir: process.cwd(), sourcefile: 'staff-catalog-client-fixture.tsx', contents: `
       import React from 'react';
@@ -938,7 +940,7 @@ void test('mounted staff marketplace, parcel, and payout forms send published co
         <RiderPolicyForm policy={{version:0,openBox:0,otpScope:'off'}} /></>);
     `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
-    plugins: [{ name: 'staff-catalog-stubs', setup(bundler) {
+    plugins: [{ name: 'staff-catalog-stubs', setup(bundler) { stubFixtureLink(bundler);
       bundler.onResolve({ filter: /^@\/components\/admin\/use-admin-mutation$/ }, () => ({ path: 'admin-mutation', namespace: 'staff-stub' }));
       bundler.onResolve({ filter: /^@\/components\/forms\/form-config-client$/ }, () => ({ path: 'form-config', namespace: 'staff-stub' }));
       bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'staff-stub' }));
@@ -961,7 +963,7 @@ void test('mounted staff marketplace, parcel, and payout forms send published co
   const riderBodies: Record<string, unknown>[] = [];
   const sentStaff: {url:string;body:Record<string,unknown>}[]=[];
   try {
-    await page.route('https://staff-catalog.test/**', async (route: any) => {
+    await page.route('https://staff-catalog.test/**', async (route) => {
       const path=new URL(route.request().url()).pathname;
       if (['/api/admin/catalog','/api/admin/products/product-one/classification',
         '/api/admin/payout-requests/request-one','/api/admin/privacy/privacy-one'].includes(path)) {

@@ -38,6 +38,7 @@ export default async function ResetPasswordPage({
           </p>
         ) : null}
         <form
+          data-form-id="identity.password-reset-complete"
           action="/api/auth/password-reset/complete"
           method="post"
           className="mt-6 space-y-4"

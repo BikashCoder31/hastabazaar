@@ -6,6 +6,9 @@ import type { OrderStatus } from '@/lib/marketplace/types';
 import { buildEarningsAccrualStatements } from '@/lib/db/repositories/payouts';
 import type { OrderDocumentSnapshot } from '@/lib/db/repositories/orders';
 import {readDeliveryPricingSnapshot,type DeliveryPricingSnapshot} from '@/lib/checkout/delivery-rates';
+import { buildFormAnswerInsert } from './form-answers';
+import { digestFormRequest } from '@/lib/forms/submission';
+import type { FormAnswerSnapshot } from '@/lib/forms/types';
 
 export type ItemFulfillmentStatus =
   | 'confirmed'
@@ -404,6 +407,7 @@ export async function transitionAdminFulfillment(
     trackingCode?: string;
     requestId: string;
     now: number;
+    form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot };
   },
 ): Promise<void> {
   const authority = await staffMutationGuard(
@@ -412,7 +416,32 @@ export async function transitionAdminFulfillment(
     'order.manage',
     FulfillmentConflictError,
   );
-  if (
+  if (options.form && options.form.requestId !== options.requestId)
+    throw new FulfillmentConflictError('Form request reference does not match the fulfilment request.');
+  const catalogDigest = options.form ? await digestFormRequest({ orderId: options.orderId, actorId: options.actorId,
+    action: options.action, note: options.note.trim(), trackingCode: options.trackingCode?.trim() || null,
+    versionId: options.form.versionId, answers: options.form.answers }) : null;
+  if (options.form && options.action !== 'cancel') {
+    const prior = await database.prepare(`SELECT actor_id AS actorId,action,subject_type AS subjectType,
+      subject_id AS subjectId,next_json AS nextJson FROM audit_logs WHERE request_id=? LIMIT 1`)
+      .bind(options.requestId).first<{ actorId: string; action: string; subjectType: string;
+        subjectId: string; nextJson: string | null }>();
+    if (prior) {
+      let savedDigest: unknown;
+      try { savedDigest = JSON.parse(prior.nextJson ?? '').catalogDigest; } catch { /* conflict below */ }
+      const answer = await database.prepare(`SELECT actor_id AS actorId,config_version_id AS versionId,
+        subject_type AS subjectType,subject_id AS subjectId FROM form_answer_sets
+        WHERE form_id='staff.order-fulfillment' AND request_id=? LIMIT 1`)
+        .bind(options.requestId).first<{ actorId: string; versionId: string; subjectType: string; subjectId: string }>();
+      if (prior.actorId !== options.actorId || prior.action !== `order.${options.action}` ||
+        prior.subjectType !== 'order' || prior.subjectId !== options.orderId || savedDigest !== catalogDigest ||
+        answer?.actorId !== options.actorId || answer?.versionId !== options.form.versionId ||
+        answer?.subjectType !== 'order' || answer?.subjectId !== options.orderId)
+        throw new FulfillmentConflictError('Request reference already used for different fulfilment content.');
+      return;
+    }
+  }
+  if (options.action !== 'cancel' &&
     await database
       .prepare(
         'SELECT p.shipping_job_id FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id WHERE j.order_id=? LIMIT 1',
@@ -448,7 +477,11 @@ export async function transitionAdminFulfillment(
     }>();
   if (!order) throw new FulfillmentConflictError('Order not found.');
   if (options.action === 'cancel') {
-    if (!['confirmed', 'packing', 'ready_for_pickup'].includes(order.status)) {
+    const priorCancellation = options.form && await database.prepare(`SELECT id FROM order_cancellation_events
+      WHERE id=? AND order_id=? UNION ALL SELECT id FROM order_cancellation_reviews
+      WHERE id=? AND order_id=? LIMIT 1`)
+      .bind(options.requestId, options.orderId, options.requestId, options.orderId).first();
+    if (!['confirmed', 'packing', 'ready_for_pickup'].includes(order.status) && !priorCancellation) {
       throw new FulfillmentConflictError(
         'This order can no longer be cancelled.',
       );
@@ -462,6 +495,7 @@ export async function transitionAdminFulfillment(
       now: options.now,
       recordInventoryAdjustments: true,
       staffGuards: authority.statements,
+      form: options.form,
     });
   }
 
@@ -539,6 +573,11 @@ export async function transitionAdminFulfillment(
         from,
         itemFrom,
       ),
+    ...(options.form ? [database.prepare(`INSERT INTO operation_transaction_guards(id,valid)
+      SELECT ?,CASE WHEN changes()=1 AND EXISTS(SELECT 1 FROM orders WHERE id=? AND status=? AND operation_request_id=?) THEN 1 ELSE 0 END`)
+      .bind(`${options.requestId}:fulfilment-guard`, options.orderId, to, options.requestId),
+      database.prepare('DELETE FROM operation_transaction_guards WHERE id=?')
+        .bind(`${options.requestId}:fulfilment-guard`)] : []),
     database
       .prepare(
         `INSERT INTO order_status_events (
@@ -685,12 +724,15 @@ export async function transitionAdminFulfillment(
         options.orderId,
         note,
         JSON.stringify({ status: from }),
-        JSON.stringify({ status: to, trackingCode: tracking }),
+        JSON.stringify({ status: to, trackingCode: tracking, ...(catalogDigest ? { catalogDigest } : {}) }),
         options.requestId,
         options.now,
         options.orderId,
         options.requestId,
       ),
+    ...(options.form ? [buildFormAnswerInsert(database, { formId: 'staff.order-fulfillment', requestId: options.requestId,
+      versionId: options.form.versionId, subjectType: 'order', subjectId: options.orderId,
+      actorId: options.actorId, answers: options.form.answers, now: options.now })] : []),
     ...authority.statements,
   ]);
   if ((results[0].meta.changes ?? 0) !== 1) {
@@ -754,9 +796,22 @@ async function cancelOrder(
     customerId?: string | null;
     receiptTokenHash?: string | null;
     staffGuards?: readonly D1PreparedStatement[];
+    form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot };
   },
 ): Promise<void> {
   const order=await database.prepare('SELECT order_number AS number FROM orders WHERE id=?').bind(options.orderId).first<{number:string}>();if(!order)throw new FulfillmentConflictError('Order not found.');
   const access={orderNumber:order.number,actorId:options.actorId??undefined,customerId:options.customerId,receiptTokenHash:options.receiptTokenHash};
-  try{const choices=await cancellationChoices(database,access),sellerIds=choices.map(r=>r.id);const preview=await cancellationPreview(database,access,sellerIds);await cancelSelectedParcels(database,access,{sellerIds,fingerprint:preview.fingerprint,requestId:options.requestId,note:options.note,now:options.now});}catch(error){throw new FulfillmentConflictError(error instanceof CancellationConflictError?error.message:'Cancellation requires a current review.');}
+  try{const previous = options.form && await database.prepare(`SELECT e.seller_ids_json AS sellers,
+    a.next_json AS catalogJson FROM order_cancellation_events e
+    JOIN audit_logs a ON a.request_id=? AND a.action='cancellation.form_submitted'
+    WHERE e.id=? AND e.order_id=? LIMIT 1`)
+    .bind(`${options.requestId}:catalog`, options.requestId, options.orderId)
+    .first<{ sellers: string; catalogJson: string }>();
+    const saved = previous ? JSON.parse(previous.catalogJson) as { fingerprint?: unknown } : null;
+    const sellerIds = previous ? JSON.parse(previous.sellers) as string[] :
+      (await cancellationChoices(database,access)).map(r=>r.id);
+    const fingerprint = typeof saved?.fingerprint === 'string' ? saved.fingerprint :
+      (await cancellationPreview(database,access,sellerIds)).fingerprint;
+    await cancelSelectedParcels(database,access,{sellerIds,fingerprint,requestId:options.requestId,note:options.note,now:options.now,
+    ...(options.form ? { form: { ...options.form, formId: 'staff.order-fulfillment' as const } } : {})});}catch(error){throw new FulfillmentConflictError(error instanceof CancellationConflictError?error.message:'Cancellation requires a current review.');}
 }

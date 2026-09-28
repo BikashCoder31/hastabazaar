@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 import {
   CustomerAuthorizationError,
@@ -12,7 +13,7 @@ import {
 } from '@/lib/db/repositories/operations';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
-import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
 export async function POST(request: Request) {
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
       windowMs: 24 * 60 * 60_000,
     });
     if (!rateLimit.allowed) return rateLimitJson(rateLimit);
-    const body = JSON.parse(new TextDecoder().decode(await readBoundedBody(request, 131_072))) as {
+    const body = await readBoundedJsonObject(request) as {
       requestType?: string;
       detail?: string;
       requestId?: string;

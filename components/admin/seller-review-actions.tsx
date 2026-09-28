@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2, FilePenLine, SearchCheck, XCircle } from 'lucide-react';
 
@@ -17,6 +17,15 @@ import {
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import type { SellerReviewAction } from '@/lib/db/repositories/seller-applications';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
+
+const FORM_ID = 'staff.seller-review-action';
+const BASE_KEYS = ['action', 'reason', 'payoutAccountReference', 'settlementTermsReference', 'requestId', 'formVersion'];
+// Hydrate the absent server snapshot; own attempt mutations rerender the client.
+const subscribeToAttempt = () => () => undefined;
 
 interface ActionDefinition {
   action: SellerReviewAction;
@@ -87,6 +96,13 @@ export function SellerReviewActions({
   applicationStage?: string | null;
 }) {
   const router = useRouter();
+  const catalog = usePublishedFormConfig(FORM_ID);
+  const formRef = useRef<HTMLFormElement>(null);
+  const fingerprint = useRef<string | null>(null);
+  const attemptKey = sessionAttemptKey(FORM_ID, sellerId);
+  const [, setAttemptRevision] = useState(0);
+  const attemptPresent = useSyncExternalStore(subscribeToAttempt,
+    () => hasSessionAttempt(attemptKey), () => false);
   const [reason, setReason] = useState('');
   const [selected, setSelected] = useState<ActionDefinition | null>(null);
   const [pending, setPending] = useState(false);
@@ -129,29 +145,46 @@ export function SellerReviewActions({
 
   async function submit() {
     if (!selected) return;
+    if (!catalog.canSubmit || !catalog.config || !formRef.current) {
+      setError(catalog.message || 'Form configuration is unavailable.'); return;
+    }
     setPending(true);
     setError('');
     try {
+      const configured = readConfiguredSubmission(formRef.current, catalog.config, BASE_KEYS);
+      const payload = {
+        action: selected.action, reason, payoutAccountReference, settlementTermsReference,
+        ...configuredJsonPayload(catalog.config, configured.answers, BASE_KEYS),
+      };
+      const currentFingerprint = JSON.stringify(payload);
+      if (fingerprint.current && fingerprint.current !== currentFingerprint) {
+        throw new Error('This differs from the prior attempt. Check its outcome, then explicitly start a new attempt.');
+      }
+      const requestId = getOrCreateSessionAttempt(attemptKey);
+      setAttemptRevision((revision) => revision + 1);
+      fingerprint.current = currentFingerprint;
       const response = await fetch(
         `/api/admin/seller-applications/${encodeURIComponent(sellerId)}/review`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: selected.action,
-            reason,
-            payoutAccountReference,
-            settlementTermsReference,
-          }),
+          body: JSON.stringify({ ...payload, requestId }),
         },
       );
-      const result = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(result.error || 'Review action failed.');
+      const result = (await response.json().catch(() => null)) as { status?: unknown; error?: string; code?: string } | null;
+      if (result?.code === 'stale_version') catalog.handleSubmissionResponse(response, result.code);
+      if (!response.ok) throw new Error(result?.error || 'Review action failed.');
+      const expectedStatus = { start_review: 'under_review', request_changes: 'needs_changes',
+        approve_for_activation: 'approved_for_activation', approve: 'approved', reject: 'rejected' }[selected.action];
+      if (result?.status !== expectedStatus)
+        throw new Error('The response could not confirm this review action. Retry the same attempt.');
+      clearSessionAttempt(attemptKey);
+      setAttemptRevision((revision) => revision + 1);
+      fingerprint.current = null;
       setSelected(null);
       setReason('');
       router.refresh();
     } catch (caught) {
-      setSelected(null);
       setError(caught instanceof Error ? caught.message : 'Review action failed.');
     } finally {
       setPending(false);
@@ -159,7 +192,7 @@ export function SellerReviewActions({
   }
 
   return (
-    <div className="space-y-4">
+    <form ref={formRef} data-form-id={FORM_ID} className="space-y-4" onSubmit={(event) => event.preventDefault()}>
       {status === 'under_review' ? (
         <div className="space-y-2">
           <label htmlFor="review-note" className="text-sm font-semibold">
@@ -205,6 +238,17 @@ export function SellerReviewActions({
         </div>
       ) : null}
 
+      {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={BASE_KEYS} /> : null}
+      {catalog.message ? <p role="alert" className="text-sm text-destructive">{catalog.message}</p> : null}
+      {attemptPresent ? <p className="text-xs text-muted-foreground">
+        A prior review attempt may have succeeded. Retry only the same action and answers, or check its outcome before starting a new attempt.
+      </p> : null}
+      {attemptPresent ? <Button type="button" variant="outline" disabled={pending}
+        onClick={() => { if (window.confirm('A prior review may have succeeded. Check its outcome first. Start a new request reference?')) {
+          clearSessionAttempt(attemptKey); fingerprint.current = null; setAttemptRevision((revision) => revision + 1); setError('');
+          if (catalog.status === 'stale') catalog.refresh();
+        } }}>Start a new attempt</Button> : null}
+
       {error ? (
         <p role="alert" className="text-sm font-medium text-destructive">
           {error}
@@ -217,8 +261,9 @@ export function SellerReviewActions({
           return (
             <Button
               key={definition.action}
+              type="button"
               variant={definition.variant}
-              disabled={pending}
+              disabled={pending || !catalog.canSubmit}
               onClick={() => prepare(definition)}
             >
               <Icon />
@@ -240,7 +285,7 @@ export function SellerReviewActions({
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               variant={selected?.variant === 'destructive' ? 'destructive' : 'default'}
-              disabled={pending}
+              disabled={pending || !catalog.canSubmit}
               onClick={submit}
             >
               {pending ? 'Saving…' : selected?.label}
@@ -248,6 +293,6 @@ export function SellerReviewActions({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </form>
   );
 }

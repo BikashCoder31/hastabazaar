@@ -1,3 +1,5 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
 
 import { CustomerAuthorizationError, requireCustomerApi } from '@/lib/auth/customer';
@@ -13,34 +15,13 @@ export const dynamic = 'force-dynamic';
 
 type ProfileBody = { displayName?: unknown; phone?: unknown; locale?: unknown; idempotencyKey?: unknown;
   formVersion?: unknown; customAnswers?: unknown };
-const MAX_PROFILE_BODY_BYTES = 131_072;
-class ProfileBodyTooLargeError extends Error {}
-
 async function readProfileBody(request: Request): Promise<ProfileBody | null> {
-  const declared = Number(request.headers.get('content-length'));
-  if (Number.isFinite(declared) && declared > MAX_PROFILE_BODY_BYTES) throw new ProfileBodyTooLargeError();
-  const reader = request.body?.getReader();
-  if (!reader) return null;
-  const decoder = new TextDecoder('utf-8', { fatal: true });
-  let bytes = 0;
-  let text = '';
   try {
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      bytes += chunk.value.byteLength;
-      if (bytes > MAX_PROFILE_BODY_BYTES) {
-        await reader.cancel();
-        throw new ProfileBodyTooLargeError();
-      }
-      text += decoder.decode(chunk.value, { stream: true });
-    }
-    text += decoder.decode();
-    return JSON.parse(text) as ProfileBody;
+    return await readBoundedJsonObject(request) as ProfileBody;
   } catch (error) {
-    if (error instanceof ProfileBodyTooLargeError) throw error;
+    if (error instanceof BodyTooLargeError) throw error;
     return null;
-  } finally { reader.releaseLock(); }
+  }
 }
 
 export async function PATCH(request: Request): Promise<Response> {
@@ -115,7 +96,7 @@ export async function PATCH(request: Request): Promise<Response> {
     });
     return Response.json({ ok: true });
   } catch (error) {
-    if (error instanceof ProfileBodyTooLargeError) return Response.json({ error: 'Profile submission is too large.' }, { status: 413 });
+    if (error instanceof BodyTooLargeError) return Response.json({ error: 'Profile submission is too large.' }, { status: 413 });
     if (error instanceof CustomerAuthorizationError) return Response.json({ error: error.message }, { status: error.status });
     if (error instanceof CustomerDataConflictError) return Response.json({ error: error.message }, { status: 409 });
     if (error instanceof FormRuntimeError) return Response.json({ error: error.code === 'stale_version' ? error.message : 'Form configuration is unavailable.', code: error.code }, { status: error.code === 'stale_version' ? 409 : 503 });

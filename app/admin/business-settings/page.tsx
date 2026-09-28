@@ -1,3 +1,4 @@
+import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import { env } from 'cloudflare:workers';
 
 import {
@@ -45,6 +46,8 @@ export default async function BusinessSettingsPage() {
           require a different Super Admin to approve them.
         </p>
       </div>
+      <StaffFormHistoryLinks entries={[{kind:'business-settings',label:'Business setting answers'},
+        {kind:'homepage-hero-settings',label:'Homepage hero answers'},{kind:'homepage-occasion-settings',label:'Homepage occasion answers'}]} />
       <BusinessSettingsManager
         initialSettings={initialSettings as readonly BusinessSettingsAdminItem[]}
         asOf={now}

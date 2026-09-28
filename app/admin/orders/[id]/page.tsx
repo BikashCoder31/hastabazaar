@@ -1,3 +1,4 @@
+import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import { CancellationReviewSection } from '@/components/admin/cancellation-review-section';
 import { ExceptionOrderSection } from '@/components/admin/exception-order-section';
 import { InvoiceAdjustmentForm } from '@/components/admin/invoice-adjustment-form';
@@ -94,6 +95,11 @@ export default async function AdminOrderPage({
   return (
     <div>
       <CancellationReviewSection db={db} orderId={id} />
+      <StaffFormHistoryLinks entries={[{kind:'order-fulfillment',subjectId:id,label:'Fulfillment answers'},
+        {kind:'order-fulfillment-cancellation',label:'Fulfillment cancellation answers'},
+        {kind:'order-fulfillment-cancellation-review',label:'Fulfillment review answers'},
+        {kind:'cancellation-approved',label:'Approved cancellation answers'},
+        {kind:'cancellation-rejected',label:'Rejected cancellation answers'}]} />
       <Link
         href="/admin/orders"
         className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"

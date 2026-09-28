@@ -22,6 +22,8 @@ void test('header Orders link is visible only to authenticated customers', async
       {
         name: 'site-header-test-stubs',
         setup(bundle) {
+          bundle.onResolve({filter:/^cloudflare:workers$/},()=>({path:'workers',namespace:'header-workers'}));
+          bundle.onLoad({filter:/^workers$/,namespace:'header-workers'},()=>({contents:'export const env={};',loader:'js'}));
           bundle.onResolve(
             {
               filter:

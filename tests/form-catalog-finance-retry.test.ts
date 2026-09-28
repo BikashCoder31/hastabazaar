@@ -143,7 +143,11 @@ void test('seven finance and staff forms retain opaque attempts across uncertain
         assert.equal(bodies.length, frozenBodyCount);
         page.once('dialog', (dialog: {accept(): Promise<void>}) => void dialog.accept());
         await page.getByRole('button', { name: 'Start a new attempt' }).evaluate((button: HTMLButtonElement) => button.click());
-        await page.waitForTimeout(80);
+        await page.waitForFunction(({ formId, name }: { formId: string; name: string }) => {
+          const refreshedForm = document.querySelector<HTMLFormElement>(`form[data-form-id="${formId}"]`);
+          return Array.from(refreshedForm?.querySelectorAll('button') ?? [])
+            .some((button) => button.textContent?.trim() === name && !button.disabled);
+        }, { formId: target.form, name: submitName });
         assert.ok(configReads > frozenConfigReads, `${target.form}: confirmed stale reset refreshes catalog`);
         assert.equal(await submitButton.isDisabled(), false, `${target.form}: refreshed configuration permits review`);
         assert.equal(await form.getByLabel('Finance context').inputValue(), preservedContext, `${target.form}: reset preserves entered context`);

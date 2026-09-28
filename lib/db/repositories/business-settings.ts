@@ -8,8 +8,36 @@ import type {
   BusinessSettingKey,
   BusinessSettingValue,
 } from '../../configuration/types';
+import { buildFormAnswerInsert } from './form-answers';
+import { digestFormRequest, isValidatedFormVersionStale, validateSellerFormSubmission } from '../../forms/submission';
+import { FormRuntimeError } from '../../forms/runtime';
+import { FormValidationError } from '../../forms/validation';
+import type { FormAnswerSnapshot } from '../../forms/types';
 
 export class BusinessSettingConflictError extends Error {}
+
+export type BusinessSettingForm = Readonly<{
+  formId: string;
+  versionId: string;
+  answers: FormAnswerSnapshot;
+}>;
+
+/** A generic settings editor cannot impersonate the two purpose-built editors. */
+export function businessSettingFormId(key: BusinessSettingKey, sourceFormId: unknown): string {
+  const expected = key === 'homepage_hero_slides' ? 'staff.homepage-hero-manager'
+    : key === 'homepage_occasion_slides' ? 'staff.homepage-occasion-manager'
+    : 'staff.business-settings-manager';
+  if (sourceFormId !== expected) throw new FormValidationError('invalid_answer', 'Form source does not match the setting.');
+  return expected;
+}
+
+export async function validateBusinessSettingForm(database: D1Database, key: BusinessSettingKey,
+  body: Record<string, unknown>, requestId: string): Promise<BusinessSettingForm> {
+  const formId = businessSettingFormId(key, body.sourceFormId);
+  const validated = await validateSellerFormSubmission(database, formId, body.formVersion,
+    body.customAnswers, requestId);
+  return { formId, versionId: validated.versionId, answers: validated.answers };
+}
 
 export type BusinessSettingVersionStatus =
   | 'draft'
@@ -147,14 +175,71 @@ function guard(
 async function atomic(
   database: D1Database,
   statements: D1PreparedStatement[],
+  form?: BusinessSettingForm,
 ): Promise<void> {
   try {
     await database.batch(statements);
   } catch {
+    if (form && await isValidatedFormVersionStale(database, form.formId, form.versionId)) {
+      throw new FormRuntimeError('stale_version', 'This form changed. Refresh it and review your answers.');
+    }
     throw new BusinessSettingConflictError(
       'The business setting changed concurrently or no longer permits this action.',
     );
   }
+}
+
+function formStatements(database: D1Database, key: BusinessSettingKey,
+  form: BusinessSettingForm | undefined, actorId: string, requestId: string,
+  subjectId: string, now: number, domain: D1PreparedStatement[]): D1PreparedStatement[] {
+  if (!form) return domain;
+  businessSettingFormId(key, form.formId);
+  if (form.answers.formId !== form.formId || !Number.isSafeInteger(form.answers.version) ||
+    form.answers.version < 1) throw new FormValidationError('invalid_answer', 'Form context is invalid.');
+  return [
+    ...guard(database, `EXISTS (SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id
+        WHERE u.id=? AND u.status='active' AND r.role='super_admin')
+      AND EXISTS (SELECT 1 FROM form_config_versions v WHERE v.id=? AND v.form_id=?
+        AND v.status='published' AND v.version=? AND v.id=(SELECT current.id FROM form_config_versions current
+          WHERE current.form_id=? AND current.status='published' ORDER BY current.version DESC LIMIT 1))`,
+    [actorId, form.versionId, form.formId, form.answers.version, form.formId]),
+    ...domain,
+    buildFormAnswerInsert(database, { formId: form.formId, requestId,
+      versionId: form.versionId, subjectType: 'business_setting', subjectId,
+      actorId, answers: form.answers, now }),
+  ];
+}
+
+async function assertFormReplay(database: D1Database, form: BusinessSettingForm,
+  requestId: string, subjectId: string, actorId: string): Promise<void> {
+  const actor = await database.prepare(`SELECT 1 AS allowed FROM users u JOIN user_roles r ON r.user_id=u.id
+    WHERE u.id=? AND u.status='active' AND r.role='super_admin' LIMIT 1`)
+    .bind(actorId).first<{ allowed: number }>();
+  if (!actor) throw new BusinessSettingConflictError('Current Super Admin authority is required.');
+  const prior = await database.prepare(`SELECT config_version_id AS versionId, answers_json AS answersJson
+    FROM form_answer_sets WHERE form_id=? AND request_id=? AND subject_type='business_setting'
+      AND subject_id=? AND actor_id=? LIMIT 1`).bind(form.formId, requestId, subjectId, actorId)
+    .first<{ versionId: string; answersJson: string }>();
+  if (!prior || prior.versionId !== form.versionId || prior.answersJson !== JSON.stringify(form.answers))
+    throw new BusinessSettingConflictError('Request ID was already used for another setting action.');
+}
+
+async function replayAction(database: D1Database, form: BusinessSettingForm | undefined,
+  input: { key: BusinessSettingKey; actorId: string; requestId: string; subjectId: string;
+    action: string; reason: string; next: Record<string, unknown> }): Promise<boolean> {
+  if (!form) return false;
+  businessSettingFormId(input.key, form.formId);
+  const row = await database.prepare(`SELECT actor_id AS actorId,action,subject_type AS subjectType,subject_id AS subjectId,
+    reason,next_json AS nextJson FROM audit_logs WHERE request_id=? LIMIT 1`)
+    .bind(input.requestId).first<{ actorId: string; action: string; subjectType: string; subjectId: string;
+      reason: string; nextJson: string }>();
+  if (!row) return false;
+  if (row.actorId !== input.actorId || row.action !== input.action || row.subjectType !== 'business_setting' ||
+    row.subjectId !== input.subjectId || row.reason !== input.reason ||
+    row.nextJson !== JSON.stringify(input.next))
+    throw new BusinessSettingConflictError('Request ID was already used for another setting action.');
+  await assertFormReplay(database, form, input.requestId, input.subjectId, input.actorId);
+  return true;
 }
 
 function audit(
@@ -226,6 +311,7 @@ function publicationStatements(
       `EXISTS (
          SELECT 1 FROM business_setting_versions
          WHERE id = ? AND status = ? AND revision = ?
+           AND (? = 0 OR (submitted_by IS NOT NULL AND submitted_by <> ?))
        ) AND NOT EXISTS (
          SELECT 1 FROM business_setting_versions
          WHERE setting_key = ? AND status = 'published' AND effective_from >= ?
@@ -234,6 +320,8 @@ function publicationStatements(
         input.record.id,
         input.fromStatus,
         input.expectedRevision,
+        input.approved ? 1 : 0,
+        input.actorId,
         input.record.key,
         input.effectiveFrom,
       ],
@@ -322,6 +410,7 @@ export async function createBusinessSettingDraft<K extends BusinessSettingKey>(
     requestId: string;
     now: number;
     supersedesId?: string | null;
+    form?: BusinessSettingForm;
   },
 ): Promise<BusinessSettingVersion<K>> {
   const definition = getBusinessSettingDefinition(options.key);
@@ -329,13 +418,45 @@ export async function createBusinessSettingDraft<K extends BusinessSettingKey>(
   const reason = normalizeReason(options.reason);
   const requestId = validateRequestId(options.requestId);
   const now = timestamp('Current time', options.now);
+  const requestDigest = options.form ? await digestFormRequest({ key: options.key, value,
+    actorId: options.actorId, reason, requestId, supersedesId: options.supersedesId ?? null,
+    formId: options.form.formId, configVersionId: options.form.versionId, answers: options.form.answers }) : null;
+  const draftProvenance = (version: number) => ({ key: options.key, version, revision: 1,
+    status: 'draft', supersedesId: options.supersedesId ?? null, formId: options.form?.formId,
+    configVersionId: options.form?.versionId, requestDigest });
+  const assertDraftReplay = async (subjectId: string, version: number) => {
+    if (!await replayAction(database, options.form, { key: options.key, actorId: options.actorId,
+      requestId, subjectId, action: 'business_setting.draft_created', reason, next: draftProvenance(version) }))
+      throw new BusinessSettingConflictError('Original draft request provenance is missing.');
+  };
+  if (options.form) {
+    businessSettingFormId(options.key, options.form.formId);
+    const prior = await database.prepare(`SELECT subject_id AS subjectId FROM form_answer_sets
+      WHERE form_id=? AND request_id=? AND subject_type='business_setting' LIMIT 1`)
+      .bind(options.form.formId, requestId).first<{ subjectId: string }>();
+    if (prior) {
+      const replay = await getVersionById(database, prior.subjectId);
+      if (!replay || replay.key !== options.key || replay.createdBy !== options.actorId ||
+        replay.reason !== reason || replay.supersedesId !== (options.supersedesId ?? null) ||
+        JSON.stringify(replay.value) !== JSON.stringify(value))
+        throw new BusinessSettingConflictError('Request ID was already used for another change.');
+      await assertDraftReplay(replay.id, replay.version);
+      return replay as BusinessSettingVersion<K>;
+    }
+  }
   const existing = await database
     .prepare(`SELECT ${selectColumns} FROM business_setting_versions WHERE last_request_id = ?`)
     .bind(requestId)
     .first<BusinessSettingRow>();
   if (existing) {
     const parsed = parseRow<K>(existing);
-    if (parsed.key === options.key && JSON.stringify(parsed.value) === JSON.stringify(value)) {
+    if (parsed.key === options.key && JSON.stringify(parsed.value) === JSON.stringify(value) &&
+      (!options.form || (parsed.createdBy === options.actorId && parsed.reason === reason &&
+        parsed.supersedesId === (options.supersedesId ?? null)))) {
+      if (options.form) {
+        businessSettingFormId(options.key, options.form.formId);
+        await assertDraftReplay(parsed.id, parsed.version);
+      }
       return parsed;
     }
     throw new BusinessSettingConflictError('Request ID was already used for another change.');
@@ -350,7 +471,7 @@ export async function createBusinessSettingDraft<K extends BusinessSettingKey>(
   const version = Number(latest?.version ?? 0) + 1;
   const id = crypto.randomUUID();
   try {
-    await database
+    const insert = database
       .prepare(
         `INSERT INTO business_setting_versions (
           id, setting_key, version, value_json, status, revision,
@@ -369,9 +490,15 @@ export async function createBusinessSettingDraft<K extends BusinessSettingKey>(
         now,
         options.supersedesId ?? null,
         requestId,
-      )
-      .run();
-  } catch {
+      );
+    if (options.form) await atomic(database, formStatements(database, options.key,
+      options.form, options.actorId, requestId, id, now, [insert, audit(database, {
+        actorId: options.actorId, action: 'business_setting.draft_created', subjectId: id,
+        reason, previous: null, next: draftProvenance(version), requestId, now,
+      })]), options.form);
+    else await insert.run();
+  } catch (error) {
+    if (error instanceof FormRuntimeError) throw error;
     throw new BusinessSettingConflictError(
       'The business setting draft conflicts with a concurrent change.',
     );
@@ -392,6 +519,7 @@ export async function publishBusinessSettingDraft(
     requestId: string;
     now: number;
     simulationAllowed?: boolean;
+    form?: BusinessSettingForm;
   },
 ): Promise<void> {
   const record = await getVersionById(database, options.id);
@@ -399,6 +527,10 @@ export async function publishBusinessSettingDraft(
   const requestId = validateRequestId(options.requestId);
   const now = timestamp('Current time', options.now);
   const effectiveFrom = timestamp('Effective date', options.effectiveFrom);
+  if (record && await replayAction(database, options.form, { key: record.key,
+    actorId: options.actorId, requestId, subjectId: record.id,
+    action: 'business_setting.published', reason,
+    next: { status: 'published', revision: options.expectedRevision + 1, effectiveFrom } })) return;
   if (!record || record.status !== 'draft' || record.revision !== options.expectedRevision) {
     throw new BusinessSettingConflictError('Refresh the current draft before publishing.');
   }
@@ -422,7 +554,8 @@ export async function publishBusinessSettingDraft(
   await assertChronologicalPublication(database, record.key, effectiveFrom);
   await atomic(
     database,
-    publicationStatements(database, {
+    formStatements(database, record.key, options.form, options.actorId, requestId,
+      record.id, now, publicationStatements(database, {
       record,
       actorId: options.actorId,
       expectedRevision: options.expectedRevision,
@@ -432,7 +565,8 @@ export async function publishBusinessSettingDraft(
       now,
       fromStatus: 'draft',
       approved: false,
-    }),
+      })),
+    options.form,
   );
 }
 
@@ -445,12 +579,17 @@ export async function submitBusinessSettingDraft(
     reason: string;
     requestId: string;
     now: number;
+    form?: BusinessSettingForm;
   },
 ): Promise<void> {
   const record = await getVersionById(database, options.id);
   const reason = normalizeReason(options.reason);
   const requestId = validateRequestId(options.requestId);
   const now = timestamp('Current time', options.now);
+  if (record && await replayAction(database, options.form, { key: record.key,
+    actorId: options.actorId, requestId, subjectId: record.id,
+    action: 'business_setting.submitted', reason,
+    next: { status: 'pending_approval', revision: options.expectedRevision + 1 } })) return;
   if (
     !record ||
     record.status !== 'draft' ||
@@ -460,7 +599,8 @@ export async function submitBusinessSettingDraft(
     throw new BusinessSettingConflictError('Only a current controlled draft can be submitted.');
   }
   const nextRevision = options.expectedRevision + 1;
-  await atomic(database, [
+  await atomic(database, formStatements(database, record.key, options.form,
+    options.actorId, requestId, record.id, now, [
     ...guard(
       database,
       `EXISTS (
@@ -505,7 +645,7 @@ export async function submitBusinessSettingDraft(
       requestId,
       now,
     }),
-  ]);
+  ]), options.form);
 }
 
 export async function approveBusinessSettingChange(
@@ -519,6 +659,7 @@ export async function approveBusinessSettingChange(
     requestId: string;
     now: number;
     simulationAllowed?: boolean;
+    form?: BusinessSettingForm;
   },
 ): Promise<void> {
   const record = await getVersionById(database, options.id);
@@ -526,6 +667,10 @@ export async function approveBusinessSettingChange(
   const requestId = validateRequestId(options.requestId);
   const now = timestamp('Current time', options.now);
   const effectiveFrom = timestamp('Effective date', options.effectiveFrom);
+  if (record && await replayAction(database, options.form, { key: record.key,
+    actorId: options.actorId, requestId, subjectId: record.id,
+    action: 'business_setting.approved', reason,
+    next: { status: 'published', revision: options.expectedRevision + 1, effectiveFrom } })) return;
   if (
     !record ||
     record.status !== 'pending_approval' ||
@@ -552,7 +697,8 @@ export async function approveBusinessSettingChange(
   await assertChronologicalPublication(database, record.key, effectiveFrom);
   await atomic(
     database,
-    publicationStatements(database, {
+    formStatements(database, record.key, options.form, options.actorId, requestId,
+      record.id, now, publicationStatements(database, {
       record,
       actorId: options.actorId,
       expectedRevision: options.expectedRevision,
@@ -562,7 +708,8 @@ export async function approveBusinessSettingChange(
       now,
       fromStatus: 'pending_approval',
       approved: true,
-    }),
+      })),
+    options.form,
   );
 }
 
@@ -575,12 +722,17 @@ export async function rejectBusinessSettingChange(
     reason: string;
     requestId: string;
     now: number;
+    form?: BusinessSettingForm;
   },
 ): Promise<void> {
   const record = await getVersionById(database, options.id);
   const reason = normalizeReason(options.reason);
   const requestId = validateRequestId(options.requestId);
   const now = timestamp('Current time', options.now);
+  if (record && await replayAction(database, options.form, { key: record.key,
+    actorId: options.actorId, requestId, subjectId: record.id,
+    action: 'business_setting.rejected', reason,
+    next: { status: 'rejected', revision: options.expectedRevision + 1 } })) return;
   if (
     !record ||
     record.status !== 'pending_approval' ||
@@ -593,7 +745,8 @@ export async function rejectBusinessSettingChange(
     );
   }
   const nextRevision = options.expectedRevision + 1;
-  await atomic(database, [
+  await atomic(database, formStatements(database, record.key, options.form,
+    options.actorId, requestId, record.id, now, [
     ...guard(
       database,
       `EXISTS (
@@ -638,7 +791,7 @@ export async function rejectBusinessSettingChange(
       requestId,
       now,
     }),
-  ]);
+  ]), options.form);
 }
 
 export async function getEffectiveBusinessSetting<K extends BusinessSettingKey>(
@@ -708,6 +861,7 @@ export async function createBusinessSettingReversalDraft<
     reason: string;
     requestId: string;
     now: number;
+    form?: BusinessSettingForm;
   },
 ): Promise<BusinessSettingVersion<K>> {
   const source = await getVersionById(database, options.sourceVersionId);
@@ -724,5 +878,6 @@ export async function createBusinessSettingReversalDraft<
     requestId: options.requestId,
     now: options.now,
     supersedesId: source.id,
+    form: options.form,
   });
 }

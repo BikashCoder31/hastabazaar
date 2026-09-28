@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -21,11 +22,11 @@ export function CatalogManager({
 }) {
   return (
     <Tabs defaultValue="categories" className="mt-7 gap-5">
-      <TabsList className="min-h-12" aria-label="Catalogue taxonomy">
-        <TabsTrigger value="categories" className="px-4">
+      <TabsList className="h-auto min-h-12 max-w-full flex-wrap" aria-label="Catalogue taxonomy">
+        <TabsTrigger value="categories" className="min-w-0 whitespace-normal px-4">
           Categories ({categories.length})
         </TabsTrigger>
-        <TabsTrigger value="occasions" className="px-4">
+        <TabsTrigger value="occasions" className="min-w-0 whitespace-normal px-4">
           Gift occasions ({occasions.length})
         </TabsTrigger>
       </TabsList>
@@ -59,7 +60,7 @@ function TaxonomySection({
   const [newMode, setNewMode] = useState(false);
   const [message, setMessage] = useState('');
   const attemptKey=sessionAttemptKey('staff.catalog',`${kind}:${editing?.id??'new'}`);
-  useEffect(()=>setRetryPending(hasSessionAttempt(attemptKey)),[attemptKey]);
+  useEffect(() => { const timer = window.setTimeout(() => setRetryPending(hasSessionAttempt(attemptKey)), 0); return () => window.clearTimeout(timer); }, [attemptKey]);
   async function save(body:Record<string,unknown>){
     if(pending)return;
     setPending(true);setError('');
@@ -88,11 +89,11 @@ function TaxonomySection({
       : null);
   return (
     <section className="rounded-2xl border bg-card p-5 sm:p-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <h2 className="font-heading text-2xl">{title}</h2>
-        <a className="text-sm underline" href={`/admin/staff-form-history?kind=catalog-${kind}`}>
+        <Link className="text-sm underline" href={`/admin/staff-form-history?kind=catalog-${kind}`}>
           View form history
-        </a>
+        </Link>
         <Button
           disabled={pending}
           onClick={() => {
@@ -139,7 +140,7 @@ function TaxonomySection({
         >
 <p className="text-xs text-muted-foreground">* Required field</p>
 
-          <fieldset disabled={pending || !catalog.canSubmit} className="grid gap-4 sm:grid-cols-2">
+          <fieldset disabled={pending || !catalog.canSubmit} className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
             <legend className="mb-4 font-semibold">
               {editing ? 'Edit ' + editing.nameEn : 'New ' + kind}
             </legend>
@@ -206,7 +207,7 @@ function TaxonomySection({
                 {error}
               </p>
             ) : null}
-            <div className="flex gap-2 sm:col-span-2">
+            <div className="flex flex-wrap gap-2 sm:col-span-2">
               <Button type="submit" disabled={pending}>
                 {pending ? 'Saving…' : 'Save entry'}
               </Button>

@@ -38,7 +38,7 @@ export function SellerCaseResponseForm({
         makes the final decision.
       </p>
     );
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
+  async function submit(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending || disabled) return;
     if (!published.canSubmit || !published.config) {
@@ -108,7 +108,7 @@ export function SellerCaseResponseForm({
         />
       </div>
       {published.config ? <ConfiguredFields config={published.config} baseKeys={caseBaseKeys} /> : null}
-      {!published.canSubmit ? <p role="status">{published.message || 'Loading response form…'}</p> : null}
+      {!published.canSubmit ? <output>{published.message || 'Loading response form…'}</output> : null}
       {error ? (
         <p role="alert" className="text-sm font-medium text-destructive">
           {error}

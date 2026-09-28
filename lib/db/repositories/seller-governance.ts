@@ -1,4 +1,7 @@
 import { staffMutationGuard } from './staff-mutation-guard';
+import { buildFormAnswerInsert } from './form-answers';
+import { digestFormRequest } from '@/lib/forms/submission';
+import type { FormAnswerSnapshot } from '@/lib/forms/types';
 
 export type SellerRestrictionMode = 'active' | 'suspended' | 'disabled';
 export type ExistingObligationMode =
@@ -126,6 +129,7 @@ export async function applySellerRestriction(
     expectedVersion: number;
     requestId: string;
     now: number;
+    form?: { versionId: string; answers: FormAnswerSnapshot };
   },
 ): Promise<SellerRestrictionRow> {
   const authority = await staffMutationGuard(
@@ -155,6 +159,11 @@ export async function applySellerRestriction(
     options.obligationMode === 'allow_existing'
   )
     throw new SellerGovernanceConflictError('Unsafe-goods and fraud restrictions require an administrative fulfillment decision.');
+  const catalogDigest = options.form ? await digestFormRequest({ sellerId: options.sellerId,
+    actorId: options.actorId, mode: options.mode, suspendedUntil,
+    obligationMode: options.obligationMode, reasonCode: options.reasonCode,
+    reason, expectedVersion: options.expectedVersion, versionId: options.form.versionId,
+    answers: options.form.answers }) : null;
   const duplicate = await database
     .prepare('SELECT seller_id AS sellerId,actor_id AS actorId FROM seller_restriction_events WHERE request_id=?')
     .bind(options.requestId)
@@ -162,8 +171,26 @@ export async function applySellerRestriction(
   if (duplicate) {
     if (duplicate.sellerId !== options.sellerId || duplicate.actorId !== options.actorId)
       throw new SellerGovernanceConflictError('This request identifier belongs to another governance action.');
+    if (options.form) {
+      const audit = await database.prepare(`SELECT next_json AS nextJson FROM audit_logs
+        WHERE request_id=? AND action='seller.restriction.changed' AND subject_type='seller'
+          AND subject_id=? AND actor_id=? LIMIT 1`)
+        .bind(`${options.requestId}:audit`, options.sellerId, options.actorId)
+        .first<{ nextJson: string | null }>();
+      const answer = await database.prepare(`SELECT 1 AS valid FROM form_answer_sets
+        WHERE form_id='staff.seller-governance' AND request_id=? AND config_version_id=?
+          AND subject_type='seller' AND subject_id=? AND actor_id=? LIMIT 1`)
+        .bind(options.requestId, options.form.versionId, options.sellerId, options.actorId).first();
+      let saved: unknown;
+      try { saved = audit?.nextJson ? JSON.parse(audit.nextJson).catalogDigest : null; }
+      catch { /* Corrupt audit metadata must not authorize replay. */ }
+      if (!answer || saved !== catalogDigest)
+        throw new SellerGovernanceConflictError('This request identifier belongs to another governance action.');
+    }
     const existing = await getCurrentSellerRestriction(database, duplicate.sellerId);
     if (!existing) throw new SellerGovernanceConflictError('Restriction history is inconsistent.');
+    if (options.form && existing.version !== options.expectedVersion + 1)
+      throw new SellerGovernanceConflictError('The seller restriction changed after this action. Refresh and review the current record.');
     return existing;
   }
   const seller = await database
@@ -198,6 +225,8 @@ export async function applySellerRestriction(
         .prepare('UPDATE seller_profiles SET updated_at=updated_at WHERE id=?')
         .bind(options.sellerId),
       mutation,
+      ...operationGuard(database, 'EXISTS(SELECT 1 FROM seller_restrictions WHERE seller_id=? AND version=?)',
+        [options.sellerId, nextVersion]),
       database.prepare(
         `INSERT INTO seller_restriction_events(id,seller_id,from_mode,to_mode,suspended_until,
           obligation_mode,reason_code,private_reason,actor_id,request_id,created_at)
@@ -210,9 +239,14 @@ export async function applySellerRestriction(
       ).bind(
         crypto.randomUUID(), options.actorId, options.sellerId, reason,
         JSON.stringify({ mode: fromMode, version: current?.version ?? 0 }),
-        JSON.stringify({ mode: options.mode, suspendedUntil, obligationMode: options.obligationMode, version: nextVersion }),
+        JSON.stringify({ mode: options.mode, suspendedUntil, obligationMode: options.obligationMode,
+          version: nextVersion, ...(catalogDigest ? { catalogDigest } : {}) }),
         `${options.requestId}:audit`, options.now,
       ),
+      ...(options.form ? [buildFormAnswerInsert(database, { formId: 'staff.seller-governance',
+        requestId: options.requestId, versionId: options.form.versionId,
+        subjectType: 'seller', subjectId: options.sellerId, actorId: options.actorId,
+        answers: options.form.answers, now: options.now })] : []),
       ...sellerRestrictionNotificationStatements(database, {
         sellerId: options.sellerId,
         mode: options.mode,

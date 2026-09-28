@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useState, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import type { RiderPolicy } from '@/lib/riders/repository';
@@ -23,7 +24,7 @@ export function RiderAdminAction({
   const catalog=usePublishedFormConfig('staff.rider-control-1');
   const attemptKey=sessionAttemptKey('staff.rider-control-1',`${action}:${String(fields.userId??fields.reportId??'global')}`);
   const [retryPending,setRetryPending]=useState(false);
-  useEffect(()=>setRetryPending(hasSessionAttempt(attemptKey)),[attemptKey]);
+  useEffect(() => { const timer = window.setTimeout(() => setRetryPending(hasSessionAttempt(attemptKey)), 0); return () => window.clearTimeout(timer); }, [attemptKey]);
   async function submit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     if(busy||!catalog.config||!catalog.canSubmit)return;
@@ -56,7 +57,7 @@ export function RiderAdminAction({
   }
   return (
     <form data-form-id="staff.rider-control-1" className="my-3 space-y-2" onSubmit={(e) => void submit(e)}>
-      <a className="text-sm underline" href={`/admin/staff-form-history?kind=${fields.reportId?'rider-report-control':'rider-control'}${fields.reportId||fields.userId?`&id=${encodeURIComponent(String(fields.reportId??fields.userId))}`:''}`}>View rider form history</a>
+      <Link className="text-sm underline" href={`/admin/staff-form-history?kind=${fields.reportId?'rider-report-control':'rider-control'}${fields.reportId||fields.userId?`&id=${encodeURIComponent(String(fields.reportId??fields.userId))}`:''}`}>View rider form history</Link>
       {action === 'review' ? (
         <label className="block">
           Decision *
@@ -101,7 +102,7 @@ export function RiderPolicyForm({ policy }: { policy: RiderPolicy }) {
     [message, setMessage] = useState(''),[busy,setBusy]=useState(false),[retryPending,setRetryPending]=useState(false);
   const catalog=usePublishedFormConfig('staff.rider-control-2');
   const attemptKey=sessionAttemptKey('staff.rider-control-2','policy');
-  useEffect(()=>setRetryPending(hasSessionAttempt(attemptKey)),[attemptKey]);
+  useEffect(() => { const timer = window.setTimeout(() => setRetryPending(hasSessionAttempt(attemptKey)), 0); return () => window.clearTimeout(timer); }, [attemptKey]);
   return (
     <form
       data-form-id="staff.rider-control-2"
@@ -135,7 +136,7 @@ export function RiderPolicyForm({ policy }: { policy: RiderPolicy }) {
       }}
     >
       <h2 className="font-semibold">Delivery evidence settings</h2>
-      <a className="text-sm underline" href="/admin/staff-form-history?kind=rider-policy&id=current">View policy form history</a>
+      <Link className="text-sm underline" href="/admin/staff-form-history?kind=rider-policy&id=current">View policy form history</Link>
       <p>
         One handover photo or video is required. Evidence is retained; no
         automatic deletion runs.

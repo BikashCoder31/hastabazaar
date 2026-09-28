@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
@@ -6,7 +7,7 @@ import {
   OperationsConflictError,
 } from '@/lib/db/repositories/operations';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { FormRequestConflictError, validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
@@ -21,7 +22,7 @@ export async function POST(
     );
   try {
     const staff = await requireStaffApi('order.manage');
-    const raw = JSON.parse(new TextDecoder().decode(await readBoundedBody(request, 131_072))) as unknown;
+    const raw = await readBoundedJsonObject(request) as unknown;
     const { id } = await context.params;
     if (!raw || typeof raw !== 'object' || Array.isArray(raw) ||
       Object.keys(raw).some((key) => !['action', 'note', 'labelReference', 'trackingCode',
@@ -39,7 +40,7 @@ export async function POST(
         'open_claim',
         'resolve_claim',
         'reconcile',
-      ].includes(String(body.action ?? '')) ||
+      ].includes(typeof body.action === 'string' ? body.action : '') ||
       typeof body.note !== 'string' || body.note.length > 1000 ||
       ['labelReference', 'trackingCode', 'claimReference', 'reconciliationStatus'].some((key) =>
         body[key] !== undefined && typeof body[key] !== 'string')
@@ -50,7 +51,7 @@ export async function POST(
       );
     if (
       body.reconciliationStatus &&
-      !['matched', 'variance', 'resolved'].includes(String(body.reconciliationStatus))
+      !['matched', 'variance', 'resolved'].includes(typeof body.reconciliationStatus === 'string' ? body.reconciliationStatus : '')
     )
       return Response.json(
         { error: 'Invalid reconciliation state.' },

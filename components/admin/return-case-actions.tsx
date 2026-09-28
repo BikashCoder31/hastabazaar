@@ -1,7 +1,11 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,6 +33,8 @@ const operationLabels: Record<string, string> = {
 
 export function ReturnCaseActions(props: Props) {
   const router = useRouter();
+  const catalog = usePublishedFormConfig('staff.return-case-action');
+  const formRef = useRef<HTMLFormElement>(null);
   const [action, setAction] = useState('request_changes');
   const [outcome, setOutcome] = useState('refund');
   const [responsibility, setResponsibility] = useState('seller');
@@ -38,7 +44,7 @@ export function ReturnCaseActions(props: Props) {
   const [restockQuantity, setRestockQuantity] = useState('0');
   const [note, setNote] = useState('');
   const [messageEn, setMessageEn] = useState('');
-  const [key, setKey] = useState(() => crypto.randomUUID());
+  const [failedAttemptKey, setFailedAttemptKey] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const reviewable = props.canApproveStandard && [
@@ -56,9 +62,23 @@ export function ReturnCaseActions(props: Props) {
   ) : [];
 
   async function send(endpoint: string, body: Record<string, unknown>) {
+    if (!catalog.canSubmit || !catalog.config || !formRef.current) {
+      setError(catalog.message || 'Return form configuration is unavailable.');
+      return;
+    }
     setPending(true);
     setError('');
+    setFailedAttemptKey(null);
+    let attemptKey: string | null = null;
     try {
+      const builtIns = ['action', 'decision', 'outcome', 'responsibility', 'itemRefundPaisa',
+        'deliveryRefundPaisa', 'reference', 'restockQuantity', 'note', 'publicMessageEn',
+        'publicMessageNe', 'idempotencyKey', 'formVersion'];
+      const configured = readConfiguredSubmission(formRef.current, catalog.config, builtIns);
+      const actionName = String(body.action ?? body.decision);
+      attemptKey = sessionAttemptKey('staff.return-case-action',
+        `${props.id}:${endpoint.split('/').at(-1)}:${actionName}`);
+      const requestId = getOrCreateSessionAttempt(attemptKey);
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -67,18 +87,23 @@ export function ReturnCaseActions(props: Props) {
           note,
           publicMessageEn: messageEn,
           publicMessageNe: messageEn,
-          idempotencyKey: key,
+          sourceFormId: 'staff.return-case-action',
+          ...configuredJsonPayload(catalog.config, configured.answers, builtIns),
+          idempotencyKey: requestId,
         }),
       });
-      const result = (await response.json()) as { error?: string };
+      const result = (await response.json().catch(() => null)) as { ok?: boolean; error?: string; code?: string } | null;
+      if (result?.code === 'stale_version') catalog.handleSubmissionResponse(response, result.code);
       if (!response.ok)
-        throw new Error(result.error || 'The case could not be updated.');
-      setKey(crypto.randomUUID());
+        throw new Error(result?.error || 'The case could not be updated.');
+      if (result?.ok !== true) throw new Error('The return action could not be confirmed. Retry the same attempt.');
+      clearSessionAttempt(attemptKey);
       setNote('');
       setMessageEn('');
       setReference('');
       router.refresh();
     } catch (cause) {
+      setFailedAttemptKey(attemptKey);
       setError(
         cause instanceof Error
           ? cause.message
@@ -96,7 +121,8 @@ export function ReturnCaseActions(props: Props) {
       </p>
     );
   return (
-    <div className="space-y-5">
+    <form ref={formRef} data-form-id="staff.return-case-action" className="space-y-5"
+      onSubmit={(event) => event.preventDefault()}>
       {reviewable ? (
         <>
           <Field label="Decision">
@@ -233,15 +259,27 @@ export function ReturnCaseActions(props: Props) {
           maxLength={1000}
         />
       </Field>
+      {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={['action', 'decision', 'outcome',
+        'responsibility', 'itemRefundPaisa', 'deliveryRefundPaisa', 'reference', 'restockQuantity',
+        'note', 'publicMessageEn', 'publicMessageNe', 'idempotencyKey', 'formVersion']} /> : null}
+      {catalog.message ? <p role="alert" className="text-sm text-destructive">{catalog.message}</p> : null}
       {error ? (
         <p role="alert" className="text-sm font-medium text-destructive">
           {error}
         </p>
       ) : null}
+      {failedAttemptKey ? <Button type="button" variant="outline" disabled={pending}
+        onClick={() => {
+          if (!window.confirm('This case action may already have succeeded. Check its latest history before starting a new attempt, which could duplicate the action. Continue?')) return;
+          clearSessionAttempt(failedAttemptKey);
+          if (catalog.status === 'stale') catalog.refresh();
+          setFailedAttemptKey(null);
+          setError('New attempt ready. Review the latest case history before submitting again.');
+        }}>Start a new attempt</Button> : null}
       {reviewable ? (
         <Button
           disabled={
-            pending || note.trim().length < 8 || messageEn.trim().length < 8
+            pending || !catalog.canSubmit || note.trim().length < 8 || messageEn.trim().length < 8
           }
           onClick={() =>
             void send(
@@ -265,7 +303,7 @@ export function ReturnCaseActions(props: Props) {
         <div className="flex gap-2">
           <Button
             disabled={
-              pending || note.trim().length < 8 || messageEn.trim().length < 8
+              pending || !catalog.canSubmit || note.trim().length < 8 || messageEn.trim().length < 8
             }
             onClick={() =>
               void send(
@@ -279,7 +317,7 @@ export function ReturnCaseActions(props: Props) {
           <Button
             variant="destructive"
             disabled={
-              pending || note.trim().length < 8 || messageEn.trim().length < 8
+              pending || !catalog.canSubmit || note.trim().length < 8 || messageEn.trim().length < 8
             }
             onClick={() =>
               void send(
@@ -294,7 +332,7 @@ export function ReturnCaseActions(props: Props) {
       ) : operations.length ? (
         <Button
           disabled={
-            pending || note.trim().length < 8 || messageEn.trim().length < 8
+            pending || !catalog.canSubmit || note.trim().length < 8 || messageEn.trim().length < 8
           }
           onClick={() =>
             void send(
@@ -314,7 +352,7 @@ export function ReturnCaseActions(props: Props) {
               ]}
         </Button>
       ) : null}
-    </div>
+    </form>
   );
 }
 

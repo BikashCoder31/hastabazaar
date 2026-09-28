@@ -1,5 +1,6 @@
 import type { StoredFormAnswer } from '../db/repositories/form-answers';
 import { configurableAdminPermissions, type Permission } from '../marketplace/permissions';
+import { businessSettingKeys } from '../configuration/types';
 
 export type FormAnswerViewer = {
   id: string;
@@ -173,6 +174,180 @@ export async function currentStaffGrant(db: D1Database, viewer: FormAnswerViewer
 }
 
 type AnswerLink = Pick<StoredFormAnswer, 'id' | 'formId' | 'subjectType' | 'subjectId' | 'actorId' | 'requestId'>;
+
+async function committedAnswerVersion(db: D1Database, answer: AnswerLink): Promise<string | null> {
+  const row = await db.prepare(`SELECT a.config_version_id AS versionId FROM form_answer_sets a
+    JOIN form_config_versions v ON v.id=a.config_version_id AND v.form_id=a.form_id
+    WHERE a.id=? AND a.form_id=? AND a.subject_type=? AND a.subject_id=?
+      AND a.request_id=? AND a.actor_id IS ? LIMIT 1`)
+    .bind(answer.id, answer.formId, answer.subjectType, answer.subjectId, answer.requestId, answer.actorId)
+    .first<{ versionId: string }>();
+  return row?.versionId ?? null;
+}
+
+type ActionAudit = { action: string; nextJson: string | null };
+function auditContext(audit: ActionAudit): Record<string, unknown> | null {
+  try {
+    const value: unknown = JSON.parse(audit.nextJson ?? '');
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  } catch { return null; }
+}
+const isDigest = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+
+/** Cancellation history uses the immutable event/review and its configured-action audit. */
+async function cancellationAnswerOrder(db: D1Database, answer: AnswerLink): Promise<{ orderId: string; customerId: string | null } | null> {
+  const { formId, subjectType, subjectId, requestId, actorId } = answer;
+  if (!['commerce.order-cancellation', 'staff.order-fulfillment', 'staff.cancellation-review'].includes(formId) ||
+      !await committedAnswerVersion(db, answer)) return null;
+  if (formId === 'staff.cancellation-review' && subjectType === 'order_cancellation_review') {
+    const row = await db.prepare(`SELECT r.order_id AS orderId,o.customer_id AS customerId,a.action,a.next_json AS nextJson
+      FROM order_cancellation_reviews r JOIN orders o ON o.id=r.order_id JOIN audit_logs a
+        ON a.subject_type='order' AND a.subject_id=o.id AND a.actor_id IS ? AND a.request_id=?
+        AND a.action='cancellation.review_rejected'
+      WHERE r.id=? AND ?='review-reject:'||r.id AND r.reviewed_by IS ? AND r.status='rejected' LIMIT 1`)
+      .bind(actorId, requestId, subjectId, requestId, actorId)
+      .first<ActionAudit & { orderId: string; customerId: string | null }>();
+    return row && isDigest(auditContext(row)?.catalogDigest) ? row : null;
+  }
+  if (subjectType !== 'order_cancellation_event' && subjectType !== 'order_cancellation_review') return null;
+  const event = subjectType === 'order_cancellation_event';
+  if (formId === 'staff.cancellation-review' && !event) return null;
+  const row = await db.prepare(`SELECT p.order_id AS orderId,o.customer_id AS customerId,a.action,a.next_json AS nextJson
+    FROM ${event ? 'order_cancellation_events' : 'order_cancellation_reviews'} p JOIN orders o ON o.id=p.order_id
+    JOIN audit_logs a ON a.subject_type='order' AND a.subject_id=o.id AND a.actor_id IS ?
+      AND a.request_id=? AND a.action='cancellation.form_submitted'
+    WHERE p.id=? AND p.id=? AND p.${event ? 'actor_id' : 'requested_by'} IS ?
+      ${event ? `AND EXISTS(SELECT 1 FROM audit_logs cancelled WHERE cancelled.subject_type='order'
+        AND cancelled.subject_id=o.id AND cancelled.request_id=p.id AND cancelled.actor_id IS p.actor_id
+        AND cancelled.action='order.parcel_cancelled')` : ''}
+      ${formId === 'staff.cancellation-review' ? `AND EXISTS(SELECT 1 FROM order_cancellation_reviews review
+        WHERE p.id='review:'||review.id AND review.order_id=p.order_id
+          AND review.reviewed_by IS p.actor_id AND review.status='approved')` : ''}
+    LIMIT 1`).bind(actorId, `${requestId}:catalog`, subjectId, requestId, actorId)
+    .first<ActionAudit & { orderId: string; customerId: string | null }>();
+  const context = row && auditContext(row);
+  return row && context?.formId === formId && context.action === (formId === 'staff.cancellation-review' ? 'approve' : 'confirm') &&
+    isDigest(context.catalogDigest) ? row : null;
+}
+
+/** Only the approved programmatic staff forms enter this gate; unknown staff IDs still deny. */
+async function programmaticStaffGrant(db: D1Database, viewer: FormAnswerViewer, answer: AnswerLink): Promise<boolean | null> {
+  const { formId, subjectType, subjectId, requestId, actorId } = answer;
+  const known = ['staff.return-case-action', 'staff.complaint-case-action', 'staff.cancellation-review',
+    'staff.seller-review-action', 'staff.homepage-hero-manager', 'staff.homepage-occasion-manager',
+    'staff.business-settings-manager', 'staff.homepage-visibility', 'staff.order-fulfillment',
+    'staff.review-moderation', 'staff.seller-governance', 'staff.product-review'];
+  if (!known.includes(formId)) return null;
+  if (!actorId || !requestId || (viewer.role !== 'admin' && viewer.role !== 'super_admin')) return false;
+  const versionId = await committedAnswerVersion(db, answer);
+  if (!versionId) return false;
+  let permission: Permission;
+  let sql: string;
+  const values: unknown[] = [requestId, actorId, subjectId];
+  let superAdminOnly = false;
+  switch (formId) {
+    case 'staff.return-case-action':
+      if (subjectType !== 'return_request') return false;
+      permission = 'refund.approve.standard';
+      sql = `SELECT a.action,a.next_json AS nextJson
+        FROM return_requests p JOIN order_items i ON i.id=p.order_item_id JOIN orders o ON o.id=i.order_id
+        JOIN return_request_events e ON e.return_request_id=p.id AND e.request_id=? AND e.actor_id=?
+        JOIN audit_logs a ON a.request_id=e.request_id AND a.actor_id=e.actor_id
+          AND ((a.subject_type='return_request' AND a.subject_id=p.id AND (
+            (e.action IN ('admin_request_changes','admin_reject','admin_approve') AND a.action='return.admin.'||substr(e.action,7))
+            OR (e.action IN ('mark_in_transit','mark_received','resolve_replacement','resolve_return_to_origin','start_refund','complete_refund','fail_refund') AND a.action='return.operations.'||e.action)))
+          OR (e.action IN ('high_value_approved','high_value_rejected') AND e.actor_type='super_admin'
+            AND a.subject_type='refund' AND a.action='refund.high_value.'||substr(e.action,12)
+            AND EXISTS(SELECT 1 FROM refunds f WHERE f.id=a.subject_id AND f.return_request_id=p.id)))
+        WHERE p.id=? LIMIT 1`;
+      break;
+    case 'staff.complaint-case-action':
+      if (subjectType !== 'complaint') return false;
+      permission = 'support.manage';
+      sql = `SELECT a.action,a.next_json AS nextJson FROM complaints p JOIN orders o ON o.id=p.order_id
+        JOIN complaint_events e ON e.complaint_id=p.id AND e.request_id=? AND e.actor_id=?
+        JOIN audit_logs a ON a.request_id=e.request_id AND a.actor_id=e.actor_id AND a.subject_type='complaint'
+          AND a.subject_id=p.id AND a.action='complaint.admin.'||substr(e.action,7)
+        WHERE p.id=? AND e.action IN ('admin_assign_to_me','admin_investigate','admin_request_customer','admin_escalate','admin_resolve','admin_close','admin_reopen') LIMIT 1`;
+      break;
+    case 'staff.cancellation-review':
+      return Boolean(await cancellationAnswerOrder(db, answer)) && currentStaffGrant(db, viewer, 'order.manage');
+    case 'staff.order-fulfillment':
+      if (subjectType !== 'order') return Boolean(await cancellationAnswerOrder(db, answer)) && currentStaffGrant(db, viewer, 'order.manage');
+      permission = 'order.manage';
+      sql = `SELECT a.action,a.next_json AS nextJson FROM orders p JOIN audit_logs a
+        ON a.request_id=? AND a.actor_id=? AND a.subject_type='order' AND a.subject_id=p.id
+        AND a.action IN ('order.dispatch','order.deliver') WHERE p.id=? LIMIT 1`;
+      break;
+    case 'staff.seller-review-action':
+      if (subjectType !== 'seller') return false;
+      permission = 'seller.application.review';
+      sql = `SELECT a.action,a.next_json AS nextJson FROM seller_profiles p JOIN audit_logs a
+        ON a.request_id=? AND a.actor_id=? AND a.subject_type='seller' AND a.subject_id=p.id
+        AND a.action IN ('seller.application.review_started','seller.application.changes_requested','seller.application.approved','seller.application.rejected','seller.application.approved_for_activation') WHERE p.id=? LIMIT 1`;
+      break;
+    case 'staff.seller-governance':
+      if (subjectType !== 'seller') return false;
+      permission = 'seller.suspend'; superAdminOnly = true;
+      sql = `SELECT a.action,a.next_json AS nextJson,e.to_mode AS mode,e.obligation_mode AS obligationMode
+        FROM seller_profiles p JOIN seller_restriction_events e ON e.seller_id=p.id AND e.request_id=? AND e.actor_id=?
+        JOIN audit_logs a ON a.request_id=e.request_id||':audit' AND a.actor_id=e.actor_id
+          AND a.subject_type='seller' AND a.subject_id=p.id AND a.action='seller.restriction.changed' WHERE p.id=? LIMIT 1`;
+      break;
+    case 'staff.product-review':
+    case 'staff.homepage-visibility':
+      if (subjectType !== 'product') return false;
+      permission = formId === 'staff.homepage-visibility' ? 'admin.invite' : 'product.review';
+      superAdminOnly = formId === 'staff.homepage-visibility';
+      sql = `SELECT a.action,a.next_json AS nextJson FROM products p JOIN audit_logs a
+        ON a.request_id=? AND a.actor_id=? AND a.subject_type='product' AND a.subject_id=p.id
+        AND a.action IN (${formId === 'staff.homepage-visibility' ? "'homepage.product.hidden','homepage.product.shown'" : "'product.review.started','product.changes.requested','product.approved','product.rejected','product.published','product.unpublished'"}) WHERE p.id=? LIMIT 1`;
+      break;
+    case 'staff.review-moderation':
+      if (subjectType !== 'product_review' && subjectType !== 'review_reply') return false;
+      permission = 'product.review';
+      sql = subjectType === 'product_review'
+        ? `SELECT a.action,a.next_json AS nextJson FROM product_reviews p JOIN products product ON product.id=p.product_id
+          JOIN audit_logs a ON a.request_id=? AND a.actor_id=? AND a.subject_type='product_review'
+            AND a.subject_id=p.id AND a.action IN ('review.publish','review.reject','review.hide') WHERE p.id=? LIMIT 1`
+        : `SELECT a.action,a.next_json AS nextJson,p.version AS replyVersion FROM review_replies p
+          JOIN product_reviews review ON review.id=p.review_id JOIN products product ON product.id=review.product_id
+          JOIN audit_logs a ON a.request_id=? AND a.actor_id=? AND a.subject_type='product_review'
+            AND a.subject_id=review.id AND a.action IN ('review.reply_publish','review.reply_reject','review.reply_hide') WHERE p.id=? LIMIT 1`;
+      break;
+    default: {
+      if (subjectType !== 'business_setting') return false;
+      permission = 'business_settings.approve'; superAdminOnly = true;
+      sql = `SELECT a.action,a.next_json AS nextJson,p.setting_key AS key,p.version,p.created_by AS createdBy,
+        p.supersedes_id AS supersedesId FROM business_setting_versions p JOIN audit_logs a
+        ON a.request_id=? AND a.actor_id=? AND a.subject_type='business_setting' AND a.subject_id=p.id
+          AND a.action IN ('business_setting.draft_created','business_setting.published','business_setting.submitted','business_setting.approved','business_setting.rejected') WHERE p.id=? LIMIT 1`;
+    }
+  }
+  const audit = await db.prepare(sql).bind(...values).first<ActionAudit & Record<string, unknown>>();
+  if (!audit) return false;
+  const context = auditContext(audit);
+  if (!context) return false;
+  if ((formId.startsWith('staff.homepage-') && formId.endsWith('-manager')) || formId === 'staff.business-settings-manager') {
+    const key = formId === 'staff.homepage-hero-manager' ? 'homepage_hero_slides' : formId === 'staff.homepage-occasion-manager' ? 'homepage_occasion_slides' : null;
+    if (key ? audit.key !== key : !businessSettingKeys.includes(audit.key as typeof businessSettingKeys[number]) || ['homepage_hero_slides','homepage_occasion_slides'].includes(String(audit.key))) return false;
+    if (audit.action === 'business_setting.draft_created' && (context.formId !== formId || context.configVersionId !== versionId ||
+        context.key !== audit.key || context.version !== audit.version || context.status !== 'draft' || context.revision !== 1 ||
+        audit.createdBy !== actorId || context.supersedesId !== audit.supersedesId || !isDigest(context.requestDigest))) return false;
+  } else {
+    if (!isDigest(context.catalogDigest)) return false;
+    if (formId === 'staff.product-review') {
+      if (audit.action === 'product.published') permission = 'product.publish';
+      if (audit.action === 'product.unpublished') superAdminOnly = true;
+    }
+    if (formId === 'staff.return-case-action' && audit.action.startsWith('refund.high_value.')) {
+      permission = 'refund.approve.high_value'; superAdminOnly = true;
+    }
+    if (formId === 'staff.review-moderation' && subjectType === 'review_reply' && (context.replyId !== subjectId || context.replyVersion !== audit.replyVersion)) return false;
+    if (formId === 'staff.seller-governance' && (context.mode !== audit.mode || context.obligationMode !== audit.obligationMode)) return false;
+  }
+  return (!superAdminOnly || viewer.role === 'super_admin') && currentStaffGrant(db, viewer, permission);
+}
 
 /** These staff decisions are readable only through their exact committed parent action. */
 async function staffActionGrant(db: D1Database, viewer: FormAnswerViewer,
@@ -498,6 +673,12 @@ export async function authorizeFormAnswerRead(
     WHERE u.id=? AND u.status='active' AND r.role=? LIMIT 1`)
     .bind(viewer.id, viewer.role).first<{ valid: number }>();
   if (!identity) return false;
+  if (answerSet.formId === 'commerce.order-cancellation') {
+    const parent = await cancellationAnswerOrder(db, answerSet);
+    if (!parent) return false;
+    if (viewer.role === 'customer') return parent.customerId === viewer.id && answerSet.actorId === viewer.id;
+    return currentStaffGrant(db, viewer, 'order.manage');
+  }
   if (answerSet.formId.startsWith('identity.')) {
     if (['identity.register', 'identity.login-password', 'identity.email-code-verify',
       'identity.password-reset-complete'].includes(answerSet.formId))
@@ -592,6 +773,8 @@ export async function authorizeFormAnswerRead(
       .first<{ valid: number }>();
     return Boolean(parent) && currentStaffGrant(db, viewer, 'order.manage');
   }
+  const programmatic = await programmaticStaffGrant(db, viewer, answerSet);
+  if (programmatic !== null) return programmatic;
   const staffAction = await staffActionGrant(db, viewer, answerSet);
   if (staffAction !== null) return staffAction;
   // Staff-authored answers need an explicit form-specific policy. Parent

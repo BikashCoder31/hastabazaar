@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 
 import { requireSellerApi, SellerAuthorizationError } from '@/lib/auth/seller';
@@ -7,7 +8,7 @@ import {
   setProductInventory,
 } from '@/lib/db/repositories/products';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { FormRequestConflictError, validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
@@ -34,8 +35,9 @@ export async function PATCH(
     let body: { quantity?: unknown; reason?: unknown; requestId?: unknown;
       formVersion?: unknown; customAnswers?: unknown };
     try {
-      body = JSON.parse(new TextDecoder().decode(await readBoundedBody(request, 131_072))) as typeof body;
-    } catch {
+      body = await readBoundedJsonObject(request) as typeof body;
+    } catch (error) {
+      if (error instanceof BodyTooLargeError) throw error;
       return json({ error: 'The inventory request is invalid.' }, 400);
     }
     if (!body || Array.isArray(body) || Object.keys(body).some((key) =>

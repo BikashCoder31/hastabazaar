@@ -5283,6 +5283,199 @@ async function cancellationFixture() {
     sellerIds: (await listParcels(db, 'order-1')).map((p) => p.sellerId),
   };
 }
+void test('configured customer cancellation stores one exact event answer and rejects changed replay', async () => {
+  const f = await cancellationFixture();
+  try {
+    const { db, access, sellerIds } = f;
+    await db.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+      VALUES ('cancel-customer-v1','commerce.order-cancellation',1,1,'published',?,'Fixture','admin-1',1,'admin-1',1,'admin-1',1,'cancel-customer-seed')`)
+      .bind(JSON.stringify({ formId: 'commerce.order-cancellation', fields: [{ id: 'context_note',
+        key: 'context_note', type: 'short_text', label: 'Cancellation context', required: true,
+        order: 0, status: 'active' }] })).run();
+    const preview = await cancellationPreview(db, access, [sellerIds[0]]);
+    const form = { formId: 'commerce.order-cancellation' as const, requestId: 'configured-customer-cancel',
+      versionId: 'cancel-customer-v1', answers: { formId: 'commerce.order-cancellation' as const,
+        version: 1, answers: [{ fieldId: 'context_note', label: 'Cancellation context',
+          type: 'short_text' as const, value: 'Fictional cancellation context' }] } };
+    const action = { sellerIds: [sellerIds[0]], fingerprint: preview.fingerprint,
+      requestId: form.requestId, note: 'Cancel this maker parcel.', now: Date.now(), form };
+    await assert.rejects(cancelSelectedParcels(db, access, { ...action,
+      requestId: 'cancel-invalid-version', form: { ...form, requestId: 'cancel-invalid-version',
+        versionId: 'unpublished-cancel-version' } }));
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM order_cancellation_events')
+      .first<{ n: number }>())?.n, 0);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM form_answer_sets')
+      .first<{ n: number }>())?.n, 0);
+    await cancelSelectedParcels(db, access, action);
+    await cancelSelectedParcels(db, access, action);
+    const answers = await db.prepare(`SELECT subject_type AS subjectType,subject_id AS subjectId,
+      actor_id AS actorId FROM form_answer_sets WHERE form_id='commerce.order-cancellation'`)
+      .all<{ subjectType: string; subjectId: string; actorId: string }>();
+    assert.deepEqual(answers.results.map((row) => [row.subjectType, row.subjectId, row.actorId]),
+      [['order_cancellation_event', action.requestId, 'customer-1']]);
+    await assert.rejects(cancelSelectedParcels(db, access, { ...action,
+      form: { ...form, answers: { ...form.answers, answers: [{ ...form.answers.answers[0],
+        value: 'Changed cancellation context' }] } } }));
+    await assert.rejects(cancelSelectedParcels(db, access, { ...action, fingerprint: 'changed-fingerprint' }));
+    await assert.rejects(cancelSelectedParcels(db, { ...access, customerId: 'another-customer' }, action));
+    await db.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+      VALUES ('cancel-customer-v2','commerce.order-cancellation',2,1,'published',?,'Fixture','admin-1',2,'admin-1',2,'admin-1',2,'cancel-customer-v2-seed')`)
+      .bind(JSON.stringify({ formId: 'commerce.order-cancellation', fields: [{ id: 'context_note',
+        key: 'context_note', type: 'short_text', label: 'Cancellation context', required: true,
+        order: 0, status: 'active' }] })).run();
+    await cancelSelectedParcels(db, access, action);
+    const secondPreview = await cancellationPreview(db, access, [sellerIds[1]]);
+    await assert.rejects(cancelSelectedParcels(db, access, { ...action,
+      sellerIds: [sellerIds[1]], fingerprint: secondPreview.fingerprint,
+      requestId: 'cancel-obsolete-version', form: { ...form, requestId: 'cancel-obsolete-version' } }));
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM order_cancellation_events')
+      .first<{ n: number }>())?.n, 1);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM order_cancellation_events WHERE id=?')
+      .bind(action.requestId).first<{ n: number }>())?.n, 1);
+  } finally { await f.dispose(); }
+});
+void test('receipt-authorized cancellation keeps a null answer actor and rechecks the exact token', async () => {
+  const f = await cancellationFixture();
+  try {
+    const { db, access, sellerIds } = f;
+    await db.prepare("UPDATE orders SET receipt_token_hash='guest-receipt-one' WHERE id='order-1'").run();
+    await db.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+      VALUES ('cancel-guest-v1','commerce.order-cancellation',1,1,'published',?,'Fixture','admin-1',1,'admin-1',1,'admin-1',1,'cancel-guest-seed')`)
+      .bind(JSON.stringify({ formId: 'commerce.order-cancellation', fields: [{ id: 'context_note',
+        key: 'context_note', type: 'short_text', label: 'Cancellation context', required: true,
+        order: 0, status: 'active' }] })).run();
+    const guest = { orderNumber: access.orderNumber, receiptTokenHash: 'guest-receipt-one' };
+    const p = await cancellationPreview(db, guest, [sellerIds[0]]);
+    const form = { formId: 'commerce.order-cancellation' as const, requestId: 'guest-cancel-one',
+      versionId: 'cancel-guest-v1', answers: { formId: 'commerce.order-cancellation' as const,
+        version: 1, answers: [{ fieldId: 'context_note', label: 'Cancellation context',
+          type: 'short_text' as const, value: 'Guest order context' }] } };
+    const action = { sellerIds: [sellerIds[0]], fingerprint: p.fingerprint,
+      requestId: form.requestId, note: 'Please cancel this parcel.', now: Date.now(), form };
+    await assert.rejects(cancelSelectedParcels(db, { ...guest, receiptTokenHash: 'wrong-receipt' }, action));
+    await cancelSelectedParcels(db, guest, action);
+    const stored = await db.prepare(`SELECT actor_id AS actorId,subject_type AS subjectType
+      FROM form_answer_sets WHERE request_id=?`).bind(form.requestId)
+      .first<{ actorId: string | null; subjectType: string }>();
+    assert.equal(stored?.actorId, null);
+    assert.equal(stored?.subjectType, 'order_cancellation_event');
+    await db.prepare("UPDATE orders SET receipt_token_hash='rotated-receipt' WHERE id='order-1'").run();
+    await assert.rejects(cancelSelectedParcels(db, guest, action));
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM order_cancellation_events WHERE id=?')
+      .bind(form.requestId).first<{ n: number }>())?.n, 1);
+  } finally { await f.dispose(); }
+});
+void test('configured staff rejection uses one server-owned review decision and answer', async () => {
+  const f = await cancellationFixture();
+  try {
+    const { db, access, sellerIds } = f;
+    await db.prepare("UPDATE order_items SET fulfillment_status='packing',made_to_order_snapshot=1 WHERE order_id='order-1'").run();
+    const preview = await cancellationPreview(db, access, [sellerIds[0]]);
+    const requested = await cancelSelectedParcels(db, access, { sellerIds: [sellerIds[0]],
+      fingerprint: preview.fingerprint, requestId: 'review-for-reject',
+      note: 'Please review custom production.', now: Date.now() });
+    assert.equal(requested.status, 'review_requested');
+    await db.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+      VALUES ('review-decision-v1','staff.cancellation-review',1,1,'published',?,'Fixture','admin-1',1,'admin-1',1,'admin-1',1,'review-decision-seed')`)
+      .bind(JSON.stringify({ formId: 'staff.cancellation-review', fields: [{ id: 'context_note',
+        key: 'context_note', type: 'short_text', label: 'Decision context', required: true,
+        order: 0, status: 'active' }] })).run();
+    const form = { formId: 'staff.cancellation-review' as const,
+      requestId: 'review-reject:review-for-reject', versionId: 'review-decision-v1',
+      answers: { formId: 'staff.cancellation-review' as const, version: 1,
+        answers: [{ fieldId: 'context_note', label: 'Decision context',
+          type: 'short_text' as const, value: 'Fictional staff review' }] } };
+    const action = { id: requested.id, actorId: 'admin-1',
+      note: 'Production is already underway.', fingerprint: preview.fingerprint,
+      now: Date.now(), form };
+    await rejectCancellationReview(db, action);
+    await rejectCancellationReview(db, action);
+    assert.equal((await db.prepare(`SELECT COUNT(*) AS n FROM form_answer_sets
+      WHERE form_id='staff.cancellation-review' AND request_id=? AND subject_type='order_cancellation_review'
+      AND subject_id=? AND actor_id='admin-1'`).bind(form.requestId, requested.id)
+      .first<{ n: number }>())?.n, 1);
+    await assert.rejects(rejectCancellationReview(db, { ...action, note: 'A changed decision reason.' }));
+    await assert.rejects(rejectCancellationReview(db, { ...action, fingerprint: 'changed-preview' }));
+    await assert.rejects(rejectCancellationReview(db, { ...action, form: { ...form,
+      answers: { ...form.answers, answers: [{ ...form.answers.answers[0], value: 'Changed context' }] } } }));
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM order_cancellation_events").first<{ n: number }>())?.n, 0);
+  } finally { await f.dispose(); }
+});
+void test('configured review request and approval link two exact answers without early accounting', async () => {
+  const f = await cancellationFixture();
+  try {
+    const { db, access, sellerIds } = f;
+    await db.prepare("UPDATE order_items SET fulfillment_status='packing',made_to_order_snapshot=1 WHERE order_id='order-1'").run();
+    for (const [formId, versionId] of [
+      ['commerce.order-cancellation', 'customer-review-v1'],
+      ['staff.cancellation-review', 'staff-approve-v1'],
+    ]) await db.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+      VALUES (?,?,1,1,'published',?,'Fixture','admin-1',1,'admin-1',1,'admin-1',1,?)`)
+      .bind(versionId, formId, JSON.stringify({ formId, fields: [{ id: 'context_note',
+        key: 'context_note', type: 'short_text', label: 'Review context', required: true,
+        order: 0, status: 'active' }] }), `${versionId}:seed`).run();
+    const p = await cancellationPreview(db, access, [sellerIds[0]]);
+    const customerForm = { formId: 'commerce.order-cancellation' as const,
+      requestId: 'configured-review-request', versionId: 'customer-review-v1',
+      answers: { formId: 'commerce.order-cancellation' as const, version: 1,
+        answers: [{ fieldId: 'context_note', label: 'Review context',
+          type: 'short_text' as const, value: 'Customer review context' }] } };
+    const request = { sellerIds: [sellerIds[0]], fingerprint: p.fingerprint,
+      requestId: customerForm.requestId, note: 'Please review this custom item.',
+      now: Date.now(), form: customerForm };
+    assert.equal((await cancelSelectedParcels(db, access, request)).status, 'review_requested');
+    await cancelSelectedParcels(db, access, request);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM order_cancellation_events').first<{ n: number }>())?.n, 0);
+    assert.equal((await db.prepare(`SELECT COUNT(*) AS n FROM form_answer_sets WHERE form_id='commerce.order-cancellation'
+      AND subject_type='order_cancellation_review' AND subject_id=?`)
+      .bind(request.requestId).first<{ n: number }>())?.n, 1);
+    const staffAccess = { orderNumber: access.orderNumber, actorId: 'admin-1' };
+    const approvalPreview = await cancellationPreview(db, staffAccess, [sellerIds[0]]);
+    const staffForm = { formId: 'staff.cancellation-review' as const,
+      requestId: `review:${request.requestId}`, versionId: 'staff-approve-v1',
+      answers: { formId: 'staff.cancellation-review' as const, version: 1,
+        answers: [{ fieldId: 'context_note', label: 'Review context',
+          type: 'short_text' as const, value: 'Staff approval context' }] } };
+    const approval = { sellerIds: [sellerIds[0]], fingerprint: approvalPreview.fingerprint,
+      requestId: staffForm.requestId, note: 'Production was reviewed and approved.',
+      reviewId: request.requestId, now: Date.now(), form: staffForm };
+    await cancelSelectedParcels(db, staffAccess, approval);
+    await cancelSelectedParcels(db, staffAccess, approval);
+    assert.equal((await db.prepare(`SELECT COUNT(*) AS n FROM form_answer_sets
+      WHERE form_id='staff.cancellation-review' AND subject_type='order_cancellation_event'
+      AND subject_id=?`).bind(approval.requestId).first<{ n: number }>())?.n, 1);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM order_cancellation_events WHERE id=?')
+      .bind(approval.requestId).first<{ n: number }>())?.n, 1);
+    await assert.rejects(cancelSelectedParcels(db, staffAccess, { ...approval,
+      form: { ...staffForm, answers: { ...staffForm.answers, answers: [{ ...staffForm.answers.answers[0],
+        value: 'Different approval context' }] } } }));
+  } finally { await f.dispose(); }
+});
+void test('configured staff fulfillment cancel uses the cancellation batch and exact retry', async () => {
+  const f = await cancellationFixture();
+  try {
+    const { db } = f;
+    await db.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+      VALUES ('fulfillment-cancel-v1','staff.order-fulfillment',1,1,'published',?,'Fixture','admin-1',1,'admin-1',1,'admin-1',1,'fulfillment-cancel-seed')`)
+      .bind(JSON.stringify({ formId: 'staff.order-fulfillment', fields: [{ id: 'context_note',
+        key: 'context_note', type: 'short_text', label: 'Cancellation context', required: true,
+        order: 0, status: 'active' }] })).run();
+    const form = { requestId: 'fulfillment-cancel-one', versionId: 'fulfillment-cancel-v1',
+      answers: { formId: 'staff.order-fulfillment' as const, version: 1,
+        answers: [{ fieldId: 'context_note', label: 'Cancellation context',
+          type: 'short_text' as const, value: 'Staff fulfillment context' }] } };
+    const action = { orderId: 'order-1', actorId: 'admin-1', action: 'cancel' as const,
+      note: 'Staff cancelled before handoff.', requestId: form.requestId, now: Date.now(), form };
+    await transitionAdminFulfillment(db, action);
+    await transitionAdminFulfillment(db, action);
+    assert.equal((await db.prepare(`SELECT COUNT(*) AS n FROM form_answer_sets
+      WHERE form_id='staff.order-fulfillment' AND request_id=? AND subject_type='order_cancellation_event'
+      AND subject_id=?`).bind(form.requestId, form.requestId).first<{ n: number }>())?.n, 1);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM order_cancellation_events WHERE id=?')
+      .bind(form.requestId).first<{ n: number }>())?.n, 1);
+    await assert.rejects(transitionAdminFulfillment(db, { ...action, note: 'A changed cancellation reason.' }));
+  } finally { await f.dispose(); }
+});
 void test('R018 approved partial then full cancellation restores credit once and preserves original amounts', async () => {
   const f = await cancellationFixture();
   try {

@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import {useEffect,useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {clearSessionAttempt,getOrCreateSessionAttempt,hasSessionAttempt,sessionAttemptKey} from '@/lib/forms/client-attempt';
@@ -10,7 +11,7 @@ const exceptionBaseKeys=['action','id','version','job','kind','cash','owner','ne
 export function ExceptionWorkForm({work,jobs,owners,finance}:{work?:ExceptionWork;jobs:{id:string;status:string}[];owners:{id:string;name:string;finance:boolean}[];finance:boolean}){
  const router=useRouter();const [busy,setBusy]=useState(false),[error,setError]=useState(''),[retryPending,setRetryPending]=useState(false);
  const attemptKey=sessionAttemptKey('staff.exception-work',work?.id??'new');
- useEffect(()=>setRetryPending(hasSessionAttempt(attemptKey)),[attemptKey]);
+ useEffect(() => { const timer = window.setTimeout(() => setRetryPending(hasSessionAttempt(attemptKey)), 0); return () => window.clearTimeout(timer); }, [attemptKey]);
  const catalog=usePublishedFormConfig('staff.exception-work');
  const [kind,setKind]=useState(work?.kind??'failed_delivery');
  async function submit(event:{preventDefault():void;currentTarget:HTMLFormElement}){event.preventDefault();if(busy)return;if(!catalog.config||!catalog.canSubmit){setError(catalog.message||'Form configuration is unavailable.');return;}let configured:ReturnType<typeof configuredJsonPayload>;try{const result=readConfiguredSubmission(event.currentTarget,catalog.config,exceptionBaseKeys);configured=configuredJsonPayload(catalog.config,result.answers,exceptionBaseKeys);}catch(cause){setError(cause instanceof Error?cause.message:'Review the configured fields.');return;}const f=new FormData(event.currentTarget);setBusy(true);setError('');try{
@@ -21,7 +22,7 @@ export function ExceptionWorkForm({work,jobs,owners,finance}:{work?:ExceptionWor
  if(work?result?.ok!==true:typeof result?.id!=='string'||!result.id)throw new Error('The response could not be verified. Retry with the same request.');
  clearSessionAttempt(attemptKey);setRetryPending(false);router.refresh();
  }catch(e){setError(e instanceof Error?e.message:'Try again.');}finally{setBusy(false);}}
- return <form data-form-id="staff.exception-work" onSubmit={submit} className="mt-4 space-y-3 rounded-xl border p-4"><a className="text-sm underline" href={`/admin/staff-form-history?kind=exception-work${work?`&id=${encodeURIComponent(work.id)}`:''}`}>View form history</a><p className="text-xs text-muted-foreground">Fields marked * are required. This records follow-up work and does not change cash or parcel status.</p>
+ return <form data-form-id="staff.exception-work" onSubmit={submit} className="mt-4 space-y-3 rounded-xl border p-4"><Link className="text-sm underline" href={`/admin/staff-form-history?kind=exception-work${work?`&id=${encodeURIComponent(work.id)}`:''}`}>View form history</Link><p className="text-xs text-muted-foreground">Fields marked * are required. This records follow-up work and does not change cash or parcel status.</p>
  {!work?<><label className="block text-sm">Parcel *<select name="job" required className="mt-1 block w-full rounded border p-2">{jobs.map(j=><option key={j.id} value={j.id}>{j.id} · {j.status.replaceAll('_',' ')}</option>)}</select></label><label className="block text-sm">Exception *<select value={kind} onChange={e=>setKind(e.target.value)} className="mt-1 block w-full rounded border p-2"><option value="failed_delivery">Failed delivery</option><option value="customer_unavailable">Customer unavailable</option><option value="cancelled_parcel">Cancelled parcel</option>{finance?<option value="incorrect_cash">Incorrect posted cash record</option>:null}</select></label>{kind==='incorrect_cash'?<label className="block text-sm">Posted cash record ID *<input name="cash" required maxLength={160} className="mt-1 block w-full rounded border p-2"/></label>:null}</>:null}
  <label className="block text-sm">Responsible staff<select name="owner" defaultValue={work?.ownerId??''} className="mt-1 block w-full rounded border p-2"><option value="">Unassigned operations queue</option>{owners.filter(o=>kind!=='incorrect_cash'||o.finance).map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
  <label className="block text-sm">Next action *<textarea name="next" required minLength={8} maxLength={500} defaultValue={work?.nextAction} className="mt-1 block w-full rounded border p-2"/></label>

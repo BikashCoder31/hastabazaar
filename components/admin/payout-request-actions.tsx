@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -13,7 +14,7 @@ export function PayoutRequestActions({ id }: { id: string }) {
   const router=useRouter();
   const [pending,setPending]=useState(false),[error,setError]=useState(''),[retryPending,setRetryPending]=useState(false);
   const attemptKey=sessionAttemptKey('staff.payout-request-action',id);
-  useEffect(()=>setRetryPending(hasSessionAttempt(attemptKey)),[attemptKey]);
+  useEffect(() => { const timer = window.setTimeout(() => setRetryPending(hasSessionAttempt(attemptKey)), 0); return () => window.clearTimeout(timer); }, [attemptKey]);
   const catalog=usePublishedFormConfig('staff.payout-request-action');
   const [fieldError,setFieldError]=useState('');
   const fieldId = useId();
@@ -49,7 +50,7 @@ export function PayoutRequestActions({ id }: { id: string }) {
       }}
       className="mt-4"
     >
-      <a className="text-sm underline" href={`/admin/staff-form-history?kind=payout-request-action&id=${encodeURIComponent(id)}`}>View payout request form history</a>
+      <Link className="text-sm underline" href={`/admin/staff-form-history?kind=payout-request-action&id=${encodeURIComponent(id)}`}>View payout request form history</Link>
       <fieldset
         disabled={pending||!catalog.canSubmit}
         className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] md:items-end"

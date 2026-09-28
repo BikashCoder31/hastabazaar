@@ -1,3 +1,4 @@
+import { StaffFormHistoryLinks } from './staff-form-history-links';
 import { CancellationReviewControl } from './cancellation-review-control';
 export async function CancellationReviewSection({
   db,
@@ -27,6 +28,8 @@ export async function CancellationReviewSection({
           <h3 className="font-semibold">{r.status}</h3>
           <p>{r.note}</p>
           {r.reviewNote ? <p>Decision: {r.reviewNote}</p> : null}
+          <StaffFormHistoryLinks entries={[{kind:'cancellation-approved',subjectId:`review:${r.id}`,label:'Approval answers'},
+            {kind:'cancellation-rejected',subjectId:r.id,label:'Rejection answers'}]} />
           {r.status === 'pending' ? (
             <CancellationReviewControl reviewId={r.id} />
           ) : null}

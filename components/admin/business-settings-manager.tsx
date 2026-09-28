@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,11 @@ import {
   NativeSelectOption,
 } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredMultipartAnswers } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
+import { validateBusinessSettingValue } from '@/lib/configuration/definitions';
 import type {
   EffectiveBusinessSetting,
   BusinessSettingVersion,
@@ -46,6 +51,7 @@ export type BusinessSettingsAdminItem = Readonly<{
   effective: EffectiveBusinessSetting<BusinessSettingKey>;
   history: readonly BusinessSettingVersion[];
 }>;
+type SettingsResponse = { error?: string; code?: string; ok?: unknown; action?: unknown; draft?: Partial<BusinessSettingVersion> };
 
 const numericKeys = new Set<BusinessSettingKey>([
   'independent_seller_commission_bps',
@@ -157,9 +163,10 @@ export function BusinessSettingsManager({
   initialSettings: readonly BusinessSettingsAdminItem[];
   asOf: number;
 }) {
-  const [settings] = useState(initialSettings);
+  const [settings] = useState(() => initialSettings.filter((item) =>
+    item.key !== 'homepage_hero_slides' && item.key !== 'homepage_occasion_slides'));
   const [selectedKey, setSelectedKey] = useState<BusinessSettingKey>(
-    initialSettings[0]?.key ?? 'official_social_links',
+    settings[0]?.key ?? 'official_social_links',
   );
   const selected = useMemo(
     () => settings.find((item) => item.key === selectedKey) ?? settings[0],
@@ -172,6 +179,10 @@ export function BusinessSettingsManager({
   const [effectiveFrom, setEffectiveFrom] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const latestAttemptKey = useRef<string | null>(null);
+  const [failedAttemptKey, setFailedAttemptKey] = useState<string | null>(null);
+  const catalog = usePublishedFormConfig('staff.business-settings-manager');
 
   if (!selected) {
     return (
@@ -192,11 +203,40 @@ export function BusinessSettingsManager({
     setEditorValue(editorValueFor(next?.effective.value));
     setReason('');
     setMessage('');
+    setFailedAttemptKey(null);
+  }
+
+  function catalogPayload(action: string, subjectId: string) {
+    if (!catalog.canSubmit || !catalog.config || !formRef.current)
+      throw new Error('Form configuration is unavailable. Please try again.');
+    const data = new FormData(formRef.current);
+    const attemptKey = sessionAttemptKey('staff.business-settings-manager', `${action}:${subjectId}`);
+    latestAttemptKey.current = attemptKey;
+    data.set('requestId', getOrCreateSessionAttempt(attemptKey));
+    const { version, ...answers } = configuredMultipartAnswers(data, catalog.config);
+    return { sourceFormId: 'staff.business-settings-manager',
+      formVersion: version, ...answers };
+  }
+
+  function verifyResponse(response: Response, result: SettingsResponse | null, action: 'save' | 'submit' | 'publish' | 'approve' | 'reject' | 'reverse', fallback: string) {
+    if (result?.code === 'stale_version') catalog.handleSubmissionResponse(response, result.code);
+    if (!response.ok) throw new Error(result?.error || fallback);
+    const draft = result?.draft;
+    let validValue = false;
+    if (draft) { try { validateBusinessSettingValue(selected.key, draft.value); validValue = true; } catch { /* Unverified response retains the attempt. */ } }
+    const confirmed = action === 'save' || action === 'reverse'
+      ? validValue && draft && typeof draft.id === 'string' && draft.id.trim().length > 0 && draft.key === selected.key
+        && draft.status === 'draft' && Number.isSafeInteger(draft.version) && Number(draft.version) > 0
+        && Number.isSafeInteger(draft.revision) && Number(draft.revision) > 0 && (action === 'save' || result?.action === action)
+      : result?.ok === true && result.action === action;
+    if (!confirmed || result?.error) throw new Error('The response could not be verified. Retry with the same request.');
   }
 
   async function saveDraft() {
     setBusy(true);
     setMessage('');
+    setFailedAttemptKey(null);
+    latestAttemptKey.current = null;
     try {
       const response = await fetch('/api/admin/business-settings', {
         method: 'POST',
@@ -205,15 +245,16 @@ export function BusinessSettingsManager({
           key: selected.key,
           value: parseEditorValue(selected.key, editorValue),
           reason,
-          requestId: crypto.randomUUID(),
+          ...catalogPayload('save', selected.key),
         }),
       });
-      const result = (await response.json()) as { error?: string };
-      if (!response.ok)
-        throw new Error(result.error || 'Draft could not be saved.');
+      const result = (await response.json().catch(() => null)) as SettingsResponse | null;
+      verifyResponse(response, result, 'save', 'Draft could not be saved.');
+      if (latestAttemptKey.current) clearSessionAttempt(latestAttemptKey.current);
       setMessage('Draft saved. Refreshing the authoritative history…');
       window.location.reload();
     } catch (error) {
+      setFailedAttemptKey(latestAttemptKey.current);
       setMessage(
         error instanceof Error ? error.message : 'Draft could not be saved.',
       );
@@ -228,6 +269,8 @@ export function BusinessSettingsManager({
   ) {
     setBusy(true);
     setMessage('');
+    setFailedAttemptKey(null);
+    latestAttemptKey.current = null;
     try {
       const response = await fetch(
         `/api/admin/business-settings/changes/${encodeURIComponent(version.id)}`,
@@ -241,16 +284,17 @@ export function BusinessSettingsManager({
               ? new Date(effectiveFrom).getTime()
               : undefined,
             reason,
-            requestId: crypto.randomUUID(),
+            ...catalogPayload(action, version.id),
           }),
         },
       );
-      const result = (await response.json()) as { error?: string };
-      if (!response.ok)
-        throw new Error(result.error || 'Change could not be completed.');
+      const result = (await response.json().catch(() => null)) as SettingsResponse | null;
+      verifyResponse(response, result, action, 'Change could not be completed.');
+      if (latestAttemptKey.current) clearSessionAttempt(latestAttemptKey.current);
       setMessage('Change recorded. Refreshing the authoritative history…');
       window.location.reload();
     } catch (error) {
+      setFailedAttemptKey(latestAttemptKey.current);
       setMessage(
         error instanceof Error
           ? error.message
@@ -262,7 +306,9 @@ export function BusinessSettingsManager({
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[18rem_minmax(0,1fr)]">
+    <form ref={formRef} data-form-id="staff.business-settings-manager"
+      className="grid gap-6 xl:grid-cols-[18rem_minmax(0,1fr)]"
+      onSubmit={(event) => event.preventDefault()}>
       <Card className="h-fit">
         <CardHeader>
           <CardTitle>Configuration inventory</CardTitle>
@@ -327,6 +373,8 @@ export function BusinessSettingsManager({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
+            {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={['setting']} /> : null}
+            {!catalog.canSubmit ? <output className="block text-sm">{catalog.message || 'Loading form configuration…'}</output> : null}
             <SettingValueEditor
               settingKey={selected.key}
               value={editorValue}
@@ -373,9 +421,17 @@ export function BusinessSettingsManager({
             {message ? (
               <output className="block text-sm font-medium">{message}</output>
             ) : null}
+            {failedAttemptKey ? <Button type="button" variant="outline" disabled={busy}
+              onClick={() => {
+                if (!window.confirm('This attempt may already have succeeded. Check the latest history before starting a new attempt, which could duplicate the action. Continue?')) return;
+              clearSessionAttempt(failedAttemptKey);
+              if (catalog.status === 'stale') catalog.refresh();
+                setFailedAttemptKey(null);
+                setMessage('New attempt ready. Review the latest history before submitting again.');
+              }}>Start a new attempt</Button> : null}
             <Button
               type="button"
-              disabled={busy || reason.trim().length < 8}
+              disabled={busy || !catalog.canSubmit || reason.trim().length < 8}
               onClick={saveDraft}
             >
               Save draft
@@ -413,7 +469,7 @@ export function BusinessSettingsManager({
                         <Button
                           size="sm"
                           type="button"
-                          disabled={busy || reason.trim().length < 8}
+                          disabled={busy || !catalog.canSubmit || reason.trim().length < 8}
                           onClick={() =>
                             changeVersion(
                               version,
@@ -433,7 +489,7 @@ export function BusinessSettingsManager({
                           <Button
                             size="sm"
                             type="button"
-                            disabled={busy}
+                            disabled={busy || !catalog.canSubmit}
                             onClick={() => changeVersion(version, 'approve')}
                           >
                             Approve / schedule
@@ -442,7 +498,7 @@ export function BusinessSettingsManager({
                             size="sm"
                             variant="outline"
                             type="button"
-                            disabled={busy}
+                            disabled={busy || !catalog.canSubmit}
                             onClick={() => changeVersion(version, 'reject')}
                           >
                             Reject
@@ -454,7 +510,7 @@ export function BusinessSettingsManager({
                           size="sm"
                           variant="outline"
                           type="button"
-                          disabled={busy}
+                          disabled={busy || !catalog.canSubmit}
                           onClick={() => changeVersion(version, 'reverse')}
                         >
                           Create reversal draft
@@ -473,7 +529,7 @@ export function BusinessSettingsManager({
           </CardContent>
         </Card>
       </div>
-    </div>
+    </form>
   );
 }
 

@@ -17,7 +17,8 @@ const historyHref = (kind: string, id?: string, cursor?: string, answer?: string
   return `/admin/staff-form-history?${params.toString()}`;
 };
 const valueText = (value: unknown) => Array.isArray(value) ? value.join(', ') :
-  typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value ?? '');
+  typeof value === 'boolean' ? (value ? 'Yes' : 'No') :
+  typeof value === 'string' || typeof value === 'number' ? String(value) : '';
 
 export default async function StaffFormHistoryPage({ searchParams }: { searchParams: Promise<Params> }) {
   const staff = await requireStaffPage('/admin/staff-form-history');

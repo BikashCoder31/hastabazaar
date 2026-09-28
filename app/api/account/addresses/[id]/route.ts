@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 
 import { CustomerAuthorizationError, requireCustomerApi } from '@/lib/auth/customer';
@@ -16,7 +17,7 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
   if (!isTrustedMutationRequest(request)) return Response.json({ error: 'Cross-site requests are not allowed.' }, { status: 403 });
   try {
     const [customer, { id }] = await Promise.all([requireCustomerApi(), context.params]);
-    const body = JSON.parse(new TextDecoder().decode(await readBoundedBody(request, 131_072))) as { address?: CustomerAddressInput; idempotencyKey?: string; formVersion?: number; customAnswers?: unknown };
+    const body = await readBoundedJsonObject(request) as { address?: CustomerAddressInput; idempotencyKey?: string; formVersion?: number; customAnswers?: unknown };
     if (!body?.address || typeof body.address !== 'object' || Array.isArray(body.address) || typeof body.idempotencyKey !== 'string' ||
       !body.idempotencyKey || body.idempotencyKey.length > 100 || id.length > 100 || !Number.isSafeInteger(body.formVersion) || !Array.isArray(body.customAnswers))
       return Response.json({ error: 'Address, form version, answers and idempotency key are required.' }, { status: 400 });

@@ -1,3 +1,4 @@
+import { listCustomerCancellationAnswers } from '@/lib/forms/cancellation-history';
 import {CancellationHistory} from '@/components/commerce/cancellation-history';
 import {CustomerRiderCode} from '@/components/rider/rider-code';
 import {customerRiderCodeJobs} from '@/lib/riders/customer-code';
@@ -53,7 +54,7 @@ export default async function OrderReceiptPage({
 }: {
   params: Promise<{ orderNumber: string }>;
   searchParams?: Promise<{ historyKind?: string; historyCaseId?: string;
-    historyAt?: string; historyId?: string }>;
+    historyAt?: string; historyId?: string; cancellationAfter?: string }>;
 }) {
   const { orderNumber } = await params;
   const requestHeaders = await headers();
@@ -117,6 +118,14 @@ export default async function OrderReceiptPage({
     const allowed = await Promise.all(answerHistory.answers.map((answer) =>
       authorizeFormAnswerRead(database, { id: customer.userId, role: 'customer' }, answer)));
     if (allowed.some((value) => !value)) notFound();
+  }
+  let cancellationAnswers: Awaited<ReturnType<typeof listCustomerCancellationAnswers>> | null = null;
+  if (ownedOrder && customer) {
+    try {
+      cancellationAnswers = await listCustomerCancellationAnswers(database, {
+        customerId: customer.userId, orderId: ownedOrder.id, after: query?.cancellationAfter,
+      });
+    } catch { notFound(); }
   }
   const address = receipt.address;
   const presentation = orderPresentation(receipt.status, receipt.paymentStatus);
@@ -321,6 +330,14 @@ export default async function OrderReceiptPage({
                 (historyKind === 'checkout' ? '' : `&historyCaseId=${encodeURIComponent(historySubjectId!)}`) +
                 `&historyAt=${answerHistory.nextCursor.createdAt}&historyId=${encodeURIComponent(answerHistory.nextCursor.id)}`
               }>Next 50 answers</Link> : null}
+            </section> : null}
+            {cancellationAnswers ? <section className="mt-7 space-y-4 rounded-2xl border bg-card p-6" aria-label="Your cancellation form answers">
+              <h2 className="font-heading text-2xl">Your cancellation form answers</h2>
+              {cancellationAnswers.items.length ? cancellationAnswers.items.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)
+                : <p className="text-sm text-muted-foreground">No saved cancellation answers on this page.</p>}
+              {cancellationAnswers.nextCursor ? <Link className="underline" href={
+                '/orders/' + encodeURIComponent(orderNumber) + '?cancellationAfter=' + encodeURIComponent(cancellationAnswers.nextCursor)
+              }>Older cancellation answers</Link> : null}
             </section> : null}
             <div className="mt-7 flex flex-wrap gap-3">
               <Button render={<Link href="/shop" />} className="rounded-full">

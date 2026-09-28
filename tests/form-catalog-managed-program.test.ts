@@ -523,7 +523,7 @@ void test('managed-program receiver bounds streamed JSON and rejects malformed o
   assert.equal((await receive('{')).status,400);
   assert.equal((await receive(new Uint8Array([0xff,0xfe]))).status,400);
   const stream=new ReadableStream<Uint8Array>({start(controller){
-    controller.enqueue(new Uint8Array(25*1024));controller.close();
+    controller.enqueue(new Uint8Array(262145));controller.close();
   }});
   assert.equal((await receive(stream)).status,413);
 });

@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
@@ -8,7 +9,7 @@ import {
   ManagedInvoiceAdjustmentError,
   type ManagedInvoiceAdjustmentKind,
 } from '@/lib/db/repositories/managed-documents';
-import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
@@ -31,9 +32,7 @@ export async function POST(
   try {
     const actor = await requireStaffApi('tax_policy.manage');
     const now = Date.now();
-    const body = JSON.parse(
-      new TextDecoder().decode(await readBoundedBody(request, 8 * 1024)),
-    ) as Record<string, unknown>;
+    const body = await readBoundedJsonObject(request) as Record<string, unknown>;
     if (!body || Array.isArray(body)) throw new TypeError('Invalid request.');
     const bindings = env as unknown as Record<string, string>;
     const environment = resolveRuntimeEnvironment({
@@ -67,6 +66,7 @@ export async function POST(
     });
     return Response.json({ ...result, simulation: true }, { status: result.created ? 201 : 200 });
   } catch (error) {
+    if (error instanceof SyntaxError) return Response.json({ error: 'Invalid JSON request.' }, { status: 400 });
     if (error instanceof StaffAuthorizationError) {
       return Response.json({ error: error.message }, { status: error.status });
     }
@@ -80,8 +80,7 @@ export async function POST(
     if (
       error instanceof ManagedInvoiceAdjustmentError ||
       error instanceof RangeError ||
-      error instanceof TypeError ||
-      error instanceof SyntaxError
+      error instanceof TypeError
     ) {
       return Response.json({ error: error.message }, { status: 409 });
     }

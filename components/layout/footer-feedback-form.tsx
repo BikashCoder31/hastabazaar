@@ -6,7 +6,7 @@ import { useState } from 'react';
 
 import { feedbackTopics } from '@/lib/feedback/customer-feedback';
 import { clearFeedbackAttemptId, reserveFeedbackAttemptId } from '@/lib/feedback/attempt-id';
-import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fields';
+import { ConfiguredFields, fieldDisplay, focusConfiguredField } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { readConfiguredSubmission } from '@/lib/forms/submission';
 
@@ -27,10 +27,12 @@ export function FooterFeedbackForm() {
     kind: 'idle',
     message: '',
   });
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   function startNewMessage(form: HTMLFormElement) {
     if (!window.confirm('Have you contacted support to check your earlier message? Starting a new message may create a duplicate.')) return;
     clearFeedbackAttemptId('public.footer-feedback');
     setState({ kind: 'idle', message: '' });
+    setFieldErrors({});
     form.reset();
   }
 
@@ -43,6 +45,7 @@ export function FooterFeedbackForm() {
     const form = event.currentTarget;
     setBusy(true);
     setState({ kind: 'idle', message: '' });
+    setFieldErrors({});
 
     try {
       if (!catalog.config || !catalog.canSubmit) throw new Error(catalog.message || 'Form configuration is loading.');
@@ -56,10 +59,13 @@ export function FooterFeedbackForm() {
       const result = (await response.json().catch(() => { throw new Error(uncertainDeliveryMessage); })) as {
         ok?: boolean;
         error?: string;
+        fieldId?: string;
         code?: string;
       } | null;
       catalog.handleSubmissionResponse(response, result?.code);
+      if (result?.fieldId) setFieldErrors({ [result.fieldId]: result.error || 'Invalid answer.' });
       if (!response.ok || !result?.ok) {
+        if (result?.fieldId) focusConfiguredField(form, result.fieldId);
         throw new Error(
           result?.error ?? uncertainDeliveryMessage,
         );
@@ -213,7 +219,7 @@ export function FooterFeedbackForm() {
               .
             </span>
           </label>
-          {catalog.config ? <div className="sm:col-span-2 [&_[data-configured-field]_input]:text-foreground [&_[data-configured-field]_select]:text-foreground [&_[data-configured-field]_textarea]:text-foreground [&_[data-configured-field]_p]:text-white/70"><ConfiguredFields config={catalog.config} baseKeys={displayKeys} /></div> : null}
+          {catalog.config ? <div className="sm:col-span-2 [&_[data-configured-field]_input]:text-foreground [&_[data-configured-field]_select]:text-foreground [&_[data-configured-field]_textarea]:text-foreground [&_[data-configured-field]_p]:text-white/70"><ConfiguredFields config={catalog.config} baseKeys={displayKeys} errors={fieldErrors} /></div> : null}
           <div className="flex flex-wrap items-center gap-4 sm:col-span-2">
             <button
               type="submit"

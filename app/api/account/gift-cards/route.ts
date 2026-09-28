@@ -1,7 +1,8 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
-import { readBoundedBody, BodyTooLargeError } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import {
   GiftCardConflictError,
@@ -26,9 +27,7 @@ export async function POST(request: Request) {
     return json({ error: 'Cross-site requests are not allowed.' }, 403);
   try {
     const customer = await requireCustomerApi();
-    const body = JSON.parse(
-      new TextDecoder().decode(await readBoundedBody(request, 131_072)),
-    );
+    const body = await readBoundedJsonObject(request);
     if (
       !body ||
       Array.isArray(body) ||

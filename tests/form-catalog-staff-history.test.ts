@@ -58,6 +58,7 @@ function fixture() {
     CREATE TABLE shipping_jobs(id TEXT PRIMARY KEY,order_id TEXT,seller_id TEXT);
     CREATE TABLE parcel_operation_events(id TEXT PRIMARY KEY,order_id TEXT,shipping_job_id TEXT,actor_id TEXT,action TEXT,payload_json TEXT);
     CREATE TABLE order_cancellation_reviews(id TEXT PRIMARY KEY,order_id TEXT,requested_by TEXT,status TEXT);
+    CREATE TABLE order_cancellation_events(id TEXT PRIMARY KEY,order_id TEXT,actor_id TEXT);
     CREATE TABLE payout_requests(id TEXT PRIMARY KEY,operation_request_id TEXT,processed_by TEXT,seller_id TEXT);
     CREATE TABLE data_rights_requests(id TEXT PRIMARY KEY,customer_id TEXT);
     CREATE TABLE data_rights_events(id TEXT PRIMARY KEY,data_rights_request_id TEXT,operation_request_id TEXT,actor_id TEXT,actor_role TEXT,action TEXT);

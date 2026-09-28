@@ -93,7 +93,8 @@ export function CustomerAftercare({
     try {
       const configured = readConfiguredSubmission(formElement, returnForm.config, returnBaseKeys);
       const form = new FormData(formElement);
-      for (const key of [...form.keys()]) if (key.startsWith('custom.')) form.delete(key);
+      const customKeys = [...form.keys()].filter((key) => key.startsWith('custom.'));
+      for (const key of customKeys) form.delete(key);
       const payload = configuredJsonPayload(returnForm.config, configured.answers, returnBaseKeys);
       form.set('formVersion', String(payload.formVersion));
       form.set('customAnswers', JSON.stringify(payload.customAnswers));
@@ -381,7 +382,7 @@ export function CustomerAftercare({
                     </p>
                   </Field>
                   {returnForm.config ? <ConfiguredFields config={returnForm.config} baseKeys={returnBaseKeys} /> : null}
-                  {!returnForm.canSubmit ? <p role="status">{returnForm.message || 'Loading return form…'}</p> : null}
+                  {!returnForm.canSubmit ? <output>{returnForm.message || 'Loading return form…'}</output> : null}
                   {returnError ? (
                     <p
                       role="alert"
@@ -466,7 +467,7 @@ export function CustomerAftercare({
                   />
                 </Field>
                 {complaintForm.config ? <ConfiguredFields config={complaintForm.config} baseKeys={complaintBaseKeys} /> : null}
-                {!complaintForm.canSubmit ? <p role="status">{complaintForm.message || 'Loading complaint form…'}</p> : null}
+                {!complaintForm.canSubmit ? <output>{complaintForm.message || 'Loading complaint form…'}</output> : null}
                 {complaintError ? (
                   <p
                     role="alert"

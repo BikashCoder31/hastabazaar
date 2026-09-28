@@ -1,3 +1,4 @@
+import type { FixtureBrowser } from './helpers/browser-fixture-types';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
@@ -534,7 +535,7 @@ void test('gift redemption route requires a version and links only redeemer answ
 });
 
 void test('aftercare routes require a versioned form before creating cases', async () => {
-  const { sqlite, db, now } = caseDatabase(false);
+  const { sqlite, db } = caseDatabase(false);
   globalThis.commerceCatalogDb = db;
   try {
     const returns = await import('../app/orders/[orderNumber]/returns/route');
@@ -702,7 +703,7 @@ void test('gift form renders a required custom field and submits its versioned a
   const playwrightPath = process.env.PLAYWRIGHT_MODULE ??
     'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
   const { chromium } = await import(playwrightPath) as { chromium: { launch(options: {
-    headless: boolean; executablePath: string }): Promise<any> } };
+    headless: boolean; executablePath: string }): Promise<FixtureBrowser> } };
   const bundle = await build({
     stdin: { resolveDir: process.cwd(), sourcefile: 'gift-client-fixture.tsx', contents: `
       import React from 'react';
@@ -723,7 +724,7 @@ void test('gift form renders a required custom field and submits its versioned a
   const page = await browser.newPage();
   const payloads: Record<string, unknown>[] = [];
   try {
-    await page.route('https://gift.test/**', async (route: any) => {
+    await page.route('https://gift.test/**', async (route) => {
       const url = new URL(route.request().url());
       if (url.pathname === '/') return route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
       if (url.pathname.startsWith('/api/forms/')) return route.fulfill({ status: 200, contentType: 'application/json',
@@ -764,7 +765,7 @@ void test('invalid gift code stays correctable after a domain 409', async () => 
   const playwrightPath = process.env.PLAYWRIGHT_MODULE ??
     'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
   const { chromium } = await import(playwrightPath) as { chromium: { launch(options: {
-    headless: boolean; executablePath: string }): Promise<any> } };
+    headless: boolean; executablePath: string }): Promise<FixtureBrowser> } };
   const bundle = await build({
     stdin: { resolveDir: process.cwd(), sourcefile: 'gift-retry-fixture.tsx', contents: `
       import React from 'react';
@@ -785,7 +786,7 @@ void test('invalid gift code stays correctable after a domain 409', async () => 
   const page = await browser.newPage();
   const requests: { code: string; requestId: string }[] = [];
   try {
-    await page.route('https://gift-retry.test/**', async (route: any) => {
+    await page.route('https://gift-retry.test/**', async (route) => {
       const url = new URL(route.request().url());
       if (url.pathname === '/') return route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
       if (url.pathname === '/api/forms/commerce.gift-card-redeem')
@@ -828,7 +829,7 @@ void test('aftercare client posts published answers with each authorized case re
   const playwrightPath = process.env.PLAYWRIGHT_MODULE ??
     'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
   const { chromium } = await import(playwrightPath) as { chromium: { launch(options: {
-    headless: boolean; executablePath: string }): Promise<any> } };
+    headless: boolean; executablePath: string }): Promise<FixtureBrowser> } };
   const bundle = await build({
     stdin: { resolveDir: process.cwd(), sourcefile: 'aftercare-client-fixture.tsx', contents: `
       import React from 'react';
@@ -854,7 +855,7 @@ void test('aftercare client posts published answers with each authorized case re
   const bodies: string[] = [];
   const attempts = { returns: 0, complaints: 0 };
   try {
-    await page.route('https://aftercare.test/**', async (route: any) => {
+    await page.route('https://aftercare.test/**', async (route) => {
       const url = new URL(route.request().url());
       if (url.pathname === '/') return route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
       if (url.pathname.startsWith('/api/forms/')) {
@@ -915,7 +916,7 @@ void test('checkout client submits the published answer with the core order payl
   const playwrightPath = process.env.PLAYWRIGHT_MODULE ??
     'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
   const { chromium } = await import(playwrightPath) as { chromium: { launch(options: {
-    headless: boolean; executablePath: string }): Promise<any> } };
+    headless: boolean; executablePath: string }): Promise<FixtureBrowser> } };
   const bundle = await build({
     stdin: { resolveDir: process.cwd(), sourcefile: 'checkout-client-fixture.tsx', contents: `
       import React from 'react';
@@ -941,7 +942,7 @@ void test('checkout client submits the published answer with the core order payl
   const page = await browser.newPage();
   const payloads: Record<string, unknown>[] = [];
   try {
-    await page.route('https://checkout.test/**', async (route: any) => {
+    await page.route('https://checkout.test/**', async (route) => {
       const url = new URL(route.request().url());
       if (url.pathname === '/') return route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
       if (url.pathname === '/api/cart') return route.fulfill({ status: 200, contentType: 'application/json',
@@ -989,7 +990,7 @@ void test('seller case response client posts distinct published form answers', a
   const playwrightPath = process.env.PLAYWRIGHT_MODULE ??
     'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
   const { chromium } = await import(playwrightPath) as { chromium: { launch(options: {
-    headless: boolean; executablePath: string }): Promise<any> } };
+    headless: boolean; executablePath: string }): Promise<FixtureBrowser> } };
   const bundle = await build({
     stdin: { resolveDir: process.cwd(), sourcefile: 'seller-case-client-fixture.tsx', contents: `
       import React from 'react';
@@ -1012,7 +1013,7 @@ void test('seller case response client posts distinct published form answers', a
   const bodies: Record<string, unknown>[] = [];
   const attempts: Record<string, number> = {};
   try {
-    await page.route('https://seller-case.test/**', async (route: any) => {
+    await page.route('https://seller-case.test/**', async (route) => {
       const url = new URL(route.request().url());
       if (url.pathname === '/') return route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
       if (url.pathname.startsWith('/api/forms/')) {

@@ -1,3 +1,4 @@
+import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import { can } from '@/lib/marketplace/permissions';
 import { env } from 'cloudflare:workers';
 import Image from 'next/image';
@@ -78,6 +79,8 @@ export default async function ProductReviewPage({
   if (!product) notFound();
   return (
     <div className="space-y-7">
+      <StaffFormHistoryLinks entries={[{kind:'product-review',subjectId:id,label:'Product decision answers'},
+        ...(staff.role === 'super_admin' ? [{kind:'homepage-visibility' as const,subjectId:id,label:'Homepage visibility answers'}] : [])]} />
       <Link
         href="/admin/products"
         className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import ts from 'typescript';
+import { resolveFormPolicyIds } from './form-policy-ids';
 import { FORM_REGISTRY, IMPLEMENTED_FORM_ADAPTERS } from '../../lib/forms/registry';
 import type { FormDefinition, FormId } from '../../lib/forms/types';
 
@@ -23,15 +24,9 @@ export interface FormPolicyViolation {
 // Exact pre-integration source sites. Keep each path, ordinal and full-form
 // fingerprint frozen; adding a form or changing one requires an explicit review.
 // The final column names its inventory definition, never a live adapter.
-const FROZEN_BASELINE = `
-components/seller/inventory-editor.tsx|1|8b247e4b170098a3|seller.inventory
-components/seller/maker-application-profile-form.tsx|1|9625a6332c0dfcaf|seller.maker-profile
-components/seller/product-submission-form.tsx|1|e6535dffb04ca89f|seller.product-submission
-components/seller/seller-application-form.tsx|1|aa9ba3abeacd03db|seller.application
-components/seller/seller-profile-form.tsx|1|3993f76f6976fddc|seller.profile
-`.trim();
+const FROZEN_BASELINE = ``.trim();
 
-const baseline = new Map(FROZEN_BASELINE.split('\n').map((row) => {
+const baseline = new Map(FROZEN_BASELINE.split('\n').filter(Boolean).map((row) => {
   const [path, ordinal, fingerprint, id] = row.split('|');
   return [`${path}|${ordinal}|${fingerprint}`, id] as const;
 }));
@@ -64,11 +59,7 @@ export async function collectFormSites(root: string): Promise<FormSourceSite[]> 
         ordinal += 1;
         const idAttribute = node.attributes.properties.find((attribute) => ts.isJsxAttribute(attribute) && attribute.name.getText(ast) === 'data-form-id');
         const initializer = idAttribute && ts.isJsxAttribute(idAttribute) ? idAttribute.initializer : undefined;
-        const expression = initializer && ts.isJsxExpression(initializer) ? initializer.expression : undefined;
-        const formIds = initializer && ts.isStringLiteral(initializer) ? [initializer.text]
-          : expression && ts.isConditionalExpression(expression) &&
-            ts.isStringLiteral(expression.whenTrue) && ts.isStringLiteral(expression.whenFalse)
-            ? [expression.whenTrue.text, expression.whenFalse.text] : null;
+        const formIds = resolveFormPolicyIds(initializer, ast);
         const formId = formIds?.length === 1 ? formIds[0] : null;
         const formSource = ts.isJsxOpeningElement(node) && ts.isJsxElement(node.parent)
           ? node.parent.getText(ast)

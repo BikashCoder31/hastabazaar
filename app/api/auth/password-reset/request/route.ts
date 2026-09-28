@@ -1,4 +1,5 @@
-import {readBoundedForm,formText} from '@/lib/http/bounded-body';
+import { formText } from '@/lib/http/bounded-body';
+import { readIdentityFormBody } from '@/lib/auth/identity-form-body';
 import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
 import { acceptIdentityCodeRequest } from '@/lib/auth/identity-code-request';
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
     return new Response('Cross-site requests are not allowed.', {
       status: 403,
     });
-  let form: FormData; try {form=await readBoundedForm(request,16*1024);} catch {return new Response('Invalid or oversized form.',{status:413});}
+  let form: FormData; try {form=await readIdentityFormBody(request);} catch {return new Response('Invalid or oversized form.',{status:413});}
   const email = formText(form, 'email', '')
     .trim()
     .toLowerCase()

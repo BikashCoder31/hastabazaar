@@ -475,11 +475,16 @@ void test('login keeps each available sign-in form when the other configuration 
   const passwordOnly = await render(['identity.email-code-request']);
   assert.match(passwordOnly, /action="\/api\/auth\/login"/);
   assert.doesNotMatch(passwordOnly, /action="\/api\/auth\/email-code\/request"/);
+  assert.doesNotMatch(passwordOnly, />or<\/span>/);
   const emailOnly = await render(['identity.login-password']);
   assert.doesNotMatch(emailOnly, /action="\/api\/auth\/login"/);
   assert.match(emailOnly, /action="\/api\/auth\/email-code\/request"/);
+  assert.doesNotMatch(emailOnly, />or<\/span>/);
   const neither = await render(['identity.login-password', 'identity.email-code-request']);
   assert.match(neither, /Sign-in forms are temporarily unavailable/);
+  assert.doesNotMatch(neither, />or<\/span>/);
+  const both = await render([]);
+  assert.match(both, />or<\/span>/);
 });
 
 void test('identity transaction rejects a publication racing registration before account creation', async () => {

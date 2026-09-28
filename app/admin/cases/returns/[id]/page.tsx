@@ -1,3 +1,4 @@
+import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import { can } from '@/lib/marketplace/permissions';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
@@ -56,6 +57,7 @@ export default async function AdminReturnCasePage({
         </div>
         <Status value={item.status} />
       </div>
+      <StaffFormHistoryLinks entries={[{kind:'return-case-action',subjectId:id,label:'Staff decision answers'}]} />
       <div className="mt-8 grid gap-6 2xl:grid-cols-[minmax(0,1fr)_23rem]">
         <div className="space-y-6">
           <section className="space-y-4 rounded-2xl border bg-card p-6" aria-label="Return form answer history">

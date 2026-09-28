@@ -1,4 +1,5 @@
-import {readBoundedForm,formText} from '@/lib/http/bounded-body';
+import { formText } from '@/lib/http/bounded-body';
+import { readIdentityFormBody } from '@/lib/auth/identity-form-body';
 import { safeSignInReturnPath } from '@/lib/auth/sign-in-destination';
 import { env } from 'cloudflare:workers';
 
@@ -27,7 +28,7 @@ function redirectToLogin(request: Request, returnTo: string, error: string) {
 
 export async function POST(request: Request): Promise<Response> {
   if (!isTrustedMutationRequest(request)) return new Response('Cross-site requests are not allowed.', { status: 403 });
-  let data: FormData; try {data=await readBoundedForm(request,16*1024);} catch {return new Response('Invalid or oversized form.',{status:413});}
+  let data: FormData; try {data=await readIdentityFormBody(request);} catch {return new Response('Invalid or oversized form.',{status:413});}
   const email = formText(data, 'email', '').trim().toLowerCase().slice(0, 254);
   const password = formText(data, 'password', '').slice(0, 256);
   const returnTo = safeSignInReturnPath(formText(data, 'return_to', '/account'));

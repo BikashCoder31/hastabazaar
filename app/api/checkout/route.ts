@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 import { sendPendingOrderUpdates } from '@/lib/email/send-order-updates';
 import { recordRequestTrafficEvent } from '@/lib/analytics/request';
@@ -21,7 +22,7 @@ import {
 } from '@/lib/http/rate-limit';
 import { getCustomerUser } from '@/lib/auth/customer';
 import { WalletConflictError } from '@/lib/db/repositories/wallet';
-import { readBoundedBody, BodyTooLargeError } from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
@@ -50,8 +51,7 @@ export async function POST(request: Request): Promise<Response> {
   const cartToken = readCookie(request, CART_COOKIE);
   if (!cartToken) return json({ error: 'Your cart is empty.' }, 409);
   try {
-    const parsed = parseCheckoutInput(JSON.parse(new TextDecoder().decode(
-      await readBoundedBody(request, 131_072))));
+    const parsed = parseCheckoutInput(await readBoundedJsonObject(request));
     if (!parsed.value)
       return json({ error: parsed.errors[0], errors: parsed.errors }, 400);
     if (!Number.isSafeInteger(parsed.value.formVersion) ||

@@ -1,3 +1,5 @@
+import { stubFixtureLink } from './helpers/browser-fixture-link';
+import type { FixtureBrowser } from './helpers/browser-fixture-types';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
@@ -116,7 +118,7 @@ void test('managed activation route ignores client timestamps and replays after 
 void test('mounted financial staff forms retain opaque attempt IDs after uncertain responses and edits', async () => {
   const playwrightPath = process.env.PLAYWRIGHT_MODULE ??
     'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
-  const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<any> } };
+  const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<FixtureBrowser> } };
   const bundle = await build({ stdin: { contents: `
     import React from 'react';
     import {createRoot} from 'react-dom/client';
@@ -135,7 +137,7 @@ void test('mounted financial staff forms retain opaque attempt IDs after uncerta
     </>);
   `, resolveDir: process.cwd(), loader: 'tsx' }, bundle: true, write: false,
     platform: 'browser', format: 'iife', define: { 'process.env.NODE_ENV': '"production"' },
-    plugins: [{ name: 'retry-client-stubs', setup(bundler) {
+    plugins: [{ name: 'retry-client-stubs', setup(bundler) { stubFixtureLink(bundler);
       bundler.onResolve({ filter: /^@\/components\/forms\/form-config-client$/ }, () => ({ path: 'form-config', namespace: 'retry-stub' }));
       bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'retry-stub' }));
       bundler.onLoad({ filter: /^form-config$/, namespace: 'retry-stub' }, () => ({ contents: `
@@ -153,7 +155,7 @@ void test('mounted financial staff forms retain opaque attempt IDs after uncerta
   const paths = ['/api/admin/invoices/invoice-one/adjustments',
     '/api/admin/managed-makers/seller-one/activate', '/api/admin/orders/order-one/parcels'];
   try {
-    await page.route('https://staff-retry.test/**', (route: any) => {
+    await page.route('https://staff-retry.test/**', (route) => {
       const index = paths.indexOf(new URL(route.request().url()).pathname);
       if (route.request().method() === 'POST' && index >= 0) {
         bodies[index].push(JSON.parse(route.request().postData() ?? '{}'));
@@ -186,7 +188,7 @@ void test('mounted financial staff forms retain opaque attempt IDs after uncerta
     await invoiceRetry.getByLabel('Review note').fill('Fictional changed evidence');
     await invoiceRetry.getByRole('button', { name: 'Issue simulated document' }).click();
     assert.equal(bodies[0].length, 2);
-    page.once('dialog', (dialog: any) => void dialog.accept());
+    page.once('dialog', (dialog) => void dialog.accept());
     await invoiceRetry.getByRole('button', { name: 'Start a new attempt' }).click();
     await invoiceRetry.getByRole('button', { name: 'Issue simulated document' }).click();
     await page.waitForFunction(() => document.querySelector('form[data-form-id="staff.invoice-adjustment"]')?.textContent?.includes('Uncertain fixture response'));

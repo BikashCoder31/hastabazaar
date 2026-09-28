@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -51,6 +52,8 @@ export function ShippingConsole({
     try { sessionStorage.removeItem(key); }
     catch { setError('Browser session storage is unavailable. Please enable it before submitting.'); return; }
     setPendingAttempts((current) => ({ ...current, [key]: false }));
+    const catalog = kind === 'request' ? requestCatalog : actionCatalog;
+    if (catalog.status === 'stale') catalog.refresh();
     setError(`New shipping ${kind} attempt ready.`);
   }
   async function requestJob(event: { preventDefault(): void; currentTarget: HTMLFormElement }) {
@@ -62,7 +65,9 @@ export function ShippingConsole({
     setError('');
     try {
       const configured = readConfiguredSubmission(element, requestCatalog.config, requestBaseKeys);
-      const attempt = sessionAttemptKey('shipping.console-request', String(form.get('orderId')));
+      const orderId = form.get('orderId');
+      if (typeof orderId !== 'string') throw new Error('Select an order.');
+      const attempt = sessionAttemptKey('shipping.console-request', orderId);
       const requestId = getOrCreateSessionAttempt(attempt);
       setPendingAttempts((current) => ({ ...current, [attempt]: true }));
       const response = await fetch('/api/seller/shipping', { method: 'POST',
@@ -71,9 +76,11 @@ export function ShippingConsole({
           requestId, sourceFormId: 'shipping.console-request',
           ...configuredJsonPayload(requestCatalog.config, configured.answers, requestBaseKeys),
         }) });
-      const body = (await response.json().catch(() => ({}))) as { error?: string; code?: string };
-      if (!requestCatalog.handleSubmissionResponse(response, body.code))
-        throw new Error(body.error ?? 'Shipping request failed.');
+      const body = (await response.json().catch(() => null)) as { id?: unknown; error?: string; code?: string } | null;
+      if (body?.code === 'stale_version') requestCatalog.handleSubmissionResponse(response, body.code);
+      if (!response.ok) throw new Error(body?.error ?? 'Shipping request failed.');
+      if (typeof body?.id !== 'string' || !body.id.trim() || body.error)
+        throw new Error('The response could not confirm this shipping request. Retry with the same request.');
       clearSessionAttempt(attempt);
       setPendingAttempts((current) => ({ ...current, [attempt]: false }));
       element.reset();
@@ -112,9 +119,11 @@ export function ShippingConsole({
         ...configuredJsonPayload(actionCatalog.config, configured.answers, actionBaseKeys),
       }),
     });
-    const body = (await response.json().catch(() => ({}))) as { error?: string; code?: string };
-    if (!actionCatalog.handleSubmissionResponse(response, body.code))
-      throw new Error(body.error ?? 'Shipping action failed.');
+    const body = (await response.json().catch(() => null)) as { ok?: unknown; error?: string; code?: string } | null;
+    if (body?.code === 'stale_version') actionCatalog.handleSubmissionResponse(response, body.code);
+    if (!response.ok) throw new Error(body?.error ?? 'Shipping action failed.');
+    if (body?.ok !== true || body.error)
+      throw new Error('The response could not confirm this shipping action. Retry with the same request.');
     clearSessionAttempt(attempt);
     setPendingAttempts((current) => ({ ...current, [attempt]: false }));
     element.reset();
@@ -126,8 +135,8 @@ export function ShippingConsole({
   return (
     <div className="space-y-5">
       {!admin ? <nav aria-label="Shipping console answer history" className="flex gap-4 text-sm">
-        <a className="underline" href="/seller/form-history?kind=console-request">Request answers</a>
-        <a className="underline" href="/seller/form-history?kind=console-action">Action answers</a>
+        <Link className="underline" href="/seller/form-history?kind=console-request">Request answers</Link>
+        <Link className="underline" href="/seller/form-history?kind=console-action">Action answers</Link>
       </nav> : null}
       {!admin ? (
         <form

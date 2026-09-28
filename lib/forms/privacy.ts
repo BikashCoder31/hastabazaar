@@ -61,13 +61,38 @@ const ownedBase = `((subject_type='user' AND subject_id=?)
     JOIN seller_profiles s ON s.id=i.seller_id WHERE r.id=subject_id AND s.user_id=?))
   OR (subject_type='complaint' AND form_id='seller.case-complaint-response' AND EXISTS(
     SELECT 1 FROM complaints c JOIN seller_profiles s ON s.id=c.seller_id
-    WHERE c.id=subject_id AND s.user_id=?)))`;
+    WHERE c.id=subject_id AND s.user_id=?))
+  OR (form_answer_sets.form_id='commerce.order-cancellation' AND form_answer_sets.subject_type='order_cancellation_event'
+    AND EXISTS(SELECT 1 FROM order_cancellation_events e JOIN orders o ON o.id=e.order_id
+      JOIN audit_logs a ON a.subject_type='order' AND a.subject_id=o.id
+        AND a.request_id=e.id||':catalog' AND a.actor_id IS e.actor_id AND a.action='cancellation.form_submitted'
+      WHERE e.id=form_answer_sets.subject_id AND e.id=form_answer_sets.request_id
+        AND e.actor_id=form_answer_sets.actor_id AND o.customer_id=e.actor_id AND o.customer_id=?
+        AND EXISTS(SELECT 1 FROM audit_logs cancelled WHERE cancelled.subject_type='order'
+          AND cancelled.subject_id=o.id AND cancelled.request_id=e.id AND cancelled.actor_id IS e.actor_id
+          AND cancelled.action='order.parcel_cancelled')
+        AND json_extract(CASE WHEN json_valid(a.next_json) THEN a.next_json ELSE '{}' END,'$.formId')='commerce.order-cancellation'
+        AND json_extract(CASE WHEN json_valid(a.next_json) THEN a.next_json ELSE '{}' END,'$.action')='confirm'
+        AND json_type(CASE WHEN json_valid(a.next_json) THEN a.next_json ELSE '{}' END,'$.catalogDigest')='text'
+        AND length(json_extract(CASE WHEN json_valid(a.next_json) THEN a.next_json ELSE '{}' END,'$.catalogDigest'))=64
+        AND json_extract(CASE WHEN json_valid(a.next_json) THEN a.next_json ELSE '{}' END,'$.catalogDigest') NOT GLOB '*[^a-f0-9]*'))
+  OR (form_answer_sets.form_id='commerce.order-cancellation' AND form_answer_sets.subject_type='order_cancellation_review'
+    AND EXISTS(SELECT 1 FROM order_cancellation_reviews r JOIN orders o ON o.id=r.order_id
+      JOIN audit_logs a ON a.subject_type='order' AND a.subject_id=o.id
+        AND a.request_id=r.id||':catalog' AND a.actor_id IS r.requested_by AND a.action='cancellation.form_submitted'
+      WHERE r.id=form_answer_sets.subject_id AND r.id=form_answer_sets.request_id
+        AND r.requested_by=form_answer_sets.actor_id AND o.customer_id=r.requested_by AND o.customer_id=?
+        AND json_extract(CASE WHEN json_valid(a.next_json) THEN a.next_json ELSE '{}' END,'$.formId')='commerce.order-cancellation'
+        AND json_extract(CASE WHEN json_valid(a.next_json) THEN a.next_json ELSE '{}' END,'$.action')='confirm'
+        AND json_type(CASE WHEN json_valid(a.next_json) THEN a.next_json ELSE '{}' END,'$.catalogDigest')='text'
+        AND length(json_extract(CASE WHEN json_valid(a.next_json) THEN a.next_json ELSE '{}' END,'$.catalogDigest'))=64
+        AND json_extract(CASE WHEN json_valid(a.next_json) THEN a.next_json ELSE '{}' END,'$.catalogDigest') NOT GLOB '*[^a-f0-9]*'))) `;
 const owned = `(form_id NOT LIKE 'staff.%' AND
   (form_id NOT LIKE 'identity.%' OR
     (form_id IN ('identity.register','identity.login-password',
       'identity.email-code-verify','identity.password-reset-complete')
       AND subject_type='user' AND actor_id=subject_id)) AND ${ownedBase})`;
-const ownerBindings = (userId: string) => Array(25).fill(userId) as string[];
+const ownerBindings = (userId: string) => Array(27).fill(userId) as string[];
 const deletable = `(form_id='account.profile' AND subject_type='user' AND subject_id=?)`;
 
 function required(value: string, label: string, max = 191): string {

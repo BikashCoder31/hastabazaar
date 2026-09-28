@@ -69,7 +69,7 @@ export function AddToCart({
   }
 
   return (
-    <div className="mt-7 space-y-3">
+    <div data-form-id="commerce.add-to-cart" className="mt-7 space-y-3">
       <div>
         <label
           className="mb-2 block text-sm font-semibold"

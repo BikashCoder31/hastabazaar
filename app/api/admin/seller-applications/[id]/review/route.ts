@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 
 import {
@@ -11,6 +12,10 @@ import {
   type SellerReviewAction,
 } from '@/lib/db/repositories/seller-applications';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
+import { isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,14 +42,18 @@ export async function POST(
     return json({ error: 'Cross-site requests are not allowed.' }, 403);
   }
 
+  let validatedVersionId: string | undefined;
   try {
     const staff = await requireStaffApi('seller.application.review');
     const { id } = await context.params;
-    const body = (await request.json()) as {
+    const body = await readBoundedJsonObject(request) as {
       action?: unknown;
       reason?: unknown;
       payoutAccountReference?: unknown;
       settlementTermsReference?: unknown;
+      requestId?: unknown;
+      formVersion?: unknown;
+      customAnswers?: unknown;
     };
     const action = body.action;
     const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
@@ -68,16 +77,19 @@ export async function POST(
     const database = requireDatabase(
       env as unknown as { DB?: D1Database },
     );
+    if (typeof body.requestId !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(body.requestId))
+      return json({ error: 'A stable request reference is required.' }, 400);
+    const form = await validateSellerFormSubmission(database, 'staff.seller-review-action',
+      body.formVersion, body.customAnswers, body.requestId);
+    validatedVersionId = form.versionId;
     const result = await reviewSellerApplication(database, {
       sellerId: id,
       actorId: staff.id,
       action: action as SellerReviewAction,
       reason: reason || 'Review started.',
-      requestId:
-        request.headers.get('cf-ray') ??
-        request.headers.get('x-request-id') ??
-        crypto.randomUUID(),
+      requestId: body.requestId,
       now: Date.now(),
+      form: { versionId: form.versionId, answers: form.answers },
       payoutAccountReference:
         typeof body.payoutAccountReference === 'string'
           ? body.payoutAccountReference
@@ -92,6 +104,14 @@ export async function POST(
     if (error instanceof StaffAuthorizationError) {
       return json({ error: error.message }, error.status);
     }
+    if (error instanceof BodyTooLargeError) return json({ error: error.message }, 413);
+    if (error instanceof SyntaxError) return json({ error: 'Invalid request.' }, 400);
+    if (error instanceof FormRuntimeError)
+      return json({ error: error.message, code: error.code }, error.code === 'stale_version' ? 409 : 503);
+    if (error instanceof FormValidationError)
+      return json({ error: error.message, fieldId: error.fieldId }, 400);
+    if (validatedVersionId && await isValidatedFormVersionStale(requireDatabase(env as unknown as { DB?: D1Database }), 'staff.seller-review-action', validatedVersionId))
+      return json({ error: 'This form changed. Refresh it and review your answers.', code: 'stale_version' }, 409);
     if (error instanceof SellerReviewConflictError) {
       return json({ error: error.message }, 409);
     }

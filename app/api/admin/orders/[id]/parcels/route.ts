@@ -1,8 +1,9 @@
+import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import {env} from 'cloudflare:workers';
 import {requireDatabase} from '@/lib/db/d1';
 import {requireStaffApi,StaffAuthorizationError} from '@/lib/auth/staff';
 import {isTrustedMutationRequest} from '@/lib/http/request-security';
-import {readBoundedBody} from '@/lib/http/bounded-body';
+import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import {prepareSellerParcels,operateParcel,ParcelConflictError} from '@/lib/operations/parcels';
 import {sendPendingOrderUpdates} from '@/lib/email/send-order-updates';
 import {isValidatedFormVersionStale,validateSellerFormSubmission} from '@/lib/forms/submission';
@@ -15,7 +16,7 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
  if(!isTrustedMutationRequest(request))return reply({error:'Cross-site request rejected.'},403);
  try{
   const staff=await requireStaffApi('order.manage');const {id}=await context.params;
-  let body:Record<string,unknown>;try{body=JSON.parse(new TextDecoder().decode(await readBoundedBody(request,16384))) as Record<string,unknown>;if(!body||Array.isArray(body))throw new Error();}catch{return reply({error:'Invalid or oversized request.'},400);}
+  let body:Record<string,unknown>;try{body=await readBoundedJsonObject(request) as Record<string,unknown>;if(!body||Array.isArray(body))throw new Error();}catch(error){if(error instanceof BodyTooLargeError)throw error;return reply({error:'Invalid request.'},400);}
   const text=(key:string)=>typeof body[key]==='string'?body[key] as string:undefined;
   const db=requireDatabase(env as unknown as {DB?:D1Database}),requestId=text('requestId');
   if(!requestId||requestId.length>150)return reply({error:'Request reference required.'},400);
@@ -29,6 +30,8 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
   }
   if(body.action!=='record_cost')await sendPendingOrderUpdates({orderId:id});return reply({ok:true});
  }catch(error){
+    if (error instanceof BodyTooLargeError) return Response.json({ error: error.message }, { status: 413, headers: { 'Cache-Control': 'no-store' } });
+    if (error instanceof SyntaxError) return Response.json({ error: 'Invalid JSON request.' }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
   if(error instanceof FormRuntimeError)return reply({error:error.message,code:error.code},error.code==='stale_version'?409:503);
   if(error instanceof FormValidationError)return reply({error:error.message,fieldId:error.fieldId},400);
   if(validatedVersionId && await isValidatedFormVersionStale(requireDatabase(env as unknown as {DB?:D1Database}),

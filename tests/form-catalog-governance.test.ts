@@ -14,6 +14,7 @@ declare global {
 globalThis.governanceCreateElement = createElement;
 
 registerHooks({ resolve(specifier, context, nextResolve) {
+  if (specifier === 'next/link') return { url: `data:text/javascript,export default function Link({children,...props}){return globalThis.governanceCreateElement('a',props,children)}`, shortCircuit: true };
   if (specifier === 'next/navigation') return { url: 'data:text/javascript,export function useRouter(){return {refresh(){}}}', shortCircuit: true };
   if (specifier === '@/components/forms/form-config-client') return { url: 'data:text/javascript,export function usePublishedFormConfig(id){return {config:globalThis.governanceCatalogConfigs[id],canSubmit:true,status:"ready",message:""}}', shortCircuit: true };
   if (specifier === '@/components/ui/tabs') return { url: `data:text/javascript,
@@ -65,8 +66,8 @@ void test('all five governance forms render their own published controls and ver
   }]));
   const { GovernanceConsole } = await import('../components/admin/governance-console');
   const html = renderToStaticMarkup(createElement(GovernanceConsole, {
-    data: { users: [], rules: [{ id: 'rule-one', code: 'CODE', titleEn: 'Fixture', severity: 'restricted', isActive: true }],
-      products: [], promotions: [], incidents: [{ id: 'incident-one', referenceNumber: 'INC-1', title: 'Fixture', severity: 'high', status: 'open' }], backups: [] } as any,
+    data: { users: [], rules: [{ id: 'rule-one', code: 'CODE', titleEn: 'Fixture', titleNe: 'Fixture', severity: 'restricted', isActive: 1 }],
+      products: [], promotions: [], incidents: [{ id: 'incident-one', referenceNumber: 'INC-1', title: 'Fixture', severity: 'high', status: 'open', resolution: null }], backups: [] },
     superAdmin: true, actorId: 'super-one',
   }));
   for (const formId of formIds) {
@@ -99,7 +100,7 @@ void test('governance route rejects malformed and streamed oversized JSON before
   const chunk = new Uint8Array(8192).fill(65);
   let sent = 0;
   const stream = new ReadableStream<Uint8Array>({ pull(controller) {
-    if (sent++ < 10) controller.enqueue(chunk);
+    if (sent++ < 33) controller.enqueue(chunk);
     else controller.close();
   } });
   const oversized = await POST(new Request('http://localhost/api/admin/governance', {

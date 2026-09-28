@@ -549,7 +549,7 @@ export function CheckoutForm({
             <ConfiguredFields config={published.config} baseKeys={checkoutBaseKeys} />
           </section>
         ) : null}
-        {!published.canSubmit ? <p role="status">{published.message || 'Loading form…'}</p> : null}
+        {!published.canSubmit ? <output>{published.message || 'Loading form…'}</output> : null}
       </div>
       <aside className="h-fit rounded-2xl border bg-card p-6 lg:sticky lg:top-40">
         <h2 className="font-heading text-2xl">Your order</h2>

@@ -167,6 +167,7 @@ function ImageUploadSlot({
         className="mt-3 h-11 py-2"
         name={required && slot <= 4 ? `image${slot}` : 'images'}
         type="file"
+        aria-label={`Product image ${slot} (${required ? 'required' : 'optional'})`}
         accept="image/jpeg,image/png,image/webp"
         required={required}
         onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)}
@@ -598,6 +599,7 @@ export function ProductSubmissionForm({
 
   return (
     <form
+      data-form-id="seller.product-submission"
       ref={formRef}
       onSubmit={submit}
       className="seller-form space-y-9 rounded-2xl border bg-card p-6 shadow-sm sm:p-8"
