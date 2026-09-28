@@ -11,6 +11,18 @@ export async function ensureLocalTestAccount(
 ): Promise<void> {
   const identity = localTestIdentity(role);
   const userId = identity.userId;
+  const existing = await database
+    .prepare('SELECT id, auth_subject AS authSubject FROM users WHERE id = ? OR auth_subject = ? LIMIT 2')
+    .bind(userId, identity.userId)
+    .all<{ id: string; authSubject: string | null }>();
+  if (existing.results.length) {
+    if (existing.results.length !== 1 || existing.results[0].id !== userId ||
+      existing.results[0].authSubject !== identity.userId) {
+      throw new Error('The local fixture identity collides with another account.');
+    }
+    // Switching roles must preserve existing account restrictions and review history.
+    return;
+  }
   const statements: D1PreparedStatement[] = [
     database
       .prepare(
