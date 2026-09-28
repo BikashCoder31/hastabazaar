@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 
 import { safeRelativeReturnPath } from '@/app/auth';
 import { requireDatabase } from '@/lib/db/d1';
+import { isLocalTestRequest, localTestCookieName } from '@/lib/auth/local-test-access';
 import {
   clearHostedSessionCookie,
   revokeHostedSession,
@@ -15,12 +16,14 @@ export async function GET(request: Request): Promise<Response> {
   const returnTo = safeRelativeReturnPath(
     new URL(request.url).searchParams.get('return_to') ?? '/',
   );
-  return new Response(null, {
-    status: 303,
-    headers: {
-      Location: returnTo,
-      'Set-Cookie': clearHostedSessionCookie(),
-      'Cache-Control': 'no-store',
-    },
+  const responseHeaders = new Headers({
+    Location: returnTo,
+    'Set-Cookie': clearHostedSessionCookie(),
+    'Cache-Control': 'no-store',
   });
+  if (isLocalTestRequest(request.headers)) {
+    responseHeaders.append('Set-Cookie',
+      `${localTestCookieName}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
+  }
+  return new Response(null, { status: 303, headers: responseHeaders });
 }

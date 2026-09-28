@@ -135,7 +135,7 @@ export function CartView() {
         <p className="mt-3 text-muted-foreground">
           Browse work from verified makers across Nepal.
         </p>
-        <Button render={<Link href="/shop" />} className="mt-7 rounded-full">
+        <Button nativeButton={false} render={<Link href="/shop" />} className="mt-7 rounded-full">
           Explore the collection
         </Button>
       </div>
@@ -272,6 +272,7 @@ export function CartView() {
           checkout.
         </p>
         <Button
+          nativeButton={cart.hasUnavailableItems || busy !== null}
           render={
             !cart.hasUnavailableItems && busy === null ? (
               <Link href="/checkout" />

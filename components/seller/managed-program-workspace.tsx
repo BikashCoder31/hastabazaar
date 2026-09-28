@@ -17,7 +17,14 @@ function Input({label,name,type='text',required=true}:{label:string;name:string;
  return <label className="block text-sm font-medium">{label}<input name={name} type={type} required={required} className="mt-1 h-10 w-full rounded-md border bg-background px-3"/></label>;
 }
 
-export function SellerManagedProgramWorkspace({workspace,sellerId}:{workspace:ManagedProgramWorkspace;sellerId:string}){
+type WorkspaceProps = {workspace:ManagedProgramWorkspace;sellerId:string};
+
+export function SellerManagedProgramWorkspace(props:WorkspaceProps){
+ if(props.workspace.participationRoute!=='managed_maker')return null;
+ return <ManagedProgramForms {...props}/>;
+}
+
+function ManagedProgramForms({workspace,sellerId}:WorkspaceProps){
  const router=useRouter();const [message,setMessage]=useState('');const [busy,setBusy]=useState(false);
  const supply=usePublishedFormConfig('seller.managed-supply-proposal');
  const transition=usePublishedFormConfig('seller.managed-transition-request');
@@ -65,7 +72,6 @@ export function SellerManagedProgramWorkspace({workspace,sellerId}:{workspace:Ma
    setMessage('Simulated staging record saved.');element.reset();router.refresh();
   }catch(error){setMessage(error instanceof Error?error.message:'Action failed.');}finally{setBusy(false);}
  }
- if(workspace.participationRoute!=='managed_maker')return null;
  return <section className="space-y-5 rounded-2xl border border-amber-300 bg-amber-50 p-5 dark:bg-amber-950/20">
   <div><p className="eyebrow">Local staging simulation</p><h2 className="font-heading text-2xl">Managed Maker program</h2><p className="mt-2 text-sm leading-6">These controls create fictional test records only. They do not approve live supplier, title, risk, tax, or payment terms.</p></div>
   {workspace.commercialModel==='managed_fixed_supplier_price_v1'?<form data-form-id="seller.managed-supply-proposal" className="grid gap-3 sm:grid-cols-2" onSubmit={(event)=>void send(event,'propose_fixed_supply')}>
@@ -74,7 +80,7 @@ export function SellerManagedProgramWorkspace({workspace,sellerId}:{workspace:Ma
    <label className="block text-sm font-medium">Language presented<select name="agreementLanguage" className="mt-1 h-10 w-full rounded-md border bg-background px-3"><option value="ne">Nepali</option><option value="en">English</option></select></label>
    {supply.config?<div className="sm:col-span-2"><ConfiguredFields config={supply.config} baseKeys={supplyBaseKeys}/></div>:null}
    {supply.status!=='ready'?<p role="alert" className="sm:col-span-2 text-sm text-destructive">{supply.message||'Form configuration is unavailable. Please try again.'}</p>:null}
-   <div className="sm:col-span-2 flex flex-wrap gap-3"><Button disabled={busy||!supply.canSubmit||workspace.products.length===0}>Propose documented test supply</Button>
+   <div className="sm:col-span-2 flex flex-wrap gap-3"><Button type="submit" disabled={busy||!supply.canSubmit||workspace.products.length===0}>Propose documented test supply</Button>
     {pendingSupply?<Button type="button" variant="outline" disabled={busy} onClick={()=>resetAttempt('supply')}>Start a new managed supply attempt</Button>:null}</div>
   </form>:null}
   {workspace.supplies.length?<div className="space-y-2"><h3 className="font-semibold">Supply history</h3>{workspace.supplies.map(supply=><p key={supply.id} className="rounded-lg border bg-background p-3 text-sm"><span className="font-semibold">{supply.productName}</span> · {supply.quantityProposed} × NPR {(supply.agreedUnitPaisa/100).toFixed(2)} · {supply.status.replaceAll('_',' ')}</p>)}</div>:null}
@@ -86,7 +92,7 @@ export function SellerManagedProgramWorkspace({workspace,sellerId}:{workspace:Ma
    <label className="block text-sm font-medium sm:col-span-2">Private evidence references, one per line<textarea name="evidenceReferences" required rows={3} className="mt-1 w-full rounded-md border bg-background p-3"/></label>
    {transition.config?<div className="sm:col-span-2"><ConfiguredFields config={transition.config} baseKeys={transitionBaseKeys}/></div>:null}
    {transition.status!=='ready'?<p role="alert" className="sm:col-span-2 text-sm text-destructive">{transition.message||'Form configuration is unavailable. Please try again.'}</p>:null}
-   <div className="sm:col-span-2 flex flex-wrap gap-3"><Button disabled={busy||!transition.canSubmit}>Submit simulated transition application</Button>
+   <div className="sm:col-span-2 flex flex-wrap gap-3"><Button type="submit" disabled={busy||!transition.canSubmit}>Submit simulated transition application</Button>
     {pendingTransition?<Button type="button" variant="outline" disabled={busy} onClick={()=>resetAttempt('transition')}>Start a new managed transition attempt</Button>:null}</div>
   </form></details>
   {workspace.transitions.length?<div className="space-y-2"><h3 className="font-semibold">Transition history</h3>{workspace.transitions.map(item=><p key={item.id} className="rounded-lg border bg-background p-3 text-sm"><span className="font-semibold">{item.legalName}</span> · {item.taxMode} · {item.status.replaceAll('_',' ')}{item.reviewReason?` · ${item.reviewReason}`:''}</p>)}</div>:null}
