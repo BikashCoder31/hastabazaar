@@ -61,12 +61,16 @@ export function SellerCaseResponseForm({
       };
       const saved = await fetch(endpoint, { method: 'POST',
         headers: { 'content-type': 'application/json' }, body: JSON.stringify(resultBody) });
-      const result = await saved.json().catch(() => null) as { error?: string; code?: string } | null;
+      const decoded: unknown = await saved.json().catch(() => null);
+      const result = decoded !== null && typeof decoded === 'object' && !Array.isArray(decoded)
+        ? decoded as Record<string, unknown> : null;
       if (!saved.ok) {
         if (saved.status === 409 && result?.code === 'stale_version')
           published.handleSubmissionResponse(saved);
-        throw new Error(result?.error || 'Response could not be saved.');
+        throw new Error(typeof result?.error === 'string' ? result.error : 'Response could not be saved.');
       }
+      if (result?.ok !== true)
+        throw new Error('The result could not be confirmed. Retry this same response to check its result.');
       clearSessionAttempt(attemptKey);
       router.refresh();
     } catch (cause) {

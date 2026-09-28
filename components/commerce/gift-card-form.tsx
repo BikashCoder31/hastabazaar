@@ -47,19 +47,21 @@ export function GiftCardForm({ issue = false }: { issue?: boolean }) {
           }),
         },
       );
-      const data = (await response.json()) as {
-        error?: string;
-        code: string | null;
-        id: string;
-        amountPaisa: number;
-      };
+      const decoded: unknown = await response.json().catch(() => null);
+      const data = decoded !== null && typeof decoded === 'object' && !Array.isArray(decoded)
+        ? decoded as Record<string, unknown> : null;
       if (!response.ok) {
-        if (response.status === 409 && data.code === 'stale_version')
+        if (response.status === 409 && data?.code === 'stale_version')
           published.handleSubmissionResponse(response);
-        setError(data.error || 'The operation could not be completed.');
+        setError(typeof data?.error === 'string' ? data.error : 'The operation could not be completed.');
         return;
       }
-      setResult(data);
+      if (!data || typeof data.id !== 'string' || data.id.trim().length === 0 || data.id.length > 100 ||
+        typeof data.amountPaisa !== 'number' || !Number.isSafeInteger(data.amountPaisa) || data.amountPaisa <= 0 ||
+        typeof data.duplicate !== 'boolean' || issue && !(data.duplicate === true && data.code === null ||
+          data.duplicate === false && typeof data.code === 'string' && data.code.trim().length > 0 && data.code.length <= 60))
+        throw new Error('The result could not be confirmed.');
+      setResult({ id: data.id, amountPaisa: data.amountPaisa, code: issue ? data.code as string | null : null });
       if (issue) { clearSessionAttempt(attemptKey); setHasPendingAttempt(false); }
       setValue('');
       router.refresh();

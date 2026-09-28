@@ -799,7 +799,7 @@ void test('invalid gift code stays correctable after a domain 409', async () => 
           contentType: 'application/json', body: requests.length === 1
             ? JSON.stringify({ error: 'Gift code is invalid.' })
             : requests.length === 2
-              ? JSON.stringify({ id: 'gift-1', amountPaisa: 12500, code: null })
+              ? JSON.stringify({ id: 'gift-1', amountPaisa: 12500, duplicate: false })
               : JSON.stringify({ error: 'Form changed.', code: 'stale_version' }) });
       }
       return route.abort();
@@ -873,7 +873,8 @@ void test('aftercare client posts published answers with each authorized case re
         attempts[kind]++;
         if (attempts[kind] === 1) return route.fulfill({ status: 409,
           contentType: 'application/json', body: JSON.stringify({ error: 'Correct the case details.' }) });
-        return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ message: 'Case received.' }) });
+        return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({
+          id: 'case-1', referenceNumber: 'HK-C-1', duplicate: false, message: 'Case received.' }) });
       }
       return route.abort();
     });

@@ -225,15 +225,15 @@ export function CheckoutForm({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(parsed.value),
       });
-      const result = (await response.json()) as {
-        orderNumber?: string;
-        error?: string;
-        code?: string;
-      };
-      if (response.status === 409 && result.code === 'stale_version')
+      const decoded: unknown = await response.json().catch(() => null);
+      const result = decoded !== null && typeof decoded === 'object' && !Array.isArray(decoded)
+        ? decoded as Record<string, unknown> : null;
+      if (response.status === 409 && result?.code === 'stale_version')
         published.handleSubmissionResponse(response);
-      if (!response.ok || !result.orderNumber)
-        throw new Error(result.error || 'Order could not be placed.');
+      if (!response.ok)
+        throw new Error(typeof result?.error === 'string' ? result.error : 'Order could not be placed.');
+      if (typeof result?.orderNumber !== 'string' || result.orderNumber.trim().length === 0 || result.orderNumber.length > 100)
+        throw new Error('The order result could not be confirmed. Retry this same request to check its result.');
       clearSessionAttempt(checkoutAttemptKey);
       window.location.assign(
         `/orders/${encodeURIComponent(result.orderNumber)}`,
