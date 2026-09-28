@@ -89,7 +89,7 @@ export default async function AdminReturnCasePage({
               <Detail label="Item value">
                 {money(item.lineTotalPaisa || 0)}
               </Detail>
-              <Detail label="Delivery paid">
+              <Detail label="Original delivery charge (order snapshot)">
                 {money(item.deliveryChargePaisa || 0)}
               </Detail>
             </dl>
