@@ -45,6 +45,7 @@ const migrationNames = [
   'mariadb-recently-viewed.sql',
   'mariadb-managed-fixed-supply.sql',
   'mariadb-homepage-hero-carousel.sql',
+  'mariadb-promo-codes.sql',
 ];
 const tables = {},
   triggers = {},

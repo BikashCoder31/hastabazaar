@@ -71,6 +71,53 @@ const feedbackDeliveryJobsSql = await readFile(
   'utf8',
 );
 
+// Promo-only legacy columns needed by the frozen 0020 base. Canonical definitions remain in maintenance files.
+const promoPrerequisiteColumns = {
+  'mariadb-referrals-wallet.sql': [
+    'orders.wallet_credit_paisa',
+    'orders.referral_discount_paisa',
+    'refunds.wallet_credit_paisa',
+    'refunds.referral_discount_paisa',
+    'refunds.credit_base_paisa',
+  ],
+  'mariadb-partial-cancellation.sql': [
+    'orders.current_total_paisa',
+    'orders.current_subtotal_paisa',
+    'orders.current_delivery_paisa',
+    'orders.current_wallet_paisa',
+    'orders.current_discount_paisa',
+  ],
+  'mariadb-policy-commission-9-percent.sql': [
+    'order_items.platform_discount_paisa',
+  ],
+};
+const promoPrerequisites = [];
+for (const [file, columns] of Object.entries(promoPrerequisiteColumns)) {
+  const canonical = await readFile(
+    resolve(projectRoot, 'deployment/babal', file),
+    'utf8',
+  );
+  const statements = [
+    ...canonical.matchAll(
+      /ALTER TABLE\s+(\w+)\s+ADD COLUMN IF NOT EXISTS\s+(\w+)\s+[^;]+;/gi,
+    ),
+  ];
+  for (const column of columns) {
+    const matches = statements.filter(
+      (match) => `${match[1]}.${match[2]}` === column,
+    );
+    if (matches.length !== 1)
+      throw new Error(
+        `Expected exactly one canonical promo prerequisite: ${file}:${column}`,
+      );
+    promoPrerequisites.push(matches[0][0]);
+  }
+}
+const promoCodesSql = await readFile(
+  resolve(projectRoot, 'deployment/babal/mariadb-promo-codes.sql'),
+  'utf8',
+);
+
 const quote = (value) => `\`${String(value).replaceAll('`', '``')}\``;
 
 function identifier(value) {
@@ -316,6 +363,10 @@ output.push(
   addressAnswerOwnerTombstonesSql.trim(),
   feedbackDeliveryJobsSql.trim(),
   '',
+  '-- Legacy column prerequisites for promo DDL only; not full financial bootstrap repair.',
+  ...promoPrerequisites,
+  promoCodesSql.trim(),
+  '',
   '-- Babal.Host password authentication and server-side sessions.',
   'CREATE TABLE IF NOT EXISTS `user_credentials` (',
   '  `user_id` VARCHAR(191) NOT NULL,',
@@ -398,6 +449,10 @@ await mkdir(dirname(outputPath), { recursive: true });
 const schemaSql = output.join('\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
+  'promo_redemptions',
+  'promo_customer_usage',
+  'promo_revisions',
+  'promo_campaigns',
   'feedback_delivery_jobs',
   'address_answer_owner_tombstones',
   'data_rights_legal_holds',
