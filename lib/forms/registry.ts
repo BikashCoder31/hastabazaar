@@ -1,3 +1,4 @@
+import { INCENTIVE_FORM_CONTRACTS } from '../incentives/forms';
 import type { BaseFieldCapability, FormAudience, FormCapabilities, FormDefinition, FormId, FormMode } from './types';
 import { feedbackTopics } from '../feedback/customer-feedback';
 
@@ -9,6 +10,7 @@ export interface ImplementedFormAdapter {
 
 // Integrations add an entry here only when their server adapter exists and is tested.
 export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormAdapter>> = Object.freeze({
+  'staff.promo-code': { formId: 'staff.promo-code', route: '/api/admin/promo-codes', mode: 'operation' },
   'commerce.order-cancellation': { formId: 'commerce.order-cancellation', route: '/orders/:number/cancel', mode: 'transaction' },
   'commerce.add-to-cart': { formId: 'commerce.add-to-cart', route: '/api/cart', mode: 'transaction' },
   'staff.return-case-action': { formId: 'staff.return-case-action', route: '/api/admin/returns/:id/review', mode: 'operation' },
@@ -609,7 +611,7 @@ function sellerCaseDefinition(id: 'seller.case-return-response' |
 }
 
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
-  Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
+  Object.assign({ 'staff.promo-code': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.promo-code'], adapterId: 'staff.promo-code' }) }, Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
     const item = Object.hasOwn(PROGRAMMATIC_KEYS, row.split('|')[0])
       ? programmaticDefinition(row.split('|')[0] as ProgrammaticFormId)
       : Object.hasOwn(QUERY_FIELDS, row.split('|')[0]) || row.startsWith('system.local-testing-role|')
@@ -665,5 +667,5 @@ export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.fr
       adapterId: 'account.profile',
     } satisfies FormDefinition) : definition(row);
     return [item.id, item];
-  })),
+  }))),
 );

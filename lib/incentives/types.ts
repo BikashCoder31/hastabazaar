@@ -11,10 +11,21 @@ interface PromoCommonTerms {
   readonly budgetPaisa: number;
 }
 
-export type PromoTerms = PromoCommonTerms & (
-  | { readonly kind: 'fixed'; readonly fixedPaisa: number; readonly percentBps?: never; readonly maxDiscountPaisa?: never }
-  | { readonly kind: 'percentage'; readonly percentBps: number; readonly maxDiscountPaisa: number; readonly fixedPaisa?: never }
-);
+export type PromoTerms = PromoCommonTerms &
+  (
+    | {
+        readonly kind: 'fixed';
+        readonly fixedPaisa: number;
+        readonly percentBps?: never;
+        readonly maxDiscountPaisa?: never;
+      }
+    | {
+        readonly kind: 'percentage';
+        readonly percentBps: number;
+        readonly maxDiscountPaisa: number;
+        readonly fixedPaisa?: never;
+      }
+  );
 
 export interface PromoQuote {
   readonly campaignId: string;
@@ -24,9 +35,13 @@ export interface PromoQuote {
   readonly discountPaisa: number;
   readonly subtotalPaisa: number;
   readonly expiresAt: number;
+  readonly minimumSubtotalPaisa: number;
 }
 
 export interface PromoState {
+  readonly version: number;
+  readonly publishedRevision: number | null;
+  readonly draftRevision: number | null;
   readonly campaignId: string;
   readonly revision: number;
   readonly terms: PromoTerms;
@@ -117,21 +132,73 @@ export interface RewardsView {
   readonly nextCursor: string | null;
 }
 
-export type IncentiveErrorCode = 'invalid' | 'unauthorized' | 'unavailable' | 'stale' | 'conflict' | 'insufficient' | 'exhausted';
+export type IncentiveErrorCode =
+  | 'invalid'
+  | 'unauthorized'
+  | 'unavailable'
+  | 'stale'
+  | 'conflict'
+  | 'insufficient'
+  | 'exhausted';
 
-const PUBLIC_ERROR_MESSAGES: Readonly<Record<IncentiveErrorCode, string>> = Object.freeze({
-  invalid: 'Invalid incentive request.',
-  unauthorized: 'You are not authorized to perform this action.',
-  unavailable: 'This incentive is currently unavailable.',
-  stale: 'Incentive terms have changed. Please try again.',
-  conflict: 'This request conflicts with a previous request.',
-  insufficient: 'There is not enough available balance.',
-  exhausted: 'This incentive limit has been reached.',
-});
+const PUBLIC_ERROR_MESSAGES: Readonly<Record<IncentiveErrorCode, string>> =
+  Object.freeze({
+    invalid: 'Invalid incentive request.',
+    unauthorized: 'You are not authorized to perform this action.',
+    unavailable: 'This incentive is currently unavailable.',
+    stale: 'Incentive terms have changed. Please try again.',
+    conflict: 'This request conflicts with a previous request.',
+    insufficient: 'There is not enough available balance.',
+    exhausted: 'This incentive limit has been reached.',
+  });
 
 export class IncentiveError extends Error {
   constructor(readonly code: IncentiveErrorCode) {
     super(PUBLIC_ERROR_MESSAGES[code]);
     this.name = 'IncentiveError';
   }
+}
+
+export interface PromoQuoteInput {
+  readonly userId: string;
+  readonly code: string;
+  readonly subtotalPaisa: number;
+  readonly now: number;
+}
+/** Server-derived canonical checkout intent and original order response. Never copy digest/response from a client. */
+export interface PromoConsumptionInput {
+  readonly userId: string;
+  readonly orderId: string;
+  readonly requestId: string;
+  readonly quote: PromoQuote;
+  readonly now: number;
+  readonly payloadDigest: string;
+  readonly response: Readonly<Record<string, unknown>>;
+}
+export interface PromoListInput {
+  readonly actorId: string;
+  readonly cursor?: string;
+  readonly limit?: number;
+}
+export interface PromoDetailInput {
+  readonly actorId: string;
+  readonly campaignId: string;
+}
+export interface PromoRedemptionListInput extends PromoListInput {
+  readonly campaignId: string;
+}
+export interface PromoCampaignPage {
+  readonly campaigns: readonly PromoState[];
+  readonly nextCursor: string | null;
+}
+export interface PromoRedemptionSummary {
+  readonly redemptionId: string;
+  readonly orderId: string;
+  readonly revision: number;
+  readonly discountPaisa: number;
+  readonly createdAt: number;
+}
+export interface PromoRedemptionPage {
+  readonly redemptions: readonly PromoRedemptionSummary[];
+  readonly nextCursor: string | null;
 }
