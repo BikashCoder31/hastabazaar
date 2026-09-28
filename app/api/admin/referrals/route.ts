@@ -3,8 +3,14 @@ import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { getReferralCampaign } from '@/lib/db/repositories/wallet';
+import { buildFormAnswerInsert } from '@/lib/db/repositories/form-answers';
+import { isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { FormRuntimeError } from '@/lib/forms/runtime';
+import { FormValidationError } from '@/lib/forms/validation';
+import { readBoundedBody, BodyTooLargeError } from '@/lib/http/bounded-body';
 
 export async function PUT(request: Request) {
+  let validatedVersionId: string | undefined;
   if (!isTrustedMutationRequest(request))
     return Response.json(
       { error: 'Cross-site requests are not allowed.' },
@@ -17,7 +23,13 @@ export async function PUT(request: Request) {
         { error: 'Only the Super Admin can change this offer.' },
         { status: 403 },
       );
-    const b = (await request.json()) as Record<string, unknown>;
+    let b: Record<string, unknown>;
+    try { b = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await readBoundedBody(request, 256 * 1024))); }
+    catch (error) { if (error instanceof BodyTooLargeError) throw error;
+      return Response.json({ error: 'Invalid referral request.' }, { status: 400 }); }
+    if (!b || typeof b !== 'object' || Array.isArray(b) ||
+      typeof b.requestId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(b.requestId))
+      return Response.json({ error: 'A valid referral-change request reference is required.' }, { status: 400 });
     const {
       friendDiscountPaisa: d,
       rewardPaisa: r,
@@ -49,14 +61,51 @@ export async function PUT(request: Request) {
         { status: 400 },
       );
     const db = requireDatabase(env as unknown as { DB?: D1Database });
+    const configured = await validateSellerFormSubmission(db, 'staff.referral-settings',
+      b.formVersion, b.customAnswers, b.requestId);
+    validatedVersionId = configured.versionId;
+    if (!await db.prepare("SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=? AND u.status='active' AND r.role='super_admin' LIMIT 1").bind(staff.id).first())
+      return Response.json({ error: 'Current Super Admin authority is required.' }, { status: 403 });
+    const next = { enabled: b.enabled, friendDiscountPaisa: d, rewardPaisa: r,
+      minimumSubtotalPaisa: m, returnWindowDays: w };
+    const replay = await db.prepare(`SELECT a.actor_id AS actorId,a.subject_type AS subjectType,
+      a.subject_id AS subjectId,a.config_version_id AS versionId,a.answers_json AS answersJson,
+      l.reason,l.next_json AS nextJson FROM form_answer_sets a JOIN audit_logs l
+      ON l.request_id=a.request_id AND l.action='referral.offer.updated'
+      WHERE a.form_id='staff.referral-settings' AND a.request_id=? LIMIT 1`)
+      .bind(b.requestId).first<{ actorId: string; subjectType: string; subjectId: string;
+        versionId: string; answersJson: string; reason: string; nextJson: string }>();
+    if (replay) {
+      if (replay.actorId !== staff.id || replay.subjectType !== 'referral_campaign' ||
+        replay.subjectId !== 'default' || replay.versionId !== configured.versionId ||
+        replay.answersJson !== JSON.stringify(configured.answers) ||
+        replay.reason !== b.reason.trim() || replay.nextJson !== JSON.stringify(next))
+        return Response.json({ error: 'Referral request reference was already used for different work.' }, { status: 409 });
+      return Response.json({ saved: true }, { headers: { 'Cache-Control': 'no-store' } });
+    }
     const previous = await getReferralCampaign(db);
     const now = Date.now();
+    const current = await db.prepare("SELECT updated_at AS updatedAt FROM referral_campaign WHERE id='default'")
+      .first<{ updatedAt: number }>();
+    if (!current) return Response.json({ error: 'The referral offer is unavailable.' }, { status: 409 });
+    const updatedAt = Math.max(now, current.updatedAt + 1);
+    const guardId = crypto.randomUUID();
     await db.batch([
+      db.prepare(`INSERT INTO staff_permission_guards(id,valid) SELECT ?,CASE WHEN
+        EXISTS(SELECT 1 FROM referral_campaign WHERE id='default' AND updated_at=?)
+        THEN 1 ELSE 0 END`).bind(guardId, current.updatedAt),
+      db.prepare('DELETE FROM staff_permission_guards WHERE id=?').bind(guardId),
       db
         .prepare(
-          `UPDATE referral_campaign SET enabled=?,friend_discount_paisa=?,reward_paisa=?,minimum_subtotal_paisa=?,return_window_days=?,updated_at=? WHERE id='default'`,
+          `UPDATE referral_campaign SET enabled=?,friend_discount_paisa=?,reward_paisa=?,minimum_subtotal_paisa=?,return_window_days=?,updated_at=? WHERE id='default' AND updated_at=?`,
         )
-        .bind(b.enabled ? 1 : 0, d, r, m, w, now),
+        .bind(b.enabled ? 1 : 0, d, r, m, w, updatedAt, current.updatedAt),
+      db.prepare(`INSERT INTO staff_permission_guards(id,valid) SELECT ?,CASE WHEN
+        EXISTS(SELECT 1 FROM users u JOIN user_roles roles ON roles.user_id=u.id
+          WHERE u.id=? AND u.status='active' AND roles.role='super_admin')
+        AND EXISTS(SELECT 1 FROM referral_campaign WHERE id='default' AND updated_at=?)
+        THEN 1 ELSE 0 END`).bind(guardId, staff.id, updatedAt),
+      db.prepare('DELETE FROM staff_permission_guards WHERE id=?').bind(guardId),
       db
         .prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,ip_hash,created_at)
      VALUES (?,?,'referral.offer.updated','referral_campaign','default',?,?,?,?,NULL,?)`)
@@ -65,27 +114,34 @@ export async function PUT(request: Request) {
           staff.id,
           b.reason.trim(),
           JSON.stringify(previous),
-          JSON.stringify({
-            enabled: b.enabled,
-            friendDiscountPaisa: d,
-            rewardPaisa: r,
-            minimumSubtotalPaisa: m,
-            returnWindowDays: w,
-          }),
-          crypto.randomUUID(),
+          JSON.stringify(next),
+          b.requestId,
           now,
         ),
+      buildFormAnswerInsert(db, { formId: 'staff.referral-settings', requestId: b.requestId,
+        versionId: configured.versionId, subjectType: 'referral_campaign', subjectId: 'default',
+        actorId: staff.id, answers: configured.answers, now }),
     ]);
     return Response.json(
       { saved: true },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (error) {
+    if (validatedVersionId && await isValidatedFormVersionStale(requireDatabase(env as unknown as { DB?: D1Database }), 'staff.referral-settings', validatedVersionId))
+      return Response.json({ error: 'This form changed. Refresh it and review your answers.', code: 'stale_version' }, { status: 409 });
+    if (error instanceof FormRuntimeError)
+      return Response.json({ error: error.message, code: error.code }, { status: error.code === 'stale_version' ? 409 : 503 });
+    if (error instanceof FormValidationError)
+      return Response.json({ error: error.message, fieldId: error.fieldId }, { status: 400 });
+    if (error instanceof BodyTooLargeError)
+      return Response.json({ error: error.message }, { status: 413 });
+    if (error instanceof SyntaxError)
+      return Response.json({ error: 'Invalid referral request.' }, { status: 400 });
     if (error instanceof StaffAuthorizationError)
       return Response.json({ error: error.message }, { status: error.status });
     return Response.json(
       { error: 'The offer could not be saved.' },
-      { status: 500 },
+      { status: validatedVersionId ? 409 : 500 },
     );
   }
 }

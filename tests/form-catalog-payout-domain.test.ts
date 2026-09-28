@@ -1,0 +1,360 @@
+import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
+import { registerHooks } from 'node:module';
+import test from 'node:test';
+import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
+
+import { operatePayout, prepareSellerPayout } from '../lib/db/repositories/payouts';
+import { getFormAnswerById } from '../lib/db/repositories/form-answers';
+import { authorizeFormAnswerRead } from '../lib/forms/access';
+import { listStaffFormHistory, readStaffFormHistoryAnswer } from '../lib/forms/staff-history';
+import { collectFormAnswersForPrivacy } from '../lib/forms/privacy';
+import { validateFormDraft } from '../lib/forms/validation';
+
+declare global {
+  var payoutCatalogDb: D1Database;
+  var payoutCatalogActor: { id: string; role: 'admin' | 'super_admin' } | null;
+}
+registerHooks({ resolve(specifier, context, nextResolve) {
+  if (specifier === 'cloudflare:workers') return { url: 'data:text/javascript,export const env={get DB(){return globalThis.payoutCatalogDb}}', shortCircuit: true };
+  if (specifier === '@/lib/auth/staff') return { url: `data:text/javascript,
+    export class StaffAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}}
+    export async function requireStaffApi(){if(!globalThis.payoutCatalogActor)throw new StaffAuthorizationError('Staff access required.',403);return globalThis.payoutCatalogActor}`, shortCircuit: true };
+  return nextResolve(specifier, context);
+} });
+
+class Statement {
+  private values: SQLInputValue[] = [];
+  constructor(private readonly sql: StatementSync) {}
+  bind(...values: SQLInputValue[]) { this.values = values; return this; }
+  async first<T>() { return (this.sql.get(...this.values) as T | undefined) ?? null; }
+  async all<T>() { return { results: this.sql.all(...this.values) as T[] }; }
+  async run() { return { meta: { changes: Number(this.sql.run(...this.values).changes) } }; }
+}
+class Database {
+  beforeBatch?: () => void;
+  constructor(readonly sqlite: DatabaseSync) {}
+  prepare(sql: string) { return new Statement(this.sqlite.prepare(sql)); }
+  async batch(statements: readonly Statement[]) {
+    this.beforeBatch?.(); this.beforeBatch = undefined;
+    this.sqlite.exec('BEGIN');
+    try {
+      const results = [];
+      for (const statement of statements) results.push(await statement.run());
+      this.sqlite.exec('COMMIT');
+      return results;
+    } catch (error) { this.sqlite.exec('ROLLBACK'); throw error; }
+  }
+}
+const now = 1_800_000_000_000;
+function fixture() {
+  const sqlite = new DatabaseSync(':memory:');
+  sqlite.exec('PRAGMA foreign_keys=ON');
+  for (const name of readdirSync('drizzle').filter((item) => /^\d{4}_.+\.sql$/.test(item)).sort()) {
+    for (const statement of readFileSync(`drizzle/${name}`, 'utf8').split('--> statement-breakpoint'))
+      if (statement.trim()) sqlite.exec(statement);
+  }
+  for (const id of ['sa1', 'sa2', 'admin1', 'seller-user']) {
+    sqlite.prepare(`INSERT INTO users(id,auth_subject,email,display_name,locale,status,created_at,updated_at)
+      VALUES (?,?,?,?,'en-NP','active',?,?)`).run(id, id, `${id}@example.test`, id, now, now);
+  }
+  for (const [id, role] of [['sa1','super_admin'],['sa2','super_admin'],['admin1','admin'],['seller-user','seller']])
+    sqlite.prepare('INSERT INTO user_roles(user_id,role,assigned_at) VALUES (?,?,?)').run(id, role, now);
+  sqlite.prepare(`INSERT INTO seller_profiles(id,user_id,legal_name,trading_name,registration_authority,
+    registration_number,tax_mode,tax_registration_number,representative_name,support_phone,
+    support_email,province,district,municipality,locality,payout_account_reference,status,
+    approved_at,created_at,updated_at) VALUES
+    ('seller-one','seller-user','Fictional Seller','Fictional Shop','Local','REG','PAN','PAN',
+    'Representative','9800000000','seller@example.test','Madhesh','Dhanusha','Janakpur',
+    'Ward 1','SIMULATED-ACCOUNT','approved',?,?,?)`).run(now - 1000, now, now);
+  sqlite.prepare(`INSERT INTO seller_ledger_entries(id,seller_id,type,amount_paisa,available_at,description,created_at)
+    VALUES ('earning-one','seller-one','sale',5000,?,'SIMULATED available earning',?)`).run(now - 100, now - 100);
+  for (const formId of ['staff.payout-1','staff.payout-2']) {
+    const fields = [{ id:'context_note', key:'context_note', label:'Review context',
+      type:'short_text', required:true, order:0, status:'active' }];
+    sqlite.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,
+      reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+      VALUES (?, ?,1,1,'published',?,'Fixture','sa1',1,'sa1',1,'sa1',1,?)`)
+      .run(`${formId}-v1`, formId, JSON.stringify({ formId, fields }), `seed-${formId}`);
+  }
+  const database = new Database(sqlite);
+  return { sqlite, database, db: database as unknown as D1Database };
+}
+function form<T extends 'staff.payout-1' | 'staff.payout-2'>(formId: T, requestId: string,
+  value = 'Reviewed fictional payout evidence'): { formId: T; requestId: string;
+  versionId: string; answers: { formId: T; version: number; answers: Array<{
+    fieldId: string; label: string; type: 'short_text'; value: string }> } } {
+  return { formId, requestId, versionId: `${formId}-v1`, answers: {
+    formId, version: 1, answers: [{ fieldId:'context_note', label:'Review context',
+      type:'short_text' as const, value }],
+  } };
+}
+function count(sqlite: DatabaseSync, table: string) {
+  return (sqlite.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
+}
+
+void test('direct payout preparation binds one answer to the immutable financial batch and exact replay', async () => {
+  const { sqlite, db } = fixture();
+  const options = { sellerId:'seller-one', actorId:'sa1', actorRole:'super_admin' as const,
+    note:'Verified eligible balance and destination', requestId:'direct-prepare', now,
+    form:form('staff.payout-1','direct-prepare') };
+  try {
+    const first = await prepareSellerPayout(db, options);
+    assert.equal(first.duplicate, false);
+    assert.deepEqual(await prepareSellerPayout(db, options), { id:first.id, duplicate:true });
+    assert.equal(count(sqlite,'payouts'),1);
+    assert.equal(count(sqlite,'payout_entries'),1);
+    assert.equal(count(sqlite,'form_answer_sets'),1);
+    const answer = sqlite.prepare('SELECT form_id AS formId,subject_type AS subjectType,subject_id AS subjectId,actor_id AS actorId FROM form_answer_sets').get() as Record<string,unknown>;
+    assert.deepEqual({ ...answer }, { formId:'staff.payout-1', subjectType:'payout', subjectId:first.id, actorId:'sa1' });
+    await assert.rejects(prepareSellerPayout(db,{...options,sellerId:'missing'}));
+    await assert.rejects(prepareSellerPayout(db,{...options,actorId:'sa2'}));
+    await assert.rejects(prepareSellerPayout(db,{...options,note:'Changed evidence after preparation'}));
+    await assert.rejects(prepareSellerPayout(db,{...options,form:form('staff.payout-1','direct-prepare','Changed answer')}));
+    sqlite.exec("DELETE FROM user_roles WHERE user_id='sa1'");
+    await assert.rejects(prepareSellerPayout(db,options));
+    assert.equal(count(sqlite,'form_answer_sets'),1);
+  } finally { sqlite.close(); }
+});
+
+void test('direct preparation rolls back financial rows when answer or current seller state fails', async () => {
+  for (const race of ['answer','seller','destination','balance','publication'] as const) {
+    const { sqlite, database, db } = fixture();
+    const options = { sellerId:'seller-one', actorId:'sa1', actorRole:'super_admin' as const,
+      note:'Verified eligible balance and destination', requestId:`prepare-${race}`, now,
+      form:race==='answer' ? { ...form('staff.payout-1',`prepare-${race}`), versionId:'missing' }
+        : form('staff.payout-1',`prepare-${race}`) };
+    try {
+      const prior = Object.fromEntries(['payouts','payout_entries','payout_events','audit_logs','form_answer_sets']
+        .map((table) => [table,count(sqlite,table)]));
+      if (race === 'seller') database.beforeBatch = () => sqlite.exec("UPDATE seller_profiles SET status='suspended' WHERE id='seller-one'");
+      if (race === 'destination') database.beforeBatch = () => sqlite.exec("UPDATE seller_profiles SET payout_account_reference='CHANGED-DESTINATION' WHERE id='seller-one'");
+      if (race === 'balance') database.beforeBatch = () => sqlite.exec("UPDATE seller_ledger_entries SET available_at=9999999999999 WHERE id='earning-one'");
+      if (race === 'publication') database.beforeBatch = () => sqlite.prepare(`INSERT INTO form_config_versions
+        (id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+        SELECT 'staff.payout-1-v2',form_id,2,2,'published',config_json,'New version','sa1',2,'sa1',2,'sa1',2,'new-version'
+        FROM form_config_versions WHERE id='staff.payout-1-v1'`).run();
+      await assert.rejects(prepareSellerPayout(db,options),race);
+      for (const [table,n] of Object.entries(prior))
+        assert.equal(count(sqlite,table),n,`${race}:${table}`);
+    } finally { sqlite.close(); }
+  }
+});
+
+void test('payout actions replay exact actor/action/note/reference and never double debit or release', async () => {
+  const { sqlite, db } = fixture();
+  try {
+    const payout = await prepareSellerPayout(db,{sellerId:'seller-one',actorId:'sa1',actorRole:'super_admin',
+      note:'Verified eligible balance and destination',requestId:'prepare-base',now});
+    const approve = {payoutId:payout.id,actorId:'sa2',actorRole:'super_admin' as const,
+      action:'approve' as const,note:'Independent payout evidence verified',requestId:'approve-one',now:now+1,
+      form:form('staff.payout-2','approve-one')};
+    await assert.rejects(operatePayout(db,{...approve,actorId:'sa1',requestId:'same-preparer',
+      form:form('staff.payout-2','same-preparer')}));
+    assert.equal(count(sqlite,'form_answer_sets'),0);
+    await operatePayout(db,approve);
+    await operatePayout(db,approve);
+    await assert.rejects(operatePayout(db,{...approve,actorId:'sa1'}));
+    await assert.rejects(operatePayout(db,{...approve,action:'reject'}));
+    await assert.rejects(operatePayout(db,{...approve,note:'Different review evidence'}));
+    await assert.rejects(operatePayout(db,{...approve,form:form('staff.payout-2','approve-one','Different answer')}));
+    const processing = {...approve,action:'start_processing' as const,requestId:'processing-one',
+      note:'Start simulated processing after approval',form:form('staff.payout-2','processing-one')};
+    await operatePayout(db,processing);
+    const paid = {...approve,action:'mark_paid' as const,requestId:'paid-one',
+      providerReference:'SIMULATED-REFERENCE',note:'Verified simulated provider confirmation',
+      form:form('staff.payout-2','paid-one')};
+    await operatePayout(db,paid);
+    await operatePayout(db,paid);
+    await assert.rejects(operatePayout(db,{...paid,providerReference:'DIFFERENT-REFERENCE'}));
+    assert.equal(count(sqlite,'form_answer_sets'),3);
+    assert.equal(count(sqlite,'payout_events'),4);
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS n FROM seller_ledger_entries WHERE type='payout'").get() as {n:number}).n,1);
+  } finally { sqlite.close(); }
+});
+
+void test('payout action status or permission race and answer failure leave zero new effects', async () => {
+  for (const race of ['state','permission','answer','publication'] as const) {
+    const { sqlite, database, db } = fixture();
+    try {
+      const payout = await prepareSellerPayout(db,{sellerId:'seller-one',actorId:'sa1',actorRole:'super_admin',
+        note:'Verified eligible balance and destination',requestId:'prepare-base',now});
+      const prior = Object.fromEntries(['payout_events','audit_logs','notification_messages','form_answer_sets']
+        .map((table) => [table,count(sqlite,table)]));
+      const options = {payoutId:payout.id,actorId:'sa2',actorRole:'super_admin' as const,
+        action:'approve' as const,note:'Independent payout evidence verified',requestId:`approve-${race}`,
+        now:now+1,form:race==='answer' ? {...form('staff.payout-2',`approve-${race}`),versionId:'missing'}
+          :form('staff.payout-2',`approve-${race}`)};
+      if(race==='state')database.beforeBatch=()=>sqlite.prepare("UPDATE payouts SET status='rejected' WHERE id=?").run(payout.id);
+      if(race==='permission')database.beforeBatch=()=>sqlite.exec("DELETE FROM user_roles WHERE user_id='sa2'");
+      if(race==='publication')database.beforeBatch=()=>sqlite.prepare(`INSERT INTO form_config_versions
+        (id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+        SELECT 'staff.payout-2-v2',form_id,2,2,'published',config_json,'New version','sa1',2,'sa1',2,'sa1',2,'new-version'
+        FROM form_config_versions WHERE id='staff.payout-2-v1'`).run();
+      await assert.rejects(operatePayout(db,options),race);
+      for(const [table,n] of Object.entries(prior))assert.equal(count(sqlite,table),n,`${race}:${table}`);
+      assert.equal((sqlite.prepare('SELECT status FROM payouts WHERE id=?').get(payout.id) as {status:string}).status,
+        race==='state'?'rejected':'prepared');
+    } finally { sqlite.close(); }
+  }
+});
+
+void test('rejected payout releases its reservation once and preserves exact form-backed replay', async () => {
+  const { sqlite, db } = fixture();
+  try {
+    const payout = await prepareSellerPayout(db,{sellerId:'seller-one',actorId:'sa1',actorRole:'super_admin',
+      note:'Verified eligible balance and destination',requestId:'prepare-rejected',now});
+    const reject = {payoutId:payout.id,actorId:'sa2',actorRole:'super_admin' as const,
+      action:'reject' as const,note:'Independent rejection for fictional evidence',
+      requestId:'reject-one',now:now+1,form:form('staff.payout-2','reject-one')};
+    await operatePayout(db,reject);
+    await operatePayout(db,reject);
+    assert.equal((sqlite.prepare('SELECT status FROM payouts WHERE id=?').get(payout.id) as {status:string}).status,'rejected');
+    assert.equal((sqlite.prepare('SELECT COUNT(*) AS n FROM payout_entries WHERE payout_id=? AND released_at IS NOT NULL')
+      .get(payout.id) as {n:number}).n,1);
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS n FROM seller_ledger_entries WHERE type='payout'").get() as {n:number}).n,0);
+    assert.equal(count(sqlite,'form_answer_sets'),1);
+    assert.equal(count(sqlite,'payout_events'),2);
+  } finally { sqlite.close(); }
+});
+
+void test('both live payout receivers enforce required context and commit exact financial/history snapshots', async () => {
+  const { sqlite, db } = fixture();
+  globalThis.payoutCatalogDb = db;
+  globalThis.payoutCatalogActor = { id:'sa1', role:'super_admin' };
+  const request = (path:string, value:unknown) => new Request(`http://localhost:3000${path}`, {
+    method:'POST', headers:{ origin:'http://localhost:3000', 'content-type':'application/json' },
+    body:JSON.stringify(value),
+  });
+  try {
+    sqlite.exec('UPDATE seller_ledger_entries SET available_at=0');
+    const prepareRoute = await import('../app/api/admin/payouts/route');
+    const preparation = {sellerId:'seller-one',note:'Verified eligible balance and destination',
+      idempotencyKey:'route-prepare',formVersion:1,
+      customAnswers:[{fieldId:'context_note',value:'Reviewed fictional payout evidence'}]};
+    assert.equal((await prepareRoute.POST(request('/api/admin/payouts',{...preparation,customAnswers:[]}))).status,400);
+    assert.equal((await prepareRoute.POST(new Request('http://localhost:3000/api/admin/payouts',{
+      method:'POST',headers:{origin:'http://localhost:3000'},body:'{' }))).status,400);
+    assert.equal((await prepareRoute.POST(request('/api/admin/payouts',{
+      ...preparation,customAnswers:[{fieldId:'context_note',value:'x'.repeat(262_145)}],
+    }))).status,413);
+    assert.equal(count(sqlite,'payouts'),0);
+    const first = await prepareRoute.POST(request('/api/admin/payouts',preparation));
+    assert.equal(first.status,201);
+    const payout = await first.json() as {id:string};
+    assert.equal((await prepareRoute.POST(request('/api/admin/payouts',preparation))).status,200);
+    assert.equal((await prepareRoute.POST(request('/api/admin/payouts',{...preparation,note:'Changed evidence for the same request'}))).status,409);
+    globalThis.payoutCatalogActor = { id:'sa2', role:'super_admin' };
+    const actionRoute = await import('../app/api/admin/payouts/[id]/route');
+    const action = {action:'approve',note:'Independent payout evidence verified',
+      idempotencyKey:'route-approve',formVersion:1,
+      customAnswers:[{fieldId:'context_note',value:'Reviewed fictional payout evidence'}]};
+    assert.equal((await actionRoute.POST(request(`/api/admin/payouts/${payout.id}`,{...action,customAnswers:[]}),
+      {params:Promise.resolve({id:payout.id})})).status,400);
+    const second = await actionRoute.POST(request(`/api/admin/payouts/${payout.id}`,action),
+      {params:Promise.resolve({id:payout.id})});
+    assert.equal(second.status,200);
+    assert.equal((await actionRoute.POST(request(`/api/admin/payouts/${payout.id}`,action),{params:Promise.resolve({id:payout.id})})).status,200);
+    assert.equal((await actionRoute.POST(request(`/api/admin/payouts/${payout.id}`,{...action,action:'reject'}),{params:Promise.resolve({id:payout.id})})).status,409);
+    assert.equal((await actionRoute.POST(new Request(`http://localhost:3000/api/admin/payouts/${payout.id}`,{
+      method:'POST',headers:{origin:'http://localhost:3000'},body:'{' }),
+      {params:Promise.resolve({id:payout.id})})).status,400);
+    assert.equal((await actionRoute.POST(request(`/api/admin/payouts/${payout.id}`,{
+      ...action,customAnswers:[{fieldId:'context_note',value:'x'.repeat(262_145)}],
+    }),{params:Promise.resolve({id:payout.id})})).status,413);
+    assert.equal((sqlite.prepare('SELECT status FROM payouts WHERE id=?').get(payout.id) as {status:string}).status,'approved');
+    assert.equal(count(sqlite,'form_answer_sets'),2);
+    assert.equal(count(sqlite,'payout_events'),2);
+    for (const [formId,kind] of [['staff.payout-1','payout-preparation'],['staff.payout-2','payout-action']] as const) {
+      const row=sqlite.prepare('SELECT id FROM form_answer_sets WHERE form_id=?').get(formId) as {id:string};
+      const answer=await getFormAnswerById(db,row.id);assert.ok(answer);
+      assert.equal(await authorizeFormAnswerRead(db,{id:'sa2',role:'super_admin'},answer),true,formId);
+      assert.equal(await authorizeFormAnswerRead(db,{id:'admin1',role:'admin'},answer),formId==='staff.payout-1');
+      assert.equal(await authorizeFormAnswerRead(db,{id:'seller-user',role:'seller'},answer),false);
+      assert.equal(await authorizeFormAnswerRead(db,{id:'sa2',role:'super_admin'},{...answer,actorId:'seller-user'}),false);
+      assert.equal(await authorizeFormAnswerRead(db,{id:'sa2',role:'super_admin'},{...answer,requestId:'foreign-request'}),false);
+      assert.equal((await listStaffFormHistory(db,{id:'sa2',role:'super_admin'},kind,{subjectId:payout.id})).items.length,1);
+      sqlite.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+        VALUES (?, ?,2,2,'published',?,'Archive','sa1',2,'sa1',2,'sa1',2,?)`).run(`${formId}-v2`,formId,
+          JSON.stringify({formId,fields:[{id:'context_note',key:'context_note',label:'Review context',type:'short_text',required:true,order:0,status:'archived'}]}),`${formId}-archive`);
+      assert.ok(await readStaffFormHistoryAnswer(db,{id:'sa2',role:'super_admin'},kind,payout.id,row.id));
+    }
+    globalThis.payoutCatalogActor = { id:'sa1', role:'super_admin' };
+    assert.equal((await prepareRoute.POST(request('/api/admin/payouts',preparation))).status,200,'old exact preparation after archive');
+    globalThis.payoutCatalogActor = { id:'sa2', role:'super_admin' };
+    assert.equal((await actionRoute.POST(request(`/api/admin/payouts/${payout.id}`,action),{params:Promise.resolve({id:payout.id})})).status,200,'old exact action after archive');
+    assert.equal((await collectFormAnswersForPrivacy(db,'seller-user')).some(answer=>answer.formId.startsWith('staff.')),false,'seller privacy export excludes internal payout context');
+    sqlite.prepare("INSERT INTO staff_permission_profiles(user_id,permissions_json,version,updated_by,updated_at) VALUES ('admin1','[]',1,'sa1',1)").run();
+    const preparationAnswer=await getFormAnswerById(db,(sqlite.prepare("SELECT id FROM form_answer_sets WHERE form_id='staff.payout-1'").get() as {id:string}).id);assert.ok(preparationAnswer);
+    assert.equal(await authorizeFormAnswerRead(db,{id:'admin1',role:'admin'},preparationAnswer),false,'revoked preparation grant');
+    sqlite.exec("UPDATE users SET status='suspended' WHERE id='sa2'");
+    assert.equal((await listStaffFormHistory(db,{id:'sa2',role:'super_admin'},'payout-action')).items.length,0);
+  } finally { sqlite.close(); globalThis.payoutCatalogActor=null; }
+});
+
+void test('both payout routes reject invalid UTF-8 and classify transaction-time publication changes without new effects', async () => {
+  for (const formId of ['staff.payout-1','staff.payout-2'] as const) {
+    for (const mode of ['utf8','publication'] as const) {
+      const {sqlite,db,database}=fixture();
+      globalThis.payoutCatalogDb=db;
+      try {
+        sqlite.exec('UPDATE seller_ledger_entries SET available_at=0');
+        let payoutId='';
+        if(formId==='staff.payout-2')payoutId=(await prepareSellerPayout(db,{sellerId:'seller-one',actorId:'sa1',actorRole:'super_admin',note:'Fictional eligible balance review',requestId:'prerequisite-preparation',now})).id;
+        globalThis.payoutCatalogActor={id:formId==='staff.payout-1'?'sa1':'sa2',role:'super_admin'};
+        const payload=formId==='staff.payout-1'
+          ? {sellerId:'seller-one',note:'Fictional eligible balance review',idempotencyKey:'bounded-preparation',formVersion:1,customAnswers:[{fieldId:'context_note',value:'INVALID_BYTE'}]}
+          : {action:'approve',note:'Independent fictional balance review',idempotencyKey:'bounded-action',formVersion:1,customAnswers:[{fieldId:'context_note',value:'INVALID_BYTE'}]};
+        const path=formId==='staff.payout-1'?'/api/admin/payouts':`/api/admin/payouts/${payoutId}`;
+        const encoded=JSON.stringify(payload);
+        const [prefix,suffix]=encoded.split('INVALID_BYTE');
+        const body=mode==='utf8'?Buffer.concat([Buffer.from(prefix),Buffer.from([0xc0]),Buffer.from(suffix)]):encoded;
+        if(mode==='publication')database.beforeBatch=()=>sqlite.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+          SELECT ?||'-v2',form_id,2,2,'published',config_json,'New publication','sa1',2,'sa1',2,'sa1',2,?||'-pub-v2' FROM form_config_versions WHERE id=?||'-v1'`).run(formId,formId,formId);
+        const request=new Request(`http://localhost:3000${path}`,{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json'},body});
+        const before=Object.fromEntries(['form_answer_sets','payouts','payout_events','payout_entries','seller_ledger_entries','audit_logs'].map(table=>[table,count(sqlite,table)]));
+        const response=formId==='staff.payout-1'?(await import('../app/api/admin/payouts/route')).POST(request)
+          :(await import('../app/api/admin/payouts/[id]/route')).POST(request,{params:Promise.resolve({id:payoutId})});
+        const result=await response;
+        assert.equal(result.status,mode==='utf8'?400:409,`${formId}:${mode}`);
+        if(mode==='publication')assert.equal((await result.json() as {code:string}).code,'stale_version');
+        for(const [table,n] of Object.entries(before))assert.equal(count(sqlite,table),n,`${formId}:${mode}:${table}`);
+      }finally{sqlite.close();globalThis.payoutCatalogActor=null;}
+    }
+  }
+});
+
+void test('both payout receivers accept published large context and preserve bounded financial input', async () => {
+  for (const formId of ['staff.payout-1','staff.payout-2'] as const) {
+    const {sqlite,db}=fixture();
+    globalThis.payoutCatalogDb=db;
+    globalThis.payoutCatalogActor={id:formId==='staff.payout-1'?'sa1':'sa2',role:'super_admin'};
+    try {
+      sqlite.exec('UPDATE seller_ledger_entries SET available_at=0');
+      let payoutId='';
+      if(formId==='staff.payout-2')payoutId=(await prepareSellerPayout(db,{sellerId:'seller-one',actorId:'sa1',actorRole:'super_admin',note:'Fictional eligible balance review',requestId:'large-prerequisite',now})).id;
+      const fields=Array.from({length:5},(_,order)=>({id:`context_note_${order}`,key:`context_note_${order}`,label:`Review context ${order}`,type:'long_text',required:true,order,status:'active'}));
+      const config=validateFormDraft(formId,{formId,fields});
+      sqlite.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+        SELECT ?||'-v2',form_id,2,2,'published',?,'Large context fixture','sa1',2,'sa1',2,'sa1',2,?||'-large-publication' FROM form_config_versions WHERE id=?||'-v1'`).run(formId,JSON.stringify(config),formId,formId);
+      const path=formId==='staff.payout-1'?'/api/admin/payouts':`/api/admin/payouts/${payoutId}`;
+      const payload={...(formId==='staff.payout-1'?{sellerId:'seller-one'}:{action:'approve'}),note:'Reviewed fictional financial context',idempotencyKey:`large-${formId}`,formVersion:2,customAnswers:fields.map((field)=>({fieldId:field.id,value:'x'.repeat(4000)}))};
+      assert.ok(Buffer.byteLength(JSON.stringify(payload))>16384);
+      const receive=async(body:string,declared?:string)=>{
+        const request=new Request(`http://localhost:3000${path}`,{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json',...(declared?{'content-length':declared}:{})},body});
+        return formId==='staff.payout-1'?(await import('../app/api/admin/payouts/route')).POST(request):(await import('../app/api/admin/payouts/[id]/route')).POST(request,{params:Promise.resolve({id:payoutId})});
+      };
+      const beforeEvents=count(sqlite,'payout_events');const beforeAudit=count(sqlite,'audit_logs');
+      assert.equal((await receive(' ','262145')).status,413,`${formId}: declared overflow`);
+      assert.equal((await receive(' '.repeat(262145))).status,413,`${formId}: streamed overflow`);
+      assert.equal((await receive('{')).status,400,`${formId}: malformed JSON`);
+      assert.equal(count(sqlite,'payout_events'),beforeEvents);assert.equal(count(sqlite,'audit_logs'),beforeAudit);assert.equal(count(sqlite,'form_answer_sets'),0);
+      assert.equal((await receive(JSON.stringify(payload))).status,formId==='staff.payout-1'?201:200,`${formId}: published large context accepted`);
+      assert.ok((await receive(JSON.stringify(payload))).ok,`${formId}: exact replay`);
+      const answerId=String(sqlite.prepare('SELECT id FROM form_answer_sets WHERE form_id=?').get(formId)?.id);
+      const answer=await getFormAnswerById(db,answerId);assert.ok(answer);
+      assert.equal(answer.answers.answers.length,5);assert.ok(Buffer.byteLength(JSON.stringify(answer.answers))<131072);
+      assert.equal(count(sqlite,'form_answer_sets'),1);assert.equal(count(sqlite,'payout_events'),beforeEvents+1);
+    }finally{sqlite.close();globalThis.payoutCatalogActor=null;}
+  }
+});

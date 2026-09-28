@@ -1,5 +1,7 @@
 import { recordStaffAuthorizationOutcome } from '../../operations/authorization-audit';
 import { operationalBusinessNotificationStatements } from '../../operations/business-notifications';
+import { buildFormAnswerInsert } from './form-answers';
+import type { FormAnswerSnapshot } from '../../forms/types';
 import {
   can,
   configurableAdminPermissions,
@@ -33,6 +35,7 @@ export interface StaffPermissionPreset {
   name: string;
   permissionsJson: string;
 }
+type PermissionForm = { requestId: string; versionId: string; answers: FormAnswerSnapshot };
 const activeSuper =
   "EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=? AND u.status='active' AND r.role='super_admin')";
 const activeAdmin =
@@ -86,6 +89,7 @@ function audit(
   before: unknown,
   after: unknown,
   now: number,
+  operationRequestId?: string,
 ) {
   return db
     .prepare(
@@ -99,7 +103,7 @@ function audit(
       reason,
       JSON.stringify(before),
       JSON.stringify(after),
-      crypto.randomUUID(),
+      operationRequestId ?? crypto.randomUUID(),
       now,
     );
 }
@@ -160,6 +164,8 @@ export async function proposeStaffPermissions(
     reason: string;
     presetName?: string;
     now: number;
+    requestId?: string;
+    form?: PermissionForm;
   },
 ) {
   const reason = note(options.reason);
@@ -177,7 +183,35 @@ export async function proposeStaffPermissions(
     throw new StaffPermissionConflictError(
       'Preset names must be at most 80 characters.',
     );
-  const id = crypto.randomUUID();
+  if (options.form && (!options.requestId ||
+    !/^[a-zA-Z0-9_-]{1,100}$/.test(options.requestId) ||
+    options.form.requestId !== options.requestId))
+    throw new StaffPermissionConflictError('Permission request reference does not match the form.');
+  const id = options.form ? options.requestId! : crypto.randomUUID();
+  if (options.form) {
+    if (!await db.prepare("SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=? AND u.status='active' AND r.role='super_admin' LIMIT 1").bind(options.actorId).first())
+      throw new StaffPermissionConflictError('Current Super Admin authority is required.');
+    const previous = await db.prepare(`SELECT r.user_id AS userId,r.permissions_json AS permissionsJson,
+      r.expected_version AS expectedVersion,r.preset_name AS presetName,r.reason,
+      r.proposed_by AS proposedBy,a.actor_id AS answerActor,a.subject_type AS subjectType,
+      a.subject_id AS subjectId,a.config_version_id AS versionId,a.answers_json AS answersJson
+      FROM staff_permission_requests r LEFT JOIN form_answer_sets a
+      ON a.form_id='staff.staff-permission-1' AND a.request_id=r.id
+      WHERE r.id=? LIMIT 1`).bind(id).first<{ userId: string; permissionsJson: string;
+        expectedVersion: number; presetName: string | null; reason: string;
+        proposedBy: string; answerActor: string | null; subjectType: string | null;
+        subjectId: string | null; versionId: string | null; answersJson: string | null }>();
+    if (previous) {
+      if (previous.userId !== options.userId || previous.permissionsJson !== JSON.stringify(permissions) ||
+        previous.expectedVersion !== options.version || previous.presetName !== presetName ||
+        previous.reason !== reason || previous.proposedBy !== options.actorId ||
+        previous.answerActor !== options.actorId || previous.subjectType !== 'staff_permission_request' ||
+        previous.subjectId !== id || previous.versionId !== options.form.versionId ||
+        previous.answersJson !== JSON.stringify(options.form.answers))
+        throw new StaffPermissionConflictError('Permission request reference was already used for different work.');
+      return id;
+    }
+  }
   await atomic(
     db,
     [
@@ -224,7 +258,13 @@ export async function proposeStaffPermissions(
         { version: options.version },
         { id, permissions, presetName },
         options.now,
+        options.form ? id : undefined,
       ),
+      ...(options.form ? [buildFormAnswerInsert(db, {
+        formId: 'staff.staff-permission-1', requestId: id,
+        versionId: options.form.versionId, subjectType: 'staff_permission_request',
+        subjectId: id, actorId: options.actorId, answers: options.form.answers, now: options.now,
+      })] : []),
       ...(await operationalBusinessNotificationStatements(db, {
         kind: 'permissions.proposed',
         sourceId: id,
@@ -245,6 +285,8 @@ export async function decideStaffPermissions(
     decision: 'approve' | 'reject';
     reason: string;
     now: number;
+    formRequestId?: string;
+    form?: PermissionForm;
   },
 ) {
   const reason = note(options.reason);
@@ -254,6 +296,27 @@ export async function decideStaffPermissions(
     )
     .bind(options.requestId)
     .first<StaffPermissionRequest>();
+  if (options.form) {
+    if (!options.formRequestId || !/^[a-zA-Z0-9_-]{1,100}$/.test(options.formRequestId) ||
+      options.form.requestId !== options.formRequestId)
+      throw new StaffPermissionConflictError('Decision request reference does not match the form.');
+    if (!await db.prepare("SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=? AND u.status='active' AND r.role='super_admin' LIMIT 1").bind(options.actorId).first())
+      throw new StaffPermissionConflictError('Current Super Admin authority is required.');
+    const answer = await db.prepare(`SELECT actor_id AS actorId,subject_type AS subjectType,
+      subject_id AS subjectId,config_version_id AS versionId,answers_json AS answersJson
+      FROM form_answer_sets WHERE form_id='staff.staff-permission-2' AND request_id=? LIMIT 1`)
+      .bind(options.formRequestId).first<{ actorId: string; subjectType: string;
+        subjectId: string; versionId: string; answersJson: string }>();
+    if (answer) {
+      if (!request || request.id !== answer.subjectId || request.decidedBy !== options.actorId ||
+        request.decisionNote !== reason || request.status !== (options.decision === 'approve' ? 'approved' : 'rejected') ||
+        answer.actorId !== options.actorId || answer.subjectType !== 'staff_permission_request' ||
+        answer.versionId !== options.form.versionId ||
+        answer.answersJson !== JSON.stringify(options.form.answers))
+        throw new StaffPermissionConflictError('Decision request reference was already used for different work.');
+      return;
+    }
+  }
   if (
     !request ||
     request.status !== 'pending' ||
@@ -347,8 +410,14 @@ export async function decideStaffPermissions(
       previous,
       { requestId: request.id, permissions, proposedBy: request.proposedBy },
       options.now,
+      options.form ? options.formRequestId : undefined,
     ),
   );
+  if (options.form) statements.push(buildFormAnswerInsert(db, {
+    formId: 'staff.staff-permission-2', requestId: options.formRequestId!,
+    versionId: options.form.versionId, subjectType: 'staff_permission_request',
+    subjectId: request.id, actorId: options.actorId, answers: options.form.answers, now: options.now,
+  }));
   if (options.decision === 'approve')
     statements.push(
       ...(await operationalBusinessNotificationStatements(db, {

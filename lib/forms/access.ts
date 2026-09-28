@@ -327,6 +327,72 @@ async function staffActionGrant(db: D1Database, viewer: FormAnswerViewer,
       values = [subjectId, `${requestId}:audit`, requestId, actorId,
         `${requestId}:parcel-form`, requestId, actorId];
       break;
+    case 'staff.delivery-rate':
+      if (subjectType !== 'delivery_rate_version') return false;
+      permission = 'admin.invite'; superAdminOnly = true;
+      parentSql = `SELECT 1 FROM delivery_rate_versions parent JOIN audit_logs audit
+        ON audit.subject_type='delivery_rate_version' AND audit.subject_id=parent.id
+          AND audit.actor_id=parent.created_by AND audit.action='delivery.rates.updated'
+          AND audit.request_id=? WHERE parent.id=? AND parent.created_by=? LIMIT 1`;
+      values = [`${requestId}:audit`, subjectId, actorId];
+      break;
+    case 'staff.referral-settings':
+      if (subjectType !== 'referral_campaign' || subjectId !== 'default') return false;
+      permission = 'admin.invite'; superAdminOnly = true;
+      parentSql = `SELECT 1 FROM referral_campaign parent JOIN audit_logs audit
+        ON audit.subject_type='referral_campaign' AND audit.subject_id=parent.id
+          AND audit.actor_id=? AND audit.action='referral.offer.updated'
+          AND audit.request_id=? WHERE parent.id=? LIMIT 1`;
+      values = [actorId, requestId, subjectId];
+      break;
+    case 'staff.staff-invitation':
+      if (subjectType !== 'staff_invitation') return false;
+      permission = 'admin.invite'; superAdminOnly = true;
+      parentSql = `SELECT 1 FROM staff_invitations parent JOIN audit_logs audit
+        ON audit.subject_type='staff_invitation' AND audit.subject_id=parent.id
+          AND audit.actor_id=parent.invited_by AND audit.action='staff.invitation.created'
+          AND audit.request_id=? WHERE parent.id=? AND parent.invited_by=? LIMIT 1`;
+      values = [requestId, subjectId, actorId];
+      break;
+    case 'staff.staff-permission-1':
+    case 'staff.staff-permission-2':
+      if (subjectType !== 'staff_permission_request') return false;
+      permission = 'admin.permissions.manage'; superAdminOnly = true;
+      parentSql = formId === 'staff.staff-permission-1'
+        ? `SELECT 1 FROM staff_permission_requests parent JOIN users target ON target.id=parent.user_id
+          JOIN audit_logs audit ON audit.subject_type='staff_permissions' AND audit.subject_id=parent.user_id
+            AND audit.actor_id=parent.proposed_by AND audit.action='staff.permissions.proposed'
+            AND audit.request_id=? AND json_extract(audit.next_json,'$.id')=parent.id
+          WHERE parent.id=? AND parent.proposed_by=? AND parent.id=? LIMIT 1`
+        : `SELECT 1 FROM staff_permission_requests parent JOIN users target ON target.id=parent.user_id
+          JOIN audit_logs audit ON audit.subject_type='staff_permissions' AND audit.subject_id=parent.user_id
+            AND audit.actor_id=parent.decided_by AND audit.request_id=?
+            AND audit.action=CASE parent.status WHEN 'approved' THEN 'staff.permissions.approved'
+              WHEN 'rejected' THEN 'staff.permissions.rejected' END
+            AND json_extract(audit.next_json,'$.requestId')=parent.id
+          WHERE parent.id=? AND parent.decided_by=? AND parent.decided_by<>parent.proposed_by LIMIT 1`;
+      values = formId === 'staff.staff-permission-1' ? [requestId, subjectId, actorId, requestId] : [requestId, subjectId, actorId];
+      break;
+    case 'staff.payout-1':
+    case 'staff.payout-2': {
+      if (subjectType !== 'payout') return false;
+      const event = await db.prepare(`SELECT action FROM payout_events WHERE payout_id=? AND request_id=? AND actor_id=? LIMIT 1`)
+        .bind(subjectId, requestId, actorId).first<{ action: string }>();
+      if (!event || (formId === 'staff.payout-1' ? event.action !== 'prepare'
+        : !['approve', 'reject', 'start_processing', 'mark_paid', 'mark_failed'].includes(event.action))) return false;
+      permission = formId === 'staff.payout-1' ? 'payout.prepare'
+        : event.action === 'approve' || event.action === 'reject' ? 'payout.approve' : 'payout.mark_paid';
+      superAdminOnly = formId === 'staff.payout-2';
+      parentSql = `SELECT 1 FROM payouts parent JOIN seller_profiles seller ON seller.id=parent.seller_id
+        JOIN payout_events event ON event.payout_id=parent.id AND event.request_id=? AND event.actor_id=?
+        JOIN audit_logs audit ON audit.subject_type='payout' AND audit.subject_id=parent.id
+          AND audit.request_id=event.request_id AND audit.actor_id=event.actor_id
+          AND audit.action=? AND json_type(audit.next_json,'$.catalogDigest')='text'
+        WHERE parent.id=? ${formId === 'staff.payout-1' ? 'AND parent.created_request_id=event.request_id AND parent.prepared_by=event.actor_id'
+          : event.action === 'approve' || event.action === 'reject' ? 'AND parent.prepared_by<>event.actor_id' : ''} LIMIT 1`;
+      values = [requestId, actorId, formId === 'staff.payout-1' ? 'payout.prepared' : `payout.${event.action}`, subjectId];
+      break;
+    }
     case 'staff.payout-request-action':
       if (subjectType !== 'payout_request') return false;
       permission = 'payout.prepare';

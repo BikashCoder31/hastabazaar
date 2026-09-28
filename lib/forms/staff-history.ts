@@ -3,6 +3,13 @@ import { authorizeFormAnswerRead, currentStaffGrant, type FormAnswerViewer } fro
 import type { Permission } from '../marketplace/permissions';
 
 export const STAFF_HISTORY_KINDS = [
+  { kind: 'delivery-rate', label: 'Delivery rate changes', formId: 'staff.delivery-rate', subjectType: 'delivery_rate_version', permission: 'admin.invite', superAdminOnly: true },
+  { kind: 'referral-settings', label: 'Referral offer changes', formId: 'staff.referral-settings', subjectType: 'referral_campaign', permission: 'admin.invite', superAdminOnly: true },
+  { kind: 'staff-invitation', label: 'Staff invitations', formId: 'staff.staff-invitation', subjectType: 'staff_invitation', permission: 'admin.invite', superAdminOnly: true },
+  { kind: 'staff-permission-proposal', label: 'Staff permission proposals', formId: 'staff.staff-permission-1', subjectType: 'staff_permission_request', permission: 'admin.permissions.manage', superAdminOnly: true },
+  { kind: 'staff-permission-decision', label: 'Staff permission decisions', formId: 'staff.staff-permission-2', subjectType: 'staff_permission_request', permission: 'admin.permissions.manage', superAdminOnly: true },
+  { kind: 'payout-preparation', label: 'Payout preparations', formId: 'staff.payout-1', subjectType: 'payout', permission: 'payout.prepare' },
+  { kind: 'payout-action', label: 'Payout decisions', formId: 'staff.payout-2', subjectType: 'payout', permission: 'payout.approve', superAdminOnly: true },
   { kind: 'catalog-category', label: 'Catalog categories', formId: 'staff.catalog', subjectType: 'category', permission: 'catalog.manage' },
   { kind: 'catalog-occasion', label: 'Catalog occasions', formId: 'staff.catalog', subjectType: 'occasion', permission: 'catalog.manage' },
   { kind: 'product-classification', label: 'Product classifications', formId: 'staff.product-classification', subjectType: 'product', permission: 'catalog.manage' },

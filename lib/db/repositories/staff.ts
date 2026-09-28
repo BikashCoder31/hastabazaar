@@ -1,4 +1,6 @@
 import type { StaffRole } from '@/lib/auth/staff';
+import { buildFormAnswerInsert } from './form-answers';
+import type { FormAnswerSnapshot } from '../../forms/types';
 
 export interface StaffMemberRow {
   id: string;
@@ -73,9 +75,33 @@ export async function createStaffInvitation(
     role: StaffRole;
     invitedBy: string;
     now: number;
+    requestId?: string;
+    form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot };
   },
-): Promise<{ id: string; expiresAt: number }> {
+): Promise<{ id: string; expiresAt: number; duplicate: boolean }> {
   const email = options.email.trim().toLowerCase();
+  if (options.form) {
+    const authority = await database.prepare("SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=? AND u.status='active' AND r.role='super_admin' LIMIT 1").bind(options.invitedBy).first();
+    if (!authority) throw new StaffInvitationConflictError('Current Super Admin authority is required.');
+    if (!options.requestId || options.form.requestId !== options.requestId)
+      throw new StaffInvitationConflictError('Invitation request reference does not match the form.');
+    const replay = await database.prepare(`SELECT a.actor_id AS actorId,a.subject_type AS subjectType,
+      a.subject_id AS subjectId,a.config_version_id AS versionId,a.answers_json AS answersJson,
+      i.email,i.role,i.invited_by AS invitedBy,i.expires_at AS expiresAt
+      FROM form_answer_sets a JOIN staff_invitations i ON i.id=a.subject_id
+      WHERE a.form_id='staff.staff-invitation' AND a.request_id=? LIMIT 1`)
+      .bind(options.requestId).first<{ actorId: string; subjectType: string; subjectId: string;
+        versionId: string; answersJson: string; email: string; role: StaffRole;
+        invitedBy: string; expiresAt: number }>();
+    if (replay) {
+      if (replay.actorId !== options.invitedBy || replay.subjectType !== 'staff_invitation' ||
+        replay.email !== email || replay.role !== options.role || replay.invitedBy !== options.invitedBy ||
+        replay.versionId !== options.form.versionId ||
+        replay.answersJson !== JSON.stringify(options.form.answers))
+        throw new StaffInvitationConflictError('Invitation request reference was already used for different work.');
+      return { id: replay.subjectId, expiresAt: replay.expiresAt, duplicate: true };
+    }
+  }
   const activeStaff = await database
     .prepare(
       `SELECT users.id
@@ -110,7 +136,7 @@ export async function createStaffInvitation(
 
   const id = crypto.randomUUID();
   const expiresAt = options.now + 7 * 24 * 60 * 60 * 1000;
-  await database.batch([
+  const statements: D1PreparedStatement[] = [
     database
       .prepare(
         `INSERT INTO staff_invitations (
@@ -125,17 +151,43 @@ export async function createStaffInvitation(
           id, actor_id, action, subject_type, subject_id, reason,
           previous_json, next_json, request_id, ip_hash, created_at
         ) VALUES (?, ?, 'staff.invitation.created', 'staff_invitation', ?,
-          'Staff access invitation created', NULL, ?, NULL, NULL, ?)`,
+          'Staff access invitation created', NULL, ?, ?, NULL, ?)`,
       )
       .bind(
         crypto.randomUUID(),
         options.invitedBy,
         id,
         JSON.stringify({ email, role: options.role, expiresAt }),
+        options.form ? options.requestId! : null,
         options.now,
       ),
-  ]);
-  return { id, expiresAt };
+  ];
+  if (options.form) {
+    const guardId = crypto.randomUUID();
+    statements.unshift(database.prepare(`INSERT INTO staff_permission_guards(id,valid)
+      SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id
+      WHERE u.id=? AND u.status='active' AND r.role='super_admin')
+      AND NOT EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id
+        WHERE lower(u.email)=? AND u.status='active' AND r.role IN ('admin','super_admin'))
+      AND NOT EXISTS(SELECT 1 FROM staff_invitations WHERE email=? AND status='pending' AND expires_at>?)
+      THEN 1 ELSE 0 END`)
+      .bind(guardId, options.invitedBy, email, email, options.now),
+    database.prepare('DELETE FROM staff_permission_guards WHERE id=?').bind(guardId));
+    statements.push(buildFormAnswerInsert(database, {
+      formId: 'staff.staff-invitation', requestId: options.requestId!,
+      versionId: options.form.versionId, subjectType: 'staff_invitation',
+      subjectId: id, actorId: options.invitedBy, answers: options.form.answers, now: options.now,
+    }));
+  }
+  try { await database.batch(statements); }
+  catch (error) {
+    if (!options.form) throw error;
+    const winner = await database.prepare("SELECT 1 FROM form_answer_sets WHERE form_id='staff.staff-invitation' AND request_id=? LIMIT 1")
+      .bind(options.requestId!).first();
+    if (winner) return createStaffInvitation(database, options);
+    throw new StaffInvitationConflictError('Access or invitation state changed. Refresh pending staff access before trying again.');
+  }
+  return { id, expiresAt, duplicate: false };
 }
 
 export async function revokeStaffInvitation(

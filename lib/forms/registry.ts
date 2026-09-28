@@ -65,6 +65,13 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
   'staff.governance-incident-create': { formId: 'staff.governance-incident-create', route: '/api/admin/governance', mode: 'operation' },
   'staff.governance-incident-update': { formId: 'staff.governance-incident-update', route: '/api/admin/governance', mode: 'operation' },
   'staff.governance-backup-verify': { formId: 'staff.governance-backup-verify', route: '/api/admin/governance', mode: 'operation' },
+  'staff.delivery-rate': { formId: 'staff.delivery-rate', route: '/api/admin/delivery-rates', mode: 'operation' },
+  'staff.payout-1': { formId: 'staff.payout-1', route: '/api/admin/payouts', mode: 'operation' },
+  'staff.payout-2': { formId: 'staff.payout-2', route: '/api/admin/payouts/:id', mode: 'operation' },
+  'staff.referral-settings': { formId: 'staff.referral-settings', route: '/api/admin/referrals', mode: 'operation' },
+  'staff.staff-invitation': { formId: 'staff.staff-invitation', route: '/api/admin/staff-invitations', mode: 'identity' },
+  'staff.staff-permission-1': { formId: 'staff.staff-permission-1', route: '/api/admin/staff-permissions', mode: 'operation' },
+  'staff.staff-permission-2': { formId: 'staff.staff-permission-2', route: '/api/admin/staff-permissions', mode: 'operation' },
   'shipping.console-request': { formId: 'shipping.console-request', route: '/api/seller/shipping', mode: 'operation' },
   'shipping.console-action-seller': { formId: 'shipping.console-action-seller', route: '/api/seller/shipping/:id', mode: 'operation' },
   'shipping.console-action-staff': { formId: 'shipping.console-action-staff', route: '/api/admin/shipping/:id', mode: 'operation' },
@@ -233,6 +240,13 @@ const STAFF_OPERATION_KEYS = Object.freeze({
   'staff.governance-incident-create': GOVERNANCE_KEYS,
   'staff.governance-incident-update': GOVERNANCE_KEYS,
   'staff.governance-backup-verify': GOVERNANCE_KEYS,
+  'staff.delivery-rate': ['rates', 'valley', 'terai', 'nationwide', 'districts', 'expectedVersion', 'reason', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.payout-1': ['sellerId', 'note', 'amount', 'amountPaisa', 'destinationReference', 'idempotencyKey', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.payout-2': ['payoutId', 'action', 'note', 'providerReference', 'amount', 'amountPaisa', 'idempotencyKey', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.referral-settings': ['enabled', 'discount', 'reward', 'minimum', 'days', 'friendDiscountPaisa', 'rewardPaisa', 'minimumSubtotalPaisa', 'returnWindowDays', 'reason', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.staff-invitation': ['email', 'role', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.staff-permission-1': ['action', 'userId', 'permissions', 'version', 'reason', 'presetName', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.staff-permission-2': ['action', 'requestId', 'formRequestId', 'reason', 'formVersion', 'customAnswers'],
 } as const);
 type StaffOperationFormId = keyof typeof STAFF_OPERATION_KEYS;
 const staffOperationIds = new Set<string>(Object.keys(STAFF_OPERATION_KEYS));

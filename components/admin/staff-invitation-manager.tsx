@@ -1,6 +1,7 @@
 'use client';
+import Link from 'next/link';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ShieldPlus, Trash2 } from 'lucide-react';
 
@@ -19,6 +20,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ConfirmOperation } from '@/components/admin/confirm-operation';
 import { sendJson } from '@/lib/http/client-request';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
+
+const invitationBaseKeys = ['email', 'role', 'requestId', 'formVersion', 'customAnswers'];
 
 export function StaffInvitationManager({
   pendingInvitations,
@@ -36,20 +43,29 @@ export function StaffInvitationManager({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const catalog = usePublishedFormConfig('staff.staff-invitation');
+  const [configured, setConfigured] = useState<ReturnType<typeof configuredJsonPayload> | null>(null);
+  const attemptKey = sessionAttemptKey('staff.staff-invitation', 'new');
+  const [retry, setRetry] = useState(false);
+  useEffect(() => { const timer = window.setTimeout(() => setRetry(hasSessionAttempt(attemptKey)), 0); return () => window.clearTimeout(timer); }, [attemptKey]);
 
   async function invite() {
-    if (busy) return;
+    if (busy || !configured) return;
     setBusy(true);
     setMessage('');
     setError('');
     try {
-      const result = await sendJson<{ message?: string }>(
-        '/api/admin/staff-invitations',
-        'POST',
-        { email, role },
-        'Invitation failed.',
-      );
+      const requestId = getOrCreateSessionAttempt(attemptKey);
+      setRetry(true);
+      const response = await fetch('/api/admin/staff-invitations', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, role, requestId, ...configured }) });
+      const result = await response.json().catch(() => null) as { id?: string; message?: string; error?: string; code?: string } | null;
+      if (result?.code === 'stale_version') catalog.handleSubmissionResponse(response, result.code);
+      if (!response.ok) throw new Error(result?.error ?? 'Invitation failed. Retry the same request.');
+      if (typeof result?.id !== 'string' || !result.id.trim() || typeof result.message !== 'string' || !result.message.trim()) throw new Error('The response could not confirm the invitation. Retry the same request.');
       setConfirmInvite(false);
+      setConfigured(null);
+      clearSessionAttempt(attemptKey); setRetry(false);
       setEmail('');
       setMessage(result.message || 'Invitation created.');
       router.refresh();
@@ -85,8 +101,17 @@ export function StaffInvitationManager({
   return (
     <div className="space-y-6">
       <form
+        data-form-id="staff.staff-invitation"
         onSubmit={(event) => {
           event.preventDefault();
+          if (!catalog.config || !catalog.canSubmit) return;
+          try {
+            const values = readConfiguredSubmission(event.currentTarget, catalog.config, invitationBaseKeys);
+            setConfigured(configuredJsonPayload(catalog.config, values.answers, invitationBaseKeys));
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : 'Review the configured fields.');
+            return;
+          }
           setError('');
           setConfirmInvite(true);
         }}
@@ -120,7 +145,10 @@ export function StaffInvitationManager({
             <option value="super_admin">Super Admin</option>
           </select>
         </div>
-        <Button type="submit" disabled={busy}>
+        <Link href="/admin/staff-form-history?kind=staff-invitation" className="block text-sm underline">View invitation form history</Link>
+        {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={invitationBaseKeys} /> : null}
+        {!catalog.canSubmit ? <p role="alert" className="text-sm text-destructive">{catalog.message || 'Loading form configuration…'}</p> : null}
+        <Button type="submit" disabled={busy || !catalog.canSubmit}>
           <ShieldPlus />
           {busy ? 'Saving…' : 'Review invitation'}
         </Button>
@@ -136,6 +164,11 @@ export function StaffInvitationManager({
           {error}
         </p>
       ) : null}
+      {retry ? <div className="space-y-2 text-xs text-muted-foreground"><p>An invitation may already have been created. Check pending access before retrying. Changed email or role keeps the same request reference and may conflict.</p><Button type="button" variant="outline" disabled={busy} onClick={() => {
+        if (!window.confirm('A prior invitation may already have been created or emailed. Check pending access first. Starting a new attempt may duplicate it. Continue?')) return;
+        clearSessionAttempt(attemptKey); setRetry(false); setError('');
+        if (catalog.status === 'stale') catalog.refresh();
+      }}>Start a new attempt</Button></div> : null}
 
       {pendingInvitations.length > 0 ? (
         <div className="space-y-2">

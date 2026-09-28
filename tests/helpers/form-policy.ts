@@ -28,14 +28,7 @@ app/admin/activity/page.tsx|1|7ba21c3206cc05a2|staff.activity-filter
 app/admin/homepage/page.tsx|1|237a866190d23266|staff.homepage-filter
 app/local-testing/page.tsx|1|6e9f8f1e61fdc654|system.local-testing-role
 app/seller/products/page.tsx|1|d5d574dcd78d58bb|seller.product-filter
-components/admin/delivery-rate-settings.tsx|1|9698f58ea30c192c|staff.delivery-rate
-components/admin/payout-actions.tsx|1|0c9e2e6be85357bc|staff.payout-1
-components/admin/payout-actions.tsx|2|1be0cb5fdc9b31f2|staff.payout-2
 components/admin/recorded-progress.tsx|1|f01e48a55389ad28|staff.recorded-progress-filter
-components/admin/referral-settings.tsx|1|3c56a5afbbec9e12|staff.referral-settings
-components/admin/staff-invitation-manager.tsx|1|837eabc8ee11d381|staff.staff-invitation
-components/admin/staff-permission-manager.tsx|1|fac9c7b9874e69d9|staff.staff-permission-1
-components/admin/staff-permission-manager.tsx|2|db915f5fc80feeb9|staff.staff-permission-2
 components/catalog/catalog-filters.tsx|1|f69d92f8b2083c49|catalog.filters
 components/commerce/order-tracker.tsx|1|3afed58539121cfc|commerce.order-tracking
 components/layout/site-header.tsx|1|ed4b8ecbf0b141e5|catalog.header-search

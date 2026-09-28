@@ -1,10 +1,10 @@
 'use client';
-import { useState } from 'react';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { sendJson } from '@/lib/http/client-request';
 import {
   configurableAdminPermissions,
   type Permission,
@@ -14,6 +14,13 @@ import type {
   StaffPermissionRequest,
   StaffPermissionPreset,
 } from '@/lib/db/repositories/staff-permissions';
+import { ConfiguredFields } from '@/components/forms/configured-fields';
+import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
+
+const proposalBaseKeys = ['action', 'userId', 'permissions', 'version', 'reason', 'presetName', 'requestId', 'formVersion', 'customAnswers'];
+const decisionBaseKeys = ['action', 'requestId', 'reason', 'formRequestId', 'formVersion', 'customAnswers'];
 const labels: Record<string, string> = {
   'seller.application.review': 'Review seller applications',
   'product.review': 'Review products and customer reviews',
@@ -50,19 +57,35 @@ export function StaffPermissionManager({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  async function submit(body: unknown) {
+  const proposalCatalog = usePublishedFormConfig('staff.staff-permission-1');
+  const decisionCatalog = usePublishedFormConfig('staff.staff-permission-2');
+  const [retryKeys, setRetryKeys] = useState<Record<string, boolean>>({});
+  const proposalKey = sessionAttemptKey('staff.staff-permission-1', userId);
+  useEffect(() => {
+    const keys = [proposalKey, ...requests.filter((r) => r.status === 'pending').flatMap((r) => [
+      sessionAttemptKey('staff.staff-permission-2', r.id + ':approve'),
+      sessionAttemptKey('staff.staff-permission-2', r.id + ':reject'),
+    ])];
+    const timer = window.setTimeout(() => setRetryKeys(Object.fromEntries(keys.map((key) => [key, hasSessionAttempt(key)]))), 0);
+    return () => window.clearTimeout(timer);
+  }, [proposalKey, requests]);
+  async function submit(body: Record<string, unknown>, requestKey: 'requestId' | 'formRequestId', attemptKey: string) {
     if (busy) return;
     setBusy(true);
     setError('');
     setMessage('');
     try {
-      const result = await sendJson<{ message: string }>(
-        '/api/admin/staff-permissions',
-        'POST',
-        body,
-        'Permission request failed.',
-      );
+      const requestId = getOrCreateSessionAttempt(attemptKey);
+      setRetryKeys((current) => ({ ...current, [attemptKey]: true }));
+      const response = await fetch('/api/admin/staff-permissions', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...body, [requestKey]: requestId }) });
+      const result = await response.json().catch(() => null) as { id?: string; message?: string; error?: string; code?: string } | null;
+      if (result?.code === 'stale_version') (requestKey === 'requestId' ? proposalCatalog : decisionCatalog).handleSubmissionResponse(response, result.code);
+      if (!response.ok) throw new Error(result?.error ?? 'Permission request failed. Retry the same request.');
+      if (typeof result?.message !== 'string' || !result.message.trim() || (requestKey === 'requestId' && (typeof result.id !== 'string' || !result.id.trim()))) throw new Error('The response could not confirm this decision. Retry the same request.');
       setMessage(result.message);
+      clearSessionAttempt(attemptKey);
+      setRetryKeys((current) => ({ ...current, [attemptKey]: false }));
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Permission request failed.');
@@ -70,6 +93,11 @@ export function StaffPermissionManager({
       setBusy(false);
     }
   }
+  const retryNotice = (key: string, catalog: typeof proposalCatalog) => retryKeys[key] ? <div className="space-y-2 text-xs text-muted-foreground"><p>A permission action may already have succeeded. Check its history before retrying. Changed details keep the same request reference and may conflict.</p><Button type="button" variant="outline" disabled={busy} onClick={() => {
+    if (!window.confirm('A prior permission action may already have succeeded. Check its history first. Starting a new attempt may duplicate it. Continue?')) return;
+    clearSessionAttempt(key); setRetryKeys((current) => ({ ...current, [key]: false })); setError('');
+    if (catalog.status === 'stale') catalog.refresh();
+  }}>Start a new attempt</Button></div> : null;
   return (
     <section className="space-y-5 rounded-2xl border bg-card p-5">
       <div>
@@ -83,9 +111,19 @@ export function StaffPermissionManager({
       </div>
       {members.length > 0 ? (
         <form
+          data-form-id="staff.staff-permission-1"
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
+            if (!proposalCatalog.config || !proposalCatalog.canSubmit) return;
+            let configured: ReturnType<typeof configuredJsonPayload>;
+            try {
+              const values = readConfiguredSubmission(e.currentTarget, proposalCatalog.config, proposalBaseKeys);
+              configured = configuredJsonPayload(proposalCatalog.config, values.answers, proposalBaseKeys);
+            } catch (cause) {
+              setError(cause instanceof Error ? cause.message : 'Review the configured fields.');
+              return;
+            }
             void submit({
               action: 'propose',
               userId,
@@ -93,7 +131,8 @@ export function StaffPermissionManager({
               version: selected?.version,
               reason,
               presetName,
-            });
+              ...configured,
+            }, 'requestId', proposalKey);
           }}
         >
           <div>
@@ -203,7 +242,11 @@ export function StaffPermissionManager({
             approval. Presets are copies: reusing one does not change other
             people.
           </p>
-          <Button disabled={busy} type="submit">
+          <Link href="/admin/staff-form-history?kind=staff-permission-proposal" className="block text-sm underline">View permission proposal form history</Link>
+          {proposalCatalog.config ? <ConfiguredFields config={proposalCatalog.config} baseKeys={proposalBaseKeys} /> : null}
+          {!proposalCatalog.canSubmit ? <p role="alert" className="text-sm text-destructive">{proposalCatalog.message || 'Loading form configuration…'}</p> : null}
+          {retryNotice(proposalKey, proposalCatalog)}
+          <Button disabled={busy || !proposalCatalog.canSubmit} type="submit">
             Propose permission change
           </Button>
         </form>
@@ -240,23 +283,33 @@ export function StaffPermissionManager({
                 ? ' Decided by ' + r.decidedBy + '. ' + r.decisionNote
                 : ''}
             </p>
+            {r.status !== 'pending' ? <Link href={`/admin/staff-form-history?kind=staff-permission-decision&id=${encodeURIComponent(r.id)}`} className="block text-sm underline">View permission decision form history</Link> : null}
             {r.status === 'pending' &&
               (r.proposedBy === actorId ? (
                 <p className="text-sm">Awaiting another active Super Admin.</p>
               ) : (
                 <form
+                  data-form-id="staff.staff-permission-2"
                   className="flex flex-wrap gap-2"
                   onSubmit={(e) => {
                     e.preventDefault();
+                    if (!decisionCatalog.config || !decisionCatalog.canSubmit) return;
+                    let configured: ReturnType<typeof configuredJsonPayload>;
+                    try {
+                      const values = readConfiguredSubmission(e.currentTarget, decisionCatalog.config, decisionBaseKeys);
+                      configured = configuredJsonPayload(decisionCatalog.config, values.answers, decisionBaseKeys);
+                    } catch (cause) {
+                      setError(cause instanceof Error ? cause.message : 'Review the configured fields.');
+                      return;
+                    }
                     const form = new FormData(e.currentTarget);
+                    const action = (e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') ?? 'approve';
                     void submit({
-                      action:
-                        (e.nativeEvent as SubmitEvent).submitter?.getAttribute(
-                          'value',
-                        ) ?? 'approve',
+                      action,
                       requestId: r.id,
                       reason: form.get('reason'),
-                    });
+                      ...configured,
+                    }, 'formRequestId', sessionAttemptKey('staff.staff-permission-2', r.id + ':' + action));
                   }}
                 >
                   <Input
@@ -268,11 +321,16 @@ export function StaffPermissionManager({
                     placeholder="Decision reason (required)"
                     disabled={busy}
                   />
+                  <Link href={`/admin/staff-form-history?kind=staff-permission-decision&id=${encodeURIComponent(r.id)}`} className="block text-sm underline">View permission decision form history</Link>
+                  {decisionCatalog.config ? <ConfiguredFields config={decisionCatalog.config} baseKeys={decisionBaseKeys} /> : null}
+                  {!decisionCatalog.canSubmit ? <p role="alert" className="text-sm text-destructive">{decisionCatalog.message || 'Loading form configuration…'}</p> : null}
+                  {retryNotice(sessionAttemptKey('staff.staff-permission-2', r.id + ':approve'), decisionCatalog)}
+                  {retryNotice(sessionAttemptKey('staff.staff-permission-2', r.id + ':reject'), decisionCatalog)}
                   <Button
                     type="submit"
                     name="action"
                     value="approve"
-                    disabled={busy}
+                    disabled={busy || !decisionCatalog.canSubmit}
                   >
                     Approve
                   </Button>
@@ -281,7 +339,7 @@ export function StaffPermissionManager({
                     name="action"
                     value="reject"
                     variant="outline"
-                    disabled={busy}
+                    disabled={busy || !decisionCatalog.canSubmit}
                   >
                     Reject
                   </Button>
