@@ -54,3 +54,11 @@ void test('no recording adapter permits adding protected authorization, upload, 
     }
   }
 });
+
+void test('checkout rejects promo code and quoted revision as configurable questions', () => {
+  for (const key of ['promo_code', 'promo_revision']) {
+    assert.throws(() => validateFormDraft('commerce.checkout', { formId: 'commerce.checkout', fields: [{
+      id: key, key, type: 'short_text', label: 'Promo override', required: false, status: 'active', order: 0,
+    }] }), key);
+  }
+});

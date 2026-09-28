@@ -1,0 +1,137 @@
+import type { FormAnswerSnapshot, FormId } from '../forms/types';
+
+interface PromoCommonTerms {
+  readonly code: string;
+  readonly label: string;
+  readonly minimumSubtotalPaisa: number;
+  readonly startsAt: number;
+  readonly endsAt: number;
+  readonly totalUseLimit: number;
+  readonly perCustomerUseLimit: number;
+  readonly budgetPaisa: number;
+}
+
+export type PromoTerms = PromoCommonTerms & (
+  | { readonly kind: 'fixed'; readonly fixedPaisa: number; readonly percentBps?: never; readonly maxDiscountPaisa?: never }
+  | { readonly kind: 'percentage'; readonly percentBps: number; readonly maxDiscountPaisa: number; readonly fixedPaisa?: never }
+);
+
+export interface PromoQuote {
+  readonly campaignId: string;
+  readonly revision: number;
+  readonly code: string;
+  readonly label: string;
+  readonly discountPaisa: number;
+  readonly subtotalPaisa: number;
+  readonly expiresAt: number;
+}
+
+export interface PromoState {
+  readonly campaignId: string;
+  readonly revision: number;
+  readonly terms: PromoTerms;
+  readonly paused: boolean;
+  readonly usedCount: number;
+  readonly spentPaisa: number;
+  readonly maximumCustomerUsedCount: number;
+}
+
+export interface IncentiveFormSubmission {
+  readonly formId: FormId;
+  readonly versionId: string;
+  readonly answers: FormAnswerSnapshot;
+}
+
+export interface MutationContext {
+  readonly actorId: string;
+  readonly requestId: string;
+  readonly now: number;
+  readonly expectedVersion: number;
+  readonly reason: string;
+  readonly form: IncentiveFormSubmission;
+}
+
+export interface LoyaltyTerms {
+  readonly enabled: boolean;
+  readonly dailyPoints: number;
+  readonly pointsPerBlock: number;
+  readonly creditPaisaPerBlock: number;
+  readonly startsAt: number;
+  readonly endsAt: number;
+  readonly dailyBudgetPoints: number;
+  readonly lifetimeBudgetPoints: number;
+}
+
+export interface LoyaltyState {
+  readonly version: number;
+  readonly terms: LoyaltyTerms;
+  readonly rateLocked: boolean;
+  readonly issuedPoints: number;
+  readonly redeemedPoints: number;
+  readonly outstandingPoints: number;
+  readonly issuedTodayPoints: number;
+}
+
+/** userId and now must be derived by the server, never copied from client input. */
+export interface ClaimInput {
+  readonly userId: string;
+  readonly requestId: string;
+  readonly expectedVersion: number;
+  readonly now: number;
+  readonly formVersionId: string;
+}
+
+export interface RedeemInput extends ClaimInput {
+  readonly points: number;
+}
+
+/** Stored snapshots are returned unchanged on an authorized exact replay. */
+export interface ClaimResult {
+  readonly claimId: string;
+  readonly localDate: string;
+  readonly awardedPoints: number;
+  readonly balancePoints: number;
+}
+
+export interface RedemptionResult {
+  readonly redemptionId: string;
+  readonly points: number;
+  readonly creditPaisa: number;
+  readonly balancePoints: number;
+  readonly walletBalancePaisa: number;
+}
+
+export type RewardHistoryEntry = (
+  | { readonly kind: 'daily_claim'; readonly result: ClaimResult }
+  | { readonly kind: 'redemption'; readonly result: RedemptionResult }
+) & { readonly createdAt: number };
+
+/** Repositories use default limit 20, maximum 50 and an opaque owner-bound cursor. */
+export interface RewardsView {
+  readonly balancePoints: number;
+  readonly walletBalancePaisa: number;
+  readonly claimedToday: boolean;
+  readonly nextClaimAt: number;
+  readonly state: LoyaltyState;
+  readonly history: readonly RewardHistoryEntry[];
+  readonly nextCursor: string | null;
+}
+
+export type IncentiveErrorCode = 'invalid' | 'unauthorized' | 'unavailable' | 'stale' | 'conflict' | 'insufficient' | 'exhausted';
+
+const PUBLIC_ERROR_MESSAGES: Readonly<Record<IncentiveErrorCode, string>> = Object.freeze({
+  invalid: 'Invalid incentive request.',
+  unauthorized: 'You are not authorized to perform this action.',
+  unavailable: 'This incentive is currently unavailable.',
+  stale: 'Incentive terms have changed. Please try again.',
+  conflict: 'This request conflicts with a previous request.',
+  insufficient: 'There is not enough available balance.',
+  exhausted: 'This incentive limit has been reached.',
+});
+
+export class IncentiveError extends Error {
+  constructor(readonly code: IncentiveErrorCode) {
+    super(PUBLIC_ERROR_MESSAGES[code]);
+    this.name = 'IncentiveError';
+  }
+}

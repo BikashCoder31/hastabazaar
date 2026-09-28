@@ -566,7 +566,7 @@ function commerceDefinition(id: 'commerce.checkout' | 'commerce.return-request' 
       'selectedAddressId', 'saveAddressForFuture', 'saveAddressLabel', 'address', 'recipientName',
       'recipientPhone', 'province', 'district', 'municipality', 'ward', 'locality', 'landmark',
       'postalCode', 'location', 'latitude', 'longitude', 'termsAccepted', 'idempotencyKey',
-      'deliveryRateVersion', 'useWallet', 'referralCode', 'cart', 'price', 'discount',
+      'deliveryRateVersion', 'useWallet', 'referralCode', 'promoCode', 'promoRevision', 'cart', 'price', 'discount',
       'formVersion', 'customAnswers'],
     'commerce.return-request': ['orderNumber', 'orderItemId', 'quantity', 'reason',
       'requestedResolution', 'detail', 'originalSealIntact', 'locale', 'evidence',
