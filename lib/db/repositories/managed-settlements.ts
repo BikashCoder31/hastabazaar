@@ -107,6 +107,8 @@ export async function getManagedFinanceSummary(database:D1Database,sellerId:stri
 }
 
 export async function prepareManagedPayout(database:D1Database,options:{sellerId:string;actorId:string;destinationReference:string;requestId:string;now:number;scheduledFor:number}):Promise<string>{
+  const authority=await staffMutationGuard(database,options.actorId,'payout.prepare',ManagedSettlementError);
+  const directApproval=authority.role==='super_admin';
   const existing=await database.prepare('SELECT id FROM managed_payouts WHERE request_id=?').bind(options.requestId).first<{id:string}>();if(existing)return existing.id;
   const entries=await database.prepare(`SELECT x.id,x.amount_paisa AS amountPaisa FROM managed_settlement_entries x
     JOIN managed_entitlements e ON e.id=x.entitlement_id LEFT JOIN managed_payout_entries pe ON pe.settlement_entry_id=x.id
@@ -115,7 +117,11 @@ export async function prepareManagedPayout(database:D1Database,options:{sellerId
   const id=crypto.randomUUID(),number=`SIM-MP-${options.now}-${id.slice(0,8).toUpperCase()}`;
   await database.batch([
     database.prepare(`INSERT INTO managed_payouts(id,seller_id,payout_number,amount_paisa,status,destination_reference,simulation_label,prepared_by,approved_by,scheduled_for,provider_reference,request_id,created_at,updated_at,paid_at)
-      VALUES (?,?,?,?,'prepared',?,?,?,NULL,?,NULL,?,?,?,NULL)`).bind(id,options.sellerId,number,amount,options.destinationReference,SIMULATED_RECORD_LABEL,options.actorId,options.scheduledFor,options.requestId,options.now,options.now),
+      VALUES (?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,NULL)`).bind(id,options.sellerId,number,amount,directApproval?'approved':'prepared',options.destinationReference,SIMULATED_RECORD_LABEL,options.actorId,directApproval?options.actorId:null,options.scheduledFor,options.requestId,options.now,options.now),
+    database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at)
+      VALUES (?,?,'managed_payout.prepared','managed_payout',?,'Eligible simulated payout prepared',?,?,?)`)
+      .bind(crypto.randomUUID(),options.actorId,id,JSON.stringify({status:directApproval?'approved':'prepared',approvedBy:directApproval?options.actorId:null,amountPaisa:amount,simulationLabel:SIMULATED_RECORD_LABEL}),options.requestId,options.now),
+    ...authority.statements,
     ...entries.results.map((entry)=>database.prepare('INSERT INTO managed_payout_entries(payout_id,settlement_entry_id) VALUES (?,?)').bind(id,entry.id)),
   ]);return id;
 }

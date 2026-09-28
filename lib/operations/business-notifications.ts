@@ -800,7 +800,7 @@ export async function operationalBusinessNotificationStatements(
     relatedType = 'payout';
     subject =
       e.kind === 'payout.prepared'
-        ? 'Payout prepared for Super Admin approval'
+        ? e.status === 'approved' ? 'Payout approved; payment recording is available' : 'Payout prepared for Super Admin approval'
         : 'Payout update recorded: ' +
           (e.status ?? 'review available').replaceAll('_', ' ');
     const column =
@@ -813,7 +813,7 @@ export async function operationalBusinessNotificationStatements(
       'SELECT s.user_id FROM payouts p JOIN seller_profiles s ON s.id=p.seller_id WHERE p.id=?';
     ownerValues = [e.sourceId];
     audience = 'seller';
-    if (e.kind === 'payout.prepared') staffPermission = 'payout.approve';
+    if (e.kind === 'payout.prepared') staffPermission = e.status==='approved'?'payout.mark_paid':'payout.approve';
     else if (e.status === 'approved' || e.status === 'failed')
       staffPermission = 'payout.mark_paid';
   } else if (e.kind === 'promotion.proposed' || e.kind === 'promotion.result') {

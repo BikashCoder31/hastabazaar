@@ -127,7 +127,7 @@ const proposal = {
   presetName: 'Order desk',
   now: 100,
 };
-void test('proposal preserves legacy access; the same Super Admin approval changes the next lookup and creates reusable snapshot', async () => {
+void test('Super Admin saves effective access directly and creates a reusable snapshot', async () => {
   const { db, sqlite } = fixture();
   try {
     assert.equal(
@@ -137,7 +137,7 @@ void test('proposal preserves legacy access; the same Super Admin approval chang
     const id = await proposeStaffPermissions(db, proposal);
     assert.equal(
       await hasStaffPermissionBySubject(db, 'admin1', 'support.manage'),
-      true,
+      false,
     );
     await assert.rejects(() =>
       decideStaffPermissions(db, {
@@ -148,13 +148,6 @@ void test('proposal preserves legacy access; the same Super Admin approval chang
         now: 101,
       }),
     );
-    await decideStaffPermissions(db, {
-      actorId: 'sa1',
-      requestId: id,
-      decision: 'approve',
-      reason: 'Order desk scope reviewed.',
-      now: 102,
-    });
     assert.equal(
       await hasStaffPermissionBySubject(db, 'admin1', 'support.manage'),
       false,
@@ -183,7 +176,7 @@ void test('proposal preserves legacy access; the same Super Admin approval chang
           "SELECT COUNT(*) AS n FROM audit_logs WHERE action NOT LIKE 'staff.authorization.%'",
         )
         .get()?.n,
-      2,
+      1,
     );
     await assert.rejects(() =>
       decideStaffPermissions(db, {
@@ -198,11 +191,21 @@ void test('proposal preserves legacy access; the same Super Admin approval chang
     sqlite.close();
   }
 });
+async function seedPendingPermission(db: D1Database, options: typeof proposal) {
+  const id = crypto.randomUUID();
+  await db.prepare('INSERT OR IGNORE INTO staff_permission_profiles(user_id,permissions_json,version,updated_by,updated_at) VALUES (?,?,0,?,?)')
+    .bind(options.userId, JSON.stringify(configurableAdminPermissions), options.actorId, options.now).run();
+  await db.prepare('INSERT INTO staff_permission_requests(id,user_id,permissions_json,expected_version,preset_name,reason,proposed_by,proposed_at) VALUES (?,?,?,?,?,?,?,?)')
+    .bind(id, options.userId, JSON.stringify(options.permissions), options.version, options.presetName, options.reason, options.actorId, options.now).run();
+  await db.prepare("INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,created_at) VALUES (?,?,'staff.permissions.proposed','staff_permissions',?,?,NULL,?,?,?)")
+    .bind(crypto.randomUUID(), options.actorId, options.userId, options.reason, JSON.stringify({ id }), id, options.now).run();
+  return id;
+}
 void test('stale proposal approval rolls back claim, access, preset and audit atomically', async () => {
   const { db, sqlite } = fixture();
   try {
-    const first = await proposeStaffPermissions(db, proposal);
-    const stale = await proposeStaffPermissions(db, {
+    const first = await seedPendingPermission(db, proposal);
+    const stale = await seedPendingPermission(db, {
       ...proposal,
       permissions: [],
       presetName: 'No operations',
@@ -264,7 +267,7 @@ void test('no self changes, reserved delegation, non-Admin targets, or suspended
       await assert.rejects(() =>
         proposeStaffPermissions(db, { ...proposal, ...overrides }),
       );
-    const id = await proposeStaffPermissions(db, proposal);
+    const id = await seedPendingPermission(db, proposal);
     sqlite.prepare("UPDATE users SET status='suspended' WHERE id='sa1'").run();
     await assert.rejects(() =>
       decideStaffPermissions(db, {
@@ -303,13 +306,7 @@ void test('approved empty list revokes all operational permissions without alter
       ...proposal,
       permissions: [],
     });
-    await decideStaffPermissions(db, {
-      actorId: 'sa2',
-      requestId: id,
-      decision: 'approve',
-      reason: 'Remove operational scope.',
-      now: 104,
-    });
+    assert.equal((await listStaffPermissionChanges(db)).requests.find(request => request.id === id)?.status, 'approved');
     for (const permission of configurableAdminPermissions)
       assert.equal(
         await hasStaffPermissionBySubject(db, 'admin1', permission),

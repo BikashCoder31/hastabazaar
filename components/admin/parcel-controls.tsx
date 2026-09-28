@@ -144,7 +144,7 @@ export function ParcelControls({
               Actual courier costs: {money(p.courierCostPaisa)}. Operational
               expense only; customer total and seller settlement are unchanged.
             </p>
-            <ParcelForm parcel={p} busy={busy} send={send} />
+            <ParcelForm parcel={p} busy={busy} send={send} isSuperAdmin={isSuperAdmin} />
             {records
               .filter((r) => r.jobId === p.id)
               .map((r) => (
@@ -172,7 +172,7 @@ export function ParcelControls({
                     <div className="mt-2 flex flex-wrap gap-3">
                       <button
                         className="rounded border p-2"
-                        disabled={busy || r.riderId === actorId || (r.maker === actorId && !isSuperAdmin)}
+                        disabled={busy || (p.method !== 'own_rider' && !isSuperAdmin) || r.riderId === actorId || (r.maker === actorId && !isSuperAdmin)}
                         onClick={() =>
                           void send({
                             jobId: p.id,
@@ -187,7 +187,7 @@ export function ParcelControls({
                       </button>
                       <button
                         className="rounded border p-2"
-                        disabled={busy || r.riderId === actorId || (r.maker === actorId && !isSuperAdmin)}
+                        disabled={busy || (p.method !== 'own_rider' && !isSuperAdmin) || r.riderId === actorId || (r.maker === actorId && !isSuperAdmin)}
                         onClick={() =>
                           void send({
                             jobId: p.id,
@@ -200,7 +200,9 @@ export function ParcelControls({
                       >
                         Reject
                       </button>
-                      {r.riderId === actorId || (r.maker === actorId && !isSuperAdmin) ? (
+                      {p.method !== 'own_rider' && !isSuperAdmin ? (
+                        <span>Super Admin confirmation required.</span>
+                      ) : r.riderId === actorId || (r.maker === actorId && !isSuperAdmin) ? (
                         <span>
                           Another staff member must review this record.
                         </span>
@@ -234,7 +236,7 @@ export function ParcelControls({
       </output>
       <p className="text-sm text-muted-foreground">
         Record evidence from actual cash handover or an off-system transfer.
-        These controls do not transfer money. Existing seller payout approval
+        These controls do not transfer money. Existing seller payout processing
         remains separate. Failed/returned parcels never automatically release
         money or rewards.
       </p>
@@ -242,11 +244,13 @@ export function ParcelControls({
   );
 }
 function ParcelForm({
+  isSuperAdmin,
   parcel: p,
   busy,
   send,
 }: {
   parcel: Parcel;
+  isSuperAdmin: boolean;
   busy: boolean;
   send: (body: Record<string, unknown>) => Promise<{ response: Response; code?: string; confirmed: boolean } | null>;
 }) {
@@ -330,7 +334,7 @@ function ParcelForm({
             collect: 'Record customer COD collection',
             ...(p.method === 'own_rider'
               ? {}
-              : { propose_remittance: 'Propose courier remittance' }),
+              : { propose_remittance: isSuperAdmin ? 'Record courier remittance' : 'Submit courier remittance for confirmation' }),
           }).map(([v, l]) => (
             <option key={v} value={v}>
               {l}

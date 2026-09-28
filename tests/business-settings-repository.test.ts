@@ -99,6 +99,23 @@ const socialLinksA = {
   youtube: 'https://www.youtube.com/@hastabazaar',
 };
 
+void test('current Super Admin publishes controlled drafts directly without self approval', async () => {
+  const { sqlite, database } = await fixture();
+  try {
+    const draft = await createBusinessSettingDraft(database, { key: 'managed_sale_linked_platform_retention_bps',
+      value: 800, actorId: 'admin-a', reason: 'SIMULATED controlled draft', requestId: 'direct-controlled-draft', now: 100 });
+    sqlite.exec("UPDATE user_roles SET role='admin' WHERE user_id='admin-a'");
+    await publishBusinessSettingDraft(database, { id: draft.id, actorId: 'admin-b', expectedRevision: 1,
+      effectiveFrom: 1000, reason: 'SIMULATED direct publication', requestId: 'direct-controlled-publish', now: 200 });
+    const history = await listBusinessSettingHistory(database, draft.key);
+    assert.equal(history[0]?.status, 'published');
+    assert.equal(history[0]?.approvedBy, null);
+    assert.equal(history[0]?.submittedBy, null);
+    await assert.rejects(publishBusinessSettingDraft(database, { id: draft.id, actorId: 'admin-a', expectedRevision: 1,
+      effectiveFrom: 1000, reason: 'SIMULATED denied publication', requestId: 'direct-denied-publish', now: 200 }), /Super Admin authority/);
+  } finally { sqlite.close(); }
+});
+
 void test('simple content moves from draft through publish and resolves from its effective date', async () => {
   const { sqlite, database } = await fixture();
   try {

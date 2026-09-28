@@ -100,6 +100,28 @@ void test('Super Admin sees decisions on their own prepared promotion and staff 
   assert.doesNotMatch(ownHtml, /value="approve"|value="reject"/);
 });
 
+void test('direct Super Admin controls show save/create while Admin placement keeps approval wording', async () => {
+  globalThis.governanceCatalogConfigs = Object.fromEntries([...formIds, 'staff.staff-permission-1', 'staff.staff-permission-2'].map(formId => [formId, { formId, version: 1, publishedAt: 1, fields: [] }]));
+  const { GovernanceConsole } = await import('../components/admin/governance-console');
+  const data = { users: [], rules: [], products: [], incidents: [], backups: [], promotions: [] };
+  const superHtml = renderToStaticMarkup(createElement(GovernanceConsole, { data, superAdmin: true, actorId: 'super-one' }));
+  assert.match(superHtml, /Create placement/);
+  assert.doesNotMatch(superHtml, /Submit for Super Admin approval|then approve it as a Super Admin/);
+  const adminHtml = renderToStaticMarkup(createElement(GovernanceConsole, { data, superAdmin: false, actorId: 'admin-one' }));
+  assert.match(adminHtml, /Submit for Super Admin approval/);
+  const { StaffPermissionManager } = await import('../components/admin/staff-permission-manager');
+  const staffHtml = renderToStaticMarkup(createElement(StaffPermissionManager, { actorId: 'super-one', members: [{ userId: 'admin-one', permissions: [], version: 0, updatedBy: null, updatedAt: null, displayName: 'Admin', email: 'admin@example.test' }], requests: [], presets: [] }));
+  assert.match(staffHtml, /Save permissions/);
+  assert.doesNotMatch(staffHtml, /Propose permission change|until an active Super Admin/);
+  const directHtml = renderToStaticMarkup(createElement(StaffPermissionManager, { actorId: 'super-one', members: [], requests: [{
+    id: 'direct-save', userId: 'admin-one', permissionsJson: '[]', expectedVersion: 0, presetName: null,
+    reason: 'Save reviewed access', proposedBy: 'super-one', proposedAt: 100, status: 'approved', decidedBy: 'super-one',
+    decisionNote: 'Save reviewed access', appliedDirectly: 1,
+  }], presets: [] }));
+  assert.match(directHtml, /staff-permission-proposal&amp;id=direct-save/);
+  assert.doesNotMatch(directHtml, /staff-permission-decision&amp;id=direct-save/);
+});
+
 void test('governance route refuses an unversioned form before a domain action', async () => {
   globalThis.governanceActor = { id: 'admin-one', role: 'admin' };
   const { POST } = await import('../app/api/admin/governance/route');

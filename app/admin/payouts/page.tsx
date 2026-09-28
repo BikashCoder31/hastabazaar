@@ -39,7 +39,7 @@ const mask = (value: string) =>
   value.length <= 4 ? '••••' : `•••• ${value.slice(-4)}`;
 
 export default async function PayoutsPage() {
-  await requireStaffPage('/admin/payouts', 'payout.prepare');
+  const staff = await requireStaffPage('/admin/payouts', 'payout.prepare');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const [candidates, payouts, requests] = await Promise.all([
     listPayoutCandidates(database),
@@ -55,8 +55,7 @@ export default async function PayoutsPage() {
             Payout control
           </h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Admins prepare eligible balances. A Super Admin approves
-            them before any payment can be recorded.
+            {staff.role==='super_admin'?'Your eligible payout is approved when saved. Payment processing and recording remain separate actions.':'Admins prepare eligible balances. A Super Admin approves them before any payment can be recorded.'}
           </p>
         </div>
         <AccrueEarningsButton />
@@ -81,7 +80,7 @@ export default async function PayoutsPage() {
                   <span className="capitalize">{request.status}</span>
                 </div>
                 {request.status === 'submitted' ? (
-                  <PayoutRequestActions id={request.id} />
+                  <PayoutRequestActions id={request.id} role={staff.role} />
                 ) : null}
               </div>
             ))
@@ -106,7 +105,7 @@ export default async function PayoutsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ShieldCheck className="size-5 text-primary" /> Pending
-              Super Admin approval
+              payout decisions
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -120,7 +119,7 @@ export default async function PayoutsPage() {
               }
             </p>
             <p className="mt-2 text-sm text-muted-foreground">
-              Among the loaded payout history · Super Admin approval required
+              Among the loaded history · existing prepared payouts awaiting a decision
             </p>
           </CardContent>
         </Card>
@@ -161,6 +160,7 @@ export default async function PayoutsPage() {
                         sellerId={candidate.sellerId}
                         sellerName={candidate.tradingName}
                         amount={money(candidate.amountPaisa)}
+                        role={staff.role}
                       />
                     </TableCell>
                   </TableRow>

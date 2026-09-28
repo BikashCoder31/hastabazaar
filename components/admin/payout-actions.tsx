@@ -64,11 +64,14 @@ export function PreparePayoutButton({
   sellerId,
   sellerName,
   amount,
+  role = 'admin',
 }: {
   sellerId: string;
   sellerName: string;
   amount: string;
+  role?: 'admin' | 'super_admin';
 }) {
+  const directApproval = role === 'super_admin';
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
@@ -88,18 +91,18 @@ export function PreparePayoutButton({
       }}
     >
       <DialogTrigger render={<Button size="sm" />}>
-        Prepare payout
+        {directApproval ? 'Create approved payout' : 'Prepare payout'}
       </DialogTrigger>
       <DialogContent
         showCloseButton={!pending}
         className="admin-workspace max-h-[90dvh] overflow-y-auto"
       >
         <DialogHeader>
-          <DialogTitle>Prepare {sellerName}’s payout</DialogTitle>
+          <DialogTitle>{directApproval ? 'Create approved payout for ' : 'Prepare payout for '}{sellerName}</DialogTitle>
           <DialogDescription>
             The displayed eligible balance is {amount}. The server rechecks the
             available balance when saving. Preparation reserves entries; it does
-            not send money. Super Admin approval is required.
+            not send money. {directApproval ? 'Your payout is approved when saved. Payment recording remains a separate action.' : 'Super Admin approval is required.'}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -164,7 +167,7 @@ export function PreparePayoutButton({
           }}>Start a new attempt</Button></div> : null}
           <div className="flex flex-wrap gap-2">
             <Button type="submit" disabled={pending || !catalog.canSubmit || note.trim().length < 8}>
-              {pending ? 'Preparing…' : 'Prepare for approval'}
+              {pending ? 'Saving…' : directApproval ? 'Create approved payout' : 'Prepare for approval'}
             </Button>
             <Button
               type="button"

@@ -971,8 +971,8 @@ export async function reviewReturnAsAdmin(
 ): Promise<void> {
   if (options.form && options.form.answers.formId !== 'staff.return-case-action')
     throw new ReturnConflictError('Return form context is invalid.');
-  const authority = options.form ? await staffMutationGuard(database, options.actorId,
-    'refund.approve.standard', ReturnConflictError, options.actorRole) : null;
+  const authority = await staffMutationGuard(database, options.actorId,
+    'refund.approve.standard', ReturnConflictError, options.actorRole);
   const catalogDigest = options.form ? await digestFormRequest({ caseId: options.returnRequestId,
     actorId: options.actorId, actorRole: options.actorRole, action: options.action, note: options.note,
     publicMessageEn: options.publicMessageEn, publicMessageNe: options.publicMessageNe,
@@ -1139,8 +1139,8 @@ export async function reviewReturnAsAdmin(
       }
       const policy = parseReturnPolicySnapshot(current.policySnapshotJson);
       isHighValue = amountPaisa >= policy.highValueRefundThresholdPaisa;
-      toStatus = isHighValue ? 'pending_high_value_approval' : 'approved';
-      refundStatus = isHighValue ? 'pending_high_value_approval' : 'approved';
+      toStatus = isHighValue && authority.role!=='super_admin' ? 'pending_high_value_approval' : 'approved';
+      refundStatus = toStatus;
       refundId = crypto.randomUUID();
       refundCredit = await splitCreditRefund(
         database,
@@ -1201,7 +1201,7 @@ export async function reviewReturnAsAdmin(
             requested_at, approved_at, processed_at, wallet_credit_paisa,
             referral_discount_paisa, promo_discount_paisa, credit_base_paisa,
             commission_base_refunded_paisa, commission_reversal_paisa
-          ) SELECT ?, ?, id, ?, ?, ?, ?, ?, ?, requested_by, ?, NULL, NULL, ?, ?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, 0
+          ) SELECT ?, ?, id, ?, ?, ?, ?, ?, ?, requested_by, ?, ?, NULL, ?, ?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, 0
             FROM return_requests WHERE id = ? AND operation_request_id = ?`,
         )
         .bind(
@@ -1214,11 +1214,12 @@ export async function reviewReturnAsAdmin(
           deliveryRefundPaisa,
           options.note,
           options.actorId,
+          isHighValue && authority.role==='super_admin'?options.actorId:null,
           options.responsibility,
           isHighValue ? 1 : 0,
           options.requestId,
           options.now,
-          isHighValue ? null : options.now,
+          refundStatus==='approved'?options.now:null,
           refundCredit.walletPaisa,
           refundCredit.discountPaisa,
           refundCredit.promoPaisa ?? 0,
@@ -1288,6 +1289,7 @@ export async function reviewReturnAsAdmin(
         JSON.stringify({ status: current.status }),
         JSON.stringify({
           status: toStatus,
+          highValueApprovedBy:isHighValue && authority.role==='super_admin'?options.actorId:null,
           outcome: options.outcome,
           responsibility: options.responsibility,
           refundAmountPaisa: amountPaisa || undefined,
@@ -1305,7 +1307,7 @@ export async function reviewReturnAsAdmin(
   );
   statements.push(
     ...returnFormStatements(database, options, toStatus, refundStatus),
-    ...(authority?.statements ?? []),
+    ...authority.statements,
     ...(await caseBusinessNotificationStatements(database, {
       sourceType: 'return_request',
       sourceId: options.returnRequestId,
@@ -1315,6 +1317,10 @@ export async function reviewReturnAsAdmin(
       now: options.now,
     })),
   );
+  statements.push(database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM return_requests
+    WHERE id=? AND operation_request_id=? AND status=? AND reviewed_by=?) THEN 1
+    ELSE json_extract('stale-initial-return-review','$') END`)
+    .bind(options.returnRequestId,options.requestId,toStatus,options.actorId));
   const results = await database.batch(statements);
   if ((results[0].meta.changes ?? 0) !== 1)
     throw new ReturnConflictError(

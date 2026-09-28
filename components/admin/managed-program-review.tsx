@@ -97,7 +97,7 @@ export function ManagedProgramReview({ sellerId, workspace }: { sellerId: string
       if (result?.ok !== true) throw new Error('The response could not confirm this action. Retry the same request.');
       clearSessionAttempt(requestKey);
       setRetryKeys((current) => ({ ...current, [requestKey]: false }));
-      setMessage(result.paymentId ? `Prepared simulated payment ${result.paymentId}.` : 'Simulated staging decision recorded.');
+      setMessage(result.paymentId ? `Approved simulated payment ${result.paymentId}.` : 'Simulated staging decision recorded.');
       router.refresh();
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Action failed.'); }
     finally { setBusy(false); }
@@ -122,7 +122,7 @@ export function ManagedProgramReview({ sellerId, workspace }: { sellerId: string
   const disabled = (id: ProgramFormId) => busy || !catalogs[id].canSubmit;
 
   return <section className="space-y-5 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-sm dark:bg-amber-950/20">
-    <div><p className="eyebrow">Simulation-only controls</p><h2 className="font-heading text-2xl">Managed program records</h2><p className="mt-2 leading-6">Possession, inspection, title/risk records, supplier obligation, and payment approval remain separate. These controls are rejected outside local staging/test.</p></div>
+    <div><p className="eyebrow">Simulation-only controls</p><h2 className="font-heading text-2xl">Managed program records</h2><p className="mt-2 leading-6">Possession, inspection, title/risk records, supplier obligation, and payment recording remain separate. New supplier payment preparation is approved when saved. These controls are rejected outside local staging/test.</p></div>
     <nav className="flex flex-wrap gap-3 text-sm" aria-label="Managed program form history">
       <Link className="underline" href="/admin/staff-form-history?kind=managed-supply-decision">Supply decisions</Link>
       <Link className="underline" href="/admin/staff-form-history?kind=managed-adjustment">Adjustments</Link>
@@ -153,9 +153,9 @@ export function ManagedProgramReview({ sellerId, workspace }: { sellerId: string
           {fields('staff.managed-adjustment')}{formMessage('staff.managed-adjustment', supply.id, 'add_adjustment')}<Button type="submit" disabled={disabled('staff.managed-adjustment')} variant="outline">Record adjustment</Button>
         </form>
         {!supply.paymentId ? <form data-form-id="staff.managed-payment-preparation" className="space-y-2 rounded border p-3" onSubmit={send}>
-          <input type="hidden" name="action" value="prepare_payment" /><input type="hidden" name="recordId" value={supply.id} /><p className="font-semibold">Prepare supplier payment</p>
+          <input type="hidden" name="action" value="prepare_payment" /><input type="hidden" name="recordId" value={supply.id} /><p className="font-semibold">Create approved supplier payment</p>
           <input name="destinationReference" required defaultValue="SIM-MAKER-ACCOUNT" className="h-9 w-full rounded border px-2" />
-          {fields('staff.managed-payment-preparation')}{formMessage('staff.managed-payment-preparation', supply.id, 'prepare_payment')}<Button type="submit" disabled={disabled('staff.managed-payment-preparation')}>Prepare simulated payment</Button>
+          {fields('staff.managed-payment-preparation')}{formMessage('staff.managed-payment-preparation', supply.id, 'prepare_payment')}<Button type="submit" disabled={disabled('staff.managed-payment-preparation')}>Create approved simulated payment</Button>
         </form> : <form data-form-id="staff.managed-payment-action" className="space-y-2 rounded border p-3" onSubmit={send}>
           <input type="hidden" name="paymentId" value={supply.paymentId} /><p className="font-semibold">Payment {supply.paymentStatus} · {supply.paymentId}</p>
           <select name="action" className="h-9 w-full rounded border px-2">{supply.paymentStatus === 'prepared' ? <option value="approve_payment">Approve payment</option> : null}{supply.paymentStatus === 'approved' ? <option value="mark_payment_paid">Mark simulated paid</option> : null}</select>

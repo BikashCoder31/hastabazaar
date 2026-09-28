@@ -1,3 +1,5 @@
+> Superseded behavior: the 2026-09-29 [direct Super Admin acceptance report](direct-super-admin-actions-self-test.md) removes the self-submit/self-approve step. Admin requests still require Super Admin confirmation in the existing approval workflows. This report retains the earlier checkpoint evidence.
+
 # Single Super Admin approvals — local acceptance, 2026-09-29
 
 ## Request and scope

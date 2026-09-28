@@ -10,7 +10,7 @@ import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
 const BASE_KEYS=['action','note','requestId'];
-export function PayoutRequestActions({ id }: { id: string }) {
+export function PayoutRequestActions({ id, role = 'admin' }: { id: string; role?: 'admin'|'super_admin' }) {
   const router=useRouter();
   const [pending,setPending]=useState(false),[error,setError]=useState(''),[retryPending,setRetryPending]=useState(false);
   const attemptKey=sessionAttemptKey('staff.payout-request-action',id);
@@ -62,7 +62,7 @@ export function PayoutRequestActions({ id }: { id: string }) {
             name="action"
             className="mt-2 w-full rounded-lg border bg-background p-2"
           >
-            <option value="prepare">Prepare for Super Admin approval</option>
+            <option value="prepare">{role==='super_admin'?'Create approved payout':'Prepare for Super Admin approval'}</option>
             <option value="reject">Reject request</option>
           </select>
         </div>

@@ -42,8 +42,8 @@ export default async function BusinessSettingsPage() {
         <h1 className="section-title">Business Settings</h1>
         <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
           Review, preview, schedule, and audit routine business configuration
-          without editing code. Financial, contractual, and sensitive changes
-          require Super Admin approval.
+          without editing code. Save changes directly or schedule a future
+          effective date. Financial and contractual notice periods still apply.
         </p>
       </div>
       <StaffFormHistoryLinks entries={[{kind:'business-settings',label:'Business setting answers'},

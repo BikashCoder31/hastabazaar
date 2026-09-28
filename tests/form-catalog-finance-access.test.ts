@@ -144,6 +144,10 @@ function fixture(formId: string) {
   sqlite.exec("INSERT INTO delivery_rate_current VALUES ('default','rates-v1')");
   sqlite.exec("INSERT INTO referral_campaign VALUES ('default',1,1000,500,5000,14,1)");
   sqlite.exec(readFileSync('drizzle/0031_staff_permissions.sql', 'utf8'));
+  const staffUpgrade = readFileSync('drizzle/0062_single_super_admin_approvals.sql', 'utf8')
+    .split('-- BEGIN staff_permission_requests')[1]?.split('-- END staff_permission_requests')[0];
+  assert.ok(staffUpgrade);
+  sqlite.exec(staffUpgrade);
   sqlite.exec(readFileSync('drizzle/0033_business_notifications.sql', 'utf8'));
   for (const statement of readFileSync('drizzle/0056_form_catalog.sql', 'utf8').split('--> statement-breakpoint'))
     if (statement.trim()) sqlite.exec(statement);
@@ -266,7 +270,7 @@ void test('delivery rate change stores custom context atomically and replays onl
   } finally { sqlite.close(); }
 });
 
-void test('permission proposal and independent decision each commit one contextual answer with exact replay', async () => {
+void test('direct permission save and an existing pending decision each commit one contextual answer with exact replay', async () => {
   const { sqlite, database } = fixture('staff.staff-permission-1');
   publish(sqlite, 'staff.staff-permission-2');
   try {
@@ -279,17 +283,19 @@ void test('permission proposal and independent decision each commit one contextu
     await assert.rejects(proposeStaffPermissions(database, { ...proposal, actorId: 'sa2' }));
     await assert.rejects(proposeStaffPermissions(database, { ...proposal, permissions: ['support.manage'] }));
     await assert.rejects(proposeStaffPermissions(database, { ...proposal, form: answer('staff.staff-permission-1', 'proposal-one', 'Changed review') }));
-    assert.equal((await getStaffPermissionProfile(database, 'admin1')).version, 0);
-    const decision = { actorId: 'sa2', requestId: id, decision: 'approve' as const,
+    assert.equal((await getStaffPermissionProfile(database, 'admin1')).version, 1);
+    sqlite.prepare(`INSERT INTO staff_permission_requests(id,user_id,permissions_json,expected_version,reason,proposed_by,proposed_at)
+      VALUES ('legacy-pending','admin1','["order.manage"]',1,'Existing pending work','sa1',1)`).run();
+    const decision = { actorId: 'sa2', requestId: 'legacy-pending', decision: 'approve' as const,
       reason: 'Independent review complete.', now: 101, formRequestId: 'decision-one',
       form: answer('staff.staff-permission-2', 'decision-one') };
     await decideStaffPermissions(database, decision);
     assert.deepEqual((await getStaffPermissionProfile(database, 'admin1')).permissions, ['order.manage']);
-    assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE form_id='staff.staff-permission-2' AND subject_id=?").get(id) as { count: number }).count, 1);
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE form_id='staff.staff-permission-2' AND subject_id=?").get('legacy-pending') as { count: number }).count, 1);
     await decideStaffPermissions(database, decision);
     await assert.rejects(decideStaffPermissions(database, { ...decision, actorId: 'sa1' }));
     await assert.rejects(decideStaffPermissions(database, { ...decision, form: answer('staff.staff-permission-2', 'decision-one', 'Changed review') }));
-    assert.equal((await getStaffPermissionProfile(database, 'admin1')).version, 1);
+    assert.equal((await getStaffPermissionProfile(database, 'admin1')).version, 2);
   } finally { sqlite.close(); }
 });
 
@@ -311,8 +317,10 @@ async function routeFixture(item: typeof routeCases[number]) {
   globalThis.financeCatalogActor = { id: item.id === 'staff.staff-permission-2' ? 'sa2' : 'sa1', role: 'super_admin' };
   globalThis.financeCatalogEmails = 0;
   if (item.id === 'staff.staff-permission-2') {
-    const id = await proposeStaffPermissions(result.database, { actorId: 'sa1', userId: 'admin1', permissions: ['order.manage'], version: 0, reason: 'Fictional initial proposal', now: 1 });
-    result.sqlite.prepare('UPDATE staff_permission_requests SET id=? WHERE id=?').run('pending-request', id);
+    result.sqlite.exec(`INSERT INTO staff_permission_profiles(user_id,permissions_json,version,updated_by,updated_at)
+      VALUES ('admin1','[]',0,'sa1',1);
+      INSERT INTO staff_permission_requests(id,user_id,permissions_json,expected_version,reason,proposed_by,proposed_at)
+      VALUES ('pending-request','admin1','["order.manage"]',0,'Fictional initial proposal','sa1',1);`);
   }
   const receiverModule = item.id === 'staff.delivery-rate' ? await import('../app/api/admin/delivery-rates/route')
     : item.id === 'staff.referral-settings' ? await import('../app/api/admin/referrals/route')

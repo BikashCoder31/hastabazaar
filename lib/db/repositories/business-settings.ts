@@ -521,6 +521,7 @@ export async function publishBusinessSettingDraft(
     form?: BusinessSettingForm;
   },
 ): Promise<void> {
+  const authority = await decisionAuthority(database, options.actorId);
   const record = await getVersionById(database, options.id);
   const reason = normalizeReason(options.reason);
   const requestId = validateRequestId(options.requestId);
@@ -532,11 +533,6 @@ export async function publishBusinessSettingDraft(
     next: { status: 'published', revision: options.expectedRevision + 1, effectiveFrom } })) return;
   if (!record || record.status !== 'draft' || record.revision !== options.expectedRevision) {
     throw new BusinessSettingConflictError('Refresh the current draft before publishing.');
-  }
-  if (record.changeControl !== 'simple') {
-    throw new BusinessSettingConflictError(
-      'Controlled settings require submission and Super Admin approval.',
-    );
   }
   assertBusinessSettingPublicationReady(record.key, record.value, { simulationAllowed: options.simulationAllowed });
   if (effectiveFrom < now) {
@@ -554,7 +550,7 @@ export async function publishBusinessSettingDraft(
   await atomic(
     database,
     formStatements(database, record.key, options.form, options.actorId, requestId,
-      record.id, now, publicationStatements(database, {
+      record.id, now, [...authority, ...publicationStatements(database, {
       record,
       actorId: options.actorId,
       expectedRevision: options.expectedRevision,
@@ -564,7 +560,7 @@ export async function publishBusinessSettingDraft(
       now,
       fromStatus: 'draft',
       approved: false,
-      })),
+      })]),
     options.form,
   );
 }
@@ -655,6 +651,79 @@ async function decisionAuthority(database: D1Database, actorId: string): Promise
     .bind(actorId).first<{ allowed: number }>();
   if (!current) throw new BusinessSettingConflictError('Current active Super Admin authority is required.');
   return guard(database, activeSuperAdminPredicate, [actorId]);
+}
+
+/** A Super Admin's save is the authoritative publication, in one transaction. */
+export async function saveBusinessSettingChange<K extends BusinessSettingKey>(
+  database: D1Database,
+  options: {
+    key: K; value: unknown; actorId: string; reason: string; requestId: string;
+    now: number; effectiveFrom: number | null; expectedVersion: number;
+    simulationAllowed?: boolean; form?: BusinessSettingForm;
+  },
+): Promise<BusinessSettingVersion<K>> {
+  const authority = await decisionAuthority(database, options.actorId);
+  const definition = getBusinessSettingDefinition(options.key);
+  if (options.key === 'homepage_hero_slides' || options.key === 'homepage_occasion_slides')
+    throw new BusinessSettingConflictError('Use the purpose-built homepage editor to publish this setting.');
+  const value = validateBusinessSettingValue(options.key, options.value);
+  const reason = normalizeReason(options.reason);
+  const requestId = validateRequestId(options.requestId);
+  const now = timestamp('Current time', options.now);
+  if (!Number.isSafeInteger(options.expectedVersion) || options.expectedVersion < 0)
+    throw new RangeError('Expected setting version must be a non-negative integer.');
+  const effectiveIntent = options.effectiveFrom === null ? null : timestamp('Effective date', options.effectiveFrom);
+  if (options.form) businessSettingFormId(options.key, options.form.formId);
+  const requestDigest = await digestFormRequest({ key: options.key, value, actorId: options.actorId,
+    reason, requestId, effectiveFrom: effectiveIntent, expectedVersion: options.expectedVersion,
+    formId: options.form?.formId, configVersionId: options.form?.versionId, answers: options.form?.answers });
+  const prior = await database.prepare(`SELECT actor_id AS actorId,action,subject_id AS subjectId,
+    subject_type AS subjectType,reason,next_json AS nextJson FROM audit_logs WHERE request_id=? LIMIT 1`)
+    .bind(requestId).first<{ actorId: string; action: string; subjectId: string;
+      subjectType: string; reason: string; nextJson: string }>();
+  if (prior) {
+    const replay = await getVersionById(database, prior.subjectId);
+    const next = replay ? { key: options.key, version: replay.version, revision: 1, status: 'published',
+      effectiveFrom: replay.effectiveFrom, effectiveIntent, expectedVersion: options.expectedVersion, requestDigest } : null;
+    if (!replay || replay.key !== options.key || replay.status !== 'published' ||
+      prior.actorId !== options.actorId || prior.action !== 'business_setting.published' ||
+      prior.subjectType !== 'business_setting' || prior.reason !== reason || prior.nextJson !== JSON.stringify(next))
+      throw new BusinessSettingConflictError('Request ID was already used for another setting action.');
+    if (options.form) await assertFormReplay(database, options.form, requestId, replay.id, options.actorId);
+    return replay as BusinessSettingVersion<K>;
+  }
+  assertBusinessSettingPublicationReady(options.key, value, { simulationAllowed: options.simulationAllowed });
+  const effectiveFrom = effectiveIntent ?? now;
+  if (effectiveFrom < now) throw new BusinessSettingConflictError('Effective date cannot be in the past.');
+  if (options.key === 'independent_seller_commission_bps' && effectiveFrom < now + 15 * 86_400_000)
+    throw new BusinessSettingConflictError('Select an effective date at least 15 calendar days ahead for independent seller commission changes and renewed acceptance.');
+  await assertChronologicalPublication(database, options.key, effectiveFrom);
+  const id = crypto.randomUUID();
+  const version = options.expectedVersion + 1;
+  const previous = await getEffectiveBusinessSetting(database, options.key, now);
+  await atomic(database, formStatements(database, options.key, options.form, options.actorId, requestId, id, now, [
+    ...authority,
+    ...guard(database, `(SELECT COALESCE(MAX(version),0) FROM business_setting_versions WHERE setting_key=?)=?
+      AND NOT EXISTS (SELECT 1 FROM business_setting_versions WHERE setting_key=? AND status='published' AND effective_from>=?)`,
+      [options.key, options.expectedVersion, options.key, effectiveFrom]),
+    database.prepare(`UPDATE business_setting_versions SET effective_until=?
+      WHERE setting_key=? AND status='published' AND effective_until IS NULL AND effective_from<?`)
+      .bind(effectiveFrom, options.key, effectiveFrom),
+    database.prepare(`INSERT INTO business_setting_versions
+      (id,setting_key,version,value_json,status,revision,change_control,effective_from,reason,
+        created_by,created_at,published_by,published_at,decision_note,last_request_id)
+      VALUES (?,?,?,?,'published',1,?,?,?,?,?,?,?,?,?)`)
+      .bind(id, options.key, version, JSON.stringify(value), definition.changeControl, effectiveFrom,
+        reason, options.actorId, now, options.actorId, now, reason, requestId),
+    ...guard(database, `EXISTS (SELECT 1 FROM business_setting_versions WHERE id=? AND status='published'
+      AND revision=1 AND last_request_id=?)`, [id, requestId]),
+    audit(database, { actorId: options.actorId, action: 'business_setting.published', subjectId: id, reason,
+      previous, next: { key: options.key, version, revision: 1, status: 'published', effectiveFrom,
+        effectiveIntent, expectedVersion: options.expectedVersion, requestDigest }, requestId, now }),
+  ]), options.form);
+  const saved = await getVersionById(database, id);
+  if (!saved) throw new BusinessSettingConflictError('Publication could not be verified.');
+  return saved as BusinessSettingVersion<K>;
 }
 
 export async function approveBusinessSettingChange(

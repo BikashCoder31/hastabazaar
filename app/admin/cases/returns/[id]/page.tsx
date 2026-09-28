@@ -171,8 +171,7 @@ export default async function AdminReturnCasePage({
           <section className="rounded-2xl border bg-card p-6">
             <h2 className="font-heading text-2xl">Decision and operations</h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Amounts are entered in NPR and stored as integer paisa. Refunds at
-              or above NPR 10,000 require Super Admin approval.
+              Amounts are entered in NPR and stored as integer paisa. {staff.role==='super_admin'?'Your refund review applies approval directly, including high-value refunds. Refund processing remains a separate action.':'High-value refunds reviewed by an Admin require Super Admin confirmation.'}
             </p>
             <div className="mt-5">
               <ReturnCaseActions

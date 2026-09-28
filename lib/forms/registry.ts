@@ -189,7 +189,7 @@ export const PROGRAMMATIC_FORM_SITES = Object.freeze([
   { path: 'components/admin/seller-review-actions.tsx', formIds: ['staff.seller-review-action'], explanation: 'Seller review decision submits by click.' },
   { path: 'components/admin/homepage-hero-manager.tsx', formIds: ['staff.homepage-hero-manager'], explanation: 'Hero draft controls save through click-driven actions.' },
   { path: 'components/admin/homepage-occasion-manager.tsx', formIds: ['staff.homepage-occasion-manager'], explanation: 'Occasion draft controls save through click-driven actions.' },
-  { path: 'components/admin/business-settings-manager.tsx', formIds: ['staff.business-settings-manager'], explanation: 'Settings editor saves and publishes versioned drafts through click actions.' },
+  { path: 'components/admin/business-settings-manager.tsx', formIds: ['staff.business-settings-manager'], explanation: 'Settings editor saves changes directly or publishes optional versioned drafts through click actions.' },
   { path: 'components/admin/homepage-visibility-control.tsx', formIds: ['staff.homepage-visibility'], explanation: 'Visibility reason and decision submit by click.' },
   { path: 'components/admin/order-fulfillment-actions.tsx', formIds: ['staff.order-fulfillment'], explanation: 'Fulfillment note and tracking value submit from a dialog.' },
   { path: 'components/admin/review-moderation-actions.tsx', formIds: ['staff.review-moderation'], explanation: 'Review moderation reason submits by click.' },
@@ -251,7 +251,7 @@ const PROGRAMMATIC_KEYS = {
   'staff.seller-review-action': ['action', 'decision', 'reason', 'sellerId', 'payoutAccountReference', 'settlementTermsReference'],
   'staff.homepage-hero-manager': ['key', 'value', 'slides', 'reason', 'action', 'revision', 'expectedRevision', 'effectiveFrom', 'supersedesId', 'sourceVersionId', 'position', 'eyebrow', 'headingLead', 'highlightedPhrase', 'headingTail', 'body', 'primaryActionLabel', 'primaryActionHref', 'secondaryActionLabel', 'secondaryActionHref', 'mediaType', 'mediaId', 'imageAlt', 'posterMediaId', 'videoDescription', 'imageNote', 'file', 'desktopMediaId', 'mobileMediaId', 'imageUrl', 'videoUrl', 'altTextEn', 'altTextNe', 'titleEn', 'titleNe', 'subtitleEn', 'subtitleNe', 'href', 'enabled', 'sortOrder'],
   'staff.homepage-occasion-manager': ['key', 'value', 'occasions', 'reason', 'action', 'revision', 'expectedRevision', 'effectiveFrom', 'supersedesId', 'sourceVersionId', 'position', 'eyebrow', 'headingLead', 'highlightedPhrase', 'headingTail', 'body', 'supportingNote', 'cards', 'kicker', 'title', 'destination', 'icon', 'theme', 'occasionId', 'slug', 'titleEn', 'titleNe', 'imageUrl', 'altTextEn', 'altTextNe', 'href', 'enabled', 'sortOrder'],
-  'staff.business-settings-manager': ['key', 'value', 'setting', 'reason', 'action', 'revision', 'expectedRevision', 'effectiveFrom', 'supersedesId', 'sourceVersionId'],
+  'staff.business-settings-manager': ['key', 'value', 'setting', 'reason', 'action', 'revision', 'expectedRevision', 'effectiveFrom', 'supersedesId', 'sourceVersionId', 'expectedVersion'],
   'staff.homepage-visibility': ['action', 'reason', 'hidden', 'expectedVersion', 'productId'],
   'staff.order-fulfillment': ['action', 'note', 'trackingCode', 'orderId', 'orderNumber', 'sellerIds', 'fingerprint'],
   'staff.review-moderation': ['action', 'note', 'version', 'reviewId', 'replyId', 'productId'],
@@ -271,7 +271,7 @@ function programmaticDefinition(id: ProgrammaticFormId): FormDefinition {
     capabilities: Object.freeze({ explanation: id === 'commerce.add-to-cart'
       ? 'Cart accepts only its existing product and quantity contract; custom form envelopes and answer recording are unavailable.'
       : id === 'staff.return-case-action'
-        ? 'Custom context is recorded with the successful case decision. /api/admin/returns/:id/review, /api/admin/returns/:id/high-value and /api/admin/returns/:id/operations keep their current distinct grants, Super Admin approval for high-value refunds and atomic state/financial rules.'
+        ? 'Custom context is recorded with the successful case decision. /api/admin/returns/:id/review, /api/admin/returns/:id/high-value and /api/admin/returns/:id/operations keep their current distinct grants, role-aware Super Admin confirmation for Admin high-value refund decisions and atomic state/financial rules.'
         : 'Safe custom context is linked atomically to the committed record and immutable request provenance. Built-in controls and their order, current grants, conditional actions, money, evidence, parent identity and exact replay stay protected.',
       customFieldTypes: id === 'commerce.add-to-cart' ? Object.freeze([]) : ACCOUNT_CUSTOM_TYPES,
       answerBehavior: id === 'commerce.add-to-cart' ? 'none' : 'record' }),

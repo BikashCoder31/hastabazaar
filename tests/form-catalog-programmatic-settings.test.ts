@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { registerHooks } from 'node:module';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 import test from 'node:test';
+import * as settingsRepository from '../lib/db/repositories/business-settings';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
@@ -99,6 +100,127 @@ const count = (sqlite: DatabaseSync, table: string) => (sqlite.prepare(`SELECT C
 const officialLinks = { linkedin: 'https://linkedin.com/company/hastabazaar', x: 'https://x.com/Hastabazaar',
   tiktok: 'https://tiktok.com/@hastabazaar', instagram: 'https://instagram.com/hastabazaar',
   facebook: 'https://www.facebook.com/hastabazaar', youtube: 'https://www.youtube.com/@hastabazaar' };
+
+void test('direct settings save publishes once with stable immediate intent and exact archived-form replay', async () => {
+  assert.equal(typeof settingsRepository.saveBusinessSettingChange, 'function', 'A single atomic save operation must exist.');
+  const { sqlite, database } = await fixture();
+  try {
+    const input = { key: 'managed_sale_linked_platform_retention_bps' as const, value: 800,
+      actorId: 'admin-a', reason: 'SIMULATED direct controlled save', requestId: 'direct-save-one',
+      now: 1000, effectiveFrom: null, expectedVersion: 0, form: form('staff.business-settings-manager') };
+    const saved = await settingsRepository.saveBusinessSettingChange(database, input);
+    assert.equal(saved.status, 'published');
+    assert.equal(saved.effectiveFrom, 1000);
+    assert.equal(saved.submittedBy, null);
+    assert.equal(saved.approvedBy, null);
+    assert.equal(saved.publishedBy, 'admin-a');
+    assert.deepEqual(['business_setting_versions', 'form_answer_sets', 'audit_logs'].map((table) => count(sqlite, table)), [1, 1, 1]);
+    assert.equal(sqlite.prepare('SELECT action FROM audit_logs').get()?.action, 'business_setting.published');
+    publishLaterForm(sqlite);
+    assert.equal((await settingsRepository.saveBusinessSettingChange(database, { ...input, now: 2000 })).id, saved.id);
+    for (const delta of [{ value: 900 }, { effectiveFrom: 1500 }, { expectedVersion: 1 }, { actorId: 'admin-b' },
+      { reason: 'A different valid reason' }, { form: { ...input.form, answers: { ...input.form.answers, answers: [] } } }])
+      await assert.rejects(settingsRepository.saveBusinessSettingChange(database, { ...input, ...delta }));
+    sqlite.exec("UPDATE users SET status='suspended' WHERE id='admin-a'");
+    await assert.rejects(settingsRepository.saveBusinessSettingChange(database, input), /Super Admin authority/);
+    assert.deepEqual(['business_setting_versions', 'form_answer_sets', 'audit_logs'].map((table) => count(sqlite, table)), [1, 1, 1]);
+  } finally { sqlite.close(); }
+});
+
+void test('direct settings save rolls back publication, prior interval, audit and answers at every batch failure', async () => {
+  assert.equal(typeof settingsRepository.saveBusinessSettingChange, 'function');
+  for (let failAt = 0; failAt < 12; failAt++) {
+    const { sqlite, db, database } = await fixture();
+    try {
+      const input = { key: 'official_social_links' as const, value: officialLinks, actorId: 'admin-a',
+        reason: 'SIMULATED direct publication', requestId: 'direct-base', now: 100, effectiveFrom: null,
+        expectedVersion: 0, form: form('staff.business-settings-manager') };
+      await settingsRepository.saveBusinessSettingChange(database, input);
+      const tables = ['business_setting_versions', 'form_answer_sets', 'audit_logs'];
+      const before = tables.map((table) => sqlite.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
+      db.failAt = failAt;
+      await assert.rejects(settingsRepository.saveBusinessSettingChange(database, { ...input,
+        requestId: 'direct-next', now: 200, expectedVersion: 1 }));
+      assert.deepEqual(tables.map((table) => sqlite.prepare(`SELECT * FROM ${table} ORDER BY id`).all()), before);
+    } finally { sqlite.close(); }
+  }
+});
+
+void test('direct settings save retains date, capability, version and authority guards including races', async () => {
+  assert.equal(typeof settingsRepository.saveBusinessSettingChange, 'function');
+  for (const mode of ['version', 'authority', 'form', 'ordinary', 'commission', 'past', 'unready', 'wrong-form'] as const) {
+    const { sqlite, db, database } = await fixture();
+    try {
+      const input = { key: 'official_social_links' as const, value: officialLinks, actorId: 'admin-a',
+        reason: 'SIMULATED guarded direct save', requestId: 'direct-guard', now: 100,
+        effectiveFrom: null as number | null, expectedVersion: 0, form: form('staff.business-settings-manager') };
+      if (mode === 'version') input.expectedVersion = 1;
+      if (mode === 'ordinary') sqlite.exec("UPDATE user_roles SET role='admin' WHERE user_id='admin-a'");
+      if (mode === 'authority') db.beforeBatch = () => sqlite.exec("DELETE FROM user_roles WHERE user_id='admin-a'");
+      if (mode === 'form') db.beforeBatch = () => publishLaterForm(sqlite);
+      if (mode === 'past') input.effectiveFrom = 99;
+      const candidate = mode === 'commission' ? { ...input, key: 'independent_seller_commission_bps' as const, value: 1200 }
+        : mode === 'unready' ? { ...input, key: 'managed_maker_active_model' as const, value: 'managed_fixed_supplier_price_v1' }
+          : mode === 'wrong-form' ? { ...input, form: form('staff.homepage-hero-manager') } : input;
+      await assert.rejects(settingsRepository.saveBusinessSettingChange(database, candidate));
+      assert.deepEqual(['business_setting_versions', 'form_answer_sets', 'audit_logs'].map((table) => count(sqlite, table)), [0, 0, 0]);
+    } finally { sqlite.close(); }
+  }
+  const { sqlite, database } = await fixture();
+  try {
+    const saved = await settingsRepository.saveBusinessSettingChange(database, { key: 'independent_seller_commission_bps',
+      value: 1200, actorId: 'admin-a', reason: 'SIMULATED sufficient commission notice', requestId: 'direct-notice',
+      now: 100, effectiveFrom: 100 + 15 * 86400000, expectedVersion: 0, form: form('staff.business-settings-manager') });
+    assert.equal(saved.status, 'published');
+    assert.equal((await settingsRepository.getEffectiveBusinessSetting(database, saved.key, 100)).source, 'default');
+    assert.equal((await settingsRepository.getEffectiveBusinessSetting(database, saved.key, 100 + 15 * 86400000)).value, 1200);
+  } finally { sqlite.close(); }
+});
+
+void test('actual settings save route returns an authoritative publication rather than a draft', async () => {
+  const { sqlite, database } = await fixture();
+  try {
+    globalThis.settingsRouteDatabase = database;
+    globalThis.settingsRouteActor = { id: 'admin-a', role: 'super_admin' };
+    const { POST } = await import('../app/api/admin/business-settings/route');
+    const response = await POST(new Request('http://localhost/api/admin/business-settings', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save',
+        key: 'managed_sale_linked_platform_retention_bps', value: 800, reason: 'SIMULATED single save route',
+        expectedVersion: 0, effectiveFrom: null, requestId: 'route-direct-save', sourceFormId: 'staff.business-settings-manager',
+        formVersion: 1, customAnswers: [{ fieldId: 'review_context', value: 'Approved fixture context' }] }) }));
+    assert.equal(response.status, 201);
+    const body = await response.json() as { ok: boolean; action: string; version: { status: string }; draft?: unknown };
+    assert.equal(body.ok, true);
+    assert.equal(body.action, 'save');
+    assert.equal(body.version.status, 'published');
+    assert.equal(body.draft, undefined);
+  } finally { sqlite.close(); }
+});
+
+void test('direct settings save rejects version races and supports later-setting exact replay without a form', async () => {
+  const { sqlite, db, database } = await fixture();
+  try {
+    const input = { key: 'official_social_links' as const, value: officialLinks, actorId: 'admin-a',
+      reason: 'SIMULATED no form direct save', requestId: 'noform-direct-save', now: 100,
+      effectiveFrom: null, expectedVersion: 0 };
+    const first = await settingsRepository.saveBusinessSettingChange(database, input);
+    db.beforeBatch = () => sqlite.prepare(`INSERT INTO business_setting_versions
+      (id,setting_key,version,value_json,status,revision,change_control,reason,created_by,created_at,last_request_id)
+      VALUES ('concurrent-draft','official_social_links',2,?,'draft',1,'simple','Concurrent fixture','admin-a',150,'concurrent-request')`)
+      .run(JSON.stringify(officialLinks));
+    await assert.rejects(settingsRepository.saveBusinessSettingChange(database, { ...input, now: 200,
+      expectedVersion: 1, requestId: 'racing-direct-save' }));
+    assert.equal(sqlite.prepare('SELECT effective_until FROM business_setting_versions WHERE id=?').get(first.id)?.effective_until, null);
+    assert.equal(count(sqlite, 'audit_logs'), 1);
+    const next = await settingsRepository.saveBusinessSettingChange(database, { ...input, now: 200,
+      expectedVersion: 2, requestId: 'later-direct-save' });
+    assert.equal(next.version, 3);
+    assert.equal((await settingsRepository.saveBusinessSettingChange(database, { ...input, now: 300 })).id, first.id);
+    assert.equal(count(sqlite, 'audit_logs'), 2);
+    sqlite.exec("UPDATE user_roles SET role='admin' WHERE user_id='admin-a'");
+    await assert.rejects(settingsRepository.saveBusinessSettingChange(database, input), /Super Admin authority/);
+  } finally { sqlite.close(); }
+});
 function publishLaterForm(sqlite: DatabaseSync, withCustomFields = true) {
   sqlite.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,
     created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
@@ -173,7 +295,7 @@ void test('both actual settings routes expose preflight and transaction-time sta
       const version = endpoint === 'change' ? await createBusinessSettingDraft(database, {
         key: 'official_social_links', value: officialLinks, actorId: 'admin-a',
         reason: 'Fictional route setup settings', requestId: 'setup-route-draft', now: 100 }) : null;
-      const body = { key: 'official_social_links', value: officialLinks, action: 'publish', expectedRevision: 1,
+      const body = { key: 'official_social_links', value: officialLinks, action: version ? 'publish' : 'draft', expectedRevision: 1,
         effectiveFrom: Date.now() + 60_000, reason: 'Fictional documented route change', requestId: 'route-stale-proof',
         sourceFormId: 'staff.business-settings-manager', formVersion: 1, customAnswers: [{ fieldId: 'review_context', value: 'Approved fixture context' }] };
       if (race) db.beforeBatch = () => publishLaterForm(sqlite);
@@ -529,7 +651,7 @@ void test('both settings routes accept a validated large custom snapshot while r
         .run(formId,JSON.stringify({formId,fields}));
       const parent=endpoint==='change'?await createBusinessSettingDraft(database,{key:'independent_seller_commission_bps',
         value:1200,actorId:'admin-a',reason:'Fictional controlled setting',requestId:'large-fixture-draft',now:100}):null;
-      const body={key:'official_social_links',value:officialLinks,action:'submit',expectedRevision:1,
+      const body={key:'official_social_links',value:officialLinks,action:parent?'submit':'draft',expectedRevision:1,
         reason:'Fictional large-context setting',requestId:'large-custom-context',sourceFormId:formId,formVersion:2,
         customAnswers:fields.map(field=>({fieldId:field.id,value:'Fictional detail'.repeat(300)}))};
       const definition=FORM_REGISTRY[formId];

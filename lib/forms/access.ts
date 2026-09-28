@@ -536,7 +536,7 @@ async function staffActionGrant(db: D1Database, viewer: FormAnswerViewer,
       parentSql = formId === 'staff.staff-permission-1'
         ? `SELECT 1 FROM staff_permission_requests parent JOIN users target ON target.id=parent.user_id
           JOIN audit_logs audit ON audit.subject_type='staff_permissions' AND audit.subject_id=parent.user_id
-            AND audit.actor_id=parent.proposed_by AND audit.action='staff.permissions.proposed'
+            AND audit.actor_id=parent.proposed_by AND audit.action IN ('staff.permissions.proposed','staff.permissions.applied')
             AND audit.request_id=? AND json_extract(audit.next_json,'$.id')=parent.id
           WHERE parent.id=? AND parent.proposed_by=? AND parent.id=? LIMIT 1`
         : `SELECT 1 FROM staff_permission_requests parent JOIN users target ON target.id=parent.user_id
@@ -545,7 +545,7 @@ async function staffActionGrant(db: D1Database, viewer: FormAnswerViewer,
             AND audit.action=CASE parent.status WHEN 'approved' THEN 'staff.permissions.approved'
               WHEN 'rejected' THEN 'staff.permissions.rejected' END
             AND json_extract(audit.next_json,'$.requestId')=parent.id
-          WHERE parent.id=? AND parent.decided_by=? AND parent.decided_by<>parent.proposed_by LIMIT 1`;
+          WHERE parent.id=? AND parent.decided_by=? LIMIT 1`;
       values = formId === 'staff.staff-permission-1' ? [requestId, subjectId, actorId, requestId] : [requestId, subjectId, actorId];
       break;
     case 'staff.payout-1':

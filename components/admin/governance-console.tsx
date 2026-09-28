@@ -339,7 +339,9 @@ export function GovernanceConsole({
           <TabsContent value="promotions">
             <Panel
               title="Promotions & featured placement"
-              description="Prepare a placement, then approve it as a Super Admin. This does not create a discount or change product prices."
+              description={superAdmin
+                ? 'Create a placement that applies immediately for its scheduled window. This does not create a discount or change product prices.'
+                : 'Prepare a placement for Super Admin confirmation. This does not create a discount or change product prices.'}
             >
               <form
                 data-form-id="staff.governance-promotion-create"
@@ -402,7 +404,7 @@ export function GovernanceConsole({
                   {promotionCatalog.config ? <ConfiguredFields config={promotionCatalog.config} baseKeys={governanceBaseKeys} /> : null}
                   {!promotionCatalog.canSubmit ? <p role="alert">{promotionCatalog.message || 'Form configuration is unavailable.'}</p> : null}
                   {retryControl('promotion.create')}
-                  <Button type="submit" disabled={!promotionCatalog.canSubmit}>Submit for Super Admin approval</Button>
+                  <Button type="submit" disabled={!promotionCatalog.canSubmit}>{superAdmin ? 'Create placement' : 'Submit for Super Admin approval'}</Button>
                 </div>
               </form>
               <div className="mt-6 divide-y">

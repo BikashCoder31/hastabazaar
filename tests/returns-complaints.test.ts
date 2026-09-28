@@ -1434,7 +1434,7 @@ void test('Admin queue counts include assigned and escalated complaints and coun
   }
 });
 
-void test('governance reads exclude restricted datasets for Admin and allow the same Super Admin promotion decision', async () => {
+void test('governance reads exclude restricted datasets for Admin and preserve Super Admin confirmation of an Admin promotion', async () => {
   const fixture = await databaseFixture();
   const db = fixture.database as unknown as D1Database;
   try {
@@ -1464,6 +1464,8 @@ void test('governance reads exclude restricted datasets for Admin and allow the 
       ...base,
       action: 'promotion.create',
       requestId: 'gov-promo',
+      actorId: 'admin-1',
+      actorRole: 'admin',
       data: {
         nameEn: 'Fixture placement',
         placement: 'homepage',
@@ -1478,7 +1480,7 @@ void test('governance reads exclude restricted datasets for Admin and allow the 
     assert.deepEqual(admin.incidents, []);
     assert.deepEqual(admin.backups, []);
     assert.equal(admin.products.length, 3);
-    assert.equal(admin.promotions[0].createdBy, 'super-1');
+    assert.equal(admin.promotions[0].createdBy, 'admin-1');
     const superAdmin = await getGovernanceOverview(db, 'super_admin');
     assert.equal(superAdmin.users.length, 5);
     assert.equal(superAdmin.incidents.length, 1);
@@ -1517,7 +1519,7 @@ void test('governance reads exclude restricted datasets for Admin and allow the 
     assert.deepEqual(
       { ...await db.prepare('SELECT created_by AS createdBy, approved_by AS approvedBy, status FROM promotions WHERE id=?')
         .bind(promotionId).first() },
-      { createdBy: 'super-1', approvedBy: 'super-1', status: 'active' },
+      { createdBy: 'admin-1', approvedBy: 'super-1', status: 'active' },
     );
     assert.equal(
       (await getAdminWorkSummary(db, 'super_admin')).approvals?.promotions,
@@ -3076,8 +3078,8 @@ void test('item return, refund liability, maker-checker, idempotency, and owners
     });
     await reviewReturnAsAdmin(db, {
       returnRequestId: high.id,
-      actorId: 'super-1',
-      actorRole: 'super_admin',
+      actorId: 'admin-1',
+      actorRole: 'admin',
       action: 'approve',
       note: 'The wrong item is documented and qualifies for a full refund.',
       publicMessageEn: 'Your refund is approved pending high-value review.',
@@ -3124,7 +3126,7 @@ void test('item return, refund liability, maker-checker, idempotency, and owners
       {
         status: 'approved',
         refundStatus: 'approved',
-        maker: 'super-1',
+        maker: 'admin-1',
         checker: 'super-1',
       },
     );
@@ -5863,7 +5865,7 @@ void test('customer cancellation retains submitted authorization when ownership 
   }
 });
 
-void test('single Super Admin can review own carrier remittance with audit and exact replay', async () => {
+void test('Super Admin carrier remittance posts directly with audit and exact replay', async () => {
   const f = await parcelFixture(); const db = f.db;
   try {
     const p = (await listParcels(db, 'order-1'))[0];
@@ -5877,10 +5879,10 @@ void test('single Super Admin can review own carrier remittance with audit and e
     await db.prepare("UPDATE order_items SET fulfillment_status='ready_for_pickup' WHERE order_id='order-1'").run();
     await operate('dispatch');
     await operate('collect',{amountPaisa:100,reference:'LOCAL-COLLECTION'});
-    await operate('propose_remittance',{amountPaisa:100,reference:'LOCAL-REMITTANCE'});
-    const cash = (await parcelCashRecords(db,'order-1')).find(row => row.kind==='remittance' && row.status==='pending')!;
+    const input = await operate('propose_remittance',{amountPaisa:100,reference:'LOCAL-REMITTANCE'});
+    const cash = (await parcelCashRecords(db,'order-1')).find(row => row.kind==='remittance')!;
+    assert.equal(cash.status,'posted');
     assert.equal(cash.maker,'super-1');
-    const input = await operate('approve_remittance',{cashRecordId:cash.id});
     await operateParcel(db,input);
     const row = await db.prepare('SELECT status,created_by AS maker,approved_by AS approver FROM parcel_cash_records WHERE id=?').bind(cash.id).first();
     assert.deepEqual({...row},{status:'posted',maker:'super-1',approver:'super-1'});
@@ -5946,4 +5948,72 @@ void test('approval migration preserves populated refunds, supplier payments and
     await db.prepare("UPDATE refunds SET status='processing' WHERE id='upgrade-refund'").run();
     await assert.rejects(db.prepare("INSERT INTO managed_supplier_payments(id,obligation_id,amount_paisa,status,destination_reference,simulation_label,prepared_by,approved_by,request_id,created_at,updated_at) VALUES('disabled-payment','upgrade-supply',1,'approved','SIM-ACCOUNT','SIMULATED','super-1','super-1','disabled-payment',1,1)").run(),/active_super_admin/);
   } finally {await f.dispose();}
+});
+
+void test('Admin carrier submission stays pending until a Super Admin confirms it', async () => {
+  const f = await parcelFixture(); const db = f.db;
+  try {
+    await db.prepare("UPDATE user_roles SET role='admin' WHERE user_id='super-2'").run();
+    const p = (await listParcels(db, 'order-1'))[0];
+    let sequence = 0;
+    const operate = async (actorId: string, action: string, extra: Record<string, unknown> = {}) => {
+      const current = (await listParcels(db, 'order-1')).find(row => row.id === p.id)!;
+      return operateParcel(db, { jobId:p.id, actorId, action, version:current.version,
+        note:'SIMULATED carrier confirmation.', requestId:'admin-cash-'+sequence++, now:Date.now(), ...extra });
+    };
+    await operate('admin-1', 'assign', {method:'courier',courierName:'Fictional carrier',trackingCode:'LOCAL-ADMIN'});
+    await db.prepare("UPDATE order_items SET fulfillment_status='ready_for_pickup' WHERE order_id='order-1'").run();
+    await operate('admin-1', 'dispatch');
+    await operate('admin-1', 'collect', {amountPaisa:100,reference:'LOCAL-COLLECTION'});
+    await operate('admin-1', 'propose_remittance', {amountPaisa:100,reference:'LOCAL-PENDING'});
+    const cash = (await parcelCashRecords(db,'order-1')).find(row => row.kind === 'remittance')!;
+    assert.equal(cash.status, 'pending');
+    assert.equal((await listParcels(db,'order-1')).find(row => row.id === p.id)!.remittedPaisa, 0);
+    for (const actor of ['admin-1', 'super-2']) {
+      for (const action of ['approve_remittance', 'reject_remittance']) {
+        await assert.rejects(operate(actor, action, {cashRecordId:cash.id}), /authorized reviewer/);
+      }
+    }
+    await operate('super-1', 'approve_remittance', {cashRecordId:cash.id});
+    assert.equal((await parcelCashRecords(db,'order-1')).find(row => row.id === cash.id)!.status, 'posted');
+    const row = await db.prepare('SELECT created_by, approved_by FROM parcel_cash_records WHERE id=?').bind(cash.id).first();
+    assert.deepEqual({...row}, {created_by:'admin-1',approved_by:'super-1'});
+    assert.equal((await listParcels(db,'order-1')).find(row => row.id === p.id)!.remittedPaisa, 100);
+  } finally { await f.dispose(); }
+});
+
+void test('direct carrier posting rejects excess cash and role races without partial records', async () => {
+  for (const failure of ['excess', 'demoted', 'suspended'] as const) {
+    const f = await parcelFixture(); const db = f.db;
+    try {
+      const p = (await listParcels(db, 'order-1'))[0];
+      await operateParcel(db, {jobId:p.id,actorId:'super-1',action:'assign',version:p.version,
+        method:'courier',courierName:'Fictional carrier',trackingCode:'LOCAL-GUARD',
+        note:'SIMULATED carrier setup.',requestId:'carrier-guard-setup',now:Date.now()});
+      await db.prepare("UPDATE order_items SET fulfillment_status='ready_for_pickup' WHERE order_id='order-1'").run();
+      for (const action of ['dispatch', 'collect']) {
+        const current = (await listParcels(db, 'order-1')).find(row => row.id === p.id)!;
+        await operateParcel(db, {jobId:p.id,actorId:'super-1',action,version:current.version,
+          amountPaisa:100,reference:'LOCAL-COLLECTION',note:'SIMULATED carrier setup.',
+          requestId:'carrier-guard-'+action,now:Date.now()});
+      }
+      const before = (await listParcels(db, 'order-1')).find(row => row.id === p.id)!;
+      const beforeCash = await parcelCashRecords(db, 'order-1');
+      const guarded = {
+        prepare: db.prepare.bind(db),
+        batch: async (statements: D1PreparedStatement[]) => {
+          if (failure === 'demoted') await db.prepare("UPDATE user_roles SET role='admin' WHERE user_id='super-1'").run();
+          if (failure === 'suspended') await db.prepare("UPDATE users SET status='suspended' WHERE id='super-1'").run();
+          return db.batch(statements);
+        },
+      } as unknown as D1Database;
+      await assert.rejects(operateParcel(guarded, {jobId:p.id,actorId:'super-1',action:'propose_remittance',
+        version:before.version,amountPaisa:failure === 'excess' ? 200 : 100,reference:'LOCAL-GUARDED',note:'SIMULATED atomicity check.',
+        requestId:'carrier-guard-failure',now:Date.now()}));
+      assert.deepEqual((await listParcels(db, 'order-1')).find(row => row.id === p.id),before);
+      assert.deepEqual(await parcelCashRecords(db, 'order-1'),beforeCash);
+      assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM parcel_operation_events WHERE id='carrier-guard-failure'").first<{n:number}>())?.n,0);
+      assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE request_id='carrier-guard-failure:audit'").first<{n:number}>())?.n,0);
+    } finally {await f.dispose();}
+  }
 });

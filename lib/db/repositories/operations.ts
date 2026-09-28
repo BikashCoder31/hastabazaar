@@ -1013,7 +1013,8 @@ export async function performGovernanceAction(
   if (options.form && (options.form.formId !== expectedFormId ||
     options.form.requestId !== options.requestId || options.form.answers.formId !== expectedFormId))
     throw new OperationsConflictError('Governance form reference is invalid.');
-  if (!options.form && await database.prepare('SELECT id FROM audit_logs WHERE request_id=?')
+  const promotionAction = ['promotion.create', 'promotion.approve', 'promotion.reject'].includes(options.action);
+  if (!options.form && !promotionAction && await database.prepare('SELECT id FROM audit_logs WHERE request_id=?')
     .bind(options.requestId).first()) return;
   const highRisk = [
     'promotion.approve',
@@ -1027,11 +1028,29 @@ export async function performGovernanceAction(
     throw new OperationsConflictError(
       'This action requires Super Admin approval.',
     );
-  const currentGrant = options.form || options.action === 'promotion.approve' || options.action === 'promotion.reject'
+  const currentGrant = options.form || promotionAction
     ? await staffMutationGuard(database, options.actorId,
     'catalog.manage', OperationsConflictError, options.actorRole) : null;
   const catalogDigest = options.form ? await digestFormRequest({ action: options.action,
     data: options.data, versionId: options.form.versionId, answers: options.form.answers }) : null;
+  const promotionDigest = !options.form && promotionAction
+    ? await digestFormRequest({ action: options.action, data: options.data }) : null;
+  if (promotionDigest) {
+    const existing = await database.prepare(`SELECT actor_id AS actorId,action,subject_type AS subjectType,
+      subject_id AS subjectId,next_json AS nextJson FROM audit_logs WHERE request_id=? LIMIT 2`)
+      .bind(options.requestId).all<{ actorId: string | null; action: string; subjectType: string; subjectId: string; nextJson: string | null }>();
+    if (existing.results.length) {
+      const row = existing.results[0];
+      let recorded: { requestDigest?: string } | null = null;
+      try { recorded = JSON.parse(row.nextJson ?? ''); } catch { /* Invalid history fails closed. */ }
+      if (existing.results.length !== 1 || row.actorId !== options.actorId || row.action !== options.action ||
+        row.subjectType !== 'promotion' || recorded?.requestDigest !== promotionDigest ||
+        options.action !== 'promotion.create' && row.subjectId !== dataText(options.data.id) ||
+        !await database.prepare('SELECT 1 FROM promotions WHERE id=? LIMIT 1').bind(row.subjectId).first())
+        throw new OperationsConflictError('Request reference was already used for different promotion details.');
+      return;
+    }
+  }
   if (options.form && await governanceReplay(database, { formId: options.form.formId,
     requestId: options.requestId, versionId: options.form.versionId, actorId: options.actorId,
     action: options.action as GovernanceInputAction, digest: catalogDigest!,
@@ -1135,19 +1154,23 @@ export async function performGovernanceAction(
       8,
       1000,
     );
+    const direct = currentGrant?.role === 'super_admin';
+    const status = direct ? 'active' : 'pending_approval';
     statements.push(
       database
         .prepare(
-          `INSERT INTO promotions (id, name_en, name_ne, status, placement, starts_at, ends_at, created_by, approved_by, note, created_request_id, operation_request_id, created_at, updated_at) VALUES (?, ?, ?, 'pending_approval', ?, ?, ?, ?, NULL, ?, ?, NULL, ?, ?)`,
+          `INSERT INTO promotions (id, name_en, name_ne, status, placement, starts_at, ends_at, created_by, approved_by, note, created_request_id, operation_request_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
         )
         .bind(
           id,
           nameEn,
           nameNe,
+          status,
           placement,
           startsAt,
           endsAt,
           options.actorId,
+          direct ? options.actorId : null,
           note,
           options.requestId,
           options.now,
@@ -1171,7 +1194,7 @@ export async function performGovernanceAction(
           )
           .bind(id, index, productId),
       );
-    next = { nameEn, nameNe, placement, startsAt, endsAt, productIds };
+    next = { nameEn, nameNe, placement, startsAt, endsAt, productIds, status, approvedBy: direct ? options.actorId : null, approvalMode: direct ? 'direct' : 'required' };
   } else if (
     options.action === 'promotion.approve' ||
     options.action === 'promotion.reject'
@@ -1192,7 +1215,7 @@ export async function performGovernanceAction(
     statements.push(
       database
         .prepare(
-          `UPDATE promotions SET status = ?, approved_by = ?, operation_request_id = ?, updated_at = ? WHERE id = ? AND status = 'pending_approval'`,
+          `UPDATE promotions SET status = ?, approved_by = ?, operation_request_id = ?, updated_at = ? WHERE id = ? AND status = 'pending_approval' AND created_by=?`,
         )
         .bind(
           status,
@@ -1200,8 +1223,14 @@ export async function performGovernanceAction(
           options.requestId,
           options.now,
           subjectId,
+          target.createdBy,
         ),
     );
+    const decisionGuardId = crypto.randomUUID();
+    statements.push(database.prepare(`INSERT INTO staff_permission_guards(id,valid) SELECT ?,CASE WHEN
+      EXISTS(SELECT 1 FROM promotions WHERE id=? AND status=? AND approved_by=? AND operation_request_id=? AND created_by=?)
+      THEN 1 ELSE 0 END`).bind(decisionGuardId, subjectId, status, options.actorId, options.requestId, target.createdBy),
+    database.prepare('DELETE FROM staff_permission_guards WHERE id=?').bind(decisionGuardId));
     next = { status };
   } else if (options.action === 'user.status') {
     subjectType = 'user';
@@ -1339,7 +1368,7 @@ export async function performGovernanceAction(
         options.action,
         subjectType,
         subjectId,
-        JSON.stringify(options.form ? { ...next, catalogDigest } : next),
+        JSON.stringify(options.form ? { ...next, catalogDigest } : promotionDigest ? { ...next, requestDigest: promotionDigest } : next),
         options.requestId,
         options.now,
       ),
@@ -1349,7 +1378,7 @@ export async function performGovernanceAction(
     versionId: options.form.versionId, subjectType, subjectId,
     actorId: options.actorId, answers: options.form.answers, now: options.now,
   }));
-  const businessKind = options.action==='promotion.create'?'promotion.proposed':options.action==='promotion.approve'||options.action==='promotion.reject'?'promotion.result':options.action==='incident.update'?'incident.updated':options.action==='user.status'?'account.status':null;
+  const businessKind = options.action==='promotion.create'?(next.status==='pending_approval'?'promotion.proposed':null):options.action==='promotion.approve'||options.action==='promotion.reject'?'promotion.result':options.action==='incident.update'?'incident.updated':options.action==='user.status'?'account.status':null;
   if(businessKind) statements.push(...(await operationalBusinessNotificationStatements(database,{kind:businessKind,sourceId:subjectId,eventId:options.requestId,actorId:options.actorId,now:options.now,status:typeof next.status==='string'?next.status:undefined})));
   try {
     await database.batch(statements);

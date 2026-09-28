@@ -191,7 +191,7 @@ export function ReturnCaseActions(props: Props) {
       ) : null}
       {highValue ? (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-          This high-value refund needs Super Admin approval.
+          {props.role==='super_admin'?'Review this pending high-value refund.':'This high-value refund needs Super Admin approval.'}
         </div>
       ) : null}
       {operations.length ? (

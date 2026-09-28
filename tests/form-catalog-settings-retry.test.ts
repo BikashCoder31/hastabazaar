@@ -29,6 +29,7 @@ const targets = [
   { id: 'staff.homepage-hero-manager', mode: 'hero', button: 'Save private draft' },
   { id: 'staff.homepage-occasion-manager', mode: 'occasion', button: 'Save private draft' },
   { id: 'staff.business-settings-manager', mode: 'general', button: 'Save draft' },
+  { id: 'staff.business-settings-manager', mode: 'general', button: 'Save changes' },
 ] as const;
 
 void test('all settings editors preserve an opaque retry across reload and require confirmation to reset', async () => {
@@ -96,7 +97,9 @@ void test('all settings editors preserve an opaque retry across reload and requi
                   : bodies.length === 7 ? {draft:{id:'wrong-key',key:'wrong',status:'draft',revision:1,version:1}}
                     : bodies.length === 8 ? {draft:{id:'missing-value',key:bodies.at(-1)?.key,status:'draft',revision:1,version:1}}
                       : bodies.length === 9 ? {draft:{id:'invalid-value',key:bodies.at(-1)?.key,status:'draft',revision:1,version:1,value:'invalid'}}
-                    : {draft:{id:'saved-draft',key:bodies.at(-1)?.key,status:'draft',revision:1,version:1,value:bodies.at(-1)?.value}}) });
+                    : bodies.at(-1)?.action === 'save'
+                      ? {ok:true,action:'save',version:{id:'saved-version',key:bodies.at(-1)?.key,status:'published',revision:1,version:1,effectiveFrom:1,value:bodies.at(-1)?.value}}
+                      : {draft:{id:'saved-draft',key:bodies.at(-1)?.key,status:'draft',revision:1,version:1,value:bodies.at(-1)?.value}}) });
           }
           return route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
         });
@@ -110,6 +113,12 @@ void test('all settings editors preserve an opaque retry across reload and requi
         await form.getByText('Response lost after save').waitFor();
         const firstId = bodies[0].requestId;
         await assertMountedPayload(target, bodies[0]);
+        if (target.button === 'Save changes') {
+          assert.equal(bodies.length, 1, 'The primary save issues one mutation request.');
+          assert.equal(bodies[0].action, 'save');
+          assert.equal(bodies[0].effectiveFrom, null);
+          assert.equal(bodies[0].expectedVersion, 0);
+        }
         assert.match(String(firstId), /^[0-9a-f-]{36}$/i);
         const stored = await page.evaluate(() => Object.entries(sessionStorage));
         assert.ok(stored.some(([, value]: [string, string]) => value === firstId), `${target.mode}: opaque attempt survives`);
@@ -148,7 +157,7 @@ void test('all settings editors preserve an opaque retry across reload and requi
       } finally { await page.close(); }
     }
     for(const target of targets) for(const action of target.mode==='general'
-      ? ['submit','publish','approve','reject','reverse'] : ['publish','reverse']){
+      ? ['publish','approve','reject','reverse'] : ['publish','reverse']){
       const page=await browser.newPage();
       const bodies:Record<string,unknown>[]=[];
       try{

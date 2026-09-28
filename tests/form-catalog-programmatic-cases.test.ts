@@ -434,3 +434,38 @@ void test('all conditional staff case controls mount published fields and retain
     }
   } finally { await browser.close(); }
 });
+
+void test('direct high-value refund review approves for SuperAdmin and awaits decision for Admin', async () => {
+  for (const actorRole of ['super_admin','admin'] as const) for (const configured of [false,true]) {
+    const {sqlite,database}=fixture();
+    try {
+      sqlite.prepare("UPDATE return_requests SET policy_snapshot_json=? WHERE id='return-one'").run(JSON.stringify({generalRequestWindowDays:7,deliveryDamageEvidenceWindowHours:48,changeOfMindEnabled:false,highValueRefundThresholdPaisa:100,refundInitiationBusinessDays:3,codRefundEstimateBusinessDays:[3,7]}));
+      const actorId=actorRole==='super_admin'?'super':'admin',requestId=`initial-${actorRole}-${configured}`;
+      const input={returnRequestId:'return-one',actorId,actorRole,action:'approve' as const,
+        note:'Verified fictional return liability',publicMessageEn:'Refund review recorded.',publicMessageNe:'Refund review recorded.',
+        outcome:'refund' as const,responsibility:'seller' as const,itemRefundPaisa:1000,deliveryRefundPaisa:0,requestId,now:2,
+        ...(configured?{form:form('staff.return-case-action')}:{})};
+      await reviewReturnAsAdmin(database,input);
+      const status=actorRole==='super_admin'?'approved':'pending_high_value_approval';
+      assert.deepEqual({...sqlite.prepare("SELECT r.status,f.status AS refundStatus,f.is_high_value AS highValue,f.approved_by AS maker,f.high_value_approved_by AS approver,f.approved_at AS approvedAt,f.processed_at AS processedAt FROM return_requests r JOIN refunds f ON f.return_request_id=r.id WHERE r.id='return-one'").get() as object},
+        {status,refundStatus:status,highValue:1,maker:actorId,approver:actorRole==='super_admin'?actorId:null,approvedAt:actorRole==='super_admin'?2:null,processedAt:null});
+      await reviewReturnAsAdmin(database,input);
+      assert.equal(count(sqlite,'refunds',"return_request_id='return-one'"),1);
+      sqlite.prepare('DELETE FROM user_roles WHERE user_id=?').run(actorId);
+      await assert.rejects(reviewReturnAsAdmin(database,input),/permission/i);
+    } finally {sqlite.close();}
+  }
+});
+
+void test('initial SuperAdmin high-value review rolls back every effect on actor or parent races',async()=>{
+  for(const configured of [false,true])for(const race of ['role','parent','own-request'] as const){
+    const {sqlite,wrapper,database}=fixture();try{
+      sqlite.prepare("UPDATE return_requests SET policy_snapshot_json=? WHERE id='return-one'").run(JSON.stringify({generalRequestWindowDays:7,deliveryDamageEvidenceWindowHours:48,changeOfMindEnabled:false,highValueRefundThresholdPaisa:100,refundInitiationBusinessDays:3,codRefundEstimateBusinessDays:[3,7]}));
+      const prior=Object.fromEntries(['refunds','refund_liability_entries','return_request_events','audit_logs','form_answer_sets','notification_messages'].map(table=>[table,count(sqlite,table,'1=1')]));
+      if(race==='own-request')sqlite.exec("UPDATE return_requests SET requested_by='super' WHERE id='return-one'");
+      else wrapper.beforeBatch=()=>sqlite.exec(race==='role'?"DELETE FROM user_roles WHERE user_id='super'":"UPDATE return_requests SET status='rejected' WHERE id='return-one'");
+      await assert.rejects(reviewReturnAsAdmin(database,{returnRequestId:'return-one',actorId:'super',actorRole:'super_admin',action:'approve',note:'Verified fictional return liability',publicMessageEn:'Refund review recorded.',publicMessageNe:'Refund review recorded.',outcome:'refund',responsibility:'seller',itemRefundPaisa:1000,deliveryRefundPaisa:0,requestId:`initial-race-${configured}-${race}`,now:2,...(configured?{form:form('staff.return-case-action')}:{})}));
+      for(const [table,n] of Object.entries(prior))assert.equal(count(sqlite,table,'1=1'),n,`${race}:${table}`);
+    }finally{sqlite.close();}
+  }
+});

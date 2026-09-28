@@ -644,6 +644,8 @@ export async function prepareSellerPayout(
   if(options.form && options.form.requestId!==options.requestId)
     throw new PayoutConflictError('Form request does not match payout preparation.');
   const authority=await staffMutationGuard(database,options.actorId,'payout.prepare',PayoutConflictError,options.actorRole);
+  const directApproval=authority.role==='super_admin';
+  const initialStatus=directApproval?'approved':'prepared';
   const note=options.note.trim();
   const formDigest=options.form?await digestFormRequest({sellerId:options.sellerId,actorId:options.actorId,
     actorRole:options.actorRole,note,versionId:options.form.versionId,answers:options.form.answers}):null;
@@ -744,20 +746,23 @@ export async function prepareSellerPayout(
         period_start, period_end, scheduled_for, approved_at, processed_at,
         paid_at, failed_at, failure_reason, created_request_id,
         operation_request_id, created_at, updated_at
-      ) VALUES (?, ?, ?, 'prepared', ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?,
-        NULL, NULL, NULL, NULL, NULL, ?, NULL, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?,
+        ?, NULL, NULL, NULL, NULL, ?, NULL, ?, ?)`,
       )
       .bind(
         payoutId,
         options.sellerId,
         number,
+        initialStatus,
         amountPaisa,
         seller.destinationReference,
         options.actorId,
+        directApproval?options.actorId:null,
         note,
         entries.results[0]?.createdAt ?? options.now,
         options.now,
         options.now,
+        directApproval?options.now:null,
         options.requestId,
         options.now,
         options.now,
@@ -777,10 +782,11 @@ export async function prepareSellerPayout(
     database
       .prepare(
         `INSERT INTO payout_events (id, payout_id, from_status, to_status, action, actor_id, actor_type, note, request_id, created_at)
-       SELECT ?, id, NULL, 'prepared', 'prepare', ?, ?, ?, ?, ? FROM payouts WHERE id = ? AND created_request_id = ?`,
+       SELECT ?, id, NULL, ?, 'prepare', ?, ?, ?, ?, ? FROM payouts WHERE id = ? AND created_request_id = ?`,
       )
       .bind(
         crypto.randomUUID(),
+        initialStatus,
         options.actorId,
         options.actorRole,
         note,
@@ -798,14 +804,14 @@ export async function prepareSellerPayout(
         crypto.randomUUID(),
         options.actorId,
         note,
-        JSON.stringify({ status: 'prepared', amountPaisa, ...(formDigest?{catalogDigest:formDigest}:{}) }),
+        JSON.stringify({ status: initialStatus, approvedBy:directApproval?options.actorId:null, amountPaisa, ...(formDigest?{catalogDigest:formDigest}:{}) }),
         options.requestId,
         options.now,
         payoutId,
         options.requestId,
       ),
   );
-  statements.push(...await operationalBusinessNotificationStatements(database,{kind:'payout.prepared',sourceId:payoutId,eventId:options.requestId,actorId:options.actorId,now:options.now}));
+  statements.push(...await operationalBusinessNotificationStatements(database,{kind:'payout.prepared',sourceId:payoutId,eventId:options.requestId,actorId:options.actorId,status:initialStatus,now:options.now}));
   if(options.requestTail){
     const tail=options.requestTail,decisionGuardId=crypto.randomUUID();
     statements.push(database.prepare("UPDATE payout_requests SET status='prepared',payout_id=?,processed_by=?,processing_note=?,operation_request_id=?,updated_at=? WHERE id=? AND seller_id=? AND status='submitted'")

@@ -103,9 +103,9 @@ export function StaffPermissionManager({
       <div>
         <h2 className="font-heading text-xl">Individual Admin permissions</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Existing Admin access stays in place until an active Super Admin
-          approves the change. You can approve a proposal you prepared for
-          another staff member. Reserved Super Admin actions cannot be delegated.
+          Save changes to apply permissions for another Admin immediately.
+          Existing pending requests can still be approved or rejected.
+          Reserved Super Admin actions cannot be delegated.
         </p>
       </div>
       {members.length > 0 ? (
@@ -190,7 +190,7 @@ export function StaffPermissionManager({
           </div>
           <fieldset disabled={busy} className="grid gap-3 sm:grid-cols-2">
             <legend className="mb-3 font-semibold">
-              Proposed feature access
+              Feature access
             </legend>
             {configurableAdminPermissions.map((p) => (
               <label
@@ -237,8 +237,8 @@ export function StaffPermissionManager({
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            * Required. Clearing every feature removes operational access after
-            approval. Presets are copies: reusing one does not change other
+            * Required. Clearing every feature removes operational access when
+            saved. Presets are copies: reusing one does not change other
             people.
           </p>
           <Link href="/admin/staff-form-history?kind=staff-permission-proposal" className="block text-sm underline">View permission proposal form history</Link>
@@ -246,7 +246,7 @@ export function StaffPermissionManager({
           {!proposalCatalog.canSubmit ? <p role="alert" className="text-sm text-destructive">{proposalCatalog.message || 'Loading form configuration…'}</p> : null}
           {retryNotice(proposalKey, proposalCatalog)}
           <Button disabled={busy || !proposalCatalog.canSubmit} type="submit">
-            Propose permission change
+            Save permissions
           </Button>
         </form>
       ) : (
@@ -268,21 +268,21 @@ export function StaffPermissionManager({
               — {r.status}
             </p>
             <p className="text-sm">
-              Proposed access:{' '}
+              Access:{' '}
               {(JSON.parse(r.permissionsJson) as string[])
                 .map((p) => labels[p] ?? p)
                 .join(', ') || 'No operational features'}
             </p>
             <p className="text-sm">{r.reason}</p>
             <p className="text-xs text-muted-foreground">
-              Proposed by {r.proposedBy} at{' '}
+              {r.appliedDirectly ? 'Saved by ' : 'Proposed by '}{r.proposedBy} at{' '}
               {new Date(r.proposedAt).toISOString()}. Based on version{' '}
               {r.expectedVersion}.
               {r.decidedBy
                 ? ' Decided by ' + r.decidedBy + '. ' + r.decisionNote
                 : ''}
             </p>
-            {r.status !== 'pending' ? <Link href={`/admin/staff-form-history?kind=staff-permission-decision&id=${encodeURIComponent(r.id)}`} className="block text-sm underline">View permission decision form history</Link> : null}
+            {r.status !== 'pending' ? <Link href={`/admin/staff-form-history?kind=${r.appliedDirectly ? 'staff-permission-proposal' : 'staff-permission-decision'}&id=${encodeURIComponent(r.id)}`} className="block text-sm underline">{r.appliedDirectly ? 'View permission change form history' : 'View permission decision form history'}</Link> : null}
             {r.status === 'pending' &&
               (r.userId === actorId ? (
                 <p className="text-sm">You cannot change your own permissions.</p>

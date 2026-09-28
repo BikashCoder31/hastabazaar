@@ -178,6 +178,7 @@ void test('payment preparation and both payment actions own separate exact repla
     const prepare = { recordId: id, actorId: 'reviewer', destinationReference: 'SIM-MAKER-ACCOUNT',
       requestId: prepareRequest, now: 300, environment, form: form('staff.managed-payment-preparation', prepareRequest) };
     const paymentId = await prepareFixedSupplierPayment(database, prepare);
+    sqlite.prepare("UPDATE managed_supplier_payments SET status='prepared',approved_by=NULL WHERE id=?").run(paymentId);
     assert.equal(await prepareFixedSupplierPayment(database, prepare), paymentId);
     await assert.rejects(prepareFixedSupplierPayment(database, { ...prepare, destinationReference: 'OTHER-ACCOUNT' }));
     const approveRequest = 'approve-one';
@@ -263,6 +264,7 @@ void test('a rejected answer insert rolls back every decision branch without an 
     const paymentId = await prepareFixedSupplierPayment(database, { recordId: id, actorId: 'reviewer',
       destinationReference: 'SIM-MAKER-ACCOUNT', requestId: 'prepare', now: 300, environment,
       form: form('staff.managed-payment-preparation', 'prepare') });
+    sqlite.prepare("UPDATE managed_supplier_payments SET status='prepared',approved_by=NULL WHERE id=?").run(paymentId);
     await assert.rejects(transitionFixedSupplierPayment(database, { paymentId, actorId: 'finance',
       action: 'approve', requestId: 'bad-approve', now: 400, environment,
       form: invalid('staff.managed-payment-action', 'bad-approve') }));
@@ -329,6 +331,7 @@ void test('all five managed decisions roll back if current Super Admin authority
         else {
           const paymentId=await prepareFixedSupplierPayment(database,{recordId,actorId,
             destinationReference:'SIM-MAKER-ACCOUNT',requestId:'base-payment',now:300,environment});
+          sqlite.prepare("UPDATE managed_supplier_payments SET status='prepared',approved_by=NULL WHERE id=?").run(paymentId);
           actorId='finance';
           run=()=>transitionFixedSupplierPayment(database,{paymentId,actorId,action:'approve',
             requestId,now:400,environment,form:form(managedFormIds[branch],requestId)});
@@ -349,6 +352,7 @@ void test('a payment status race cannot commit an audit or answer for a failed t
     const recordId=await proposed(database);await decideFixedSupplyRecord(database,decision(recordId));
     const paymentId=await prepareFixedSupplierPayment(database,{recordId,actorId:'reviewer',
       destinationReference:'SIM-MAKER-ACCOUNT',requestId:'base-payment',now:300,environment});
+    sqlite.prepare("UPDATE managed_supplier_payments SET status='prepared',approved_by=NULL WHERE id=?").run(paymentId);
     const answers=count(sqlite,'form_answer_sets'),audits=count(sqlite,'audit_logs');
     db.beforeBatch=()=>sqlite.prepare("UPDATE managed_supplier_payments SET status='approved' WHERE id=?").run(paymentId);
     await assert.rejects(transitionFixedSupplierPayment(database,{paymentId,actorId:'finance',action:'approve',
@@ -398,6 +402,7 @@ void test('all five managed routes classify a publication racing commit as stale
         else {
           const paymentId=await prepareFixedSupplierPayment(database,{recordId,actorId:'reviewer',
             destinationReference:'SIM-MAKER-ACCOUNT',requestId:'publication-payment',now:300,environment});
+          sqlite.prepare("UPDATE managed_supplier_payments SET status='prepared',approved_by=NULL WHERE id=?").run(paymentId);
           globalThis.managedProgramActor={id:'finance',role:'super_admin'};
           body={action:'approve_payment',paymentId};
         }
@@ -463,7 +468,8 @@ void test('managed-program route validates each branch and persists answers only
     assert.equal(prepared.status, 200);
     const { paymentId } = await prepared.json() as { paymentId: string };
     assert.ok(paymentId);
-    assert.equal((await send({ action: 'approve_payment', paymentId, requestId: 'route-approve' })).status, 200);
+    assert.equal((sqlite.prepare('SELECT status FROM managed_supplier_payments WHERE id=?').get(paymentId) as {status:string}).status,'approved');
+    assert.equal((await send({ action: 'approve_payment', paymentId, requestId: 'route-approve' })).status, 409);
     assert.equal((await send({ action: 'mark_payment_paid', paymentId, requestId: 'route-paid' })).status, 200);
     const transition = await submitRegisteredSellerTransition(database, { sellerId: 'seller', actorId: 'maker',
       legalName: 'Registered Craft Firm', registrationAuthority: 'Cottage Office', registrationNumber: 'REG-002',
@@ -472,7 +478,7 @@ void test('managed-program route validates each branch and persists answers only
       requestId: 'route-submit', now: 100, environment });
     assert.equal((await send({ action: 'review_transition', applicationId: transition, requestId: 'route-review',
       decision: 'reject', reason: 'SIMULATED document review failed' })).status, 200);
-    assert.equal(count(sqlite, 'form_answer_sets'), 6);
+    assert.equal(count(sqlite, 'form_answer_sets'), 5);
     for(const formId of managedFormIds)sqlite.prepare(`INSERT INTO form_config_versions
       (id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
       VALUES (?, ?,3,3,'published',?,'Archive context','reviewer',3,'reviewer',3,'reviewer',3,?)`)
@@ -611,4 +617,35 @@ void test('mounted managed-program forms send their own published answer context
       assert.deepEqual(bodies.at(-1)?.customAnswers, [{ fieldId: 'context_note', value: 'Reviewed staging evidence' }]);
     }
   } finally { await page.close(); await browser.close(); }
+});
+
+void test('direct supplier payment preparation approves without recording payment', async () => {
+  for (const configured of [false,true]) {
+    const {sqlite,database}=await fixture();
+    try {
+      const recordId=await proposed(database);await decideFixedSupplyRecord(database,decision(recordId));
+      const requestId=`direct-supplier-${configured}`;
+      const input={recordId,actorId:'reviewer',destinationReference:'SIM-MAKER-ACCOUNT',requestId,now:300,environment,
+        ...(configured?{form:form('staff.managed-payment-preparation',requestId)}:{})};
+      const id=await prepareFixedSupplierPayment(database,input);
+      assert.deepEqual({...sqlite.prepare('SELECT status,prepared_by AS preparer,approved_by AS approver,paid_at AS paidAt FROM managed_supplier_payments WHERE id=?').get(id) as object},
+        {status:'approved',preparer:'reviewer',approver:'reviewer',paidAt:null});
+      assert.equal(await prepareFixedSupplierPayment(database,input),id);
+      sqlite.exec("DELETE FROM user_roles WHERE user_id='reviewer'");
+      await assert.rejects(prepareFixedSupplierPayment(database,input),/permission|Super Admin/i);
+      assert.equal(count(sqlite,'managed_supplier_payments'),1);
+    } finally {sqlite.close();}
+  }
+});
+
+void test('supplier direct preparation rolls back on current authority races with and without configured answers',async()=>{
+  for(const configured of [false,true]){
+    const {sqlite,db,database}=await fixture();try{
+      const recordId=await proposed(database);await decideFixedSupplyRecord(database,decision(recordId));
+      const prior=count(sqlite,'audit_logs'),priorAnswers=count(sqlite,'form_answer_sets');const requestId=`supplier-authority-${configured}`;
+      db.beforeBatch=()=>sqlite.exec("DELETE FROM user_roles WHERE user_id='reviewer'");
+      await assert.rejects(prepareFixedSupplierPayment(database,{recordId,actorId:'reviewer',destinationReference:'SIM-MAKER-ACCOUNT',requestId,now:300,environment,...(configured?{form:form('staff.managed-payment-preparation',requestId)}:{})}));
+      assert.equal(count(sqlite,'managed_supplier_payments'),0);assert.equal(count(sqlite,'audit_logs'),prior);assert.equal(count(sqlite,'form_answer_sets'),priorAnswers);
+    }finally{sqlite.close();}
+  }
 });

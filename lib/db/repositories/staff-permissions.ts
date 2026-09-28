@@ -29,6 +29,7 @@ export interface StaffPermissionRequest {
   status: string;
   decidedBy: string | null;
   decisionNote: string | null;
+  appliedDirectly?: number;
 }
 export interface StaffPermissionPreset {
   id: string;
@@ -143,7 +144,7 @@ export async function listStaffPermissionChanges(db: D1Database) {
   const [requests, presets] = await Promise.all([
     db
       .prepare(
-        'SELECT id,user_id AS userId,permissions_json AS permissionsJson,expected_version AS expectedVersion,preset_name AS presetName,reason,proposed_by AS proposedBy,proposed_at AS proposedAt,status,decided_by AS decidedBy,decision_note AS decisionNote FROM staff_permission_requests ORDER BY proposed_at DESC LIMIT 100',
+        "SELECT id,user_id AS userId,permissions_json AS permissionsJson,expected_version AS expectedVersion,preset_name AS presetName,reason,proposed_by AS proposedBy,proposed_at AS proposedAt,status,decided_by AS decidedBy,decision_note AS decisionNote,EXISTS(SELECT 1 FROM audit_logs a WHERE a.request_id=r.id AND a.action='staff.permissions.applied' AND a.actor_id=r.proposed_by AND a.subject_id=r.user_id) AS appliedDirectly FROM staff_permission_requests r ORDER BY proposed_at DESC LIMIT 100",
       )
       .all<StaffPermissionRequest>(),
     db
@@ -212,6 +213,7 @@ export async function proposeStaffPermissions(
       return id;
     }
   }
+  const previous = await getStaffPermissionProfile(db, options.userId);
   await atomic(
     db,
     [
@@ -237,7 +239,7 @@ export async function proposeStaffPermissions(
       ),
       db
         .prepare(
-          'INSERT INTO staff_permission_requests(id,user_id,permissions_json,expected_version,preset_name,reason,proposed_by,proposed_at) VALUES (?,?,?,?,?,?,?,?)',
+          "INSERT INTO staff_permission_requests(id,user_id,permissions_json,expected_version,preset_name,reason,proposed_by,proposed_at,status,decided_by,decided_at,decision_note,decision_token) VALUES (?,?,?,?,?,?,?,?,'approved',?,?,?,?)",
         )
         .bind(
           id,
@@ -248,17 +250,27 @@ export async function proposeStaffPermissions(
           reason,
           options.actorId,
           options.now,
+          options.actorId,
+          options.now,
+          reason,
+          id,
         ),
+      db.prepare('UPDATE staff_permission_profiles SET permissions_json=?,version=version+1,last_request_id=?,updated_by=?,updated_at=? WHERE user_id=? AND version=?')
+        .bind(JSON.stringify(permissions), id, options.actorId, options.now, options.userId, options.version),
+      ...guard(db, 'EXISTS(SELECT 1 FROM staff_permission_profiles WHERE user_id=? AND version=? AND last_request_id=?)',
+        [options.userId, options.version + 1, id]),
+      ...(presetName ? [db.prepare('INSERT INTO staff_permission_presets(id,name,permissions_json,created_by,created_at) VALUES (?,?,?,?,?)')
+        .bind(id, presetName, JSON.stringify(permissions), options.actorId, options.now)] : []),
       audit(
         db,
         options.actorId,
-        'staff.permissions.proposed',
+        'staff.permissions.applied',
         options.userId,
         reason,
-        { version: options.version },
-        { id, permissions, presetName },
+        previous,
+        { id, permissions, presetName, version: options.version + 1, status: 'approved', approvalMode: 'direct' },
         options.now,
-        options.form ? id : undefined,
+        id,
       ),
       ...(options.form ? [buildFormAnswerInsert(db, {
         formId: 'staff.staff-permission-1', requestId: id,
@@ -266,8 +278,8 @@ export async function proposeStaffPermissions(
         subjectId: id, actorId: options.actorId, answers: options.form.answers, now: options.now,
       })] : []),
       ...(await operationalBusinessNotificationStatements(db, {
-        kind: 'permissions.proposed',
-        sourceId: id,
+        kind: 'permissions.changed',
+        sourceId: options.userId,
         eventId: id,
         actorId: options.actorId,
         now: options.now,

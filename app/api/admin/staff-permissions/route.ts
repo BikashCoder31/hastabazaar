@@ -68,8 +68,7 @@ export async function POST(request: Request) {
       return json(
         {
           id,
-          message:
-            'Proposal saved. Effective access changes only after an active Super Admin approves.',
+          message: 'Permissions saved. Effective access applies on the next request.',
         },
         201,
       );

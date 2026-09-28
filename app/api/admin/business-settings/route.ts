@@ -10,12 +10,14 @@ import {
   BusinessSettingConflictError,
   createBusinessSettingDraft,
   getEffectiveBusinessSetting,
+  saveBusinessSettingChange,
   validateBusinessSettingForm,
 } from '@/lib/db/repositories/business-settings';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
 import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { resolveRuntimeEnvironment } from '@/lib/staging/environment';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,6 +81,22 @@ export async function POST(request: Request): Promise<Response> {
     const database = requireDatabase(env as unknown as { DB?: D1Database });
     const requestId = typeof body.requestId === 'string' ? body.requestId : '';
     const form = await validateBusinessSettingForm(database, key, body, requestId);
+    if (body.action === 'save') {
+      if (!Number.isSafeInteger(body.expectedVersion) || Number(body.expectedVersion) < 0)
+        throw new RangeError('Expected setting version must be a non-negative integer.');
+      if (body.effectiveFrom !== null && (!Number.isSafeInteger(body.effectiveFrom) || Number(body.effectiveFrom) < 0))
+        throw new RangeError('Select a valid effective date.');
+      const bindings = env as unknown as Record<string, string | undefined>;
+      const runtime = resolveRuntimeEnvironment({ runtimeEnvironment: bindings.HASTABAZAAR_RUNTIME_ENV,
+        nodeEnvironment: bindings.NODE_ENV, appOrigin: bindings.APP_ORIGIN });
+      const version = await saveBusinessSettingChange(database, { key, value: body.value,
+        actorId: actor.id, reason: typeof body.reason === 'string' ? body.reason : '', requestId,
+        now: Date.now(), effectiveFrom: body.effectiveFrom === null ? null : Number(body.effectiveFrom),
+        expectedVersion: Number(body.expectedVersion), simulationAllowed: runtime.simulationAllowed, form });
+      return json({ ok: true, action: 'save', version }, 201);
+    }
+    if (body.action !== undefined && body.action !== 'draft')
+      throw new RangeError('Select a valid business-setting action.');
     const draft = await createBusinessSettingDraft(
       database,
       {

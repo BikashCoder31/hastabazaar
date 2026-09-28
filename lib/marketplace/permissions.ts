@@ -113,7 +113,7 @@ export const nonDelegableProtections = [
   'An actor cannot approve their own seller application or product, or review their own rider cash.',
   'An admin cannot change their own role or permissions.',
   'Only a super admin can grant or revoke admin access.',
-  'An authorized active Super Admin may prepare and approve a payout; financial checks and audit records remain required.',
+  'Payouts prepared by an authorized active Super Admin are approved directly; Admin preparations require Super Admin confirmation. Financial checks and audit records remain required.',
   'Audit records are append-only; even super admins cannot delete them through the application.',
-  'An authorized Super Admin may propose and approve controlled business settings; submission, validation and audit records remain required.',
+  'An authorized Super Admin can save controlled business settings directly; validation, effective-date rules and audit records remain required.',
 ] as const;

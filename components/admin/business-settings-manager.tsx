@@ -51,7 +51,7 @@ export type BusinessSettingsAdminItem = Readonly<{
   effective: EffectiveBusinessSetting<BusinessSettingKey>;
   history: readonly BusinessSettingVersion[];
 }>;
-type SettingsResponse = { error?: string; code?: string; ok?: unknown; action?: unknown; draft?: Partial<BusinessSettingVersion> };
+type SettingsResponse = { error?: string; code?: string; ok?: unknown; action?: unknown; draft?: Partial<BusinessSettingVersion>; version?: Partial<BusinessSettingVersion> };
 
 const numericKeys = new Set<BusinessSettingKey>([
   'independent_seller_commission_bps',
@@ -218,21 +218,30 @@ export function BusinessSettingsManager({
       formVersion: version, ...answers };
   }
 
-  function verifyResponse(response: Response, result: SettingsResponse | null, action: 'save' | 'submit' | 'publish' | 'approve' | 'reject' | 'reverse', fallback: string) {
+  function verifyResponse(response: Response, result: SettingsResponse | null, action: 'save' | 'draft' | 'publish' | 'approve' | 'reject' | 'reverse', fallback: string) {
     if (result?.code === 'stale_version') catalog.handleSubmissionResponse(response, result.code);
     if (!response.ok) throw new Error(result?.error || fallback);
     const draft = result?.draft;
     let validValue = false;
     if (draft) { try { validateBusinessSettingValue(selected.key, draft.value); validValue = true; } catch { /* Unverified response retains the attempt. */ } }
-    const confirmed = action === 'save' || action === 'reverse'
+    const published = result?.version;
+    let validPublishedValue = false;
+    if (published) { try { validateBusinessSettingValue(selected.key, published.value); validPublishedValue = true; } catch { /* Retain the attempt. */ } }
+    const confirmed = action === 'save'
+      ? result?.ok === true && result.action === 'save' && validPublishedValue && published?.key === selected.key
+        && published.status === 'published' && typeof published.id === 'string' && published.id.trim().length > 0
+        && Number.isSafeInteger(published.version) && Number(published.version) > 0
+        && Number.isSafeInteger(published.revision) && Number(published.revision) > 0
+        && Number.isSafeInteger(published.effectiveFrom) && Number(published.effectiveFrom) >= 0
+      : action === 'draft' || action === 'reverse'
       ? validValue && draft && typeof draft.id === 'string' && draft.id.trim().length > 0 && draft.key === selected.key
         && draft.status === 'draft' && Number.isSafeInteger(draft.version) && Number(draft.version) > 0
-        && Number.isSafeInteger(draft.revision) && Number(draft.revision) > 0 && (action === 'save' || result?.action === action)
+        && Number.isSafeInteger(draft.revision) && Number(draft.revision) > 0 && (action === 'draft' || result?.action === action)
       : result?.ok === true && result.action === action;
     if (!confirmed || result?.error) throw new Error('The response could not be verified. Retry with the same request.');
   }
 
-  async function saveDraft() {
+  async function saveSetting(action: 'save' | 'draft') {
     setBusy(true);
     setMessage('');
     setFailedAttemptKey(null);
@@ -242,21 +251,24 @@ export function BusinessSettingsManager({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          action,
           key: selected.key,
           value: parseEditorValue(selected.key, editorValue),
           reason,
-          ...catalogPayload('save', selected.key),
+          ...(action === 'save' ? { expectedVersion: Math.max(0, ...selected.history.map((item) => item.version)),
+            effectiveFrom: effectiveFrom ? new Date(effectiveFrom).getTime() : null } : {}),
+          ...catalogPayload(action, selected.key),
         }),
       });
       const result = (await response.json().catch(() => null)) as SettingsResponse | null;
-      verifyResponse(response, result, 'save', 'Draft could not be saved.');
+      verifyResponse(response, result, action, 'Setting could not be saved.');
       if (latestAttemptKey.current) clearSessionAttempt(latestAttemptKey.current);
-      setMessage('Draft saved. Refreshing the authoritative history…');
+      setMessage(action === 'save' ? 'Changes saved. Refreshing the authoritative history…' : 'Draft saved. Refreshing the authoritative history…');
       window.location.reload();
     } catch (error) {
       setFailedAttemptKey(latestAttemptKey.current);
       setMessage(
-        error instanceof Error ? error.message : 'Draft could not be saved.',
+        error instanceof Error ? error.message : 'Setting could not be saved.',
       );
     } finally {
       setBusy(false);
@@ -265,7 +277,7 @@ export function BusinessSettingsManager({
 
   async function changeVersion(
     version: BusinessSettingVersion,
-    action: 'submit' | 'publish' | 'approve' | 'reject' | 'reverse',
+    action: 'publish' | 'approve' | 'reject' | 'reverse',
   ) {
     setBusy(true);
     setMessage('');
@@ -339,17 +351,6 @@ export function BusinessSettingsManager({
               <Badge variant="outline">
                 {selected.sensitivity.replaceAll('_', ' ')}
               </Badge>
-              <Badge
-                variant={
-                  selected.changeControl === 'controlled'
-                    ? 'destructive'
-                    : 'secondary'
-                }
-              >
-                {selected.changeControl === 'controlled'
-                  ? 'Super Admin approval required'
-                  : 'Simple publication'}
-              </Badge>
             </div>
             <CardTitle>{selected.label}</CardTitle>
             <CardDescription>{selected.description}</CardDescription>
@@ -366,10 +367,10 @@ export function BusinessSettingsManager({
 
         <Card>
           <CardHeader>
-            <CardTitle>Create a draft</CardTitle>
+            <CardTitle>Edit configuration</CardTitle>
             <CardDescription>
-              Drafts do not affect customers, sellers, makers, riders, invoices,
-              or balances until the correct publication workflow completes.
+              Save valid changes directly or schedule when they take effect.
+              You can also keep a draft for later.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -403,6 +404,7 @@ export function BusinessSettingsManager({
               <p className="text-xs text-muted-foreground">
                 Financial and contractual values apply prospectively. Historical
                 order and agreement snapshots are never rewritten.
+                {' '}Leave the date blank to apply changes now. Independent seller commission changes require at least 15 calendar days notice and renewed acceptance.
               </p>
             </div>
             <div className="rounded-xl border bg-muted/40 p-4">
@@ -432,7 +434,15 @@ export function BusinessSettingsManager({
             <Button
               type="button"
               disabled={busy || !catalog.canSubmit || reason.trim().length < 8}
-              onClick={saveDraft}
+              onClick={() => saveSetting('save')}
+            >
+              {effectiveFrom ? 'Save and schedule' : 'Save changes'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy || !catalog.canSubmit || reason.trim().length < 8}
+              onClick={() => saveSetting('draft')}
             >
               Save draft
             </Button>
@@ -473,15 +483,11 @@ export function BusinessSettingsManager({
                           onClick={() =>
                             changeVersion(
                               version,
-                              version.changeControl === 'controlled'
-                                ? 'submit'
-                                : 'publish',
+                              'publish',
                             )
                           }
                         >
-                          {version.changeControl === 'controlled'
-                            ? 'Submit for review'
-                            : 'Publish / schedule'}
+                          Publish / schedule
                         </Button>
                       ) : null}
                       {version.status === 'pending_approval' ? (

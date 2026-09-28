@@ -147,11 +147,11 @@ export default async function AdminDashboardPage() {
             className="flex items-center gap-2 font-heading text-2xl"
           >
             <ShieldCheck className="size-5" />
-            Independent approvals
+            Pending confirmations
           </h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Super Admin queue totals include your own proposals. Those require a
-            different authorized person to decide.
+            Review Admin requests and existing pending records. Your Super Admin
+            decisions apply directly, subject to validation and effective dates.
           </p>
           <div className="mt-5 grid gap-3 md:grid-cols-3">
             {[
@@ -205,9 +205,11 @@ export default async function AdminDashboardPage() {
           </p>
           <p>
             <strong className="text-foreground">
-              Keep approvals independent.
+              {staff.role === 'super_admin' ? 'Record the final decision.' : 'Request confirmation.'}
             </strong>{' '}
-            Preparing a payout or proposal does not authorize you to approve it.
+            {staff.role === 'super_admin'
+              ? 'Your Super Admin decisions apply directly. Payment processing remains a separate step.'
+              : 'Submit requests for Super Admin confirmation when required.'}
           </p>
         </CardContent>
       </Card>

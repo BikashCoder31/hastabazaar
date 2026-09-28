@@ -810,10 +810,11 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
         );
       const kind = o.action === 'collect' ? 'collection' : 'remittance';
       const cashId = crypto.randomUUID();
+      const directRemittance = kind === 'remittance' && authority.role === 'super_admin';
       statements.push(
         db
           .prepare(
-            'INSERT INTO parcel_cash_records(id,shipping_job_id,kind,amount_paisa,evidence_reference,status,created_by,created_at,rider_user_id) VALUES (?,?,?,?,?,?,?,?,?)',
+            'INSERT INTO parcel_cash_records(id,shipping_job_id,kind,amount_paisa,evidence_reference,status,created_by,created_at,rider_user_id,approved_by,approved_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
           )
           .bind(
             cashId,
@@ -821,12 +822,17 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
             kind,
             amount,
             reference,
-            kind === 'collection' ? 'posted' : 'pending',
+            kind === 'collection' || directRemittance ? 'posted' : 'pending',
             o.actorId,
             o.now,
             p.riderUserId,
+            directRemittance ? o.actorId : null,
+            directRemittance ? o.now : null,
           ),
       );
+      if (directRemittance) {
+        statements.push(db.prepare('UPDATE shipping_parcels SET remitted_paisa=remitted_paisa+? WHERE shipping_job_id=?').bind(amount, o.jobId));
+      }
       if (kind === 'collection' && p.method === 'own_rider' && p.riderUserId) {
         const obligation = await cashObligationSnapshot(
           db,
@@ -858,7 +864,7 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
         )
         .bind(o.cashRecordId ?? '', o.jobId)
         .first<{ amount: number; maker: string; riderId: string | null }>();
-      if (!record || record.riderId === o.actorId ||
+      if (!record || (p.method !== 'own_rider' && authority.role !== 'super_admin') || record.riderId === o.actorId ||
           (record.maker === o.actorId && authority.role !== 'super_admin'))
         throw new ParcelConflictError(
           'An authorized reviewer must review this pending remittance; staff cannot review their own rider cash.',
