@@ -4,8 +4,8 @@ const ZERO = BigInt(0);
 const ONE = BigInt(1);
 const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
 const BASIS_POINTS = BigInt(10000);
-// Epoch seconds through the final second of year 9999 (UTC).
-const MAX_CAMPAIGN_TIMESTAMP = 253402300799;
+// Epoch milliseconds through the final millisecond of year 9999 (UTC).
+const MAX_CAMPAIGN_TIMESTAMP = 253402300799999;
 
 function integer(value: number, minimum = 0, maximum = Number.MAX_SAFE_INTEGER): void {
   if (!Number.isSafeInteger(value) || value < minimum || value > maximum) throw new IncentiveError('invalid');

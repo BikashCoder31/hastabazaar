@@ -28,9 +28,17 @@ void test('percentage discounts floor paisa and cap at the percentage maximum or
   assert.equal(calculatePromoDiscount({ ...terms, maxDiscountPaisa: 500 }, 10001), 500);
   assert.equal(calculatePromoDiscount({ ...terms, percentBps: 10000 }, 10001), 10001);
   assert.equal(calculatePromoDiscount(terms, 0), 0);
-  assert.equal(calculatePromoDiscount({ ...terms, startsAt: 0, endsAt: 253402300799 }, 10001), 1250);
+  assert.equal(calculatePromoDiscount({ ...terms, startsAt: 0, endsAt: 253402300799999 }, 10001), 1250);
 });
 
+void test('campaign timestamps accept current epoch milliseconds and enforce the year 9999 boundary', () => {
+  const now = Date.now();
+  assert.equal(calculatePromoDiscount({ ...terms, startsAt: now, endsAt: now + 86400000 }, 10001), 1250);
+  assert.equal(calculatePromoDiscount({ ...terms, startsAt: 253402300799998, endsAt: 253402300799999 }, 10001), 1250);
+  for (const patch of [{ startsAt: 253402300800000, endsAt: 253402300800001 }, { endsAt: 253402300800000 }]) {
+    assert.throws(() => calculatePromoDiscount({ ...terms, ...patch }, 10001), (error) => error instanceof IncentiveError && error.code === 'invalid');
+  }
+});
 void test('fixed discounts cap at merchandise subtotal without shrinking to campaign budget', () => {
   const { percentBps: _percentBps, maxDiscountPaisa: _maxDiscountPaisa, ...common } = terms;
   const fixed: PromoTerms = { ...common, kind: 'fixed', fixedPaisa: 20000, budgetPaisa: 1 };
@@ -48,7 +56,7 @@ void test('promo calculations reject unsafe, negative, fractional and inapplicab
     { percentBps: 0 }, { percentBps: 10001 }, { percentBps: 1.5 }, { percentBps: Number.MAX_SAFE_INTEGER + 1 },
     { fixedPaisa: 1 }, { maxDiscountPaisa: -1 }, { minimumSubtotalPaisa: -1 }, { budgetPaisa: 0 },
     { budgetPaisa: Number.MAX_SAFE_INTEGER + 1 }, { totalUseLimit: 0 }, { perCustomerUseLimit: 101 },
-    { startsAt: -1 }, { startsAt: 0.5 }, { endsAt: 1 }, { endsAt: 253402300800 }, { code: 'bad code' }, { label: '' }, { label: 'a'.repeat(201) },
+    { startsAt: -1 }, { startsAt: 0.5 }, { endsAt: 1 }, { endsAt: 253402300800000 }, { code: 'bad code' }, { label: '' }, { label: 'a'.repeat(201) },
   ]) assert.throws(() => calculatePromoDiscount({ ...terms, ...patch } as PromoTerms, 10001), JSON.stringify(patch));
   assert.throws(() => calculatePromoDiscount({ ...terms, kind: 'fixed', fixedPaisa: 1 } as unknown as PromoTerms, 10001));
 });

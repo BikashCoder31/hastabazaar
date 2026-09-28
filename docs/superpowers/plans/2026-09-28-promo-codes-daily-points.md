@@ -49,7 +49,7 @@ Every task below ends with the review/commit gate above. Exact commit scope is i
 
 New `lib/incentives/types.ts` owns public types; `promo-policy.ts` owns normalization, discount/allocation math; `loyalty-policy.ts` owns Nepal dates and exchange math. New repositories `promo-codes.ts` and `loyalty.ts` own reads and atomic domain changes. New `lib/incentives/forms.ts` owns new form IDs and protected keys; `privacy.ts` owns retained incentive export data. Keep existing order/refund orchestration in place; do not restructure unrelated code.
 
-All timestamps passed to repositories use existing epoch seconds. All new exported input/output types live in `types.ts` and are named below. Existing D1Database interface is retained; compatible MariaDB behavior uses `lib/runtime/node-bindings.ts` and explicit dialect handling only where needed.
+All timestamps passed to repositories use epoch milliseconds, matching existing Date.now() calls and audit/display conventions. Campaign timestamps are bounded to 0..253402300799999 (end of year 9999). All new exported input/output types live in `types.ts` and are named below. Existing D1Database interface is retained; compatible MariaDB behavior uses `lib/runtime/node-bindings.ts` and explicit dialect handling only where needed.
 
 Core types:
 - `PromoTerms`: code, label, kind (`fixed`/`percentage`), fixedPaisa or percentBps/maxDiscountPaisa, minimumSubtotalPaisa, startsAt, endsAt, totalUseLimit, perCustomerUseLimit, budgetPaisa. Required bounded values; inapplicable fields rejected.
