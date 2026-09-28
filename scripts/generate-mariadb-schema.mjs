@@ -63,7 +63,10 @@ const dataRightsLegalHoldsSql = await readFile(
   'utf8',
 );
 const addressAnswerOwnerTombstonesSql = await readFile(
-  resolve(projectRoot, 'deployment/babal/mariadb-address-answer-owner-tombstones.sql'),
+  resolve(
+    projectRoot,
+    'deployment/babal/mariadb-address-answer-owner-tombstones.sql',
+  ),
   'utf8',
 );
 const feedbackDeliveryJobsSql = await readFile(
@@ -115,6 +118,60 @@ for (const [file, columns] of Object.entries(promoPrerequisiteColumns)) {
 }
 const promoCodesSql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-promo-codes.sql'),
+  'utf8',
+);
+
+// Loyalty requires the actual wallet/gift parent tables and their existing financial posting guards.
+// Keep this prerequisite extraction narrow; unrelated frozen-bootstrap gaps remain Task12.
+const walletParentSql = await readFile(
+  resolve(projectRoot, 'deployment/babal/mariadb-referrals-wallet.sql'),
+  'utf8',
+);
+const giftCardsSql = await readFile(
+  resolve(projectRoot, 'deployment/babal/mariadb-gift-cards.sql'),
+  'utf8',
+);
+const partialCancellationSql = await readFile(
+  resolve(projectRoot, 'deployment/babal/mariadb-partial-cancellation.sql'),
+  'utf8',
+);
+function requiredParentTable(name) {
+  const match = walletParentSql.match(
+    new RegExp(
+      'CREATE TABLE IF NOT EXISTS ' +
+        name +
+        String.raw` \([\s\S]+?ENGINE=InnoDB[^;]+;`,
+    ),
+  );
+  if (!match)
+    throw new Error('Missing canonical loyalty parent table: ' + name);
+  return match[0];
+}
+function requiredParentTrigger(source, name) {
+  const match = source.match(
+    new RegExp(
+      'DROP TRIGGER IF EXISTS ' + name + String.raw`;[\s\S]+?DELIMITER ;`,
+    ),
+  );
+  if (!match)
+    throw new Error('Missing canonical loyalty parent trigger: ' + name);
+  return match[0];
+}
+const loyaltyParents = [
+  requiredParentTable('wallet_accounts'),
+  requiredParentTable('wallet_entries'),
+  'CREATE INDEX IF NOT EXISTS idx_wallet_entries_user ON wallet_entries(user_id,created_at);',
+  giftCardsSql.trim(),
+  ...[
+    'wallet_entry_balance',
+    'wallet_entry_no_update',
+    'wallet_entry_no_delete',
+    'wallet_refund_restore',
+  ].map((name) => requiredParentTrigger(walletParentSql, name)),
+  requiredParentTrigger(partialCancellationSql, 'wallet_cancel_restore'),
+];
+const loyaltyPointsSql = await readFile(
+  resolve(projectRoot, 'deployment/babal/mariadb-loyalty-points.sql'),
   'utf8',
 );
 
@@ -365,7 +422,9 @@ output.push(
   '',
   '-- Legacy column prerequisites for promo DDL only; not full financial bootstrap repair.',
   ...promoPrerequisites,
+  ...loyaltyParents,
   promoCodesSql.trim(),
+  loyaltyPointsSql.trim(),
   '',
   '-- Babal.Host password authentication and server-side sessions.',
   'CREATE TABLE IF NOT EXISTS `user_credentials` (',
@@ -449,6 +508,16 @@ await mkdir(dirname(outputPath), { recursive: true });
 const schemaSql = output.join('\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
+  'wallet_entries',
+  'loyalty_points_entries',
+  'loyalty_redemptions',
+  'loyalty_daily_claims',
+  'loyalty_day_issuance',
+  'loyalty_accounts',
+  'loyalty_config',
+  'loyalty_revisions',
+  'gift_cards',
+  'wallet_accounts',
   'promo_redemptions',
   'promo_customer_usage',
   'promo_revisions',

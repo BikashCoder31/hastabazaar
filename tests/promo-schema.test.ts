@@ -32,7 +32,7 @@ void test('migration preserves referral totals and ledger while making historica
         .run();
       await db
         .prepare(
-          "INSERT INTO wallet_entries VALUES ('gift-credit','customer',NULL,500,-500,'gift_card','historical-gift',1)",
+          "INSERT INTO wallet_entries(id,user_id,order_id,amount_paisa,platform_amount_paisa,kind,gift_card_id,created_at) VALUES ('gift-credit','customer',NULL,500,-500,'gift_card','historical-gift',1)",
         )
         .run();
       await db
@@ -41,12 +41,12 @@ void test('migration preserves referral totals and ledger while making historica
         .run();
       await db
         .prepare(
-          "INSERT INTO wallet_entries VALUES ('award','customer','historical',2000,-2000,'referral_reward',NULL,1)",
+          "INSERT INTO wallet_entries(id,user_id,order_id,amount_paisa,platform_amount_paisa,kind,gift_card_id,created_at) VALUES ('award','customer','historical',2000,-2000,'referral_reward',NULL,1)",
         )
         .run();
       await db
         .prepare(
-          "INSERT INTO wallet_entries VALUES ('spend','customer','historical',-800,800,'order_spend',NULL,1)",
+          "INSERT INTO wallet_entries(id,user_id,order_id,amount_paisa,platform_amount_paisa,kind,gift_card_id,created_at) VALUES ('spend','customer','historical',-800,800,'order_spend',NULL,1)",
         )
         .run();
       await db
@@ -89,7 +89,7 @@ void test('migration preserves referral totals and ledger while making historica
     await assert.rejects(
       f.db
         .prepare(
-          "INSERT INTO wallet_entries VALUES ('bad','customer',NULL,100,-100,'referral_reward',NULL,1)",
+          "INSERT INTO wallet_entries(id,user_id,order_id,amount_paisa,platform_amount_paisa,kind,gift_card_id,created_at) VALUES ('bad','customer',NULL,100,-100,'referral_reward',NULL,1)",
         )
         .run(),
     );
@@ -124,7 +124,7 @@ void test('migration preserves referral totals and ledger while making historica
     );
     await f.db
       .prepare(
-        "INSERT INTO wallet_entries VALUES ('partial-restore','customer','historical',300,-300,'cancellation',NULL,2)",
+        "INSERT INTO wallet_entries(id,user_id,order_id,amount_paisa,platform_amount_paisa,kind,gift_card_id,created_at) VALUES ('partial-restore','customer','historical',300,-300,'cancellation',NULL,2)",
       )
       .run();
     await f.db
@@ -171,7 +171,7 @@ void test('invalid source-less gift credits still reject after applying the prom
     await assert.rejects(
       f.db
         .prepare(
-          "INSERT INTO wallet_entries VALUES ('bad','customer',NULL,100,-100,'gift_card',NULL,1)",
+          "INSERT INTO wallet_entries(id,user_id,order_id,amount_paisa,platform_amount_paisa,kind,gift_card_id,created_at) VALUES ('bad','customer',NULL,100,-100,'gift_card',NULL,1)",
         )
         .run(),
     );
@@ -582,7 +582,7 @@ void test('native D1 enforces promo lifetime counters, immutable revisions, snap
             incentiveItem(db, 'rollback-item', 'rollback-order', 1000),
             redemption(db, 'rollback-use', 'rollback-order', 'rollback'),
             db.prepare(
-              "INSERT INTO wallet_entries VALUES ('invalid','customer',NULL,1,-1,'refund',NULL,1)",
+              "INSERT INTO wallet_entries(id,user_id,order_id,amount_paisa,platform_amount_paisa,kind,gift_card_id,created_at) VALUES ('invalid','customer',NULL,1,-1,'refund',NULL,1)",
             ),
           ]),
         );

@@ -6,6 +6,7 @@ import { convertV4MiniflareOptions, Miniflare } from 'miniflare';
 export async function createIncentiveDb(
   options: {
     beforePromo?: (db: D1Database) => Promise<void>;
+    beforeLoyalty?: (db: D1Database) => Promise<void>;
   } = {},
 ): Promise<{ db: D1Database; dispose(): Promise<void> }> {
   const mf = new Miniflare(
@@ -22,6 +23,7 @@ export async function createIncentiveDb(
       .sort();
     for (const name of names) {
       if (name.startsWith('0060_')) await options.beforePromo?.(db);
+      if (name.startsWith('0061_')) await options.beforeLoyalty?.(db);
       const sql = await readFile(
         new URL(`../../drizzle/${name}`, import.meta.url),
         'utf8',
@@ -43,6 +45,8 @@ export async function createIncentiveDb(
     // Allows the same preservation assertions to fail on behavior before 0060 exists.
     if (!names.some((name) => name.startsWith('0060_')))
       await options.beforePromo?.(db);
+    if (!names.some((name) => name.startsWith('0061_')))
+      await options.beforeLoyalty?.(db);
     return { db, dispose: () => mf.dispose() };
   } catch (error) {
     await mf.dispose();
