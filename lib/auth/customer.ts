@@ -18,7 +18,10 @@ export interface CustomerUser {
 }
 
 export class CustomerAuthorizationError extends Error {
-  constructor(message: string, readonly status: 401 | 403) {
+  constructor(
+    message: string,
+    readonly status: 401 | 403,
+  ) {
     super(message);
     this.name = 'CustomerAuthorizationError';
   }
@@ -28,47 +31,123 @@ function databaseFromEnvironment(): D1Database {
   return requireDatabase(env as unknown as { DB?: D1Database });
 }
 
-async function findCustomerBySubject(database: D1Database, authSubject: string): Promise<CustomerUser | null> {
-  return (await database.prepare(
-    `SELECT users.id AS userId, users.auth_subject AS authSubject, users.email,
+async function findCustomerBySubject(
+  database: D1Database,
+  authSubject: string,
+): Promise<CustomerUser | null> {
+  return (
+    (await database
+      .prepare(
+        `SELECT users.id AS userId, users.auth_subject AS authSubject, users.email,
       users.phone, users.display_name AS displayName, users.locale
      FROM users
      INNER JOIN user_roles ON user_roles.user_id = users.id AND user_roles.role = 'customer'
      WHERE users.auth_subject = ? AND users.status = 'active' LIMIT 1`,
-  ).bind(authSubject).first<CustomerUser>()) ?? null;
+      )
+      .bind(authSubject)
+      .first<CustomerUser>()) ?? null
+  );
 }
 
-async function resolveCustomer(database: D1Database, identity: AuthenticatedUser): Promise<CustomerUser> {
+async function resolveCustomer(
+  database: D1Database,
+  identity: AuthenticatedUser,
+): Promise<CustomerUser> {
   const bySubject = await findCustomerBySubject(database, identity.userId);
   if (bySubject) return bySubject;
 
   const email = identity.email.trim().toLowerCase();
-  const existing = await database.prepare(
-    `SELECT id, auth_subject AS authSubject FROM users WHERE lower(email) = ? LIMIT 1`,
-  ).bind(email).first<{ id: string; authSubject: string | null }>();
+  const existing = await database
+    .prepare(
+      `SELECT id, auth_subject AS authSubject, status,
+       EXISTS (SELECT 1 FROM user_roles WHERE user_id = users.id AND role = 'customer') AS isCustomer,
+       EXISTS (SELECT 1 FROM user_roles WHERE user_id = users.id AND role IN ('admin', 'super_admin')) AS isStaff
+     FROM users WHERE auth_subject = ? OR lower(email) = ?
+     ORDER BY CASE WHEN auth_subject = ? THEN 0 ELSE 1 END LIMIT 1`,
+    )
+    .bind(identity.userId, email, identity.userId)
+    .first<{
+      id: string;
+      authSubject: string | null;
+      status: string;
+      isCustomer: number;
+      isStaff: number;
+    }>();
   if (existing?.authSubject && existing.authSubject !== identity.userId) {
-    throw new CustomerAuthorizationError('This email is already linked to another sign-in identity.', 403);
+    throw new CustomerAuthorizationError(
+      'This email is already linked to another sign-in identity.',
+      403,
+    );
+  }
+  if (
+    existing &&
+    (existing.status !== 'active' || (existing.isStaff && !existing.isCustomer))
+  ) {
+    throw new CustomerAuthorizationError(
+      'An active customer account is required.',
+      403,
+    );
   }
 
   const now = Date.now();
   const userId = existing?.id ?? crypto.randomUUID();
   const displayName = identity.fullName?.trim() || identity.email;
   const statements: D1PreparedStatement[] = existing
-    ? [database.prepare(
-      `UPDATE users SET auth_subject = ?, display_name = CASE WHEN trim(display_name) = '' THEN ? ELSE display_name END,
-        updated_at = ? WHERE id = ? AND (auth_subject IS NULL OR auth_subject = ?)`,
-    ).bind(identity.userId, displayName, now, userId, identity.userId)]
-    : [database.prepare(
-      `INSERT INTO users (id, auth_subject, email, phone, display_name, locale, status, created_at, updated_at)
-       VALUES (?, ?, ?, NULL, ?, 'en-NP', 'active', ?, ?)`,
-    ).bind(userId, identity.userId, email, displayName, now, now)];
-  statements.push(database.prepare(
-    `INSERT OR IGNORE INTO user_roles (user_id, role, assigned_by, assigned_at)
-     VALUES (?, 'customer', NULL, ?)`,
-  ).bind(userId, now));
+    ? [
+        database
+          .prepare(
+            `UPDATE users SET auth_subject = ?, display_name = CASE WHEN trim(display_name) = '' THEN ? ELSE display_name END,
+        updated_at = ? WHERE id = ?
+        AND (auth_subject = ? OR (auth_subject IS NULL AND lower(email) = ?))
+        AND status = 'active'
+        AND (EXISTS (SELECT 1 FROM user_roles WHERE user_id = users.id AND role = 'customer')
+          OR NOT EXISTS (SELECT 1 FROM user_roles WHERE user_id = users.id AND role IN ('admin', 'super_admin')))`,
+          )
+          .bind(
+            identity.userId,
+            displayName,
+            now,
+            userId,
+            identity.userId,
+            email,
+          ),
+      ]
+    : [
+        database
+          .prepare(
+            `INSERT INTO users (id, auth_subject, email, phone, display_name, locale, status, created_at, updated_at)
+       SELECT ?, ?, ?, NULL, ?, 'en-NP', 'active', ?, ?
+       WHERE NOT EXISTS (SELECT 1 FROM users WHERE auth_subject = ? OR lower(email) = ?)`,
+          )
+          .bind(
+            userId,
+            identity.userId,
+            email,
+            displayName,
+            now,
+            now,
+            identity.userId,
+            email,
+          ),
+      ];
+  statements.push(
+    database
+      .prepare(
+        `INSERT OR IGNORE INTO user_roles (user_id, role, assigned_by, assigned_at)
+     SELECT users.id, 'customer', NULL, ? FROM users
+     WHERE users.id = ? AND users.auth_subject = ? AND users.status = 'active'
+       AND (EXISTS (SELECT 1 FROM user_roles WHERE user_id = users.id AND role = 'customer')
+         OR NOT EXISTS (SELECT 1 FROM user_roles WHERE user_id = users.id AND role IN ('admin', 'super_admin')))`,
+      )
+      .bind(now, userId, identity.userId),
+  );
   await database.batch(statements);
   const customer = await findCustomerBySubject(database, identity.userId);
-  if (!customer) throw new CustomerAuthorizationError('The customer account could not be created.', 403);
+  if (!customer)
+    throw new CustomerAuthorizationError(
+      'The customer account could not be created.',
+      403,
+    );
   return customer;
 }
 
@@ -78,18 +157,39 @@ export async function getCustomerUser(): Promise<CustomerUser | null> {
   return resolveCustomer(databaseFromEnvironment(), identity);
 }
 
-export async function requireCustomerPage(returnTo: string): Promise<CustomerUser> {
+export async function requireCustomerPage(
+  returnTo: string,
+): Promise<CustomerUser> {
   const identity = await requireAuthenticatedUser(returnTo);
   try {
     return await resolveCustomer(databaseFromEnvironment(), identity);
   } catch (error) {
-    if (error instanceof CustomerAuthorizationError) redirect('/account-access-denied');
+    if (error instanceof CustomerAuthorizationError)
+      redirect('/account-access-denied');
     throw error;
   }
 }
 
 export async function requireCustomerApi(): Promise<CustomerUser> {
   const identity = await getAuthenticatedUser();
-  if (!identity) throw new CustomerAuthorizationError('Authentication is required.', 401);
+  if (!identity)
+    throw new CustomerAuthorizationError('Authentication is required.', 401);
   return resolveCustomer(databaseFromEnvironment(), identity);
+}
+
+/** Read-only eligibility lookup for incentives; never provisions a customer account. */
+export async function requireExistingCustomerApi(): Promise<CustomerUser> {
+  const identity = await getAuthenticatedUser();
+  if (!identity)
+    throw new CustomerAuthorizationError('Authentication is required.', 401);
+  const customer = await findCustomerBySubject(
+    databaseFromEnvironment(),
+    identity.userId,
+  );
+  if (!customer)
+    throw new CustomerAuthorizationError(
+      'An active customer account is required.',
+      403,
+    );
+  return customer;
 }
