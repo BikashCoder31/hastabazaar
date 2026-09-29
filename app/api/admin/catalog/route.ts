@@ -39,6 +39,10 @@ export async function POST(request: Request): Promise<Response> {
         { status: 400 },
       );
     const database = requireDatabase(env as unknown as { DB?: D1Database });
+    const hasImage = Object.prototype.hasOwnProperty.call(body, 'imageId');
+    if (hasImage && (body.kind !== 'category' || !(body.imageId === null || typeof body.imageId === 'string') ||
+      !(body.expectedImageId === null || typeof body.expectedImageId === 'string')))
+      return Response.json({ error: 'Category image and current image baseline must be valid references or null.' }, { status: 400 });
     const form = await validateSellerFormSubmission(database, 'staff.catalog',
       body.formVersion, body.customAnswers, body.idempotencyKey);
     validatedVersionId = form.versionId;
@@ -59,6 +63,7 @@ export async function POST(request: Request): Promise<Response> {
                 : '',
           isActive: Boolean(body.isActive),
           sortOrder: Number(body.sortOrder),
+          ...(hasImage ? { imageId: body.imageId as string | null, expectedImageId: body.expectedImageId as string | null } : {}),
         },
         requestId: body.idempotencyKey,
         now: Date.now(),

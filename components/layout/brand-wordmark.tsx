@@ -9,7 +9,7 @@ export function BrandWordmark({ className }: { className?: string }) {
       <span aria-hidden="true" className="text-[#0b2c4a]">
         Hasta
       </span>
-      <span aria-hidden="true" className="text-[#0b2c4a]">
+      <span aria-hidden="true" className="text-[#a5121c]">
         bazaar
       </span>
     </span>

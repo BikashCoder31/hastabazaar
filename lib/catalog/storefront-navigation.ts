@@ -1,7 +1,7 @@
 export const storefrontNavigation = [
   { label: 'Shop all', href: '/shop' },
-  { label: 'Categories', href: '/#categories' },
-  { label: 'Gifts by occasion', href: '/#occasions' },
+  { label: 'Categories', href: '/categories' },
+  { label: 'Gifts by occasion', href: '/occasions' },
   { label: 'Our makers', href: '/#makers' },
   { label: 'Our standard', href: '/#our-standard' },
   { label: 'Help & support', href: '/help' },

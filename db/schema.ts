@@ -446,6 +446,35 @@ export const categories = sqliteTable(
   ],
 );
 
+export const categoryMedia = sqliteTable('category_media', {
+  id: id(),
+  categoryId: text('category_id').references(() => categories.id, { onDelete: 'restrict' }),
+  objectKey: text('object_key').notNull().unique(),
+  originalName: text('original_name').notNull(),
+  mimeType: text('mime_type', { enum: ['image/webp'] }).notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  width: integer('width').notNull(),
+  height: integer('height').notNull(),
+  contentHash: text('content_hash').notNull(),
+  createdBy: text('created_by').notNull().references(() => users.id, { onDelete: 'restrict' }),
+  requestId: text('request_id').notNull(),
+  createdAt: timestamp('created_at').notNull(),
+}, (table) => [
+  uniqueIndex('idx_category_media_actor_request').on(table.createdBy, table.requestId),
+  index('idx_category_media_category').on(table.categoryId, table.id),
+  check('category_media_size', sql`${table.sizeBytes}>0 AND ${table.sizeBytes}<=5242880`),
+  check('category_media_dimensions', sql`${table.width}>0 AND ${table.width}<=2400 AND ${table.height}>0 AND ${table.height}<=1600`),
+  check('category_media_mime', sql`${table.mimeType}='image/webp'`),
+  check('category_media_hash', sql`length(${table.contentHash})=64`),
+]);
+
+export const categoryImageAssignments = sqliteTable('category_image_assignments', {
+  categoryId: text('category_id').primaryKey().references(() => categories.id, { onDelete: 'restrict' }),
+  mediaId: text('media_id').unique().references(() => categoryMedia.id, { onDelete: 'restrict' }),
+  updatedBy: text('updated_by').notNull().references(() => users.id, { onDelete: 'restrict' }),
+  updatedAt: timestamp('updated_at').notNull(),
+});
+
 export const occasions = sqliteTable(
   'occasions',
   {

@@ -28,6 +28,7 @@ import {
   UserRound,
 } from 'lucide-react';
 
+import { categoryImage as getCategoryImage } from '@/lib/catalog/category-presentation';
 import { ProductSlider } from '@/components/catalog/product-slider';
 import { HomepageHeroCarousel } from '@/components/homepage/homepage-hero-carousel';
 import { HomepageOccasionCarousel } from '@/components/homepage/homepage-occasion-carousel';
@@ -42,6 +43,7 @@ import { requireDatabase } from '@/lib/db/d1';
 import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
 import {
   listActiveHomepagePromotions,
+  listActiveOccasions,
   listHomepageLatestProducts,
   listHomepagePromotedProducts,
   listHomepageTopProducts,
@@ -50,52 +52,6 @@ import {
 import { CURRENT_HERO_RECOVERY_SLIDES } from '@/lib/homepage/hero-slides';
 import { CURRENT_OCCASION_RECOVERY_SLIDES } from '@/lib/homepage/occasion-slides';
 
-const homepageCategoryImages: Record<string, { src: string; alt: string }> = {
-  gifts: {
-    src: '/homepage/category-gifts.webp',
-    alt: 'Handmade crimson Lokta paper gift box',
-  },
-  'home-decor': {
-    src: '/homepage/category-home-living.webp',
-    alt: 'Hand-carved wooden table lamp',
-  },
-  'jewelry-accessories': {
-    src: '/homepage/category-jewellery.webp',
-    alt: 'Handmade silver and turquoise earrings',
-  },
-  'traditional-textiles': {
-    src: '/homepage/category-textiles.webp',
-    alt: 'Folded crimson and indigo Dhaka textile',
-  },
-  'art-paintings': {
-    src: '/homepage/category-art-decor.webp',
-    alt: 'Framed Nepali mountain landscape painting',
-  },
-  pottery: {
-    src: '/homepage/category-pottery.webp',
-    alt: 'Hand-thrown engraved terracotta vase',
-  },
-};
-const stagingHomepageCategories = [
-  { id: 'staging-home-decor', slug: 'home-decor', nameEn: 'Home decor' },
-  {
-    id: 'staging-jewellery',
-    slug: 'jewelry-accessories',
-    nameEn: 'Jewellery',
-  },
-  {
-    id: 'staging-textiles',
-    slug: 'traditional-textiles',
-    nameEn: 'Traditional textiles',
-  },
-  {
-    id: 'staging-art',
-    slug: 'art-paintings',
-    nameEn: 'Art & decor',
-  },
-  { id: 'staging-pottery', slug: 'pottery', nameEn: 'Pottery & ceramics' },
-  { id: 'staging-gifts', slug: 'gifts', nameEn: 'Gifts' },
-];
 const customerShortcuts = [
   {
     title: 'My orders',
@@ -201,6 +157,7 @@ export default async function Home() {
     topProducts,
     activePromotions,
     categories,
+    occasions,
     resolvedHero,
     occasionSlides,
   ] = await Promise.all([
@@ -209,6 +166,7 @@ export default async function Home() {
     listHomepageTopProducts(database),
     listActiveHomepagePromotions(database),
     listPublicDiscoveryCategories(database),
+    listActiveOccasions(database),
     resolveHomepageHero(database),
     resolveHomepageOccasions(database),
   ]);
@@ -223,19 +181,7 @@ export default async function Home() {
     year: 'numeric',
     timeZone: 'Asia/Kathmandu',
   });
-  const configuredHomepageCategories = categories
-    .filter((category) => homepageCategoryImages[category.slug])
-    .slice(0, 6);
-  const runtimeEnvironment = process.env.HASTABAZAAR_RUNTIME_ENV;
-  const showLocalPreviewCategories =
-    runtimeEnvironment === 'local_staging' ||
-    process.env.NODE_ENV === 'development';
-  const homepageCategories =
-    configuredHomepageCategories.length > 0
-      ? configuredHomepageCategories
-      : showLocalPreviewCategories
-        ? stagingHomepageCategories
-        : [];
+  const homepageCategories = categories;
   return (
     <div className="min-h-screen bg-background text-foreground">
       <SiteHeader />
@@ -246,16 +192,21 @@ export default async function Home() {
           <section className="homepage-category-panel">
             <div className="homepage-category-heading">
               <h2>Shop by category</h2>
-              <Link href="/shop" className="homepage-category-all">
+              <Link href="/categories" className="homepage-category-all">
                 View all categories <ArrowRight className="size-4" />
               </Link>
             </div>
             <nav
               aria-label="Shop featured craft categories"
               className="homepage-category-list"
+              style={{
+                gridTemplateColumns: 'none',
+                gridAutoFlow: 'column',
+                gridAutoColumns: 'minmax(7.5rem, 1fr)',
+              }}
             >
               {homepageCategories.map((category) => {
-                const categoryImage = homepageCategoryImages[category.slug];
+                const categoryImage = getCategoryImage(category);
                 return (
                   <Link
                     key={category.id}
@@ -269,20 +220,28 @@ export default async function Home() {
                         'homepage-category-image',
                       )}
                     >
-                      <Image
-                        data-media-mode="cover"
-                        src={categoryImage.src}
-                        alt={categoryImage.alt}
-                        fill
-                        sizes="112px"
-                        className={mediaObjectClass('cover')}
-                      />
+                      {categoryImage ? (
+                        <Image
+                          data-media-mode="cover"
+                          src={categoryImage.src}
+                          unoptimized={Boolean(category.imageId)}
+                          alt={categoryImage.alt}
+                          fill
+                          sizes="112px"
+                          className={mediaObjectClass('cover')}
+                        />
+                      ) : (
+                        <Package
+                          aria-hidden="true"
+                          className="absolute inset-0 m-auto size-9 text-primary/60"
+                        />
+                      )}
                     </span>
                     <span>{category.nameEn}</span>
                   </Link>
                 );
               })}
-              <Link href="/shop" className="homepage-category-item">
+              <Link href="/categories" className="homepage-category-item">
                 <span className="homepage-category-more">
                   <Sparkles aria-hidden="true" />
                 </span>
@@ -479,6 +438,29 @@ export default async function Home() {
               receive completed deliveries.
             </p>
           )}
+        </section>
+
+        <section className="shell pb-8 pt-4" aria-label="Browse gift occasions">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-heading text-2xl">Find your occasion</h2>
+            <Link href="/occasions" className="section-link">
+              All gift occasions <ArrowRight className="size-4" />
+            </Link>
+          </div>
+          <nav
+            aria-label="Gift occasions"
+            className="mt-4 flex flex-wrap gap-2"
+          >
+            {occasions.map((occasion) => (
+              <Link
+                key={occasion.id}
+                href={'/shop?occasion=' + encodeURIComponent(occasion.slug)}
+                className="inline-flex min-h-11 items-center rounded-full border bg-card px-5 py-2 text-sm font-semibold transition-colors hover:border-primary hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                {occasion.nameEn}
+              </Link>
+            ))}
+          </nav>
         </section>
 
         <HomepageOccasionCarousel slides={occasionSlides} />

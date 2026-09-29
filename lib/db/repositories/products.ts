@@ -21,6 +21,7 @@ export interface CategoryRow {
   slug: string;
   nameEn: string;
   nameNe: string | null;
+  imageId?: string | null;
 }
 
 export interface OccasionRow {
@@ -44,32 +45,16 @@ export async function listActiveCategories(
   return result.results;
 }
 
-const launchDiscoveryCategorySlugs = [
-  'gifts',
-  'home-decor',
-  'jewelry-accessories',
-  'traditional-textiles',
-  'lifestyle',
-  'art-paintings',
-  'pottery',
-  'wood-bamboo-craft',
-  'personalized-gifts',
-  'corporate-gifting',
-  'others',
-] as const;
-
 export async function listPublicDiscoveryCategories(
   database: D1Database,
 ): Promise<readonly CategoryRow[]> {
-  const placeholders = launchDiscoveryCategorySlugs.map(() => '?').join(', ');
   const result = await database
     .prepare(
-      `SELECT id, slug, name_en AS nameEn, name_ne AS nameNe
-       FROM categories
-       WHERE is_active = 1 AND slug IN (${placeholders})
-       ORDER BY sort_order ASC, name_en ASC`,
+      `SELECT c.id,c.slug,c.name_en AS nameEn,c.name_ne AS nameNe,a.media_id AS imageId
+       FROM categories c LEFT JOIN category_image_assignments a ON a.category_id=c.id
+       WHERE c.is_active = 1
+       ORDER BY c.sort_order ASC,c.name_en ASC,c.id ASC`,
     )
-    .bind(...launchDiscoveryCategorySlugs)
     .all<CategoryRow>();
   return result.results;
 }

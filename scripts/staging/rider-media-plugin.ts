@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { prepareRiderEvidence } from '../../lib/riders/media-upload';
+import { createLocalCategoryDecoderPlugin } from './category-media-plugin';
 import { assertDisposableStagingContext, readAndVerifyStagingMarker, resolveDisposableStagingPaths } from './guards.mjs';
 
 const approvedProject = 'C:/Users/abinash/.codex/worktrees/hastabazaar-v1-2-1-staging/Hatskala';
@@ -12,7 +13,7 @@ const maxBytes = 5 * 1024 * 1024;
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 /** Explicit local QA only. Production media processing and storage stay unchanged. */
-export async function localRiderMediaPlugin(environment: NodeJS.ProcessEnv, projectRoot: string): Promise<Plugin> {
+export async function localRiderMediaPlugin(environment: NodeJS.ProcessEnv, projectRoot: string): Promise<Plugin[]> {
   if (environment.HASTABAZAAR_LOCAL_RIDER_DECODER !== '1' || environment.NODE_ENV === 'production' || environment.DEPLOY_TARGET)
     throw new Error('The rider decoder requires an explicit nonproduction local serve opt-in.');
   assertDisposableStagingContext(environment);
@@ -22,7 +23,7 @@ export async function localRiderMediaPlugin(environment: NodeJS.ProcessEnv, proj
   const paths = resolveDisposableStagingPaths(project, environment);
   await readAndVerifyStagingMarker(paths);
   if (await realpath(paths.root) !== paths.root) throw new Error('The staging root must not redirect outside the worktree.');
-  return createLocalRiderDecoderPlugin(project, environment.APP_ORIGIN!);
+  return [createLocalRiderDecoderPlugin(project, environment.APP_ORIGIN!), createLocalCategoryDecoderPlugin(project, environment.APP_ORIGIN!)];
 }
 
 /** Internal loopback transport primitive; Vite activation must use the guarded entry above. */

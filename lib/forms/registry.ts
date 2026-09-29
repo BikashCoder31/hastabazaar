@@ -322,7 +322,7 @@ const GOVERNANCE_KEYS = Object.freeze(['action', 'requestId', 'formVersion', 'cu
   'productIds', 'title', 'detail', 'status', 'resolution', 'scope', 'evidenceReference']);
 
 const STAFF_OPERATION_KEYS = Object.freeze({
-  'staff.catalog': ['kind', 'id', 'slug', 'nameEn', 'nameNe', 'sortOrder', 'isActive', 'idempotencyKey', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.catalog': ['kind', 'id', 'slug', 'nameEn', 'nameNe', 'sortOrder', 'isActive', 'imageId', 'expectedImageId', 'idempotencyKey', 'requestId', 'formVersion', 'customAnswers'],
   'staff.product-classification': ['productId', 'categoryId', 'occasionIds', 'idempotencyKey', 'requestId', 'formVersion', 'customAnswers'],
   'staff.exception-work': ['action', 'id', 'version', 'job', 'jobId', 'kind', 'cash', 'cashRecordId', 'owner', 'ownerId', 'next', 'nextAction', 'note', 'resolve', 'evidence', 'sourceReviewed', 'obligationsReviewed', 'followupComplete', 'requestId', 'formVersion', 'customAnswers'],
   'staff.invoice-adjustment': ['invoiceId', 'kind', 'amount', 'amountPaisa', 'reasonCode', 'note', 'requestId', 'formVersion', 'customAnswers'],

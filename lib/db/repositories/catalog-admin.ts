@@ -48,6 +48,7 @@ export interface ManagedTaxonomyRow {
   isActive: number;
   sortOrder: number;
   usageCount: number;
+  imageId?: string | null;
 }
 
 export async function listManagedTaxonomy(database: D1Database): Promise<{
@@ -58,8 +59,11 @@ export async function listManagedTaxonomy(database: D1Database): Promise<{
     database
       .prepare(
         `SELECT categories.id, categories.slug, categories.name_en AS nameEn, categories.name_ne AS nameNe,
-        categories.is_active AS isActive, categories.sort_order AS sortOrder, COUNT(products.id) AS usageCount
-       FROM categories LEFT JOIN products ON products.category_id = categories.id GROUP BY categories.id ORDER BY categories.sort_order, categories.name_en`,
+        categories.is_active AS isActive, categories.sort_order AS sortOrder, COUNT(products.id) AS usageCount,
+        category_image_assignments.media_id AS imageId
+       FROM categories LEFT JOIN products ON products.category_id = categories.id
+       LEFT JOIN category_image_assignments ON category_image_assignments.category_id=categories.id
+       GROUP BY categories.id ORDER BY categories.sort_order, categories.name_en`,
       )
       .all<ManagedTaxonomyRow>(),
     database
@@ -118,6 +122,8 @@ export async function saveTaxonomy(
       nameNe: string;
       isActive: boolean;
       sortOrder: number;
+      imageId?: string | null;
+      expectedImageId?: string | null;
     };
     requestId: string;
     now: number;
@@ -149,6 +155,13 @@ export async function saveTaxonomy(
     throw new CatalogManagementConflictError('Request reference was already used.');
   }
   const input = cleanTaxonomy(options.input);
+  const imageChange = options.input.imageId !== undefined;
+  if (imageChange && (options.kind !== 'category' || !options.form || options.input.expectedImageId === undefined))
+    throw new CatalogManagementConflictError('Category image changes require a validated catalogue form and current image baseline.');
+  for (const value of [options.input.imageId, options.input.expectedImageId]) {
+    if (value !== undefined && value !== null && !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$/.test(value))
+      throw new CatalogManagementConflictError('Category image reference is invalid.');
+  }
   const table = options.kind === 'category' ? 'categories' : 'occasions';
   const id = options.id ?? crypto.randomUUID();
   const existing = options.id
@@ -161,11 +174,29 @@ export async function saveTaxonomy(
     throw new CatalogManagementConflictError(
       `${options.kind === 'category' ? 'Category' : 'Occasion'} not found.`,
     );
+  let previousImageId: string | null = null;
+  if (imageChange) {
+    previousImageId = (await database.prepare('SELECT media_id AS imageId FROM category_image_assignments WHERE category_id=?')
+      .bind(id).first<{ imageId: string | null }>())?.imageId ?? null;
+    if (previousImageId !== options.input.expectedImageId)
+      throw new CatalogManagementConflictError('The category image changed. Refresh the entry before saving.');
+    if (options.input.imageId !== null) {
+      const permitted = await database.prepare(`SELECT id FROM category_media WHERE id=?
+        AND (category_id=? OR (category_id IS NULL AND created_by=?))`).bind(options.input.imageId!, id, options.actorId).first();
+      if (!permitted) throw new CatalogManagementConflictError('Choose your uploaded image or an image already belonging to this category.');
+    }
+  }
   try {
     await database.batch([
       ...(authority?.statements ?? []),
       ...(options.form && existing ? catalogBatchGuard(database,
         `EXISTS(SELECT 1 FROM ${table} WHERE id=?)`, [id]) : []),
+      ...(imageChange ? catalogBatchGuard(database,
+        "COALESCE((SELECT media_id FROM category_image_assignments WHERE category_id=?),'')=?",
+        [id, previousImageId ?? '']) : []),
+      ...(imageChange && options.input.imageId !== null ? catalogBatchGuard(database,
+        `EXISTS(SELECT 1 FROM category_media WHERE id=? AND (category_id=? OR (category_id IS NULL AND created_by=?)))`,
+        [options.input.imageId!, id, options.actorId]) : []),
       existing
         ? database
             .prepare(
@@ -209,10 +240,15 @@ export async function saveTaxonomy(
                 options.now,
                 options.now,
               ),
+      ...(imageChange && options.input.imageId !== null ? [database.prepare('UPDATE category_media SET category_id=? WHERE id=? AND category_id IS NULL')
+        .bind(id, options.input.imageId!)] : []),
+      ...(imageChange ? [database.prepare(`INSERT INTO category_image_assignments(category_id,media_id,updated_by,updated_at)
+        VALUES (?,?,?,?) ON CONFLICT(category_id) DO UPDATE SET media_id=excluded.media_id,updated_by=excluded.updated_by,updated_at=excluded.updated_at`)
+        .bind(id, options.input.imageId!, options.actorId, options.now)] : []),
       database
         .prepare(
           `INSERT INTO audit_logs (id, actor_id, action, subject_type, subject_id, reason, previous_json, next_json, request_id, ip_hash, created_at)
-         VALUES (?, ?, ?, ?, ?, 'Staff managed bilingual catalogue taxonomy', NULL, ?, ?, NULL, ?)`,
+         VALUES (?, ?, ?, ?, ?, 'Staff managed bilingual catalogue taxonomy', ?, ?, ?, NULL, ?)`,
         )
         .bind(
           crypto.randomUUID(),
@@ -220,7 +256,8 @@ export async function saveTaxonomy(
           `catalog.${options.kind}.${existing ? 'updated' : 'created'}`,
           options.kind,
           id,
-          JSON.stringify(options.form ? { ...input, catalogDigest } : input),
+          imageChange && existing ? JSON.stringify({ imageId: previousImageId }) : null,
+          JSON.stringify(options.form ? { ...input, ...(imageChange ? { imageId: options.input.imageId } : {}), catalogDigest } : input),
           options.requestId,
           options.now,
         ),
@@ -230,6 +267,8 @@ export async function saveTaxonomy(
         answers: options.form.answers, now: options.now })] : []),
     ]);
   } catch (error) {
+    if (imageChange && error instanceof Error && /constraint/i.test(error.message))
+      throw new CatalogManagementConflictError('Category details or image changed. Refresh the entry before saving.');
     if (error instanceof Error && error.message.includes('UNIQUE constraint'))
       throw new CatalogManagementConflictError('That slug is already in use.');
     throw error;

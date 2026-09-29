@@ -2071,7 +2071,7 @@ void test('catalogue search combines safe text, category, and occasion filters',
       (await listPublicDiscoveryCategories(db)).map(
         (category) => category.slug,
       ),
-      ['traditional-textiles', 'home-decor', 'others'],
+      ['test', 'traditional-textiles', 'home-decor', 'others'],
     );
     await db
       .prepare(
