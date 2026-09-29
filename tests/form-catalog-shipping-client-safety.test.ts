@@ -10,7 +10,7 @@ const targets = [
   { id: 'shipping.console-action-staff', mode: 'staff', path: '/api/admin/shipping/job-one', submit: 'Apply action', reset: 'Start a new shipping action attempt' },
 ] as const;
 
-async function fixture(target: (typeof targets)[number]) {
+async function fixture(target: (typeof targets)[number], configFailures: ReadonlyMap<string, number> = new Map()) {
   const runtime = process.env.PLAYWRIGHT_MODULE ?? 'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
   const { chromium } = await import(runtime) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<FixtureBrowser> } };
   const bundle = await build({ stdin: { sourcefile: 'shipping-safety-fixture.tsx', resolveDir: process.cwd(), loader: 'tsx', contents: `
@@ -41,6 +41,11 @@ async function fixture(target: (typeof targets)[number]) {
       const formId = decodeURIComponent(path.split('/').at(-1)!);
       const version = (versions.get(formId) ?? 0) + 1;
       versions.set(formId, version);
+      const failure = configFailures.get(formId);
+      if (failure) {
+        await route.fulfill({ status: failure, contentType: 'application/json', body: '{"error":"Form not found"}' });
+        return;
+      }
       if (deferRefresh && formId === target.id) await new Promise<void>((resolve) => { releaseRefresh = resolve; });
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ config: { formId, version, publishedAt: 1, fields: [{ id: 'context_note', key: 'context_note', label: 'Shipping context', type: 'short_text', required: true, order: 0, status: 'active' }] } }) });
     } else if (path === target.path && request.method() === 'POST') {
@@ -49,10 +54,11 @@ async function fixture(target: (typeof targets)[number]) {
       else await route.fulfill({ status: response.status, contentType: 'application/json', body: response.body });
     } else await route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
   });
-  const mount = async () => {
+  const mount = async (fillFields = true) => {
     await page.goto(`https://shipping-safety.test/?mode=${target.mode}`);
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     const form = page.locator(`form[data-form-id="${target.id}"]`);
+    if (!fillFields) return form;
     await form.getByLabel('Shipping context').fill('Fictional shipping context');
     if (target.mode === 'request') await form.locator('[name="orderId"]').selectOption('order-one');
     await form.locator('[name="note"]').fill('Fictional shipping note');
@@ -76,6 +82,42 @@ async function fixture(target: (typeof targets)[number]) {
     success() { lost = false; response = { status: target.mode === 'request' ? 201 : 200, body: target.mode === 'request' ? '{"id":"job-created"}' : '{"ok":true}' }; },
   };
 }
+
+void test('staff shipping loads only its authorized action configuration', async () => {
+  const h = await fixture(targets[2], new Map([['shipping.console-request', 404]]));
+  try {
+    const form = await h.mount();
+    assert.equal(await form.getByRole('button', { name: 'Apply action', exact: true }).isEnabled(), true);
+    assert.equal(h.versions.get('shipping.console-request'), undefined, 'Staff must not request the seller-only form.');
+    assert.equal(h.versions.get('shipping.console-action-staff'), 1);
+    assert.equal(await h.page.getByText('Form configuration is unavailable. Please try again.', { exact: true }).count(), 0);
+  } finally { await h.browser.close(); }
+});
+
+void test('staff shipping keeps genuine active configuration failures visible and blocks actions', async () => {
+  const h = await fixture(targets[2], new Map([['shipping.console-action-staff', 503]]));
+  try {
+    const form = await h.mount(false);
+    await h.page.getByText('Form configuration is unavailable. Please try again.', { exact: true }).waitFor();
+    assert.equal(await form.getByRole('button', { name: 'Apply action', exact: true }).isDisabled(), true);
+    assert.equal(h.versions.get('shipping.console-request'), undefined);
+    assert.equal(h.versions.get('shipping.console-action-staff'), 1);
+    assert.equal(h.bodies.length, 0);
+  } finally { await h.browser.close(); }
+});
+
+void test('seller shipping still loads and submits its request configuration', async () => {
+  const h = await fixture(targets[0]);
+  try {
+    const form = await h.mount();
+    h.success();
+    await h.send(form);
+    assert.equal(h.versions.get('shipping.console-request'), 1);
+    assert.equal(h.versions.get('shipping.console-action-staff'), undefined);
+    assert.equal(h.bodies[0].sourceFormId, 'shipping.console-request');
+    assert.equal(h.bodies[0].formVersion, 1);
+  } finally { await h.browser.close(); }
+});
 
 for (const target of targets) {
   void test(`${target.id} preserves uncertain attempts and fields until declared success`, async () => {

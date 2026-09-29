@@ -34,7 +34,7 @@ export function ShippingConsole({
   const [busy, setBusy] = useState(false);
   const [pendingAttempts, setPendingAttempts] = useState<Record<string, boolean>>({});
   const [requestOrderId, setRequestOrderId] = useState('');
-  const requestCatalog = usePublishedFormConfig('shipping.console-request');
+  const requestCatalog = usePublishedFormConfig('shipping.console-request', { enabled: !admin });
   const actionFormId = admin ? 'shipping.console-action-staff' : 'shipping.console-action-seller';
   const actionCatalog = usePublishedFormConfig(actionFormId);
   const requestAttempt = requestOrderId ? sessionAttemptKey('shipping.console-request', requestOrderId) : null;

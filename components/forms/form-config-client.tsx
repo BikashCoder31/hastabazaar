@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ConfiguredField, CustomFieldType, PublishedFormConfig } from '@/lib/forms/types';
 import { canonicalKey } from '@/lib/forms/submission';
 
-type FormConfigStatus = 'loading' | 'ready' | 'unavailable' | 'stale';
-interface FormConfigState { config: PublishedFormConfig | null; status: FormConfigStatus; message: string; formId: string }
+type FormConfigStatus = 'loading' | 'ready' | 'unavailable' | 'stale' | 'inactive';
+interface FormConfigState { config: PublishedFormConfig | null; status: FormConfigStatus; message: string; formId: string; enabled: boolean }
 const types = new Set<CustomFieldType>(['short_text', 'long_text', 'number', 'date', 'single_choice', 'multiple_choice', 'checkbox', 'email', 'phone']);
 const fieldKeys = new Set(['id', 'key', 'type', 'label', 'helpText', 'placeholder', 'required', 'order', 'choices', 'min', 'max', 'integerOnly', 'status']);
 const configKeys = new Set(['formId', 'fields', 'version', 'publishedAt']);
@@ -109,36 +109,42 @@ export function submissionFeedback(status: number): { stale: boolean; message: s
     : { stale: false, message: 'The form could not be submitted. Please try again.' };
 }
 
-export function usePublishedFormConfig(formId: string) {
-  const [state, setState] = useState<FormConfigState>({ formId, config: null, status: 'loading', message: '' });
+export function usePublishedFormConfig(formId: string, { enabled = true }: { enabled?: boolean } = {}) {
+  const [state, setState] = useState<FormConfigState>({ formId, enabled, config: null, status: enabled ? 'loading' : 'inactive', message: '' });
   const [refreshIndex, setRefreshIndex] = useState(0);
+  if (state.enabled !== enabled) {
+    setState({ formId, enabled, config: null, status: enabled ? 'loading' : 'inactive', message: '' });
+  }
   useEffect(() => {
+    if (!enabled) return;
     const controller = new AbortController();
     fetch(`/api/forms/${encodeURIComponent(formId)}`, { cache: 'no-store', credentials: 'same-origin', signal: controller.signal })
       .then(async (response) => response.ok ? parsePublishedFormConfig(formId, await response.json()) : null)
       .then((config) => {
         if (!controller.signal.aborted) setState((current) => config
-          ? { formId, config, status: 'ready', message: '' }
-          : { formId, config: current.formId === formId ? current.config : null,
+          ? { formId, enabled: true, config, status: 'ready', message: '' }
+          : { formId, enabled: true, config: current.formId === formId ? current.config : null,
             status: 'unavailable', message: 'Form configuration is unavailable. Please try again.' });
       })
       .catch(() => {
-        if (!controller.signal.aborted) setState((current) => ({ formId,
+        if (!controller.signal.aborted) setState((current) => ({ formId, enabled: true,
           config: current.formId === formId ? current.config : null,
           status: 'unavailable', message: 'Form configuration is unavailable. Please try again.' }));
       });
     return () => controller.abort();
-  }, [formId, refreshIndex]);
+  }, [formId, refreshIndex, enabled]);
   const refresh = useCallback(() => {
-    setState((current) => ({ formId, config: current.formId === formId ? current.config : null,
+    if (!enabled) return;
+    setState((current) => ({ formId, enabled: true, config: current.enabled && current.formId === formId ? current.config : null,
       status: 'loading', message: '' }));
     setRefreshIndex((index) => index + 1);
-  }, [formId]);
+  }, [formId, enabled]);
   const handleSubmissionResponse = useCallback((response: Response, code?: string) => {
-    if (response.status === 409 && code !== 'request_id_conflict') setState((current) => current.formId === formId
+    if (enabled && response.status === 409 && code !== 'request_id_conflict') setState((current) => current.enabled && current.formId === formId
       ? { ...current, status: 'stale', message: submissionFeedback(409).message } : current);
     return response.ok;
-  }, [formId]);
-  const current = state.formId === formId ? state : { formId, config: null, status: 'loading' as const, message: '' };
+  }, [formId, enabled]);
+  const current = !enabled ? { formId, enabled: false, config: null, status: 'inactive' as const, message: '' }
+    : state.enabled && state.formId === formId ? state : { formId, enabled: true, config: null, status: 'loading' as const, message: '' };
   return { ...current, canSubmit: current.status === 'ready' && current.config !== null, refresh, handleSubmissionResponse };
 }
