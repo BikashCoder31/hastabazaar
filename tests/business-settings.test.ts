@@ -143,6 +143,7 @@ void test('only supported, validated controls exist and demonstration defaults r
     'managed_adjustment_reason_codes',
     'product_material_suggestions',
     'official_social_links',
+    'product_photo_watermark',
     'first_party_analytics_policy',
     'recently_viewed_policy',
     'homepage_hero_slides',

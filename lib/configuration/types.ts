@@ -1,3 +1,4 @@
+import type { ProductWatermarkPolicy } from '../products/watermark-policy';
 import type { HomepageHeroSlides } from '../homepage/hero-slides';
 import type { HomepageOccasionSlides } from '../homepage/occasion-slides';
 
@@ -19,6 +20,7 @@ export const businessSettingKeys = [
   'managed_adjustment_reason_codes',
   'product_material_suggestions',
   'official_social_links',
+  'product_photo_watermark',
   'first_party_analytics_policy',
   'recently_viewed_policy',
   'homepage_hero_slides',
@@ -94,6 +96,7 @@ export type BusinessSettingValues = Readonly<{
   managed_adjustment_reason_codes: readonly string[];
   product_material_suggestions: readonly string[];
   official_social_links: OfficialSocialLinks;
+  product_photo_watermark: ProductWatermarkPolicy;
   first_party_analytics_policy: FirstPartyAnalyticsPolicy;
   recently_viewed_policy: RecentlyViewedPolicy;
   homepage_hero_slides: HomepageHeroSlides;

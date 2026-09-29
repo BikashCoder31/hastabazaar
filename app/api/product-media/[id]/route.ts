@@ -1,3 +1,5 @@
+import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
+import { productPhotoResponse, productPhotoUnavailable } from '@/lib/products/watermark-delivery';
 import { hasStaffPermissionBySubject } from '@/lib/db/repositories/staff-permissions';
 import { env } from 'cloudflare:workers';
 
@@ -56,6 +58,14 @@ export async function GET(
     }
   }
 
+  if (['image/jpeg', 'image/png', 'image/webp'].includes(media.mimeType)) {
+    try {
+      const setting = await getEffectiveBusinessSetting(database, 'product_photo_watermark', Date.now());
+      return productPhotoResponse({ bucket: requireMediaBucket(bindings), mediaId: id,
+        objectKey: media.objectKey, mimeType: media.mimeType, policy: setting.value,
+        policyVersion: setting.versionId ?? 'default' });
+    } catch { return productPhotoUnavailable(); }
+  }
   const object = await requireMediaBucket(bindings).get(media.objectKey);
   if (!object) return notFound();
   const mimeType = new Set(['image/jpeg', 'image/png', 'image/webp', 'video/mp4']).has(media.mimeType)

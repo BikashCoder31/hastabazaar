@@ -1,5 +1,7 @@
 'use client';
 
+import type { ProductWatermarkPolicy } from '@/lib/products/watermark-policy';
+
 import { useMemo, useRef, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -106,6 +108,10 @@ function displayValue(key: BusinessSettingKey, value: unknown): string {
   if (Array.isArray(value))
     return value.length ? value.join(', ') : 'None configured';
   if (value === null) return 'Not selected';
+  if (key === 'product_photo_watermark' && value && typeof value === 'object') {
+    const policy = value as ProductWatermarkPolicy;
+    return (policy.enabled ? 'Enabled' : 'Disabled') + ' · ' + policy.sizePercent + '% width · ' + policy.opacityPercent + '% opacity · ' + policy.position.replaceAll('-', ' ');
+  }
   if (key === 'official_social_links' && typeof value === 'object')
     return 'Six validated official links';
   if (
@@ -627,6 +633,17 @@ function SettingValueEditor({
         ].map((day) => [day, day] as const)}
       />
     );
+  }
+  if (settingKey === 'product_photo_watermark') {
+    const policy = value as ProductWatermarkPolicy;
+    const update = (next: Partial<ProductWatermarkPolicy>) => onChange({ ...policy, ...next });
+    return <div className="grid gap-4 sm:grid-cols-2">
+      <div className="space-y-2"><Label htmlFor="watermark-enabled">Watermark</Label><NativeSelect id="watermark-enabled" className="w-full" value={policy.enabled ? 'enabled' : 'disabled'} onChange={event => update({ enabled: event.target.value === 'enabled' })}><NativeSelectOption value="enabled">Enabled</NativeSelectOption><NativeSelectOption value="disabled">Disabled</NativeSelectOption></NativeSelect></div>
+      <div className="space-y-2"><Label htmlFor="watermark-position">Position</Label><NativeSelect id="watermark-position" className="w-full" value={policy.position} onChange={event => update({ position: event.target.value as ProductWatermarkPolicy['position'] })}>{(['bottom-right','bottom-left','top-right','top-left'] as const).map(position => <NativeSelectOption key={position} value={position}>{position.replaceAll('-', ' ')}</NativeSelectOption>)}</NativeSelect></div>
+      <div className="space-y-2"><Label htmlFor="watermark-size">Width (% of photo, 8–35)</Label><Input id="watermark-size" type="number" min={8} max={35} step={1} value={policy.sizePercent} onChange={event => update({ sizePercent: Number(event.target.value) })}/></div>
+      <div className="space-y-2"><Label htmlFor="watermark-opacity">Opacity (%, 10–80)</Label><Input id="watermark-opacity" type="number" min={10} max={80} step={1} value={policy.opacityPercent} onChange={event => update({ opacityPercent: Number(event.target.value) })}/></div>
+      <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">Customer copies carry the HastaBazaar wordmark. Originals stay private. Saving updates existing uploaded product photos as well as new uploads; videos, category images, homepage media, and customer reviews are unaffected. Sellers see the current customer photo before submitting.</p>
+    </div>;
   }
   if (settingKey === 'official_social_links') {
     const links = value as OfficialSocialLinks;

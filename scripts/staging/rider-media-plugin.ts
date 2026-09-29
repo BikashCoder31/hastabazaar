@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { prepareRiderEvidence } from '../../lib/riders/media-upload';
+import { createLocalProductWatermarkPlugin } from './product-watermark-plugin';
 import { createLocalCategoryDecoderPlugin } from './category-media-plugin';
 import { assertDisposableStagingContext, readAndVerifyStagingMarker, resolveDisposableStagingPaths } from './guards.mjs';
 
@@ -23,7 +24,7 @@ export async function localRiderMediaPlugin(environment: NodeJS.ProcessEnv, proj
   const paths = resolveDisposableStagingPaths(project, environment);
   await readAndVerifyStagingMarker(paths);
   if (await realpath(paths.root) !== paths.root) throw new Error('The staging root must not redirect outside the worktree.');
-  return [createLocalRiderDecoderPlugin(project, environment.APP_ORIGIN!), createLocalCategoryDecoderPlugin(project, environment.APP_ORIGIN!)];
+  return [createLocalRiderDecoderPlugin(project, environment.APP_ORIGIN!), createLocalCategoryDecoderPlugin(project, environment.APP_ORIGIN!), createLocalProductWatermarkPlugin(project, environment.APP_ORIGIN!)];
 }
 
 /** Internal loopback transport primitive; Vite activation must use the guarded entry above. */

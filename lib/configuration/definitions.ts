@@ -1,3 +1,4 @@
+import { defaultProductWatermarkPolicy, validateProductWatermarkPolicy } from '../products/watermark-policy';
 import {
   businessSettingKeys,
   type BusinessSettingDefinition,
@@ -362,6 +363,19 @@ const programModes: readonly ManagedMakerProgramMode[] = [
 ];
 
 const definitions = [
+  {
+    key: 'product_photo_watermark',
+    label: 'Product photo watermark',
+    description: 'Adds a subtle HastaBazaar wordmark to customer photo copies. Private originals are preserved. Changes also apply to existing uploaded product photos.',
+    defaultValue: defaultProductWatermarkPolicy,
+    sensitivity: 'public_content',
+    changeControl: 'simple',
+    effectiveMode: 'immediate',
+    snapshotOnTransaction: false,
+    affectedSurfaces: ['product_photos', 'seller_preview'],
+    requiredCapability: null,
+    validate: validateProductWatermarkPolicy,
+  },
   {
     key: 'independent_seller_commission_bps',
     label: 'Independent seller commission',

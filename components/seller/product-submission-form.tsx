@@ -114,6 +114,43 @@ function useFilePreview(file: File | null): string | null {
   return url;
 }
 
+function useProductPhotoPreview(file: File | null) {
+  const [attempt, setAttempt] = useState(0);
+  const [state, setPreview] = useState<{ file: File | null; url: string | null; error: string | null; pending: boolean }>({ file: null, url: null, error: null, pending: false });
+  useEffect(() => {
+    if (!file) return;
+    const controller = new AbortController();
+    let previewUrl: string | null = null;
+    queueMicrotask(() => { if (!controller.signal.aborted) setPreview({ file, url: null, error: null, pending: true }); });
+    const form = new FormData(); form.set('file', file);
+    void fetch('/api/seller/product-photo-preview', { method: 'POST', body: form, signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({})) as { error?: string };
+          throw new Error(body.error || 'Customer preview is unavailable. Try again shortly.');
+        }
+        if (response.headers.get('content-type') !== 'image/webp') throw new Error('Customer preview is unavailable.');
+        const blob = await response.blob();
+        if (controller.signal.aborted) return;
+        previewUrl = URL.createObjectURL(blob);
+        setPreview({ file, url: previewUrl, error: null, pending: false });
+      })
+      .catch(error => {
+        if (!controller.signal.aborted) setPreview({ file, url: null, pending: false, error: error instanceof Error ? error.message : 'Customer preview is unavailable.' });
+      });
+    return () => { controller.abort(); if (previewUrl) URL.revokeObjectURL(previewUrl); };
+  }, [file, attempt]);
+  const current = file && state.file === file ? state : { url: null, error: null, pending: Boolean(file) };
+  return { ...current, retry: () => setAttempt(value => value + 1) };
+}
+
+function ProductPreviewStatus({ preview, selected }: { preview: ReturnType<typeof useProductPhotoPreview>; selected: boolean }) {
+  if (!selected) return null;
+  return <div className="mt-2 text-xs leading-5" aria-live="polite">
+    {preview.pending ? <p className="text-muted-foreground">Preparing customer photo preview…</p> : preview.error ? <div className="space-y-2"><p className="text-destructive">{preview.error}</p><Button type="button" variant="outline" size="sm" onClick={preview.retry}>Retry customer preview</Button></div> : <p className="text-muted-foreground">Customer photo preview · original preserved privately</p>}
+  </div>;
+}
+
 function MaterialsEditor({initial,suggestions}:{initial:string; suggestions:readonly string[]}){
   const [materials,setMaterials]=useState(()=>initial.split(',').map(value=>value.trim()).filter(Boolean));
   const [candidate,setCandidate]=useState('');
@@ -135,24 +172,25 @@ function ImageUploadSlot({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
-  const preview = useFilePreview(file);
+  const previewState = useProductPhotoPreview(file);
+  const preview = previewState.url;
   return (
     <div className="rounded-xl border p-4">
       <div
-        data-media-frame="cover"
+        data-media-frame="contain"
         className={mediaFrameClass(
-          'cover',
+          'contain',
           'aspect-[4/3] overflow-hidden rounded-lg bg-muted',
         )}
       >
         {preview ? (
           // eslint-disable-next-line @next/next/no-img-element -- browser object URLs cannot use the Next image optimizer.
           <img
-            data-media-mode="cover"
+            data-media-mode="contain"
             src={preview}
-            alt="Selected product preview"
-            title="Selected product preview"
-            className={mediaObjectClass('cover')}
+            alt="Customer product preview"
+            title="Customer product photo preview"
+            className={mediaObjectClass('contain')}
           />
         ) : (
           <div className="grid size-full place-items-center text-sm text-muted-foreground">
@@ -162,6 +200,7 @@ function ImageUploadSlot({
           </div>
         )}
       </div>
+      <ProductPreviewStatus preview={previewState} selected={Boolean(file)} />
       <Input
         ref={inputRef}
         className="mt-3 h-11 py-2"
@@ -207,19 +246,20 @@ function ExistingImageEditor({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [replacement, setReplacement] = useState<File | null>(null);
-  const preview = useFilePreview(replacement);
+  const previewState = useProductPhotoPreview(replacement);
+  const preview = previewState.url;
   return (
     <div className={`rounded-xl border p-4 ${removed ? 'opacity-60' : ''}`}>
       <div
-        data-media-frame="cover"
+        data-media-frame="contain"
         className={mediaFrameClass(
-          'cover',
+          'contain',
           'aspect-[4/3] overflow-hidden rounded-lg bg-muted',
         )}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- browser object URLs and authenticated media routes cannot use the Next image optimizer. */}
         <img
-          data-media-mode="cover"
+          data-media-mode="contain"
           src={preview ?? `/api/product-media/${media.id}`}
           alt={
             preview
@@ -227,9 +267,10 @@ function ExistingImageEditor({
               : `Saved product image: ${media.originalName}`
           }
           title={preview ? 'Replacement image preview' : media.originalName}
-          className={mediaObjectClass('cover')}
+          className={mediaObjectClass('contain')}
         />
       </div>
+      <ProductPreviewStatus preview={previewState} selected={Boolean(replacement)} />
       <p className="mt-2 truncate text-xs text-muted-foreground">
         {media.originalName}
       </p>
