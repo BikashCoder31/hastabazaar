@@ -12,6 +12,8 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 
+import styles from '@/components/layout/site-footer.module.css';
+
 import { getBusinessSettingDefinition } from '@/lib/configuration/definitions';
 import type { OfficialSocialLinks } from '@/lib/configuration/types';
 import { requireDatabase } from '@/lib/db/d1';
@@ -52,7 +54,7 @@ export async function SiteFooter() {
   const socialLinks = await officialLinks();
 
   return (
-    <footer className="site-footer">
+    <footer className={`site-footer ${styles.footer}`}>
       <div className="shell site-footer-cta-shell">
         <div className="site-footer-cta">
           <div>
@@ -133,8 +135,8 @@ export async function SiteFooter() {
 
           <FooterGroup title="Shop & discover">
             <FooterLink href="/shop">Shop all</FooterLink>
-            <FooterLink href="/#categories">Categories</FooterLink>
-            <FooterLink href="/#occasions">Gifts by occasion</FooterLink>
+            <FooterLink href="/categories">Categories</FooterLink>
+            <FooterLink href="/occasions">Gifts by occasion</FooterLink>
             <FooterLink href="/#makers">Our makers</FooterLink>
             <FooterLink href="/#our-standard">Our standard</FooterLink>
           </FooterGroup>
