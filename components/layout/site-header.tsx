@@ -13,6 +13,7 @@ import {
 
 import { getAuthenticatedUser, signInPath } from '@/app/auth';
 import { BrandWordmark } from '@/components/layout/brand-wordmark';
+import { RewardsShortcut } from '@/components/layout/rewards-shortcut';
 import { MobileNavigation } from '@/components/layout/mobile-navigation';
 import { Input } from '@/components/ui/input';
 import { storefrontNavigation } from '@/lib/catalog/storefront-navigation';
@@ -72,6 +73,10 @@ export async function SiteHeader() {
 
           <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
             <HeaderOrdersLink authenticated={Boolean(identity)} />
+            <RewardsShortcut
+              subjectId={identity?.userId ?? null}
+              href={identity ? '/account/rewards' : signInPath('/account/rewards')}
+            />
             {identity ? (
               <Link
                 href="/account/wishlist"

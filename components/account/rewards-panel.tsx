@@ -382,6 +382,7 @@ export function RewardsPanel({
           throw new Error(
             'The claim response could not be verified. Retry the original attempt.',
           );
+        window.dispatchEvent(new Event('hastabazaar:rewards-updated'));
         setView((previous) => ({
           ...previous,
           balancePoints: data.balancePoints,

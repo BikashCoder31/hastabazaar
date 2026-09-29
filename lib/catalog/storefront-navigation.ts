@@ -9,6 +9,7 @@ export const storefrontNavigation = [
 
 export const customerNavigation = [
   { label: 'My account', href: '/account' },
+  { label: 'Daily rewards', href: '/account/rewards' },
   { label: 'My profile', href: '/account/profile' },
   { label: 'My orders', href: '/account/orders' },
   { label: 'My wallet', href: '/account/wallet' },

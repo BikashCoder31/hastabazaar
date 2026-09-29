@@ -295,6 +295,7 @@ void test('paused earning leaves existing points redeemable', async () => {
 void test('mounted daily claim by keyboard updates balance and focused errors retain attempt', async () => {
   const h = await mounted();
   try {
+    await h.page.evaluate(() => { document.body.dataset.rewardNotifications = '0'; window.addEventListener('hastabazaar:rewards-updated', () => { document.body.dataset.rewardNotifications = String(Number(document.body.dataset.rewardNotifications) + 1); }); });
     const button = h.page.getByRole('button', {
       name: 'Claim daily points',
       exact: true,
@@ -308,6 +309,7 @@ void test('mounted daily claim by keyboard updates balance and focused errors re
       await h.page.evaluate(() => document.activeElement?.getAttribute('role')),
       'alert',
     );
+    assert.equal(await h.page.evaluate(() => document.body.dataset.rewardNotifications), '0');
     const original = h.requests[0].body;
     assert.deepEqual(Object.keys(original).sort(), [
       'customAnswers',
@@ -323,6 +325,7 @@ void test('mounted daily claim by keyboard updates balance and focused errors re
       .getByText(/10 points claimed/)
       .waitFor();
     await h.page.getByText('210 points', { exact: true }).waitFor();
+    assert.equal(await h.page.evaluate(() => document.body.dataset.rewardNotifications), '1');
     assert.deepEqual(h.requests[1].body, original);
     assert.equal(await h.page.evaluate(() => sessionStorage.length), 0);
     assert.deepEqual(h.errors, []);
