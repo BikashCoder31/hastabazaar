@@ -32,7 +32,7 @@ void test('homepage hero media states share one responsive cover contract', asyn
 });
 
 void test('homepage editorial fill media uses responsive cover frames and purpose sizes', async () => {
-  const [occasion, homepage, styles] = await Promise.all([
+  const [occasion, homepage, craftDetails, styles] = await Promise.all([
     readFile(
       new URL(
         '../components/homepage/homepage-occasion-carousel.tsx',
@@ -41,6 +41,7 @@ void test('homepage editorial fill media uses responsive cover frames and purpos
       'utf8',
     ),
     readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../components/homepage/craft-details.tsx', import.meta.url), 'utf8'),
     readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
   ]);
 
@@ -49,10 +50,11 @@ void test('homepage editorial fill media uses responsive cover frames and purpos
   assert.match(occasion, /sizes=\{mediaSizes\.occasion\}/);
   assert.match(occasion, /mediaObjectClass\('cover'/);
 
-  assert.equal((homepage.match(/data-media-frame="cover"/g) ?? []).length, 2);
-  assert.equal((homepage.match(/data-media-mode="cover"/g) ?? []).length, 2);
+  const editorialSources = homepage + craftDetails;
+  assert.equal((editorialSources.match(/data-media-frame="cover"/g) ?? []).length, 2);
+  assert.equal((editorialSources.match(/data-media-mode="cover"/g) ?? []).length, 2);
   assert.match(homepage, /sizes="112px"/);
-  assert.match(homepage, /sizes=\{mediaSizes\.editorial\}/);
+  assert.match(craftDetails, /sizes=\{mediaSizes\.editorial\}/);
   assert.match(homepage, /mediaObjectClass\('cover'/);
 
   assert.match(styles, /\.homepage-hero-grid\s*\{[\s\S]*?max-width:\s*96rem/);

@@ -31,12 +31,12 @@ import {
 import { ProductSlider } from '@/components/catalog/product-slider';
 import { HomepageHeroCarousel } from '@/components/homepage/homepage-hero-carousel';
 import { HomepageOccasionCarousel } from '@/components/homepage/homepage-occasion-carousel';
+import { CraftDetails } from '@/components/homepage/craft-details';
 import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
 import {
   mediaFrameClass,
   mediaObjectClass,
-  mediaSizes,
 } from '@/lib/media/responsive-media';
 import { requireDatabase } from '@/lib/db/d1';
 import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
@@ -483,54 +483,7 @@ export default async function Home() {
 
         <HomepageOccasionCarousel slides={occasionSlides} />
 
-        <section id="makers" className="shell py-10 sm:py-16">
-          <div className="homepage-maker-story">
-            <div
-              data-media-frame="cover"
-              className={mediaFrameClass('cover', 'homepage-maker-media')}
-            >
-              <Image
-                data-media-mode="cover"
-                src="/homepage/nepali-maker-workshop.webp"
-                alt="An artisan’s hands painting a geometric pattern onto a terracotta vase in a Nepali workshop"
-                fill
-                sizes={mediaSizes.editorial}
-                className={mediaObjectClass('cover')}
-              />
-              <div className="homepage-maker-caption">
-                <span>Made by hand</span>
-                <strong>Remembered by name</strong>
-              </div>
-            </div>
-            <div className="homepage-maker-content">
-              <p className="homepage-kicker">
-                <span aria-hidden="true" />
-                Meet the hands behind the craft
-              </p>
-              <h2 className="homepage-maker-title">
-                Every craft begins
-                <br />
-                with a pair of hands.
-              </h2>
-              <p className="homepage-maker-copy">
-                Meet the people shaping Nepal’s clay, wood, metal and textile
-                traditions. Their process, place and perspective are part of
-                every piece they create.
-              </p>
-              <div className="homepage-maker-actions">
-                <Link href="/shop" className="homepage-primary-action">
-                  Discover their work <ArrowRight className="size-4" />
-                </Link>
-                <Link href="/sell" className="homepage-secondary-action">
-                  Share your craft <ArrowUpRight className="size-4" />
-                </Link>
-              </div>
-              <p className="homepage-maker-note">
-                Maker stories stay connected to the work they create.
-              </p>
-            </div>
-          </div>
-        </section>
+        <CraftDetails />
 
         <section id="our-standard" className="shell py-10 sm:py-14">
           <div className="max-w-2xl">
