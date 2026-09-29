@@ -1,16 +1,21 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { registerHooks } from 'node:module';
 import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { BusinessSettingsManager } from '../components/admin/business-settings-manager';
-import { ProgramManagement } from '../components/admin/program-management';
 import {
   assertBusinessSettingPublicationReady,
   managedMakerCapabilities,
   managedMakerModelIsLiveSelectable,
 } from '../lib/configuration/capabilities';
+
+(globalThis as unknown as { settingsPresentationCreateElement: typeof createElement }).settingsPresentationCreateElement = createElement;
+registerHooks({ resolve(specifier, context, nextResolve) {
+  return specifier === 'next/link' ? { url: 'data:text/javascript,export default function Link({children,...props}){return globalThis.settingsPresentationCreateElement("a",props,children)}', shortCircuit: true } : nextResolve(specifier, context);
+} });
 
 void test('Business Settings presents current, draft, scheduled, preview, impact, and immutable history', () => {
   const html = renderToStaticMarkup(
@@ -84,7 +89,8 @@ void test('Business Settings presents current, draft, scheduled, preview, impact
   assert.doesNotMatch(html, /maker entitlement rate/i);
 });
 
-void test('Program Management honestly keeps both Managed Maker models in Applications Only', () => {
+void test('Program Management honestly keeps both Managed Maker models in Applications Only', async () => {
+  const { ProgramManagement } = await import('../components/admin/program-management');
   const html = renderToStaticMarkup(
     createElement(ProgramManagement, {
       programMode: 'applications_only',
@@ -99,7 +105,7 @@ void test('Program Management honestly keeps both Managed Maker models in Applic
     'Live activation unavailable',
     'profiles',
     'product drafts',
-    'not valid for production',
+    'Environment unverified',
   ]) {
     assert.match(html, new RegExp(text, 'i'));
   }

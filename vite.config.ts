@@ -2,6 +2,7 @@ import tailwindcss from '@tailwindcss/postcss';
 import { fileURLToPath } from 'node:url';
 import vinext from 'vinext';
 import { defineConfig } from 'vite';
+import { localPreviewBindings } from './lib/staging/local-preview-bindings';
 import hostingConfig from './.openai/hosting.json' with { type: 'json' };
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
@@ -113,7 +114,7 @@ export default defineConfig(async ({ command }) => {
       sites(),
       cloudflare({
         viteEnvironment: { name: 'rsc', childEnvironments: ['ssr'] },
-        config: localBindingConfig,
+        config: { ...localBindingConfig, vars: localPreviewBindings(process.env, command) },
         remoteBindings: false,
         persistState:
           process.env.HASTABAZAAR_RUNTIME_ENV === 'local_staging'

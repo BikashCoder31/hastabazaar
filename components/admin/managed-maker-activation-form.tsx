@@ -60,13 +60,13 @@ export function ManagedMakerActivationForm({ sellerId }: { sellerId: string }) {
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Activation failed.'); }
     finally { setBusy(false); }
   }
-  return <form data-form-id="staff.managed-maker-activation"
+  return <form id="managed-maker-activation" data-form-id="staff.managed-maker-activation"
     className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:bg-amber-950/20"
     onSubmit={submit}>
     <h3 className="font-semibold">Local-staging activation only</h3>
     <a className="text-sm underline" href={`/admin/staff-form-history?kind=managed-maker-activation&id=${encodeURIComponent(sellerId)}`}>View activation form history</a>
     <p>This form is rejected outside the guarded disposable environment. All references must be fictional.</p>
-    <label className="block">Implemented commercial model<select name="model" required className="mt-1 w-full rounded border p-2"><option value="managed_sale_linked_percentage_v1">Sale-linked: 9% platform retention / 91% maker entitlement</option><option value="managed_fixed_supplier_price_v1">Fixed supplier price: owed at documented supply acceptance; no automatic 9%</option></select></label>
+    <label className="block">Implemented commercial model<select name="model" required className="mt-1 w-full rounded border p-2"><option value="managed_sale_linked_percentage_v1">Sale-linked percentage settlement (configured rate applies)</option><option value="managed_fixed_supplier_price_v1">Fixed supplier price: owed at documented supply acceptance; no automatic percentage deduction</option></select></label>
     <label className="block">Simulated legal seller reference<input name="legalSellerReference" required minLength={3} maxLength={191} className="mt-1 w-full rounded border p-2" defaultValue="SIM-LEGAL-SELLER"/></label>
     <label className="block">Simulated invoice issuer reference<input name="invoiceIssuerReference" required minLength={3} maxLength={191} className="mt-1 w-full rounded border p-2" defaultValue="SIM-INVOICE-ISSUER"/></label>
     <label className="block">Simulated payout beneficiary<input name="payoutBeneficiaryReference" required minLength={3} maxLength={191} className="mt-1 w-full rounded border p-2" defaultValue="SIM-MAKER-ACCOUNT"/></label>

@@ -103,7 +103,7 @@ export function ManagedProgramReview({ sellerId, workspace }: { sellerId: string
     finally { setBusy(false); }
   }
 
-  if (workspace.participationRoute !== 'managed_maker' && workspace.transitions.length === 0) return null;
+  if (workspace.participationRoute !== 'managed_maker' && workspace.transitions.length === 0 && workspace.supplies.length === 0) return null;
   const fields = (id: ProgramFormId) => catalogs[id].config
     ? <ConfiguredFields config={catalogs[id].config} baseKeys={baseKeys[id]} /> : null;
   const formMessage = (id: ProgramFormId, parentId: string, action: string) => {
@@ -121,7 +121,7 @@ export function ManagedProgramReview({ sellerId, workspace }: { sellerId: string
   };
   const disabled = (id: ProgramFormId) => busy || !catalogs[id].canSubmit;
 
-  return <section className="space-y-5 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-sm dark:bg-amber-950/20">
+  return <section id="managed-program-records" className="space-y-5 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-sm dark:bg-amber-950/20">
     <div><p className="eyebrow">Simulation-only controls</p><h2 className="font-heading text-2xl">Managed program records</h2><p className="mt-2 leading-6">Possession, inspection, title/risk records, supplier obligation, and payment recording remain separate. New supplier payment preparation is approved when saved. These controls are rejected outside local staging/test.</p></div>
     <nav className="flex flex-wrap gap-3 text-sm" aria-label="Managed program form history">
       <Link className="underline" href="/admin/staff-form-history?kind=managed-supply-decision">Supply decisions</Link>
