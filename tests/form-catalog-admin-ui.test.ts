@@ -684,10 +684,11 @@ void test('both admin pages deny ordinary Admin before reading catalog data', as
     assert.equal(reads, 0, entry);
     context.catalogPageRole = 'super_admin';
     const html = renderToStaticMarkup(await pageModule.exports.default({ params: Promise.resolve({ formId: 'account.profile' }) }) as React.ReactElement);
-    assert.match(html, entry.includes('[formId]') ? /Form capability/ : /Form catalog/);
+    assert.match(html, entry.includes('[formId]') ? /Version history/ : /Form catalog/);
     if (entry.includes('[formId]')) {
-      assert.match(html, /Super Admin · Form editor/);
-      assert.match(html, /customer · collection · \/api\/account\/profile/);
+      assert.match(html, /Super Admin · Form history/);
+      assert.match(html, /unavailable for editing/);
+      assert.doesNotMatch(html, /Save draft|Publish draft/);
       assert.doesNotMatch(html, /Â/);
     }
     assert.equal(reads, 1, entry);

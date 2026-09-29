@@ -66,7 +66,7 @@ async function fixture() {
   return sqlite;
 }
 
-const formId = 'account.profile';
+const formId = 'public.contact';
 const params = { params: Promise.resolve({ formId }) };
 const config = { formId, fields: [] };
 function request(path: string, body?: unknown, origin = 'http://localhost:3000') {
@@ -91,7 +91,7 @@ void test('guest, Customer, Admin, and disabled claimed Super Admin cannot manag
     for (const [id, role, status] of [[null, null, 401], ['customer', 'customer', 403], ['admin', 'admin', 403], ['disabled', 'super_admin', 403]] as const) {
       globalThis.formCatalogRouteActor = id ? { id, role: role! } : null;
       assert.equal((await index.GET()).status, status);
-      assert.equal((await draft.POST(request('/api/admin/forms/account.profile/draft', { config, expectedPublishedVersion: 0, reason: 'Try', requestId: `deny-${id}` }), params)).status, status);
+      assert.equal((await draft.POST(request('/api/admin/forms/public.contact/draft', { config, expectedPublishedVersion: 0, reason: 'Try', requestId: `deny-${id}` }), params)).status, status);
     }
     assert.equal(count(sqlite, 'form_config_versions'), 0);
     assert.equal(count(sqlite, 'audit_logs'), 0);
@@ -107,19 +107,19 @@ void test('active Super Admin drafts, publishes, lists, reads, and restores with
     const draftRoute = await import('../app/api/admin/forms/[formId]/draft/route');
     const publishRoute = await import('../app/api/admin/forms/[formId]/publish/route');
     const restoreRoute = await import('../app/api/admin/forms/[formId]/restore/route');
-    const draftResponse = await draftRoute.POST(request('/api/admin/forms/account.profile/draft', { config, expectedPublishedVersion: 0, reason: 'Create baseline', requestId: 'route-d1' }), params);
+    const draftResponse = await draftRoute.POST(request('/api/admin/forms/public.contact/draft', { config, expectedPublishedVersion: 0, reason: 'Create baseline', requestId: 'route-d1' }), params);
     assert.equal(draftResponse.status, 201);
     const draft = (await draftResponse.json() as { draft: { id: string; revision: number } }).draft;
     assert.equal(draft.revision, 1);
-    const publishResponse = await publishRoute.POST(request('/api/admin/forms/account.profile/publish', { draftId: draft.id, expectedDraftRevision: 1, expectedPublishedVersion: 0, reason: 'Approve baseline', requestId: 'route-p1' }), params);
+    const publishResponse = await publishRoute.POST(request('/api/admin/forms/public.contact/publish', { draftId: draft.id, expectedDraftRevision: 1, expectedPublishedVersion: 0, reason: 'Approve baseline', requestId: 'route-p1' }), params);
     assert.equal(publishResponse.status, 200);
     const published = (await publishResponse.json() as { published: { version: number } }).published;
     assert.equal(published.version, 1);
     assert.equal((await index.GET()).status, 200);
-    const detail = await item.GET(request('/api/admin/forms/account.profile'), params);
+    const detail = await item.GET(request('/api/admin/forms/public.contact'), params);
     assert.equal(detail.status, 200);
     assert.equal((await detail.json() as { versions: unknown[] }).versions.length, 1);
-    const restoredResponse = await restoreRoute.POST(request('/api/admin/forms/account.profile/restore', { sourceVersion: 1, expectedPublishedVersion: 1, reason: 'Reissue baseline', requestId: 'route-r2' }), params);
+    const restoredResponse = await restoreRoute.POST(request('/api/admin/forms/public.contact/restore', { sourceVersion: 1, expectedPublishedVersion: 1, reason: 'Reissue baseline', requestId: 'route-r2' }), params);
     assert.equal(restoredResponse.status, 200);
     assert.equal((await restoredResponse.json() as { published: { version: number } }).published.version, 2);
     const audit = sqlite.prepare('SELECT actor_id,action,reason,request_id FROM audit_logs ORDER BY created_at,id').all() as { actor_id: string; action: string; reason: string; request_id: string }[];
@@ -136,16 +136,16 @@ void test('stale versions conflict; malformed and oversized mutations do not wri
     actor('sa', 'super_admin');
     const draftRoute = await import('../app/api/admin/forms/[formId]/draft/route');
     const publishRoute = await import('../app/api/admin/forms/[formId]/publish/route');
-    const initial = await draftRoute.POST(request('/api/admin/forms/account.profile/draft', { config, expectedPublishedVersion: 0, reason: 'Initial', requestId: 'validation-d1' }), params);
+    const initial = await draftRoute.POST(request('/api/admin/forms/public.contact/draft', { config, expectedPublishedVersion: 0, reason: 'Initial', requestId: 'validation-d1' }), params);
     const draftId = (await initial.json() as { draft: { id: string } }).draft.id;
-    assert.equal((await publishRoute.POST(request('/api/admin/forms/account.profile/publish', { draftId, expectedDraftRevision: 1, expectedPublishedVersion: 0, reason: 'Publish', requestId: 'validation-p1' }), params)).status, 200);
-    assert.equal((await draftRoute.POST(request('/api/admin/forms/account.profile/draft', { config, expectedPublishedVersion: 0, reason: 'Stale', requestId: 'validation-stale' }), params)).status, 409);
-    assert.equal((await draftRoute.POST(request('/api/admin/forms/account.profile/draft', { config, expectedPublishedVersion: 1, reason: 'Missing ID' }), params)).status, 400);
-    assert.equal((await draftRoute.POST(request('/api/admin/forms/account.profile/draft', { config, expectedPublishedVersion: 1, requestId: 'validation-no-reason' }), params)).status, 400);
-    const malformed = new Request('http://localhost:3000/api/admin/forms/account.profile/draft', { method: 'POST', headers: { origin: 'http://localhost:3000' }, body: '{oops' });
+    assert.equal((await publishRoute.POST(request('/api/admin/forms/public.contact/publish', { draftId, expectedDraftRevision: 1, expectedPublishedVersion: 0, reason: 'Publish', requestId: 'validation-p1' }), params)).status, 200);
+    assert.equal((await draftRoute.POST(request('/api/admin/forms/public.contact/draft', { config, expectedPublishedVersion: 0, reason: 'Stale', requestId: 'validation-stale' }), params)).status, 409);
+    assert.equal((await draftRoute.POST(request('/api/admin/forms/public.contact/draft', { config, expectedPublishedVersion: 1, reason: 'Missing ID' }), params)).status, 400);
+    assert.equal((await draftRoute.POST(request('/api/admin/forms/public.contact/draft', { config, expectedPublishedVersion: 1, requestId: 'validation-no-reason' }), params)).status, 400);
+    const malformed = new Request('http://localhost:3000/api/admin/forms/public.contact/draft', { method: 'POST', headers: { origin: 'http://localhost:3000' }, body: '{oops' });
     assert.equal((await draftRoute.POST(malformed, params)).status, 400);
-    assert.equal((await draftRoute.POST(request('/api/admin/forms/account.profile/draft', { config, expectedPublishedVersion: 1, reason: 'Large', requestId: 'validation-large', padding: 'x'.repeat(80_000) }), params)).status, 413);
-    assert.equal((await draftRoute.POST(request('/api/admin/forms/account.profile/draft', { config, expectedPublishedVersion: 1, reason: 'Cross site', requestId: 'validation-cross' }, 'https://evil.example'), params)).status, 403);
+    assert.equal((await draftRoute.POST(request('/api/admin/forms/public.contact/draft', { config, expectedPublishedVersion: 1, reason: 'Large', requestId: 'validation-large', padding: 'x'.repeat(80_000) }), params)).status, 413);
+    assert.equal((await draftRoute.POST(request('/api/admin/forms/public.contact/draft', { config, expectedPublishedVersion: 1, reason: 'Cross site', requestId: 'validation-cross' }, 'https://evil.example'), params)).status, 403);
     assert.equal(count(sqlite, 'form_config_versions'), 1);
     assert.equal(count(sqlite, 'audit_logs'), 2);
   } finally { sqlite.close(); }
@@ -154,14 +154,12 @@ void test('stale versions conflict; malformed and oversized mutations do not wri
 void test('public config read reveals no protected IDs and published-only data has no-store', async () => {
   const sqlite = await fixture();
   try {
+    const profileId = 'account.profile';
+    const params = { params: Promise.resolve({ formId: profileId }) };
     actor('sa', 'super_admin');
-    const draftRoute = await import('../app/api/admin/forms/[formId]/draft/route');
-    const publishRoute = await import('../app/api/admin/forms/[formId]/publish/route');
     const publicRoute = await import('../app/api/forms/[formId]/route');
-    const draft = await draftRoute.POST(request('/api/admin/forms/account.profile/draft', { config, expectedPublishedVersion: 0, reason: 'Private draft', requestId: 'private-d1' }), params);
     assert.equal((await publicRoute.GET(request('/api/forms/account.profile'), params)).status, 404);
-    const draftId = (await draft.json() as { draft: { id: string } }).draft.id;
-    await publishRoute.POST(request('/api/admin/forms/account.profile/publish', { draftId, expectedDraftRevision: 1, expectedPublishedVersion: 0, reason: 'Private publish', requestId: 'private-p1' }), params);
+    seedPublishedForm(sqlite, profileId);
     globalThis.formCatalogRouteActor = null;
     const denied = await publicRoute.GET(request('/api/forms/account.profile'), params);
     const unknown = await publicRoute.GET(request('/api/forms/nonexistent'), { params: Promise.resolve({ formId: 'nonexistent' }) });
@@ -238,7 +236,7 @@ void test('corrupt stored admin detail config is a service failure, not a bad cl
       },
     } as D1Database;
     const item = await import('../app/api/admin/forms/[formId]/route');
-    const response = await item.GET(request('/api/admin/forms/account.profile'), params);
+    const response = await item.GET(request('/api/admin/forms/public.contact'), params);
     assert.equal(response.status, 503);
     assert.equal(response.headers.get('cache-control'), 'no-store');
   } finally { sqlite.close(); }
@@ -350,9 +348,9 @@ void test('persisted syntax errors in all catalog mutations are service failures
     const publishRoute = await import('../app/api/admin/forms/[formId]/publish/route');
     const restoreRoute = await import('../app/api/admin/forms/[formId]/restore/route');
     const actions = [
-      draftRoute.POST(request('/api/admin/forms/account.profile/draft', { config, expectedPublishedVersion: 0, reason: 'Draft', requestId: 'corrupt-d' }), params),
-      publishRoute.POST(request('/api/admin/forms/account.profile/publish', { draftId: 'old-draft', expectedDraftRevision: 1, expectedPublishedVersion: 0, reason: 'Publish', requestId: 'corrupt-p' }), params),
-      restoreRoute.POST(request('/api/admin/forms/account.profile/restore', { sourceVersion: 1, expectedPublishedVersion: 0, reason: 'Restore', requestId: 'corrupt-r' }), params),
+      draftRoute.POST(request('/api/admin/forms/public.contact/draft', { config, expectedPublishedVersion: 0, reason: 'Draft', requestId: 'corrupt-d' }), params),
+      publishRoute.POST(request('/api/admin/forms/public.contact/publish', { draftId: 'old-draft', expectedDraftRevision: 1, expectedPublishedVersion: 0, reason: 'Publish', requestId: 'corrupt-p' }), params),
+      restoreRoute.POST(request('/api/admin/forms/public.contact/restore', { sourceVersion: 1, expectedPublishedVersion: 0, reason: 'Restore', requestId: 'corrupt-r' }), params),
     ];
     for (const response of await Promise.all(actions)) assert.equal(response.status, 503);
     assert.equal(count(sqlite, 'form_config_versions'), 0);
@@ -366,7 +364,7 @@ void test('admin detail rejects parseable but invalid stored configuration as un
     actor('sa', 'super_admin');
     seedPublishedForm(sqlite, formId, { formId, fields: 'not-an-array' });
     const item = await import('../app/api/admin/forms/[formId]/route');
-    const response = await item.GET(request('/api/admin/forms/account.profile'), params);
+    const response = await item.GET(request('/api/admin/forms/public.contact'), params);
     assert.equal(response.status, 503);
   } finally { sqlite.close(); }
 });
@@ -379,10 +377,10 @@ void test('parseable invalid stored config blocks draft and restore with 503 and
       seedPublishedForm(sqlite, formId, { formId: 'wrong.form', fields: [] });
       const response = action === 'draft'
         ? await (await import('../app/api/admin/forms/[formId]/draft/route')).POST(
-          request('/api/admin/forms/account.profile/draft', { config, expectedPublishedVersion: 1,
+          request('/api/admin/forms/public.contact/draft', { config, expectedPublishedVersion: 1,
             reason: 'Draft with corrupt history', requestId: 'bad-history-draft' }), params)
         : await (await import('../app/api/admin/forms/[formId]/restore/route')).POST(
-          request('/api/admin/forms/account.profile/restore', { sourceVersion: 1, expectedPublishedVersion: 1,
+          request('/api/admin/forms/public.contact/restore', { sourceVersion: 1, expectedPublishedVersion: 1,
             reason: 'Restore corrupt source', requestId: 'bad-source-restore' }), params);
       assert.equal(response.status, 503, action);
       assert.equal(count(sqlite, 'form_config_versions'), 1);
@@ -401,7 +399,7 @@ void test('parseable invalid stored draft blocks publish with 503 and no audit',
       VALUES ('invalid-draft',?,1,1,'draft',?,'Seed','sa',1,'sa',1,'seed-invalid-draft')`)
       .run(formId, JSON.stringify({ formId: 'wrong.form', fields: [] }));
     const route = await import('../app/api/admin/forms/[formId]/publish/route');
-    const response = await route.POST(request('/api/admin/forms/account.profile/publish', {
+    const response = await route.POST(request('/api/admin/forms/public.contact/publish', {
       draftId: 'invalid-draft', expectedDraftRevision: 1, expectedPublishedVersion: 0,
       reason: 'Publish corrupt draft', requestId: 'invalid-draft-publish',
     }), params);
@@ -417,4 +415,81 @@ void test('well-formed draft conflicting with historical field identity remains 
   const response = catalogError(new FormCatalogConflictError(
     'Historical fields must retain their identity and type; archive them to stop collection.'));
   assert.equal(response.status, 409);
+});
+
+const universalFormIds = [
+  'identity.register', 'identity.login-password', 'identity.email-code-request',
+  'identity.email-code-verify', 'identity.password-reset-request', 'identity.password-reset-complete',
+  'account.profile', 'account.address', 'account.daily-reward', 'account.points-redemption',
+  'catalog.header-search', 'catalog.filters', 'commerce.order-tracking', 'seller.product-filter',
+  'staff.homepage-filter', 'staff.activity-filter', 'staff.recorded-progress-filter',
+  'commerce.add-to-cart', 'commerce.promo-quote', 'commerce.gift-card-redeem',
+  'system.local-testing-role', 'staff.staff-invitation', 'staff.staff-permission-1',
+  'staff.staff-permission-2', 'rider.code-verify', 'staff.homepage-hero-manager',
+  'staff.homepage-occasion-manager', 'staff.homepage-visibility', 'staff.business-settings-manager',
+  'staff.delivery-rate', 'staff.promo-code', 'staff.loyalty-settings', 'staff.referral-settings',
+] as const;
+
+void test('catalog simplification lists business forms with friendly names and excludes universal controls', async () => {
+  const sqlite = await fixture();
+  try {
+    actor('sa', 'super_admin');
+    seedPublishedForm(sqlite, 'seller.application');
+    seedPublishedForm(sqlite, 'account.profile');
+    const index = await import('../app/api/admin/forms/route');
+    const response = await index.GET();
+    assert.equal(response.status, 200);
+    const { forms } = await response.json() as { forms: { definition: { id: string }; presentation: { label: string; category: string }; publishedVersion: number }[] };
+    const byId = new Map(forms.map((entry) => [entry.definition.id, entry]));
+    for (const id of universalFormIds) assert.equal(byId.has(id), false, id);
+    for (const id of ['commerce.checkout', 'public.contact', 'public.feedback', 'public.footer-feedback',
+      'commerce.return-request', 'commerce.order-cancellation', 'commerce.complaint',
+      'seller.application', 'seller.maker-profile', 'seller.profile', 'seller.product-submission',
+      'rider.application', 'rider.report', 'seller.managed-supply-proposal', 'seller.payout-request',
+      'staff.catalog', 'staff.product-classification', 'staff.rider-control-1', 'staff.rider-control-2',
+      'commerce.gift-card-issue', 'staff.governance-rule-create']) assert.ok(byId.has(id), id);
+    assert.equal(byId.get('seller.application')?.presentation.label, 'Seller application');
+    assert.equal(byId.get('seller.application')?.presentation.category, 'Applications & business profiles');
+    assert.equal(byId.get('seller.application')?.publishedVersion, 1);
+    assert.equal(count(sqlite, 'form_config_versions'), 2);
+  } finally { sqlite.close(); }
+});
+
+void test('catalog simplification prevents draft publish and restore for universal forms while preserving history and runtime reads', async () => {
+  const sqlite = await fixture();
+  try {
+    actor('sa', 'super_admin');
+    seedPublishedForm(sqlite, 'account.profile');
+    const draftRoute = await import('../app/api/admin/forms/[formId]/draft/route');
+    const publishRoute = await import('../app/api/admin/forms/[formId]/publish/route');
+    const restoreRoute = await import('../app/api/admin/forms/[formId]/restore/route');
+    for (const id of universalFormIds) {
+      const context = { params: Promise.resolve({ formId: id }) };
+      const common = { expectedPublishedVersion: id === 'account.profile' ? 1 : 0,
+        reason: 'Try modifying universal feature', requestId: `blocked-${id}` };
+      for (const [action, route, body] of [
+        ['draft', draftRoute, { ...common, config: { formId: id, fields: [] } }],
+        ['publish', publishRoute, { ...common, draftId: 'old-draft', expectedDraftRevision: 1 }],
+        ['restore', restoreRoute, { ...common, sourceVersion: 1 }],
+      ] as const) {
+        const response = await route.POST(request(`/api/admin/forms/${id}/${action}`, body), context);
+        assert.equal(response.status, 403, `${id}/${action}`);
+        assert.equal(response.headers.get('cache-control'), 'no-store');
+      }
+    }
+    const item = await import('../app/api/admin/forms/[formId]/route');
+    const profileParams = { params: Promise.resolve({ formId: 'account.profile' }) };
+    const detail = await item.GET(request('/api/admin/forms/account.profile'), profileParams);
+    assert.equal(detail.status, 200);
+    const history = await detail.json() as { versions: { version: number }[]; editable: boolean };
+    assert.equal(history.versions[0].version, 1);
+    assert.equal(history.editable, false);
+    actor('customer', 'customer');
+    const runtime = await import('../app/api/forms/[formId]/route');
+    const response = await runtime.GET(request('/api/forms/account.profile'), profileParams);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json() as { config: { version: number } }).config.version, 1);
+    assert.equal(count(sqlite, 'form_config_versions'), 1);
+    assert.equal(count(sqlite, 'audit_logs'), 0);
+  } finally { sqlite.close(); }
 });

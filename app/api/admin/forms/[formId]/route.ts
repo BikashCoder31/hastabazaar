@@ -1,4 +1,5 @@
 import { FORM_REGISTRY } from '@/lib/forms/registry';
+import { formCatalogPresentation, isFormCatalogEditable } from '@/lib/forms/catalog-presentation';
 import { validateFormDraft } from '@/lib/forms/validation';
 import { catalogAdmin, catalogError, catalogFormId, catalogJson } from '../route';
 
@@ -22,6 +23,7 @@ export async function GET(_request: Request, context: { params: Promise<{ formId
     } catch {
       return catalogJson({ error: 'Stored form configuration is unavailable.' }, 503);
     }
-    return catalogJson({ form: FORM_REGISTRY[formId], versions });
+    const form = FORM_REGISTRY[formId];
+    return catalogJson({ form, presentation: formCatalogPresentation(form), editable: isFormCatalogEditable(form), versions });
   } catch (error) { return catalogError(error); }
 }

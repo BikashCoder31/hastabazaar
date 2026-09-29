@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { FORM_REGISTRY } from '@/lib/forms/registry';
+import { FORM_CATALOG_UNAVAILABLE_MESSAGE, formCatalogPresentation, isFormCatalogEditable } from '@/lib/forms/catalog-presentation';
 import { BodyTooLargeError, readBoundedBody } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { FormCatalogConflictError, FormCatalogStoredConfigError } from '@/lib/db/repositories/form-catalog';
@@ -45,6 +46,9 @@ export function catalogMutationInput(body: Record<string, unknown>): {
 }
 
 export function catalogFormId(formId: string): boolean { return Object.hasOwn(FORM_REGISTRY, formId); }
+export function catalogFormMutationDenied(formId: string): Response | null {
+  return isFormCatalogEditable(FORM_REGISTRY[formId]) ? null : catalogJson({ error: FORM_CATALOG_UNAVAILABLE_MESSAGE }, 403);
+}
 export function catalogNumber(value: unknown): number {
   if (!Number.isSafeInteger(value) || (value as number) < 1) throw new CatalogClientInputError('A positive version is required.');
   return value as number;
@@ -80,8 +84,9 @@ export async function GET(): Promise<Response> {
         formId: string; publishedVersion: number; draftVersion: number; lastChangedAt: number
       }>();
     const byId = new Map(rows.results.map((row) => [row.formId, row]));
-    return catalogJson({ forms: Object.values(FORM_REGISTRY).map((definition) => ({
+    return catalogJson({ forms: Object.values(FORM_REGISTRY).filter(isFormCatalogEditable).map((definition) => ({
       definition,
+      presentation: formCatalogPresentation(definition),
       publishedVersion: byId.get(definition.id)?.publishedVersion ?? 0,
       draftVersion: byId.get(definition.id)?.draftVersion ?? 0,
       lastChangedAt: byId.get(definition.id)?.lastChangedAt ?? null,
