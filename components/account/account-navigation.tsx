@@ -44,10 +44,12 @@ export function AccountNavigation({
   displayName,
   email,
   signOutPath,
+  showAssignedDeliveries = false,
 }: {
   displayName: string;
   email: string;
   signOutPath: string;
+  showAssignedDeliveries?: boolean;
 }) {
   const pathname = usePathname();
   const initials = displayName
@@ -78,7 +80,7 @@ export function AccountNavigation({
         <SidebarContent className="overflow-visible p-2">
           <nav aria-label="Customer account">
             <SidebarMenu className="grid grid-cols-2 gap-1 sm:grid-cols-4 lg:flex">
-              {links.map(({ href, label, icon: Icon }) => (
+              {links.filter(({ href }) => href !== '/rider' || showAssignedDeliveries).map(({ href, label, icon: Icon }) => (
                 <SidebarMenuItem key={href}>
                   <SidebarMenuButton
                     size="lg"

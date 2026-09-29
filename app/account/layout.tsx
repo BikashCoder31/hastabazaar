@@ -1,4 +1,5 @@
 import { getSellerUser } from '@/lib/auth/seller';
+import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 import { signOutPath } from '@/app/auth';
@@ -6,6 +7,8 @@ import { AccountNavigation } from '@/components/account/account-navigation';
 import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
 import { requireCustomerPage } from '@/lib/auth/customer';
+import { requireDatabase } from '@/lib/db/d1';
+import { riderProfile } from '@/lib/riders/repository';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +18,10 @@ export default async function AccountLayout({
   children: React.ReactNode;
 }) {
   const customer = await requireCustomerPage('/account');
-  const seller = await getSellerUser();
+  const [seller, rider] = await Promise.all([
+    getSellerUser(),
+    riderProfile(requireDatabase(env as unknown as { DB?: D1Database }), customer.userId),
+  ]);
   return (
     <div className="min-h-screen bg-secondary/35">
       <SiteHeader />
@@ -35,11 +41,12 @@ export default async function AccountLayout({
         <div className="grid items-start gap-6 lg:grid-cols-[15.5rem_minmax(0,1fr)] lg:gap-8">
           <aside className="min-w-0 lg:sticky lg:top-40">
             {seller ? <Link href="/seller" className="mb-3 flex min-h-11 items-center justify-center rounded-xl border bg-card px-4 py-3 text-sm font-semibold text-primary">Switch to seller dashboard</Link> : null}
-            <Link href="/rider" className="mb-3 flex min-h-11 items-center justify-center rounded-xl border bg-card px-4 py-3 text-sm font-semibold text-primary">Rider dashboard / apply</Link>
+            {!seller || rider ? <Link href="/rider" className="mb-3 flex min-h-11 items-center justify-center rounded-xl border bg-card px-4 py-3 text-sm font-semibold text-primary">{rider ? rider.status === 'approved' ? 'Rider dashboard' : 'Rider application status' : 'Rider dashboard / apply'}</Link> : null}
             <AccountNavigation
               displayName={customer.displayName}
               email={customer.email}
               signOutPath={signOutPath('/')}
+              showAssignedDeliveries={rider?.status === 'approved'}
             />
           </aside>
           <main tabIndex={-1} id="main-content" className="min-w-0 pb-10">
