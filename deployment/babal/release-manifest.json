@@ -35,14 +35,14 @@
       "9007199254740991"
     ]
   },
-  "release": "hastabazaar-release-2026-09-21-220606",
+  "release": "hastabazaar-release-2026-09-29-preflight",
   "startup": "app.cjs",
   "hosting": "Babal.Host",
   "requiredNodeMajor": 22,
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "78cb1ddb27d242f86332d4c0522369770249e0b7aebd925426550f7f804abf9f",
+      "sha256": "af3d3a03765d38c03e9f2bc9ec6613d519a3908ba2708440e604959b402d994c",
       "usage": "empty-database-only"
     },
     {
@@ -223,6 +223,41 @@
     {
       "path": "deployment/babal/mariadb-homepage-hero-carousel.sql",
       "sha256": "7016236fcd6fce388b50f2afd8f6dcee6c8b3199e6e15c9d3e6bfb23ece6b4ac",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-form-catalog.sql",
+      "sha256": "b69d81d28f3a7695f5b9ab8c1a10c0ddfe3d68b8f9015d6bf928c5da44223009",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-data-rights-legal-holds.sql",
+      "sha256": "ec2747009238fe2e5e8a2b917098e07f552a5dcaf5ab6b7d438fa3047953afc6",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-address-answer-owner-tombstones.sql",
+      "sha256": "fcf600992e1354996cf1ab70b6a577ae138181d5203aa0ba10c9dd73e500f371",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-feedback-delivery-jobs.sql",
+      "sha256": "8a166d98d7a7a0a326169e16254042d5aa7fc7615f58577f49f926d93ce7b18f",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-checkout-contact-verification.sql",
+      "sha256": "5814baa40dfcb5e70d037e3813f93bba3b6c394bda0ba4e7f2687193473d9689",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-first-cod-review.sql",
+      "sha256": "c6565d26eecde6d561c76dabef53c10eaa6f448454cc45950e23a9ecf8249a9f",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-first-cod-evidence-guards.sql",
+      "sha256": "54d88dba5606a012be465661ffd70b22a96812cdd21cb945c7c5161e4a21129f",
       "usage": "additive-maintenance"
     },
     {
@@ -1793,6 +1828,50 @@
       "applied_at",
       "version"
     ],
+    "account_email_verifications": [
+      "email",
+      "user_id",
+      "verified_at"
+    ],
+    "account_phone_verifications": [
+      "phone",
+      "user_id",
+      "verified_at"
+    ],
+    "account_contact_challenges": [
+      "attempts",
+      "auth_subject",
+      "channel",
+      "code_hash",
+      "consumed_at",
+      "contact_snapshot",
+      "contact_value",
+      "created_at",
+      "delivered_at",
+      "expires_at",
+      "token_hash",
+      "user_id"
+    ],
+    "local_contact_captures": [
+      "channel",
+      "code",
+      "contact_value",
+      "expires_at",
+      "simulation_label",
+      "token_hash",
+      "user_id"
+    ],
+    "first_cod_reviews": [
+      "confirmed_at",
+      "confirmed_by",
+      "created_at",
+      "customer_id",
+      "order_id",
+      "reason",
+      "request_id",
+      "status",
+      "total_paisa"
+    ],
     "referral_campaign": [
       "enabled",
       "friend_discount_paisa",
@@ -1878,11 +1957,6 @@
       "tracking_reference",
       "tracking_url",
       "updated_at"
-    ],
-    "account_email_verifications": [
-      "email",
-      "user_id",
-      "verified_at"
     ],
     "product_sku_claims": [
       "product_id",
@@ -2108,6 +2182,27 @@
     "staff_permission_requests_single_sa_update": [],
     "parcel_cash_records_single_sa_insert": [],
     "parcel_cash_records_single_sa_update": [],
+    "account_phone_change_revoke": [],
+    "account_email_change_revoke": [],
+    "first_cod_review_immutable": [],
+    "first_cod_review_confirm_active": [],
+    "first_cod_audit_no_update": [],
+    "first_cod_audit_no_delete": [],
+    "first_cod_orders_insert": [],
+    "first_cod_items_insert": [],
+    "first_cod_jobs_insert": [],
+    "first_cod_parcels_insert": [],
+    "first_cod_delivery_insert": [],
+    "first_cod_shipments_insert": [],
+    "first_cod_orders_update": [],
+    "first_cod_items_update": [],
+    "first_cod_jobs_update": [],
+    "first_cod_parcels_update": [],
+    "first_cod_delivery_update": [],
+    "first_cod_shipments_update": [],
+    "first_cod_evidence_complete_insert": [],
+    "first_cod_evidence_complete_update": [],
+    "first_cod_review_no_delete": [],
     "wallet_refund_lock": [],
     "referral_first_order": [],
     "queue_order_email_insert": [],
