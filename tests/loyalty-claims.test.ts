@@ -1,3 +1,4 @@
+import { seedVerifiedCheckoutContact } from './helpers/checkout-contact';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
@@ -420,6 +421,7 @@ void test('claim wallet-first serialization remains compatible with concurrent c
         now,
         'customer',
       );
+    await seedVerifiedCheckoutContact(f.db, 'customer');
     const input = {
       customerEmail: 'customer@example.test',
       customerPhone: '9811111111',

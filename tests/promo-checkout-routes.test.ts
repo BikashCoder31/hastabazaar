@@ -1,4 +1,5 @@
 import { SELLER_AGREEMENT_VERSION } from '../lib/content/legal-policies';
+import {seedVerifiedCheckoutContact} from './helpers/checkout-contact';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { registerHooks } from 'node:module';
@@ -293,6 +294,7 @@ void test('actual quote derives live cart/customer/time, records no financial st
     globalThis.checkoutPromoActor = null;
     assert.equal((await main.POST(mainReq(payload))).status, 401);
     globalThis.checkoutPromoActor = actor;
+    await seedVerifiedCheckoutContact(f.db,'customer');
     const placed = await main.POST(mainReq(payload));
     assert.equal(placed.status, 201);
     const result = (await placed.json()) as { grandTotalPaisa: number };

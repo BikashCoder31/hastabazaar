@@ -5,6 +5,8 @@ import { AnswerDetails } from '@/components/forms/answer-details';
 import { requireCustomerPage } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
 import { listFormAnswersForSubjectPage } from '@/lib/db/repositories/form-answers';
+import {ContactVerificationPanel} from '@/components/account/contact-verification';
+import {getContactVerificationStatus} from '@/lib/auth/contact-verification';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +14,7 @@ export default async function ProfilePage({ searchParams }: {
   searchParams?: Promise<{ historyAt?: string; historyId?: string }>;
 } = {}) {
   const customer = await requireCustomerPage('/account/profile');
+  const contactStatus=await getContactVerificationStatus(requireDatabase(env as unknown as {DB?:D1Database}),customer);
   const params = await searchParams;
   const at = params?.historyAt ? Number(params.historyAt) : NaN;
   const after = Number.isSafeInteger(at) && at >= 0 && params?.historyId && params.historyId.length <= 191
@@ -41,6 +44,8 @@ export default async function ProfilePage({ searchParams }: {
           locale={customer.locale}
         />
       </section>
+      <div className="mt-6"><ContactVerificationPanel key={`${customer.userId}:${customer.email}:${customer.phone??''}`}
+        ownerKey={customer.userId} initialStatus={contactStatus}/></div>
       {answers.length ? (
         <section className="mt-6 space-y-4" aria-label="Your profile answer history">
           <h2 className="font-heading text-2xl">Your previous profile answers</h2>

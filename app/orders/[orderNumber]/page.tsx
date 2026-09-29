@@ -1,8 +1,9 @@
+import { getFirstCodReview } from '@/lib/orders/first-cod-review';
 import { listCustomerCancellationAnswers } from '@/lib/forms/cancellation-history';
-import {CancellationHistory} from '@/components/commerce/cancellation-history';
-import {CustomerRiderCode} from '@/components/rider/rider-code';
-import {customerRiderCodeJobs} from '@/lib/riders/customer-code';
-import {CustomerDelivery} from '@/components/delivery/customer-delivery';
+import { CancellationHistory } from '@/components/commerce/cancellation-history';
+import { CustomerRiderCode } from '@/components/rider/rider-code';
+import { customerRiderCodeJobs } from '@/lib/riders/customer-code';
+import { CustomerDelivery } from '@/components/delivery/customer-delivery';
 import { env } from 'cloudflare:workers';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -53,8 +54,13 @@ export default async function OrderReceiptPage({
   searchParams,
 }: {
   params: Promise<{ orderNumber: string }>;
-  searchParams?: Promise<{ historyKind?: string; historyCaseId?: string;
-    historyAt?: string; historyId?: string; cancellationAfter?: string }>;
+  searchParams?: Promise<{
+    historyKind?: string;
+    historyCaseId?: string;
+    historyAt?: string;
+    historyId?: string;
+    cancellationAfter?: string;
+  }>;
 }) {
   const { orderNumber } = await params;
   const requestHeaders = await headers();
@@ -70,6 +76,15 @@ export default async function OrderReceiptPage({
     customer?.userId ?? null,
   );
   if (!receipt) notFound();
+  const receiptOrder = await database
+    .prepare('SELECT id FROM orders WHERE order_number=?')
+    .bind(orderNumber)
+    .first<{ id: string }>();
+  const codReview = receiptOrder
+    ? await getFirstCodReview(database, receiptOrder.id)
+    : null;
+  const codPending =
+    codReview?.status === 'pending' && receipt.status !== 'cancelled';
   const [returnCases, complaints] = await Promise.all([
     listReturnsForCustomerReceipt(
       database,
@@ -84,57 +99,95 @@ export default async function OrderReceiptPage({
       customer?.userId ?? null,
     ),
   ]);
-  const codeJobs=await customerRiderCodeJobs(database,{orderNumber,customerId:customer?.userId??null,receiptTokenHash});
+  const codeJobs = await customerRiderCodeJobs(database, {
+    orderNumber,
+    customerId: customer?.userId ?? null,
+    receiptTokenHash,
+  });
   const query = await searchParams;
   const historyKind = query?.historyKind ?? 'checkout';
   if (!['checkout', 'return', 'complaint'].includes(historyKind)) notFound();
   const historyAt = query?.historyAt ? Number(query.historyAt) : NaN;
-  const historyAfter = Number.isSafeInteger(historyAt) && historyAt >= 0 &&
-    query?.historyId && query.historyId.length <= 191
-    ? { createdAt: historyAt, id: query.historyId } : undefined;
-  const ownedOrder = customer ? await database.prepare(`SELECT id FROM orders
+  const historyAfter =
+    Number.isSafeInteger(historyAt) &&
+    historyAt >= 0 &&
+    query?.historyId &&
+    query.historyId.length <= 191
+      ? { createdAt: historyAt, id: query.historyId }
+      : undefined;
+  const ownedOrder = customer
+    ? await database
+        .prepare(`SELECT id FROM orders
     WHERE order_number=? AND customer_id=? LIMIT 1`)
-    .bind(orderNumber, customer.userId).first<{ id: string }>() : null;
-  let answerHistory: Awaited<ReturnType<typeof listFormAnswersForSubjectPage>> | null = null;
+        .bind(orderNumber, customer.userId)
+        .first<{ id: string }>()
+    : null;
+  let answerHistory: Awaited<
+    ReturnType<typeof listFormAnswersForSubjectPage>
+  > | null = null;
   let historySubjectId = ownedOrder?.id ?? null;
   let historyFormId = 'commerce.checkout';
   let historySubjectType = 'order';
   if (ownedOrder && historyKind !== 'checkout') {
     const caseId = query?.historyCaseId;
     if (!caseId || caseId.length > 191) notFound();
-    const selected = historyKind === 'return'
-      ? returnCases.find((item) => item.id === caseId)
-      : complaints.find((item) => item.id === caseId);
+    const selected =
+      historyKind === 'return'
+        ? returnCases.find((item) => item.id === caseId)
+        : complaints.find((item) => item.id === caseId);
     if (!selected) notFound();
     historySubjectId = caseId;
-    historyFormId = historyKind === 'return' ? 'commerce.return-request' : 'commerce.complaint';
-    historySubjectType = historyKind === 'return' ? 'return_request' : 'complaint';
+    historyFormId =
+      historyKind === 'return'
+        ? 'commerce.return-request'
+        : 'commerce.complaint';
+    historySubjectType =
+      historyKind === 'return' ? 'return_request' : 'complaint';
   }
   if (historySubjectId && customer) {
     answerHistory = await listFormAnswersForSubjectPage(database, {
-      subjectType: historySubjectType, subjectId: historySubjectId,
-      formId: historyFormId, after: historyAfter,
+      subjectType: historySubjectType,
+      subjectId: historySubjectId,
+      formId: historyFormId,
+      after: historyAfter,
     });
-    const allowed = await Promise.all(answerHistory.answers.map((answer) =>
-      authorizeFormAnswerRead(database, { id: customer.userId, role: 'customer' }, answer)));
+    const allowed = await Promise.all(
+      answerHistory.answers.map((answer) =>
+        authorizeFormAnswerRead(
+          database,
+          { id: customer.userId, role: 'customer' },
+          answer,
+        ),
+      ),
+    );
     if (allowed.some((value) => !value)) notFound();
   }
-  let cancellationAnswers: Awaited<ReturnType<typeof listCustomerCancellationAnswers>> | null = null;
+  let cancellationAnswers: Awaited<
+    ReturnType<typeof listCustomerCancellationAnswers>
+  > | null = null;
   if (ownedOrder && customer) {
     try {
       cancellationAnswers = await listCustomerCancellationAnswers(database, {
-        customerId: customer.userId, orderId: ownedOrder.id, after: query?.cancellationAfter,
+        customerId: customer.userId,
+        orderId: ownedOrder.id,
+        after: query?.cancellationAfter,
       });
-    } catch { notFound(); }
+    } catch {
+      notFound();
+    }
   }
   const address = receipt.address;
-  const presentation = orderPresentation(receipt.status, receipt.paymentStatus);
+  const presentation = orderPresentation(
+    receipt.status,
+    receipt.paymentStatus,
+    codPending,
+  );
   return (
     <div className="min-h-screen bg-muted/25">
       <SiteHeader />
       <main tabIndex={-1} id="main-content" className="shell py-8 sm:py-12">
-        <CustomerDelivery orderNumber={orderNumber}/>
-        <CustomerRiderCode orderNumber={orderNumber} jobs={codeJobs}/>
+        <CustomerDelivery orderNumber={orderNumber} />
+        <CustomerRiderCode orderNumber={orderNumber} jobs={codeJobs} />
         <div className="mx-auto max-w-5xl">
           <Link
             href={customer ? '/account/orders' : '/shop'}
@@ -160,8 +213,24 @@ export default async function OrderReceiptPage({
                   {receipt.orderNumber}
                 </strong>
               </p>
-                <OrderStatusBadge status={receipt.status} />
-                <Link href={`/track?order=${encodeURIComponent(receipt.orderNumber)}`} className="text-sm font-semibold underline underline-offset-4">Track this order</Link>
+              {codPending ? (
+                <p className="mb-3 text-sm leading-6">
+                  We received your order. Staff will confirm it with you before
+                  your makers begin packing. You can still cancel eligible
+                  items.
+                </p>
+              ) : null}
+              <OrderStatusBadge
+                status={
+                  codPending ? 'awaiting_cod_confirmation' : receipt.status
+                }
+              />
+              <Link
+                href={`/track?order=${encodeURIComponent(receipt.orderNumber)}`}
+                className="text-sm font-semibold underline underline-offset-4"
+              >
+                Track this order
+              </Link>
             </div>
             <div className="mt-8 grid gap-4 sm:grid-cols-3">
               <Info
@@ -205,7 +274,13 @@ export default async function OrderReceiptPage({
                           Sold by {item.sellerName}
                         </span>
                         <span className="mt-2 block">
-                          <OrderStatusBadge status={item.fulfillmentStatus} />
+                          <OrderStatusBadge
+                            status={
+                              codPending
+                                ? 'awaiting_cod_confirmation'
+                                : item.fulfillmentStatus
+                            }
+                          />
                         </span>
                       </span>
                       <strong>{money(item.lineTotalPaisa)}</strong>
@@ -216,10 +291,35 @@ export default async function OrderReceiptPage({
               <aside>
                 <h2 className="font-heading text-2xl">Summary</h2>
                 <dl className="mt-4 space-y-3 text-sm">
-                  {receipt.promoDiscountPaisa>0?<div className="flex justify-between"><dt>Promo savings{receipt.promo ? ` (${receipt.promo.label}, revision ${receipt.promo.revision})` : ''}</dt><dd>−{money(receipt.promoDiscountPaisa)}</dd></div>:null}
-                  {receipt.refundedPromoDiscountPaisa>0?<div className="flex justify-between"><dt>Promo savings removed by refunds</dt><dd>{money(receipt.refundedPromoDiscountPaisa)}</dd></div>:null}
-                  {receipt.referralDiscountPaisa>0?<div className="flex justify-between"><dt>Referral discount</dt><dd>−{money(receipt.referralDiscountPaisa)}</dd></div>:null}
-                  {receipt.walletCreditPaisa>0?<div className="flex justify-between"><dt>Shopping credit used</dt><dd>−{money(receipt.walletCreditPaisa)}</dd></div>:null}
+                  {receipt.promoDiscountPaisa > 0 ? (
+                    <div className="flex justify-between">
+                      <dt>
+                        Promo savings
+                        {receipt.promo
+                          ? ` (${receipt.promo.label}, revision ${receipt.promo.revision})`
+                          : ''}
+                      </dt>
+                      <dd>−{money(receipt.promoDiscountPaisa)}</dd>
+                    </div>
+                  ) : null}
+                  {receipt.refundedPromoDiscountPaisa > 0 ? (
+                    <div className="flex justify-between">
+                      <dt>Promo savings removed by refunds</dt>
+                      <dd>{money(receipt.refundedPromoDiscountPaisa)}</dd>
+                    </div>
+                  ) : null}
+                  {receipt.referralDiscountPaisa > 0 ? (
+                    <div className="flex justify-between">
+                      <dt>Referral discount</dt>
+                      <dd>−{money(receipt.referralDiscountPaisa)}</dd>
+                    </div>
+                  ) : null}
+                  {receipt.walletCreditPaisa > 0 ? (
+                    <div className="flex justify-between">
+                      <dt>Shopping credit used</dt>
+                      <dd>−{money(receipt.walletCreditPaisa)}</dd>
+                    </div>
+                  ) : null}
                   <div className="flex justify-between">
                     <dt>Items</dt>
                     <dd>{money(receipt.itemSubtotalPaisa)}</dd>
@@ -235,7 +335,7 @@ export default async function OrderReceiptPage({
                 </dl>
                 <p className="mt-3 text-xs leading-5 text-muted-foreground">
                   {receipt.deliveryPricing
-                    ? `Calculated for ${receipt.deliveryPricing.currentStoreCount} ${receipt.deliveryPricing.currentStoreCount===1?'remaining store':'remaining stores'}: ${money(receipt.deliveryPricing.baseChargePaisa)} for the first store, plus 50% of that base for each additional store.`
+                    ? `Calculated for ${receipt.deliveryPricing.currentStoreCount} ${receipt.deliveryPricing.currentStoreCount === 1 ? 'remaining store' : 'remaining stores'}: ${money(receipt.deliveryPricing.baseChargePaisa)} for the first store, plus 50% of that base for each additional store.`
                     : 'This order retains the delivery policy and amount recorded when it was placed.'}
                 </p>
               </aside>
@@ -246,9 +346,16 @@ export default async function OrderReceiptPage({
               </strong>
               <span className="text-muted-foreground">
                 {address.recipientName} · {address.phone}
-                {receipt.deliveryFor === 'other' ? ' · Ordered for someone else' : ''}
+                {receipt.deliveryFor === 'other'
+                  ? ' · Ordered for someone else'
+                  : ''}
                 <br />
-                {receipt.recipientEmail ? <>{receipt.recipientEmail} (delivery messages only)<br /></> : null}
+                {receipt.recipientEmail ? (
+                  <>
+                    {receipt.recipientEmail} (delivery messages only)
+                    <br />
+                  </>
+                ) : null}
                 {address.locality}
                 {address.landmark ? `, near ${address.landmark}` : ''}
                 <br />
@@ -285,9 +392,11 @@ export default async function OrderReceiptPage({
                       nativeButton={false}
                       render={
                         <Link
-                          href={document.kind === 'simulated_invoice'
-                            ? `/orders/${encodeURIComponent(receipt.orderNumber)}/managed-invoices/${document.id}`
-                            : `/orders/${encodeURIComponent(receipt.orderNumber)}/documents/${document.id}`}
+                          href={
+                            document.kind === 'simulated_invoice'
+                              ? `/orders/${encodeURIComponent(receipt.orderNumber)}/managed-invoices/${document.id}`
+                              : `/orders/${encodeURIComponent(receipt.orderNumber)}/documents/${document.id}`
+                          }
                         />
                       }
                     >
@@ -306,7 +415,7 @@ export default async function OrderReceiptPage({
                 </p>
               )}
             </section>
-            <CancellationHistory db={database} orderNumber={orderNumber}/>
+            <CancellationHistory db={database} orderNumber={orderNumber} />
             <CustomerAftercare
               orderNumber={receipt.orderNumber}
               orderStatus={receipt.status}
@@ -314,39 +423,114 @@ export default async function OrderReceiptPage({
               returns={returnCases}
               complaints={complaints}
             />
-            {ownedOrder ? <section className="mt-7 space-y-4 rounded-2xl border bg-card p-6" aria-label="Your order form answers">
-              <h2 className="font-heading text-2xl">Your order form answers</h2>
-              <nav className="flex flex-wrap gap-3 text-sm" aria-label="Order answer history">
-                <Link className="underline" href={`/orders/${encodeURIComponent(orderNumber)}`}>Checkout</Link>
-                {returnCases.map((item) => <Link key={item.id} className="underline" href={
-                  `/orders/${encodeURIComponent(orderNumber)}?historyKind=return&historyCaseId=${encodeURIComponent(item.id)}`
-                }>Return {item.referenceNumber}</Link>)}
-                {complaints.map((item) => <Link key={item.id} className="underline" href={
-                  `/orders/${encodeURIComponent(orderNumber)}?historyKind=complaint&historyCaseId=${encodeURIComponent(item.id)}`
-                }>Complaint {item.referenceNumber}</Link>)}
-              </nav>
-              {answerHistory?.answers.length
-                ? answerHistory.answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)
-                : <p className="text-sm text-muted-foreground">No saved answers for this action.</p>}
-              {answerHistory?.nextCursor ? <Link className="underline" href={
-                `/orders/${encodeURIComponent(orderNumber)}?historyKind=${historyKind}` +
-                (historyKind === 'checkout' ? '' : `&historyCaseId=${encodeURIComponent(historySubjectId!)}`) +
-                `&historyAt=${answerHistory.nextCursor.createdAt}&historyId=${encodeURIComponent(answerHistory.nextCursor.id)}`
-              }>Next 50 answers</Link> : null}
-            </section> : null}
-            {cancellationAnswers ? <section className="mt-7 space-y-4 rounded-2xl border bg-card p-6" aria-label="Your cancellation form answers">
-              <h2 className="font-heading text-2xl">Your cancellation form answers</h2>
-              {cancellationAnswers.items.length ? cancellationAnswers.items.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)
-                : <p className="text-sm text-muted-foreground">No saved cancellation answers on this page.</p>}
-              {cancellationAnswers.nextCursor ? <Link className="underline" href={
-                '/orders/' + encodeURIComponent(orderNumber) + '?cancellationAfter=' + encodeURIComponent(cancellationAnswers.nextCursor)
-              }>Older cancellation answers</Link> : null}
-            </section> : null}
+            {ownedOrder ? (
+              <section
+                className="mt-7 space-y-4 rounded-2xl border bg-card p-6"
+                aria-label="Your order form answers"
+              >
+                <h2 className="font-heading text-2xl">
+                  Your order form answers
+                </h2>
+                <nav
+                  className="flex flex-wrap gap-3 text-sm"
+                  aria-label="Order answer history"
+                >
+                  <Link
+                    className="underline"
+                    href={`/orders/${encodeURIComponent(orderNumber)}`}
+                  >
+                    Checkout
+                  </Link>
+                  {returnCases.map((item) => (
+                    <Link
+                      key={item.id}
+                      className="underline"
+                      href={`/orders/${encodeURIComponent(orderNumber)}?historyKind=return&historyCaseId=${encodeURIComponent(item.id)}`}
+                    >
+                      Return {item.referenceNumber}
+                    </Link>
+                  ))}
+                  {complaints.map((item) => (
+                    <Link
+                      key={item.id}
+                      className="underline"
+                      href={`/orders/${encodeURIComponent(orderNumber)}?historyKind=complaint&historyCaseId=${encodeURIComponent(item.id)}`}
+                    >
+                      Complaint {item.referenceNumber}
+                    </Link>
+                  ))}
+                </nav>
+                {answerHistory?.answers.length ? (
+                  answerHistory.answers.map((answer) => (
+                    <AnswerDetails key={answer.id} answer={answer} />
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No saved answers for this action.
+                  </p>
+                )}
+                {answerHistory?.nextCursor ? (
+                  <Link
+                    className="underline"
+                    href={
+                      `/orders/${encodeURIComponent(orderNumber)}?historyKind=${historyKind}` +
+                      (historyKind === 'checkout'
+                        ? ''
+                        : `&historyCaseId=${encodeURIComponent(historySubjectId!)}`) +
+                      `&historyAt=${answerHistory.nextCursor.createdAt}&historyId=${encodeURIComponent(answerHistory.nextCursor.id)}`
+                    }
+                  >
+                    Next 50 answers
+                  </Link>
+                ) : null}
+              </section>
+            ) : null}
+            {cancellationAnswers ? (
+              <section
+                className="mt-7 space-y-4 rounded-2xl border bg-card p-6"
+                aria-label="Your cancellation form answers"
+              >
+                <h2 className="font-heading text-2xl">
+                  Your cancellation form answers
+                </h2>
+                {cancellationAnswers.items.length ? (
+                  cancellationAnswers.items.map((answer) => (
+                    <AnswerDetails key={answer.id} answer={answer} />
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No saved cancellation answers on this page.
+                  </p>
+                )}
+                {cancellationAnswers.nextCursor ? (
+                  <Link
+                    className="underline"
+                    href={
+                      '/orders/' +
+                      encodeURIComponent(orderNumber) +
+                      '?cancellationAfter=' +
+                      encodeURIComponent(cancellationAnswers.nextCursor)
+                    }
+                  >
+                    Older cancellation answers
+                  </Link>
+                ) : null}
+              </section>
+            ) : null}
             <div className="mt-7 flex flex-wrap gap-3">
-              <Button nativeButton={false} render={<Link href="/shop" />} className="rounded-full">
+              <Button
+                nativeButton={false}
+                render={<Link href="/shop" />}
+                className="rounded-full"
+              >
                 Continue shopping
               </Button>
-              {['confirmed','packing','ready_for_pickup','dispatched'].includes(receipt.status) ? (
+              {[
+                'confirmed',
+                'packing',
+                'ready_for_pickup',
+                'dispatched',
+              ].includes(receipt.status) ? (
                 <CustomerOrderCancellation orderNumber={receipt.orderNumber} />
               ) : null}
             </div>

@@ -6,7 +6,7 @@ import type { CustomerOrderRow } from '@/lib/db/repositories/customers';
 export function CustomerOrderList({
   orders,
 }: {
-  orders: readonly CustomerOrderRow[];
+  orders: readonly (CustomerOrderRow & { firstCodPending?: boolean })[];
 }) {
   return (
     <div className="space-y-3">
@@ -36,7 +36,13 @@ export function CustomerOrderList({
                 </p>
               </div>
             </div>
-            <OrderStatusBadge status={order.status} />
+            <OrderStatusBadge
+              status={
+                order.firstCodPending
+                  ? 'awaiting_cod_confirmation'
+                  : order.status
+              }
+            />
           </div>
           <div className="mt-5 flex flex-wrap items-end justify-between gap-4 border-t pt-4">
             <div>

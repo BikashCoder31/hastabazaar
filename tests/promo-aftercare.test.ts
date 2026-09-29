@@ -1,3 +1,4 @@
+import { seedVerifiedCheckoutContact } from './helpers/checkout-contact';
 import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
@@ -37,6 +38,7 @@ function checkoutInput(): CheckoutInput {
 async function fixture(options: {price?:number; delivery?:number; minimum?:number;fixed?:number} = {}) {
   const f = await createIncentiveDb();
   await seedIncentiveCustomer(f.db);
+  await seedVerifiedCheckoutContact(f.db, 'customer');
   await seedIncentiveCustomer(f.db, 'super');
   await seedIncentiveInventory(f.db);
   await f.db

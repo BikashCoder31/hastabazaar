@@ -27,6 +27,7 @@ import { validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { IncentiveError } from '@/lib/incentives/types';
 import { FormValidationError } from '@/lib/forms/validation';
+import { ContactVerificationError } from '@/lib/auth/contact-verification';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,7 +67,7 @@ export async function POST(request: Request): Promise<Response> {
     const customer = parsed.value.promoCode
       ? await requireExistingCustomerApi() : await getCustomerUser();
     if (customer) parsed.value.customerEmail = customer.email;
-    if (customer && parsed.value.promoCode) parsed.value.customerAuthSubject = customer.authSubject;
+    if (customer) parsed.value.customerAuthSubject = customer.authSubject;
     const configured = await validateSellerFormSubmission(database, 'commerce.checkout',
       parsed.value.formVersion, parsed.value.customAnswers, parsed.value.idempotencyKey);
     const [cartHash, receiptHash] = await Promise.all([
@@ -104,6 +105,8 @@ export async function POST(request: Request): Promise<Response> {
     }
     return response;
   } catch (error) {
+    if (error instanceof ContactVerificationError)
+      return json({error:error.message,code:'contact_verification_required'},error.status);
     if (
       error instanceof CheckoutConflictError ||
       error instanceof WalletConflictError

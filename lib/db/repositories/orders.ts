@@ -1,4 +1,6 @@
 import { quotePromo, preparePromoConsumption } from './promo-codes';
+import { requireCheckoutContactProof, checkoutContactGuards } from '@/lib/auth/contact-verification';
+import {prepareFirstCodReview} from '@/lib/orders/first-cod-review';
 import { promoQuoteIntent } from '@/lib/incentives/quote-intent';
 import { allocatePromoDiscount } from '@/lib/incentives/promo-policy';
 import { getDeliveryRates, rateVersionGuard } from './delivery-rates';
@@ -172,6 +174,9 @@ export async function createCodOrder(
     throw new CheckoutConflictError('Apply the promo again to review the quote.');
   const cartReference = `${tokenHash}:${input.idempotencyKey}`;
   const { formVersion: _formVersion, customAnswers: _customAnswers, ...coreInput } = input;
+  // Non-promo historical checkout digests predate the server-only subject. Keep
+  // the same replay identity while guarding the live subject on new writes.
+  if(!input.promoCode)delete coreInput.customerAuthSubject;
   const intentBytes = new TextEncoder().encode(JSON.stringify({ customerId, ...coreInput }));
   const intentDigest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', intentBytes)),
     (byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -213,6 +218,9 @@ export async function createCodOrder(
     return result;
   }
 
+  const contactProof = await requireCheckoutContactProof(database,
+    customerId && input.customerAuthSubject ? {userId:customerId,authSubject:input.customerAuthSubject} : null,
+    input.customerEmail,input.customerPhone);
   const cartId = await getCartId(database, tokenHash);
   if (!cartId) throw new CheckoutConflictError('Your cart is empty.');
   const cart = await getCart(database, tokenHash);
@@ -455,6 +463,8 @@ export async function createCodOrder(
       ),
   ];
 
+  statements.push(...prepareFirstCodReview(database,{customerId:contactProof.actor.userId,orderId:id,
+    totalPaisa:grandTotalPaisa+credit.walletPaisa,now}));
   const snapshotGuards:D1PreparedStatement[]=[
     database.prepare('UPDATE carts SET updated_at=updated_at WHERE id=?').bind(cartId),
     ...checkedCheckoutGuard(database,'EXISTS(SELECT 1 FROM carts WHERE id=? AND anonymous_token_hash=?) AND (SELECT COUNT(*) FROM cart_items WHERE cart_id=?)=?',[cartId,tokenHash,cartId,items.length]),
@@ -464,7 +474,7 @@ export async function createCodOrder(
     database.prepare('UPDATE cart_items SET quantity=quantity WHERE id=?').bind(item.id),
     ...checkedCheckoutGuard(database,`EXISTS(SELECT 1 FROM cart_items JOIN products ON products.id=cart_items.product_id WHERE cart_items.id=? AND cart_items.cart_id=? AND products.id=? AND products.seller_id=? AND products.price_paisa=? AND cart_items.quantity=? AND products.inventory_quantity>=cart_items.quantity AND ${publicProductEligibility('products',now)})`,[item.id,cartId,item.productId,item.sellerId,item.pricePaisa,item.quantity]),
   );
-  statements.unshift(...(promo && customerId ? promoCustomerGuards(database,customerId,input.customerAuthSubject!) : []),...snapshotGuards);
+  statements.unshift(...checkoutContactGuards(database,contactProof),...(promo && customerId ? promoCustomerGuards(database,customerId,input.customerAuthSubject!) : []),...snapshotGuards);
 
   if (customerId && input.saveAddressForFuture && savedAddressId) {
     statements.push(
@@ -729,15 +739,15 @@ export async function createCodOrder(
             id, recipient_user_id, audience_role, channel, template_key, subject_en, subject_ne,
             body_en, body_ne, related_type, related_id, status, provider_reference,
             failure_reason, request_id, created_at, sent_at, read_at
-          ) VALUES (?, ?, 'customer', ?, 'order.confirmed', 'Order confirmed', 'अर्डर पुष्टि भयो', ?, ?,
+          ) VALUES (?, ?, 'customer', ?, 'order.received', 'Order received', 'अर्डर प्राप्त भयो', ?, ?,
             'order', ?, 'queued', NULL, NULL, ?, ?, NULL, NULL)`,
           )
           .bind(
             crypto.randomUUID(),
             customerId,
             channel,
-            `Your cash-on-delivery order ${number} has been confirmed.`,
-            `तपाईंको क्यास अन डेलिभरी अर्डर ${number} पुष्टि भएको छ।`,
+            `Your cash-on-delivery order ${number} has been received. Check order details for confirmation and delivery progress.`,
+            `तपाईंको क्यास अन डेलिभरी अर्डर ${number} प्राप्त भएको छ। पुष्टि र डेलिभरीको प्रगतिको लागि अर्डर विवरण हेर्नुहोस्।`,
             id,
             `${input.idempotencyKey}:customer:${channel}`,
             now,

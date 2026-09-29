@@ -1,3 +1,5 @@
+import { FirstCodConfirmation } from '@/components/admin/first-cod-confirmation';
+import { getFirstCodReview } from '@/lib/orders/first-cod-review';
 import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import { CancellationReviewSection } from '@/components/admin/cancellation-review-section';
 import { ExceptionOrderSection } from '@/components/admin/exception-order-section';
@@ -43,7 +45,10 @@ export default async function AdminOrderPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ deliveryAfterAt?: string; deliveryAfterId?: string }>;
+  searchParams?: Promise<{
+    deliveryAfterAt?: string;
+    deliveryAfterId?: string;
+  }>;
 }) {
   const { id } = await params;
   const staff = await requireStaffPage(`/admin/orders/${id}`, 'order.manage');
@@ -54,17 +59,39 @@ export default async function AdminOrderPage({
   if (!order) notFound();
   const address = order.address;
   const db = requireDatabase(env as unknown as { DB?: D1Database });
+  const codReview = await getFirstCodReview(db, id);
+  const codPending =
+    codReview?.status === 'pending' && order.status !== 'cancelled';
   const query = await searchParams;
   let deliveryAfter;
-  try { deliveryAfter = readHistoryCursor(query?.deliveryAfterAt, query?.deliveryAfterId); }
-  catch { notFound(); }
+  try {
+    deliveryAfter = readHistoryCursor(
+      query?.deliveryAfterAt,
+      query?.deliveryAfterId,
+    );
+  } catch {
+    notFound();
+  }
   const deliveryAnswers = await listFormAnswersForSubjectPage(db, {
-    subjectType: 'order', subjectId: id, formId: 'staff.delivery-assignment',
+    subjectType: 'order',
+    subjectId: id,
+    formId: 'staff.delivery-assignment',
     after: deliveryAfter,
   });
-  if ((await Promise.all(deliveryAnswers.answers.map((answer) =>
-    authorizeFormAnswerRead(db, { id: staff.id, role: staff.role }, answer))))
-    .some((allowed) => !allowed)) notFound();
+  if (
+    (
+      await Promise.all(
+        deliveryAnswers.answers.map((answer) =>
+          authorizeFormAnswerRead(
+            db,
+            { id: staff.id, role: staff.role },
+            answer,
+          ),
+        ),
+      )
+    ).some((allowed) => !allowed)
+  )
+    notFound();
   const [parcels, cash, compensation, invoiceGroups] = await Promise.all([
     listParcels(db, id),
     parcelCashRecords(db, id),
@@ -95,11 +122,31 @@ export default async function AdminOrderPage({
   return (
     <div>
       <CancellationReviewSection db={db} orderId={id} />
-      <StaffFormHistoryLinks entries={[{kind:'order-fulfillment',subjectId:id,label:'Fulfillment answers'},
-        {kind:'order-fulfillment-cancellation',label:'Fulfillment cancellation answers'},
-        {kind:'order-fulfillment-cancellation-review',label:'Fulfillment review answers'},
-        {kind:'cancellation-approved',label:'Approved cancellation answers'},
-        {kind:'cancellation-rejected',label:'Rejected cancellation answers'}]} />
+      <StaffFormHistoryLinks
+        entries={[
+          {
+            kind: 'order-fulfillment',
+            subjectId: id,
+            label: 'Fulfillment answers',
+          },
+          {
+            kind: 'order-fulfillment-cancellation',
+            label: 'Fulfillment cancellation answers',
+          },
+          {
+            kind: 'order-fulfillment-cancellation-review',
+            label: 'Fulfillment review answers',
+          },
+          {
+            kind: 'cancellation-approved',
+            label: 'Approved cancellation answers',
+          },
+          {
+            kind: 'cancellation-rejected',
+            label: 'Rejected cancellation answers',
+          },
+        ]}
+      />
       <Link
         href="/admin/orders"
         className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
@@ -117,8 +164,11 @@ export default async function AdminOrderPage({
             Placed {new Date(order.placedAt).toLocaleString('en-NP')}
           </p>
         </div>
-        <OrderStatusBadge status={order.status} />
+        <OrderStatusBadge
+          status={codPending ? 'awaiting_cod_confirmation' : order.status}
+        />
       </div>
+      {codPending ? <FirstCodConfirmation orderId={id} /> : null}
       <div className="mt-6">
         <ParcelControls
           orderId={id}
@@ -127,9 +177,10 @@ export default async function AdminOrderPage({
           compensation={compensation}
           actorId={staff.id}
           isSuperAdmin={staff.role === 'super_admin'}
-          canPrepare={['confirmed', 'packing', 'ready_for_pickup'].includes(
-            order.status,
-          )}
+          canPrepare={
+            !codPending &&
+            ['confirmed', 'packing', 'ready_for_pickup'].includes(order.status)
+          }
         />
       </div>
       <ExceptionOrderSection db={db} orderId={id} staff={staff} />
@@ -248,6 +299,7 @@ export default async function AdminOrderPage({
             </p>
             <div className="mt-5">
               {!parcels.length &&
+              !codPending &&
               [
                 'confirmed',
                 'packing',
@@ -261,12 +313,24 @@ export default async function AdminOrderPage({
                 />
               ) : null}
               <section className="mt-6 space-y-3 rounded-xl border p-5">
-                <h3 className="font-semibold">Saved delivery-assignment answers</h3>
-                {deliveryAnswers.answers.length ? deliveryAnswers.answers.map((answer) =>
-                  <AnswerDetails key={answer.id} answer={answer} />) : <p>No saved assignment answers.</p>}
-                {deliveryAnswers.nextCursor ? <Link className="underline" href={
-                  `/admin/orders/${encodeURIComponent(id)}?deliveryAfterAt=${deliveryAnswers.nextCursor.createdAt}&deliveryAfterId=${encodeURIComponent(deliveryAnswers.nextCursor.id)}`
-                }>Next 50 answers</Link> : null}
+                <h3 className="font-semibold">
+                  Saved delivery-assignment answers
+                </h3>
+                {deliveryAnswers.answers.length ? (
+                  deliveryAnswers.answers.map((answer) => (
+                    <AnswerDetails key={answer.id} answer={answer} />
+                  ))
+                ) : (
+                  <p>No saved assignment answers.</p>
+                )}
+                {deliveryAnswers.nextCursor ? (
+                  <Link
+                    className="underline"
+                    href={`/admin/orders/${encodeURIComponent(id)}?deliveryAfterAt=${deliveryAnswers.nextCursor.createdAt}&deliveryAfterId=${encodeURIComponent(deliveryAnswers.nextCursor.id)}`}
+                  >
+                    Next 50 answers
+                  </Link>
+                ) : null}
               </section>
               {!parcels.length ? (
                 <AdminOrderFulfillmentActions

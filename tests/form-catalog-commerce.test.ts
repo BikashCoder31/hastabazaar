@@ -1,3 +1,4 @@
+import { seedVerifiedCheckoutContact } from './helpers/checkout-contact';
 import type { FixtureBrowser } from './helpers/browser-fixture-types';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -20,13 +21,14 @@ import { collectFormAnswersForPrivacy } from '../lib/forms/privacy';
 import type { StoredFormAnswer } from '../lib/db/repositories/form-answers';
 
 declare global {
+  var commerceCheckoutActor: { userId: string; authSubject: string; email: string } | undefined;
   var commerceCatalogDb: D1Database;
   var commerceCatalogMediaLog: { puts: string[]; deletes: string[] } | undefined;
 }
 registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier === 'cloudflare:workers') return { url: 'data:text/javascript,export const env = {get DB(){return globalThis.commerceCatalogDb},MEDIA:{async put(key){globalThis.commerceCatalogMediaLog?.puts.push(key)},async delete(key){globalThis.commerceCatalogMediaLog?.deletes.push(key)}}}', shortCircuit: true };
   if (specifier === '@/lib/auth/staff') return { url: 'data:text/javascript,export class StaffAuthorizationError extends Error {constructor(message,status){super(message);this.status=status}};export async function requireStaffApi(){return {id:"sa",role:"super_admin",permissions:[]}}', shortCircuit: true };
-  if (specifier === '@/lib/auth/customer') return { url: 'data:text/javascript,export class CustomerAuthorizationError extends Error {constructor(message,status){super(message);this.status=status}};export async function requireCustomerApi(){return {userId:"buyer",email:"buyer@example.test"}};export async function requireExistingCustomerApi(){throw new CustomerAuthorizationError("Authentication is required.",401)};export async function getCustomerUser(){return null}', shortCircuit: true };
+  if (specifier === '@/lib/auth/customer') return { url: 'data:text/javascript,export class CustomerAuthorizationError extends Error {constructor(message,status){super(message);this.status=status}};export async function requireCustomerApi(){return {userId:"buyer",email:"buyer@example.test"}};export async function requireExistingCustomerApi(){if(globalThis.commerceCheckoutActor)return globalThis.commerceCheckoutActor;throw new CustomerAuthorizationError("Authentication is required.",401)};export async function getCustomerUser(){return globalThis.commerceCheckoutActor??null}', shortCircuit: true };
   if (specifier === '@/lib/auth/seller') return { url: 'data:text/javascript,export class SellerAuthorizationError extends Error {constructor(message,status){super(message);this.status=status}};export async function requireSellerApi(){return {sellerId:"seller-profile",userId:"seller"}}', shortCircuit: true };
   if (specifier === '@/lib/cart/session') return { url: 'data:text/javascript,export const RECEIPT_COOKIE="hastabazaar_receipt";export const CART_COOKIE="hastabazaar_cart";export function readCookie(request,name){return request.headers.get("cookie")?.match(new RegExp(name+"=([^;]+)"))?.[1]??null};export async function hashOpaqueToken(value){return value};export function receiptCookie(){return "receipt=test"}', shortCircuit: true };
   if (specifier === '@/lib/email/send-order-updates') return { url: 'data:text/javascript,export async function sendPendingOrderUpdates(){}', shortCircuit: true };
@@ -627,6 +629,7 @@ void test('return route hashes validated evidence bytes and cleans retry uploads
 void test('checkout answer joins the committed order and cannot be added by a duplicate attempt', async () => {
   const { sqlite, db, now } = caseDatabase(false);
   try {
+    await seedVerifiedCheckoutContact(db, 'buyer');
     sqlite.prepare("UPDATE seller_profiles SET seller_agreement_version=?,seller_agreement_accepted_at=1 WHERE id='seller-profile'").run(SELLER_AGREEMENT_VERSION);
     sqlite.prepare("INSERT INTO carts(id,anonymous_token_hash,currency,created_at,updated_at) VALUES ('cart','cart-hash','NPR',?,?)").run(now, now);
     sqlite.prepare("INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES ('cart-item','cart','product',1,?,?)").run(now, now);
@@ -638,18 +641,19 @@ void test('checkout answer joins the committed order and cannot be added by a du
     const parsed = parseCheckoutInput({ ...checkoutInput(), deliveryRateVersion: rates.version,
       formVersion: 1, customAnswers: [{ fieldId: 'context_note', value: 'Call first' }] });
     assert.ok(parsed.value, parsed.errors.join(' '));
-    const ordered = await createCodOrder(db, 'cart-hash', 'receipt-hash-new', parsed.value, now, null,
+    parsed.value.customerAuthSubject = 'buyer';
+    const ordered = await createCodOrder(db, 'cart-hash', 'receipt-hash-new', parsed.value, now, 'buyer',
       giftForm('commerce.checkout', 'Call first'));
     const order = sqlite.prepare('SELECT id FROM orders WHERE order_number=?').get(ordered.orderNumber);
     assert.equal(sqlite.prepare("SELECT subject_id FROM form_answer_sets WHERE form_id='commerce.checkout'").get()?.subject_id, order?.id);
-    assert.equal((await createCodOrder(db, 'cart-hash', 'receipt-hash-new', parsed.value, now, null,
+    assert.equal((await createCodOrder(db, 'cart-hash', 'receipt-hash-new', parsed.value, now, 'buyer',
       giftForm('commerce.checkout', 'Call first'))).orderNumber, ordered.orderNumber);
     await assert.rejects(() => createCodOrder(db, 'cart-hash', 'receipt-hash-new',
-      { ...parsed.value!, customerPhone: '9822222222' }, now, null,
+      { ...parsed.value!, customerPhone: '9822222222' }, now, 'buyer',
       giftForm('commerce.checkout', 'Call first')));
     sqlite.prepare("INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES ('new-cart-item','cart','product',1,?,?)").run(now + 1, now + 1);
     await assert.rejects(() => createCodOrder(db, 'cart-hash', 'receipt-hash-new',
-      parsed.value!, now + 1, null, giftForm('commerce.checkout', 'Call first')));
+      parsed.value!, now + 1, 'buyer', giftForm('commerce.checkout', 'Call first')));
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM form_answer_sets WHERE form_id='commerce.checkout'").get()?.n, 1);
   } finally { sqlite.close(); }
 });
@@ -658,6 +662,8 @@ void test('checkout route rejects an unversioned cart before placing an order', 
   const { sqlite, db, now } = caseDatabase(false);
   globalThis.commerceCatalogDb = db;
   try {
+    await seedVerifiedCheckoutContact(db, 'buyer');
+    globalThis.commerceCheckoutActor = { userId: 'buyer', authSubject: 'buyer', email: 'buyer@example.test' };
     sqlite.prepare('UPDATE seller_profiles SET seller_agreement_version=?,seller_agreement_accepted_at=1 WHERE id=?').run(SELLER_AGREEMENT_VERSION, 'seller-profile');
     sqlite.prepare("INSERT INTO carts(id,anonymous_token_hash,currency,created_at,updated_at) VALUES ('cart','cart-hash','NPR',?,?)").run(now, now);
     sqlite.prepare("INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES ('cart-item','cart','product',1,?,?)").run(now, now);
@@ -670,13 +676,15 @@ void test('checkout route rejects an unversioned cart before placing an order', 
     }));
     assert.equal(response.status, 400);
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM orders WHERE id <> 'order'").get()?.n, 0);
-  } finally { sqlite.close(); }
+  } finally { globalThis.commerceCheckoutActor = undefined; sqlite.close(); }
 });
 
 void test('versioned checkout route links its answer to the created order', async () => {
   const { sqlite, db, now } = caseDatabase(false);
   globalThis.commerceCatalogDb = db;
   try {
+    await seedVerifiedCheckoutContact(db, 'buyer');
+    globalThis.commerceCheckoutActor = { userId: 'buyer', authSubject: 'buyer', email: 'buyer@example.test' };
     sqlite.prepare('UPDATE seller_profiles SET seller_agreement_version=?,seller_agreement_accepted_at=1 WHERE id=?').run(SELLER_AGREEMENT_VERSION, 'seller-profile');
     sqlite.prepare("INSERT INTO carts(id,anonymous_token_hash,currency,created_at,updated_at) VALUES ('cart','cart-hash','NPR',?,?)").run(now, now);
     sqlite.prepare("INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES ('cart-item','cart','product',1,?,?)").run(now, now);
@@ -696,7 +704,7 @@ void test('versioned checkout route links its answer to the created order', asyn
     const result = await response.json() as { orderNumber: string };
     const order = sqlite.prepare('SELECT id FROM orders WHERE order_number=?').get(result.orderNumber);
     assert.equal(sqlite.prepare("SELECT subject_id FROM form_answer_sets WHERE form_id='commerce.checkout'").get()?.subject_id, order?.id);
-  } finally { sqlite.close(); }
+  } finally { globalThis.commerceCheckoutActor = undefined; sqlite.close(); }
 });
 
 void test('gift form renders a required custom field and submits its versioned answer', async () => {
@@ -946,6 +954,8 @@ void test('checkout client submits the published answer with the core order payl
     await page.route('https://checkout.test/**', async (route) => {
       const url = new URL(route.request().url());
       if (url.pathname === '/') return route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
+      if (url.pathname === '/api/account/contact-verification') return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ email: 'buyer@example.test', phone: '+9779811111111', emailVerified: true, phoneVerified: true }) });
       if (url.pathname === '/api/cart') return route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ items: [{ id: 'item', sellerId: 'seller', nameEn: 'Product',
           tradingName: 'Shop', pricePaisa: 100000, quantity: 1, preparationDays: 1 }],

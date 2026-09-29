@@ -1,0 +1,5 @@
+-- Additive guard: SQL CHECK accepts UNKNOWN for nullable values. Require complete confirmation evidence without rewriting any existing row.
+CREATE TRIGGER IF NOT EXISTS first_cod_evidence_complete_insert BEFORE INSERT ON first_cod_reviews WHEN NEW.status='confirmed' AND (NEW.confirmed_by IS NULL OR NEW.confirmed_at IS NULL OR NEW.reason IS NULL OR NEW.request_id IS NULL OR NEW.confirmed_at<NEW.created_at OR length(trim(NEW.reason)) NOT BETWEEN 8 AND 500 OR length(NEW.request_id) NOT BETWEEN 1 AND 100) BEGIN SELECT RAISE(ABORT,'COD confirmation requires complete staff evidence'); END;
+--> statement-breakpoint
+CREATE TRIGGER IF NOT EXISTS first_cod_evidence_complete_update BEFORE UPDATE ON first_cod_reviews WHEN NEW.status='confirmed' AND (NEW.confirmed_by IS NULL OR NEW.confirmed_at IS NULL OR NEW.reason IS NULL OR NEW.request_id IS NULL OR NEW.confirmed_at<NEW.created_at OR length(trim(NEW.reason)) NOT BETWEEN 8 AND 500 OR length(NEW.request_id) NOT BETWEEN 1 AND 100) BEGIN SELECT RAISE(ABORT,'COD confirmation requires complete staff evidence'); END;
+--> statement-breakpoint

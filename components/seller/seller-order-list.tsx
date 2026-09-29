@@ -7,7 +7,7 @@ import { sellerDate, sellerMoney } from '@/lib/seller/presentation';
 export function SellerOrderList({
   orders,
 }: {
-  orders: readonly SellerOrderRow[];
+  orders: readonly (SellerOrderRow & { firstCodPending?: boolean })[];
 }) {
   return (
     <div className="space-y-3">
@@ -28,7 +28,13 @@ export function SellerOrderList({
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm text-muted-foreground">Your items</span>
-              <OrderStatusBadge status={order.sellerStatus} />
+              <OrderStatusBadge
+                status={
+                  order.firstCodPending
+                    ? 'awaiting_cod_confirmation'
+                    : order.sellerStatus
+                }
+              />
             </div>
           </div>
           <div className="mt-4 flex flex-wrap items-end justify-between gap-4 border-t pt-4">
@@ -38,7 +44,9 @@ export function SellerOrderList({
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
                 Commission: {sellerMoney(order.sellerCommissionPaisa)} · Order:{' '}
-                {order.status.replaceAll('_', ' ')}
+                {order.firstCodPending
+                  ? 'Awaiting COD confirmation'
+                  : order.status.replaceAll('_', ' ')}
               </p>
             </div>
             <Link href={'/seller/orders/' + order.id} className="section-link">

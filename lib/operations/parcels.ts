@@ -1,3 +1,4 @@
+import { assertFirstCodFulfillmentAllowed } from '../orders/first-cod-review';
 import {
   cancellationPreview,
   cancelSelectedParcels,
@@ -310,6 +311,7 @@ export async function prepareSellerParcels(
     'order.manage',
     ParcelConflictError,
   );
+  await assertFirstCodFulfillmentAllowed(db, o.orderId, ParcelConflictError);
   const payload = JSON.stringify({ action: 'setup', orderId: o.orderId });
   if (await repeated(db, o.requestId, o.actorId, payload)) return;
   const order = await db
@@ -424,8 +426,12 @@ export interface ParcelOperation {
   trackingUrl?: string;
   trackingCode?: string;
   riderReportId?: string;
-  form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot;
-    formId?: 'staff.parcel-control' | 'staff.rider-control-1' };
+  form?: {
+    requestId: string;
+    versionId: string;
+    answers: FormAnswerSnapshot;
+    formId?: 'staff.parcel-control' | 'staff.rider-control-1';
+  };
 }
 export async function operateParcel(db: D1Database, o: ParcelOperation) {
   const authority = await staffMutationGuard(
@@ -446,21 +452,40 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       'Add a clear note and refresh the parcel version.',
     );
   if (o.form && o.form.requestId !== o.requestId)
-    throw new ParcelConflictError('Form request does not match parcel operation.');
-  if (o.form?.formId === 'staff.rider-control-1' &&
-    (!o.riderReportId || !['deliver','fail'].includes(o.action)))
-    throw new ParcelConflictError('Rider confirmation requires the matching report action.');
+    throw new ParcelConflictError(
+      'Form request does not match parcel operation.',
+    );
+  if (
+    o.form?.formId === 'staff.rider-control-1' &&
+    (!o.riderReportId || !['deliver', 'fail'].includes(o.action))
+  )
+    throw new ParcelConflictError(
+      'Rider confirmation requires the matching report action.',
+    );
   const { form, ...operation } = o;
-  const catalogFormId=form?.formId??'staff.parcel-control';
-  const formDigest = form ? await digestFormRequest({ ...operation, now: undefined,
-    formId:catalogFormId, versionId: form.versionId, answers: form.answers }) : null;
-  const payload = JSON.stringify({ ...operation, now: undefined, ...(formDigest ? { formDigest } : {}) });
+  const catalogFormId = form?.formId ?? 'staff.parcel-control';
+  const formDigest = form
+    ? await digestFormRequest({
+        ...operation,
+        now: undefined,
+        formId: catalogFormId,
+        versionId: form.versionId,
+        answers: form.answers,
+      })
+    : null;
+  const payload = JSON.stringify({
+    ...operation,
+    now: undefined,
+    ...(formDigest ? { formDigest } : {}),
+  });
   if (await repeated(db, o.requestId, o.actorId, payload)) return;
   const p = await db
     .prepare(selectParcel + ' WHERE j.id=?')
     .bind(o.jobId)
     .first<Parcel>();
   if (!p) throw new ParcelConflictError('Parcel not found.');
+  if (o.action !== 'cancel' && o.action !== 'record_cost')
+    await assertFirstCodFulfillmentAllowed(db, p.orderId, ParcelConflictError);
   const statements: D1PreparedStatement[] = [
     db
       .prepare('UPDATE orders SET updated_at=updated_at WHERE id=?')
@@ -529,9 +554,19 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
         ),
     );
     statements.push(parcelAudit(db, o, p.orderId, o.action));
-    if (form) statements.push(buildFormAnswerInsert(db,{formId:'staff.parcel-control',requestId:o.requestId,
-      versionId:form.versionId,subjectType:'shipping_job',subjectId:o.jobId,actorId:o.actorId,
-      answers:form.answers,now:o.now}));
+    if (form)
+      statements.push(
+        buildFormAnswerInsert(db, {
+          formId: 'staff.parcel-control',
+          requestId: o.requestId,
+          versionId: form.versionId,
+          subjectType: 'shipping_job',
+          subjectId: o.jobId,
+          actorId: o.actorId,
+          answers: form.answers,
+          now: o.now,
+        }),
+      );
     statements.push(...authority.statements);
     await transact(db, statements);
     return;
@@ -553,7 +588,7 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       requestId: o.requestId,
       note: o.note,
       now: o.now,
-      parcelContext: { jobId: o.jobId, payload, ...(form?{form}:{}) },
+      parcelContext: { jobId: o.jobId, payload, ...(form ? { form } : {}) },
     });
     return;
   }
@@ -810,7 +845,8 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
         );
       const kind = o.action === 'collect' ? 'collection' : 'remittance';
       const cashId = crypto.randomUUID();
-      const directRemittance = kind === 'remittance' && authority.role === 'super_admin';
+      const directRemittance =
+        kind === 'remittance' && authority.role === 'super_admin';
       statements.push(
         db
           .prepare(
@@ -831,7 +867,13 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
           ),
       );
       if (directRemittance) {
-        statements.push(db.prepare('UPDATE shipping_parcels SET remitted_paisa=remitted_paisa+? WHERE shipping_job_id=?').bind(amount, o.jobId));
+        statements.push(
+          db
+            .prepare(
+              'UPDATE shipping_parcels SET remitted_paisa=remitted_paisa+? WHERE shipping_job_id=?',
+            )
+            .bind(amount, o.jobId),
+        );
       }
       if (kind === 'collection' && p.method === 'own_rider' && p.riderUserId) {
         const obligation = await cashObligationSnapshot(
@@ -864,8 +906,12 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
         )
         .bind(o.cashRecordId ?? '', o.jobId)
         .first<{ amount: number; maker: string; riderId: string | null }>();
-      if (!record || (p.method !== 'own_rider' && authority.role !== 'super_admin') || record.riderId === o.actorId ||
-          (record.maker === o.actorId && authority.role !== 'super_admin'))
+      if (
+        !record ||
+        (p.method !== 'own_rider' && authority.role !== 'super_admin') ||
+        record.riderId === o.actorId ||
+        (record.maker === o.actorId && authority.role !== 'super_admin')
+      )
         throw new ParcelConflictError(
           'An authorized reviewer must review this pending remittance; staff cannot review their own rider cash.',
         );
@@ -1102,10 +1148,25 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       ),
   );
   statements.push(parcelAudit(db, o, p.orderId, o.action));
-  if (form) statements.push(buildFormAnswerInsert(db,{formId:catalogFormId,requestId:o.requestId,
-    versionId:form.versionId,subjectType:catalogFormId==='staff.rider-control-1'?'rider_report':'shipping_job',
-    subjectId:catalogFormId==='staff.rider-control-1'?o.riderReportId!:o.jobId,actorId:o.actorId,
-    answers:form.answers,now:o.now}));
+  if (form)
+    statements.push(
+      buildFormAnswerInsert(db, {
+        formId: catalogFormId,
+        requestId: o.requestId,
+        versionId: form.versionId,
+        subjectType:
+          catalogFormId === 'staff.rider-control-1'
+            ? 'rider_report'
+            : 'shipping_job',
+        subjectId:
+          catalogFormId === 'staff.rider-control-1'
+            ? o.riderReportId!
+            : o.jobId,
+        actorId: o.actorId,
+        answers: form.answers,
+        now: o.now,
+      }),
+    );
   statements.push(...authority.statements);
   await transact(db, statements);
   await accrueManagedEntitlements(db, {

@@ -1,5 +1,6 @@
-import {listParcels,customerParcel} from '@/lib/operations/parcels';
-import {ParcelList} from '@/components/delivery/parcel-list';
+import { getFirstCodReview } from '@/lib/orders/first-cod-review';
+import { listParcels, customerParcel } from '@/lib/operations/parcels';
+import { ParcelList } from '@/components/delivery/parcel-list';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -33,7 +34,17 @@ export default async function SellerOrderPage({
     seller.sellerId,
   );
   if (!order) notFound();
-  const parcels=await listParcels(requireDatabase(env as unknown as {DB?:D1Database}),id,seller.sellerId);
+  const codReview = await getFirstCodReview(
+    requireDatabase(env as unknown as { DB?: D1Database }),
+    id,
+  );
+  const codPending =
+    codReview?.status === 'pending' && order.status !== 'cancelled';
+  const parcels = await listParcels(
+    requireDatabase(env as unknown as { DB?: D1Database }),
+    id,
+    seller.sellerId,
+  );
   const sellerSubtotal = order.items.reduce(
     (total, item) => total + item.lineTotalPaisa,
     0,
@@ -44,7 +55,17 @@ export default async function SellerOrderPage({
   );
   return (
     <div>
-      <ParcelList parcels={parcels.map(p=>customerParcel({...p,latitude:null,longitude:null,accuracy:null,positionAt:null}))}/>
+      <ParcelList
+        parcels={parcels.map((p) =>
+          customerParcel({
+            ...p,
+            latitude: null,
+            longitude: null,
+            accuracy: null,
+            positionAt: null,
+          }),
+        )}
+      />
       <Link
         href="/seller/orders"
         className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
@@ -64,7 +85,9 @@ export default async function SellerOrderPage({
         </div>
         <div>
           <p className="mb-2 text-sm text-muted-foreground">Whole order</p>
-          <OrderStatusBadge status={order.status} />
+          <OrderStatusBadge
+            status={codPending ? 'awaiting_cod_confirmation' : order.status}
+          />
         </div>
       </div>
       <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem]">
@@ -89,7 +112,13 @@ export default async function SellerOrderPage({
                     </p>
                   </div>
                   <div className="text-right">
-                    <OrderStatusBadge status={item.fulfillmentStatus} />
+                    <OrderStatusBadge
+                      status={
+                        codPending
+                          ? 'awaiting_cod_confirmation'
+                          : item.fulfillmentStatus
+                      }
+                    />
                     <p className="mt-2 text-sm font-semibold">
                       {money(item.lineTotalPaisa)}
                     </p>
@@ -126,10 +155,19 @@ export default async function SellerOrderPage({
               Update only after every item shown here reaches the stated stage.
             </p>
             <div className="mt-5">
-              <SellerOrderFulfillmentActions
-                orderId={order.id}
-                itemStatuses={order.items.map((item) => item.fulfillmentStatus)}
-              />
+              {codPending ? (
+                <p className="text-sm leading-6">
+                  Awaiting staff confirmation of this first-time COD order.
+                  Begin packing after confirmation.
+                </p>
+              ) : (
+                <SellerOrderFulfillmentActions
+                  orderId={order.id}
+                  itemStatuses={order.items.map(
+                    (item) => item.fulfillmentStatus,
+                  )}
+                />
+              )}
             </div>
           </section>
           <section className="rounded-2xl border bg-card p-6">

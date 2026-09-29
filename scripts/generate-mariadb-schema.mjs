@@ -12,6 +12,9 @@ const recoveryOutputPath = resolve(
 );
 const snapshot = JSON.parse(await readFile(snapshotPath, 'utf8'));
 const singleSuperAdminSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-single-super-admin-approvals.sql'), 'utf8');
+const checkoutContactVerificationSql=await readFile(resolve(projectRoot,'deployment/babal/mariadb-checkout-contact-verification.sql'),'utf8');
+const firstCodReviewSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-first-cod-review.sql'), 'utf8');
+const firstCodEvidenceGuardsSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-first-cod-evidence-guards.sql'), 'utf8');
 const parcelOperationsSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-parcel-operations.sql'), 'utf8');
 const staffPermissionsSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-staff-permissions.sql'), 'utf8');
 const verifiedRidersSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-verified-riders.sql'), 'utf8');
@@ -509,6 +512,9 @@ output.push(
   "INSERT IGNORE INTO `hastabazaar_schema_versions` (`version`, `applied_at`) VALUES ('0020_snapshot', UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000);",
   '',
   singleSuperAdminSql.trim(),
+  checkoutContactVerificationSql.trim(),
+  firstCodReviewSql.trim(),
+  firstCodEvidenceGuardsSql.trim(),
   'SET FOREIGN_KEY_CHECKS = 1;',
   '',
 );
@@ -517,6 +523,11 @@ await mkdir(dirname(outputPath), { recursive: true });
 const schemaSql = output.join('\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
+  'first_cod_reviews',
+  'local_contact_captures',
+  'account_contact_challenges',
+  'account_phone_verifications',
+  'account_email_verifications',
   'rider_assignment_snapshots',
   'rider_remittance_allocations',
   'rider_compensation_entries',

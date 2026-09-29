@@ -26,6 +26,13 @@ export const orderStages = [
   },
 ] as const;
 export function orderProgress(status: string) {
+  if (status === 'awaiting_cod_confirmation')
+    return {
+      label: 'Awaiting COD confirmation',
+      detail:
+        'We received your order. Staff will confirm it with you before your makers begin packing.',
+      step: -1,
+    };
   if (status === 'cancelled')
     return {
       label: 'Cancelled',

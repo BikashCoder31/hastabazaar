@@ -1,22 +1,54 @@
+import { assertFirstCodFulfillmentAllowed } from '../../orders/first-cod-review';
 import { retainedIncentiveProofForRequestSql } from '../../incentives/privacy';
-import {riderNotificationSourceSql} from '../../operations/rider-notification-access';
+import { riderNotificationSourceSql } from '../../operations/rider-notification-access';
 import { operationalBusinessNotificationStatements } from '../../operations/business-notifications';
 import type { StaffRole } from '@/lib/auth/staff';
 import { buildFormAnswerInsert } from './form-answers';
 import { FORM_REGISTRY } from '@/lib/forms/registry';
 import { FormRuntimeError, resolvePublishedForm } from '@/lib/forms/runtime';
-import type { FormAnswerSnapshot, PublishedFormConfig } from '@/lib/forms/types';
-import { validateAnswersForDefinition, validateFormDraft } from '@/lib/forms/validation';
-import { digestFormRequest, formRequestReplay, FormRequestConflictError } from '@/lib/forms/submission';
+import type {
+  FormAnswerSnapshot,
+  PublishedFormConfig,
+} from '@/lib/forms/types';
+import {
+  validateAnswersForDefinition,
+  validateFormDraft,
+} from '@/lib/forms/validation';
+import {
+  digestFormRequest,
+  formRequestReplay,
+  FormRequestConflictError,
+} from '@/lib/forms/submission';
 import { staffMutationGuard } from './staff-mutation-guard';
 
 export class OperationsConflictError extends Error {}
 
-function workflowAudit(db:D1Database,kind:'shipping'|'privacy',o:{actorId:string;requestId:string;now:number},subjectId:string,action:string){
- const source=kind==='shipping'?'shipping_job_events':'data_rights_events';const requestColumn=kind==='shipping'?'request_id':'operation_request_id';
- return db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,created_at) SELECT ?,?,?,?,?,'Workflow step recorded',NULL,NULL,?,? FROM ${source} WHERE ${requestColumn}=?`).bind(crypto.randomUUID(),o.actorId,kind+'.'+action,kind==='shipping'?'shipping_job':'data_rights_request',subjectId,o.requestId+':audit',o.now,o.requestId);
+function workflowAudit(
+  db: D1Database,
+  kind: 'shipping' | 'privacy',
+  o: { actorId: string; requestId: string; now: number },
+  subjectId: string,
+  action: string,
+) {
+  const source =
+    kind === 'shipping' ? 'shipping_job_events' : 'data_rights_events';
+  const requestColumn =
+    kind === 'shipping' ? 'request_id' : 'operation_request_id';
+  return db
+    .prepare(
+      `INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,created_at) SELECT ?,?,?,?,?,'Workflow step recorded',NULL,NULL,?,? FROM ${source} WHERE ${requestColumn}=?`,
+    )
+    .bind(
+      crypto.randomUUID(),
+      o.actorId,
+      kind + '.' + action,
+      kind === 'shipping' ? 'shipping_job' : 'data_rights_request',
+      subjectId,
+      o.requestId + ':audit',
+      o.now,
+      o.requestId,
+    );
 }
-
 
 export interface NotificationRow {
   audienceRole: string;
@@ -201,26 +233,56 @@ export async function createShippingJob(
     note: string;
     requestId: string;
     now: number;
-    form?: { formId?: 'seller.shipping-request' | 'shipping.console-request'; requestId: string; versionId: string; answers: FormAnswerSnapshot };
+    form?: {
+      formId?: 'seller.shipping-request' | 'shipping.console-request';
+      requestId: string;
+      versionId: string;
+      answers: FormAnswerSnapshot;
+    };
   },
 ): Promise<string> {
   const formId = options.form?.formId ?? 'seller.shipping-request';
-  if (options.form && (options.form.requestId !== options.requestId ||
-    !['seller.shipping-request', 'shipping.console-request'].includes(formId)))
-    throw new FormRequestConflictError('Shipping request form reference is invalid.');
-  const auditAction = formId === 'shipping.console-request'
-    ? 'shipping.console.requested' : 'seller.shipping.requested';
-  const catalogDigest = options.form ? await digestFormRequest({ orderId: options.orderId,
-    sellerId: options.sellerId, direction: options.direction, note: options.note.trim(),
-    versionId: options.form.versionId, answers: options.form.answers }) : null;
+  if (
+    options.form &&
+    (options.form.requestId !== options.requestId ||
+      !['seller.shipping-request', 'shipping.console-request'].includes(formId))
+  )
+    throw new FormRequestConflictError(
+      'Shipping request form reference is invalid.',
+    );
+  const auditAction =
+    formId === 'shipping.console-request'
+      ? 'shipping.console.requested'
+      : 'seller.shipping.requested';
+  const catalogDigest = options.form
+    ? await digestFormRequest({
+        orderId: options.orderId,
+        sellerId: options.sellerId,
+        direction: options.direction,
+        note: options.note.trim(),
+        versionId: options.form.versionId,
+        answers: options.form.answers,
+      })
+    : null;
   if (options.form) {
-    const replay = await formRequestReplay(database, { formId,
-      requestId: options.requestId, actorId: options.actorId, action: auditAction,
-      digest: catalogDigest! });
+    const replay = await formRequestReplay(database, {
+      formId,
+      requestId: options.requestId,
+      actorId: options.actorId,
+      action: auditAction,
+      digest: catalogDigest!,
+    });
     if (replay) {
-      const ownedReplay = await database.prepare('SELECT id FROM shipping_jobs WHERE id=? AND seller_id=? AND created_by=? AND created_request_id=? LIMIT 1')
-        .bind(replay, options.sellerId, options.actorId, options.requestId).first();
-      if (!ownedReplay) throw new FormRequestConflictError('Request reference is already used for another shipping job.');
+      const ownedReplay = await database
+        .prepare(
+          'SELECT id FROM shipping_jobs WHERE id=? AND seller_id=? AND created_by=? AND created_request_id=? LIMIT 1',
+        )
+        .bind(replay, options.sellerId, options.actorId, options.requestId)
+        .first();
+      if (!ownedReplay)
+        throw new FormRequestConflictError(
+          'Request reference is already used for another shipping job.',
+        );
       return replay;
     }
   }
@@ -229,7 +291,8 @@ export async function createShippingJob(
     .bind(options.requestId)
     .first<{ id: string }>();
   if (duplicate) {
-    if (options.form) throw new FormRequestConflictError('Request reference is already used.');
+    if (options.form)
+      throw new FormRequestConflictError('Request reference is already used.');
     return duplicate.id;
   }
   const owned = await database
@@ -240,6 +303,12 @@ export async function createShippingJob(
     .first();
   if (!owned)
     throw new OperationsConflictError('Order is not assigned to this seller.');
+  if (options.direction === 'outbound')
+    await assertFirstCodFulfillmentAllowed(
+      database,
+      options.orderId,
+      OperationsConflictError,
+    );
   const note = options.note.trim();
   if (note.length < 8 || note.length > 1000)
     throw new OperationsConflictError(
@@ -274,23 +343,54 @@ export async function createShippingJob(
           options.requestId,
           options.now,
         ),
-    workflowAudit(database,'shipping',options,id,'request_pickup'),
-    ...(options.form ? [database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,created_at)
+      workflowAudit(database, 'shipping', options, id, 'request_pickup'),
+      ...(options.form
+        ? [
+            database
+              .prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,created_at)
       VALUES (?,?,?,'shipping_job',?,'Seller requested manual shipping coordination',NULL,?,?,?)`)
-      .bind(crypto.randomUUID(), options.actorId, auditAction, id, JSON.stringify({ catalogDigest }), options.requestId, options.now),
-      buildFormAnswerInsert(database, { formId, requestId: options.requestId,
-        versionId: options.form.versionId, subjectType: 'shipping_job', subjectId: id,
-        actorId: options.actorId, answers: options.form.answers, now: options.now })] : []),
+              .bind(
+                crypto.randomUUID(),
+                options.actorId,
+                auditAction,
+                id,
+                JSON.stringify({ catalogDigest }),
+                options.requestId,
+                options.now,
+              ),
+            buildFormAnswerInsert(database, {
+              formId,
+              requestId: options.requestId,
+              versionId: options.form.versionId,
+              subjectType: 'shipping_job',
+              subjectId: id,
+              actorId: options.actorId,
+              answers: options.form.answers,
+              now: options.now,
+            }),
+          ]
+        : []),
     ]);
   } catch (error) {
     if (options.form) {
-      const replay = await formRequestReplay(database, { formId,
-        requestId: options.requestId, actorId: options.actorId, action: auditAction,
-        digest: catalogDigest! });
+      const replay = await formRequestReplay(database, {
+        formId,
+        requestId: options.requestId,
+        actorId: options.actorId,
+        action: auditAction,
+        digest: catalogDigest!,
+      });
       if (replay) {
-        const ownedReplay = await database.prepare('SELECT id FROM shipping_jobs WHERE id=? AND seller_id=? AND created_by=? AND created_request_id=? LIMIT 1')
-          .bind(replay, options.sellerId, options.actorId, options.requestId).first();
-        if (!ownedReplay) throw new FormRequestConflictError('Request reference is already used for another shipping job.');
+        const ownedReplay = await database
+          .prepare(
+            'SELECT id FROM shipping_jobs WHERE id=? AND seller_id=? AND created_by=? AND created_request_id=? LIMIT 1',
+          )
+          .bind(replay, options.sellerId, options.actorId, options.requestId)
+          .first();
+        if (!ownedReplay)
+          throw new FormRequestConflictError(
+            'Request reference is already used for another shipping job.',
+          );
         return replay;
       }
     }
@@ -320,40 +420,93 @@ export async function operateShippingJob(
     reconciliationStatus?: string;
     requestId: string;
     now: number;
-    form?: { formId?: 'seller.shipping-action' | 'shipping.console-action-seller' | 'shipping.console-action-staff';
-      requestId: string; versionId: string; answers: FormAnswerSnapshot };
+    form?: {
+      formId?:
+        | 'seller.shipping-action'
+        | 'shipping.console-action-seller'
+        | 'shipping.console-action-staff';
+      requestId: string;
+      versionId: string;
+      answers: FormAnswerSnapshot;
+    };
   },
 ): Promise<void> {
   const formId = options.form?.formId ?? 'seller.shipping-action';
-  if (options.form && (options.form.requestId !== options.requestId ||
-    !['seller.shipping-action', 'shipping.console-action-seller',
-      'shipping.console-action-staff'].includes(formId) ||
-    (formId === 'shipping.console-action-staff') === (options.actorRole === 'seller')))
-    throw new FormRequestConflictError('Shipping action form reference is invalid.');
-  const auditAction = formId === 'shipping.console-action-staff'
-    ? 'shipping.console.action.staff' : formId === 'shipping.console-action-seller'
-      ? 'shipping.console.action.seller' : 'seller.shipping.picked_up';
-  const authority = formId === 'shipping.console-action-staff'
-    ? await staffMutationGuard(database, options.actorId, 'order.manage',
-      OperationsConflictError, options.actorRole as StaffRole) : null;
-  const catalogDigest = options.form ? await digestFormRequest({ jobId: options.jobId,
-    sellerId: options.sellerId, action: options.action, note: options.note.trim(),
-    ...(formId === 'shipping.console-action-staff' ? {
-      labelReference: options.labelReference, trackingCode: options.trackingCode,
-      claimReference: options.claimReference, reconciliationStatus: options.reconciliationStatus,
-      pickupStart: options.pickupStart, pickupEnd: options.pickupEnd,
-    } : {}), versionId: options.form.versionId, answers: options.form.answers }) : null;
+  if (
+    options.form &&
+    (options.form.requestId !== options.requestId ||
+      ![
+        'seller.shipping-action',
+        'shipping.console-action-seller',
+        'shipping.console-action-staff',
+      ].includes(formId) ||
+      (formId === 'shipping.console-action-staff') ===
+        (options.actorRole === 'seller'))
+  )
+    throw new FormRequestConflictError(
+      'Shipping action form reference is invalid.',
+    );
+  const auditAction =
+    formId === 'shipping.console-action-staff'
+      ? 'shipping.console.action.staff'
+      : formId === 'shipping.console-action-seller'
+        ? 'shipping.console.action.seller'
+        : 'seller.shipping.picked_up';
+  const authority =
+    formId === 'shipping.console-action-staff'
+      ? await staffMutationGuard(
+          database,
+          options.actorId,
+          'order.manage',
+          OperationsConflictError,
+          options.actorRole as StaffRole,
+        )
+      : null;
+  const catalogDigest = options.form
+    ? await digestFormRequest({
+        jobId: options.jobId,
+        sellerId: options.sellerId,
+        action: options.action,
+        note: options.note.trim(),
+        ...(formId === 'shipping.console-action-staff'
+          ? {
+              labelReference: options.labelReference,
+              trackingCode: options.trackingCode,
+              claimReference: options.claimReference,
+              reconciliationStatus: options.reconciliationStatus,
+              pickupStart: options.pickupStart,
+              pickupEnd: options.pickupEnd,
+            }
+          : {}),
+        versionId: options.form.versionId,
+        answers: options.form.answers,
+      })
+    : null;
   if (options.form) {
-    const replay = await formRequestReplay(database, { formId,
-      requestId: options.requestId, actorId: options.actorId, action: auditAction,
-      digest: catalogDigest! });
+    const replay = await formRequestReplay(database, {
+      formId,
+      requestId: options.requestId,
+      actorId: options.actorId,
+      action: auditAction,
+      digest: catalogDigest!,
+    });
     if (replay) {
-      const ownedReplay = await database.prepare(`SELECT 1 FROM shipping_job_events e JOIN shipping_jobs j ON j.id=e.shipping_job_id
+      const ownedReplay = await database
+        .prepare(`SELECT 1 FROM shipping_job_events e JOIN shipping_jobs j ON j.id=e.shipping_job_id
         WHERE e.id=? AND e.shipping_job_id=? AND e.actor_id=? AND e.request_id=?
           ${options.actorRole === 'seller' ? 'AND j.seller_id=?' : "AND e.actor_role IN ('admin','super_admin')"} LIMIT 1`)
-        .bind(replay, options.jobId, options.actorId, options.requestId,
-          ...(options.actorRole === 'seller' ? [options.sellerId] : [])).first();
-      if (!ownedReplay) throw new FormRequestConflictError('Request reference is already used for another shipping action.');
+        .bind(
+          replay,
+          options.jobId,
+          options.actorId,
+          options.requestId,
+          ...(options.actorRole === 'seller' ? [options.sellerId] : []),
+        )
+        .first();
+      if (!ownedReplay)
+        throw new FormRequestConflictError(
+          'Request reference is already used for another shipping action.',
+        );
       return;
     }
   }
@@ -363,21 +516,43 @@ export async function operateShippingJob(
       .bind(options.requestId)
       .first()
   ) {
-    if (options.form) throw new FormRequestConflictError('Request reference is already used.');
+    if (options.form)
+      throw new FormRequestConflictError('Request reference is already used.');
     return;
   }
-  if (await database.prepare('SELECT shipping_job_id FROM shipping_parcels WHERE shipping_job_id=?').bind(options.jobId).first()) throw new OperationsConflictError('Use the order parcel controls for this shipping job.');
+  if (
+    await database
+      .prepare(
+        'SELECT shipping_job_id FROM shipping_parcels WHERE shipping_job_id=?',
+      )
+      .bind(options.jobId)
+      .first()
+  )
+    throw new OperationsConflictError(
+      'Use the order parcel controls for this shipping job.',
+    );
   const current = await database
     .prepare(
-      `SELECT status, seller_id AS sellerId FROM shipping_jobs WHERE id = ?`,
+      `SELECT status, seller_id AS sellerId, order_id AS orderId, direction FROM shipping_jobs WHERE id = ?`,
     )
     .bind(options.jobId)
-    .first<{ status: string; sellerId: string }>();
+    .first<{
+      status: string;
+      sellerId: string;
+      orderId: string;
+      direction: string;
+    }>();
   if (
     !current ||
     (options.actorRole === 'seller' && current.sellerId !== options.sellerId)
   )
     throw new OperationsConflictError('Shipping job not found.');
+  if (current.direction === 'outbound')
+    await assertFirstCodFulfillmentAllowed(
+      database,
+      current.orderId,
+      OperationsConflictError,
+    );
   const transitions: Record<string, { from: string[]; to: string }> = {
     record_label: {
       from: ['pickup_requested', 'label_pending'],
@@ -411,67 +586,112 @@ export async function operateShippingJob(
     throw new OperationsConflictError('Add an operational note.');
   const eventId = crypto.randomUUID();
   let results;
-  try { results = await database.batch([
-    ...(authority?.statements ?? []),
-    database
-      .prepare(
-        `UPDATE shipping_jobs SET status = ?, label_reference = COALESCE(?, label_reference), tracking_code = COALESCE(?, tracking_code), pickup_window_start = COALESCE(?, pickup_window_start), pickup_window_end = COALESCE(?, pickup_window_end), claim_reference = COALESCE(?, claim_reference), reconciliation_status = COALESCE(?, reconciliation_status), reconciliation_note = CASE WHEN ? IS NULL THEN reconciliation_note ELSE ? END, updated_at = ? WHERE id = ? AND status = ?`,
-      )
-      .bind(
-        transition.to,
-        options.labelReference ?? null,
-        options.trackingCode ?? null,
-        options.pickupStart ?? null,
-        options.pickupEnd ?? null,
-        options.claimReference ?? null,
-        options.reconciliationStatus ?? null,
-        options.reconciliationStatus ?? null,
-        note,
-        options.now,
-        options.jobId,
-        current.status,
-      ),
-    database
-      .prepare(
-        `INSERT INTO shipping_job_events (id, shipping_job_id, from_status, to_status, action, actor_id, actor_role, note, request_id, created_at)
+  try {
+    results = await database.batch([
+      ...(authority?.statements ?? []),
+      database
+        .prepare(
+          `UPDATE shipping_jobs SET status = ?, label_reference = COALESCE(?, label_reference), tracking_code = COALESCE(?, tracking_code), pickup_window_start = COALESCE(?, pickup_window_start), pickup_window_end = COALESCE(?, pickup_window_end), claim_reference = COALESCE(?, claim_reference), reconciliation_status = COALESCE(?, reconciliation_status), reconciliation_note = CASE WHEN ? IS NULL THEN reconciliation_note ELSE ? END, updated_at = ? WHERE id = ? AND status = ?`,
+        )
+        .bind(
+          transition.to,
+          options.labelReference ?? null,
+          options.trackingCode ?? null,
+          options.pickupStart ?? null,
+          options.pickupEnd ?? null,
+          options.claimReference ?? null,
+          options.reconciliationStatus ?? null,
+          options.reconciliationStatus ?? null,
+          note,
+          options.now,
+          options.jobId,
+          current.status,
+        ),
+      database
+        .prepare(
+          `INSERT INTO shipping_job_events (id, shipping_job_id, from_status, to_status, action, actor_id, actor_role, note, request_id, created_at)
          SELECT ?, id, ?, ?, ?, ?, ?, ?, ?, ? FROM shipping_jobs
          WHERE id = ? AND updated_at = ?`,
-      )
-      .bind(
-        eventId,
-        current.status,
-        transition.to,
-        options.action,
-        options.actorId,
-        options.actorRole,
-        note,
-        options.requestId,
-        options.now,
+        )
+        .bind(
+          eventId,
+          current.status,
+          transition.to,
+          options.action,
+          options.actorId,
+          options.actorRole,
+          note,
+          options.requestId,
+          options.now,
+          options.jobId,
+          options.now,
+        ),
+      workflowAudit(
+        database,
+        'shipping',
+        options,
         options.jobId,
-        options.now,
+        options.action,
       ),
-  workflowAudit(database,'shipping',options,options.jobId,options.action),
-  ...(options.form ? [database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,created_at)
+      ...(options.form
+        ? [
+            database
+              .prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,created_at)
     VALUES (?,?,?,'shipping_job_event',?,'Configured shipping action',NULL,
       CASE WHEN EXISTS(SELECT 1 FROM shipping_job_events WHERE id=? AND shipping_job_id=? AND actor_id=? AND request_id=?)
         THEN ? ELSE json_extract('invalid action','$') END,?,?)`)
-    .bind(crypto.randomUUID(), options.actorId, auditAction, eventId, eventId, options.jobId, options.actorId,
-      options.requestId, JSON.stringify({ catalogDigest }), options.requestId, options.now),
-    buildFormAnswerInsert(database, { formId, requestId: options.requestId,
-      versionId: options.form.versionId, subjectType: 'shipping_job_event', subjectId: eventId,
-      actorId: options.actorId, answers: options.form.answers, now: options.now })] : []),
-    ]); } catch (error) {
+              .bind(
+                crypto.randomUUID(),
+                options.actorId,
+                auditAction,
+                eventId,
+                eventId,
+                options.jobId,
+                options.actorId,
+                options.requestId,
+                JSON.stringify({ catalogDigest }),
+                options.requestId,
+                options.now,
+              ),
+            buildFormAnswerInsert(database, {
+              formId,
+              requestId: options.requestId,
+              versionId: options.form.versionId,
+              subjectType: 'shipping_job_event',
+              subjectId: eventId,
+              actorId: options.actorId,
+              answers: options.form.answers,
+              now: options.now,
+            }),
+          ]
+        : []),
+    ]);
+  } catch (error) {
     if (options.form) {
-      const replay = await formRequestReplay(database, { formId,
-        requestId: options.requestId, actorId: options.actorId, action: auditAction,
-        digest: catalogDigest! });
+      const replay = await formRequestReplay(database, {
+        formId,
+        requestId: options.requestId,
+        actorId: options.actorId,
+        action: auditAction,
+        digest: catalogDigest!,
+      });
       if (replay) {
-        const ownedReplay = await database.prepare(`SELECT 1 FROM shipping_job_events e JOIN shipping_jobs j ON j.id=e.shipping_job_id
+        const ownedReplay = await database
+          .prepare(`SELECT 1 FROM shipping_job_events e JOIN shipping_jobs j ON j.id=e.shipping_job_id
           WHERE e.id=? AND e.shipping_job_id=? AND e.actor_id=? AND e.request_id=?
             ${options.actorRole === 'seller' ? 'AND j.seller_id=?' : "AND e.actor_role IN ('admin','super_admin')"} LIMIT 1`)
-          .bind(replay, options.jobId, options.actorId, options.requestId,
-            ...(options.actorRole === 'seller' ? [options.sellerId] : [])).first();
-        if (!ownedReplay) throw new FormRequestConflictError('Request reference is already used for another shipping action.');
+          .bind(
+            replay,
+            options.jobId,
+            options.actorId,
+            options.requestId,
+            ...(options.actorRole === 'seller' ? [options.sellerId] : []),
+          )
+          .first();
+        if (!ownedReplay)
+          throw new FormRequestConflictError(
+            'Request reference is already used for another shipping action.',
+          );
         return;
       }
     }
@@ -490,43 +710,119 @@ function rightsReference(now: number) {
   return `DR-${new Date(now).toISOString().slice(0, 10).replaceAll('-', '')}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 }
 
-type PrivacyFormSubmission = { formVersion: number; versionId: string; answers: FormAnswerSnapshot };
+type PrivacyFormSubmission = {
+  formVersion: number;
+  versionId: string;
+  answers: FormAnswerSnapshot;
+};
 
-export async function validatePrivacyRequestForm(database: D1Database, formVersion: number, customAnswers: unknown): Promise<PrivacyFormSubmission> {
-  const config = await resolvePublishedForm(database, 'account.privacy-request');
-  if (formVersion !== config.version) throw new FormRuntimeError('stale_version', 'This form changed. Refresh it and review your answers.');
-  const answers = validateAnswersForDefinition(FORM_REGISTRY['account.privacy-request'], config, customAnswers);
-  const version = await database.prepare(`SELECT id FROM form_config_versions WHERE form_id='account.privacy-request' AND status='published' AND version=? LIMIT 1`)
-    .bind(config.version).first<{ id: string }>();
-  if (!version) throw new FormRuntimeError('config_unavailable', 'Published form version unavailable');
+export async function validatePrivacyRequestForm(
+  database: D1Database,
+  formVersion: number,
+  customAnswers: unknown,
+): Promise<PrivacyFormSubmission> {
+  const config = await resolvePublishedForm(
+    database,
+    'account.privacy-request',
+  );
+  if (formVersion !== config.version)
+    throw new FormRuntimeError(
+      'stale_version',
+      'This form changed. Refresh it and review your answers.',
+    );
+  const answers = validateAnswersForDefinition(
+    FORM_REGISTRY['account.privacy-request'],
+    config,
+    customAnswers,
+  );
+  const version = await database
+    .prepare(
+      `SELECT id FROM form_config_versions WHERE form_id='account.privacy-request' AND status='published' AND version=? LIMIT 1`,
+    )
+    .bind(config.version)
+    .first<{ id: string }>();
+  if (!version)
+    throw new FormRuntimeError(
+      'config_unavailable',
+      'Published form version unavailable',
+    );
   return { formVersion: config.version, versionId: version.id, answers };
 }
 
-export async function privacyRequestStatus(database: D1Database, options: {
-  customerId: string; requestType: string; detail: string; requestId: string; formVersion: number; customAnswers: unknown;
-}): Promise<{ status: 'new' | 'same' | 'conflict'; id?: string }> {
-  let row: { id: string; customerId: string; requestType: string; detail: string; answersJson: string | null;
-    configJson: string | null; savedVersion: number | null; publishedAt: number | null } | null;
+export async function privacyRequestStatus(
+  database: D1Database,
+  options: {
+    customerId: string;
+    requestType: string;
+    detail: string;
+    requestId: string;
+    formVersion: number;
+    customAnswers: unknown;
+  },
+): Promise<{ status: 'new' | 'same' | 'conflict'; id?: string }> {
+  let row: {
+    id: string;
+    customerId: string;
+    requestType: string;
+    detail: string;
+    answersJson: string | null;
+    configJson: string | null;
+    savedVersion: number | null;
+    publishedAt: number | null;
+  } | null;
   try {
-    row = await database.prepare(`SELECT d.id,d.customer_id AS customerId,d.request_type AS requestType,d.detail,
+    row = await database
+      .prepare(`SELECT d.id,d.customer_id AS customerId,d.request_type AS requestType,d.detail,
         f.answers_json AS answersJson,v.config_json AS configJson,v.version AS savedVersion,v.published_at AS publishedAt
       FROM data_rights_requests d LEFT JOIN form_answer_sets f
         ON f.form_id='account.privacy-request' AND f.request_id=d.created_request_id
       LEFT JOIN form_config_versions v ON v.id=f.config_version_id
-      WHERE d.created_request_id=? LIMIT 1`).bind(options.requestId).first<typeof row & object>();
-  } catch { throw new FormRuntimeError('config_unavailable', 'Privacy request replay state unavailable'); }
+      WHERE d.created_request_id=? LIMIT 1`)
+      .bind(options.requestId)
+      .first<typeof row & object>();
+  } catch {
+    throw new FormRuntimeError(
+      'config_unavailable',
+      'Privacy request replay state unavailable',
+    );
+  }
   if (!row) return { status: 'new' };
-  if (row.customerId !== options.customerId || row.requestType !== options.requestType ||
-    row.detail !== options.detail.trim() || row.savedVersion !== options.formVersion ||
-    !row.answersJson || !row.configJson || !Number.isSafeInteger(row.publishedAt)) return { status: 'conflict' };
+  if (
+    row.customerId !== options.customerId ||
+    row.requestType !== options.requestType ||
+    row.detail !== options.detail.trim() ||
+    row.savedVersion !== options.formVersion ||
+    !row.answersJson ||
+    !row.configJson ||
+    !Number.isSafeInteger(row.publishedAt)
+  )
+    return { status: 'conflict' };
   try {
     const snapshot = JSON.parse(row.answersJson) as FormAnswerSnapshot;
-    const draft = validateFormDraft('account.privacy-request', JSON.parse(row.configJson) as unknown);
-    const config: PublishedFormConfig = { ...draft, version: row.savedVersion, publishedAt: row.publishedAt! };
-    const requested = validateAnswersForDefinition(FORM_REGISTRY['account.privacy-request'], config, options.customAnswers);
-    const same = snapshot.formId === 'account.privacy-request' && JSON.stringify(snapshot.answers) === JSON.stringify(requested.answers);
-    return { status: same ? 'same' : 'conflict', ...(same ? { id: row.id } : {}) };
-  } catch { return { status: 'conflict' }; }
+    const draft = validateFormDraft(
+      'account.privacy-request',
+      JSON.parse(row.configJson) as unknown,
+    );
+    const config: PublishedFormConfig = {
+      ...draft,
+      version: row.savedVersion,
+      publishedAt: row.publishedAt!,
+    };
+    const requested = validateAnswersForDefinition(
+      FORM_REGISTRY['account.privacy-request'],
+      config,
+      options.customAnswers,
+    );
+    const same =
+      snapshot.formId === 'account.privacy-request' &&
+      JSON.stringify(snapshot.answers) === JSON.stringify(requested.answers);
+    return {
+      status: same ? 'same' : 'conflict',
+      ...(same ? { id: row.id } : {}),
+    };
+  } catch {
+    return { status: 'conflict' };
+  }
 }
 
 export async function createDataRightsRequest(
@@ -541,13 +837,26 @@ export async function createDataRightsRequest(
   },
 ): Promise<string> {
   if (options.form) {
-    const replay = await privacyRequestStatus(database, { ...options, formVersion: options.form.formVersion,
-      customAnswers: options.form.answers.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value })) });
+    const replay = await privacyRequestStatus(database, {
+      ...options,
+      formVersion: options.form.formVersion,
+      customAnswers: options.form.answers.answers.map((answer) => ({
+        fieldId: answer.fieldId,
+        value: answer.value,
+      })),
+    });
     if (replay.status === 'same') return replay.id!;
-    if (replay.status === 'conflict') throw new OperationsConflictError('This request ID was already used for different privacy request values.');
+    if (replay.status === 'conflict')
+      throw new OperationsConflictError(
+        'This request ID was already used for different privacy request values.',
+      );
   } else {
-    const duplicate = await database.prepare(`SELECT id FROM data_rights_requests WHERE created_request_id = ?`)
-      .bind(options.requestId).first<{ id: string }>();
+    const duplicate = await database
+      .prepare(
+        `SELECT id FROM data_rights_requests WHERE created_request_id = ?`,
+      )
+      .bind(options.requestId)
+      .first<{ id: string }>();
     if (duplicate) return duplicate.id;
   }
   if (
@@ -561,13 +870,23 @@ export async function createDataRightsRequest(
     );
   const id = crypto.randomUUID();
   const statements: D1PreparedStatement[] = [
-    ...(options.form ? [database.prepare(`SELECT CASE WHEN
+    ...(options.form
+      ? [
+          database
+            .prepare(`SELECT CASE WHEN
       EXISTS(SELECT 1 FROM users WHERE id=? AND status='active')
       AND (SELECT MAX(version) FROM form_config_versions WHERE form_id='account.privacy-request' AND status='published')=?
       AND NOT EXISTS(SELECT 1 FROM data_rights_requests WHERE created_request_id=?)
       AND NOT EXISTS(SELECT 1 FROM form_answer_sets WHERE form_id='account.privacy-request' AND request_id=?)
       THEN 1 ELSE json_extract('invalid','$') END AS valid`)
-      .bind(options.customerId, options.form.formVersion, options.requestId, options.requestId)] : []),
+            .bind(
+              options.customerId,
+              options.form.formVersion,
+              options.requestId,
+              options.requestId,
+            ),
+        ]
+      : []),
     database
       .prepare(
         `INSERT INTO data_rights_requests (id, reference_number, customer_id, request_type, detail, status, created_request_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'submitted', ?, ?, ?)`,
@@ -593,20 +912,59 @@ export async function createDataRightsRequest(
         options.requestId,
         options.now,
       ),
-    ...(options.form ? [buildFormAnswerInsert(database, { formId: 'account.privacy-request', requestId: options.requestId,
-      versionId: options.form.versionId, subjectType: 'data_rights_request', subjectId: id,
-      actorId: options.customerId, answers: options.form.answers, now: options.now })] : []),
-    workflowAudit(database,'privacy',{actorId:options.customerId,requestId:options.requestId,now:options.now},id,'submit'),
+    ...(options.form
+      ? [
+          buildFormAnswerInsert(database, {
+            formId: 'account.privacy-request',
+            requestId: options.requestId,
+            versionId: options.form.versionId,
+            subjectType: 'data_rights_request',
+            subjectId: id,
+            actorId: options.customerId,
+            answers: options.form.answers,
+            now: options.now,
+          }),
+        ]
+      : []),
+    workflowAudit(
+      database,
+      'privacy',
+      {
+        actorId: options.customerId,
+        requestId: options.requestId,
+        now: options.now,
+      },
+      id,
+      'submit',
+    ),
   ];
-  try { await database.batch(statements); }
-  catch (error) {
+  try {
+    await database.batch(statements);
+  } catch (error) {
     if (options.form) {
-      const replay = await privacyRequestStatus(database, { ...options, formVersion: options.form.formVersion,
-        customAnswers: options.form.answers.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value })) });
+      const replay = await privacyRequestStatus(database, {
+        ...options,
+        formVersion: options.form.formVersion,
+        customAnswers: options.form.answers.answers.map((answer) => ({
+          fieldId: answer.fieldId,
+          value: answer.value,
+        })),
+      });
       if (replay.status === 'same') return replay.id!;
-      if (replay.status === 'conflict') throw new OperationsConflictError('This request ID was already used for different privacy request values.');
-      const current = await database.prepare(`SELECT MAX(version) AS version FROM form_config_versions WHERE form_id='account.privacy-request' AND status='published'`).first<{ version: number | null }>();
-      if (current?.version !== options.form.formVersion) throw new FormRuntimeError('stale_version', 'This form changed. Refresh it and review your answers.');
+      if (replay.status === 'conflict')
+        throw new OperationsConflictError(
+          'This request ID was already used for different privacy request values.',
+        );
+      const current = await database
+        .prepare(
+          `SELECT MAX(version) AS version FROM form_config_versions WHERE form_id='account.privacy-request' AND status='published'`,
+        )
+        .first<{ version: number | null }>();
+      if (current?.version !== options.form.formVersion)
+        throw new FormRuntimeError(
+          'stale_version',
+          'This form changed. Refresh it and review your answers.',
+        );
     }
     throw error;
   }
@@ -642,34 +1000,82 @@ export async function operateDataRightsRequest(
     note: string;
     requestId: string;
     now: number;
-    form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot };
+    form?: {
+      requestId: string;
+      versionId: string;
+      answers: FormAnswerSnapshot;
+    };
   },
 ): Promise<void> {
-  const authority = await staffMutationGuard(database, options.actorId, 'support.manage',
-    OperationsConflictError, options.actorRole);
+  const authority = await staffMutationGuard(
+    database,
+    options.actorId,
+    'support.manage',
+    OperationsConflictError,
+    options.actorRole,
+  );
   if (options.form && options.form.requestId !== options.requestId)
-    throw new OperationsConflictError('Form request does not match the privacy decision.');
+    throw new OperationsConflictError(
+      'Form request does not match the privacy decision.',
+    );
   const note = options.note.trim();
-  const digest = options.form ? await digestFormRequest({ id: options.id,
-    actorId: options.actorId, actorRole: options.actorRole, action: options.action,
-    note, versionId: options.form.versionId, answers: options.form.answers }) : null;
-  const prior = await database.prepare(`SELECT data_rights_request_id AS requestId, actor_id AS actorId,
+  const digest = options.form
+    ? await digestFormRequest({
+        id: options.id,
+        actorId: options.actorId,
+        actorRole: options.actorRole,
+        action: options.action,
+        note,
+        versionId: options.form.versionId,
+        answers: options.form.answers,
+      })
+    : null;
+  const prior = await database
+    .prepare(`SELECT data_rights_request_id AS requestId, actor_id AS actorId,
     actor_role AS actorRole, action, note FROM data_rights_events WHERE operation_request_id=?`)
-    .bind(options.requestId).first<{requestId:string;actorId:string;actorRole:string;action:string;note:string}>();
+    .bind(options.requestId)
+    .first<{
+      requestId: string;
+      actorId: string;
+      actorRole: string;
+      action: string;
+      note: string;
+    }>();
   if (prior) {
     if (options.form) {
-      const audit = await database.prepare(`SELECT next_json AS nextJson FROM audit_logs
+      const audit = await database
+        .prepare(`SELECT next_json AS nextJson FROM audit_logs
         WHERE request_id=? AND actor_id=? AND subject_type='data_rights_request' AND subject_id=?`)
-        .bind(options.requestId+':audit',options.actorId,options.id).first<{nextJson:string|null}>();
-      const answer = await database.prepare(`SELECT 1 AS valid FROM form_answer_sets WHERE form_id='staff.privacy-action'
+        .bind(options.requestId + ':audit', options.actorId, options.id)
+        .first<{ nextJson: string | null }>();
+      const answer = await database
+        .prepare(`SELECT 1 AS valid FROM form_answer_sets WHERE form_id='staff.privacy-action'
         AND request_id=? AND config_version_id=? AND subject_type='data_rights_request'
-        AND subject_id=? AND actor_id=?`).bind(options.requestId,options.form.versionId,
-          options.id,options.actorId).first();
-      let recorded:unknown;try{recorded=JSON.parse(audit?.nextJson??'')?.catalogDigest;}catch{}
-      if (!answer || !audit || recorded!==digest || prior.requestId!==options.id ||
-        prior.actorId!==options.actorId || prior.actorRole!==options.actorRole ||
-        prior.action!==options.action || prior.note!==note)
-        throw new OperationsConflictError('Request reference was already used for another privacy decision.');
+        AND subject_id=? AND actor_id=?`)
+        .bind(
+          options.requestId,
+          options.form.versionId,
+          options.id,
+          options.actorId,
+        )
+        .first();
+      let recorded: unknown;
+      try {
+        recorded = JSON.parse(audit?.nextJson ?? '')?.catalogDigest;
+      } catch {}
+      if (
+        !answer ||
+        !audit ||
+        recorded !== digest ||
+        prior.requestId !== options.id ||
+        prior.actorId !== options.actorId ||
+        prior.actorRole !== options.actorRole ||
+        prior.action !== options.action ||
+        prior.note !== note
+      )
+        throw new OperationsConflictError(
+          'Request reference was already used for another privacy decision.',
+        );
     }
     return;
   }
@@ -696,21 +1102,30 @@ export async function operateDataRightsRequest(
     throw new OperationsConflictError(
       'A Super Admin must approve, reject or complete this request.',
     );
-  if (options.action === 'complete' && (current.requestType === 'access' || current.requestType === 'deletion')) {
-    const evidence = current.requestType === 'access'
-      ? await database.prepare(`SELECT 1 AS valid FROM audit_logs
+  if (
+    options.action === 'complete' &&
+    (current.requestType === 'access' || current.requestType === 'deletion')
+  ) {
+    const evidence =
+      current.requestType === 'access'
+        ? await database
+            .prepare(`SELECT 1 AS valid FROM audit_logs
           JOIN data_rights_requests ON data_rights_requests.id=audit_logs.subject_id
           WHERE action='form.answers.exported' AND subject_type='data_rights_request' AND subject_id=?
             AND (json_extract(next_json,'$.incentivesIncluded')=1
               OR NOT ${retainedIncentiveProofForRequestSql}) LIMIT 1`)
-        .bind(options.id).first<{ valid: number }>()
-      : await database.prepare(`SELECT 1 AS valid FROM audit_logs WHERE action='form.answers.erased'
+            .bind(options.id)
+            .first<{ valid: number }>()
+        : await database
+            .prepare(`SELECT 1 AS valid FROM audit_logs WHERE action='form.answers.erased'
           AND subject_type='user' AND subject_id=?
           AND json_extract(next_json,'$.dataRightsRequestId')=? LIMIT 1`)
-        .bind(current.customerId, options.id).first<{ valid: number }>();
-    if (!evidence) throw new OperationsConflictError(
-      'Record the separate form-answer export or erasure before completing this request.',
-    );
+            .bind(current.customerId, options.id)
+            .first<{ valid: number }>();
+    if (!evidence)
+      throw new OperationsConflictError(
+        'Record the separate form-answer export or erasure before completing this request.',
+      );
   }
   if (note.length < 8)
     throw new OperationsConflictError('Add a decision note.');
@@ -723,86 +1138,138 @@ export async function operateDataRightsRequest(
       WHERE parent.id=answers.subject_id AND parent.customer_id=data_rights_requests.customer_id))
     OR (answers.subject_type NOT IN ('user','seller','rider','data_rights_request')
       AND answers.actor_id=data_rights_requests.customer_id)`;
-  const retainedFinancialGuard = options.action === 'complete' && current.requestType === 'deletion'
-    ? ` AND NOT ${retainedIncentiveProofForRequestSql}` : '';
-  const guardId=crypto.randomUUID();
-  const results = await database.batch([
-    database
-      .prepare(
-        `UPDATE data_rights_requests SET status = ?, assigned_to = COALESCE(assigned_to, ?), resolution = CASE WHEN ? IN ('rejected','completed') THEN ? ELSE resolution END, operation_request_id = ?, updated_at = ?, completed_at = CASE WHEN ? = 'completed' THEN ? ELSE completed_at END WHERE id = ? AND status = ?
+  const retainedFinancialGuard =
+    options.action === 'complete' && current.requestType === 'deletion'
+      ? ` AND NOT ${retainedIncentiveProofForRequestSql}`
+      : '';
+  const guardId = crypto.randomUUID();
+  const results = await database
+    .batch([
+      database
+        .prepare(
+          `UPDATE data_rights_requests SET status = ?, assigned_to = COALESCE(assigned_to, ?), resolution = CASE WHEN ? IN ('rejected','completed') THEN ? ELSE resolution END, operation_request_id = ?, updated_at = ?, completed_at = CASE WHEN ? = 'completed' THEN ? ELSE completed_at END WHERE id = ? AND status = ?
          AND (? <> 'completed' OR request_type <> 'deletion' OR NOT EXISTS (
            SELECT 1 FROM form_answer_sets answers WHERE ${ownedAnswerSql}
          ))${retainedFinancialGuard}`,
-      )
-      .bind(
-        next,
-        options.actorId,
-        next,
-        note,
-        options.requestId,
-        options.now,
-        next,
-        options.now,
-        options.id,
-        current.status,
-        next,
-      ),
-    database.prepare(`INSERT INTO staff_permission_guards(id,valid) SELECT ?,CASE WHEN EXISTS(
+        )
+        .bind(
+          next,
+          options.actorId,
+          next,
+          note,
+          options.requestId,
+          options.now,
+          next,
+          options.now,
+          options.id,
+          current.status,
+          next,
+        ),
+      database
+        .prepare(`INSERT INTO staff_permission_guards(id,valid) SELECT ?,CASE WHEN EXISTS(
       SELECT 1 FROM data_rights_requests WHERE id=? AND status=? AND operation_request_id=?
         AND assigned_to IS NOT NULL) THEN 1 ELSE 0 END`)
-      .bind(guardId,options.id,next,options.requestId),
-    database.prepare('DELETE FROM staff_permission_guards WHERE id=?').bind(guardId),
-    database
-      .prepare(
-        `INSERT INTO data_rights_events (id, data_rights_request_id, from_status, to_status, action, actor_id, actor_role, note, operation_request_id, created_at)
+        .bind(guardId, options.id, next, options.requestId),
+      database
+        .prepare('DELETE FROM staff_permission_guards WHERE id=?')
+        .bind(guardId),
+      database
+        .prepare(
+          `INSERT INTO data_rights_events (id, data_rights_request_id, from_status, to_status, action, actor_id, actor_role, note, operation_request_id, created_at)
          SELECT ?, id, ?, ?, ?, ?, ?, ?, ?, ? FROM data_rights_requests
          WHERE id = ? AND operation_request_id = ?`,
-      )
-      .bind(
-        crypto.randomUUID(),
-        current.status,
-        next,
-        options.action,
-        options.actorId,
-        options.actorRole,
-        note,
-        options.requestId,
-        options.now,
-        options.id,
-        options.requestId,
-      ),
-    ...(options.form ? [database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,
+        )
+        .bind(
+          crypto.randomUUID(),
+          current.status,
+          next,
+          options.action,
+          options.actorId,
+          options.actorRole,
+          note,
+          options.requestId,
+          options.now,
+          options.id,
+          options.requestId,
+        ),
+      ...(options.form
+        ? [
+            database
+              .prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,
       subject_id,reason,previous_json,next_json,request_id,created_at)
       SELECT ?,? ,?, 'data_rights_request', ?, 'Workflow step recorded',NULL,?, ?,?
       FROM data_rights_events WHERE operation_request_id=?`)
-      .bind(crypto.randomUUID(),options.actorId,'privacy.'+options.action,options.id,
-        JSON.stringify({catalogDigest:digest}),options.requestId+':audit',options.now,options.requestId),
-      buildFormAnswerInsert(database,{formId:'staff.privacy-action',requestId:options.requestId,
-        versionId:options.form.versionId,subjectType:'data_rights_request',subjectId:options.id,
-        actorId:options.actorId,answers:options.form.answers,now:options.now})]
-      : [workflowAudit(database,'privacy',options,options.id,options.action)]),
-    ...authority.statements,
-    ]).catch(async (error: unknown) => {
+              .bind(
+                crypto.randomUUID(),
+                options.actorId,
+                'privacy.' + options.action,
+                options.id,
+                JSON.stringify({ catalogDigest: digest }),
+                options.requestId + ':audit',
+                options.now,
+                options.requestId,
+              ),
+            buildFormAnswerInsert(database, {
+              formId: 'staff.privacy-action',
+              requestId: options.requestId,
+              versionId: options.form.versionId,
+              subjectType: 'data_rights_request',
+              subjectId: options.id,
+              actorId: options.actorId,
+              answers: options.form.answers,
+              now: options.now,
+            }),
+          ]
+        : [
+            workflowAudit(
+              database,
+              'privacy',
+              options,
+              options.id,
+              options.action,
+            ),
+          ]),
+      ...authority.statements,
+    ])
+    .catch(async (error: unknown) => {
       // The transaction guard deliberately aborts a zero-row update. Re-read
       // that precondition after rollback so a conflict is not reported as a
       // storage failure; an unrelated database error still reaches the route.
-      const state = await database.prepare(`SELECT status FROM data_rights_requests WHERE id=?`)
-        .bind(options.id).first<{status:string}>();
+      const state = await database
+        .prepare(`SELECT status FROM data_rights_requests WHERE id=?`)
+        .bind(options.id)
+        .first<{ status: string }>();
       if (!state || state.status !== current.status)
-        throw new OperationsConflictError('Data-rights request changed. Refresh and try again.');
+        throw new OperationsConflictError(
+          'Data-rights request changed. Refresh and try again.',
+        );
       if (options.action === 'complete' && current.requestType === 'deletion') {
-        const retained = await database.prepare(`SELECT 1 AS valid FROM data_rights_requests
-          WHERE id=? AND ${retainedIncentiveProofForRequestSql} LIMIT 1`).bind(options.id).first();
-        if (retained) throw new OperationsConflictError(
-          'Retained financial incentive proof prevents full deletion completion.');
-        const remaining = await database.prepare(`SELECT 1 AS valid FROM data_rights_requests
+        const retained = await database
+          .prepare(`SELECT 1 AS valid FROM data_rights_requests
+          WHERE id=? AND ${retainedIncentiveProofForRequestSql} LIMIT 1`)
+          .bind(options.id)
+          .first();
+        if (retained)
+          throw new OperationsConflictError(
+            'Retained financial incentive proof prevents full deletion completion.',
+          );
+        const remaining = await database
+          .prepare(`SELECT 1 AS valid FROM data_rights_requests
           WHERE id=? AND EXISTS (SELECT 1 FROM form_answer_sets answers WHERE ${ownedAnswerSql}) LIMIT 1`)
-          .bind(options.id).first();
-        if (remaining) throw new OperationsConflictError(
-          'Erase the remaining linked form answers before completing this request.');
+          .bind(options.id)
+          .first();
+        if (remaining)
+          throw new OperationsConflictError(
+            'Erase the remaining linked form answers before completing this request.',
+          );
       }
-      await staffMutationGuard(database, options.actorId, 'support.manage',
-        OperationsConflictError, options.actorRole);
+      await staffMutationGuard(
+        database,
+        options.actorId,
+        'support.manage',
+        OperationsConflictError,
+        options.actorRole,
+      );
       throw error;
     });
   if (
@@ -944,52 +1411,124 @@ const governanceFormIds = {
 type GovernanceInputAction = keyof typeof governanceFormIds;
 type GovernanceFormId = (typeof governanceFormIds)[GovernanceInputAction];
 
-async function governanceReplay(database: D1Database, input: {
-  formId: GovernanceFormId; requestId: string; versionId: string; actorId: string;
-  action: GovernanceInputAction; digest: string; subjectId?: string;
-}): Promise<boolean> {
-  const audits = await database.prepare(`SELECT actor_id AS actorId,action,subject_type AS subjectType,
+async function governanceReplay(
+  database: D1Database,
+  input: {
+    formId: GovernanceFormId;
+    requestId: string;
+    versionId: string;
+    actorId: string;
+    action: GovernanceInputAction;
+    digest: string;
+    subjectId?: string;
+  },
+): Promise<boolean> {
+  const audits = await database
+    .prepare(`SELECT actor_id AS actorId,action,subject_type AS subjectType,
     subject_id AS subjectId,next_json AS nextJson FROM audit_logs WHERE request_id=? LIMIT 2`)
-    .bind(input.requestId).all<{ actorId: string | null; action: string; subjectType: string;
-      subjectId: string; nextJson: string | null }>();
+    .bind(input.requestId)
+    .all<{
+      actorId: string | null;
+      action: string;
+      subjectType: string;
+      subjectId: string;
+      nextJson: string | null;
+    }>();
   if (!audits.results.length) {
-    const orphan = await database.prepare('SELECT 1 FROM form_answer_sets WHERE form_id=? AND request_id=? LIMIT 1')
-      .bind(input.formId, input.requestId).first();
-    if (orphan) throw new OperationsConflictError('Request reference is already used.');
+    const orphan = await database
+      .prepare(
+        'SELECT 1 FROM form_answer_sets WHERE form_id=? AND request_id=? LIMIT 1',
+      )
+      .bind(input.formId, input.requestId)
+      .first();
+    if (orphan)
+      throw new OperationsConflictError('Request reference is already used.');
     return false;
   }
   const audit = audits.results[0];
-  const answer = await database.prepare(`SELECT actor_id AS actorId,subject_type AS subjectType,
+  const answer = await database
+    .prepare(`SELECT actor_id AS actorId,subject_type AS subjectType,
     subject_id AS subjectId,config_version_id AS versionId FROM form_answer_sets
-    WHERE form_id=? AND request_id=? LIMIT 1`).bind(input.formId, input.requestId)
-    .first<{ actorId: string | null; subjectType: string; subjectId: string; versionId: string }>();
+    WHERE form_id=? AND request_id=? LIMIT 1`)
+    .bind(input.formId, input.requestId)
+    .first<{
+      actorId: string | null;
+      subjectType: string;
+      subjectId: string;
+      versionId: string;
+    }>();
   let recorded: unknown;
-  try { recorded = JSON.parse(audit.nextJson ?? ''); } catch { /* An invalid audit cannot replay. */ }
-  const expectedSubject = input.action === 'rule.create' ? 'prohibited_product_rule'
-    : input.action === 'promotion.create' ? 'promotion'
-    : input.action === 'backup.verify' ? 'backup_verification' : 'operational_incident';
-  if (audits.results.length !== 1 || audit.actorId !== input.actorId || audit.action !== input.action ||
-    audit.subjectType !== expectedSubject || input.subjectId && audit.subjectId !== input.subjectId ||
-    !answer || answer.actorId !== input.actorId || answer.subjectType !== expectedSubject ||
-    answer.subjectId !== audit.subjectId || answer.versionId !== input.versionId ||
-    !recorded || typeof recorded !== 'object' || !('catalogDigest' in recorded) ||
-    recorded.catalogDigest !== input.digest)
-    throw new OperationsConflictError('Request reference was already used for different governance details.');
-  const parent = input.action === 'rule.create'
-    ? await database.prepare('SELECT 1 FROM prohibited_product_rules WHERE id=? AND created_by=? LIMIT 1')
-      .bind(audit.subjectId, input.actorId).first()
-    : input.action === 'promotion.create'
-      ? await database.prepare('SELECT 1 FROM promotions WHERE id=? AND created_by=? AND created_request_id=? LIMIT 1')
-        .bind(audit.subjectId, input.actorId, input.requestId).first()
-      : input.action === 'incident.create'
-        ? await database.prepare('SELECT 1 FROM operational_incidents WHERE id=? AND owner_id=? AND request_id=? LIMIT 1')
-          .bind(audit.subjectId, input.actorId, input.requestId).first()
-        : input.action === 'incident.update'
-          ? await database.prepare('SELECT 1 FROM operational_incidents WHERE id=? LIMIT 1')
-            .bind(audit.subjectId).first()
-          : await database.prepare('SELECT 1 FROM backup_verifications WHERE id=? AND verified_by=? AND request_id=? LIMIT 1')
-            .bind(audit.subjectId, input.actorId, input.requestId).first();
-  if (!parent) throw new OperationsConflictError('Governance parent record is unavailable for replay.');
+  try {
+    recorded = JSON.parse(audit.nextJson ?? '');
+  } catch {
+    /* An invalid audit cannot replay. */
+  }
+  const expectedSubject =
+    input.action === 'rule.create'
+      ? 'prohibited_product_rule'
+      : input.action === 'promotion.create'
+        ? 'promotion'
+        : input.action === 'backup.verify'
+          ? 'backup_verification'
+          : 'operational_incident';
+  if (
+    audits.results.length !== 1 ||
+    audit.actorId !== input.actorId ||
+    audit.action !== input.action ||
+    audit.subjectType !== expectedSubject ||
+    (input.subjectId && audit.subjectId !== input.subjectId) ||
+    !answer ||
+    answer.actorId !== input.actorId ||
+    answer.subjectType !== expectedSubject ||
+    answer.subjectId !== audit.subjectId ||
+    answer.versionId !== input.versionId ||
+    !recorded ||
+    typeof recorded !== 'object' ||
+    !('catalogDigest' in recorded) ||
+    recorded.catalogDigest !== input.digest
+  )
+    throw new OperationsConflictError(
+      'Request reference was already used for different governance details.',
+    );
+  const parent =
+    input.action === 'rule.create'
+      ? await database
+          .prepare(
+            'SELECT 1 FROM prohibited_product_rules WHERE id=? AND created_by=? LIMIT 1',
+          )
+          .bind(audit.subjectId, input.actorId)
+          .first()
+      : input.action === 'promotion.create'
+        ? await database
+            .prepare(
+              'SELECT 1 FROM promotions WHERE id=? AND created_by=? AND created_request_id=? LIMIT 1',
+            )
+            .bind(audit.subjectId, input.actorId, input.requestId)
+            .first()
+        : input.action === 'incident.create'
+          ? await database
+              .prepare(
+                'SELECT 1 FROM operational_incidents WHERE id=? AND owner_id=? AND request_id=? LIMIT 1',
+              )
+              .bind(audit.subjectId, input.actorId, input.requestId)
+              .first()
+          : input.action === 'incident.update'
+            ? await database
+                .prepare(
+                  'SELECT 1 FROM operational_incidents WHERE id=? LIMIT 1',
+                )
+                .bind(audit.subjectId)
+                .first()
+            : await database
+                .prepare(
+                  'SELECT 1 FROM backup_verifications WHERE id=? AND verified_by=? AND request_id=? LIMIT 1',
+                )
+                .bind(audit.subjectId, input.actorId, input.requestId)
+                .first();
+  if (!parent)
+    throw new OperationsConflictError(
+      'Governance parent record is unavailable for replay.',
+    );
   return true;
 }
 
@@ -1002,20 +1541,41 @@ export async function performGovernanceAction(
     requestId: string;
     data: Record<string, unknown>;
     now: number;
-    form?: { formId: GovernanceFormId; requestId: string; versionId: string; answers: FormAnswerSnapshot };
+    form?: {
+      formId: GovernanceFormId;
+      requestId: string;
+      versionId: string;
+      answers: FormAnswerSnapshot;
+    };
   },
 ): Promise<void> {
   if (!options.requestId || options.requestId.length > 100)
     throw new OperationsConflictError(
       'A valid request identifier is required.',
     );
-  const expectedFormId = governanceFormIds[options.action as GovernanceInputAction];
-  if (options.form && (options.form.formId !== expectedFormId ||
-    options.form.requestId !== options.requestId || options.form.answers.formId !== expectedFormId))
+  const expectedFormId =
+    governanceFormIds[options.action as GovernanceInputAction];
+  if (
+    options.form &&
+    (options.form.formId !== expectedFormId ||
+      options.form.requestId !== options.requestId ||
+      options.form.answers.formId !== expectedFormId)
+  )
     throw new OperationsConflictError('Governance form reference is invalid.');
-  const promotionAction = ['promotion.create', 'promotion.approve', 'promotion.reject'].includes(options.action);
-  if (!options.form && !promotionAction && await database.prepare('SELECT id FROM audit_logs WHERE request_id=?')
-    .bind(options.requestId).first()) return;
+  const promotionAction = [
+    'promotion.create',
+    'promotion.approve',
+    'promotion.reject',
+  ].includes(options.action);
+  if (
+    !options.form &&
+    !promotionAction &&
+    (await database
+      .prepare('SELECT id FROM audit_logs WHERE request_id=?')
+      .bind(options.requestId)
+      .first())
+  )
+    return;
   const highRisk = [
     'promotion.approve',
     'promotion.reject',
@@ -1028,34 +1588,85 @@ export async function performGovernanceAction(
     throw new OperationsConflictError(
       'This action requires Super Admin approval.',
     );
-  const currentGrant = options.form || promotionAction
-    ? await staffMutationGuard(database, options.actorId,
-    'catalog.manage', OperationsConflictError, options.actorRole) : null;
-  const catalogDigest = options.form ? await digestFormRequest({ action: options.action,
-    data: options.data, versionId: options.form.versionId, answers: options.form.answers }) : null;
-  const promotionDigest = !options.form && promotionAction
-    ? await digestFormRequest({ action: options.action, data: options.data }) : null;
+  const currentGrant =
+    options.form || promotionAction
+      ? await staffMutationGuard(
+          database,
+          options.actorId,
+          'catalog.manage',
+          OperationsConflictError,
+          options.actorRole,
+        )
+      : null;
+  const catalogDigest = options.form
+    ? await digestFormRequest({
+        action: options.action,
+        data: options.data,
+        versionId: options.form.versionId,
+        answers: options.form.answers,
+      })
+    : null;
+  const promotionDigest =
+    !options.form && promotionAction
+      ? await digestFormRequest({ action: options.action, data: options.data })
+      : null;
   if (promotionDigest) {
-    const existing = await database.prepare(`SELECT actor_id AS actorId,action,subject_type AS subjectType,
+    const existing = await database
+      .prepare(`SELECT actor_id AS actorId,action,subject_type AS subjectType,
       subject_id AS subjectId,next_json AS nextJson FROM audit_logs WHERE request_id=? LIMIT 2`)
-      .bind(options.requestId).all<{ actorId: string | null; action: string; subjectType: string; subjectId: string; nextJson: string | null }>();
+      .bind(options.requestId)
+      .all<{
+        actorId: string | null;
+        action: string;
+        subjectType: string;
+        subjectId: string;
+        nextJson: string | null;
+      }>();
     if (existing.results.length) {
       const row = existing.results[0];
       let recorded: { requestDigest?: string } | null = null;
-      try { recorded = JSON.parse(row.nextJson ?? ''); } catch { /* Invalid history fails closed. */ }
-      if (existing.results.length !== 1 || row.actorId !== options.actorId || row.action !== options.action ||
-        row.subjectType !== 'promotion' || recorded?.requestDigest !== promotionDigest ||
-        options.action !== 'promotion.create' && row.subjectId !== dataText(options.data.id) ||
-        !await database.prepare('SELECT 1 FROM promotions WHERE id=? LIMIT 1').bind(row.subjectId).first())
-        throw new OperationsConflictError('Request reference was already used for different promotion details.');
+      try {
+        recorded = JSON.parse(row.nextJson ?? '');
+      } catch {
+        /* Invalid history fails closed. */
+      }
+      if (
+        existing.results.length !== 1 ||
+        row.actorId !== options.actorId ||
+        row.action !== options.action ||
+        row.subjectType !== 'promotion' ||
+        recorded?.requestDigest !== promotionDigest ||
+        (options.action !== 'promotion.create' &&
+          row.subjectId !== dataText(options.data.id)) ||
+        !(await database
+          .prepare('SELECT 1 FROM promotions WHERE id=? LIMIT 1')
+          .bind(row.subjectId)
+          .first())
+      )
+        throw new OperationsConflictError(
+          'Request reference was already used for different promotion details.',
+        );
       return;
     }
   }
-  if (options.form && await governanceReplay(database, { formId: options.form.formId,
-    requestId: options.requestId, versionId: options.form.versionId, actorId: options.actorId,
-    action: options.action as GovernanceInputAction, digest: catalogDigest!,
-    ...(options.action === 'incident.update' ? { subjectId: dataText(options.data.id) } : {}) })) return;
-  const statements: D1PreparedStatement[] = [...(currentGrant?.statements ?? [])];
+  if (
+    options.form &&
+    (await governanceReplay(database, {
+      formId: options.form.formId,
+      requestId: options.requestId,
+      versionId: options.form.versionId,
+      actorId: options.actorId,
+      action: options.action as GovernanceInputAction,
+      digest: catalogDigest!,
+      ...(options.action === 'incident.update'
+        ? { subjectId: dataText(options.data.id) }
+        : {}),
+    }))
+  )
+    return;
+  const statements: D1PreparedStatement[] = [
+    ...(currentGrant?.statements ?? []),
+  ];
   let subjectType = 'governance';
   let subjectId = dataText(options.data.id);
   let next: Record<string, unknown> = { action: options.action };
@@ -1194,7 +1805,17 @@ export async function performGovernanceAction(
           )
           .bind(id, index, productId),
       );
-    next = { nameEn, nameNe, placement, startsAt, endsAt, productIds, status, approvedBy: direct ? options.actorId : null, approvalMode: direct ? 'direct' : 'required' };
+    next = {
+      nameEn,
+      nameNe,
+      placement,
+      startsAt,
+      endsAt,
+      productIds,
+      status,
+      approvedBy: direct ? options.actorId : null,
+      approvalMode: direct ? 'direct' : 'required',
+    };
   } else if (
     options.action === 'promotion.approve' ||
     options.action === 'promotion.reject'
@@ -1227,10 +1848,23 @@ export async function performGovernanceAction(
         ),
     );
     const decisionGuardId = crypto.randomUUID();
-    statements.push(database.prepare(`INSERT INTO staff_permission_guards(id,valid) SELECT ?,CASE WHEN
+    statements.push(
+      database
+        .prepare(`INSERT INTO staff_permission_guards(id,valid) SELECT ?,CASE WHEN
       EXISTS(SELECT 1 FROM promotions WHERE id=? AND status=? AND approved_by=? AND operation_request_id=? AND created_by=?)
-      THEN 1 ELSE 0 END`).bind(decisionGuardId, subjectId, status, options.actorId, options.requestId, target.createdBy),
-    database.prepare('DELETE FROM staff_permission_guards WHERE id=?').bind(decisionGuardId));
+      THEN 1 ELSE 0 END`)
+        .bind(
+          decisionGuardId,
+          subjectId,
+          status,
+          options.actorId,
+          options.requestId,
+          target.createdBy,
+        ),
+      database
+        .prepare('DELETE FROM staff_permission_guards WHERE id=?')
+        .bind(decisionGuardId),
+    );
     next = { status };
   } else if (options.action === 'user.status') {
     subjectType = 'user';
@@ -1289,14 +1923,25 @@ export async function performGovernanceAction(
   } else if (options.action === 'incident.update') {
     subjectType = 'operational_incident';
     if (options.form) {
-      const current = await database.prepare('SELECT status,updated_at AS updatedAt FROM operational_incidents WHERE id=? LIMIT 1')
-        .bind(subjectId).first<{ status: string; updatedAt: number }>();
-      if (!current) throw new OperationsConflictError('Incident was not found.');
+      const current = await database
+        .prepare(
+          'SELECT status,updated_at AS updatedAt FROM operational_incidents WHERE id=? LIMIT 1',
+        )
+        .bind(subjectId)
+        .first<{ status: string; updatedAt: number }>();
+      if (!current)
+        throw new OperationsConflictError('Incident was not found.');
       const guardId = crypto.randomUUID();
-      statements.push(database.prepare(`INSERT INTO staff_permission_guards(id,valid)
+      statements.push(
+        database
+          .prepare(`INSERT INTO staff_permission_guards(id,valid)
         SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM operational_incidents WHERE id=? AND status=? AND updated_at=?)
-        THEN 1 ELSE 0 END`).bind(guardId, subjectId, current.status, current.updatedAt),
-      database.prepare('DELETE FROM staff_permission_guards WHERE id=?').bind(guardId));
+        THEN 1 ELSE 0 END`)
+          .bind(guardId, subjectId, current.status, current.updatedAt),
+        database
+          .prepare('DELETE FROM staff_permission_guards WHERE id=?')
+          .bind(guardId),
+      );
     }
     const statusInput = dataText(options.data.status);
     const status = ['mitigating', 'monitoring', 'resolved'].includes(
@@ -1368,25 +2013,72 @@ export async function performGovernanceAction(
         options.action,
         subjectType,
         subjectId,
-        JSON.stringify(options.form ? { ...next, catalogDigest } : promotionDigest ? { ...next, requestDigest: promotionDigest } : next),
+        JSON.stringify(
+          options.form
+            ? { ...next, catalogDigest }
+            : promotionDigest
+              ? { ...next, requestDigest: promotionDigest }
+              : next,
+        ),
         options.requestId,
         options.now,
       ),
   );
-  if (options.form) statements.push(buildFormAnswerInsert(database, {
-    formId: options.form.formId, requestId: options.requestId,
-    versionId: options.form.versionId, subjectType, subjectId,
-    actorId: options.actorId, answers: options.form.answers, now: options.now,
-  }));
-  const businessKind = options.action==='promotion.create'?(next.status==='pending_approval'?'promotion.proposed':null):options.action==='promotion.approve'||options.action==='promotion.reject'?'promotion.result':options.action==='incident.update'?'incident.updated':options.action==='user.status'?'account.status':null;
-  if(businessKind) statements.push(...(await operationalBusinessNotificationStatements(database,{kind:businessKind,sourceId:subjectId,eventId:options.requestId,actorId:options.actorId,now:options.now,status:typeof next.status==='string'?next.status:undefined})));
+  if (options.form)
+    statements.push(
+      buildFormAnswerInsert(database, {
+        formId: options.form.formId,
+        requestId: options.requestId,
+        versionId: options.form.versionId,
+        subjectType,
+        subjectId,
+        actorId: options.actorId,
+        answers: options.form.answers,
+        now: options.now,
+      }),
+    );
+  const businessKind =
+    options.action === 'promotion.create'
+      ? next.status === 'pending_approval'
+        ? 'promotion.proposed'
+        : null
+      : options.action === 'promotion.approve' ||
+          options.action === 'promotion.reject'
+        ? 'promotion.result'
+        : options.action === 'incident.update'
+          ? 'incident.updated'
+          : options.action === 'user.status'
+            ? 'account.status'
+            : null;
+  if (businessKind)
+    statements.push(
+      ...(await operationalBusinessNotificationStatements(database, {
+        kind: businessKind,
+        sourceId: subjectId,
+        eventId: options.requestId,
+        actorId: options.actorId,
+        now: options.now,
+        status: typeof next.status === 'string' ? next.status : undefined,
+      })),
+    );
   try {
     await database.batch(statements);
   } catch (error) {
-    if (options.form && await governanceReplay(database, { formId: options.form.formId,
-      requestId: options.requestId, versionId: options.form.versionId, actorId: options.actorId,
-      action: options.action as GovernanceInputAction, digest: catalogDigest!,
-      ...(options.action === 'incident.update' ? { subjectId: dataText(options.data.id) } : {}) })) return;
+    if (
+      options.form &&
+      (await governanceReplay(database, {
+        formId: options.form.formId,
+        requestId: options.requestId,
+        versionId: options.form.versionId,
+        actorId: options.actorId,
+        action: options.action as GovernanceInputAction,
+        digest: catalogDigest!,
+        ...(options.action === 'incident.update'
+          ? { subjectId: dataText(options.data.id) }
+          : {}),
+      }))
+    )
+      return;
     if (error instanceof Error && error.message.includes('UNIQUE constraint'))
       throw new OperationsConflictError(
         'This record or operation already exists.',

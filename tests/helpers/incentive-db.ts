@@ -31,7 +31,8 @@ export async function createIncentiveDb(
       for (const statement of sql
         .split('--> statement-breakpoint')
         .map((s) => s.trim())
-        .filter(Boolean)) {
+        // D1 rejects an empty prepared statement; standalone migration comments carry no SQL.
+        .filter((statement) => statement.split(/\r?\n/).some((line) => line.trim() && !line.trim().startsWith('--')))) {
         try {
           await db.prepare(statement).run();
         } catch (error) {

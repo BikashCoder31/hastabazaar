@@ -1,3 +1,4 @@
+import { seedCheckoutBuyer, seedVerifiedCheckoutContact } from './helpers/checkout-contact';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
@@ -38,6 +39,7 @@ export function checkoutInput(): CheckoutInput {
 export async function fixture() {
   const f = await createIncentiveDb();
   await seedIncentiveCustomer(f.db);
+  await seedVerifiedCheckoutContact(f.db, 'customer');
   await seedIncentiveCustomer(f.db, 'super');
   await seedIncentiveInventory(f.db);
   await f.db
@@ -757,15 +759,20 @@ void test('authorized exact promo replay after expiry returns original receipt a
         null,
       ),
     );
-    const guest = await createCodOrder(
+    await assert.rejects(createCodOrder(f.db, 'guest', 'guest',
+      { ...checkoutInput(), deliveryRateVersion: 'fixture-rates' }, 100, null),
+      /Sign in/);
+    await seedCheckoutBuyer(f.db, 'plain-buyer', 'plain-buyer@example.test', '9822222222');
+    const plain = await createCodOrder(
       f.db,
       'guest',
       'guest',
-      { ...checkoutInput(), deliveryRateVersion: 'fixture-rates' },
+      { ...checkoutInput(), customerEmail: 'plain-buyer@example.test', customerPhone: '9822222222',
+        customerAuthSubject: 'plain-buyer', deliveryRateVersion: 'fixture-rates' },
       100,
-      null,
+      'plain-buyer',
     );
-    assert.equal(guest.grandTotalPaisa, 10500);
+    assert.equal(plain.grandTotalPaisa, 10500);
   } finally {
     await f.dispose();
   }

@@ -1,6 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import {ContactVerificationPanel} from '@/components/account/contact-verification';
+import type {ContactVerificationStatus} from '@/lib/auth/contact-verification';
 import {
   DEFAULT_DELIVERY_RATES,
   type DeliveryRates,
@@ -74,6 +76,8 @@ export function CheckoutForm({
   deliveryRates = DEFAULT_DELIVERY_RATES,
   customerEmail,
   customerPhone,
+  contactStatus,
+  customerId,
   customerDisplayName,
   savedAddresses = [],
   walletBalancePaisa = 0,
@@ -83,6 +87,8 @@ export function CheckoutForm({
   deliveryRates?: DeliveryRates;
   customerEmail?: string;
   customerPhone?: string;
+  contactStatus?: ContactVerificationStatus|null;
+  customerId?:string;
   customerDisplayName?: string;
   savedAddresses?: readonly CustomerAddressRow[];
   walletBalancePaisa?: number;
@@ -116,6 +122,8 @@ export function CheckoutForm({
   );
   const [accepted, setAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [currentContacts,setCurrentContacts]=useState<ContactVerificationStatus|null>(contactStatus??null);
+  const contactsVerified=currentContacts?.emailVerified===true&&currentContacts?.phoneVerified===true;
   const [error, setError] = useState('');
   const errorSummary = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
@@ -345,6 +353,8 @@ export function CheckoutForm({
       className="customer-form grid gap-8 lg:grid-cols-[minmax(0,1fr)_23rem]"
     >
       <div className="space-y-6">
+        <ContactVerificationPanel key={`${customerId??'guest'}:${customerEmail??''}:${customerPhone??''}`}
+          ownerKey={customerId} initialStatus={contactStatus} onStatusChange={setCurrentContacts}/>
         <section className="rounded-2xl border bg-card p-5 sm:p-7">
           <div className="flex items-center gap-3">
             <span className="flex size-10 items-center justify-center rounded-xl bg-secondary text-primary">
@@ -448,6 +458,7 @@ export function CheckoutForm({
               autoComplete="tel"
               placeholder="98XXXXXXXX"
               defaultValue={customerPhone ?? selectedAddress?.phone}
+              readOnly={Boolean(customerEmail)}
               required
             />
             <div className="space-y-2">
@@ -768,7 +779,7 @@ export function CheckoutForm({
         ) : null}
         <Button
           type="submit"
-          disabled={submitting || promoPending || cart.items.length === 0 || cart.hasUnavailableItems || !published.canSubmit}
+          disabled={submitting || promoPending || cart.items.length === 0 || cart.hasUnavailableItems || !published.canSubmit || !contactsVerified}
           className="mt-6 h-12 w-full rounded-full text-base"
         >
           <LockKeyhole /> {submitting ? 'Placing order…' : 'Place COD order'}

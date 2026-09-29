@@ -1,3 +1,4 @@
+import { seedCheckoutBuyer } from './helpers/checkout-contact';
 import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
 import {
@@ -458,6 +459,7 @@ import {
 } from '../lib/db/repositories/orders';
 import { getOperationsOrderDetail } from '../lib/db/repositories/fulfillment';
 async function checkoutCart(db: D1Database) {
+  await seedCheckoutBuyer(db, 'checkout-buyer', 'buyer@example.test', '9811111111', now);
   await db
     .prepare(
       "INSERT INTO carts(id,anonymous_token_hash,currency,created_at,updated_at) VALUES ('rate-cart','rate-token','NPR',?,?)",
@@ -490,6 +492,7 @@ void test('checkout cart exposes stable seller identity for distinct-store prici
 function checkoutInput(version: string) {
   return {
     deliveryRateVersion: version,
+    customerAuthSubject: 'checkout-buyer',
     customerEmail: 'buyer@example.test',
     customerPhone: '9811111111',
     deliveryFor: 'self' as const,
@@ -519,6 +522,7 @@ void test('checkout snapshots the two-store surcharge; later changes and idempot
       'rate-receipt',
       input,
       now,
+      'checkout-buyer',
     );
     const row = await db
       .prepare(
@@ -578,6 +582,7 @@ void test('checkout snapshots the two-store surcharge; later changes and idempot
           'rate-receipt',
           input,
           now + 2,
+          'checkout-buyer',
         )),
       },
       order,
@@ -606,6 +611,7 @@ void test('checkout snapshots the two-store surcharge; later changes and idempot
           'new-receipt',
           checkoutInput(initial.version),
           now,
+          'checkout-buyer',
         ),
       CheckoutConflictError,
     );
@@ -615,6 +621,7 @@ void test('checkout snapshots the two-store surcharge; later changes and idempot
       'new-receipt',
       checkoutInput((await getDeliveryRates(db)).version),
       now,
+      'checkout-buyer',
     );
     assert.equal(
       (
@@ -654,6 +661,7 @@ void test('receipt store count uses seller identity when two stores share a disp
       'same-name-receipt',
       checkoutInput(rates.version),
       now,
+      'checkout-buyer',
     );
     const receipt = await getOrderReceipt(
       db,
@@ -669,13 +677,13 @@ void test('checkout snapshots another recipient without mutating or depending on
   const f = await databaseFixture();
   try {
     const db = f.database as unknown as D1Database;
+    await checkoutCart(db);
     await db
       .prepare(
-        "INSERT INTO addresses(id,user_id,label,recipient_name,phone,province,district,municipality,locality,is_default,created_at,updated_at) VALUES ('owned-address','seller-user-1','Home','Original recipient','9811111111','Bagmati','Kathmandu','Kathmandu','Original locality',1,?,?)",
+        "INSERT INTO addresses(id,user_id,label,recipient_name,phone,province,district,municipality,locality,is_default,created_at,updated_at) VALUES ('owned-address','checkout-buyer','Home','Original recipient','9811111111','Bagmati','Kathmandu','Kathmandu','Original locality',1,?,?)",
       )
       .bind(now, now)
       .run();
-    await checkoutCart(db);
     const rates = await getDeliveryRates(db);
     const input = {
       ...checkoutInput(rates.version),
@@ -694,7 +702,7 @@ void test('checkout snapshots another recipient without mutating or depending on
       'recipient-receipt',
       input,
       now,
-      'seller-user-1',
+      'checkout-buyer',
     );
     const snapshot = await db
       .prepare(
@@ -761,7 +769,7 @@ void test('checkout rejects another account address and can explicitly save a ne
             selectedAddressId: 'other-address',
           },
           now,
-          'seller-user-1',
+          'checkout-buyer',
         ),
       CheckoutConflictError,
     );
@@ -775,7 +783,7 @@ void test('checkout rejects another account address and can explicitly save a ne
         saveAddressLabel: 'Future home',
       },
       now,
-      'seller-user-1',
+      'checkout-buyer',
     );
     const row = await db
       .prepare(
@@ -788,7 +796,7 @@ void test('checkout rejects another account address and can explicitly save a ne
       (
         await db
           .prepare('SELECT label FROM addresses WHERE id=? AND user_id=?')
-          .bind(row!.sourceAddressId, 'seller-user-1')
+          .bind(row!.sourceAddressId, 'checkout-buyer')
           .first<{ label: string }>()
       )?.label,
       'Future home',
@@ -836,6 +844,7 @@ void test('rate change between quote and checkout batch rolls back order, invent
           'rate-receipt',
           checkoutInput(initial.version),
           now,
+          'checkout-buyer',
         ),
       CheckoutConflictError,
     );

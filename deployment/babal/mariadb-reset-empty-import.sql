@@ -1,6 +1,11 @@
 -- RECOVERY ONLY: clears the failed partial import in an otherwise empty database.
 -- Do not use this file after real users, products, orders, or uploads exist.
 SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS `first_cod_reviews`;
+DROP TABLE IF EXISTS `local_contact_captures`;
+DROP TABLE IF EXISTS `account_contact_challenges`;
+DROP TABLE IF EXISTS `account_phone_verifications`;
+DROP TABLE IF EXISTS `account_email_verifications`;
 DROP TABLE IF EXISTS `rider_assignment_snapshots`;
 DROP TABLE IF EXISTS `rider_remittance_allocations`;
 DROP TABLE IF EXISTS `rider_compensation_entries`;
@@ -2963,5 +2968,180 @@ DROP TRIGGER IF EXISTS parcel_cash_records_single_sa_insert$$
 CREATE TRIGGER parcel_cash_records_single_sa_insert BEFORE INSERT ON parcel_cash_records FOR EACH ROW BEGIN IF (NEW.kind='remittance' AND NEW.status='posted' AND (NEW.approved_by IS NULL OR (NEW.rider_user_id IS NOT NULL AND NEW.rider_user_id=NEW.approved_by) OR (NEW.approved_by=NEW.created_by AND NOT EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=NEW.approved_by AND u.status='active' AND r.role='super_admin')))) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='parcel_cash_records_approval_requires_active_super_admin'; END IF; END$$
 DROP TRIGGER IF EXISTS parcel_cash_records_single_sa_update$$
 CREATE TRIGGER parcel_cash_records_single_sa_update BEFORE UPDATE ON parcel_cash_records FOR EACH ROW BEGIN IF (NEW.kind='remittance' AND NEW.status='posted' AND (NEW.approved_by IS NULL OR (NEW.rider_user_id IS NOT NULL AND NEW.rider_user_id=NEW.approved_by) OR (NEW.approved_by=NEW.created_by AND NOT EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=NEW.approved_by AND u.status='active' AND r.role='super_admin')))) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='parcel_cash_records_approval_requires_active_super_admin'; END IF; END$$
+DELIMITER ;
+-- Additive contact security tables; no existing contact proofs are backfilled.
+-- The generated base snapshot predates the existing mailbox proof migration.
+CREATE TABLE IF NOT EXISTS account_email_verifications (
+ user_id VARCHAR(191) PRIMARY KEY NOT NULL,email VARCHAR(254) NOT NULL,verified_at BIGINT NOT NULL,
+ FOREIGN KEY(user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS account_phone_verifications (
+ user_id VARCHAR(191) PRIMARY KEY NOT NULL,
+ phone VARCHAR(32) NOT NULL,
+ verified_at BIGINT NOT NULL,
+ FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS account_contact_challenges (
+ token_hash VARCHAR(64) PRIMARY KEY NOT NULL, code_hash VARCHAR(64) NOT NULL,
+ user_id VARCHAR(191) NOT NULL, auth_subject VARCHAR(191) NOT NULL,
+ channel VARCHAR(8) NOT NULL CHECK(channel IN ('email','phone')),
+ contact_value VARCHAR(254) NOT NULL, contact_snapshot VARCHAR(254) NOT NULL,
+ attempts BIGINT NOT NULL DEFAULT 0 CHECK(attempts>=0),expires_at BIGINT NOT NULL,created_at BIGINT NOT NULL,
+ delivered_at BIGINT NULL,consumed_at BIGINT NULL,
+ UNIQUE KEY idx_account_contact_owner_channel(user_id,channel),
+ FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS local_contact_captures (
+ token_hash VARCHAR(64) PRIMARY KEY NOT NULL,user_id VARCHAR(191) NOT NULL,channel VARCHAR(8) NOT NULL,
+ contact_value VARCHAR(254) NOT NULL,code VARCHAR(6) NOT NULL,expires_at BIGINT NOT NULL,
+ simulation_label VARCHAR(80) NOT NULL CHECK(simulation_label='SIMULATED — NOT VALID FOR PRODUCTION'),
+ FOREIGN KEY(token_hash) REFERENCES account_contact_challenges(token_hash) ON DELETE CASCADE,
+ FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TRIGGER IF EXISTS account_phone_change_revoke;
+DELIMITER $$
+CREATE TRIGGER account_phone_change_revoke AFTER UPDATE ON users FOR EACH ROW
+BEGIN
+ IF NOT (OLD.phone <=> NEW.phone) THEN
+  DELETE FROM account_phone_verifications WHERE user_id=NEW.id;
+  DELETE FROM account_contact_challenges WHERE user_id=NEW.id AND channel='phone';
+ END IF;
+END$$
+DELIMITER ;
+DROP TRIGGER IF EXISTS account_email_change_revoke;
+DELIMITER $$
+CREATE TRIGGER account_email_change_revoke AFTER UPDATE ON users FOR EACH ROW
+BEGIN
+ IF lower(OLD.email)<>lower(NEW.email) THEN
+  DELETE FROM account_email_verifications WHERE user_id=NEW.id;
+  DELETE FROM account_contact_challenges WHERE user_id=NEW.id AND channel='email';
+ END IF;
+END$$
+DELIMITER ;
+-- Additive first-time COD confirmation. Apply before enabling order creation on this runtime. No existing orders are backfilled.
+CREATE TABLE IF NOT EXISTS first_cod_reviews (
+ order_id VARCHAR(191) PRIMARY KEY NOT NULL,customer_id VARCHAR(191) NOT NULL,total_paisa BIGINT NOT NULL CHECK(total_paisa BETWEEN 500000 AND 9007199254740991),
+ status VARCHAR(16) NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','confirmed')),created_at BIGINT NOT NULL,
+ confirmed_by VARCHAR(191) NULL,confirmed_at BIGINT NULL,reason VARCHAR(500) NULL,request_id VARCHAR(100) NULL UNIQUE,
+ FOREIGN KEY(order_id) REFERENCES orders(id),FOREIGN KEY(customer_id) REFERENCES users(id),FOREIGN KEY(confirmed_by) REFERENCES users(id),
+ KEY idx_first_cod_reviews_status(status,created_at),
+ CHECK((status='pending' AND confirmed_by IS NULL AND confirmed_at IS NULL AND reason IS NULL AND request_id IS NULL) OR (status='confirmed' AND confirmed_by IS NOT NULL AND confirmed_at>=created_at AND CHAR_LENGTH(TRIM(reason)) BETWEEN 8 AND 500 AND CHAR_LENGTH(request_id) BETWEEN 1 AND 100))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TRIGGER IF EXISTS first_cod_review_immutable;
+DELIMITER $$
+CREATE TRIGGER first_cod_review_immutable BEFORE UPDATE ON first_cod_reviews FOR EACH ROW BEGIN
+ IF OLD.status='confirmed' OR NEW.order_id<>OLD.order_id OR NEW.customer_id<>OLD.customer_id OR NEW.total_paisa<>OLD.total_paisa OR NEW.created_at<>OLD.created_at THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='COD confirmation evidence is immutable'; END IF;
+END$$
+DELIMITER ;
+DROP TRIGGER IF EXISTS first_cod_review_confirm_active;
+DELIMITER $$
+CREATE TRIGGER first_cod_review_confirm_active BEFORE UPDATE ON first_cod_reviews FOR EACH ROW BEGIN
+ IF NEW.status='confirmed' AND NOT EXISTS(SELECT 1 FROM orders WHERE id=NEW.order_id AND status='confirmed') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='COD confirmation is no longer available'; END IF;
+END$$
+DELIMITER ;
+DROP TRIGGER IF EXISTS first_cod_audit_no_update;
+DELIMITER $$
+CREATE TRIGGER first_cod_audit_no_update BEFORE UPDATE ON audit_logs FOR EACH ROW BEGIN
+ IF OLD.action='order.first_cod_confirmed' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='COD confirmation audit is immutable'; END IF;
+END$$
+DELIMITER ;
+DROP TRIGGER IF EXISTS first_cod_audit_no_delete;
+DELIMITER $$
+CREATE TRIGGER first_cod_audit_no_delete BEFORE DELETE ON audit_logs FOR EACH ROW BEGIN
+ IF OLD.action='order.first_cod_confirmed' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='COD confirmation audit is immutable'; END IF;
+END$$
+DELIMITER ;
+DROP TRIGGER IF EXISTS first_cod_orders_insert;
+DELIMITER $$
+CREATE TRIGGER first_cod_orders_insert BEFORE INSERT ON orders FOR EACH ROW BEGIN
+ IF NEW.status IN ('packing','ready_for_pickup','dispatched','delivered') AND EXISTS(SELECT 1 FROM first_cod_reviews WHERE order_id=NEW.id AND status='pending') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='First-time COD order awaits staff confirmation'; END IF;
+END$$
+DELIMITER ;
+DROP TRIGGER IF EXISTS first_cod_items_insert;
+DELIMITER $$
+CREATE TRIGGER first_cod_items_insert BEFORE INSERT ON order_items FOR EACH ROW BEGIN
+ IF NEW.fulfillment_status IN ('packing','ready_for_pickup','dispatched','delivered') AND EXISTS(SELECT 1 FROM first_cod_reviews WHERE order_id=NEW.order_id AND status='pending') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='First-time COD order awaits staff confirmation'; END IF;
+END$$
+DELIMITER ;
+DROP TRIGGER IF EXISTS first_cod_jobs_insert;
+DELIMITER $$
+CREATE TRIGGER first_cod_jobs_insert BEFORE INSERT ON shipping_jobs FOR EACH ROW BEGIN
+ IF NEW.direction='outbound' AND NEW.status NOT IN ('cancelled') AND EXISTS(SELECT 1 FROM first_cod_reviews WHERE order_id=NEW.order_id AND status='pending') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='First-time COD order awaits staff confirmation'; END IF;
+END$$
+DELIMITER ;
+DROP TRIGGER IF EXISTS first_cod_parcels_insert;
+DELIMITER $$
+CREATE TRIGGER first_cod_parcels_insert BEFORE INSERT ON shipping_parcels FOR EACH ROW BEGIN
+ IF (NEW.method IS NOT NULL OR NEW.rider_user_id IS NOT NULL OR NEW.delivered_at IS NOT NULL) AND EXISTS(SELECT 1 FROM shipping_jobs j JOIN first_cod_reviews r ON r.order_id=j.order_id WHERE j.id=NEW.shipping_job_id AND j.direction='outbound' AND r.status='pending') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='First-time COD order awaits staff confirmation'; END IF;
+END$$
+DELIMITER ;
+DROP TRIGGER IF EXISTS first_cod_delivery_insert;
+DELIMITER $$
+CREATE TRIGGER first_cod_delivery_insert BEFORE INSERT ON delivery_assignments FOR EACH ROW BEGIN
+ IF EXISTS(SELECT 1 FROM first_cod_reviews WHERE order_id=NEW.order_id AND status='pending') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='First-time COD order awaits staff confirmation'; END IF;
+END$$
+DELIMITER ;
+DROP TRIGGER IF EXISTS first_cod_shipments_insert;
+DELIMITER $$
+CREATE TRIGGER first_cod_shipments_insert BEFORE INSERT ON shipments FOR EACH ROW BEGIN
+ IF NEW.status IN ('in_transit','delivered') AND EXISTS(SELECT 1 FROM first_cod_reviews WHERE order_id=NEW.order_id AND status='pending') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='First-time COD order awaits staff confirmation'; END IF;
+END$$
+DELIMITER ;
+DROP TRIGGER IF EXISTS first_cod_orders_update;
+DELIMITER $$
+CREATE TRIGGER first_cod_orders_update BEFORE UPDATE ON orders FOR EACH ROW BEGIN
+ IF NEW.status IN ('packing','ready_for_pickup','dispatched','delivered') AND EXISTS(SELECT 1 FROM first_cod_reviews WHERE order_id=NEW.id AND status='pending') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='First-time COD order awaits staff confirmation'; END IF;
+END$$
+DELIMITER ;
+DROP TRIGGER IF EXISTS first_cod_items_update;
+DELIMITER $$
+CREATE TRIGGER first_cod_items_update BEFORE UPDATE ON order_items FOR EACH ROW BEGIN
+ IF NEW.fulfillment_status IN ('packing','ready_for_pickup','dispatched','delivered') AND EXISTS(SELECT 1 FROM first_cod_reviews WHERE order_id=NEW.order_id AND status='pending') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='First-time COD order awaits staff confirmation'; END IF;
+END$$
+DELIMITER ;
+DROP TRIGGER IF EXISTS first_cod_jobs_update;
+DELIMITER $$
+CREATE TRIGGER first_cod_jobs_update BEFORE UPDATE ON shipping_jobs FOR EACH ROW BEGIN
+ IF NEW.direction='outbound' AND NEW.status NOT IN ('cancelled') AND EXISTS(SELECT 1 FROM first_cod_reviews WHERE order_id=NEW.order_id AND status='pending') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='First-time COD order awaits staff confirmation'; END IF;
+END$$
+DELIMITER ;
+DROP TRIGGER IF EXISTS first_cod_parcels_update;
+DELIMITER $$
+CREATE TRIGGER first_cod_parcels_update BEFORE UPDATE ON shipping_parcels FOR EACH ROW BEGIN
+ IF (NEW.method IS NOT NULL OR NEW.rider_user_id IS NOT NULL OR NEW.delivered_at IS NOT NULL) AND EXISTS(SELECT 1 FROM shipping_jobs j JOIN first_cod_reviews r ON r.order_id=j.order_id WHERE j.id=NEW.shipping_job_id AND j.direction='outbound' AND r.status='pending') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='First-time COD order awaits staff confirmation'; END IF;
+END$$
+DELIMITER ;
+DROP TRIGGER IF EXISTS first_cod_delivery_update;
+DELIMITER $$
+CREATE TRIGGER first_cod_delivery_update BEFORE UPDATE ON delivery_assignments FOR EACH ROW BEGIN
+ IF (NOT (NEW.method <=> OLD.method) OR NOT (NEW.rider_user_id <=> OLD.rider_user_id) OR NOT (NEW.courier_name <=> OLD.courier_name) OR NOT (NEW.tracking_reference <=> OLD.tracking_reference) OR NOT (NEW.tracking_url <=> OLD.tracking_url) OR NEW.latitude IS NOT NULL OR NEW.longitude IS NOT NULL) AND EXISTS(SELECT 1 FROM first_cod_reviews WHERE order_id=NEW.order_id AND status='pending') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='First-time COD order awaits staff confirmation'; END IF;
+END$$
+DELIMITER ;
+DROP TRIGGER IF EXISTS first_cod_shipments_update;
+DELIMITER $$
+CREATE TRIGGER first_cod_shipments_update BEFORE UPDATE ON shipments FOR EACH ROW BEGIN
+ IF NEW.status IN ('in_transit','delivered') AND EXISTS(SELECT 1 FROM first_cod_reviews WHERE order_id=NEW.order_id AND status='pending') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='First-time COD order awaits staff confirmation'; END IF;
+END$$
+DELIMITER ;
+-- Additive approval evidence guard; no existing rows are changed.
+DROP TRIGGER IF EXISTS first_cod_evidence_complete_insert;
+DELIMITER $$
+CREATE TRIGGER first_cod_evidence_complete_insert BEFORE INSERT ON first_cod_reviews FOR EACH ROW BEGIN
+ IF NEW.status='confirmed' AND (NEW.confirmed_by IS NULL OR NEW.confirmed_at IS NULL OR NEW.reason IS NULL OR NEW.request_id IS NULL OR NEW.confirmed_at<NEW.created_at OR CHAR_LENGTH(TRIM(NEW.reason)) NOT BETWEEN 8 AND 500 OR CHAR_LENGTH(NEW.request_id) NOT BETWEEN 1 AND 100) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='COD confirmation requires complete staff evidence'; END IF;
+END$$
+DELIMITER ;
+DROP TRIGGER IF EXISTS first_cod_evidence_complete_update;
+DELIMITER $$
+CREATE TRIGGER first_cod_evidence_complete_update BEFORE UPDATE ON first_cod_reviews FOR EACH ROW BEGIN
+ IF NEW.status='confirmed' AND (NEW.confirmed_by IS NULL OR NEW.confirmed_at IS NULL OR NEW.reason IS NULL OR NEW.request_id IS NULL OR NEW.confirmed_at<NEW.created_at OR CHAR_LENGTH(TRIM(NEW.reason)) NOT BETWEEN 8 AND 500 OR CHAR_LENGTH(NEW.request_id) NOT BETWEEN 1 AND 100) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='COD confirmation requires complete staff evidence'; END IF;
+END$$
+DELIMITER ;
+
+-- Keep durable holds even when cancelled; deletion would otherwise remove lifecycle guards.
+DROP TRIGGER IF EXISTS first_cod_review_no_delete;
+DELIMITER $$
+CREATE TRIGGER first_cod_review_no_delete BEFORE DELETE ON first_cod_reviews FOR EACH ROW BEGIN
+ SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='COD confirmation evidence is immutable';
+END$$
 DELIMITER ;
 SET FOREIGN_KEY_CHECKS = 1;

@@ -1,4 +1,5 @@
 import {normalizeProvince,normalizeDistrict,districtBelongsToProvince,validWard} from '@/lib/checkout/nepal-address';
+import {normalizeNepalMobile} from '@/lib/auth/nepal-phone';
 import { publicProductEligibility } from '@/lib/products/eligibility';
 import {parseLocation} from '@/lib/delivery/validation';
 import { buildFormAnswerInsert, getFormAnswerById, type StoredFormAnswer } from './form-answers';
@@ -376,7 +377,10 @@ export async function customerProfileRequestStatus(database: D1Database, input: 
       fields: savedConfig.fields.filter((field) => !builtInKeys.has(field.key.replace(/[^a-z0-9]/gi, '').toLowerCase())) };
     const requested = validateAnswersForDefinition(definition, config, input.customAnswers);
     const previouslySaved = snapshot.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value }));
-    return core.displayName === input.displayName.trim() && core.phone === (input.phone.trim().replace(/[\s-]/g, '') || null) &&
+    const savedPhone=typeof core.phone==='string'?normalizeNepalMobile(core.phone):null;
+    const requestedPhone=normalizeNepalMobile(input.phone);
+    return core.displayName === input.displayName.trim() && savedPhone===requestedPhone &&
+      (requestedPhone!==null || input.phone.trim()==='') &&
       core.locale === input.locale && snapshot.formId === 'account.profile' && snapshot.version === row.savedVersion &&
       snapshot.version === input.formVersion &&
       JSON.stringify(previouslySaved) === JSON.stringify(requested.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value }))) ? 'same' : 'conflict';
@@ -385,19 +389,26 @@ export async function customerProfileRequestStatus(database: D1Database, input: 
 
 export async function updateCustomerProfile(database: D1Database, options: { userId: string; displayName: string; phone: string; locale: 'en-NP' | 'ne-NP'; requestId: string; now: number; formVersion: number; versionId: string; answers: FormAnswerSnapshot }): Promise<void> {
   const displayName = options.displayName.trim();
-  const phone = options.phone.trim().replace(/[\s-]/g, '');
+  const enteredPhone=options.phone.trim();
+  const canonicalPhone=normalizeNepalMobile(enteredPhone);
   if (displayName.length < 2 || displayName.length > 100) throw new CustomerDataConflictError('Name must be 2â€“100 characters.');
-  if (phone && !/^(?:\+?977)?9[678]\d{8}$/.test(phone)) throw new CustomerDataConflictError('Enter a valid Nepal mobile number.');
+  if (enteredPhone && !canonicalPhone) throw new CustomerDataConflictError('Enter a valid Nepal mobile number.');
   const replay = await customerProfileRequestStatus(database, { ...options,
     customAnswers: options.answers.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value })) });
   if (replay === 'same') return;
   if (replay === 'conflict') throw new CustomerDataConflictError('This request ID was already used for different profile values.');
+  const current=await database.prepare("SELECT phone FROM users WHERE id=? AND status='active'").bind(options.userId).first<{phone:string|null}>();
+  if(!current)throw new CustomerDataConflictError('The customer account is unavailable.');
+  // Preserve the stored representation for the same destination, so changing
+  // whitespace/country-prefix presentation cannot revoke a valid proof.
+  const phone=canonicalPhone && normalizeNepalMobile(current.phone)===canonicalPhone ? current.phone : canonicalPhone;
   const statements = [
-    database.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM users WHERE id = ? AND status = 'active')
+    database.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM users WHERE id = ? AND status = 'active'
+      AND (phone=? OR (phone IS NULL AND ? IS NULL)))
       AND (SELECT MAX(version) FROM form_config_versions WHERE form_id = 'account.profile' AND status = 'published') = ?
       AND NOT EXISTS (SELECT 1 FROM audit_logs WHERE request_id = ?)
       THEN 1 ELSE json_extract('invalid', '$') END AS valid`)
-      .bind(options.userId, options.formVersion, options.requestId),
+      .bind(options.userId,current.phone,current.phone,options.formVersion,options.requestId),
     database.prepare(`UPDATE users SET display_name = ?, phone = ?, locale = ?, updated_at = ? WHERE id = ? AND status = 'active'`).bind(displayName, phone || null, options.locale, options.now, options.userId),
     buildFormAnswerInsert(database, { formId: 'account.profile', requestId: options.requestId,
       versionId: options.versionId, subjectType: 'user', subjectId: options.userId,

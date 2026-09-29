@@ -12,9 +12,16 @@ const titles: Record<string, string> = {
   refunded: 'Your refund is recorded.',
 };
 
-export function orderPresentation(status: string, paymentStatus: string) {
+export function orderPresentation(
+  status: string,
+  paymentStatus: string,
+  firstCodPending = false,
+) {
   return {
-    title: titles[status] ?? 'Your order details.',
+    title:
+      firstCodPending && status !== 'cancelled'
+        ? 'Your order is awaiting COD confirmation.'
+        : (titles[status] ?? 'Your order details.'),
     paymentLabel:
       paymentStatus === 'refunded'
         ? 'Refund recorded'

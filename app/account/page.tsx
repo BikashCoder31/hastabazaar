@@ -1,3 +1,4 @@
+import { withFirstCodPresentation } from '@/lib/orders/first-cod-review';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import {
@@ -22,7 +23,14 @@ import {
 } from '@/lib/db/repositories/customers';
 
 function readRewardsSummary(database: D1Database, customer: CustomerUser) {
-  return getRewards(database, customer.userId, Date.now(), undefined, 1, customer.authSubject);
+  return getRewards(
+    database,
+    customer.userId,
+    Date.now(),
+    undefined,
+    1,
+    customer.authSubject,
+  );
 }
 
 export default async function AccountPage() {
@@ -34,6 +42,7 @@ export default async function AccountPage() {
     listWishlist(database, customer.userId),
     readRewardsSummary(database, customer),
   ]);
+  const displayedOrders = await withFirstCodPresentation(database, orders);
   const defaultAddress = addresses.find((address) => address.isDefault);
   return (
     <div className="space-y-7">
@@ -58,9 +67,26 @@ export default async function AccountPage() {
       </section>
       <div className="grid gap-3 sm:grid-cols-3">
         {[
-          { label: 'Refer & earn', detail: 'Get your code, invite friends and track rewards', href: '/account/referrals', icon: Gift },
-          { label: 'My Rewards', detail: rewards.balancePoints + ' points available · Claim daily points and exchange for shopping credit', href: '/account/rewards', icon: Gift },
-          { label: 'My wallet', detail: 'View shopping credit and activity', href: '/account/wallet', icon: Wallet },
+          {
+            label: 'Refer & earn',
+            detail: 'Get your code, invite friends and track rewards',
+            href: '/account/referrals',
+            icon: Gift,
+          },
+          {
+            label: 'My Rewards',
+            detail:
+              rewards.balancePoints +
+              ' points available · Claim daily points and exchange for shopping credit',
+            href: '/account/rewards',
+            icon: Gift,
+          },
+          {
+            label: 'My wallet',
+            detail: 'View shopping credit and activity',
+            href: '/account/wallet',
+            icon: Wallet,
+          },
           {
             label: 'My orders',
             detail: 'Track & manage purchases',
@@ -87,7 +113,8 @@ export default async function AccountPage() {
           },
           {
             label: 'Sign-in form history',
-            detail: 'Review saved answers from your account and sign-in actions',
+            detail:
+              'Review saved answers from your account and sign-in actions',
             href: '/form-submissions',
             icon: UserRound,
           },
@@ -117,7 +144,7 @@ export default async function AccountPage() {
           </Link>
         </div>
         {orders.length ? (
-          <CustomerOrderList orders={orders} />
+          <CustomerOrderList orders={displayedOrders} />
         ) : (
           <AccountEmpty
             icon={Package}

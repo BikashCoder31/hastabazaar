@@ -2564,6 +2564,27 @@ export const accountEmailVerifications = sqliteTable(
   },
 );
 
+// Static account security; contact proofs and codes are never form catalogue fields.
+export const accountPhoneVerifications = sqliteTable('account_phone_verifications', {
+  userId: text('user_id').primaryKey().notNull().references(() => users.id, {onDelete:'cascade'}),
+  phone: text('phone').notNull(),
+  verifiedAt: timestamp('verified_at').notNull(),
+});
+export const accountContactChallenges = sqliteTable('account_contact_challenges', {
+  tokenHash:text('token_hash').primaryKey().notNull(), codeHash:text('code_hash').notNull(),
+  userId:text('user_id').notNull().references(() => users.id,{onDelete:'cascade'}),
+  authSubject:text('auth_subject').notNull(), channel:text('channel',{enum:['email','phone']}).notNull(),
+  contactValue:text('contact_value').notNull(), contactSnapshot:text('contact_snapshot').notNull(),
+  attempts:integer('attempts').notNull().default(0), expiresAt:timestamp('expires_at').notNull(),
+  createdAt:timestamp('created_at').notNull(),deliveredAt:timestamp('delivered_at'),consumedAt:timestamp('consumed_at'),
+}, t => [uniqueIndex('idx_account_contact_owner_channel').on(t.userId,t.channel),check('account_contact_attempts',sql`${t.attempts}>=0`)]);
+export const localContactCaptures=sqliteTable('local_contact_captures',{
+  tokenHash:text('token_hash').primaryKey().notNull().references(()=>accountContactChallenges.tokenHash,{onDelete:'cascade'}),
+  userId:text('user_id').notNull().references(()=>users.id,{onDelete:'cascade'}),channel:text('channel').notNull(),
+  contactValue:text('contact_value').notNull(),code:text('code').notNull(),expiresAt:timestamp('expires_at').notNull(),
+  simulationLabel:text('simulation_label').notNull(),
+},t=>[check('local_contact_simulation_label',sql`${t.simulationLabel}='SIMULATED — NOT VALID FOR PRODUCTION'`)]);
+
 // Seller parcels extend the existing outbound shipping job identity.
 export const shippingParcels = sqliteTable(
   'shipping_parcels',
@@ -3088,3 +3109,9 @@ export const feedbackDeliveryJobs = sqliteTable(
     check('feedback_delivery_jobs_sent', sql`(${table.status} = 'sent' AND ${table.sentAt} IS NOT NULL) OR (${table.status} != 'sent' AND ${table.sentAt} IS NULL)`),
   ],
 );
+
+export const firstCodReviews = sqliteTable('first_cod_reviews', {
+ orderId:text('order_id').primaryKey().references(()=>orders.id), customerId:text('customer_id').notNull().references(()=>users.id),
+ totalPaisa:integer('total_paisa').notNull(), status:text('status',{enum:['pending','confirmed']}).notNull().default('pending'),
+ createdAt:timestamp('created_at').notNull(), confirmedBy:text('confirmed_by').references(()=>users.id), confirmedAt:timestamp('confirmed_at'), reason:text('reason'), requestId:text('request_id').unique(),
+},table=>[index('idx_first_cod_reviews_status').on(table.status,table.createdAt),check('first_cod_review_total',sql`${table.totalPaisa} BETWEEN 500000 AND 9007199254740991`),check('first_cod_review_status',sql`${table.status} IN ('pending','confirmed')`)]);

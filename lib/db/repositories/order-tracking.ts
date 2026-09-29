@@ -1,3 +1,4 @@
+import { getFirstCodReview } from '../../orders/first-cod-review';
 export interface OrderTracking {
   orderNumber: string;
   status: string;
@@ -30,6 +31,19 @@ export async function findOrderTracking(
  WHERE order_id=? GROUP BY to_status ORDER BY MIN(created_at) ASC`)
     .bind(order.id)
     .all<{ status: string; occurredAt: number }>();
+  const codReview = await getFirstCodReview(db, order.id);
+  const codPending =
+    codReview?.status === 'pending' && order.status !== 'cancelled';
   const { id: _id, ...safe } = order;
-  return { ...safe, events: events.results };
+  return {
+    ...safe,
+    status: codPending ? 'awaiting_cod_confirmation' : safe.status,
+    events: events.results.map((event) => ({
+      ...event,
+      status:
+        codPending && event.status === 'confirmed'
+          ? 'awaiting_cod_confirmation'
+          : event.status,
+    })),
+  };
 }

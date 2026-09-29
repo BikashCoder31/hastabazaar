@@ -1,6 +1,7 @@
 import { orderProgress } from '../orders/progress';
 import { emailRetryDelayMs, maximumEmailAttempts } from './retry-policy';
 export interface OrderEmailData {
+  firstCodPending?: boolean | number;
   orderNumber: string;
   eventStatus: string;
   currentStatus: string;
@@ -38,7 +39,11 @@ export function buildOrderEmail(data: OrderEmailData, origin: string) {
     throw new Error('HTTPS application origin required');
   const trackingUrl = new URL('/track', url);
   trackingUrl.searchParams.set('order', data.orderNumber);
-  const progress = orderProgress(data.eventStatus);
+  const pendingCod =
+    Boolean(data.firstCodPending) && data.currentStatus !== 'cancelled';
+  const progress = orderProgress(
+    pendingCod ? 'awaiting_cod_confirmation' : data.eventStatus,
+  );
   const money = (n: number) =>
     new Intl.NumberFormat('en-NP', {
       style: 'currency',
@@ -53,10 +58,10 @@ export function buildOrderEmail(data: OrderEmailData, origin: string) {
     data.currentStatus === 'cancelled'
       ? 'No cash payment is due.'
       : data.collectedPaisa != null
-        ? `Cash collection recorded: ${money(data.collectedPaisa)}. Remaining cash awaiting confirmation: ${money(Math.max(0,data.cashPaisa-data.collectedPaisa))}.`
-      : data.currentStatus === 'delivered'
-        ? `Cash recorded on delivery: ${money(data.cashPaisa)}.`
-        : `Cash to pay on delivery: ${money(data.cashPaisa)}.`;
+        ? `Cash collection recorded: ${money(data.collectedPaisa)}. Remaining cash awaiting confirmation: ${money(Math.max(0, data.cashPaisa - data.collectedPaisa))}.`
+        : data.currentStatus === 'delivered'
+          ? `Cash recorded on delivery: ${money(data.cashPaisa)}.`
+          : `Cash to pay on delivery: ${money(data.cashPaisa)}.`;
   const lines = [
     `Order ${data.orderNumber}`,
     `${progress.label} · ${date}`,
@@ -73,7 +78,11 @@ export function buildOrderEmail(data: OrderEmailData, origin: string) {
     ...(data.discountPaisa
       ? [`Referral discount: ${money(data.discountPaisa)}.`]
       : []),
-    ...(data.promoPaisa ? [`Promo savings${data.promoLabel ? ` (${data.promoLabel}, revision ${data.promoRevision})` : ''}: ${money(data.promoPaisa)}.`] : []),
+    ...(data.promoPaisa
+      ? [
+          `Promo savings${data.promoLabel ? ` (${data.promoLabel}, revision ${data.promoRevision})` : ''}: ${money(data.promoPaisa)}.`,
+        ]
+      : []),
     ...(data.trackingCode ? [`Delivery reference: ${data.trackingCode}`] : []),
     'Track your order using your order number and the email address used at checkout.',
     trackingUrl.toString(),
@@ -143,7 +152,7 @@ export async function deliverOrderEmails(
     if (!claimed.meta.changes) continue;
     try {
       const data = await db
-        .prepare(`SELECT o.order_number AS orderNumber,o.customer_email AS email,o.status AS currentStatus,
+        .prepare(`SELECT o.order_number AS orderNumber,o.customer_email AS email,o.status AS currentStatus,EXISTS(SELECT 1 FROM first_cod_reviews r WHERE r.order_id=o.id AND r.status='pending') AS firstCodPending,
     j.order_status AS eventStatus,j.attempts,j.created_at AS occurredAt,COALESCE(o.current_total_paisa,o.grand_total_paisa) AS cashPaisa,
     CASE WHEN EXISTS(SELECT 1 FROM shipping_jobs pj JOIN shipping_parcels pp ON pp.shipping_job_id=pj.id WHERE pj.order_id=o.id) THEN (SELECT SUM(pp.collected_paisa) FROM shipping_jobs pj JOIN shipping_parcels pp ON pp.shipping_job_id=pj.id WHERE pj.order_id=o.id) ELSE NULL END AS collectedPaisa,
     COALESCE(o.current_wallet_paisa,o.wallet_credit_paisa) AS walletPaisa,o.current_referral_discount_paisa AS discountPaisa,CASE WHEN o.current_discount_paisa IS NULL THEN o.promo_discount_paisa ELSE o.current_promo_discount_paisa END AS promoPaisa,o.promo_label AS promoLabel,o.promo_revision AS promoRevision,s.tracking_code AS trackingCode
@@ -177,8 +186,7 @@ export async function deliverOrderEmails(
           "UPDATE order_email_jobs SET status='retry',next_attempt_at=?,lease_until=0,claim_token=NULL,failure_code='delivery_failed' WHERE id=? AND claim_token=?",
         )
         .bind(
-          (options.now ?? Date.now()) +
-            emailRetryDelayMs(job.attempts + 1),
+          (options.now ?? Date.now()) + emailRetryDelayMs(job.attempts + 1),
           job.id,
           claim,
         )

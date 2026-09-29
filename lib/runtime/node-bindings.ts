@@ -59,6 +59,7 @@ function databasePool(): Pool {
 
 export function translateSqliteSql(sql: string): string {
   return sql
+    .replace(/\bchanges\(\)/gi, 'ROW_COUNT()')
     // Exact new claim/redemption empty-field predicates; retain the array type guard.
     .replace(
       /json_type\(v\.config_json,'\$\.fields'\)='array'/g,
@@ -489,6 +490,12 @@ export const env = {
   },
   get APP_ORIGIN() {
     return process.env.APP_ORIGIN;
+  },
+  get HASTABAZAAR_RUNTIME_ENV() {
+    return process.env.HASTABAZAAR_RUNTIME_ENV;
+  },
+  get CONTACT_DAILY_SEND_LIMIT() {
+    return process.env.CONTACT_DAILY_SEND_LIMIT;
   },
   get ORDER_EMAIL_JOB_SECRET() {
     return process.env.ORDER_EMAIL_JOB_SECRET;

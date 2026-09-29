@@ -1,3 +1,4 @@
+import { seedVerifiedCheckoutContact } from './helpers/checkout-contact';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
@@ -435,6 +436,7 @@ void test('wallet headroom overflow rejects without debit', async () => {
   }
 });
 async function checkoutSetup(db: D1Database) {
+  await seedVerifiedCheckoutContact(db, 'customer');
   await seedIncentiveInventory(db);
   await db
     .prepare(

@@ -1,3 +1,4 @@
+import { withFirstCodPresentation } from '@/lib/orders/first-cod-review';
 import { env } from 'cloudflare:workers';
 import { PackageOpen } from 'lucide-react';
 import { SellerHeading, SellerEmpty } from '@/components/seller/workspace-ui';
@@ -13,6 +14,10 @@ export default async function SellerOrdersPage() {
     requireDatabase(env as unknown as { DB?: D1Database }),
     seller.sellerId,
   );
+  const displayedOrders = await withFirstCodPresentation(
+    requireDatabase(env as unknown as { DB?: D1Database }),
+    orders,
+  );
   return (
     <div className="space-y-7">
       <SellerHeading
@@ -26,7 +31,7 @@ export default async function SellerOrdersPage() {
       </p>
       {orders.length ? (
         <>
-          <SellerOrderList orders={orders} />
+          <SellerOrderList orders={displayedOrders} />
           {orders.length >= 100 ? (
             <p className="text-sm text-muted-foreground">
               Showing the 100 most recent orders.

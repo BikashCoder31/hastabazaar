@@ -1,3 +1,4 @@
+import { seedCheckoutBuyer, seedVerifiedCheckoutContact } from './helpers/checkout-contact';
 import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
 import {
@@ -645,6 +646,9 @@ void test('referral checkout rewards only collected, delivered orders after the 
   const f = await databaseFixture();
   const db = f.database as unknown as D1Database;
   try {
+    await db.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('admin-1','customer',?),('seller-user-1','customer',?)").bind(now, now).run();
+    await seedVerifiedCheckoutContact(db, 'admin-1', '9822222222', now);
+    await seedVerifiedCheckoutContact(db, 'seller-user-1', '9833333333', now);
     await ensureWallet(db, 'seller-user-1', now);
     await ensureWallet(db, 'admin-1', now);
     const wallet = await getWallet(db, 'seller-user-1', now);
@@ -662,6 +666,7 @@ void test('referral checkout rewards only collected, delivered orders after the 
       .run();
     const input = {
       customerEmail: 'admin@example.test',
+      customerAuthSubject: 'admin-1',
       customerPhone: '9822222222',
       locale: 'en-NP' as const,
       termsAccepted: true,
@@ -753,6 +758,7 @@ void test('referral checkout rewards only collected, delivered orders after the 
     const spendInput = {
       ...input,
       customerEmail: 'seller1@example.test',
+      customerAuthSubject: 'seller-user-1',
       customerPhone: '9833333333',
       idempotencyKey: crypto.randomUUID(),
       referralCode: '',
@@ -1710,6 +1716,7 @@ void test('mixed-seller checkout includes preparation, adds half the base and pr
   const fixture = await databaseFixture();
   const db = fixture.database as unknown as D1Database;
   try {
+    await seedCheckoutBuyer(db, 'checkout-buyer', 'buyer@example.test', '9811111111', now);
     const before = await db
       .prepare('SELECT id, return_policy_snapshot_json FROM orders ORDER BY id')
       .all();
@@ -1740,6 +1747,7 @@ void test('mixed-seller checkout includes preparation, adds half the base and pr
     );
     const input = {
       customerEmail: 'buyer@example.test',
+      customerAuthSubject: 'checkout-buyer',
       customerPhone: '9811111111',
       locale: 'en-NP' as const,
       termsAccepted: true,
@@ -1759,6 +1767,7 @@ void test('mixed-seller checkout includes preparation, adds half the base and pr
       'delivery-receipt',
       input,
       now,
+      'checkout-buyer',
     );
     assert.equal(order.grandTotalPaisa, cart.itemSubtotalPaisa + 22500);
     assert.equal(order.estimatedMinDays, 6);
@@ -1782,6 +1791,7 @@ void test('mixed-seller checkout includes preparation, adds half the base and pr
           'delivery-receipt',
           input,
           now,
+      'checkout-buyer',
         )),
       },
       order,
@@ -1829,6 +1839,7 @@ void test('checkout retains accepted terms and issues immutable order and COD do
   const fixture = await databaseFixture();
   const db = fixture.database as unknown as D1Database;
   try {
+    await seedCheckoutBuyer(db, 'checkout-buyer', 'buyer@example.test', '9811111111', now);
     await db
       .prepare(
         `INSERT INTO carts (id, anonymous_token_hash, currency, created_at, updated_at)
@@ -1849,6 +1860,7 @@ void test('checkout retains accepted terms and issues immutable order and COD do
       'receipt-token-docs',
       {
         customerEmail: 'buyer@example.test',
+        customerAuthSubject: 'checkout-buyer',
         customerPhone: '9811111111',
         locale: 'en-NP',
         termsAccepted: true,
@@ -1863,6 +1875,7 @@ void test('checkout retains accepted terms and issues immutable order and COD do
         },
       },
       now,
+      'checkout-buyer',
     );
     const repeated = await createCodOrder(
       db,
@@ -1870,6 +1883,7 @@ void test('checkout retains accepted terms and issues immutable order and COD do
       'receipt-token-docs',
       {
         customerEmail: 'buyer@example.test',
+        customerAuthSubject: 'checkout-buyer',
         customerPhone: '9811111111',
         locale: 'en-NP',
         termsAccepted: true,
@@ -1884,6 +1898,7 @@ void test('checkout retains accepted terms and issues immutable order and COD do
         },
       },
       now,
+      'checkout-buyer',
     );
     assert.equal(repeated.orderNumber, order.orderNumber);
     const receipt = await getOrderReceipt(
