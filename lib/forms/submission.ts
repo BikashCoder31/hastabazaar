@@ -223,7 +223,11 @@ export function validateSellerMultipartStructure(form: FormData,
     if (seen.has(key) && (formId === 'seller.application' || !productRepeatedKeys.has(key)))
       throw new FormValidationError('invalid_answer', 'Duplicate form control.');
     seen.add(key);
-    if ((fileKeys.has(key) || replacementImage) !== (value instanceof File))
+    const fileControl = fileKeys.has(key) || replacementImage;
+    // Native multipart parsing represents an unselected filename="" file as
+    // empty text. Accept that absence only for known file controls; domain
+    // validators still enforce required uploads and selected-file contents.
+    if (fileControl ? !(value instanceof File) && value !== '' : value instanceof File)
       throw new FormValidationError('invalid_answer', 'Unsupported form control value.');
   }
 }
