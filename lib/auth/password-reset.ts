@@ -47,6 +47,9 @@ export async function resetPassword(
   const owner =
     'SELECT user_id FROM password_reset_challenges WHERE token_hash=? AND completion_id=?';
   const statements = [
+    // Contact proof mutations acquire this same account lock before checking
+    // their originating session. Serialize reset and contact claims together.
+    db.prepare('UPDATE users SET updated_at=updated_at WHERE id=?').bind(record.userId),
     db
       .prepare(`UPDATE password_reset_challenges SET consumed_at=?, completion_id=?
       WHERE token_hash=? AND code_hash=? AND consumed_at IS NULL AND expires_at>? AND attempts<5
@@ -82,6 +85,10 @@ export async function resetPassword(
     db
       .prepare(`DELETE FROM email_login_challenges WHERE user_id IN (${owner})`)
       .bind(record.tokenHash, completion),
+    db.prepare(`DELETE FROM local_contact_captures WHERE user_id IN (${owner})`)
+      .bind(record.tokenHash, completion),
+    db.prepare(`DELETE FROM account_contact_challenges WHERE user_id IN (${owner})`)
+      .bind(record.tokenHash, completion),
     db
       .prepare(`UPDATE password_reset_challenges SET consumed_at=? WHERE user_id=? AND consumed_at IS NULL
       AND EXISTS (SELECT 1 FROM user_credentials WHERE user_id=? AND password_hash=?)`)
@@ -97,5 +104,5 @@ export async function resetPassword(
   }
   if (versionGuard) statements.unshift(versionGuard);
   const results = await db.batch(statements);
-  return Number(results[versionGuard ? 1 : 0].meta.changes ?? 0) === 1;
+  return Number(results[versionGuard ? 2 : 1].meta.changes ?? 0) === 1;
 }

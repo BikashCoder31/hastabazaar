@@ -21,7 +21,8 @@ import {
   type ContactDeliveryEnvironment,
   localCaptureAvailable,
 } from '@/lib/auth/contact-delivery';
-import { hostedSessionCookie } from '@/lib/auth/hosted-session';
+import { hostedSessionCookie, hostedSessionHash } from '@/lib/auth/hosted-session';
+import { getLocalTestIdentity } from '@/lib/auth/local-test-access';
 
 export const dynamic = 'force-dynamic';
 const environment = env as unknown as ContactDeliveryEnvironment & {
@@ -69,7 +70,10 @@ export async function POST(request: Request): Promise<Response> {
   if (!isTrustedMutationRequest(request, environment.APP_ORIGIN))
     return json({ error: 'Request origin was not accepted.' }, 403);
   try {
-    const actor = await requireExistingCustomerApi();
+    const customer = await requireExistingCustomerApi();
+    const fixture = getLocalTestIdentity(request.headers);
+    const actor = { ...customer, sessionHash: hostedSessionHash(request.headers),
+      localFixture: fixture?.userId === customer.authSubject };
     const db = requireDatabase(environment);
     const decoded: unknown = JSON.parse(
       new TextDecoder().decode(await readBoundedBody(request, 4096)),

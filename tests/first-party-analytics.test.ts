@@ -65,6 +65,44 @@ const enabledPolicy: FirstPartyAnalyticsPolicy = {
   excludedPathPrefixes: ['/admin', '/seller', '/api'],
 };
 
+void test('private identifiers never reach traffic persistence or aggregates with permissive configuration', async () => {
+  const { sqlite, database } = await fixture();
+  try {
+    const policy = { ...enabledPolicy, excludedPathPrefixes: [] };
+    for (const path of ['/orders/receipt-secret', '/account/addresses/private-id', '/documents/invoice-secret', '/admin/documents/private-id', '/seller/documents/private-id', '/api/private-id', '/%6frders/encoded-secret', '/shop/../orders/dot-secret']) {
+      const result = await recordTrafficEvent(database, { tokenHash: 'a'.repeat(64), eventType: 'page_view', path, policy, now: 200 * day });
+      assert.equal(result.recorded, false, path);
+    }
+    assert.equal(sqlite.prepare('SELECT count(*) n FROM traffic_events').get()?.n, 0);
+    assert.equal(sqlite.prepare('SELECT count(*) n FROM traffic_sessions').get()?.n, 0);
+    const aggregate = await getCustomerAndTrafficAnalytics(database, 200 * day);
+    assert.equal(aggregate.traffic.events, 0); assert.deepEqual(aggregate.topPaths, []);
+    assert.equal((await recordTrafficEvent(database, { tokenHash: 'a'.repeat(64), eventType: 'page_view', path: '/accounting', policy, now: 200 * day })).recorded, true);
+  } finally { sqlite.close(); }
+});
+
+void test('analytics aggregates omit pre-existing literal private paths', async () => {
+  const { sqlite, database } = await fixture();
+  try {
+    sqlite.prepare('INSERT INTO traffic_sessions VALUES (?,?,?,?,?)').run('legacy-session', 'a'.repeat(64), 200 * day, 200 * day, 201 * day);
+    for (const [index, path] of ['/orders/legacy-receipt', '/account/legacy-id', '/seller/documents/legacy-id', '/%6frders/encoded-legacy-id', '/shop/../orders/dot-legacy-id', '//orders/duplicate-slash-id'].entries())
+      sqlite.prepare('INSERT INTO traffic_events VALUES (?,?,?,?,?,?,?)').run(`legacy-${index}`, 'legacy-session', 'page_view', path, null, `legacy-key-${index}`, 200 * day);
+    const report = await getCustomerAndTrafficAnalytics(database, 200 * day);
+    assert.equal(report.traffic.events, 0);
+    assert.equal(report.traffic.estimatedBrowserSessions, 0);
+    assert.deepEqual(report.topPaths, []);
+  } finally { sqlite.close(); }
+});
+
+void test('multiply encoded analytics paths fail closed before persistence', async () => {
+  const { sqlite, database } = await fixture();
+  try {
+    await assert.rejects(recordTrafficEvent(database, { tokenHash: 'a'.repeat(64), eventType: 'page_view',
+      path: '/%256frders/secret', policy: { ...enabledPolicy, excludedPathPrefixes: [] }, now: 200 * day }), /encoding/i);
+    assert.equal(sqlite.prepare('SELECT count(*) n FROM traffic_events').get()?.n, 0);
+  } finally { sqlite.close(); }
+});
+
 async function fixture() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec(`

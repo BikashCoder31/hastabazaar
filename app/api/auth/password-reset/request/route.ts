@@ -7,7 +7,7 @@ import { resetCookie } from '@/lib/auth/password-reset';
 import { safeSignInReturnPath } from '@/lib/auth/sign-in-destination';
 import { sendPasswordResetCode } from '@/lib/email/password-reset';
 import type { EmailLoginEnvironment } from '@/lib/email/login-code';
-import { consumeAuthenticationRateLimit as consumeRequestRateLimit } from '@/lib/http/rate-limit';
+import { consumeAuthenticationRateLimit } from '@/lib/http/rate-limit';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { configuredMultipartAnswers, validateSellerFormSubmission } from '@/lib/forms/submission';
 import { resolvePublishedForm, FormRuntimeError } from '@/lib/forms/runtime';
@@ -45,17 +45,11 @@ export async function POST(request: Request) {
   )
     return redirect('/forgot-password', 'unavailable');
   const db = requireDatabase(env as unknown as { DB?: D1Database });
-  const ipLimit = await consumeRequestRateLimit(db, request, {
-    scope: 'password-reset-request',
-    limit: 300,
-    windowMs: 15 * 60_000,
-  });
-  const accountLimit = await consumeRequestRateLimit(
-    db,
-    new Request('https://local.invalid'),
+  const accountLimit = await consumeAuthenticationRateLimit(
+    db, request,
     { scope: `password-reset-email:${email}`, limit: 3, windowMs: 15 * 60_000 },
   );
-  if (!ipLimit.allowed || !accountLimit.allowed)
+  if (!accountLimit.allowed)
     return redirect('/forgot-password', 'rate');
   let submission: Awaited<ReturnType<typeof validateSellerFormSubmission>>;
   let requestId: string;

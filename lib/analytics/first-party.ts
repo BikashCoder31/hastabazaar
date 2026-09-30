@@ -34,7 +34,15 @@ export function normalizeTrafficPath(value: unknown): string {
   ) {
     throw new RangeError('Analytics path must be a query-free local path.');
   }
-  return value.replace(/\/{2,}/g, '/');
+  // Resolve encoded and dot segments before checking privacy boundaries.
+  let decoded: string;
+  try { decoded = decodeURIComponent(value); } catch { throw new RangeError('Analytics path encoding is invalid.'); }
+  if (decoded.includes('%')) throw new RangeError('Analytics path encoding is invalid.');
+  if (/[?#\\]/.test(decoded) || Array.from(decoded).some(character => {
+    const code = character.charCodeAt(0);
+    return code <= 31 || code === 127;
+  })) throw new RangeError('Analytics path must be a query-free local path.');
+  return new URL(decoded.replace(/\/{2,}/g, '/'), 'https://analytics.invalid').pathname;
 }
 
 export function normalizeTrafficEntityKey(value: unknown): string | null {
@@ -82,9 +90,15 @@ export function pathIsExcluded(
   path: string,
   policy: FirstPartyAnalyticsPolicy,
 ): boolean {
-  return policy.excludedPathPrefixes.some(
+  return [...privateTrafficPathPrefixes, ...policy.excludedPathPrefixes].some(
     (prefix) => path === prefix || path.startsWith(`${prefix}/`),
   );
+}
+
+export const privateTrafficPathPrefixes = ['/orders', '/account', '/documents', '/admin', '/seller', '/rider', '/api', '/local-testing'] as const;
+
+export function isPrivateTrafficPath(path: string): boolean {
+  return privateTrafficPathPrefixes.some(prefix => path === prefix || path.startsWith(`${prefix}/`));
 }
 
 export function isLikelyAutomatedRequest(request: Request): boolean {

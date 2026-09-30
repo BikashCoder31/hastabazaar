@@ -44,9 +44,9 @@ function fixture() {
     .sort())
     sqlite.exec(readFileSync(`drizzle/${file}`, 'utf8'));
   sqlite.exec(
-    'CREATE TABLE user_credentials(user_id TEXT PRIMARY KEY,password_hash TEXT,password_salt TEXT,created_at INTEGER,updated_at INTEGER); CREATE TABLE user_sessions(token_hash TEXT PRIMARY KEY,user_id TEXT,expires_at INTEGER,created_at INTEGER,last_seen_at INTEGER)',
+    'CREATE TABLE user_credentials(user_id TEXT PRIMARY KEY,password_hash TEXT,password_salt TEXT,password_version INTEGER DEFAULT 1,created_at INTEGER,updated_at INTEGER); CREATE TABLE user_sessions(token_hash TEXT PRIMARY KEY,user_id TEXT,expires_at INTEGER,created_at INTEGER,last_seen_at INTEGER); CREATE TABLE email_login_challenges(token_hash TEXT PRIMARY KEY,user_id TEXT)',
   );
-  let beforeBatch: (() => void) | undefined;
+  let beforeBatch: (() => void | Promise<void>) | undefined;
   const db = {
     prepare(sql: string) {
       let values: SQLInputValue[] = [];
@@ -74,7 +74,7 @@ function fixture() {
     async batch(statements: { run(): Promise<unknown> }[]) {
       const action = beforeBatch;
       beforeBatch = undefined;
-      action?.();
+      await action?.();
       sqlite.exec('BEGIN');
       try {
         const results = [];
@@ -90,11 +90,13 @@ function fixture() {
   sqlite.exec(
     "INSERT INTO users(id,auth_subject,email,phone,display_name,status,created_at,updated_at) VALUES ('buyer','buyer-subject','buyer@local.hastabazaar.test','9811111111','Fictional Buyer','active',1,1),('other','other-subject','other@local.hastabazaar.test','9822222222','Other Buyer','active',1,1); INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('buyer','customer',1),('other','customer',1)",
   );
+  const sessionHash = createHash('sha256').update('fixture-session').digest('hex');
+  sqlite.prepare('INSERT INTO user_sessions VALUES (?,?,?,?,?)').run(sessionHash, 'buyer', Date.now() + 99999999, 1, 1);
   return {
     db,
     sqlite,
-    actor: { userId: 'buyer', authSubject: 'buyer-subject' },
-    race(action: () => void) {
+    actor: { userId: 'buyer', authSubject: 'buyer-subject', sessionHash },
+    race(action: () => void | Promise<void>) {
       beforeBatch = action;
     },
   };
@@ -107,6 +109,101 @@ async function feature() {
   assert.ok(feature, 'The contact verification service must exist');
   return feature;
 }
+
+async function completeReset(f: ReturnType<typeof fixture>, now: number) {
+  const { createEmailOtpChallenge } = await import('../lib/auth/email-otp');
+  const { PasswordResetStore } = await import('../lib/auth/password-reset-store');
+  const { resetPassword } = await import('../lib/auth/password-reset');
+  const challenge = createEmailOtpChallenge({ userId: 'buyer', now });
+  await new PasswordResetStore(f.db).replaceChallenge(challenge.record);
+  assert.equal(await resetPassword(f.db, challenge.token, challenge.code, 'Fictional-reset-password', now + 1), true);
+}
+
+void test('reset revokes issued email and phone codes and fictional captures atomically', async () => {
+  const m = await feature(); const f = fixture();
+  try {
+    const issued: { channel: 'email' | 'phone'; token: string; code: string }[] = [];
+    for (const channel of ['email', 'phone'] as const) {
+      let code = '';
+      const request = await m.requestContactVerification(f.db, f.actor, channel, async message => {
+        code = message.code;
+        f.sqlite.prepare('INSERT INTO local_contact_captures VALUES (?,?,?,?,?,?,?)').run(message.tokenHash, 'buyer', channel, message.contact, code, message.expiresAt, 'SIMULATED — NOT VALID FOR PRODUCTION');
+      }, 1000);
+      issued.push({ channel, token: request.token!, code });
+    }
+    await completeReset(f, 1002);
+    assert.equal(f.sqlite.prepare('SELECT count(*) n FROM account_contact_challenges').get()?.n, 0);
+    assert.equal(f.sqlite.prepare('SELECT count(*) n FROM local_contact_captures').get()?.n, 0);
+    for (const code of issued) await assert.rejects(m.verifyContactVerification(f.db, f.actor, code.channel, code.token, code.code, 1004));
+    assert.equal(f.sqlite.prepare('SELECT count(*) n FROM user_sessions').get()?.n, 0);
+  } finally { f.sqlite.close(); }
+});
+
+for (const channel of ['email', 'phone'] as const) void test(`reset after ${channel} verification read cannot commit proof or a replacement session`, async () => {
+  const m = await feature(); const f = fixture(); let code = '';
+  try {
+    const request = await m.requestContactVerification(f.db, f.actor, channel, async message => { code = message.code; }, 1000);
+    f.race(() => completeReset(f, 1002));
+    await assert.rejects(m.verifyContactVerification(f.db, f.actor, channel, request.token!, code, 1004));
+    assert.equal(f.sqlite.prepare('SELECT count(*) n FROM user_sessions').get()?.n, 0);
+    assert.equal(f.sqlite.prepare('SELECT count(*) n FROM account_phone_verifications').get()?.n, 0);
+  } finally { f.sqlite.close(); }
+});
+
+void test('request authenticated before reset cannot issue a code after reset commits', async () => {
+  const m = await feature(); const f = fixture(); let delivered = false;
+  try {
+    f.race(() => completeReset(f, 1000));
+    await assert.rejects(m.requestContactVerification(f.db, f.actor, 'phone', async () => { delivered = true; }, 1002));
+    assert.equal(delivered, false);
+    assert.equal(f.sqlite.prepare('SELECT count(*) n FROM account_contact_challenges').get()?.n, 0);
+  } finally { f.sqlite.close(); }
+});
+
+void test('contact mutations fail closed without hosted proof, including forged local fixture proof in production', async () => {
+  const m = await feature(); const f = fixture(); const previous = process.env.NODE_ENV;
+  try {
+    Object.assign(process.env, { NODE_ENV: 'production' });
+    const actor = { userId: 'buyer', authSubject: 'buyer-subject' };
+    await assert.rejects(m.requestContactVerification(f.db, actor, 'phone', async () => {}, 1000));
+    await assert.rejects(m.requestContactVerification(f.db, { ...actor, localFixture: true }, 'phone', async () => {}, 1000));
+  } finally { f.sqlite.close(); if (previous === undefined) Reflect.deleteProperty(process.env, 'NODE_ENV'); else Object.assign(process.env, { NODE_ENV: previous }); }
+});
+
+void test('a rolled-back reset preserves pending contact proof and originating session', async () => {
+  const m = await feature(); const f = fixture();
+  try {
+    let code = '';
+    const request = await m.requestContactVerification(f.db, f.actor, 'phone', async message => { code = message.code; }, 1000);
+    const { createEmailOtpChallenge } = await import('../lib/auth/email-otp');
+    const { PasswordResetStore } = await import('../lib/auth/password-reset-store');
+    const { resetPassword } = await import('../lib/auth/password-reset');
+    const challenge = createEmailOtpChallenge({ userId: 'buyer', now: 1001 });
+    await new PasswordResetStore(f.db).replaceChallenge(challenge.record);
+    await assert.rejects(resetPassword(f.db, challenge.token, challenge.code, 'Fictional-reset-password', 1002,
+      () => f.db.prepare("INSERT INTO operation_transaction_guards(id,valid) VALUES ('forced-reset-rollback',0)")));
+    assert.equal(f.sqlite.prepare('SELECT count(*) n FROM user_sessions').get()?.n, 1);
+    assert.equal(f.sqlite.prepare('SELECT consumed_at FROM password_reset_challenges').get()?.consumed_at, null);
+    await m.verifyContactVerification(f.db, f.actor, 'phone', request.token!, code, 1003);
+    assert.equal((await m.getContactVerificationStatus(f.db, f.actor)).phoneVerified, true);
+  } finally { f.sqlite.close(); }
+});
+
+void test('explicit loopback local role fixtures can verify contact while nonloopback requests require hosted proof', async () => {
+  const f = fixture(); const previous = process.env.NODE_ENV;
+  try {
+    Object.assign(process.env, { NODE_ENV: 'development' });
+    f.sqlite.exec("UPDATE users SET auth_subject='local-test-buyer' WHERE id='buyer'; DELETE FROM user_sessions");
+    globalThis.contactRouteDb = f.db;
+    globalThis.contactRouteActor = { userId: 'buyer', authSubject: 'local-test-buyer' };
+    const { POST } = await import('../app/api/account/contact-verification/route');
+    const request = (host: string) => new Request('http://127.0.0.1:4173/api/account/contact-verification', { method: 'POST',
+      headers: { host, origin: 'http://127.0.0.1:4173', cookie: 'hastabazaar_local_test_role=buyer', 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'request', channel: 'phone' }) });
+    assert.equal((await POST(request('remote.test'))).status, 401);
+    assert.equal((await POST(request('127.0.0.1:4173'))).status, 200);
+  } finally { globalThis.contactRouteActor = null; f.sqlite.close(); if (previous === undefined) Reflect.deleteProperty(process.env, 'NODE_ENV'); else Object.assign(process.env, { NODE_ENV: previous }); }
+});
 
 void test('contact codes prove only the exact authenticated owner and contact; successful proof is remembered', async () => {
   const m = await feature();
@@ -236,7 +333,7 @@ void test('actual contact receiver rejects spoofed owner/origin, hides codes, an
   const req = (body: unknown, origin = 'http://127.0.0.1:4173') =>
     new Request('http://127.0.0.1:4173/api/account/contact-verification', {
       method: 'POST',
-      headers: { origin, 'content-type': 'application/json' },
+      headers: { origin, cookie: 'hastabazaar_session=fixture-session', 'content-type': 'application/json' },
       body: JSON.stringify(body),
     });
   try {

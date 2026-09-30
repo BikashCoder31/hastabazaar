@@ -36,6 +36,11 @@ function tokenHash(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+export function hostedSessionHash(requestHeaders: Headers): string | null {
+  const token = parseCookie(requestHeaders, hostedSessionCookieName);
+  return token ? tokenHash(token) : null;
+}
+
 function derivePassword(password: string, salt: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     scrypt(password, salt, 64, { N: 16_384, r: 8, p: 1 }, (error, value) => {
@@ -103,7 +108,7 @@ export async function createHostedSessionForUser(
   proof: { mailbox?: boolean; passwordHash?: string } = {},
   linkedStatement?: D1PreparedStatement,
   claimStatement?: D1PreparedStatement,
-  versionGuard?: D1PreparedStatement,
+  versionGuard?: D1PreparedStatement | D1PreparedStatement[],
 ): Promise<string> {
   const user = await database
     .prepare("SELECT id FROM users WHERE id = ? AND status = 'active' LIMIT 1")
@@ -115,7 +120,9 @@ export async function createHostedSessionForUser(
   const statements = proof.mailbox
     ? mailboxClaimStatements(database, user.id, now)
     : [database.prepare('UPDATE users SET updated_at=updated_at WHERE id=?').bind(user.id)];
-  if (versionGuard) statements.unshift(versionGuard);
+  // Check proofs after acquiring the account lock, before mailbox rotation
+  // deletes the originating session.
+  if (versionGuard) statements.splice(1, 0, ...(Array.isArray(versionGuard) ? versionGuard : [versionGuard]));
   if (claimStatement) {
     statements.push(claimStatement);
     statements.push(database.prepare(`SELECT CASE WHEN changes()=1
@@ -210,4 +217,3 @@ export function clearHostedSessionCookie(): string {
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
   return `${hostedSessionCookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
 }
-

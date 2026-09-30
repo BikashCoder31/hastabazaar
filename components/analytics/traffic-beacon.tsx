@@ -2,21 +2,25 @@
 
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
+import { isPrivateTrafficPath, normalizeTrafficPath } from '@/lib/analytics/first-party';
 
 export function TrafficBeacon() {
   const pathname = usePathname();
 
   useEffect(() => {
     if (!pathname) return;
-    const product = /^\/products\/([A-Za-z0-9_-]+)$/.exec(pathname);
+    let path: string;
+    try { path = normalizeTrafficPath(pathname); } catch { return; }
+    if (isPrivateTrafficPath(path)) return;
+    const product = /^\/products\/([A-Za-z0-9_-]+)$/.exec(path);
     const eventType = product
       ? 'product_view'
-      : pathname === '/checkout'
+      : path === '/checkout'
         ? 'checkout_started'
         : 'page_view';
     const body = JSON.stringify({
       eventType,
-      path: pathname,
+      path,
       entityKey: product?.[1] ?? null,
     });
     void fetch('/api/analytics/event', {

@@ -12,7 +12,7 @@ export type CheckoutContactPolicy = 'email_and_phone' | 'email_only';
 export function resolveCheckoutContactPolicy(value: string | undefined): CheckoutContactPolicy {
   return value === 'email_only' ? 'email_only' : 'email_and_phone';
 }
-export type ContactActor = { userId: string; authSubject: string };
+export type ContactActor = { userId: string; authSubject: string; sessionHash?: string | null; localFixture?: boolean };
 export class ContactVerificationError extends Error {
   constructor(
     message: string,
@@ -114,6 +114,18 @@ function contactSnapshot(current: Account, channel: ContactChannel) {
   return channel === 'email' ? current.email : current.rawPhone!;
 }
 
+function sessionGuards(db: D1Database, actor: ContactActor, current: Account, now: number) {
+  // Only the HTTP route may identify a guarded local role fixture. Production
+  // and every hosted caller must prove an unexpired originating session.
+  if (actor.localFixture && process.env.NODE_ENV !== 'production' &&
+      /^local-test-(customer|buyer)$/.test(actor.authSubject) &&
+      current.email.endsWith('@local.hastabazaar.test')) return [];
+  if (!actor.sessionHash || !/^[a-f0-9]{64}$/.test(actor.sessionHash))
+    throw new ContactVerificationError('Your sign-in changed. Sign in again before verifying contact.', 401);
+  return guard(db, 'EXISTS(SELECT 1 FROM user_sessions WHERE token_hash=? AND user_id=? AND expires_at>?)',
+    [actor.sessionHash, actor.userId, now]);
+}
+
 export async function requestContactVerification(
   db: D1Database,
   actor: ContactActor,
@@ -122,6 +134,7 @@ export async function requestContactVerification(
   now = Date.now(),
 ): Promise<{ verified: boolean; token?: string; expiresAt?: number }> {
   const current = await account(db, actor);
+  const boundary = sessionGuards(db, actor, current, now);
   if (channel === 'email' ? current.emailVerified : current.phoneVerified)
     return { verified: true };
   const contact = channel === 'email' ? current.email : current.phone;
@@ -148,6 +161,7 @@ export async function requestContactVerification(
       db
         .prepare('UPDATE users SET updated_at=updated_at WHERE id=?')
         .bind(actor.userId),
+      ...boundary,
       ...guard(db, ownerPredicate(channel), [
         actor.userId,
         actor.authSubject,
@@ -237,6 +251,7 @@ export async function verifyContactVerification(
   now = Date.now(),
 ): Promise<{ sessionToken?: string }> {
   const current = await account(db, actor);
+  const boundary = sessionGuards(db, actor, current, now);
   const tokenHash = emailOtpTokenHash(token);
   const record = await db
     .prepare(`SELECT token_hash AS tokenHash,code_hash AS codeHash,user_id AS userId,auth_subject AS authSubject,
@@ -294,11 +309,11 @@ export async function verifyContactVerification(
           .prepare('DELETE FROM local_contact_captures WHERE token_hash=?')
           .bind(tokenHash),
         claim,
-        db
+        [...boundary, db
           .prepare(
             `SELECT CASE WHEN ${ownerPredicate(channel)} THEN 1 ELSE json_extract('invalid','$') END`,
           )
-          .bind(actor.userId, actor.authSubject, record.snapshot),
+          .bind(actor.userId, actor.authSubject, record.snapshot)],
       );
       return { sessionToken };
     }
@@ -306,6 +321,7 @@ export async function verifyContactVerification(
       db
         .prepare('UPDATE users SET updated_at=updated_at WHERE id=?')
         .bind(actor.userId),
+      ...boundary,
       claim,
       checked,
       db

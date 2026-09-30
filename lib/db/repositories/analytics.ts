@@ -2,6 +2,7 @@ import {
   normalizeTrafficEntityKey,
   normalizeTrafficPath,
   pathIsExcluded,
+  privateTrafficPathPrefixes,
   trafficEventTypes,
   type TrafficEventType,
 } from '@/lib/analytics/first-party';
@@ -126,6 +127,11 @@ export async function getCustomerAndTrafficAnalytics(
   ) ${domainClause}`;
   const cutoff = now - policy.retentionDays * 86_400_000;
   const recentCutoff = now - 30 * 86_400_000;
+  // Historical beacons may have stored literal receipt/document paths. Keep
+  // those out of every traffic aggregate without copying their identifiers.
+  const exclusions = [...new Set([...privateTrafficPathPrefixes, ...policy.excludedPathPrefixes])];
+  const trafficPredicate = `created_at>=? AND instr(path,'%')=0 AND instr(path,'//')=0 AND instr(path,'/.')=0 ${exclusions.map(() => 'AND NOT(path=? OR substr(path,1,?)=?)').join(' ')}`;
+  const trafficBindings = exclusions.flatMap(prefix => [prefix, prefix.length + 1, `${prefix}/`]);
   const [customers, directory, traffic, topPaths] = await Promise.all([
     database
       .prepare(
@@ -169,9 +175,9 @@ export async function getCustomerAndTrafficAnalytics(
           SUM(CASE WHEN event_type='checkout_started' THEN 1 ELSE 0 END) AS checkoutStarts,
           SUM(CASE WHEN event_type='order_completed' THEN 1 ELSE 0 END) AS completedOrders,
           MAX(created_at) AS lastUpdatedAt
-         FROM traffic_events WHERE created_at>=?`,
+         FROM traffic_events WHERE ${trafficPredicate}`,
       )
-      .bind(cutoff)
+      .bind(cutoff, ...trafficBindings)
       .first<{
         events: number;
         estimatedBrowserSessions: number;
@@ -185,10 +191,10 @@ export async function getCustomerAndTrafficAnalytics(
     database
       .prepare(
         `SELECT path,COUNT(*) AS views,COUNT(DISTINCT session_id) AS estimatedSessions
-         FROM traffic_events WHERE created_at>=? AND event_type IN ('page_view','product_view')
+         FROM traffic_events WHERE ${trafficPredicate} AND event_type IN ('page_view','product_view')
          GROUP BY path ORDER BY views DESC,path ASC LIMIT 10`,
       )
-      .bind(cutoff)
+      .bind(cutoff, ...trafficBindings)
       .all<{ path: string; views: number; estimatedSessions: number }>(),
   ]);
   return {

@@ -673,6 +673,9 @@ const definitions = [
         'example.test',
       ]),
       excludedPathPrefixes: Object.freeze([
+        '/orders',
+        '/account',
+        '/documents',
         '/admin',
         '/seller',
         '/rider',

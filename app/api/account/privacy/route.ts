@@ -12,7 +12,7 @@ import {
   validatePrivacyRequestForm,
 } from '@/lib/db/repositories/operations';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
+import { consumeAuthenticatedPublicRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     const customer = await requireCustomerApi();
     const database = requireDatabase(env as unknown as { DB?: D1Database });
     const rateLimit = await consumeRequestRateLimit(database, request, {
-      scope: 'privacy-request',
+      scope: `privacy-request:${customer.userId}`,
       limit: 5,
       windowMs: 24 * 60 * 60_000,
     });

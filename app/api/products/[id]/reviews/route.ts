@@ -21,7 +21,7 @@ import {
   validateReviewFormSubmission,
 } from '@/lib/db/repositories/customers';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
+import { consumeAuthenticatedPublicRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
 
@@ -72,7 +72,7 @@ export async function POST(
     ]);
     const database = requireDatabase(env as unknown as { DB?: D1Database });
     const rateLimit = await consumeRequestRateLimit(database, request, {
-      scope: 'product-review',
+      scope: `product-review:${customer.userId}`,
       limit: 10,
       windowMs: 60 * 60_000,
     });
