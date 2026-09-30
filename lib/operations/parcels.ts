@@ -478,12 +478,19 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
     now: undefined,
     ...(formDigest ? { formDigest } : {}),
   });
-  if (await repeated(db, o.requestId, o.actorId, payload)) return;
+  const replay=await repeated(db,o.requestId,o.actorId,payload);
   const p = await db
     .prepare(selectParcel + ' WHERE j.id=?')
     .bind(o.jobId)
     .first<Parcel>();
   if (!p) throw new ParcelConflictError('Parcel not found.');
+  if(replay) {
+    // The parcel commit can succeed before its managed accrual. A verified replay
+    // resumes that atomic, idempotent accrual without repeating collection.
+    await accrueManagedEntitlements(db,{orderId:p.orderId,actorId:o.actorId,
+      requestId:o.requestId+':managed-accrue',now:o.now});
+    return;
+  }
   if (o.action !== 'cancel' && o.action !== 'record_cost')
     await assertFirstCodFulfillmentAllowed(db, p.orderId, ParcelConflictError);
   const statements: D1PreparedStatement[] = [

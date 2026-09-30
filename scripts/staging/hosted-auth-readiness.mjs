@@ -37,6 +37,21 @@ const contracts = {
       expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL
     )`,
   },
+  email_login_challenges: {
+    columns: [
+      ['token_hash', 'TEXT', 1, null, 1], ['code_hash', 'TEXT', 1, null, 0],
+      ['user_id', 'TEXT', 1, null, 0], ['attempts', 'INTEGER', 1, '0', 0],
+      ['expires_at', 'INTEGER', 1, null, 0], ['created_at', 'INTEGER', 1, null, 0],
+      ['consumed_at', 'INTEGER', 0, null, 0],
+    ], indexes: { idx_email_login_challenges_user_created: ['user_id', 'created_at'],
+      idx_email_login_challenges_expiry: 'expires_at' },
+    sql: `CREATE TABLE email_login_challenges (
+      token_hash TEXT NOT NULL PRIMARY KEY, code_hash TEXT NOT NULL,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE ON UPDATE NO ACTION,
+      attempts INTEGER NOT NULL DEFAULT 0, expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL, consumed_at INTEGER
+    )`,
+  },
 };
 
 export function assertHostedAuthReadinessContext(projectRoot, cwd, environment) {
@@ -69,7 +84,7 @@ export function inspectHostedAuthSchema(db) {
     for (const [name, column] of Object.entries(contract.indexes)) {
       const index = db.prepare('SELECT tbl_name FROM sqlite_master WHERE type=\'index\' AND name=?').get(name);
       assert.equal(index?.tbl_name, table, `${table} index schema is incompatible.`);
-      assert.deepEqual(db.prepare(`PRAGMA index_info(${name})`).all().map((entry) => entry.name), [column],
+      assert.deepEqual(db.prepare(`PRAGMA index_info(${name})`).all().map((entry) => entry.name), [column].flat(),
         `${table} index schema is incompatible.`);
     }
   }
@@ -100,7 +115,7 @@ export async function prepareHostedAuthSchema(db, backupFile) {
     for (const table of current.missing) {
       db.exec(contracts[table].sql);
       for (const [name, column] of Object.entries(contracts[table].indexes))
-        db.exec(`CREATE INDEX ${name} ON ${table}(${column})`);
+        db.exec(`CREATE INDEX ${name} ON ${table}(${[column].flat().join(',')})`);
     }
     assert.equal(inspectHostedAuthSchema(db).ready, true);
     db.exec('COMMIT');

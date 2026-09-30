@@ -4,6 +4,7 @@ import {
   resolveDisposableStagingPaths,
 } from './guards.mjs';
 import { applyLocalD1Migrations } from './local-d1.mjs';
+import { randomUUID } from 'node:crypto';
 
 assertDisposableStagingContext(process.env);
 const paths = resolveDisposableStagingPaths(process.cwd(), process.env);
@@ -52,6 +53,37 @@ for (const role of ['customer', 'buyer', 'rider', 'seller', 'admin', 'super_admi
 }
 
 const managedMaker = new FormData();
+async function catalogRequest(path, body) {
+  const response = await fetch(new URL(path, origin), { method: body ? 'POST' : 'GET',
+    headers: { Origin: origin.origin, Cookie: cookies.get('super_admin'), 'Content-Type': 'application/json' },
+    ...(body ? { body: JSON.stringify(body) } : {}) });
+  const value = await response.json();
+  if (!response.ok) throw new Error(`Fictional form setup failed (${response.status}): ${value.error ?? path}`);
+  return value;
+}
+// Configure only missing editable forms through their real audited publication
+// APIs. Existing publications and drafts are never replaced by fixture setup.
+const listing = await catalogRequest('/api/admin/forms');
+for (const row of listing.forms) {
+  if (row.publishedVersion > 0 || row.editable === false) continue;
+  if (row.draftVersion > 0) throw new Error(`Resolve the existing ${row.definition.id} form draft before local seeding.`);
+  const formId = row.definition.id;
+  const reason = 'SIMULATED empty local form baseline';
+  const path = `/api/admin/forms/${encodeURIComponent(formId)}`;
+  const draft = await catalogRequest(`${path}/draft`, { requestId: randomUUID(), reason,
+    expectedPublishedVersion: 0, config: { formId, fields: [] } });
+  await catalogRequest(`${path}/publish`, { requestId: randomUUID(), reason, expectedPublishedVersion: 0,
+    draftId: draft.draft.id, expectedDraftRevision: draft.draft.revision });
+}
+const configurationResponse = await fetch(new URL('/api/forms/seller.application', origin), {
+  headers: { Cookie: cookies.get('customer') },
+});
+if (!configurationResponse.ok) throw new Error(`The fictional application configuration is unavailable (${configurationResponse.status}).`);
+const { config: configuration } = await configurationResponse.json();
+if (!Number.isSafeInteger(configuration.version) || configuration.version < 1)
+  throw new Error('The fictional application form version is invalid.');
+managedMaker.set('requestId', 'local-staging-managed-maker-fixture');
+managedMaker.set('formVersion', String(configuration.version));
 for (const [name, value] of Object.entries({
   hasBusinessTaxRegistration: 'no',
   applicantType: 'individual',

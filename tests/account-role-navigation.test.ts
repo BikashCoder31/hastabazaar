@@ -61,7 +61,12 @@ for (const scenario of scenarios) {
     assert.deepEqual(globals.accountRoleFixture.riderLookups, ['customer-user-id'], 'Resolve participation from the authenticated database user, never an auth subject or seller profile ID.');
     assert.match(html, /Fictional customer/);
     assert.match(html, /customer@example.invalid/);
-    assert.match(html, /href="\/logout\?return_to=%2F"/);
+    const logout = html.match(/<form\b[^>]*action="\/logout\?return_to=%2F"[^>]*>([\s\S]*?)<\/form>/);
+    assert.ok(logout, "Logout must submit to the existing return target.");
+    assert.match(logout[0], /method="POST"/);
+    assert.match(logout[0], /target="_top"/);
+    assert.match(logout[1], /<button[^>]*type="submit"/);
+    assert.doesNotMatch(html, /href="\/logout/);
     for (const path of ['/account/orders', '/account/wallet', '/account/wishlist', '/account/addresses', '/account/profile']) assert.ok(html.includes(`href="${path}"`), `Retain shopping link ${path}.`);
     assert.match(html, /Shopping account content/);
   });

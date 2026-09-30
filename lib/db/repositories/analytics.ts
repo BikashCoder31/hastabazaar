@@ -130,7 +130,7 @@ export async function getCustomerAndTrafficAnalytics(
   // Historical beacons may have stored literal receipt/document paths. Keep
   // those out of every traffic aggregate without copying their identifiers.
   const exclusions = [...new Set([...privateTrafficPathPrefixes, ...policy.excludedPathPrefixes])];
-  const trafficPredicate = `created_at>=? AND instr(path,'%')=0 AND instr(path,'//')=0 AND instr(path,'/.')=0 ${exclusions.map(() => 'AND NOT(path=? OR substr(path,1,?)=?)').join(' ')}`;
+  const trafficPredicate = `created_at>=? AND instr(path,'%')=0 AND instr(path,'//')=0 AND instr(path,'/.')=0 AND instr(path,char(92))=0 ${exclusions.map(() => 'AND NOT(path=? OR substr(path,1,?)=?)').join(' ')}`;
   const trafficBindings = exclusions.flatMap(prefix => [prefix, prefix.length + 1, `${prefix}/`]);
   const [customers, directory, traffic, topPaths] = await Promise.all([
     database

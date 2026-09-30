@@ -5,6 +5,7 @@ import { env } from '../lib/runtime/node-bindings';
 import { createCustomerReturnRequest, reviewReturnAsAdmin, advanceReturnAsAdmin } from '../lib/db/repositories/returns';
 import { accrueManagedEntitlements, getManagedFinanceSummary } from '../lib/db/repositories/managed-settlements';
 import { createCodOrder } from '../lib/db/repositories/orders';
+import { prepareSellerParcels, operateParcel, listParcels } from '../lib/operations/parcels';
 import { SELLER_AGREEMENT_VERSION } from '../lib/content/legal-policies';
 
 // Explicit opt-in: this harness only writes fictional rows in the coordinator's
@@ -20,8 +21,9 @@ if (enabled) {
   assert.equal(process.env.HASTABAZAAR_RUNTIME_ENV, 'local_staging');
   // Capture the actual pool for teardown; all database traffic still uses the
   // unmodified production adapter and real independent MySQL connections.
-  mysql.createPool = (...args: Parameters<typeof mysql.createPool>) => {
-    const pool = originalCreatePool(...args); pools.push(pool); return pool;
+  mysql.createPool = (config: string | mysql.PoolOptions) => {
+    const pool = typeof config === 'string' ? originalCreatePool(config) : originalCreatePool(config);
+    pools.push(pool); return pool;
   };
 }
 after(async () => { await Promise.all(pools.map(pool => pool.end())); mysql.createPool = originalCreatePool; });
@@ -144,10 +146,63 @@ void test('native F07 independent accrual requests claim and credit one managed 
     .bind(entitlement,snapshot,f.seller,now,now).run();
   const concurrent=simultaneousBatches(db);
   const amounts=await Promise.all([accrueManagedEntitlements(concurrent,{orderId:f.order,actorId:f.admin,requestId:f.prefix+'-accrue-a',now}),accrueManagedEntitlements(concurrent,{orderId:f.order,actorId:f.admin,requestId:f.prefix+'-accrue-b',now})]);
-  assert.deepEqual(amounts.sort(),[0,1]);
+  assert.deepEqual(amounts.sort((a,b)=>a-b),[0,1]);
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_settlement_entries WHERE entitlement_id=? AND type='earned'").bind(entitlement).first<{n:number}>())?.n,1);
   assert.equal((await getManagedFinanceSummary(db,f.seller,now)).balancePaisa,91000);
   const audits=await db.prepare('SELECT next_json AS data FROM audit_logs WHERE request_id IN (?,?)')
     .bind(f.prefix+'-accrue-a',f.prefix+'-accrue-b').all<{data:string}>();
-  assert.deepEqual(audits.results.map(row=>JSON.parse(row.data).count).sort(),[0,1]);
+  assert.deepEqual(audits.results.map(row=>JSON.parse(row.data).count as number).sort((a,b)=>a-b),[0,1]);
+});
+
+
+void test('native F06 first parcel refund waits for collected whole-order facts and competing accrual credits net once',{skip:!enabled},async()=>{
+  const f=await fixture('f06'),other=await fixture('f06-other');
+  await db.prepare("UPDATE orders SET status='confirmed',payment_status='pending',delivered_at=NULL WHERE id=?").bind(f.order).run();
+  await db.prepare("UPDATE payments SET status='pending' WHERE order_id=?").bind(f.order).run();
+  await db.prepare("UPDATE order_items SET fulfillment_status='confirmed' WHERE order_id=?").bind(f.order).run();
+  await db.prepare('UPDATE order_items SET seller_id=?,product_id=? WHERE id=?').bind(other.seller,other.products[0],f.items[1]).run();
+  await db.prepare("UPDATE order_items SET commission_paisa=0,commission_bps=0,commission_rule_version='managed-sale-linked' WHERE id=?").bind(f.items[0]).run();
+  const snapshot=f.prefix+'-snapshot',entitlement=f.prefix+'-entitlement';
+  await db.prepare(`INSERT INTO managed_commercial_snapshots(id,order_item_id,seller_id,participation_route,commercial_model,
+    legal_seller_reference,invoice_issuer_reference,payout_beneficiary_reference,agreement_version,agreement_language,
+    delivery_hold_days,product_value_paisa,eligible_base_paisa,platform_retention_bps,platform_retained_paisa,maker_entitlement_paisa,simulation_label,created_at)
+    VALUES (?,?,?,'managed_maker','managed_sale_linked_percentage_v1','SIM-LEGAL','SIM-INVOICE','SIM-PAYOUT','SIM-AGREEMENT','en',7,100000,100000,900,9000,91000,'SIMULATED - NOT VALID FOR PRODUCTION',?)`)
+    .bind(snapshot,f.items[0],f.seller,now).run();
+  await db.prepare("INSERT INTO managed_entitlements(id,snapshot_id,seller_id,status,calculated_paisa,created_at,updated_at) VALUES (?,?,?,'calculated',91000,?,?)")
+    .bind(entitlement,snapshot,f.seller,now,now).run();
+  await prepareSellerParcels(db,{orderId:f.order,actorId:f.admin,requestId:f.prefix+'-parcels',now});
+  const parcels=await listParcels(db,f.order);
+  const first=parcels.find(p=>p.sellerId===f.seller)!,second=parcels.find(p=>p.sellerId===other.seller)!;
+  let sequence=0;
+  const op=async(id:string,action:'assign'|'dispatch'|'deliver'|'collect',extra:Record<string,unknown>={},database=db)=>{
+    const current=(await listParcels(db,f.order)).find(p=>p.id===id)!;
+    return operateParcel(database,{jobId:id,actorId:f.admin,action,version:current.version,
+      note:'SIMULATED native deferred managed lifecycle.',requestId:f.prefix+'-parcel-'+sequence++,now,...extra});
+  };
+  for(const parcel of [first,second]){
+    await op(parcel.id,'assign',{method:'courier',courierName:'SIMULATED Courier',trackingCode:'SIM-'+parcel.id,trackingUrl:'https://example.test/tracking'});
+    await db.prepare("UPDATE order_items SET fulfillment_status='ready_for_pickup' WHERE order_id=? AND seller_id=?").bind(f.order,parcel.sellerId).run();
+    await op(parcel.id,'dispatch');
+  }
+  await op(first.id,'deliver');await op(first.id,'collect',{amountPaisa:first.codDuePaisa,reference:f.prefix+'-first-cash'});
+  const created=await createReturn(f);
+  await reviewReturnAsAdmin(db,{...review(f,created.id,f.prefix+'-review'),itemRefundPaisa:50000});
+  const common={returnRequestId:created.id,actorId:f.admin,actorRole:'admin' as const,note:'SIMULATED native unearned refund.',publicMessageEn:'Paid.',publicMessageNe:'Paid.',now};
+  await advanceReturnAsAdmin(db,{...common,action:'start_refund',requestId:f.prefix+'-start'});
+  const complete={...common,action:'complete_refund' as const,reference:f.prefix+'-refund-ref',requestId:f.prefix+'-complete'};
+  await advanceReturnAsAdmin(db,complete);await advanceReturnAsAdmin(db,complete);
+  assert.equal((await getManagedFinanceSummary(db,f.seller,now)).balancePaisa,0);
+  await op(second.id,'deliver');assert.equal((await getManagedFinanceSummary(db,f.seller,now)).balancePaisa,0);
+  let batches=0;
+  const competing={prepare:db.prepare.bind(db),batch:async(statements:D1PreparedStatement[])=>{
+    if(++batches!==2)return db.batch(statements);
+    const concurrent=simultaneousBatches(db);
+    const [result]=await Promise.all([concurrent.batch(statements),accrueManagedEntitlements(concurrent,{orderId:f.order,actorId:f.admin,requestId:f.prefix+'-competing-accrual',now})]);
+    return result;
+  }} as D1Database;
+  await op(second.id,'collect',{amountPaisa:second.codDuePaisa,reference:f.prefix+'-second-cash'},competing);
+  assert.equal((await getManagedFinanceSummary(db,f.seller,now)).balancePaisa,45500);
+  assert.deepEqual((await db.prepare('SELECT type,amount_paisa AS amount FROM managed_settlement_entries WHERE entitlement_id=? ORDER BY amount_paisa DESC').bind(entitlement).all<{type:string;amount:number}>()).results.map(row=>({...row})),[{type:'earned',amount:91000},{type:'refund_adjustment',amount:-45500}]);
+  assert.equal((await db.prepare('SELECT payment_status AS status FROM orders WHERE id=?').bind(f.order).first<{status:string}>())?.status,'part_refunded');
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM seller_ledger_entries WHERE order_item_id=?').bind(f.items[0]).first<{n:number}>())?.n,0);
 });

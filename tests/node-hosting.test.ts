@@ -110,6 +110,73 @@ void test('MariaDB adapter translates the SQLite-only SQL used by the marketplac
   );
 });
 
+class FailingSmtpSocket extends EventEmitter {
+  destroyed = false;
+  setEncoding() { return this; }
+  destroy() {
+    if (!this.destroyed) {
+      this.destroyed = true;
+      this.emit('close');
+    }
+    return this;
+  }
+}
+
+async function promiseOutcome(promise: Promise<unknown>) {
+  let state = 'pending';
+  let error: unknown;
+  void promise.then(() => { state = 'resolved'; }, (cause) => {
+    state = 'rejected';
+    error = cause;
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  return { state, error };
+}
+
+for (const event of ['timeout', 'end', 'close'] as const) {
+  void test(`SMTP opening rejects ${event} before TLS connects and closes the socket`, async () => {
+    const socket = new FailingSmtpSocket();
+    const opening = nodeBindings.openSmtpSession(socket as unknown as TLSSocket);
+    socket.emit(event);
+    const outcome = await promiseOutcome(opening);
+    assert.equal(outcome.state, 'rejected');
+    assert.ok(outcome.error instanceof Error);
+    assert.equal(socket.destroyed, true);
+    assert.equal(socket.listenerCount('secureConnect'), 0);
+  });
+}
+
+for (const event of ['timeout', 'end', 'close'] as const) {
+  void test(`SMTP response read rejects ${event} and later reads retain the terminal failure`, async () => {
+    const socket = new FailingSmtpSocket();
+    const opening = nodeBindings.openSmtpSession(socket as unknown as TLSSocket);
+    socket.emit('secureConnect');
+    const reader = await opening;
+    const reading = reader.read();
+    socket.emit(event);
+    const outcome = await promiseOutcome(reading);
+    assert.equal(outcome.state, 'rejected');
+    assert.ok(outcome.error instanceof Error);
+    const later = await promiseOutcome(reader.read());
+    assert.equal(later.state, 'rejected');
+    assert.equal(later.error, outcome.error);
+    assert.equal(socket.destroyed, true);
+  });
+}
+
+void test('SMTP error between response reads cannot leave a future read pending', async () => {
+  const socket = new FailingSmtpSocket();
+  const opening = nodeBindings.openSmtpSession(socket as unknown as TLSSocket);
+  socket.emit('secureConnect');
+  const reader = await opening;
+  const failure = new Error('Synthetic SMTP disconnect');
+  socket.emit('error', failure);
+  const outcome = await promiseOutcome(reader.read());
+  assert.equal(outcome.state, 'rejected');
+  assert.equal(outcome.error, failure);
+  assert.equal(socket.destroyed, true);
+});
+
 void test('hosted passwords are salted and verified without storing plaintext', async () => {
   const first = await passwordRecord('a strong marketplace password');
   const second = await passwordRecord('a strong marketplace password');

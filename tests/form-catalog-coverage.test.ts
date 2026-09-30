@@ -34,9 +34,10 @@ void test('every discovered click-driven entry surface has an exact implemented 
   }
 });
 
-void test('cart and local-role controls retain explicit protected no-answer capabilities', () => {
-  for (const id of ['commerce.add-to-cart', 'system.local-testing-role']) {
+void test('cart, logout and local-role controls retain explicit protected no-answer capabilities', () => {
+  for (const id of ['commerce.add-to-cart', 'identity.logout', 'system.local-testing-role']) {
     const definition = FORM_REGISTRY[id];
+    assert.ok(definition, `${id} must be inventoried explicitly`);
     assert.equal(definition.adapterId, id);
     assert.equal(definition.capabilities.answerBehavior, 'none');
     assert.deepEqual(definition.capabilities.customFieldTypes, []);

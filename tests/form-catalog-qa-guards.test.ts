@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { assertApprovedFormCatalogCheckout, assertUnusedProfileQaRun, assertPublishedMatrixVersion } from '../scripts/staging/form-catalog-qa-guards.mjs';
 
-const approved='C:/Users/abinash/.codex/worktrees/hastabazaar-v1-2-1-staging/Hatskala';
+const approved=resolve(fileURLToPath(new URL('../', import.meta.url)));
 void test('mutating catalog QA refuses an original or copied checkout even if cwd matches it', () => {
   assert.doesNotThrow(()=>assertApprovedFormCatalogCheckout(approved,approved));
   for(const other of ['C:/Users/abinash/Desktop/Hatskala','C:/temporary/copied-Hatskala']) {

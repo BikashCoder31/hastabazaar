@@ -54,7 +54,7 @@ export default async function SellerLayout({
               <Plus className="size-4" />
               Add product
             </Link>
-            <form method="POST" action={signOutPath('/')} target="_top">
+            <form data-form-id="identity.logout" method="POST" action={signOutPath('/')} target="_top">
             <button
               type="submit"
               className="inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-semibold hover:bg-muted"

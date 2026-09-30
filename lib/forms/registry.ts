@@ -38,6 +38,7 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
   'staff.activity-filter': { formId: 'staff.activity-filter', route: '/admin/activity', mode: 'query' },
   'staff.recorded-progress-filter': { formId: 'staff.recorded-progress-filter', route: '/admin/progress', mode: 'query' },
   'system.local-testing-role': { formId: 'system.local-testing-role', route: '/api/local-testing/session', mode: 'system' },
+  'identity.logout': { formId: 'identity.logout', route: '/api/auth/logout', mode: 'identity' },
   'identity.register': { formId: 'identity.register', route: '/api/auth/register', mode: 'identity' },
   'identity.login-password': { formId: 'identity.login-password', route: '/api/auth/login', mode: 'identity' },
   'identity.email-code-request': { formId: 'identity.email-code-request', route: '/api/auth/email-code/request', mode: 'identity' },
@@ -118,6 +119,7 @@ identity.email-code-verify|public|identity|/api/auth/email-code/verify|code
 identity.login-password|public|identity|/api/auth/login|password
 identity.email-code-request|public|identity|/api/auth/email-code/request|email
 identity.register|public|identity|/api/auth/register|password
+identity.logout|public|identity|/api/auth/logout|return_to
 seller.product-filter|seller|query|/seller/products|status
 account.address|customer|collection|/api/account/addresses|addressLine1
 account.privacy-request|customer|collection|/api/account/privacy|requestType
@@ -367,7 +369,7 @@ function staffOperationDefinition(id: StaffOperationFormId): FormDefinition {
   } satisfies FormDefinition);
 }
 
-type IdentityFormId = 'identity.register' | 'identity.login-password' |
+type IdentityFormId = 'identity.logout' | 'identity.register' | 'identity.login-password' |
   'identity.email-code-request' | 'identity.email-code-verify' |
   'identity.password-reset-request' | 'identity.password-reset-complete';
 
@@ -375,7 +377,13 @@ function identityDefinition(id: IdentityFormId): FormDefinition {
   const source = SOURCE_ROWS.split('\n').find((row) => row.startsWith(`${id}|`));
   if (!source) throw new Error(`Missing identity definition: ${id}`);
   const [, audience, mode, route] = source.split('|') as [string, FormAudience, FormMode, string];
-  const keys: Record<IdentityFormId, readonly string[]> = {
+  if (id === 'identity.logout') return Object.freeze({ id, audience, mode, route, adapterId: id,
+    baseFields: Object.freeze([{ key: 'return_to', type: 'existing', label: 'return_to', capability: 'protected',
+      explanation: 'The receiving logout route enforces a safe relative return target, trusted POST origin and current session revocation.' }]),
+    capabilities: Object.freeze({ explanation: 'Logout is an existing protected identity workflow. It accepts no configurable questions or answer records; trusted POST, session revocation and return routing remain server enforced.',
+      customFieldTypes: Object.freeze([]), answerBehavior: 'none' }),
+  } satisfies FormDefinition);
+  const keys: Record<Exclude<IdentityFormId, 'identity.logout'>, readonly string[]> = {
     'identity.register': ['display_name', 'email', 'password', 'confirm_password', 'return_to', 'requestId', 'formVersion', 'customAnswers'],
     'identity.login-password': ['email', 'password', 'return_to', 'requestId', 'formVersion', 'customAnswers'],
     'identity.email-code-request': ['email', 'return_to', 'requestId', 'formVersion', 'customAnswers'],

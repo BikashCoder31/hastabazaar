@@ -28,20 +28,37 @@ export async function createIncentiveDb(
         new URL(`../../drizzle/${name}`, import.meta.url),
         'utf8',
       );
-      for (const statement of sql
+      const statements = sql
         .split('--> statement-breakpoint')
         .map((s) => s.trim())
         // D1 rejects an empty prepared statement; standalone migration comments carry no SQL.
-        .filter((statement) => statement.split(/\r?\n/).some((line) => line.trim() && !line.trim().startsWith('--')))) {
+        .filter((statement) => statement.split(/\r?\n/).some((line) => line.trim() && !line.trim().startsWith('--')));
+      let pending: string[] = [];
+      const flush = async () => {
+        if (!pending.length) return;
+        const chunk = pending;
+        pending = [];
         try {
-          await db.prepare(statement).run();
+          await db.batch(chunk.map(statement => db.prepare(statement)));
         } catch (error) {
           throw new Error(
-            `Migration ${name} failed: ${statement.slice(0, 100)}`,
+            `Migration ${name} batch failed: ${chunk[0].slice(0, 100)}`,
             { cause: error },
           );
         }
+      };
+      // Keep connection PRAGMAs outside transactions, particularly legacy table
+      // rebuilds. Batch ordinary DDL to avoid hundreds of Windows IPC roundtrips.
+      for (const statement of statements) {
+        if (/^\s*(?:--[^\n]*\n\s*)*PRAGMA\b/i.test(statement)) {
+          await flush();
+          await db.prepare(statement).run();
+        } else {
+          pending.push(statement);
+          if (pending.length === 100) await flush();
+        }
       }
+      await flush();
     }
     // Allows the same preservation assertions to fail on behavior before 0060 exists.
     if (!names.some((name) => name.startsWith('0060_')))

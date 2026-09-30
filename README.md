@@ -5,21 +5,54 @@ A clean, non-WordPress foundation for the Hastabazaar handmade marketplace.
 ## Development
 
 ```powershell
-npm install
-npm run dev
+npm ci
+$env:HASTABAZAAR_RUNTIME_ENV = 'local_staging'
+$env:HASTABAZAAR_MAIL_MODE = 'capture'
+$env:HASTABAZAAR_PAYMENT_MODE = 'simulated'
+$env:HASTABAZAAR_RECIPIENT_DOMAIN = 'local.hastabazaar.test'
+$env:APP_ORIGIN = 'http://127.0.0.1:4317'
+npm run staging:verify -- --initialize
+npm run dev -- --host 127.0.0.1 --port 4317
 ```
 
-For local role testing, open `http://localhost:3000/local-testing` and choose
-Customer, Seller, Admin, or Super Admin. This development-only switcher creates
-clearly labelled sample records in the local D1 database and is unavailable in
-production builds.
-
-Production check:
+Use a clean shell without production database, SMTP, Cloudflare, or object-storage
+credentials. The guarded setup targets this checkout's `.staging` directory.
+The initial verification may report that the server is not running; start it,
+then use a second shell with the same five environment variables:
 
 ```powershell
-npm run build
-npm run lint
+npm run staging:seed
+npx tsx scripts/staging/hosted-auth-readiness.mjs --apply --confirm-local-hosted-auth-schema=HASTABAZAAR-LOCAL-STAGING
+npm run staging:verify
+Invoke-RestMethod "$env:APP_ORIGIN/health"
 ```
+
+Seeding applies the tracked SQLite migrations, creates fictional roles, and
+publishes only missing form configurations through the audited admin APIs.
+It refuses to replace existing drafts. The auth prerequisite helper backs up
+the local database before creating missing runtime auth tables; it creates no
+auth records. `/health` should report `marketplaceReady: true`.
+
+Open `http://127.0.0.1:4317/local-testing` to choose a fictional role. The switcher
+is unavailable in production builds. Live providers remain unconfigured;
+the contact form therefore shows a retryable delivery failure in this D1 preview.
+Local fixture setup does not certify an empty MariaDB production installation.
+
+Source and build checks:
+
+```powershell
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm run build:babal
+```
+
+`npm test` runs files serially because the real Miniflare fixtures create a full
+migrated database and worker process. Allow time for these native tests; do not
+drop them from the verification result. Native MariaDB identity/commerce
+acceptance tests are separate opt-in tests guarded to loopback, fictional data,
+and `local_staging`. Build commands produce local artifacts and do not deploy.
 
 ## Repository map
 

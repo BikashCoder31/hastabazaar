@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
 import { Readable } from 'node:stream';
 import { connect as connectTls, type TLSSocket } from 'node:tls';
@@ -125,13 +125,28 @@ async function executeStatement<T>(
       translateSqliteSql(sql),
       mysqlBindings(bindings),
     );
+    // SQLite intentionally raises for malformed JSON in failed CASE guards.
+    // MariaDB SELECT returns NULL plus a warning instead, so validate the
+    // result explicitly. DML warnings also fail closed in non-strict modes.
+    const sqliteGuard = /\bELSE\s+json_extract\(\s*'([^']*)'\s*,\s*'\$'\s*\)/i.exec(sql);
+    let hasErrorGuard = false;
+    if (sqliteGuard) {
+      try { JSON.parse(sqliteGuard[1]); } catch { hasErrorGuard = true; }
+    }
     if (Array.isArray(value)) {
+      if (hasErrorGuard && (value.length !== 1 ||
+        Object.values(value[0] as Record<string, unknown>).some((valid) => Number(valid) !== 1))) {
+        throw new Error(`Transaction guard rejected the write: ${sqliteGuard?.[1]}.`);
+      }
       if (sql.startsWith('/* form-catalog-guard */') && Number((value[0] as { valid?: unknown })?.valid) !== 1) {
         throw new Error('Form catalog transaction guard rejected the write.');
       }
       return result(value as T[], 0, 0, startedAt);
     }
     const header = value as ResultSetHeader;
+    if (hasErrorGuard && header.warningStatus > 0) {
+      throw new Error(`Transaction guard rejected the write: ${sqliteGuard?.[1]}.`);
+    }
     return result<T>([], header.affectedRows ?? 0, header.insertId ?? 0, startedAt);
   } catch (error) {
     throw normalizedError(error);
@@ -230,9 +245,11 @@ class MariaDbD1Database {
     const connection = await databasePool().getConnection();
     const locks: string[] = [];
     try {
-      // Only form batches need a fresh read after waiting. SET TRANSACTION is
-      // one-shot and does not change the pooled connection's session default.
-      if (formStatements.length) await connection.query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED');
+      // Repository guards must see a competing commit after waiting on their
+      // row or named locks. Apply this to every atomic D1 batch, including
+      // identity and commerce batches that have no configured form answers.
+      // SET TRANSACTION is one-shot; pooled session defaults remain unchanged.
+      await connection.query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED');
       await connection.beginTransaction();
       for (const formId of formIds) {
         // A form may have no rows yet. Named locks cover that empty allocation
@@ -306,6 +323,7 @@ class LocalMediaBucket {
         httpMetadata: options.httpMetadata ?? {},
         customMetadata: options.customMetadata ?? {},
         size: body.byteLength,
+        etag: createHash('sha256').update(body).digest('hex'),
         uploaded: new Date().toISOString(),
       }),
       'utf8',
@@ -313,16 +331,20 @@ class LocalMediaBucket {
     return { key, size: body.byteLength };
   }
 
-  async get(key: string) {
+  async head(key: string) {
     const target = objectPath(key);
     try {
       const metadata = JSON.parse(
         await readFile(`${target}.metadata.json`, 'utf8'),
-      ) as PutOptions & { size?: number };
+      ) as PutOptions & { uploaded?: string; etag?: string };
+      const file = await stat(target);
+      const etag = metadata.etag ?? `${file.size.toString(16)}-${file.mtimeMs.toString(16)}`;
       return {
         key,
-        size: metadata.size ?? 0,
-        body: Readable.toWeb(createReadStream(target)),
+        size: file.size,
+        etag,
+        httpEtag: `${metadata.etag ? '' : 'W/'}"${etag}"`,
+        uploaded: metadata.uploaded ? new Date(metadata.uploaded) : file.mtime,
         httpMetadata: metadata.httpMetadata ?? {},
         customMetadata: metadata.customMetadata ?? {},
       };
@@ -337,6 +359,34 @@ class LocalMediaBucket {
       }
       throw error;
     }
+  }
+
+  async get(key: string, options: Pick<R2GetOptions, 'range'> = {}) {
+    const object = await this.head(key);
+    if (!object) return null;
+    const range = options.range;
+    if (range instanceof Headers) throw new Error('Use a structured media byte range.');
+    let offset = 0;
+    let length = object.size;
+    if (range) {
+      if ('suffix' in range) {
+        length = Math.min(range.suffix, object.size);
+        offset = object.size - length;
+      } else {
+        offset = range.offset ?? 0;
+        length = Math.min(range.length ?? object.size - offset, object.size - offset);
+      }
+      if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length <= 0) {
+        throw new Error('Invalid media byte range.');
+      }
+    }
+    return {
+      ...object,
+      ...(range ? { range: { offset, length } } : {}),
+      body: object.size === 0
+        ? new ReadableStream({ start(controller) { controller.close(); } })
+        : Readable.toWeb(createReadStream(objectPath(key), { start: offset, end: offset + length - 1 })),
+    };
   }
 
   async delete(key: string): Promise<void> {
@@ -368,18 +418,23 @@ function smtpAddress(value: string): string {
 class SmtpReader {
   private buffer = '';
   private waiter?: { resolve: (value: string) => void; reject: (error: Error) => void };
+  private failure?: Error;
 
   constructor(private readonly socket: TLSSocket) {
     socket.setEncoding('utf8');
     socket.on('data', (chunk) => {
+      if (this.failure) return;
       this.buffer += String(chunk);
       this.flush();
     });
     socket.on('error', (error) => this.fail(error));
     socket.on('timeout', () => this.fail(new Error('SMTP connection timed out.')));
+    socket.on('end', () => this.fail(new Error('SMTP connection ended.')));
+    socket.on('close', () => this.fail(new Error('SMTP connection closed.')));
   }
 
   read(): Promise<string> {
+    if (this.failure) return Promise.reject(this.failure);
     if (this.waiter) throw new Error('Concurrent SMTP reads are not supported.');
     return new Promise((resolve, reject) => {
       this.waiter = { resolve, reject };
@@ -403,18 +458,44 @@ class SmtpReader {
   }
 
   private fail(error: Error) {
+    this.failure ??= error;
+    this.buffer = '';
     const waiter = this.waiter;
     this.waiter = undefined;
-    waiter?.reject(error);
+    waiter?.reject(this.failure);
+    if (!this.socket.destroyed) this.socket.destroy();
   }
 }
 
 export async function openSmtpSession(socket: TLSSocket): Promise<SmtpReader> {
-  const reader = new SmtpReader(socket);
-  await new Promise<void>((resolve, reject) => {
-    socket.once('secureConnect', resolve);
-    socket.once('error', reject);
+  const opening = new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      socket.off('secureConnect', ready);
+      socket.off('error', failed);
+      socket.off('timeout', timedOut);
+      socket.off('end', ended);
+      socket.off('close', closed);
+    };
+    const ready = () => { cleanup(); resolve(); };
+    const failed = (error: Error) => {
+      cleanup();
+      reject(error);
+      if (!socket.destroyed) socket.destroy();
+    };
+    const timedOut = () => failed(new Error('SMTP connection timed out.'));
+    const ended = () => failed(new Error('SMTP connection ended before TLS connected.'));
+    const closed = () => failed(new Error('SMTP connection closed before TLS connected.'));
+    socket.once('secureConnect', ready);
+    socket.once('error', failed);
+    socket.once('timeout', timedOut);
+    socket.once('end', ended);
+    socket.once('close', closed);
+    if (socket.destroyed) closed();
   });
+  // Register the opening failure listeners before the reader can destroy the
+  // socket, while still buffering greetings sent immediately after TLS connects.
+  const reader = new SmtpReader(socket);
+  await opening;
   return reader;
 }
 
@@ -480,8 +561,8 @@ class SmtpEmailService {
 
     const socket = connectTls({ host, port, servername: host, rejectUnauthorized: true });
     socket.setTimeout(15_000);
-    const reader = await openSmtpSession(socket);
     try {
+      const reader = await openSmtpSession(socket);
       await smtpCommand(socket, reader, null, [220]);
       await smtpCommand(socket, reader, `EHLO ${process.env.SMTP_HELO?.trim() || 'hastabazaar.com'}`, [250]);
       await smtpCommand(socket, reader, 'AUTH LOGIN', [334]);
@@ -492,6 +573,9 @@ class SmtpEmailService {
       await smtpCommand(socket, reader, 'DATA', [354]);
       await smtpCommand(socket, reader, `${data}\r\n.`, [250]);
       socket.write('QUIT\r\n');
+    } catch (error) {
+      socket.destroy();
+      throw error;
     } finally {
       socket.end();
     }

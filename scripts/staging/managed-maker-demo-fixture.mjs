@@ -44,7 +44,25 @@ function initializeBaseSchema(sqlite) {
       unit_price_paisa INTEGER NOT NULL, line_total_paisa INTEGER NOT NULL,
       fulfillment_status TEXT NOT NULL
     );
-    CREATE TABLE refunds (id TEXT PRIMARY KEY);
+    CREATE TABLE return_requests (
+      id TEXT PRIMARY KEY, order_item_id TEXT NOT NULL REFERENCES order_items(id)
+    );
+    CREATE TABLE refunds (
+      id TEXT PRIMARY KEY, return_request_id TEXT REFERENCES return_requests(id),
+      status TEXT NOT NULL, commission_base_refunded_paisa INTEGER NOT NULL DEFAULT 0,
+      operation_request_id TEXT
+    );
+    CREATE TABLE shipping_jobs (
+      id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id)
+    );
+    CREATE TABLE shipping_parcels (
+      shipping_job_id TEXT PRIMARY KEY REFERENCES shipping_jobs(id),
+      cod_due_paisa INTEGER NOT NULL CHECK(cod_due_paisa>=0),
+      collected_paisa INTEGER NOT NULL DEFAULT 0 CHECK(collected_paisa>=0 AND collected_paisa<=cod_due_paisa)
+    );
+    CREATE TABLE operation_transaction_guards (
+      id TEXT PRIMARY KEY, valid INTEGER NOT NULL CHECK(valid=1)
+    );
     CREATE TABLE audit_logs (
       id TEXT PRIMARY KEY, actor_id TEXT, action TEXT, subject_type TEXT, subject_id TEXT,
       reason TEXT, previous_json TEXT, next_json TEXT, request_id TEXT UNIQUE, ip_hash TEXT,

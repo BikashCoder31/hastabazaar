@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const approved = resolve('C:/Users/abinash/.codex/worktrees/hastabazaar-v1-2-1-staging/Hatskala');
+const approved = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 export function assertApprovedFormCatalogCheckout(project, cwd) {
   assert.equal(resolve(project), approved, 'QA requires the approved isolated checkout.');
   assert.equal(resolve(cwd), approved, 'QA requires the approved isolated checkout.');

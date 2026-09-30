@@ -8,9 +8,15 @@ import { collectFormSites, scanFormSites } from './helpers/form-policy';
 
 const root = resolve(import.meta.dirname, '..');
 
-void test('the reviewed source inventory adds four incentive forms and first COD confirmation to 83 forms in 65 files', async () => {
+void test('the reviewed source inventory adds incentive, COD confirmation and six secure logout sites to 83 forms in 65 files', async () => {
   const sites = await collectFormSites(root);
   const reviewedSites = [
+    { path: 'app/account-access-denied/page.tsx', ordinal: 1, formId: 'identity.logout' },
+    { path: 'app/admin/layout.tsx', ordinal: 1, formId: 'identity.logout' },
+    { path: 'app/seller-access-denied/page.tsx', ordinal: 1, formId: 'identity.logout' },
+    { path: 'app/seller/layout.tsx', ordinal: 1, formId: 'identity.logout' },
+    { path: 'app/staff-access-denied/page.tsx', ordinal: 1, formId: 'identity.logout' },
+    { path: 'components/account/account-navigation.tsx', ordinal: 1, formId: 'identity.logout' },
     { path: 'components/account/rewards-panel.tsx', ordinal: 1, formId: 'account.daily-reward' },
     { path: 'components/account/rewards-panel.tsx', ordinal: 2, formId: 'account.points-redemption' },
     { path: 'components/admin/first-cod-confirmation.tsx', ordinal: 1, formId: 'staff.first-cod-confirmation' },

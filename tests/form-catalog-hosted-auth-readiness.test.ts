@@ -9,7 +9,7 @@ import { build } from 'esbuild';
 import { assertHostedAuthReadinessContext, inspectHostedAuthSchema, prepareHostedAuthSchema } from '../scripts/staging/hosted-auth-readiness.mjs';
 import { createHostedSessionForUser, getHostedIdentity, passwordRecord, verifyPassword } from '../lib/auth/hosted-session';
 
-const project = resolve('C:/Users/abinash/.codex/worktrees/hastabazaar-v1-2-1-staging/Hatskala');
+const project = resolve(fileURLToPath(new URL('../', import.meta.url)));
 const environment = { HASTABAZAAR_RUNTIME_ENV: 'local_staging', NODE_ENV: 'development',
   APP_ORIGIN: 'http://localhost:4173', HASTABAZAAR_MAIL_MODE: 'capture',
   HASTABAZAAR_PAYMENT_MODE: 'simulated', HASTABAZAAR_RECIPIENT_DOMAIN: 'local.hastabazaar.test' };
@@ -85,7 +85,7 @@ void test('coherent pre-DDL recovery includes committed WAL data without copying
 void test('read-only schema inspection reports missing hosted tables without creating rows or tables', () => {
   const db = fixture();
   try {
-    assert.deepEqual(inspectHostedAuthSchema(db), { ready: false, missing: ['user_credentials', 'user_sessions'] });
+    assert.deepEqual(inspectHostedAuthSchema(db), { ready: false, missing: ['user_credentials', 'user_sessions', 'email_login_challenges'] });
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name LIKE 'user_%'").get()?.n, 1);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users').get()?.n, 1);
   } finally { db.close(); }
@@ -96,7 +96,7 @@ void test('missing auth tables mirror canonical generator columns defaults prima
   await withBackup(async (path) => {
     try {
       const result = await prepareHostedAuthSchema(db, path);
-      assert.deepEqual(result.created, ['user_credentials', 'user_sessions']);
+      assert.deepEqual(result.created, ['user_credentials', 'user_sessions', 'email_login_challenges']);
       assert.equal(inspectHostedAuthSchema(db).ready, true);
       const source = readFileSync(new URL('../scripts/generate-mariadb-schema.mjs', import.meta.url), 'utf8');
       for (const table of ['user_credentials', 'user_sessions']) {
@@ -124,6 +124,20 @@ void test('missing auth tables mirror canonical generator columns defaults prima
         assert.equal(saved.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name IN ('user_credentials','user_sessions')").get()?.n, 0,
           'The coherent recovery snapshot precedes all schema additions');
       } finally { saved.close(); }
+    } finally { db.close(); }
+  });
+});
+
+void test('local hosted readiness includes usable email login challenges with owner cascade and composite lookup index', async () => {
+  const db = fixture();
+  await withBackup(async (path) => {
+    try {
+      await prepareHostedAuthSchema(db, path);
+      db.prepare('INSERT INTO email_login_challenges VALUES(?,?,?,0,10,1,NULL)').run('challenge', 'code', 'fictional');
+      assert.deepEqual(db.prepare('PRAGMA index_info(idx_email_login_challenges_user_created)').all().map(row => row.name),
+        ['user_id', 'created_at']);
+      db.prepare("DELETE FROM users WHERE id='fictional'").run();
+      assert.equal(db.prepare('SELECT COUNT(*) AS n FROM email_login_challenges').get()?.n, 0);
     } finally { db.close(); }
   });
 });

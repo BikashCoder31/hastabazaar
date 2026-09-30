@@ -557,6 +557,9 @@ void test('invalid and existing-email seller application attempts consume the pu
   } finally { sqlite.close(); }
 });
 
+// Real 12 by 8 JPEG fixture; upload acceptance must exercise the production decoder.
+const validPhotoBytes = new Uint8Array(Buffer.from('/9j/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAIAAwDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAABP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AJWAaI//2Q==', 'base64'));
+
 function productForm(requestId: string, options: { custom?: string | null; name?: string; version?: number } = {}) {
   const form = new FormData();
   for (const [key, value] of Object.entries({ categoryId: 'cat-test', nameEn: options.name ?? 'Fictional Clay Cup',
@@ -568,18 +571,18 @@ function productForm(requestId: string, options: { custom?: string | null; name?
   if (options.custom === 'file') form.set('custom.workshop_note', new File(['private'], 'id.png', { type: 'image/png' }));
   else if (options.custom !== null) form.set('custom.workshop_note', options.custom ?? 'Fictional answer');
   for (let index = 1; index <= 4; index++)
-    form.set(`image${index}`, new File([new Uint8Array([0xff, 0xd8, 0xff, index])], `angle-${index}.jpg`, { type: 'image/jpeg' }));
+    form.set(`image${index}`, new File([validPhotoBytes], `angle-${index}.jpg`, { type: 'image/jpeg' }));
   return form;
 }
 
 void test('product multipart structure preserves legitimate repeated images, materials, occasions and media mutations', () => {
   const form = productForm('product-repeatable-controls');
-  form.append('images', new File([new Uint8Array([0xff, 0xd8, 0xff, 6])], 'extra.jpg', { type: 'image/jpeg' }));
+  form.append('images', new File([validPhotoBytes], 'extra.jpg', { type: 'image/jpeg' }));
   form.append('materials', 'Wool');
   form.append('occasionIds', 'second-occasion');
   form.append('removeMediaId', 'existing-photo-one');
   form.append('removeMediaId', 'existing-photo-two');
-  form.set('replaceImage:existing-photo-one', new File([new Uint8Array([0xff, 0xd8, 0xff, 7])], 'replacement.jpg', { type: 'image/jpeg' }));
+  form.set('replaceImage:existing-photo-one', new File([validPhotoBytes], 'replacement.jpg', { type: 'image/jpeg' }));
   assert.doesNotThrow(() => validateSellerMultipartStructure(form, 'seller.product-submission'));
 });
 
@@ -1010,7 +1013,7 @@ void test('anonymous application batch race responds with the winning reference,
     requestForm.set('requestId', 'application-route-race');
     requestForm.set('formVersion', '1');
     requestForm.set('custom.workshop_note', 'Fictional answer');
-    requestForm.set('profileImage', new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])],
+    requestForm.set('profileImage', new File([validPhotoBytes],
       'maker.jpg', { type: 'image/jpeg' }));
     const digest = await digestMultipartRequest(requestForm);
     const parsed = parseSellerApplication(requestForm);
@@ -1048,7 +1051,7 @@ for (const signedIn of [false, true]) {
       form.set('requestId', requestId);
       form.set('formVersion', '1');
       form.set('custom.workshop_note', 'Fictional answer');
-      form.set('profileImage', new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])],
+      form.set('profileImage', new File([validPhotoBytes],
         'maker.jpg', { type: 'image/jpeg' }));
       const parsed = parseSellerApplication(form);
       assert.ok(parsed.input, parsed.errors.join('; '));

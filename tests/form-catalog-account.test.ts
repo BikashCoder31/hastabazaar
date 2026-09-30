@@ -35,6 +35,7 @@ registerHooks({
       export async function requireCustomerPage(){const a=globalThis.accountCatalogActor;if(!a)throw new CustomerAuthorizationError('Authentication is required.',401);return {...a,email:'customer@example.test',displayName:'Asha Rai',phone:null,locale:'en-NP'}}`, shortCircuit: true };
     if (specifier === '@/lib/http/rate-limit') return { url: `data:text/javascript,
       export async function consumePublicRequestRateLimit(){return {allowed:true}}
+      export const consumeAuthenticatedPublicRateLimit=consumePublicRequestRateLimit;
       export function rateLimitJson(){return Response.json({error:'Rate limited'},{status:429})}`, shortCircuit: true };
     if (specifier === 'next/navigation') return { url: 'data:text/javascript,export function useRouter(){return {refresh(){}}}', shortCircuit: true };
     if (specifier === 'next/link') return { url: 'data:text/javascript,export default function Link({children,...props}){return globalThis.accountCatalogCreateElement("a",props,children)}', shortCircuit: true };

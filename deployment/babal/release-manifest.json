@@ -56,7 +56,7 @@
       "9007199254740991"
     ]
   },
-  "release": "local-category-images-20260929",
+  "release": "local-audit-remediation-20261001",
   "startup": "app.cjs",
   "hosting": "Babal.Host",
   "requiredNodeMajor": 22,
@@ -93,12 +93,12 @@
     },
     {
       "path": "deployment/babal/mariadb-product-deletions.sql",
-      "sha256": "2695ab2436ac26fd575d0a70c05dfc4230074e9946d3a82ba7e6dcc78f0a4ab1",
+      "sha256": "9e5d64d84e6c81dda84efee0153855dfa2477797d0ef2217115fce3fdc25f9e1",
       "usage": "additive-maintenance"
     },
     {
       "path": "deployment/babal/mariadb-delivery-locations.sql",
-      "sha256": "5059b15ae1ebb4afad4d43159565ba862235db5caede56bd611e57a7aeffb587",
+      "sha256": "2f7f89328697f4b44aca2a207e6280ee5869fcb355229bd83ca5a1504f46bb4d",
       "usage": "additive-maintenance"
     },
     {
@@ -108,12 +108,12 @@
     },
     {
       "path": "deployment/babal/mariadb-identity-purchase-security.sql",
-      "sha256": "8f944ad29ca02028f5a02a39e0037159304a5d3a49079b8e3956170707849629",
+      "sha256": "7f4c44f0f0a77e059fbf757a532eb577a573cb0ffd2255a2c89ecd617d6e6935",
       "usage": "additive-maintenance"
     },
     {
       "path": "deployment/babal/mariadb-parcel-operations.sql",
-      "sha256": "2e9ca3fa8fa59c2815ddd3a6a7e4fd012f041c256712246bd193b2a09b34cca4",
+      "sha256": "a0f11cb3711cddbed9cbb1208eadc3b41db67d55e9c0aa45839857bb9494b3b1",
       "usage": "additive-maintenance"
     },
     {
@@ -143,7 +143,7 @@
     },
     {
       "path": "deployment/babal/mariadb-guest-business-notifications.sql",
-      "sha256": "0e3caa91f8ee449b77229ae88be10fbe62aaa1e5e31a56104e5f07e50cd471b3",
+      "sha256": "11a18094e64b07fe72bb7e6976c962ecabfb1edddf4e0c5417edf7ea0910243e",
       "usage": "additive-maintenance"
     },
     {

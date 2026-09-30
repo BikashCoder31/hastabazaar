@@ -96,7 +96,7 @@ export function AccountNavigation({
               ))}
             </SidebarMenu>
           </nav>
-          <form method="POST" action={signOutPath} target="_top">
+          <form data-form-id="identity.logout" method="POST" action={signOutPath} target="_top">
           <button
             type="submit"
             className="mt-2 flex min-h-11 w-full items-center gap-2 rounded-xl border-t px-3 py-3 text-sm text-muted-foreground hover:bg-muted"

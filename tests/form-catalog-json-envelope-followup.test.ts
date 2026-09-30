@@ -201,7 +201,7 @@ registerHooks({
     if (specifier === '@/lib/http/rate-limit')
       return {
         url: sourceUrl(
-          'export async function consumeRequestRateLimit(){return {allowed:true}};export const consumePublicRequestRateLimit=consumeRequestRateLimit;export function rateLimitJson(){throw new Error("Unexpected fixture rate denial")};',
+          'export async function consumeRequestRateLimit(){return {allowed:true}};export const consumePublicRequestRateLimit=consumeRequestRateLimit;export const consumeAuthenticatedPublicRateLimit=consumeRequestRateLimit;export function rateLimitJson(){throw new Error("Unexpected fixture rate denial")};',
         ),
         shortCircuit: true,
       };

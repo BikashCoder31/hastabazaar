@@ -1,6 +1,19 @@
 import manifest from '../../deployment/babal/release-manifest.json';
 export const releaseId=manifest.release;
-export async function inspectReadiness(db:D1Database,dialect:'mariadb'|'sqlite'='mariadb') {
+// MariaDB implements partial unique indexes and discount labels using generated
+// columns. SQLite uses its native partial indexes and the current discount total.
+const mariaOnlyColumns = new Set([
+ 'order_items.discount_source', 'orders.current_referral_discount_paisa', 'orders.discount_source',
+ 'payout_entries.active_ledger_entry_key', 'seller_ledger_entries.active_order_item_key',
+ 'seller_ledger_entries.active_order_item_type', 'seller_profiles.registration_authority_key',
+ 'seller_profiles.registration_number_key', 'seller_profiles.tax_registration_number_key',
+ 'staff_invitations.pending_email_key', 'seller_route_transition_applications.open_seller_key',
+ 'data_rights_legal_holds.active_user_id',
+]);
+export async function inspectReadiness(
+ db:D1Database,
+ dialect:'mariadb'|'sqlite'=(db as D1Database & {dialect?:string}).dialect==='mariadb'?'mariadb':'sqlite',
+) {
  const missing:string[]=[];
  try {
   const columns=new Map<string,Set<string>>();
@@ -18,6 +31,7 @@ export async function inspectReadiness(db:D1Database,dialect:'mariadb'|'sqlite'=
    }
   }else{
    for(const name of Object.keys(manifest.requiredTables)){
+    if(name==='hastabazaar_schema_versions')continue;
     if(!/^[a-z_][a-z0-9_]*$/.test(name))throw new Error('Invalid manifest');
     const rows=await db.prepare(`PRAGMA table_info(${name})`).all<{name:string}>();
     if(rows.results.length)columns.set(name,new Set(rows.results.map(r=>r.name)));
@@ -25,8 +39,12 @@ export async function inspectReadiness(db:D1Database,dialect:'mariadb'|'sqlite'=
    const rows=await db.prepare("SELECT name,sql AS definition FROM sqlite_master WHERE type='trigger'").all<{name:string;definition:string}>();for(const row of rows.results)triggers.set(row.name,row.definition.toLowerCase());
   }
   for(const [table,names] of Object.entries(manifest.requiredTables)){
+   if(dialect==='sqlite'&&table==='hastabazaar_schema_versions')continue;
    if(!columns.has(table))missing.push(`table:${table}`);
-   else for(const column of names)if(!columns.get(table)!.has(column))missing.push(`column:${table}.${column}`);
+   else for(const column of names){
+    if(dialect==='sqlite'&&mariaOnlyColumns.has(`${table}.${column}`))continue;
+    if(!columns.get(table)!.has(column))missing.push(`column:${table}.${column}`);
+   }
   }
   for(const [name,fragments] of Object.entries(manifest.requiredTriggers)){
    const definition=triggers.get(name);if(!definition)missing.push(`trigger:${name}`);

@@ -6,6 +6,7 @@ import { env } from 'cloudflare:workers';
 import { getAuthenticatedUser } from '@/app/auth';
 import { requireDatabase, requireMediaBucket } from '@/lib/db/d1';
 import { getProductMediaObject } from '@/lib/db/repositories/products';
+import { matchesIfRange, parseByteRange } from '@/lib/media/byte-range';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +42,7 @@ async function canViewPrivateMedia(
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   const { id } = await context.params;
@@ -66,7 +67,35 @@ export async function GET(
         policyVersion: setting.versionId ?? 'default' });
     } catch { return productPhotoUnavailable(); }
   }
-  const object = await requireMediaBucket(bindings).get(media.objectKey);
+  const bucket = requireMediaBucket(bindings);
+  if (media.mimeType === 'video/mp4' && request.headers.has('Range')) {
+    const metadata = await bucket.head(media.objectKey);
+    if (!metadata) return notFound();
+    const range = matchesIfRange(request.headers.get('If-Range'), metadata.httpEtag)
+      ? parseByteRange(request.headers.get('Range'), metadata.size)
+      : null;
+    const headers = new Headers({
+      'Content-Type': 'video/mp4',
+      'Cache-Control': 'private, no-store, max-age=0',
+      'X-Content-Type-Options': 'nosniff',
+      'Accept-Ranges': 'bytes',
+      ETag: metadata.httpEtag,
+    });
+    if (range === 'invalid') {
+      headers.set('Content-Range', `bytes */${metadata.size}`);
+      headers.set('Content-Length', '0');
+      return new Response(null, { status: 416, headers });
+    }
+    if (range) {
+      const object = await bucket.get(media.objectKey, { range });
+      if (!object) return notFound();
+      headers.set('ETag', object.httpEtag);
+      headers.set('Content-Range', `bytes ${range.offset}-${range.offset + range.length - 1}/${object.size}`);
+      headers.set('Content-Length', String(range.length));
+      return new Response(object.body, { status: 206, headers });
+    }
+  }
+  const object = await bucket.get(media.objectKey);
   if (!object) return notFound();
   const mimeType = new Set(['image/jpeg', 'image/png', 'image/webp', 'video/mp4']).has(media.mimeType)
     ? media.mimeType
@@ -77,6 +106,9 @@ export async function GET(
       'Cache-Control': 'private, no-store, max-age=0',
       'X-Content-Type-Options': 'nosniff',
       ETag: object.httpEtag,
+      ...(media.mimeType === 'video/mp4'
+        ? { 'Accept-Ranges': 'bytes', 'Content-Length': String(object.size) }
+        : {}),
     },
   });
 }

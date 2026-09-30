@@ -94,6 +94,19 @@ void test('analytics aggregates omit pre-existing literal private paths', async 
   } finally { sqlite.close(); }
 });
 
+void test('analytics aggregates omit pre-existing backslash private paths without hiding public metrics', async () => {
+  const { sqlite, database } = await fixture();
+  try {
+    sqlite.prepare('INSERT INTO traffic_sessions VALUES (?,?,?,?,?)').run('legacy-backslash', 'b'.repeat(64), 200 * day, 200 * day, 201 * day);
+    for (const [index, path] of ['/orders\\receipt-secret', '/account\\private-account', '/seller\\documents\\private-document', '/shop'].entries())
+      sqlite.prepare('INSERT INTO traffic_events VALUES (?,?,?,?,?,?,?)').run(`backslash-${index}`, 'legacy-backslash', 'page_view', path, null, `backslash-key-${index}`, 200 * day);
+    const report = await getCustomerAndTrafficAnalytics(database, 200 * day);
+    assert.equal(report.traffic.events, 1);
+    assert.equal(report.traffic.pageViews, 1);
+    assert.equal(report.traffic.estimatedBrowserSessions, 1);
+    assert.deepEqual(report.topPaths.map(row => ({ ...row })), [{ path: '/shop', views: 1, estimatedSessions: 1 }]);
+  } finally { sqlite.close(); }
+});
 void test('multiply encoded analytics paths fail closed before persistence', async () => {
   const { sqlite, database } = await fixture();
   try {

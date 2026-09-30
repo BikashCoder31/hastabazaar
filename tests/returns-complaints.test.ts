@@ -6146,7 +6146,7 @@ void test('F08 delivered plus cancelled parcels close the order at the last acti
   } finally { await f.dispose(); }
 });
 
-import { accrueManagedEntitlements, getManagedFinanceSummary } from '../lib/db/repositories/managed-settlements';
+import { accrueManagedEntitlements, getManagedFinanceSummary, applyManagedRefundAdjustment } from '../lib/db/repositories/managed-settlements';
 
 async function auditManagedSnapshot(db: D1Database, model = 'managed_sale_linked_percentage_v1', base=100000, retained=9000) {
   const saleLinked = model === 'managed_sale_linked_percentage_v1';
@@ -6362,4 +6362,114 @@ void test('F05 historical standard payouts containing managed items cannot advan
       assert.equal(await db.prepare("SELECT id FROM payout_events WHERE request_id='audit-old-payout-advance'").first(),null);
     }finally{await f.dispose();}
   }
+});
+
+
+void test('F06 first collected managed parcel refund defers debit until final parcel collection earns the net balance', async () => {
+  const f=await parcelFixture(),db=f.db;
+  let sequence=0;
+  try {
+    await auditManagedSnapshot(db);
+    await db.prepare("UPDATE order_items SET quantity=2,unit_price_paisa=50000 WHERE id='item-1'").run();
+    const parcels=await listParcels(db,'order-1');
+    const first=parcels.find(p=>p.sellerId==='seller-1')!,second=parcels.find(p=>p.sellerId==='seller-2')!;
+    const op=async(id:string,action:'assign'|'dispatch'|'deliver'|'collect',extra:Record<string,unknown>={})=>{
+      const current=(await listParcels(db,'order-1')).find(p=>p.id===id)!;
+      await operateParcel(db,{jobId:id,actorId:'admin-1',action,version:current.version,
+        note:'SIMULATED deferred managed refund lifecycle.',requestId:'audit-deferred-parcel-'+sequence++,now,...extra});
+    };
+    for(const parcel of [first,second]) {
+      await op(parcel.id,'assign',{method:'courier',courierName:'SIMULATED Courier',trackingCode:'SIM-'+parcel.id,trackingUrl:'https://example.test/tracking'});
+      await db.prepare("UPDATE order_items SET fulfillment_status='ready_for_pickup' WHERE order_id='order-1' AND seller_id=?").bind(parcel.sellerId).run();
+      await op(parcel.id,'dispatch');
+    }
+    await op(first.id,'deliver');
+    await op(first.id,'collect',{amountPaisa:first.codDuePaisa,reference:'SIM-FIRST-COLLECT'});
+    const created=await auditReturn(db);
+    await reviewReturnAsAdmin(db,{...auditReview(created.id,'audit-deferred-review'),itemRefundPaisa:50000});
+    const common={returnRequestId:created.id,actorId:'admin-1',actorRole:'admin' as const,
+      note:'SIMULATED first parcel refund before whole-order completion.',publicMessageEn:'Paid.',publicMessageNe:'Paid.',now};
+    await advanceReturnAsAdmin(db,{...common,action:'start_refund',requestId:'audit-deferred-start'});
+    const completion={...common,action:'complete_refund' as const,reference:'SIM-DEFERRED-REFUND',requestId:'audit-deferred-complete'};
+    await advanceReturnAsAdmin(db,completion);await advanceReturnAsAdmin(db,completion);
+    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,0,'unearned refund must not create a negative maker liability');
+    assert.equal((await db.prepare("SELECT status FROM managed_entitlements WHERE id='audit-entitlement'").first<{status:string}>())?.status,'calculated');
+    await op(second.id,'deliver');
+    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,0,'delivery alone must not bypass final cash collection');
+    const last=(await listParcels(db,'order-1')).find(p=>p.id===second.id)!;
+    const finalCollection={jobId:second.id,actorId:'admin-1',action:'collect' as const,version:last.version,
+      amountPaisa:second.codDuePaisa,reference:'SIM-SECOND-COLLECT',note:'SIMULATED final collection with accrual retry.',
+      requestId:'audit-deferred-final-collection',now};
+    let batches=0;
+    const interrupted={prepare:db.prepare.bind(db),batch:async(statements:D1PreparedStatement[])=>{
+      if(++batches===2)throw new Error('SIMULATED transient managed accrual failure');
+      return db.batch(statements);
+    }} as D1Database;
+    await assert.rejects(operateParcel(interrupted,finalCollection),/SIMULATED transient/);
+    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,0);
+    await operateParcel(db,finalCollection);
+
+    assert.equal((await db.prepare("SELECT payment_status AS status FROM orders WHERE id='order-1'").first<{status:string}>())?.status,'part_refunded');
+    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,45500);
+    assert.equal(await accrueManagedEntitlements(db,{orderId:'order-1',actorId:'admin-1',requestId:'audit-deferred-retry',now}),0);
+    assert.deepEqual((await db.prepare("SELECT type,amount_paisa AS amount FROM managed_settlement_entries WHERE entitlement_id='audit-entitlement' ORDER BY amount_paisa DESC").all<{type:string;amount:number}>()).results.map(row=>({...row})),
+      [{type:'earned',amount:91000},{type:'refund_adjustment',amount:-45500}]);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM seller_ledger_entries WHERE order_item_id='item-1'").first<{n:number}>())?.n,0);
+    assert.equal((await db.prepare("SELECT maker_entitlement_paisa AS n FROM managed_commercial_snapshots WHERE id='audit-managed-snapshot'").first<{n:number}>())?.n,91000);
+  } finally {await f.dispose();}
+});
+
+
+void test('F06 refund completed between accrual pre-read and claim rolls stale credit back then retries net credit once',async()=>{
+  const f=await parcelFixture(),db=f.db;
+  try {
+    await auditManagedSnapshot(db);
+    await db.prepare("UPDATE orders SET status='delivered',payment_status='paid',delivered_at=? WHERE id='order-1'").bind(now).run();
+    await db.prepare("UPDATE order_items SET fulfillment_status='delivered' WHERE order_id='order-1'").run();
+    await db.prepare("UPDATE shipping_jobs SET status='delivered' WHERE order_id='order-1'").run();
+    await db.prepare("UPDATE shipping_parcels SET collected_paisa=cod_due_paisa WHERE shipping_job_id IN (SELECT id FROM shipping_jobs WHERE order_id='order-1')").run();
+    const created=await auditReturn(db);
+    await reviewReturnAsAdmin(db,{...auditReview(created.id,'audit-accrual-race-review'),itemRefundPaisa:50000});
+    const common={returnRequestId:created.id,actorId:'admin-1',actorRole:'admin' as const,
+      note:'SIMULATED refund race with calculated accrual.',publicMessageEn:'Paid.',publicMessageNe:'Paid.',now};
+    await advanceReturnAsAdmin(db,{...common,action:'start_refund',requestId:'audit-accrual-race-start'});
+    const raced=beforeAuditBatch(db,()=>advanceReturnAsAdmin(db,{...common,action:'complete_refund',reference:'SIM-RACE-REFUND',requestId:'audit-accrual-race-complete'}));
+    await assert.rejects(accrueManagedEntitlements(raced,{orderId:'order-1',actorId:'admin-1',requestId:'audit-stale-accrual',now}),/stale-managed-refund-accrual/);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_settlement_entries WHERE entitlement_id='audit-entitlement'").first<{n:number}>())?.n,0);
+    const competing=beforeAuditBatch(db,async()=>{
+      assert.equal(await accrueManagedEntitlements(db,{orderId:'order-1',actorId:'admin-1',requestId:'audit-net-winner',now}),1);
+    });
+    assert.equal(await accrueManagedEntitlements(competing,{orderId:'order-1',actorId:'admin-1',requestId:'audit-net-loser',now}),0);
+    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,45500);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_settlement_entries WHERE entitlement_id='audit-entitlement'").first<{n:number}>())?.n,2);
+  }finally{await f.dispose();}
+});
+
+
+void test('F06 several unearned tiny refunds aggregate original rounding and consumed refund replay stays a no-op',async()=>{
+  const f=await parcelFixture(),db=f.db;
+  const refundIds:string[]=[];
+  try {
+    await auditManagedSnapshot(db,'managed_sale_linked_percentage_v1',3,1);
+    await db.prepare("UPDATE order_items SET quantity=3,unit_price_paisa=1,line_total_paisa=3,commission_base_paisa=3,fulfillment_status='delivered' WHERE id='item-1'").run();
+    await db.prepare("UPDATE order_items SET fulfillment_status='delivered' WHERE id='item-2'").run();
+    await db.prepare("UPDATE orders SET status='delivered',payment_status='paid',delivered_at=? WHERE id='order-1'").bind(now).run();
+    await db.prepare("UPDATE shipping_parcels SET collected_paisa=cod_due_paisa WHERE shipping_job_id IN (SELECT id FROM shipping_jobs WHERE order_id='order-1')").run();
+    for(let index=0;index<3;index++) {
+      const created=await createCustomerReturnRequest(db,{orderNumber:'HK-TEST-1',receiptTokenHash:'receipt-hash-1',orderItemId:'item-1',quantity:1,
+        reason:'defective',requestedResolution:'refund',detail:'SIMULATED unearned tiny refund.',locale:'en-NP',idempotencyKey:'audit-unearned-tiny-'+index,evidence:[],now});
+      await reviewReturnAsAdmin(db,{...auditReview(created.id,'audit-unearned-tiny-review-'+index),itemRefundPaisa:1});
+      const common={returnRequestId:created.id,actorId:'admin-1',actorRole:'admin' as const,note:'SIMULATED unearned tiny refund.',publicMessageEn:'Paid.',publicMessageNe:'Paid.',now};
+      await advanceReturnAsAdmin(db,{...common,action:'start_refund',requestId:'audit-unearned-tiny-start-'+index});
+      await advanceReturnAsAdmin(db,{...common,action:'complete_refund',reference:'SIM-UNEARNED-TINY-'+index,requestId:'audit-unearned-tiny-complete-'+index});
+      refundIds.push((await db.prepare('SELECT id FROM refunds WHERE return_request_id=?').bind(created.id).first<{id:string}>())!.id);
+      assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_settlement_entries WHERE entitlement_id='audit-entitlement'").first<{n:number}>())?.n,0);
+    }
+    assert.equal(await accrueManagedEntitlements(db,{orderId:'order-1',actorId:'admin-1',requestId:'audit-unearned-tiny-earned',now}),1);
+    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,0);
+    for(const refundId of refundIds)await applyManagedRefundAdjustment(db,{entitlementId:'audit-entitlement',refundId,
+      refundedEligibleBasePaisa:1,actorId:'admin-1',reasonCode:'consumed_refund_replay',requestId:'audit-consumed-'+refundId,now});
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_settlement_entries WHERE entitlement_id='audit-entitlement'").first<{n:number}>())?.n,2);
+    assert.equal((await db.prepare("SELECT SUM(base_amount_paisa) AS n FROM managed_settlement_entries WHERE type='refund_adjustment'").first<{n:number}>())?.n,3);
+  }finally{await f.dispose();}
 });
