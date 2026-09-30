@@ -180,12 +180,15 @@ export async function createCodOrder(
   const intentBytes = new TextEncoder().encode(JSON.stringify({ customerId, ...coreInput }));
   const intentDigest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', intentBytes)),
     (byte) => byte.toString(16).padStart(2, '0')).join('');
+  const digestExpression = (database as D1Database & { dialect?: string }).dialect === 'mariadb'
+    ? "JSON_VALUE(a.next_json,'$.checkoutIntentDigest')"
+    : "json_extract(a.next_json,'$.checkoutIntentDigest')";
   const previous = await database
     .prepare(
       `SELECT orders.id, orders.order_number AS orderNumber, COALESCE(orders.current_total_paisa,orders.grand_total_paisa) AS grandTotalPaisa,
         shipments.estimated_min_days AS estimatedMinDays,
         shipments.estimated_max_days AS estimatedMaxDays,
-        (SELECT json_extract(a.next_json,'$.checkoutIntentDigest') FROM audit_logs a
+        (SELECT ${digestExpression} FROM audit_logs a
           WHERE a.action='order.placed' AND a.subject_type='order' AND a.subject_id=orders.id
             AND a.request_id=? LIMIT 1) AS checkoutIntentDigest,
         (SELECT json_extract(a.next_json,'$.checkoutResult') FROM audit_logs a

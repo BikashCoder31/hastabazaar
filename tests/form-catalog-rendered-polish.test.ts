@@ -72,9 +72,16 @@ void test('contact and catalog controls fit a 232px viewport without hiding real
         await context.route('**/*', (route: any) => new URL(route.request().url()).origin === url.origin ? route.continue() : route.abort());
         if (target.role) await context.addCookies([{ name: 'hastabazaar_local_test_role', value: target.role, url: url.origin, httpOnly: true, sameSite: 'Strict' }]);
         const page = await context.newPage();
+        const catalogConfigResponse = target.role ? page.waitForResponse((response: { url(): string; request(): { method(): string }; status(): number }) => {
+          const requestUrl = new URL(response.url());
+          return requestUrl.origin === url.origin && requestUrl.pathname === '/api/forms/staff.catalog' && response.request().method() === 'GET';
+        }) : null;
         await page.goto(`${url.origin}${target.path}`, { waitUntil: 'networkidle' });
         assert.equal(new URL(page.url()).pathname, target.path);
-        if (target.role) await page.getByRole('button', { name: 'Add category', exact: true }).click();
+        if (target.role) {
+          assert.equal((await catalogConfigResponse).status(), 200, 'Published catalog form configuration must load before interaction.');
+          await page.getByRole('button', { name: 'Add category', exact: true }).click();
+        }
         const form = page.locator(`form[data-form-id="${target.id}"]`);
         await form.waitFor({ state: 'visible' });
         const geometry = await form.evaluate((element: HTMLFormElement) => {

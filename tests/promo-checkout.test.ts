@@ -643,6 +643,44 @@ void test('commit-time price, seller owner, cart and customer changes abort the 
     await f.dispose();
   }
 });
+void test('MariaDB JSON scalar encoding preserves exact checkout replay and changed-detail conflict', async () => {
+  const f = await fixture();
+  try {
+    await cart(f.db);
+    const input = { ...checkoutInput(), deliveryRateVersion: 'fixture-rates', customerAuthSubject: 'customer' };
+    const form = { versionId: 'commerce.checkout-v1', answers: { formId: 'commerce.checkout' as const, version: 1, answers: [] } };
+    const placed = await createCodOrder(f.db, 'cart', 'receipt', input, 100, 'customer', form);
+    const mariaScalarDb = Object.assign(Object.create(f.db) as D1Database, {
+      dialect: 'mariadb',
+      prepare(sql: string) {
+        const mariaProjection = "JSON_VALUE(a.next_json,'$.checkoutIntentDigest')";
+        const usesBareScalar = sql.includes(mariaProjection);
+        const statement = f.db.prepare(sql.replace(mariaProjection, "json_extract(a.next_json,'$.checkoutIntentDigest')"));
+        if (!sql.includes('AS checkoutIntentDigest') || usesBareScalar) return statement;
+        return {
+          bind(...values: Parameters<typeof statement.bind>) {
+            const bound = statement.bind(...values);
+            return {
+              async first() {
+                const row = await bound.first<{ checkoutIntentDigest: string }>();
+                return row && { ...row, checkoutIntentDigest: JSON.stringify(row.checkoutIntentDigest) };
+              },
+            };
+          },
+        };
+      },
+    });
+    assert.deepEqual(await createCodOrder(mariaScalarDb, 'cart', 'receipt', input, 101, 'customer', form), placed);
+    await assert.rejects(
+      createCodOrder(mariaScalarDb, 'cart', 'receipt', { ...input, customerPhone: '9811111112' }, 102, 'customer', form),
+      /already used for different order details/,
+    );
+    assert.equal((await f.db.prepare('SELECT COUNT(*) AS n FROM orders').first<{ n: number }>())?.n, 1);
+  } finally {
+    await f.dispose();
+  }
+});
+
 void test('authorized exact promo replay after expiry returns original receipt and rechecks current customer authority', async () => {
   const f = await fixture();
   try {
