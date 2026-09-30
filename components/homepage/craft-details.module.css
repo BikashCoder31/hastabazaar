@@ -12,6 +12,8 @@
 
 .media {
   position: relative;
+  width: 100%;
+  max-width: 100%;
   min-height: clamp(29rem, 38vw, 35rem);
   overflow: hidden;
   border-radius: 1.5rem;
