@@ -55,12 +55,12 @@ Auth work in Batch 1 can be reviewed independently from return work, but integra
 
 **Primary files:** package.json, tsconfig.json, .oxlintrc.json, README.md, scripts/staging/local-d1.mjs, scripts/staging/verify-environment.mjs, tests/helpers/incentive-db.ts. Modify only gaps confirmed in the chosen implementation workspace.
 
-- [ ] Record the source commit, working-tree changes, dependency lockfile, and baseline checks. Preserve the staging modifications when preparing or reusing an isolated local workspace.
-- [ ] Confirm the local database path and fictional fixture ownership before running migration/seed/reset commands. Use existing staging guards.
-- [ ] Verify the documented empty-database bootstrap path; fill missing instructions or commands only where current staging still has a gap.
-- [ ] Make lint and type checking cover maintained source without traversing archives, audit copies, generated output, or browser profiles.
-- [ ] Define deliberate test concurrency. Execute the 16 native-fixture files separately and initially serially; capture underlying setup errors rather than silently excluding files.
-- [ ] Record any existing failure as a baseline issue with its exact command, cause, and owner.
+- [x] Record the source commit, working-tree changes, dependency lockfile, and baseline checks. Preserve the staging modifications when preparing or reusing an isolated local workspace.
+- [x] Confirm the local database path and fictional fixture ownership before running migration/seed/reset commands. Use existing staging guards.
+- [x] Verify the documented empty-database bootstrap path; fill missing instructions or commands only where current staging still has a gap.
+- [x] Make lint and type checking cover maintained source without traversing archives, audit copies, generated output, or browser profiles.
+- [x] Define deliberate test concurrency. Execute the 16 native-fixture files separately and initially serially; capture underlying setup errors rather than silently excluding files.
+- [x] Record any existing failure as a baseline issue with its exact command, cause, and owner.
 
 **Done when:** A developer can start the local application from fictional data and run source checks reproducibly. No user data was reset. Known test gaps are explicit.
 
@@ -70,12 +70,12 @@ Auth work in Batch 1 can be reviewed independently from return work, but integra
 
 **Existing tests to extend:** tests/password-reset-request.test.ts, tests/checkout-contact-verification.test.ts, tests/returns-complaints.test.ts, tests/cancellation-accounting.test.ts, tests/referral-release.test.ts. Add a dedicated regression file where the existing harness cannot express the relevant interleaving.
 
-- [ ] **F01:** Reproduce reset versus contact completion with synthetic accounts and a deterministic interleaving. Revoke retained contact proof and guard session creation against reset/session invalidation within the transaction. Verify no session survives the reset boundary.
-- [ ] **F02:** Use the current delivery financial snapshot for promo and non-promo refunds. Exercise partial cancellation, prior delivery refunds, failed/rejected refund rules, and concurrent approvals. Assert aggregate refunds stay within the current paid allowance.
-- [ ] **F03:** Make replacement inventory consumption a transactional condition. When another purchase takes the final unit, reject the replacement and roll back its outcome, stock log, and related effects together.
-- [ ] **F04:** Store the authenticated requester and enforce self-review protection against actual order ownership. Cover an existing dual-role customer/staff identity and legitimate independent review.
-- [ ] **F08:** Align delivered status and delivered_at for delivered-plus-cancelled orders. Verify referral release and earnings timestamps; a fully cancelled order must not receive a delivery-completion timestamp.
-- [ ] Check the expected conflict cause and final persisted state in race tests. A nested BEGIN error is not proof that a business guard worked.
+- [x] **F01:** Reproduce reset versus contact completion with synthetic accounts and a deterministic interleaving. Revoke retained contact proof and guard session creation against reset/session invalidation within the transaction. Verify no session survives the reset boundary.
+- [x] **F02:** Use the current delivery financial snapshot for promo and non-promo refunds. Exercise partial cancellation, prior delivery refunds, failed/rejected refund rules, and concurrent approvals. Assert aggregate refunds stay within the current paid allowance. Failed refunds atomically reacquire capacity before restarting.
+- [x] **F03:** Make replacement inventory consumption a transactional condition. When another purchase takes the final unit, reject the replacement and roll back its outcome, stock log, and related effects together.
+- [x] **F04:** Store the authenticated requester and enforce self-review protection against actual order ownership. Cover an existing dual-role customer/staff identity and legitimate independent review, including high-value decisions and ownership changes before commit.
+- [x] **F08:** Align delivered status and delivered_at for delivered-plus-cancelled orders. Verify referral release and earnings timestamps; a fully cancelled order must not receive a delivery-completion timestamp.
+- [x] Check the expected conflict cause and final persisted state in race tests. A nested BEGIN error is not proof that a business guard worked.
 
 **Done when:** Each regression fails before its corresponding fix, passes afterward, and preserves existing replay/authority protections. Review changes separately before combining shared return/parcel logic.
 
@@ -85,11 +85,11 @@ Auth work in Batch 1 can be reviewed independently from return work, but integra
 
 **Existing test areas:** tests/node-hosting.test.ts, tests/local-preview-bindings.test.ts, tests/password-reset-request.test.ts, tests/first-party-analytics.test.ts. Add focused runtime/rate-limit/logout regressions where absent.
 
-- [ ] **F11:** Select the correct readiness dialect. Test initialized SQLite/D1 and disposable MariaDB separately, plus an actually missing schema.
-- [ ] **F12:** Reject SMTP handshake timeout, response end/close, and post-failure reads; close owned sockets. Use fake sockets without delivering mail.
-- [ ] **F15–F16:** Separate account allowances from network abuse limits. Verify two customers on one trusted network retain their own allowance, and a reset account check does not consume a dummy shared-network budget.
-- [ ] **F17:** Make GET logout side-effect-free and use the existing trusted-mutation protections for POST. Test cross-origin rejection and legitimate local logout.
-- [ ] **F19:** Normalize or exclude private order/account/document routes before analytics persistence. Verify route identifiers never enter aggregate paths, regardless of default configuration.
+- [x] **F11:** Select the correct readiness dialect. Test initialized SQLite/D1 and disposable MariaDB separately, plus an actually missing schema.
+- [x] **F12:** Reject SMTP handshake timeout, response end/close, and post-failure reads; close owned sockets. Use fake sockets without delivering mail.
+- [x] **F15–F16:** Separate account allowances from network abuse limits. Verify two customers on one trusted network retain their own allowance, and a reset account check does not consume a dummy shared-network budget.
+- [x] **F17:** Make GET logout side-effect-free and use the existing trusted-mutation protections for POST. Test cross-origin rejection and legitimate local logout.
+- [x] **F19:** Normalize or exclude private order/account/document routes before analytics persistence. Verify route identifiers never enter aggregate paths, regardless of default configuration.
 
 **Done when:** Runtime errors terminate predictably, budgets apply to the intended identities, logout requires a valid mutation, and analytics records contain only permitted route information.
 
@@ -99,11 +99,11 @@ Auth work in Batch 1 can be reviewed independently from return work, but integra
 
 **Existing tests:** tests/managed-settlements.test.ts, tests/managed-fixed-supply.test.ts, tests/managed-commerce-calculation.test.ts, tests/managed-commerce-activation.test.ts, tests/returns-complaints.test.ts.
 
-- [ ] **F05:** Ensure each commercial item enters exactly one earnings/payout model. Check ordinary marketplace, sale-linked managed, and fixed-supply items end to end.
-- [ ] **F06:** Commit managed refund reversals with refund completion. Verify partial refunds, replay, and relevant liability rules without reversing unrelated obligations.
-- [ ] **F07:** Claim entitlement state before crediting and enforce one earned entry per entitlement. Two different operation IDs must not create duplicate earnings.
-- [ ] Validate any uniqueness migration on duplicate-free and representative legacy fixture data; define explicit conflict handling.
-- [ ] Confirm simulation gates remain effective after all changes.
+- [x] **F05:** Ensure each commercial item enters exactly one earnings/payout model. Check ordinary marketplace, sale-linked managed, and fixed-supply items end to end.
+- [x] **F06:** Commit managed refund reversals with refund completion. Verify partial refunds, replay, and relevant liability rules without reversing unrelated obligations. Refunds preceding accrual defer their reversal until the guarded earning credit; replay resumes accounting and simulated invoice hooks.
+- [x] **F07:** Claim entitlement state before crediting and enforce one earned entry per entitlement. Two different operation IDs must not create duplicate earnings.
+- [x] Validate any uniqueness migration on duplicate-free and representative legacy fixture data; define explicit conflict handling. No new uniqueness migration is required: guarded state claims serialize the existing schema.
+- [x] Confirm simulation gates remain effective after all changes.
 
 **Done when:** Settlement totals reconcile with order snapshots, refunds, and model-specific obligations under replay and controlled concurrency.
 
@@ -113,10 +113,10 @@ Auth work in Batch 1 can be reviewed independently from return work, but integra
 
 **Existing tests:** tests/product-story-materials.test.ts, tests/product-revision-concurrency.test.ts, tests/product-form-render.test.ts, tests/product-watermark-routes.test.ts.
 
-- [ ] **F09:** Preserve stored Nepali name/description when an unrelated edit omits those fields. Keep deliberate clearing distinct from omission.
-- [ ] **F10:** Persist the seller's submitted materials additions/removals while retaining revision and authorization checks.
-- [ ] **F18:** Decode images and enforce bounded resource use before accepting them. Test corrupt signature-only images, oversized dimensions, legitimate photos, and existing public metadata sanitization.
-- [ ] Verify edit/save/reload with fictional listings and ensure failed validation leaves no accepted corrupt media or broken listing state.
+- [x] **F09:** Preserve stored Nepali name/description when an unrelated edit omits those fields. Keep deliberate clearing distinct from omission.
+- [x] **F10:** Persist the seller's submitted materials additions/removals while retaining revision and authorization checks.
+- [x] **F18:** Decode images and enforce bounded resource use before accepting them. Test corrupt signature-only images, oversized dimensions, legitimate photos, and existing public metadata sanitization.
+- [x] Verify edit/save/reload with fictional listings and ensure failed validation leaves no accepted corrupt media or broken listing state.
 
 **Done when:** Saved product data matches the intended edit and media validation fails safely without breaking submission replay.
 
@@ -126,12 +126,12 @@ Auth work in Batch 1 can be reviewed independently from return work, but integra
 
 **Existing tests:** tests/contact-verification-ui.test.ts, tests/checkout-contact-verification.test.ts, tests/customer-feedback.test.ts, tests/form-catalog-rendered-polish.test.ts, tests/product-video.test.ts. Prefer browser verification for purely visual/control changes.
 
-- [ ] **F13:** Distinguish signed-out status from unavailable verification. Add retry and preserve safe state; checkout remains blocked until current required verification is confirmed.
-- [ ] **F14:** Provide retry after initial configuration failure, keeping entered answers intact.
-- [ ] **F22:** Prevent edits from being silently discarded during a pending submission, including configured extra fields. Exercise delayed success and error paths.
-- [ ] **F20:** Remove the invalid /makers sitemap entry until a working directory exists. The optional directory belongs to the feature backlog.
-- [ ] **F21:** Exclude videos from Product image metadata and verify mixed-media listings.
-- [ ] Verify configured form versions, replay identities, and keyboard submission still behave correctly.
+- [x] **F13:** Distinguish signed-out status from unavailable verification. Add retry and preserve safe state; checkout remains blocked until current required verification is confirmed.
+- [x] **F14:** Provide retry after initial configuration failure, keeping entered answers intact.
+- [x] **F22:** Prevent edits from being silently discarded during a pending submission, including configured extra fields. Exercise delayed success and error paths.
+- [x] **F20:** Remove the invalid /makers sitemap entry until a working directory exists. The optional directory belongs to the feature backlog.
+- [x] **F21:** Exclude videos from Product image metadata and verify mixed-media listings.
+- [x] Verify configured form versions, replay identities, and keyboard submission still behave correctly.
 
 **Done when:** Transient errors have usable recovery actions, entered data survives recovery, and discovery metadata points to valid pages/media.
 
@@ -139,25 +139,27 @@ Auth work in Batch 1 can be reviewed independently from return work, but integra
 
 **Primary areas:** homepage carousels, homepage headings, product gallery/media delivery, maker collections, tracking UI, and submission recovery.
 
-- [ ] Add persistent Pause/Resume controls and a meaningful homepage H1. Check keyboard, touch, reduced motion, focus, and video behavior.
-- [ ] Preserve the last successful tracking state on transient failure and visibly offer retry.
-- [ ] Explain recovery for uncertain submissions using existing saved cases/drafts and replay identities.
-- [ ] Measure media bytes and loading before choosing thumbnail/card/detail derivatives or cache changes. Preserve publication/ownership checks.
-- [ ] Review repeated product loads, maker pagination, and MP4 seeking. Implement only measured or reproduced improvements.
-- [ ] Keep any repository extraction directly tied to corrected invariants; avoid a project-wide rewrite.
+- [x] Add persistent Pause/Resume controls and a meaningful homepage H1. Verify keyboard and narrow viewport controls, with automated reduced-motion, focus and video coverage. Physical touch testing remains an acceptance gap.
+- [x] Preserve the last successful tracking state on transient failure and visibly offer retry.
+- [x] Explain recovery for uncertain submissions using existing saved cases/drafts and replay identities.
+- [x] Measure media bytes and loading before choosing thumbnail/card/detail derivatives or cache changes. Preserve publication/ownership checks.
+- [x] Review repeated product loads, maker pagination, and MP4 seeking. Implement only measured or reproduced improvements. Range seeking is implemented; duplicated repository queries and collection growth are measured follow-ups.
+- [x] Keep any repository extraction directly tied to corrected invariants; avoid a project-wide rewrite.
 
 **Done when:** The affected journeys work on narrow/mobile and desktop layouts, and performance changes have before/after evidence.
 
 ## Batch 7: Final local acceptance
 
-- [ ] Account for all F01–F22: fixed with evidence, or explicitly documented as a remaining limitation.
-- [ ] Run relevant regression tests, maintained-source type checking and lint, and both supported local build targets.
-- [ ] Complete the native-fixture test group and report setup failures separately from application failures. Do not label a selected suite as the full suite.
-- [ ] Exercise independent-connection refund/stock/entitlement tests on disposable local MariaDB when available. If unavailable, record that acceptance gap.
+- [x] Account for all F01–F22: fixed with evidence, or explicitly documented as a remaining limitation.
+- [x] Run relevant regression tests, maintained-source type checking and lint, and both supported local build targets. The source partition passes 1,992 tests with 11 explicit skips; fresh lint/type checks and both refreshed builds exit 0.
+- [x] Complete the native-fixture test group and report setup failures separately from application failures. All 16 native SQLite/D1 files pass 233/233 with natural runner shutdown. Together with the 210-file source partition, all 226 maintained test files are selected.
+- [x] Exercise independent-connection refund/stock/entitlement tests on disposable local MariaDB when available. Four identity and six commerce scenarios passed on the effective fixture schema; unmodified installation is not certified.
 - [ ] Verify customer browse/cart/checkout/cancellation/return, seller edit/inventory/finance, and staff review/refund/fulfillment journeys using fictional users.
-- [ ] Complete responsive, keyboard, pause-control, retry, mixed-media, and narrow configured-form browser checks; supply the opt-in browser origin explicitly.
-- [ ] Validate empty-database startup and representative upgrades using disposable local data.
-- [ ] Prepare a local candidate summary: source baseline, migrations, executed checks, remaining gaps, and any provider-dependent work.
+- [x] Complete selected responsive, keyboard, pause-control, retry and narrow configured-form browser checks on the actual local preview. Mixed-media contracts are regression-tested; exact 232px and physical touch coverage remain explicit gaps.
+- [ ] Complete the remaining rendered mixed-media and physical-touch checks, including exact 232px automation in a browser that supports it.
+- [x] Validate empty SQLite/D1 startup with all 67 migrations and fictional roles.
+- [ ] Certify representative MariaDB release installation and upgrades. Companion-DDL overlap and collation issues are documented separately from effective-schema acceptance.
+- [x] Prepare a local candidate summary: source baseline, migrations, executed checks, remaining gaps, and any provider-dependent work. See [the local candidate report](C:/Users/abinash/.codex/worktrees/local-audit-remediation/Hatskala/docs/superpowers/reports/2026-10-01-local-audit-candidate.md).
 
 **Done when:** The local candidate has a reproducible evidence record and agreed remaining limitations. This milestone does not trigger deployment, remote pushes, or live services.
 
@@ -180,6 +182,8 @@ Choose features individually after stabilization; local mocks can demonstrate pr
 
 For each batch: recheck the finding, reproduce the issue, make a focused correction, verify the affected behavior, review the diff, and update this roadmap with evidence. Preserve unrelated edits when creating a local checkpoint. Do not push or deploy.
 
-**Current status:** Work divided; implementation has not started in this planning turn.
+**Current status (1 October 2026):** Local implementation, focused checks, independent review, both complete test partitions, fresh lint/type checking and both refreshed builds pass in `C:/Users/abinash/.codex/worktrees/local-audit-remediation/Hatskala`. The isolated branch and running preview are preserved for continued local work. Remaining setup and rendered-journey acceptance tasks stay unchecked. All 96 captured original staging source hashes are unchanged. No push or deployment occurred.
 
-**Next execution batch:** Batch 0, followed by F01 and the F02–F04 critical commerce corrections in Batch 1.
+**Review follow-ups resolved:** F04 high-value owner self-review, F02 failed-refund capacity reacquisition, and parcel replay recovery of managed invoice issuance received regression tests and independent approval. The final candidate report records the complete checks and remaining acceptance gaps.
+
+**Acceptance limits:** Fresh SQLite migration/fictional role startup and both build targets are verified. The disposable MariaDB effective schema needed fixture-only overlap/collation repairs; an unmodified full release install is not certified. Fresh protected identity form configurations are absent and cannot be edited through the catalog, so local journeys use guarded fictional roles. Contact delivery remains safely unavailable without a configured transport. The in-app browser clamps a requested 232px viewport to 240px; manual narrow checks report actual dimensions. Complete rendered commerce, mixed-media and physical-touch journeys remain distinct from selected browser and fixture coverage. Details and final counts are in the local candidate report.

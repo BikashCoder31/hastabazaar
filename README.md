@@ -12,7 +12,7 @@ $env:HASTABAZAAR_PAYMENT_MODE = 'simulated'
 $env:HASTABAZAAR_RECIPIENT_DOMAIN = 'local.hastabazaar.test'
 $env:APP_ORIGIN = 'http://127.0.0.1:4317'
 npm run staging:verify -- --initialize
-npm run dev -- --host 127.0.0.1 --port 4317
+npm run dev -- --hostname 127.0.0.1 --port 4317
 ```
 
 Use a clean shell without production database, SMTP, Cloudflare, or object-storage
