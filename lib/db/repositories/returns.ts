@@ -1,3 +1,4 @@
+import { buildManagedRefundAdjustmentStatements } from './managed-settlements';
 import { caseBusinessNotificationStatements } from '../../operations/business-notifications';
 import { buildFormAnswerInsert } from './form-answers';
 import { assertCommerceFormReplay, type CommerceForm } from './commerce-form-replay';
@@ -239,7 +240,7 @@ export async function createCustomerReturnRequest(
           eligibility_decision, eligibility_reason_en, eligibility_reason_ne,
           policy_snapshot_json, created_request_id, operation_request_id,
           requested_at, updated_at, resolved_at, reviewed_by
-        ) SELECT ?, ?, order_items.id, NULL, ?, ?, ?, ?, ?, ?, 'requested',
+        ) SELECT ?, ?, order_items.id, ?, ?, ?, ?, ?, ?, ?, 'requested',
           'undetermined', ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL
           FROM order_items INNER JOIN orders ON orders.id = order_items.order_id
           WHERE order_items.id = ? AND orders.order_number = ?
@@ -258,6 +259,7 @@ export async function createCustomerReturnRequest(
       .bind(
         id,
         referenceNumber,
+        options.customerId ?? null,
         options.reason,
         options.detail,
         options.locale,
@@ -996,7 +998,11 @@ export async function reviewReturnAsAdmin(
     .prepare(
       `SELECT return_requests.status, return_requests.requested_by AS requestedBy,
         return_requests.quantity, return_requests.policy_snapshot_json AS policySnapshotJson,
-        orders.id AS orderId, CASE WHEN orders.promo_discount_paisa>0 THEN orders.delivery_charge_paisa-COALESCE((SELECT SUM(json_extract(e.previous_json,'$.delivery')-json_extract(e.next_json,'$.delivery')) FROM order_cancellation_events e WHERE e.order_id=orders.id),0) ELSE orders.delivery_charge_paisa END AS deliveryChargePaisa,
+        orders.id AS orderId, orders.customer_id AS customerId,
+        COALESCE(orders.current_delivery_paisa,orders.delivery_charge_paisa)
+          + CASE WHEN orders.promo_discount_paisa>0 AND orders.current_delivery_paisa IS NOT NULL
+            THEN COALESCE((SELECT SUM(r.delivery_amount_paisa) FROM refunds r WHERE r.order_id=orders.id AND r.status='paid'),0)
+            ELSE 0 END AS deliveryChargePaisa,
         order_items.id AS orderItemId, order_items.seller_id AS sellerId,
         order_items.quantity AS itemQuantity, order_items.line_total_paisa AS lineTotalPaisa,
         order_items.tax_paisa AS taxPaisa,
@@ -1013,6 +1019,7 @@ export async function reviewReturnAsAdmin(
     .first<{
       status: string;
       requestedBy: string | null;
+      customerId: string | null;
       quantity: number;
       policySnapshotJson: string;
       orderId: string;
@@ -1035,7 +1042,7 @@ export async function reviewReturnAsAdmin(
       'This return request is no longer awaiting an investigation decision.',
     );
   }
-  if (current.requestedBy && current.requestedBy === options.actorId) {
+  if (current.requestedBy === options.actorId || current.customerId === options.actorId) {
     throw new ReturnConflictError(
       'You cannot review a return request that you created.',
     );
@@ -1177,18 +1184,18 @@ export async function reviewReturnAsAdmin(
 
   if (refundId && refundStatus && options.responsibility) {
     statements.push(
-      // Distinct return cases can approve the same delivery cash after stale
-      // preflights. Serialize promo reservations and check retained capacity
-      // before inserting a refund or exposing its manual payout instruction.
-      database.prepare(`UPDATE orders SET updated_at=updated_at
-        WHERE id=? AND promo_discount_paisa>0`).bind(current.orderId),
+      // Reserve remaining delivery cash for every financial model in this batch.
+      // Promo completion already reduces the current snapshot, so add paid
+      // delivery back before subtracting all active reservations exactly once.
+      database.prepare(`UPDATE orders SET updated_at=updated_at WHERE id=?`).bind(current.orderId),
       database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM orders o WHERE o.id=?
-        AND (o.promo_discount_paisa=0 OR o.delivery_charge_paisa
-          -COALESCE((SELECT SUM(json_extract(e.previous_json,'$.delivery')
-            -json_extract(e.next_json,'$.delivery')) FROM order_cancellation_events e
-            WHERE e.order_id=o.id),0)
+        AND COALESCE(o.current_delivery_paisa,o.delivery_charge_paisa)
+          +CASE WHEN o.promo_discount_paisa>0 AND o.current_delivery_paisa IS NOT NULL
+            THEN COALESCE((SELECT SUM(r.delivery_amount_paisa) FROM refunds r WHERE r.order_id=o.id AND r.status='paid'),0)
+            ELSE 0 END
           -COALESCE((SELECT SUM(r.delivery_amount_paisa) FROM refunds r
-            WHERE r.order_id=o.id AND r.status<>'rejected'),0)>=?))
+            WHERE r.order_id=o.id AND r.status<>'rejected'
+              AND (r.status<>'failed' OR o.promo_discount_paisa>0)),0)>=?)
         THEN 1 ELSE json_extract('stale-delivery-refund-capacity','$') END`)
         .bind(current.orderId,deliveryRefundPaisa),
       database
@@ -1317,8 +1324,11 @@ export async function reviewReturnAsAdmin(
       now: options.now,
     })),
   );
-  statements.push(database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM return_requests
-    WHERE id=? AND operation_request_id=? AND status=? AND reviewed_by=?) THEN 1
+  statements.push(database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM return_requests c
+    JOIN order_items i ON i.id=c.order_item_id JOIN orders o ON o.id=i.order_id
+    WHERE c.id=? AND c.operation_request_id=? AND c.status=? AND c.reviewed_by=?
+      AND (c.requested_by IS NULL OR c.requested_by<>c.reviewed_by)
+      AND (o.customer_id IS NULL OR o.customer_id<>c.reviewed_by)) THEN 1
     ELSE json_extract('stale-initial-return-review','$') END`)
     .bind(options.returnRequestId,options.requestId,toStatus,options.actorId));
   const results = await database.batch(statements);
@@ -1547,12 +1557,15 @@ export async function advanceReturnAsAdmin(
         refunds.commission_base_refunded_paisa AS commissionBaseRefundedPaisa,
         COALESCE(order_items.commission_base_paisa,
           order_items.line_total_paisa - order_items.seller_discount_paisa) AS originalCommissionBasePaisa,
-        order_items.commission_paisa AS originalCommissionPaisa
+        order_items.commission_paisa AS originalCommissionPaisa,
+        managed.commercial_model AS commercialModel,entitlement.id AS entitlementId
        FROM return_requests
        INNER JOIN order_items ON order_items.id = return_requests.order_item_id
        INNER JOIN orders ON orders.id = order_items.order_id
        LEFT JOIN refunds ON refunds.return_request_id = return_requests.id
        LEFT JOIN products ON products.id = order_items.product_id
+       LEFT JOIN managed_commercial_snapshots managed ON managed.order_item_id=order_items.id
+       LEFT JOIN managed_entitlements entitlement ON entitlement.snapshot_id=managed.id
        WHERE return_requests.id = ? LIMIT 1`,
     )
     .bind(options.returnRequestId)
@@ -1573,6 +1586,8 @@ export async function advanceReturnAsAdmin(
       commissionBaseRefundedPaisa: number | null;
       originalCommissionBasePaisa: number;
       originalCommissionPaisa: number;
+      commercialModel: string | null;
+      entitlementId: string | null;
     }>();
   if (!current) throw new ReturnConflictError('Return request not found.');
   const restock = options.restockQuantity ?? 0;
@@ -1818,6 +1833,8 @@ export async function advanceReturnAsAdmin(
             options.returnRequestId,
             options.requestId,
           ),
+        database.prepare(`SELECT CASE WHEN changes()=1 THEN 1
+          ELSE json_extract('lost-return-inventory-transition','$') END`),
         database
           .prepare(
             `INSERT INTO inventory_adjustments (
@@ -1844,6 +1861,7 @@ export async function advanceReturnAsAdmin(
   if (
     resolvedOutcome === 'refund' &&
     current.refundId &&
+    !current.commercialModel &&
     current.refundLiability === 'seller' &&
     current.refundAmountPaisa
   ) {
@@ -1886,6 +1904,15 @@ export async function advanceReturnAsAdmin(
         )
         .bind(options.now, current.orderId),
     );
+  }
+  if (resolvedOutcome === 'refund' && current.refundId && current.commercialModel==='managed_sale_linked_percentage_v1') {
+    if(!current.entitlementId)throw new ReturnConflictError('Managed refund entitlement requires reconciliation.');
+    statements.push(...await buildManagedRefundAdjustmentStatements(database, {
+      entitlementId:current.entitlementId,refundId:current.refundId,
+      refundedEligibleBasePaisa:current.commissionBaseRefundedPaisa ?? 0,actorId:options.actorId,
+      reasonCode:'completed_customer_refund',requestId:options.requestId+':managed-refund',now:options.now,
+      completedRefundRequestId:options.requestId,
+    }));
   }
   if (resolvedOutcome === 'refund' && current.refundId) {
     statements.push(
@@ -1942,6 +1969,7 @@ export async function advanceReturnAsAdmin(
             WHERE refunds.id = ? AND refunds.status = 'paid'
               AND refunds.operation_request_id = ?
               AND refunds.commission_reversal_paisa > 0
+              AND NOT EXISTS(SELECT 1 FROM managed_commercial_snapshots m WHERE m.order_item_id=order_items.id)
               AND EXISTS (
                 SELECT 1 FROM seller_ledger_entries original_commission
                 WHERE original_commission.order_item_id = order_items.id

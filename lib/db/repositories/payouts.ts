@@ -8,6 +8,11 @@ import { digestFormRequest, formRequestReplay, FormRequestConflictError } from '
 
 const payoutPolicy = phaseOneMarketplacePolicy.value.payouts;
 const dayMs = 86_400_000;
+function standardLedgerEligibility(alias: string): string {
+  return `NOT EXISTS(SELECT 1 FROM managed_commercial_snapshots m WHERE m.order_item_id=${alias}.order_item_id)
+    AND NOT EXISTS(SELECT 1 FROM order_items mi WHERE mi.id=${alias}.order_item_id
+      AND mi.commission_rule_version LIKE 'managed-%')`;
+}
 
 export type PayoutStatus =
   | 'prepared'
@@ -42,6 +47,8 @@ export function buildEarningsAccrualStatements(
     INNER JOIN seller_profiles ON seller_profiles.id = order_items.seller_id
     WHERE orders.status = 'delivered' AND orders.payment_status = 'paid'
       AND order_items.fulfillment_status = 'delivered'
+      AND NOT EXISTS(SELECT 1 FROM managed_commercial_snapshots m WHERE m.order_item_id=order_items.id)
+      AND COALESCE(order_items.commission_rule_version,'') NOT LIKE 'managed-%'
       AND NOT EXISTS(SELECT 1 FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id WHERE j.order_id=orders.id AND ((j.status NOT IN ('delivered','cancelled')) OR p.remitted_paisa<>p.cod_due_paisa))
       ${orderFilter}`;
 
@@ -245,7 +252,7 @@ export async function getSellerFinanceSummary(
       COALESCE(SUM(CASE WHEN seller_ledger_entries.type = 'refund' THEN seller_ledger_entries.amount_paisa ELSE 0 END), 0) AS refundPaisa
      FROM seller_ledger_entries
      LEFT JOIN payout_entries ON payout_entries.ledger_entry_id = seller_ledger_entries.id AND payout_entries.released_at IS NULL
-     WHERE seller_ledger_entries.seller_id = ?`,
+     WHERE seller_ledger_entries.seller_id = ? AND ${standardLedgerEligibility('seller_ledger_entries')}`,
     )
     .bind(now, now, sellerId)
     .first<Omit<SellerFinanceSummary, 'paidPaisa'>>();
@@ -333,6 +340,7 @@ export async function listPayoutCandidates(
        AND seller_profiles.payout_account_reference IS NOT NULL
        AND trim(seller_profiles.payout_account_reference) != ''
        AND seller_ledger_entries.available_at <= ?
+       AND ${standardLedgerEligibility('seller_ledger_entries')}
        AND payout_entries.ledger_entry_id IS NULL
      GROUP BY seller_profiles.id
      HAVING SUM(seller_ledger_entries.amount_paisa) > 0
@@ -701,6 +709,7 @@ export async function prepareSellerPayout(
      FROM seller_ledger_entries
      LEFT JOIN payout_entries ON payout_entries.ledger_entry_id = seller_ledger_entries.id AND payout_entries.released_at IS NULL
      WHERE seller_ledger_entries.seller_id = ? AND seller_ledger_entries.available_at <= ?
+       AND ${standardLedgerEligibility('seller_ledger_entries')}
        AND payout_entries.ledger_entry_id IS NULL
      ORDER BY seller_ledger_entries.created_at ASC, seller_ledger_entries.id ASC`,
     )
@@ -723,7 +732,13 @@ export async function prepareSellerPayout(
   const number = payoutNumber(options.now);
   const requestGuardId=crypto.randomUUID();
   const directGuardId=crypto.randomUUID();
+  const modelGuardId = crypto.randomUUID();
   const statements: D1PreparedStatement[] = [
+    database.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN
+      (SELECT COUNT(*) FROM seller_ledger_entries e WHERE e.id IN (${entries.results.map(()=>'?').join(',')})
+        AND ${standardLedgerEligibility('e')})=? THEN 1 ELSE 0 END`)
+      .bind(modelGuardId,...entries.results.map(entry=>entry.id),entries.results.length),
+    database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(modelGuardId),
     ...(options.requestTail?[database.prepare("INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM payout_requests WHERE id=? AND seller_id=? AND status='submitted') THEN 1 ELSE 0 END")
       .bind(requestGuardId,options.requestTail.id,options.sellerId),
       database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(requestGuardId)]:[]),
@@ -984,6 +999,8 @@ export async function operatePayout(
   const providerReference =
     options.action === 'mark_paid' ? options.providerReference!.trim() : null;
   const stateGuardId=crypto.randomUUID();
+  const payoutModelGuardId=crypto.randomUUID();
+  const advancesSettlement=['approved','processing','paid'].includes(toStatus);
   const results = await database.batch([
     database
       .prepare(
@@ -1103,6 +1120,11 @@ export async function operatePayout(
     ...(options.form?[buildFormAnswerInsert(database,{formId:'staff.payout-2',requestId:options.requestId,
       versionId:options.form.versionId,subjectType:'payout',subjectId:options.payoutId,
       actorId:options.actorId,answers:options.form.answers,now:options.now})]:[]),
+    ...(advancesSettlement?[database.prepare(`INSERT INTO operation_transaction_guards(id,valid)
+      SELECT ?,CASE WHEN NOT EXISTS(SELECT 1 FROM payout_entries pe JOIN seller_ledger_entries e ON e.id=pe.ledger_entry_id
+        WHERE pe.payout_id=? AND pe.released_at IS NULL AND NOT (${standardLedgerEligibility('e')}))
+      THEN 1 ELSE 0 END`).bind(payoutModelGuardId,options.payoutId),
+      database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(payoutModelGuardId)]:[]),
     ...authority.statements,
   ]);
   if (!options.form &&

@@ -1198,7 +1198,7 @@ async function databaseFixture(includeApprovalUpgrade = true) {
 
 class TestD1PreparedStatement {
   private values: SQLInputValue[] = [];
-  constructor(private readonly statement: StatementSync) {}
+  constructor(private readonly statement: StatementSync, private readonly sql: string) {}
   bind(...values: SQLInputValue[]) {
     this.values = values;
     return this;
@@ -1214,7 +1214,10 @@ class TestD1PreparedStatement {
     };
   }
   async run() {
-    const result = this.statement.run(...this.values);
+    let result;
+    try { result = this.statement.run(...this.values); }
+    catch (error) { if (error instanceof Error && error.message.includes('malformed JSON'))
+      throw new Error(`${error.message}: ${this.sql}`); throw error; }
     return {
       success: true,
       meta: { changes: Number(result.changes) },
@@ -1226,7 +1229,7 @@ class TestD1PreparedStatement {
 class TestD1Database {
   constructor(private readonly sqlite: DatabaseSync) {}
   prepare(sql: string) {
-    return new TestD1PreparedStatement(this.sqlite.prepare(sql));
+    return new TestD1PreparedStatement(this.sqlite.prepare(sql), sql);
   }
   async batch(statements: readonly TestD1PreparedStatement[]) {
     this.sqlite.exec('BEGIN');
@@ -3004,7 +3007,7 @@ void test('item return, refund liability, maker-checker, idempotency, and owners
       requestId: 'refund-start-1',
       now,
     });
-    const completeRefund = (requestId: string) => advanceReturnAsAdmin(db, {
+    const completeRefund = (requestId: string, database: D1Database = db) => advanceReturnAsAdmin(database, {
       returnRequestId: created.id,
       actorId: 'admin-1',
       actorRole: 'admin',
@@ -3017,21 +3020,9 @@ void test('item return, refund liability, maker-checker, idempotency, and owners
       requestId,
       now,
     });
-    const completionAttempts = await Promise.allSettled([
-      completeRefund('refund-paid-1'),
-      completeRefund('refund-paid-race'),
-    ]);
-    assert.equal(
-      completionAttempts.filter((attempt) => attempt.status === 'fulfilled').length,
-      1,
-    );
-    assert.equal(
-      completionAttempts.filter((attempt) => attempt.status === 'rejected').length,
-      1,
-    );
-    const winningRequestId = completionAttempts[0].status === 'fulfilled'
-      ? 'refund-paid-1'
-      : 'refund-paid-race';
+    await assert.rejects(completeRefund('refund-paid-1', beforeAuditBatch(db,
+      () => completeRefund('refund-paid-race'))), /stale-refund-transition/);
+    const winningRequestId = 'refund-paid-race';
     await completeRefund(winningRequestId);
     const result = await db
       .prepare(
@@ -4385,12 +4376,13 @@ void test('cancelling every unshipped parcel closes payment and records cancella
     }
     const order = await f.db
       .prepare(
-        "SELECT status,payment_status AS payment,cancelled_at AS cancelled FROM orders WHERE id='order-1'",
+        "SELECT status,payment_status AS payment,cancelled_at AS cancelled,delivered_at AS delivered FROM orders WHERE id='order-1'",
       )
-      .first<{ status: string; payment: string; cancelled: number | null }>();
+      .first<{ status: string; payment: string; cancelled: number | null; delivered:number|null }>();
     assert.equal(order?.status, 'cancelled');
     assert.equal(order?.payment, 'cancelled');
     assert.ok(order?.cancelled);
+    assert.equal(order?.delivered,null);
     const payment = await f.db
       .prepare("SELECT status FROM payments WHERE order_id='order-1'")
       .first<{ status: string }>();
@@ -5706,11 +5698,9 @@ void test('R018 receipt ownership, concurrent confirmations and stale parcel amo
       note: 'Concurrent customer cancellation.',
       now: Date.now(),
     };
-    const results = await Promise.allSettled([
-      cancelSelectedParcels(db, access, { ...o, requestId: 'race-one' }),
-      cancelSelectedParcels(db, access, { ...o, requestId: 'race-two' }),
-    ]);
-    assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1);
+    await assert.rejects(cancelSelectedParcels(beforeAuditBatch(db,
+      () => cancelSelectedParcels(db, access, { ...o, requestId: 'race-two' })),
+      access, { ...o, requestId: 'race-one' }), /The order changed/);
     assert.equal(
       (await db
         .prepare('SELECT COUNT(*) AS n FROM order_cancellation_events')
@@ -6030,5 +6020,346 @@ void test('direct carrier posting rejects excess cash and role races without par
       assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM parcel_operation_events WHERE id='carrier-guard-failure'").first<{n:number}>())?.n,0);
       assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE request_id='carrier-guard-failure:audit'").first<{n:number}>())?.n,0);
     } finally {await f.dispose();}
+  }
+});
+
+async function auditReturn(db: D1Database, itemId = 'item-1', customerId?: string) {
+  return createCustomerReturnRequest(db, { orderNumber: 'HK-TEST-1', receiptTokenHash: 'receipt-hash-1',
+    orderItemId: itemId, quantity: 1, reason: 'defective', requestedResolution: 'refund',
+    detail: 'SIMULATED audit regression: defective delivered item.', locale: 'en-NP',
+    idempotencyKey: 'audit-return-' + itemId, evidence: [], now, customerId });
+}
+function auditReview(caseId: string, requestId: string, deliveryRefundPaisa = 0) {
+  return { returnRequestId: caseId, actorId: 'admin-1', actorRole: 'admin' as const,
+    action: 'approve' as const, note: 'SIMULATED audit evidence reviewed.', publicMessageEn: 'Approved.',
+    publicMessageNe: 'Approved.', responsibility: 'seller' as const, outcome: 'refund' as const,
+    itemRefundPaisa: 0, deliveryRefundPaisa, requestId, now };
+}
+function beforeAuditBatch(db: D1Database, interleave: () => Promise<unknown>): D1Database {
+  return { prepare: db.prepare.bind(db), batch: async (statements: D1PreparedStatement[]) => {
+    await interleave(); return db.batch(statements);
+  } } as D1Database;
+}
+
+void test('F02 standard delivery refunds use cancellation current allowance and subtract prior reservations', async () => {
+  const f = await databaseFixture(), db = f.database as unknown as D1Database;
+  try {
+    await db.prepare("UPDATE orders SET delivery_charge_paisa=60000,current_delivery_paisa=40000,current_subtotal_paisa=item_subtotal_paisa,current_total_paisa=item_subtotal_paisa+40000,current_wallet_paisa=0,current_discount_paisa=0 WHERE id='order-1'").run();
+    await db.prepare("UPDATE order_items SET order_id='order-1' WHERE id='item-3'").run();
+    const first = await auditReturn(db), second = await auditReturn(db, 'item-3');
+    await assert.rejects(reviewReturnAsAdmin(db, auditReview(first.id, 'audit-over-refund', 60000)), /remaining delivery charge/);
+    await reviewReturnAsAdmin(db, auditReview(first.id, 'audit-valid-refund', 30000));
+    await assert.rejects(reviewReturnAsAdmin(db, auditReview(second.id, 'audit-prior-refund', 20000)), /remaining delivery charge/);
+    await reviewReturnAsAdmin(db, auditReview(second.id, 'audit-remaining-refund', 10000));
+    const totals = await db.prepare("SELECT SUM(delivery_amount_paisa) AS n FROM refunds WHERE order_id='order-1'").first<{n:number}>();
+    assert.equal(totals?.n, 40000);
+    assert.equal((await db.prepare("SELECT delivery_charge_paisa AS n FROM orders WHERE id='order-1'").first<{n:number}>())?.n, 60000);
+  } finally { await f.dispose(); }
+});
+
+void test('F02 competing standard delivery approvals fail for capacity and roll back every losing effect', async () => {
+  const f = await databaseFixture(), db = f.database as unknown as D1Database;
+  try {
+    await db.prepare("UPDATE orders SET delivery_charge_paisa=60000,current_delivery_paisa=40000,current_subtotal_paisa=item_subtotal_paisa,current_total_paisa=item_subtotal_paisa+40000,current_wallet_paisa=0,current_discount_paisa=0 WHERE id='order-1'").run();
+    await db.prepare("UPDATE order_items SET order_id='order-1' WHERE id='item-3'").run();
+    const a = await auditReturn(db), b = await auditReturn(db, 'item-3');
+    const competing = beforeAuditBatch(db, () => reviewReturnAsAdmin(db, auditReview(b.id, 'audit-capacity-winner', 40000)));
+    await assert.rejects(reviewReturnAsAdmin(competing, auditReview(a.id, 'audit-capacity-loser', 40000)), /stale-delivery-refund-capacity|remaining delivery charge/);
+    assert.equal((await db.prepare('SELECT status FROM return_requests WHERE id=?').bind(a.id).first<{status:string}>())?.status, 'requested');
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM refunds WHERE order_id='order-1'").first<{n:number}>())?.n, 1);
+    assert.equal(await db.prepare("SELECT id FROM return_request_events WHERE request_id='audit-capacity-loser'").first(), null);
+    assert.equal(await db.prepare("SELECT id FROM audit_logs WHERE request_id='audit-capacity-loser'").first(), null);
+  } finally { await f.dispose(); }
+});
+
+void test('F03 checkout consuming the last replacement unit rolls back outcome inventory log and notifications', async () => {
+  const f = await databaseFixture(), db = f.database as unknown as D1Database;
+  try {
+    const created = await auditReturn(db);
+    await reviewReturnAsAdmin(db, { ...auditReview(created.id, 'audit-replacement-approve'), outcome: 'replacement' });
+    await db.prepare("UPDATE products SET inventory_quantity=1 WHERE id='product-1'").run();
+    await seedCheckoutBuyer(db,'audit-checkout-buyer','audit-buyer@example.test','9811111111',now);
+    await db.prepare("INSERT INTO carts(id,anonymous_token_hash,currency,created_at,updated_at) VALUES ('audit-stock-cart','audit-stock-token','NPR',?,?)").bind(now,now).run();
+    await db.prepare("INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES ('audit-stock-cart-item','audit-stock-cart','product-1',1,?,?)").bind(now,now).run();
+    let notificationCountAfterCheckout = -1;
+    const competing = beforeAuditBatch(db, async () => {
+      await createCodOrder(db,'audit-stock-token','audit-stock-receipt',{
+        customerEmail:'audit-buyer@example.test',customerAuthSubject:'audit-checkout-buyer',customerPhone:'9811111111',locale:'en-NP',termsAccepted:true,
+        idempotencyKey:'550e8400-e29b-41d4-a716-446655440011',address:{recipientName:'Audit Buyer',phone:'9811111111',province:'Madhesh',district:'Dhanusha',municipality:'Janakpur',locality:'Ward 1'},
+      },now,'audit-checkout-buyer');
+      notificationCountAfterCheckout=(await db.prepare('SELECT COUNT(*) AS n FROM notification_messages').first<{n:number}>())!.n;
+    });
+    await assert.rejects(advanceReturnAsAdmin(competing, { returnRequestId: created.id, actorId: 'admin-1', actorRole: 'admin',
+      action: 'resolve_replacement', note: 'SIMULATED replacement evidence.', publicMessageEn: 'Replaced.', publicMessageNe: 'Replaced.',
+      reference: 'SIM-REPLACEMENT', requestId: 'audit-lost-stock', now }), /lost-return-inventory-transition|not enough inventory/);
+    assert.equal((await db.prepare('SELECT status FROM return_requests WHERE id=?').bind(created.id).first<{status:string}>())?.status, 'approved');
+    assert.equal(await db.prepare('SELECT id FROM return_outcomes WHERE return_request_id=?').bind(created.id).first(), null);
+    assert.equal(await db.prepare("SELECT id FROM inventory_adjustments WHERE reason LIKE '%SIMULATED replacement evidence%'").first(), null);
+    assert.equal(await db.prepare("SELECT id FROM return_request_events WHERE request_id='audit-lost-stock'").first(), null);
+    assert.equal(await db.prepare("SELECT id FROM audit_logs WHERE request_id='audit-lost-stock'").first(), null);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM notification_messages').first<{n:number}>())?.n, notificationCountAfterCheckout);
+    assert.equal((await db.prepare("SELECT inventory_quantity AS n FROM products WHERE id='product-1'").first<{n:number}>())?.n, 0);
+  } finally { await f.dispose(); }
+});
+
+void test('F04 dual-role customer requester is retained and cannot review their own purchase', async () => {
+  const f = await databaseFixture(), db = f.database as unknown as D1Database;
+  try {
+    await db.prepare("UPDATE orders SET customer_id='admin-1' WHERE id='order-1'").run();
+    const created = await auditReturn(db, 'item-1', 'admin-1');
+    assert.equal((await db.prepare('SELECT requested_by AS actor FROM return_requests WHERE id=?').bind(created.id).first<{actor:string}>())?.actor, 'admin-1');
+    await assert.rejects(reviewReturnAsAdmin(db, auditReview(created.id, 'audit-self-review', 1000)), /cannot review/);
+    await reviewReturnAsAdmin(db, { ...auditReview(created.id, 'audit-independent-review', 1000), actorId: 'super-1', actorRole: 'super_admin' });
+    assert.equal((await db.prepare('SELECT reviewed_by AS actor FROM return_requests WHERE id=?').bind(created.id).first<{actor:string}>())?.actor, 'super-1');
+  } finally { await f.dispose(); }
+});
+
+void test('F04 legacy NULL requester and order-owner reassignment are independently guarded at commit', async () => {
+  for (const interleave of [false, true]) {
+    const f = await databaseFixture(), db = f.database as unknown as D1Database;
+    try {
+      const created = await auditReturn(db);
+      const setOwner = async () => { await db.prepare("UPDATE orders SET customer_id='admin-1' WHERE id='order-1'").run(); };
+      if (!interleave) await setOwner();
+      await assert.rejects(reviewReturnAsAdmin(interleave ? beforeAuditBatch(db, setOwner) : db,
+        auditReview(created.id, 'audit-owner-review', 1000)), /cannot review|stale-initial-return-review/);
+      assert.equal((await db.prepare('SELECT status FROM return_requests WHERE id=?').bind(created.id).first<{status:string}>())?.status, 'requested');
+      assert.equal(await db.prepare("SELECT id FROM refunds WHERE operation_request_id='audit-owner-review'").first(), null);
+    } finally { await f.dispose(); }
+  }
+});
+
+void test('F08 delivered plus cancelled parcels close the order at the last active delivery time', async () => {
+  const f = await parcelFixture(), db = f.db;
+  try {
+    const [a,b] = await listParcels(db, 'order-1');
+    await operateParcel(db, { jobId: b.id, actorId:'admin-1', action:'cancel', version:b.version,
+      note:'SIMULATED inactive parcel cancellation.',requestId:'audit-parcel-cancel',now });
+    await db.prepare("UPDATE shipping_jobs SET status='dispatched' WHERE id=?").bind(a.id).run();
+    await db.prepare("UPDATE order_items SET fulfillment_status='dispatched' WHERE id='item-1'").run();
+    const p = (await listParcels(db,'order-1')).find(p=>p.id===a.id)!;
+    await operateParcel(db, { jobId: a.id, actorId:'admin-1', action:'deliver',version:p.version,
+      note:'SIMULATED final active delivery.',requestId:'audit-last-active-delivery',now:now+5000 });
+    const order = await db.prepare("SELECT status,delivered_at AS delivered FROM orders WHERE id='order-1'").first<{status:string;delivered:number}>();
+    assert.equal(order?.status, 'delivered');
+    assert.equal(order?.delivered, now+5000);
+  } finally { await f.dispose(); }
+});
+
+import { accrueManagedEntitlements, getManagedFinanceSummary } from '../lib/db/repositories/managed-settlements';
+
+async function auditManagedSnapshot(db: D1Database, model = 'managed_sale_linked_percentage_v1', base=100000, retained=9000) {
+  const saleLinked = model === 'managed_sale_linked_percentage_v1';
+  await db.prepare("UPDATE order_items SET commission_paisa=0,commission_bps=0,commission_rule_version=? WHERE id='item-1'").bind('managed-'+model).run();
+  await db.prepare(`INSERT INTO managed_commercial_snapshots(id,order_item_id,seller_id,participation_route,commercial_model,
+    legal_seller_reference,invoice_issuer_reference,payout_beneficiary_reference,agreement_version,agreement_language,
+    delivery_hold_days,product_value_paisa,eligible_base_paisa,platform_retention_bps,platform_retained_paisa,
+    maker_entitlement_paisa,agreed_supplier_amount_paisa,simulation_label,created_at)
+    VALUES ('audit-managed-snapshot','item-1','seller-1','managed_maker',?,'SIM-LEGAL','SIM-INVOICE','SIM-PAYOUT','SIM-AGREEMENT','en',
+      7,?,?,?,?,?,?,'SIMULATED - NOT VALID FOR PRODUCTION',?)`)
+    .bind(model,base,base,saleLinked?900:0,saleLinked?retained:0,saleLinked?base-retained:base,saleLinked?null:50000,now).run();
+  if (saleLinked) await db.prepare(`INSERT INTO managed_entitlements(id,snapshot_id,seller_id,status,calculated_paisa,created_at,updated_at)
+    VALUES ('audit-entitlement','audit-managed-snapshot','seller-1','calculated',?,?,?)`).bind(base-retained,now,now).run();
+}
+
+void test('F05 each managed model excludes standard accrual and contaminated standard payout balances', async () => {
+  for (const model of ['managed_sale_linked_percentage_v1','managed_fixed_supplier_price_v1']) {
+    const f = await databaseFixture(), db = f.database as unknown as D1Database;
+    try {
+      await auditManagedSnapshot(db,model);
+      await accrueExistingDeliveredEarnings(db,{actorId:'admin-1',requestId:'audit-standard-accrue',now});
+      assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM seller_ledger_entries WHERE order_item_id='item-1'").first<{n:number}>())?.n,0);
+      // A historical wrong-model entry must never enter standard payout preparation.
+      await db.prepare(`INSERT INTO seller_ledger_entries(id,seller_id,order_item_id,type,amount_paisa,available_at,description,created_at)
+        VALUES ('audit-contaminated-sale','seller-1','item-1','sale',100000,?,'SIMULATED historical contamination',?)`).bind(now,now).run();
+      // Other standard order is future-held and cannot mask the contamination.
+      await db.prepare("UPDATE seller_ledger_entries SET available_at=? WHERE order_item_id='item-3'").bind(now+10000000).run();
+      assert.equal((await getSellerFinanceSummary(db,'seller-1',now)).availablePaisa,0);
+      assert.equal((await listPayoutCandidates(db,now)).some(c=>c.sellerId==='seller-1'),false);
+      await assert.rejects(prepareSellerPayout(db,{sellerId:'seller-1',actorId:'admin-1',actorRole:'admin',
+        note:'SIMULATED wrong-model payout attempt.',requestId:'audit-contaminated-payout',now}),/positive available balance/);
+      if (model==='managed_sale_linked_percentage_v1') {
+        await accrueManagedEntitlements(db,{orderId:'order-1',actorId:'admin-1',requestId:'audit-managed-accrue',now});
+        assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,91000);
+      }
+    } finally { await f.dispose(); }
+  }
+});
+
+void test('F06 managed partial refund completion appends one proportional reversal atomically and replay-safe', async () => {
+  const f=await databaseFixture(),db=f.database as unknown as D1Database;
+  try {
+    await auditManagedSnapshot(db);
+    await db.prepare("UPDATE order_items SET quantity=2,unit_price_paisa=50000 WHERE id='item-1'").run();
+    await accrueManagedEntitlements(db,{orderId:'order-1',actorId:'admin-1',requestId:'audit-managed-earned',now});
+    for (const [index,amount] of [25000,25000].entries()) {
+      const created = await createCustomerReturnRequest(db, {orderNumber:'HK-TEST-1',receiptTokenHash:'receipt-hash-1',orderItemId:'item-1',
+        quantity:1,reason:'defective',requestedResolution:'refund',detail:'SIMULATED partial managed refund.',locale:'en-NP',
+        idempotencyKey:'audit-managed-return-'+index,evidence:[],now});
+      await reviewReturnAsAdmin(db,{...auditReview(created.id,'audit-managed-review-'+index),itemRefundPaisa:amount});
+      const common = {returnRequestId:created.id,actorId:'admin-1',actorRole:'admin' as const,
+        note:'SIMULATED managed partial refund.',publicMessageEn:'Paid.',publicMessageNe:'Paid.',now};
+      await advanceReturnAsAdmin(db,{...common,action:'start_refund',requestId:'audit-managed-start-'+index});
+      const completion={...common,action:'complete_refund' as const,reference:'SIM-PAY-'+index,requestId:'audit-managed-complete-'+index};
+      await advanceReturnAsAdmin(db,completion); await advanceReturnAsAdmin(db,completion);
+      assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_settlement_entries WHERE type='refund_adjustment'").first<{n:number}>())?.n,index+1);
+    }
+    assert.equal((await db.prepare("SELECT SUM(amount_paisa) AS n FROM managed_settlement_entries WHERE type='refund_adjustment'").first<{n:number}>())?.n,-45500);
+    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,45500);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM seller_ledger_entries WHERE order_item_id='item-1'").first<{n:number}>())?.n,0);
+    assert.equal((await db.prepare("SELECT maker_entitlement_paisa AS n FROM managed_commercial_snapshots WHERE id='audit-managed-snapshot'").first<{n:number}>())?.n,91000);
+  } finally {await f.dispose();}
+});
+
+void test('F07 competing managed accrual request IDs claim one entitlement and report actual credits', async () => {
+  const f=await databaseFixture(),db=f.database as unknown as D1Database;
+  try {
+    await auditManagedSnapshot(db);
+    const raced=beforeAuditBatch(db,async()=>{assert.equal(await accrueManagedEntitlements(db,{orderId:'order-1',actorId:'admin-1',requestId:'audit-managed-winner',now}),1);});
+    assert.equal(await accrueManagedEntitlements(raced,{orderId:'order-1',actorId:'admin-1',requestId:'audit-managed-loser',now}),0);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_settlement_entries WHERE entitlement_id='audit-entitlement' AND type='earned'").first<{n:number}>())?.n,1);
+    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,91000);
+    assert.deepEqual(JSON.parse((await db.prepare("SELECT next_json AS data FROM audit_logs WHERE request_id='audit-managed-loser'").first<{data:string}>())!.data),{count:0});
+  } finally {await f.dispose();}
+});
+
+
+void test('F06 tiny partial refunds reconcile cumulative retention rounding through zero-delta reversals', async()=>{
+  const f=await databaseFixture(),db=f.database as unknown as D1Database;
+  try {
+    await auditManagedSnapshot(db,'managed_sale_linked_percentage_v1',3,1);
+    await db.prepare("UPDATE order_items SET quantity=3,unit_price_paisa=1,line_total_paisa=3,commission_base_paisa=3 WHERE id='item-1'").run();
+    await db.prepare("UPDATE orders SET item_subtotal_paisa=3,grand_total_paisa=15003 WHERE id='order-1'").run();
+    await accrueManagedEntitlements(db,{orderId:'order-1',actorId:'admin-1',requestId:'audit-round-earned',now});
+    for(let index=0;index<3;index++) {
+      const created=await createCustomerReturnRequest(db,{orderNumber:'HK-TEST-1',receiptTokenHash:'receipt-hash-1',orderItemId:'item-1',quantity:1,
+        reason:'defective',requestedResolution:'refund',detail:'SIMULATED tiny item refund.',locale:'en-NP',idempotencyKey:'audit-round-return-'+index,evidence:[],now});
+      await reviewReturnAsAdmin(db,{...auditReview(created.id,'audit-round-review-'+index),itemRefundPaisa:1});
+      const common={returnRequestId:created.id,actorId:'admin-1',actorRole:'admin' as const,note:'SIMULATED tiny refund.',publicMessageEn:'Paid.',publicMessageNe:'Paid.',now};
+      await advanceReturnAsAdmin(db,{...common,action:'start_refund',requestId:'audit-round-start-'+index});
+      await advanceReturnAsAdmin(db,{...common,action:'complete_refund',reference:'SIM-TINY-'+index,requestId:'audit-round-complete-'+index});
+    }
+    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,0);
+    assert.equal((await db.prepare("SELECT SUM(base_amount_paisa) AS n FROM managed_settlement_entries WHERE type='refund_adjustment'").first<{n:number}>())?.n,3);
+  }finally{await f.dispose();}
+});
+
+void test('F06 failed managed reversal guard rolls refund outcome ledger and notifications back together',async()=>{
+  const f=await databaseFixture(),db=f.database as unknown as D1Database;
+  try {
+    await auditManagedSnapshot(db);
+    await accrueManagedEntitlements(db,{orderId:'order-1',actorId:'admin-1',requestId:'audit-rollback-earned',now});
+    const created=await auditReturn(db);
+    await reviewReturnAsAdmin(db,{...auditReview(created.id,'audit-rollback-review'),itemRefundPaisa:50000});
+    const common={returnRequestId:created.id,actorId:'admin-1',actorRole:'admin' as const,note:'SIMULATED guard rollback.',publicMessageEn:'Paid.',publicMessageNe:'Paid.',now};
+    await advanceReturnAsAdmin(db,{...common,action:'start_refund',requestId:'audit-rollback-start'});
+    const before=await db.prepare('SELECT COUNT(*) AS n FROM notification_messages').first<{n:number}>();
+    const raced=beforeAuditBatch(db,async()=>{
+      await db.prepare(`INSERT INTO managed_settlement_entries(id,entitlement_id,refund_id,type,amount_paisa,base_amount_paisa,metadata_json,reason_code,request_id,created_by,created_at)
+        VALUES ('audit-other-adjustment','audit-entitlement',NULL,'refund_adjustment',-910,1000,'{}','SIMULATED competing adjustment','audit-other-adjustment','admin-1',?)`).bind(now).run();
+    });
+    await assert.rejects(advanceReturnAsAdmin(raced,{...common,action:'complete_refund',reference:'SIM-ROLLBACK',requestId:'audit-rollback-complete'}),/CHECK constraint failed: valid=1/);
+    assert.equal((await db.prepare('SELECT status FROM return_requests WHERE id=?').bind(created.id).first<{status:string}>())?.status,'approved');
+    assert.equal((await db.prepare('SELECT status FROM refunds WHERE return_request_id=?').bind(created.id).first<{status:string}>())?.status,'processing');
+    assert.equal(await db.prepare('SELECT id FROM return_outcomes WHERE return_request_id=?').bind(created.id).first(),null);
+    assert.equal(await db.prepare("SELECT id FROM audit_logs WHERE request_id='audit-rollback-complete'").first(),null);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM notification_messages').first<{n:number}>())?.n,before?.n);
+    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,90090);
+  }finally{await f.dispose();}
+});
+
+void test('F08 cancelling the final inactive parcel preserves earlier active delivery time for earnings and referrals',async()=>{
+  const f=await parcelFixture(),db=f.db;
+  try {
+    await ensureWallet(db,'seller-user-1',now);
+    await db.prepare("UPDATE orders SET customer_id='admin-1',customer_phone='9899999999' WHERE id='order-1'").run();
+    await db.prepare("INSERT INTO referral_redemptions(customer_id,referrer_id,order_id,phone_key,reward_paisa,wait_days,created_at) VALUES ('admin-1','seller-user-1','order-1','9899999999',5000,7,?)").bind(now).run();
+    const [a,b]=await listParcels(db,'order-1');
+    await db.prepare("UPDATE shipping_jobs SET status='dispatched' WHERE id=?").bind(a.id).run();
+    await db.prepare("UPDATE order_items SET fulfillment_status='dispatched' WHERE id='item-1'").run();
+    let active=(await listParcels(db,'order-1')).find(p=>p.id===a.id)!;
+    await operateParcel(db,{jobId:a.id,actorId:'admin-1',action:'deliver',version:active.version,note:'SIMULATED first active delivery.',requestId:'audit-earlier-delivery',now});
+    assert.equal((await db.prepare("SELECT delivered_at AS n FROM orders WHERE id='order-1'").first<{n:number|null}>())?.n,null);
+    await operateParcel(db,{jobId:b.id,actorId:'admin-1',action:'cancel',version:b.version,note:'SIMULATED final inactive cancellation.',requestId:'audit-later-cancel',now:now+5000});
+    const order=await db.prepare("SELECT status,delivered_at AS delivered FROM orders WHERE id='order-1'").first<{status:string;delivered:number}>();
+    assert.equal(order?.status,'delivered'); assert.equal(order?.delivered,now);
+    active=(await listParcels(db,'order-1')).find(p=>p.id===a.id)!;
+    for (const [action,actorId] of [['collect','admin-1'],['propose_remittance','super-1']]) {
+      const p=(await listParcels(db,'order-1')).find(p=>p.id===a.id)!;
+      await operateParcel(db,{jobId:a.id,actorId,action,version:p.version,amountPaisa:active.codDuePaisa,reference:'SIM-FINAL-'+action,
+        note:'SIMULATED final active COD receipt.',requestId:'audit-final-'+action,now:now+10000});
+    }
+    const entry=await db.prepare("SELECT available_at AS available,created_at AS created FROM seller_ledger_entries WHERE order_item_id='item-1' AND type='sale'").first<{available:number;created:number}>();
+    assert.equal(entry?.created,now); assert.equal(entry?.available,now+7*86400000);
+    await releaseReferralRewards(db,'seller-user-1',now+7*86400000);
+    assert.equal((await getWallet(db,'seller-user-1',now)).balancePaisa,0);
+    await releaseReferralRewards(db,'seller-user-1',now+7*86400000+1);
+    assert.equal((await getWallet(db,'seller-user-1',now)).balancePaisa,5000);
+    assert.equal((await db.prepare("SELECT delivered_at AS n FROM orders WHERE id='order-1'").first<{n:number}>())?.n,now);
+  }finally{await f.dispose();}
+});
+
+
+void test('F07 zero-value managed entitlement resolves earning state without creating a zero ledger credit',async()=>{
+  const f=await databaseFixture(),db=f.database as unknown as D1Database;
+  try {
+    await auditManagedSnapshot(db,'managed_sale_linked_percentage_v1',1,1);
+    assert.equal(await accrueManagedEntitlements(db,{orderId:'order-1',actorId:'admin-1',requestId:'audit-zero-earned',now}),0);
+    assert.equal(await accrueManagedEntitlements(db,{orderId:'order-1',actorId:'admin-1',requestId:'audit-zero-earned-retry',now}),0);
+    const row=await db.prepare("SELECT status,earned_at AS earned FROM managed_entitlements WHERE id='audit-entitlement'").first<{status:string;earned:number}>();
+    assert.equal(row?.status,'held'); assert.ok(row?.earned);
+    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,0);
+  }finally{await f.dispose();}
+});
+
+import {createFixedSupplyRecord,decideFixedSupplyRecord,getFixedSupplyBalance} from '../lib/managed-commerce/fixed-supply';
+import {resolveRuntimeEnvironment} from '../lib/staging/environment';
+
+void test('F05/F06 fixed-supply customer refund preserves the single accepted supplier obligation',async()=>{
+  const f=await databaseFixture(),db=f.database as unknown as D1Database;
+  try {
+    await auditManagedSnapshot(db,'managed_fixed_supplier_price_v1');
+    await db.prepare(`INSERT INTO seller_participation_profiles(seller_id,participation_route,application_stage,public_name,public_city,commercial_model,created_at,updated_at)
+      VALUES ('seller-1','managed_maker','active','SIM Maker','Janakpur','managed_fixed_supplier_price_v1',?,?)`).bind(now,now).run();
+    const environment=resolveRuntimeEnvironment({runtimeEnvironment:'local_staging',appOrigin:'http://127.0.0.1:4173'});
+    const supply=await createFixedSupplyRecord(db,{sellerId:'seller-1',productId:'product-1',quantity:1,agreedUnitPaisa:50000,
+      createdBy:'seller-user-1',agreementVersion:'SIM-AGREEMENT',agreementLanguage:'en',payoutBeneficiaryReference:'SIM-PAYOUT',requestId:'audit-fixed-propose',now,environment});
+    await decideFixedSupplyRecord(db,{recordId:supply,actorId:'super-1',action:'accept',quantityAccepted:1,possessionStatus:'received',qualityStatus:'accepted',
+      ownershipRecordStatus:'simulated_terms_recorded',riskRecordStatus:'simulated_terms_recorded',evidenceReference:'SIM-GRN',reason:'SIMULATED fixed supply acceptance.',requestId:'audit-fixed-accept',now,environment});
+    const before=await getFixedSupplyBalance(db,supply);
+    const created=await auditReturn(db);
+    await reviewReturnAsAdmin(db,{...auditReview(created.id,'audit-fixed-refund-review'),itemRefundPaisa:100000});
+    const common={returnRequestId:created.id,actorId:'admin-1',actorRole:'admin' as const,note:'SIMULATED fixed supply customer refund.',publicMessageEn:'Paid.',publicMessageNe:'Paid.',now};
+    await advanceReturnAsAdmin(db,{...common,action:'start_refund',requestId:'audit-fixed-refund-start'});
+    await advanceReturnAsAdmin(db,{...common,action:'complete_refund',reference:'SIM-FIXED-REFUND',requestId:'audit-fixed-refund-complete'});
+    assert.deepEqual(await getFixedSupplyBalance(db,supply),before);
+    assert.equal(before.originalOwedPaisa,50000);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM managed_supplier_obligations').first<{n:number}>())?.n,1);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM seller_ledger_entries WHERE order_item_id='item-1'").first<{n:number}>())?.n,0);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM managed_settlement_entries').first<{n:number}>())?.n,0);
+  }finally{await f.dispose();}
+});
+
+void test('F05 historical standard payouts containing managed items cannot advance approval processing or payment',async()=>{
+  for(const action of ['approve','start_processing','mark_paid'] as const) {
+    const f=await databaseFixture(),db=f.database as unknown as D1Database;
+    try {
+      await db.prepare(`INSERT INTO seller_ledger_entries(id,seller_id,order_item_id,type,amount_paisa,available_at,description,created_at)
+        VALUES ('audit-payout-sale','seller-1','item-1','sale',100000,?,'SIMULATED historical sale',?)`).bind(now,now).run();
+      const prepared=await prepareSellerPayout(db,{sellerId:'seller-1',actorId:action==='approve'?'admin-1':'super-1',actorRole:action==='approve'?'admin':'super_admin',
+        note:'SIMULATED historical payout prepared.',requestId:'audit-old-payout-prepare',now});
+      const common={payoutId:prepared.id,actorId:'super-1',actorRole:'super_admin' as const,note:'SIMULATED model eligibility check.',now};
+      if(action==='mark_paid')await operatePayout(db,{...common,action:'start_processing',requestId:'audit-old-payout-start'});
+      const state=(await db.prepare('SELECT status FROM payouts WHERE id=?').bind(prepared.id).first<{status:string}>())!.status;
+      if(action==='mark_paid') {
+        await assert.rejects(operatePayout(beforeAuditBatch(db,()=>auditManagedSnapshot(db)),{...common,action,
+          providerReference:'SIM-WRONG-MODEL',requestId:'audit-old-payout-advance'}),/CHECK constraint failed: valid=1/);
+      } else {
+        await auditManagedSnapshot(db);
+        await assert.rejects(operatePayout(db,{...common,action,requestId:'audit-old-payout-advance'}),/CHECK constraint failed: valid=1/);
+      }
+      assert.equal((await db.prepare('SELECT status FROM payouts WHERE id=?').bind(prepared.id).first<{status:string}>())?.status,state);
+      assert.equal(await db.prepare("SELECT id FROM payout_events WHERE request_id='audit-old-payout-advance'").first(),null);
+    }finally{await f.dispose();}
   }
 });

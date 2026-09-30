@@ -46,25 +46,35 @@ export async function accrueManagedEntitlements(
     const earnedAt = row.deliveredAt ?? options.now;
     const holdUntil = earnedAt + Number(row.holdDays) * dayMs;
     statements.push(
-      database.prepare(`INSERT OR IGNORE INTO managed_settlement_entries(
+      // Only the transaction that moves calculated -> earned can add credit.
+      database.prepare(`UPDATE managed_entitlements SET status='earned',earned_at=?,hold_until=?,version=version+1,updated_at=?
+        WHERE id=? AND status='calculated'
+          AND NOT EXISTS(SELECT 1 FROM managed_settlement_entries x WHERE x.entitlement_id=managed_entitlements.id AND x.type='earned')
+          AND EXISTS(SELECT 1 FROM managed_commercial_snapshots s JOIN order_items i ON i.id=s.order_item_id
+            JOIN orders o ON o.id=i.order_id WHERE s.id=managed_entitlements.snapshot_id
+              AND o.status='delivered' AND o.payment_status='paid' AND i.fulfillment_status='delivered')`)
+        .bind(earnedAt,holdUntil,options.now,row.id),
+      database.prepare(`INSERT INTO managed_settlement_entries(
         id,entitlement_id,refund_id,type,amount_paisa,base_amount_paisa,metadata_json,reason_code,request_id,created_by,created_at
-      ) VALUES (?,?,NULL,'earned',?,NULL,?,'delivered_and_paid',?,?,?)`).bind(
+      ) SELECT ?,?,NULL,'earned',?,NULL,?,'delivered_and_paid',?,?,? WHERE changes()=1 AND ?>0`).bind(
         crypto.randomUUID(),row.id,row.calculatedPaisa,
         JSON.stringify({customerPaymentRequired:true,riderRemittanceRequiredForEntitlement:false}),
-        `${options.requestId}:earned:${row.id}`,options.actorId,options.now,
+        `${options.requestId}:earned:${row.id}`,options.actorId,options.now,row.calculatedPaisa,
       ),
-      database.prepare(`UPDATE managed_entitlements SET status=?,earned_at=?,hold_until=?,eligible_at=?,version=version+1,updated_at=?
-        WHERE id=? AND status='calculated'`).bind(
-        holdUntil<=options.now?'eligible':'held',earnedAt,holdUntil,holdUntil<=options.now?holdUntil:null,options.now,row.id,
+      database.prepare(`UPDATE managed_entitlements SET status=?,eligible_at=?,updated_at=?
+        WHERE id=? AND status='earned' AND (calculated_paisa=0 OR EXISTS(SELECT 1 FROM managed_settlement_entries x
+          WHERE x.entitlement_id=managed_entitlements.id AND x.type='earned' AND x.request_id=?))`).bind(
+        holdUntil<=options.now?'eligible':'held',holdUntil<=options.now?holdUntil:null,options.now,row.id,
+        `${options.requestId}:earned:${row.id}`,
       ),
     );
   }
   statements.push(database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,ip_hash,created_at)
-    VALUES (?,?,'managed_settlement.earned','order',?,'Managed Maker entitlement earned from delivered-and-paid facts; rider remittance remains separate',NULL,?,?,NULL,?)`).bind(
-      crypto.randomUUID(),options.actorId,options.orderId,JSON.stringify({count:rows.results.length}),options.requestId,options.now,
+    VALUES (?,?,'managed_settlement.earned','order',?,'Managed Maker entitlement earned from delivered-and-paid facts; rider remittance remains separate',NULL,json_object('count',(SELECT COUNT(*) FROM managed_settlement_entries WHERE type='earned' AND request_id IN (${rows.results.map(()=>'?').join(',')}))),?,NULL,?)`).bind(
+      crypto.randomUUID(),options.actorId,options.orderId,...rows.results.map(row=>`${options.requestId}:earned:${row.id}`),options.requestId,options.now,
   ));
-  await database.batch(statements);
-  return rows.results.length;
+  const results = await database.batch(statements);
+  return rows.results.reduce((count, _row, index) => count + Number(results[index * 3 + 1]?.meta.changes ?? 0), 0);
 }
 
 export async function releaseManagedEligibility(database:D1Database, now:number):Promise<number> {
@@ -73,24 +83,68 @@ export async function releaseManagedEligibility(database:D1Database, now:number)
   return Number(result.meta.changes ?? 0);
 }
 
+export async function buildManagedRefundAdjustmentStatements(
+  database:D1Database,
+  options:{entitlementId:string;refundId:string;refundedEligibleBasePaisa:number;actorId:string;reasonCode:string;requestId:string;now:number;completedRefundRequestId?:string},
+):Promise<D1PreparedStatement[]> {
+  // Refund identity deduplicates even when an operation is retried with a new ID.
+  const duplicate=await database.prepare("SELECT 1 FROM managed_settlement_entries WHERE entitlement_id=? AND refund_id=? AND type='refund_adjustment'")
+    .bind(options.entitlementId,options.refundId).first();
+  if(duplicate)return [];
+  const row=await database.prepare(`SELECT s.eligible_base_paisa AS eligibleBasePaisa,s.platform_retained_paisa AS retainedPaisa,
+    COALESCE((SELECT SUM(base_amount_paisa) FROM managed_settlement_entries x WHERE x.entitlement_id=e.id AND x.type='refund_adjustment'),0) AS refundedBase,
+    COALESCE((SELECT -SUM(amount_paisa) FROM managed_settlement_entries x WHERE x.entitlement_id=e.id AND x.type='refund_adjustment'),0) AS reversedPaisa,
+    COALESCE((SELECT SUM(r.commission_base_refunded_paisa) FROM refunds r
+      JOIN return_requests c ON c.id=r.return_request_id
+      WHERE c.order_item_id=s.order_item_id AND r.status='paid' AND r.id<>?),0) AS paidRefundBase
+    FROM managed_entitlements e JOIN managed_commercial_snapshots s ON s.id=e.snapshot_id
+    WHERE e.id=? AND s.commercial_model='managed_sale_linked_percentage_v1'`)
+    .bind(options.refundId,options.entitlementId).first<{eligibleBasePaisa:number;retainedPaisa:number;refundedBase:number;reversedPaisa:number;paidRefundBase:number}>();
+  if(!row)throw new ManagedSettlementError('Managed entitlement not found.');
+  if(!Number.isSafeInteger(options.refundedEligibleBasePaisa)||options.refundedEligibleBasePaisa<0)
+    throw new ManagedSettlementError('Refunded eligible base must be a non-negative safe integer.');
+  // Paid refund facts retain base consumed by a zero-money rounding delta.
+  const cumulativeBase=BigInt(Math.max(row.refundedBase,row.paidRefundBase))+BigInt(options.refundedEligibleBasePaisa);
+  if(cumulativeBase>BigInt(row.eligibleBasePaisa))throw new ManagedSettlementError('Refund adjustments cannot exceed the original eligible base.');
+  const cumulative=calculateManagedSaleLinkedRefundAmounts({originalEligibleBasePaisa:row.eligibleBasePaisa,
+    originalPlatformRetainedPaisa:row.retainedPaisa,refundedEligibleBasePaisa:Number(cumulativeBase)});
+  const makerReversal=cumulative.makerEntitlementReversalPaisa-row.reversedPaisa;
+  // The immutable ledger forbids zero money entries. Carry paid base with no
+  // money delta into the next nonzero entry so a full refund has no residue.
+  if(!options.refundedEligibleBasePaisa || !makerReversal)return [];
+  const guardId=crypto.randomUUID();
+  const refundGate=options.completedRefundRequestId
+    ? "AND EXISTS(SELECT 1 FROM refunds WHERE id=? AND status='paid' AND operation_request_id=?)" : '';
+  const gateBindings=options.completedRefundRequestId?[options.refundId,options.completedRefundRequestId]:[];
+  return [
+    database.prepare('UPDATE managed_entitlements SET updated_at=updated_at WHERE id=?').bind(options.entitlementId),
+    database.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN
+      COALESCE((SELECT SUM(base_amount_paisa) FROM managed_settlement_entries WHERE entitlement_id=? AND type='refund_adjustment'),0)=?
+      AND COALESCE((SELECT -SUM(amount_paisa) FROM managed_settlement_entries WHERE entitlement_id=? AND type='refund_adjustment'),0)=?
+      AND COALESCE((SELECT SUM(r.commission_base_refunded_paisa) FROM refunds r JOIN return_requests c ON c.id=r.return_request_id
+        JOIN managed_commercial_snapshots s ON s.order_item_id=c.order_item_id JOIN managed_entitlements e ON e.snapshot_id=s.id
+        WHERE e.id=? AND r.status='paid' AND r.id<>?),0)=?
+      AND NOT EXISTS(SELECT 1 FROM managed_settlement_entries WHERE entitlement_id=? AND refund_id=? AND type='refund_adjustment')
+      THEN 1 ELSE 0 END`).bind(guardId,options.entitlementId,row.refundedBase,options.entitlementId,row.reversedPaisa,
+        options.entitlementId,options.refundId,row.paidRefundBase,options.entitlementId,options.refundId),
+    database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(guardId),
+    database.prepare(`INSERT INTO managed_settlement_entries(id,entitlement_id,refund_id,type,amount_paisa,base_amount_paisa,metadata_json,reason_code,request_id,created_by,created_at)
+      SELECT ?,?,?,'refund_adjustment',?,?,?,?,?,?,? WHERE 1=1 ${refundGate}`).bind(
+        crypto.randomUUID(),options.entitlementId,options.refundId,-makerReversal,Number(cumulativeBase)-row.refundedBase,
+        JSON.stringify({refundedEligibleBasePaisa:Number(cumulativeBase)-row.refundedBase,
+          currentRefundEligibleBasePaisa:options.refundedEligibleBasePaisa,
+          carriedRefundEligibleBasePaisa:Number(cumulativeBase)-row.refundedBase-options.refundedEligibleBasePaisa,
+          makerEntitlementReversalPaisa:makerReversal,
+          platformRetentionReversalPaisa:Number(cumulativeBase)-row.refundedBase-makerReversal}),options.reasonCode,options.requestId,options.actorId,options.now,...gateBindings),
+  ];
+}
+
 export async function applyManagedRefundAdjustment(
   database:D1Database,
   options:{entitlementId:string;refundId:string;refundedEligibleBasePaisa:number;actorId:string;reasonCode:string;requestId:string;now:number},
 ):Promise<void> {
-  const duplicate=await database.prepare('SELECT 1 FROM managed_settlement_entries WHERE request_id=?').bind(options.requestId).first();
-  if(duplicate)return;
-  const row=await database.prepare(`SELECT s.eligible_base_paisa AS eligibleBasePaisa,s.platform_retained_paisa AS retainedPaisa,
-    COALESCE((SELECT SUM(base_amount_paisa) FROM managed_settlement_entries x WHERE x.entitlement_id=e.id AND x.type='refund_adjustment'),0) AS refundedBase
-    FROM managed_entitlements e JOIN managed_commercial_snapshots s ON s.id=e.snapshot_id WHERE e.id=?`).bind(options.entitlementId).first<{eligibleBasePaisa:number;retainedPaisa:number;refundedBase:number}>();
-  if(!row)throw new ManagedSettlementError('Managed entitlement not found.');
-  if(row.refundedBase+options.refundedEligibleBasePaisa>row.eligibleBasePaisa)throw new ManagedSettlementError('Refund adjustments cannot exceed the original eligible base.');
-  const amounts=calculateManagedSaleLinkedRefundAmounts({originalEligibleBasePaisa:row.eligibleBasePaisa,originalPlatformRetainedPaisa:row.retainedPaisa,refundedEligibleBasePaisa:options.refundedEligibleBasePaisa});
-  if(!amounts.makerEntitlementReversalPaisa)return;
-  await database.prepare(`INSERT INTO managed_settlement_entries(id,entitlement_id,refund_id,type,amount_paisa,base_amount_paisa,metadata_json,reason_code,request_id,created_by,created_at)
-    VALUES (?,?,?,'refund_adjustment',?,?,?,?,?,?,?)`).bind(
-      crypto.randomUUID(),options.entitlementId,options.refundId,-amounts.makerEntitlementReversalPaisa,
-      amounts.refundedEligibleBasePaisa,JSON.stringify(amounts),options.reasonCode,options.requestId,options.actorId,options.now,
-    ).run();
+  const statements=await buildManagedRefundAdjustmentStatements(database,options);
+  if(statements.length)await database.batch(statements);
 }
 
 export interface ManagedFinanceSummary { calculatedPaisa:number; earnedPaisa:number; heldPaisa:number; eligiblePaisa:number; paidPaisa:number; balancePaisa:number; }

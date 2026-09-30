@@ -1065,7 +1065,7 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
   statements.push(
     db
       .prepare(`UPDATE orders SET status=CASE WHEN NOT EXISTS(SELECT 1 FROM order_items WHERE order_id=orders.id AND fulfillment_status<>'cancelled') THEN 'cancelled' WHEN NOT EXISTS(SELECT 1 FROM order_items WHERE order_id=orders.id AND fulfillment_status NOT IN ('delivered','cancelled')) THEN 'delivered' WHEN EXISTS(SELECT 1 FROM order_items WHERE order_id=orders.id AND fulfillment_status IN ('dispatched','delivered')) OR EXISTS(SELECT 1 FROM shipping_jobs WHERE order_id=orders.id AND status IN ('returning','returned','delivery_failed')) THEN 'dispatched' ELSE status END,
- delivered_at=CASE WHEN NOT EXISTS(SELECT 1 FROM order_items WHERE order_id=orders.id AND fulfillment_status<>'delivered') THEN COALESCE(delivered_at,?) ELSE delivered_at END,updated_at=? WHERE id=? AND status IN ('confirmed','packing','ready_for_pickup','dispatched','delivered')`)
+ delivered_at=CASE WHEN EXISTS(SELECT 1 FROM order_items WHERE order_id=orders.id AND fulfillment_status='delivered') AND NOT EXISTS(SELECT 1 FROM order_items WHERE order_id=orders.id AND fulfillment_status NOT IN ('delivered','cancelled')) THEN COALESCE(delivered_at,(SELECT MAX(p.delivered_at) FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id WHERE j.order_id=orders.id AND j.status='delivered'),?) ELSE delivered_at END,updated_at=? WHERE id=? AND status IN ('confirmed','packing','ready_for_pickup','dispatched','delivered')`)
       .bind(o.now, o.now, p.orderId),
   );
   statements.push(
