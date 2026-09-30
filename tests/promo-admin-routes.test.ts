@@ -71,7 +71,7 @@ void test('promo receiver rejects unsafe origin and oversized body before financ
     413,
   );
 });
-void test('actual promo receiver enforces actor, finite limits, optimistic version, exact replay, configured provenance and GET privacy', async () => {
+void test('actual promo receiver enforces actor, finite limits, optimistic version, exact replay, configured provenance and GET privacy', async (t) => {
   const route = await import('../app/api/admin/promo-codes/route');
   const f = await createIncentiveDb();
   globalThis.promoRouteDb = f.db;
@@ -304,10 +304,17 @@ void test('actual promo receiver enforces actor, finite limits, optimistic versi
       .prepare("UPDATE users SET status='active' WHERE id='super'")
       .run();
     let limited: Response | undefined;
-    for (let i = 0; i < 41; i++) {
-      limited = await route.POST(request(body));
-      if (limited.status === 429) break;
-      assert.equal(limited.status, 200);
+    // Saturation measures requests in one window, independent of native D1 IPC time.
+    const quotaNow = Date.now();
+    const quotaClock = t.mock.method(Date, 'now', () => quotaNow);
+    try {
+      for (let i = 0; i < 41; i++) {
+        limited = await route.POST(request(body));
+        if (limited.status === 429) break;
+        assert.equal(limited.status, 200);
+      }
+    } finally {
+      quotaClock.mock.restore();
     }
     assert.equal(limited?.status, 429);
     assert.equal(
