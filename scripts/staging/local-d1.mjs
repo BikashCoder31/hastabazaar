@@ -35,8 +35,8 @@ export async function applyLocalD1Migrations(paths, projectRoot) {
       const sql = await readFile(join(migrationDirectory, name), 'utf8');
       // SQLite ignores foreign_keys changes inside a transaction. Rebuilds must
       // disable them before BEGIN so DROP does not cascade through old parents.
-      const foreignKeys = sqlite.prepare('PRAGMA foreign_keys').get().foreign_keys;
-      const legacyAlter = sqlite.prepare('PRAGMA legacy_alter_table').get().legacy_alter_table;
+      const foreignKeys = Number(sqlite.prepare('PRAGMA foreign_keys').get().foreign_keys);
+      const legacyAlter = Number(sqlite.prepare('PRAGMA legacy_alter_table').get().legacy_alter_table);
       if (/PRAGMA\s+foreign_keys\s*=\s*(?:OFF|0)\b/i.test(sql)) sqlite.exec('PRAGMA foreign_keys=OFF');
       sqlite.exec('BEGIN IMMEDIATE');
       try {

@@ -1,13 +1,17 @@
 'use client';
 
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ProductCard } from '@/components/catalog/product-card';
-import { Button } from '@/components/ui/button';
+import { SliderDots } from '@/components/ui/slider-dots';
+import {
+  activeProductSliderPosition,
+  productSliderPositions,
+} from '@/lib/catalog/product-slider-position';
 import type { FeaturedProduct } from '@/lib/catalog/featured-products';
 import { mediaSizes } from '@/lib/media/responsive-media';
 
+// oxlint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex -- A focusable scroll region lets keyboard users browse the product cards.
 export function ProductSlider({
   products,
   label,
@@ -17,47 +21,87 @@ export function ProductSlider({
   label: string;
   wideDesktop?: boolean;
 }) {
-  const scroller = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLElement>(null);
 
-  function move(direction: -1 | 1) {
+  const [positions, setPositions] = useState<number[]>([]);
+  const [current, setCurrent] = useState(0);
+
+  useEffect(() => {
     const element = scroller.current;
     if (!element) return;
-    element.scrollBy({
-      left: direction * Math.max(260, element.clientWidth * 0.82),
-      behavior: 'smooth',
-    });
-  }
+    let snaps: number[] = [];
+    const selected = () =>
+      setCurrent(activeProductSliderPosition(snaps, element.scrollLeft));
+    const measure = () => {
+      const left = element.getBoundingClientRect().left;
+      snaps = productSliderPositions(
+        Array.from(
+          element.children,
+          (child) =>
+            child.getBoundingClientRect().left - left + element.scrollLeft,
+        ),
+        element.scrollWidth,
+        element.clientWidth,
+      );
+      setPositions(snaps);
+      selected();
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    Array.from(element.children).forEach((child) => observer.observe(child));
+    element.addEventListener('scroll', selected, { passive: true });
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      element.removeEventListener('scroll', selected);
+      window.removeEventListener('resize', measure);
+    };
+  }, [products]);
+
+  const selectPage = useCallback(
+    (index: number) => {
+      const element = scroller.current;
+      if (!element || positions[index] === undefined) return;
+      element.scrollTo({
+        left: positions[index],
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+          ? 'instant'
+          : 'smooth',
+      });
+    },
+    [positions],
+  );
 
   return (
     <div className="relative">
-      {products.length > 1 ? (
-        <div className="mb-4 flex justify-end gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="rounded-full"
-            aria-label={`Show previous ${label}`}
-            onClick={() => move(-1)}
-          >
-            <ChevronLeft />
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="rounded-full"
-            aria-label={`Show next ${label}`}
-            onClick={() => move(1)}
-          >
-            <ChevronRight />
-          </Button>
-        </div>
-      ) : null}
-      <div
+      <section
+        onKeyDown={(event) => {
+          if (
+            event.defaultPrevented ||
+            (event.target as HTMLElement).closest(
+              'input, textarea, select, video',
+            )
+          )
+            return;
+          if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            event.preventDefault();
+            selectPage(
+              Math.max(
+                0,
+                Math.min(
+                  positions.length - 1,
+                  current + (event.key === 'ArrowRight' ? 1 : -1),
+                ),
+              ),
+            );
+          }
+        }}
         ref={scroller}
         aria-label={label}
-        className="homepage-product-scroller flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth pb-3 sm:gap-6"
+        aria-roledescription="carousel"
+        tabIndex={0}
+        className="homepage-product-scroller flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth motion-reduce:scroll-auto pb-3 sm:gap-6"
       >
         {products.map((product) => (
           <div
@@ -78,7 +122,19 @@ export function ProductSlider({
             />
           </div>
         ))}
-      </div>
+      </section>
+      <SliderDots
+        label={`Choose ${label} page`}
+        labels={positions.map(
+          (_, index) =>
+            `Show ${label} page ${index + 1} of ${positions.length}`,
+        )}
+        current={current}
+        onSelect={selectPage}
+        className="mt-1"
+      />
     </div>
   );
 }
+
+// oxlint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex

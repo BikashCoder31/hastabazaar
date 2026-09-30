@@ -23,7 +23,13 @@ void test('seller product previews use explicit responsive media modes', async (
   ]);
 
   assert.doesNotMatch(form, /backgroundImage/);
-  assert.equal((form.match(/data-media-mode="cover"/g) ?? []).length, 2);
+  assert.equal((form.match(/data-media-mode="contain"/g) ?? []).length, 3);
+  assert.equal(
+    (form.match(/<img[\s\S]*?data-media-mode="contain"/g) ?? []).length,
+    2,
+  );
+  assert.doesNotMatch(form, /data-media-mode="cover"/);
+  assert.match(form, /fetch\('\/api\/seller\/product-photo-preview'/);
   assert.match(
     form,
     /data-media-mode="contain"[\s\S]*?<video|<video[\s\S]*?data-media-mode="contain"/,
@@ -101,19 +107,15 @@ void test('admin hero image and poster-bearing video preserve public cover geome
       );
       assert.match(html, /data-media-frame="cover"/);
       assert.match(html, /media-frame-cover/);
-      assert.match(html, /aspect-\[4\/3\]/);
+      assert.match(html, /homepage-hero-frame/);
       assert.match(
         html,
         new RegExp(
           `data-hero-preview-viewport="${mode === 'mobile' ? 390 : 1440}"`,
         ),
       );
-      assert.match(html, /@\[640px\]\/hero:aspect-\[8\/5\]/);
-      assert.match(html, /@\[1024px\]\/hero:aspect-auto/);
-      assert.match(
-        html,
-        /@\[1024px\]\/hero:min-h-\[clamp\(32rem,42cqw,40rem\)\]/,
-      );
+      assert.match(html, /homepage-hero-layout/);
+      assert.match(html, /homepage-hero-visual/);
       for (const text of [
         'Authentic handmade',
         'Support local makers',

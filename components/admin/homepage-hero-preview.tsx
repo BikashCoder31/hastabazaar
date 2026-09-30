@@ -67,43 +67,42 @@ export function HomepageHeroPreview({
         >
           <div className={heroLayoutClass}>
             <HomepageHeroCopy slide={slide} preview />
-            <div
-              data-media-frame="cover"
-              className={mediaFrameClass(
-                'cover',
-                'aspect-[4/3] min-h-0 bg-[#75695f] @[640px]/hero:aspect-[8/5] @[1024px]/hero:aspect-auto @[1024px]/hero:min-h-[clamp(32rem,42cqw,40rem)]',
-              )}
-            >
-              {mediaUrl && slide.mediaType === 'image' ? (
-                // eslint-disable-next-line @next/next/no-img-element -- authenticated preview URL is dynamic.
-                <img
-                  data-media-mode="cover"
-                  src={mediaUrl}
-                  alt={slide.imageAlt || ''}
-                  className={mediaObjectClass('cover', heroMediaVisualClass)}
-                />
-              ) : null}
-              {mediaUrl && slide.mediaType === 'video' ? (
-                <video
-                  data-media-mode="cover"
-                  src={mediaUrl}
-                  poster={posterUrl}
-                  muted
-                  loop
-                  autoPlay
-                  playsInline
-                  aria-label={
-                    slide.videoDescription || 'Homepage hero video preview'
-                  }
-                  className={mediaObjectClass('cover', heroMediaVisualClass)}
-                />
-              ) : null}
-              {!mediaUrl ? (
-                <div className="absolute inset-0 grid place-items-center p-6 text-center text-sm text-[#687483]">
-                  Select an image or video to preview this slide.
-                </div>
-              ) : null}
-              <div className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-tr from-[#071d35]/25 via-[#102b43]/5 to-[#5a3824]/10" />
+            <div className="homepage-hero-visual">
+              <div
+                data-media-frame="cover"
+                className={mediaFrameClass('cover', 'homepage-hero-frame')}
+              >
+                {mediaUrl && slide.mediaType === 'image' ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- authenticated preview URL is dynamic.
+                  <img
+                    data-media-mode="cover"
+                    src={mediaUrl}
+                    alt={slide.imageAlt || ''}
+                    className={mediaObjectClass('cover', heroMediaVisualClass)}
+                  />
+                ) : null}
+                {mediaUrl && slide.mediaType === 'video' ? (
+                  <video
+                    data-media-mode="cover"
+                    src={mediaUrl}
+                    poster={posterUrl}
+                    muted
+                    loop
+                    autoPlay
+                    playsInline
+                    aria-label={
+                      slide.videoDescription || 'Homepage hero video preview'
+                    }
+                    className={mediaObjectClass('cover', heroMediaVisualClass)}
+                  />
+                ) : null}
+                {!mediaUrl ? (
+                  <div className="absolute inset-0 grid place-items-center p-6 text-center text-sm text-[#687483]">
+                    Select an image or video to preview this slide.
+                  </div>
+                ) : null}
+                <div className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-tr from-[#071d35]/25 via-[#102b43]/5 to-[#5a3824]/10" />
+              </div>
               {slide.imageNote ? (
                 <p className={heroNoteClass}>{slide.imageNote}</p>
               ) : null}

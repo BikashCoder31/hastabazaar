@@ -29,7 +29,7 @@ async function cancellationClientBundle() {
 }
 
 void test('native required validation focuses customer and staff controls before fetch or attempt mutation', async () => {
-  const modulePath = 'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+  const modulePath = process.env.PLAYWRIGHT_MODULE ?? 'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
   const { chromium } = await import(modulePath) as { chromium: { launch(options: object): Promise<FixtureBrowser> } };
   const bundle = await cancellationClientBundle();
   const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
@@ -104,7 +104,7 @@ void test('native required validation focuses customer and staff controls before
 });
 
 void test('mounted cancellation controls retain contextual attempts while server owns staff decision identity', async () => {
-  const playwrightPath = 'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+  const playwrightPath = process.env.PLAYWRIGHT_MODULE ?? 'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
   const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<FixtureBrowser> } };
   const bundle = await cancellationClientBundle();
   const browser = await chromium.launch({ headless: true,
@@ -206,7 +206,7 @@ void test('mounted cancellation controls retain contextual attempts while server
 });
 
 void test('cancellation clients reject malformed 2xx previews and retain uncertain decision attempts until exact success', async () => {
-  const modulePath = 'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+  const modulePath = process.env.PLAYWRIGHT_MODULE ?? 'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
   const {chromium} = await import(modulePath) as {chromium:{launch(options:object):Promise<FixtureBrowser>}};
   const bundle = await cancellationClientBundle();
   const browser = await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe'});

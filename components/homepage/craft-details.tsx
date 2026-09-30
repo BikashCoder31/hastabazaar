@@ -22,7 +22,7 @@ export function CraftDetails() {
     <section id="makers" aria-labelledby="craft-details-heading" className="shell py-10 sm:py-16">
       <div className={styles.layout}>
         <figure className={styles.figure}>
-          <div data-media-frame="cover" className={mediaFrameClass('cover', styles.media)}>
+          <div data-media-frame="cover" className={mediaFrameClass('cover', `aspect-[16/11] ${styles.media}`)}>
             <Image
               data-media-mode="cover"
               src="/homepage/nepali-maker-workshop.webp"

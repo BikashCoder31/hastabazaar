@@ -19,9 +19,9 @@ void test('hero index advances, reverses, and wraps in configured order', () => 
   assert.throws(() => nextHeroIndex(0, 0, 'next'), /slide count/i);
 });
 
-void test('images use six seconds and videos have a fifteen-second hard timeout', () => {
+void test('both image and paused video stories use the requested six-second delay', () => {
   assert.equal(heroAdvanceDelayMs('image'), 6_000);
-  assert.equal(heroAdvanceDelayMs('video'), 15_000);
+  assert.equal(heroAdvanceDelayMs('video'), 6_000);
 });
 
 void test('every pause reason stops autoplay and an empty set permits it', () => {
@@ -51,7 +51,7 @@ void test('manual selection resets the timer revision while automatic selection 
   );
 });
 
-void test('carousel presentation wires accessibility, video safety, and all pause inputs', async () => {
+void test('carousel presentation keeps manual browsing and playable videos with safe offscreen slides', async () => {
   const source = await readFile(
     new URL(
       '../components/homepage/homepage-hero-carousel.tsx',
@@ -63,9 +63,6 @@ void test('carousel presentation wires accessibility, video safety, and all paus
   assert.match(source, /aria-label="Featured Hastabazaar stories"/);
   assert.match(source, /aria-label=\{`Slide \$\{index \+ 1\} of/);
   assert.match(source, /aria-live="polite"/);
-  assert.match(source, /onPointerEnter/);
-  assert.match(source, /onFocusCapture/);
-  assert.match(source, /visibilitychange/);
   assert.match(source, /prefers-reduced-motion: reduce/);
   assert.match(source, /video\.currentTime = 0/);
   assert.match(source, /muted/);
@@ -73,9 +70,8 @@ void test('carousel presentation wires accessibility, video safety, and all paus
   assert.match(source, /loading=\{index === 0 \? 'eager' : 'lazy'\}/);
   assert.match(source, /poster=\{posterUrl\}/);
   assert.match(source, /preload=\{index === current \? 'metadata' : 'none'\}/);
-  assert.match(source, /onEnded=\{advanceAutomatically\}/);
   assert.match(source, /data-media-frame="cover"/);
-  assert.equal((source.match(/data-media-mode="cover"/g) ?? []).length, 3);
+  assert.equal((source.match(/data-media-mode="cover"/g) ?? []).length, 2);
   assert.match(
     source,
     /const mediaUrl = `\/api\/homepage\/hero-media\/\$\{encodeURIComponent\(slide\.mediaId\)\}`;/,
@@ -84,5 +80,7 @@ void test('carousel presentation wires accessibility, video safety, and all paus
     source,
     /`\/api\/homepage\/hero-media\/\$\{encodeURIComponent\(slide\.posterMediaId\)\}`/,
   );
-  assert.doesNotMatch(source, /<video[\s\S]{0,500}\scontrols(?:=|\s|>)/);
+  assert.match(source, /controls/);
+  assert.match(source, /inert=\{index === current \? undefined : true\}/);
+  assert.doesNotMatch(source, /video\.play\(/);
 });

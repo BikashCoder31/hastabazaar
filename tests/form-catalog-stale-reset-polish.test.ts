@@ -84,7 +84,7 @@ const targets = [
     form: 'staff.governance-promotion-create',
     subject: 'new',
     reset: 'Start a new attempt',
-    submit: 'Submit for Super Admin approval',
+    submit: 'Create placement',
   },
   {
     mode: 'incident.create',

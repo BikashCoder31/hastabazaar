@@ -11,6 +11,7 @@ const recoveryOutputPath = resolve(
   'deployment/babal/mariadb-reset-empty-import.sql',
 );
 const snapshot = JSON.parse(await readFile(snapshotPath, 'utf8'));
+const deliveryLocationsSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-delivery-locations.sql'), 'utf8');
 const singleSuperAdminSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-single-super-admin-approvals.sql'), 'utf8');
 const checkoutContactVerificationSql=await readFile(resolve(projectRoot,'deployment/babal/mariadb-checkout-contact-verification.sql'),'utf8');
 const firstCodReviewSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-first-cod-review.sql'), 'utf8');
@@ -63,6 +64,10 @@ const managedFixedSupplySql = await readFile(
 );
 const formCatalogSql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-form-catalog.sql'),
+  'utf8',
+);
+const categoryImagesSql = await readFile(
+  resolve(projectRoot, 'deployment/babal/mariadb-category-images.sql'),
   'utf8',
 );
 const dataRightsLegalHoldsSql = await readFile(
@@ -403,6 +408,9 @@ output.push(
   '  CONSTRAINT `business_setting_guards_valid` CHECK (`valid` = 1)',
   ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;',
   '',
+  // Canonical delivery tables are required before the first-COD lifecycle guards.
+  deliveryLocationsSql.trim(),
+  '',
   sellerParticipationSql.trim(),
   '',
   managedCommerceSql.trim(),
@@ -427,6 +435,7 @@ output.push(
   managedFixedSupplySql.trim(),
   '',
   formCatalogSql.trim(),
+  categoryImagesSql.trim(),
   dataRightsLegalHoldsSql.trim(),
   addressAnswerOwnerTombstonesSql.trim(),
   feedbackDeliveryJobsSql.trim(),
@@ -523,6 +532,10 @@ await mkdir(dirname(outputPath), { recursive: true });
 const schemaSql = output.join('\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
+  'category_image_assignments',
+  'category_media',
+  'delivery_assignments',
+  'address_locations',
   'first_cod_reviews',
   'local_contact_captures',
   'account_contact_challenges',

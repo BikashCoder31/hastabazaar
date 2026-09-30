@@ -121,7 +121,7 @@ export default async function HomepageProductControlsPage({
         <CardContent className="space-y-4 p-4">
           <form
             data-form-id="staff.homepage-filter"
-            className="grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem_auto]"
+            className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_12rem_auto]"
             action="/admin/homepage"
           >
             <label className="relative">
@@ -141,7 +141,7 @@ export default async function HomepageProductControlsPage({
               defaultValue={visibility}
               aria-label={visibilityField.label}
               aria-describedby={visibilityField.helpText ? 'homepage-visibility-help' : undefined}
-              className="h-10 rounded-md border bg-background px-3 text-sm"
+              className="h-10 min-w-0 max-w-full rounded-md border bg-background px-3 text-sm"
             >
               <option value="all">All products</option>
               <option value="visible">Homepage eligible</option>
@@ -180,7 +180,7 @@ export default async function HomepageProductControlsPage({
         <div className="grid gap-4 xl:grid-cols-2">
           {result.items.map((product) => (
             <Card key={product.id} className="py-0">
-              <CardContent className="flex gap-4 p-4">
+              <CardContent className="flex flex-col gap-4 p-4 min-[480px]:flex-row">
                 <div
                   data-media-frame="cover"
                   className={mediaFrameClass(
@@ -207,7 +207,7 @@ export default async function HomepageProductControlsPage({
                   <div className="flex flex-wrap items-center gap-2">
                     <Link
                       href={`/admin/products/${product.id}`}
-                      className="truncate font-semibold hover:underline"
+                      className="block min-w-0 break-words font-semibold hover:underline"
                     >
                       {product.nameEn}
                     </Link>

@@ -127,7 +127,7 @@ void test('seven finance and staff forms retain opaque attempts across uncertain
           assert.equal(await page.getByRole('button', { name: 'Start a new attempt' }).count(), 1, `${target.form}: malformed2xx reload warning`);
         }
         response = 'stale'; await send(form); assert.equal(bodies.at(-1)?.[target.key], original, `${target.form}: stale version`);
-        const submitName = {prepare:'Prepare for approval',payout:'Review decision',delivery:'Save rates for future orders',referral:'Save offer',invitation:'Review invitation',proposal:'Propose permission change',decision:'Approve'}[target.mode];
+        const submitName = {prepare:'Prepare for approval',payout:'Review decision',delivery:'Save rates for future orders',referral:'Save offer',invitation:'Review invitation',proposal:'Save permissions',decision:'Approve'}[target.mode];
         const submitButton = form.getByRole('button', { name: submitName, exact: true });
         assert.equal(await submitButton.isDisabled(), true, `${target.form}: real stale hook freezes submission`);
         const frozenBodyCount = bodies.length;

@@ -27,7 +27,7 @@ import { validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { IncentiveError } from '@/lib/incentives/types';
 import { FormValidationError } from '@/lib/forms/validation';
-import { ContactVerificationError } from '@/lib/auth/contact-verification';
+import { ContactVerificationError, resolveCheckoutContactPolicy } from '@/lib/auth/contact-verification';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,6 +82,7 @@ export async function POST(request: Request): Promise<Response> {
       Date.now(),
       customer?.userId ?? null,
       { versionId: configured.versionId, answers: configured.answers },
+      resolveCheckoutContactPolicy((env as unknown as { CHECKOUT_CONTACT_POLICY?: string }).CHECKOUT_CONTACT_POLICY),
     );
     await sendPendingOrderUpdates({ orderNumber: result.orderNumber });
     const response = json(

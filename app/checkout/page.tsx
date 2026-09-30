@@ -11,7 +11,7 @@ import { getCustomerUser } from '@/lib/auth/customer';
 import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
 import { listCustomerAddresses } from '@/lib/db/repositories/customers';
-import {getContactVerificationStatus} from '@/lib/auth/contact-verification';
+import {getContactVerificationStatus, resolveCheckoutContactPolicy} from '@/lib/auth/contact-verification';
 
 export const metadata: Metadata = { title: 'Secure checkout' };
 export const dynamic = 'force-dynamic';
@@ -20,6 +20,7 @@ export default async function CheckoutPage() {
   const deliveryRates=await getDeliveryRates(requireDatabase(env as unknown as {DB?:D1Database}));
   const customer = await getCustomerUser();
   const contactStatus=customer?await getContactVerificationStatus(requireDatabase(env as unknown as {DB?:D1Database}),customer):null;
+  const contactPolicy=resolveCheckoutContactPolicy((env as unknown as {CHECKOUT_CONTACT_POLICY?:string}).CHECKOUT_CONTACT_POLICY);
   const wallet = customer
     ? await getWallet(
         requireDatabase(env as unknown as { DB?: D1Database }),
@@ -56,6 +57,7 @@ export default async function CheckoutPage() {
             customerEmail={customer?.email}
             customerPhone={customer?.phone ?? undefined}
             contactStatus={contactStatus}
+            contactPolicy={contactPolicy}
             customerId={customer?.userId}
             customerDisplayName={customer?.displayName}
             savedAddresses={addresses}

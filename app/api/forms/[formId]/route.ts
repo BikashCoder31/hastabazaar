@@ -36,6 +36,7 @@ const STAFF_FORM_PERMISSIONS: Readonly<Partial<Record<string, Permission>>> = {
   'staff.cancellation-review': 'order.manage',
   'staff.seller-review-action': 'seller.application.review',
   'staff.order-fulfillment': 'order.manage',
+  'staff.first-cod-confirmation': 'order.manage',
   'staff.review-moderation': 'product.review',
   'staff.product-review': 'product.review',
 };

@@ -70,7 +70,27 @@ ALTER TABLE order_items ADD COLUMN IF NOT EXISTS current_promo_discount_paisa BI
 
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS refunded_promo_discount_paisa BIGINT NOT NULL DEFAULT 0 CHECK(refunded_promo_discount_paisa BETWEEN 0 AND 9007199254740991);
 
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS promo_campaign_id VARCHAR(191) REFERENCES promo_campaigns(id);
+-- Inline REFERENCES can add another implicit FK when IF NOT EXISTS skips an
+-- existing column. Keep an equivalent legacy FK, regardless of its name.
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS promo_campaign_id VARCHAR(191) NULL;
+SET @promo_campaign_fk_exists = (
+ SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE k
+ JOIN information_schema.REFERENTIAL_CONSTRAINTS r
+  ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME AND r.TABLE_NAME=k.TABLE_NAME
+ WHERE k.CONSTRAINT_SCHEMA=DATABASE() AND k.TABLE_NAME='orders'
+  AND k.COLUMN_NAME='promo_campaign_id' AND k.REFERENCED_TABLE_SCHEMA=DATABASE()
+  AND k.REFERENCED_TABLE_NAME='promo_campaigns' AND k.REFERENCED_COLUMN_NAME='id'
+  AND r.DELETE_RULE IN ('RESTRICT','NO ACTION') AND r.UPDATE_RULE IN ('RESTRICT','NO ACTION')
+  AND NOT EXISTS (
+   SELECT 1 FROM information_schema.KEY_COLUMN_USAGE other_key
+   WHERE other_key.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND other_key.TABLE_NAME=k.TABLE_NAME
+    AND other_key.CONSTRAINT_NAME=k.CONSTRAINT_NAME AND other_key.ORDINAL_POSITION<>1
+  )
+);
+SET @promo_campaign_fk_sql = IF(@promo_campaign_fk_exists>0,'SELECT 1','ALTER TABLE orders ADD CONSTRAINT orders_promo_campaign_fk FOREIGN KEY (promo_campaign_id) REFERENCES promo_campaigns(id)');
+PREPARE promo_campaign_fk_statement FROM @promo_campaign_fk_sql;
+EXECUTE promo_campaign_fk_statement;
+DEALLOCATE PREPARE promo_campaign_fk_statement;
 
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS promo_revision BIGINT;
 

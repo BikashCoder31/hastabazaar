@@ -79,7 +79,7 @@ export function AccountNavigation({
         </SidebarHeader>
         <SidebarContent className="overflow-visible p-2">
           <nav aria-label="Customer account">
-            <SidebarMenu className="grid grid-cols-2 gap-1 sm:grid-cols-4 lg:flex">
+            <SidebarMenu className="grid grid-cols-1 gap-1 min-[360px]:grid-cols-2 sm:grid-cols-4 lg:flex">
               {links.filter(({ href }) => href !== '/rider' || showAssignedDeliveries).map(({ href, label, icon: Icon }) => (
                 <SidebarMenuItem key={href}>
                   <SidebarMenuButton

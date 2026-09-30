@@ -16,7 +16,7 @@ void test('homepage resolves the effective hero carousel with an explicit recove
 });
 
 void test('category overlap and established homepage anchors remain intact', async () => {
-  const [page, occasionCarousel, styles] = await Promise.all([
+  const [page, occasionCarousel, styles, craftDetails] = await Promise.all([
     readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
     readFile(
       new URL(
@@ -26,8 +26,14 @@ void test('category overlap and established homepage anchors remain intact', asy
       'utf8',
     ),
     readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
+    readFile(
+      new URL('../components/homepage/craft-details.tsx', import.meta.url),
+      'utf8',
+    ),
   ]);
-  const homepageSources = `${page}\n${occasionCarousel}`;
+  assert.match(page, /<CraftDetails\s*\/>/);
+  assert.match(craftDetails, /aria-labelledby="craft-details-heading"/);
+  const homepageSources = `${page}\n${occasionCarousel}\n${craftDetails}`;
   assert.ok(
     page.indexOf('<HomepageHeroCarousel') < page.indexOf('id="categories"'),
   );
@@ -65,16 +71,10 @@ void test('hero media is full bleed, calmer, and uses readable captions with dot
   ]);
   const carousel = `${carouselSource}\n${presentation}`;
   assert.match(carousel, /data-media-frame="cover"/);
-  assert.equal((carousel.match(/data-media-mode="cover"/g) ?? []).length, 3);
+  assert.equal((carousel.match(/data-media-mode="cover"/g) ?? []).length, 2);
   assert.match(carousel, /mediaFrameClass\(\s*'cover'/);
   assert.match(carousel, /mediaObjectClass\('cover'/);
-  assert.match(carousel, /aspect-\[4\/3\]/);
-  assert.match(carousel, /@\[640px\]\/hero:aspect-\[8\/5\]/);
-  assert.match(
-    carousel,
-    /@\[1024px\]\/hero:min-h-\[clamp\(32rem,42cqw,40rem\)\]/,
-  );
-  assert.match(carousel, /min-h-0[^"]*@\[1024px\]\/hero:min-h-\[36rem\]/);
+  assert.match(carousel, /homepage-hero-frame/);
   assert.match(carousel, /brightness-\[0\.82\]/);
   assert.match(carousel, /saturate-\[0\.82\]/);
   assert.match(carousel, /alt=\{slide\.imageAlt \?\? ''\}/);
@@ -82,15 +82,43 @@ void test('hero media is full bleed, calmer, and uses readable captions with dot
   assert.doesNotMatch(styles, /\.homepage-hero-media img/);
   assert.doesNotMatch(carousel, /homepage-hero-media-backdrop/);
   assert.match(carousel, /homepage-hero-image-note/);
-  assert.match(carousel, /left-\[16%\][^\n]*top-\[16%\]/);
-  assert.match(carousel, /bg-\[#eee5d8\]\/2[05]/);
-  assert.match(carousel, /backdrop-blur-(?:sm|\[\d+px\])/);
-  assert.match(carousel, /drop-shadow/);
+  assert.match(styles, /backdrop-filter:\s*blur/);
   assert.doesNotMatch(carousel, /bg-\[#eee5d8\]\/85/);
   assert.equal((carousel.match(/homepage-hero-image-note/g) ?? []).length, 1);
   assert.match(carousel, /homepage-hero-dot/);
-  assert.match(carousel, /<span className="sr-only">\{index \+ 1\}<\/span>/);
-  assert.doesNotMatch(carousel, />\s*\{index \+ 1\}\s*<\/button>/);
+  // Shared dot rendering and keyboard selection are verified in slider-dots.test.ts.
+});
+
+void test('homepage editorial sections retain responsive containers and safe compact typography', async () => {
+  const [presentation, copy, styles] = await Promise.all([
+    readFile(
+      new URL('../lib/homepage/hero-presentation.ts', import.meta.url),
+      'utf8',
+    ),
+    readFile(
+      new URL('../components/homepage/homepage-hero-copy.tsx', import.meta.url),
+      'utf8',
+    ),
+    readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
+  ]);
+  assert.match(presentation, /homepage-hero-layout/);
+  assert.match(copy, /homepage-hero-details/);
+  assert.match(
+    styles,
+    /@media \(max-width:\s*1023px\)\s*\{[\s\S]*?\.homepage-maker-story\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\)/,
+  );
+  assert.match(
+    styles,
+    /@media \(max-width:\s*639px\)\s*\{[\s\S]*?\.homepage-maker-content \.homepage-kicker\s*\{[\s\S]*?white-space:\s*normal/,
+  );
+  assert.match(
+    styles,
+    /@media \(max-width:\s*299px\)\s*\{[\s\S]*?\.homepage-maker-content \.homepage-kicker\s*\{[\s\S]*?overflow-wrap:\s*anywhere/,
+  );
+  assert.match(
+    styles,
+    /\.homepage-product-shell\s*\{[\s\S]*?width:\s*min\(100%,\s*105rem\)/,
+  );
 });
 
 void test('two face-free editorial hero assets are project-bound WebP files and registered additively', async () => {

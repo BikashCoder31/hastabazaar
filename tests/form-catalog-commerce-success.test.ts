@@ -85,6 +85,12 @@ for (const [mode, formId] of modes) void test(`${formId} retains attempts and in
       if (request.method() === 'GET' && (url.pathname === '/' || url.pathname.startsWith('/orders/')))
         return route.fulfill({ status: 200, contentType: 'text/html', body: `<div id="root"></div><script>window.__mode=${JSON.stringify(mode)};window.__refreshes=0;window.__completed=0;
           const originalFetch=window.fetch;window.fetch=async(...args)=>{try{return await originalFetch(...args)}finally{if(args[1]?.method==='POST')window.__completed++}}</script>` });
+      if (url.pathname === '/api/account/contact-verification') {
+        if (mode !== 'checkout' || request.method() !== 'GET') return route.abort();
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+          email: 'buyer@example.test', phone: '+9779811111111', emailVerified: true, phoneVerified: true,
+        }) });
+      }
       if (url.pathname.startsWith('/api/forms/')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ config: {
         formId: decodeURIComponent(url.pathname.slice('/api/forms/'.length)), version: 1, publishedAt: 1,
         fields: [{ id: 'context_note', key: 'context_note', type: 'short_text', label: 'Case context',

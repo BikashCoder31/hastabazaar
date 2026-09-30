@@ -13,7 +13,7 @@ const actions = [
 ] as const;
 
 void test('all five mounted governance forms retain opaque attempts through uncertain, changed and reload retries', async () => {
-  const playwrightPath = 'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+  const playwrightPath = process.env.PLAYWRIGHT_MODULE ?? 'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
   const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<FixtureBrowser> } };
   const bundle = await build({ stdin: { contents: `
     import React from 'react';

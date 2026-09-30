@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import {ContactVerificationPanel} from '@/components/account/contact-verification';
-import type {ContactVerificationStatus} from '@/lib/auth/contact-verification';
+import type {CheckoutContactPolicy, ContactVerificationStatus} from '@/lib/auth/contact-verification';
 import {
   DEFAULT_DELIVERY_RATES,
   type DeliveryRates,
@@ -77,6 +77,7 @@ export function CheckoutForm({
   customerEmail,
   customerPhone,
   contactStatus,
+  contactPolicy = 'email_and_phone',
   customerId,
   customerDisplayName,
   savedAddresses = [],
@@ -88,6 +89,7 @@ export function CheckoutForm({
   customerEmail?: string;
   customerPhone?: string;
   contactStatus?: ContactVerificationStatus|null;
+  contactPolicy?: CheckoutContactPolicy;
   customerId?:string;
   customerDisplayName?: string;
   savedAddresses?: readonly CustomerAddressRow[];
@@ -123,7 +125,8 @@ export function CheckoutForm({
   const [accepted, setAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [currentContacts,setCurrentContacts]=useState<ContactVerificationStatus|null>(contactStatus??null);
-  const contactsVerified=currentContacts?.emailVerified===true&&currentContacts?.phoneVerified===true;
+  const contactsVerified=currentContacts?.emailVerified===true&&
+    (contactPolicy==='email_only'||currentContacts?.phoneVerified===true);
   const [error, setError] = useState('');
   const errorSummary = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
@@ -354,7 +357,8 @@ export function CheckoutForm({
     >
       <div className="space-y-6">
         <ContactVerificationPanel key={`${customerId??'guest'}:${customerEmail??''}:${customerPhone??''}`}
-          ownerKey={customerId} initialStatus={contactStatus} onStatusChange={setCurrentContacts}/>
+          ownerKey={customerId} initialStatus={contactStatus} onStatusChange={setCurrentContacts}
+          contactPolicy={contactPolicy}/>
         <section className="rounded-2xl border bg-card p-5 sm:p-7">
           <div className="flex items-center gap-3">
             <span className="flex size-10 items-center justify-center rounded-xl bg-secondary text-primary">

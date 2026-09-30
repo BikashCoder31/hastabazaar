@@ -790,6 +790,78 @@ void test('checkout proof guard rejects bypass and rolls back changed contacts a
   }
 });
 
+void test('temporary email-only checkout still requires current mailbox proof and exact phone ownership at commit', async () => {
+  const m = await feature();
+  const f = fixture();
+  try {
+    assert.equal(m.resolveCheckoutContactPolicy(undefined), 'email_and_phone');
+    assert.equal(m.resolveCheckoutContactPolicy('email_only'), 'email_only');
+    assert.equal(m.resolveCheckoutContactPolicy('disabled'), 'email_and_phone');
+    assert.equal(m.resolveCheckoutContactPolicy(''), 'email_and_phone');
+    await assert.rejects(
+      m.requireCheckoutContactProof(f.db, f.actor, 'buyer@local.hastabazaar.test', '9811111111', 'email_only'),
+      /verify.*email/i,
+    );
+    f.sqlite.exec("INSERT INTO account_email_verifications VALUES ('buyer','buyer@local.hastabazaar.test',1)");
+    await assert.rejects(
+      m.requireCheckoutContactProof(f.db, f.actor, 'buyer@local.hastabazaar.test', '9822222222', 'email_only'),
+      /contact|phone/i,
+    );
+    await assert.rejects(
+      m.requireCheckoutContactProof(f.db, f.actor, 'buyer@local.hastabazaar.test', '9811111111'),
+      /verify.*phone/i,
+    );
+    const proof = await m.requireCheckoutContactProof(
+      f.db, f.actor, 'buyer@local.hastabazaar.test', '9811111111', 'email_only',
+    );
+    const attemptedInsert = () => f.db.batch([
+      ...m.checkoutContactGuards(f.db, proof),
+      f.db.prepare("INSERT INTO audit_logs(id,action,subject_type,subject_id,reason,request_id,created_at) VALUES ('email-only-order','order.placed','order','test','test','test',1)"),
+    ]);
+    f.race(() => f.sqlite.exec("UPDATE users SET phone='9833333333' WHERE id='buyer'"));
+    await assert.rejects(attemptedInsert(), /valid|guard|CHECK/i);
+    assert.equal(f.sqlite.prepare("SELECT count(*) AS n FROM audit_logs WHERE id='email-only-order'").get()?.n, 0);
+    f.sqlite.exec("UPDATE users SET phone='9811111111' WHERE id='buyer'");
+    const nextProof = await m.requireCheckoutContactProof(
+      f.db, f.actor, 'buyer@local.hastabazaar.test', '9811111111', 'email_only',
+    );
+    f.race(() => f.sqlite.exec("DELETE FROM account_email_verifications WHERE user_id='buyer'"));
+    await assert.rejects(f.db.batch([
+      ...m.checkoutContactGuards(f.db, nextProof),
+      f.db.prepare("INSERT INTO audit_logs(id,action,subject_type,subject_id,reason,request_id,created_at) VALUES ('email-only-order','order.placed','order','test','test','test',1)"),
+    ]), /valid|guard|CHECK/i);
+    assert.equal(f.sqlite.prepare("SELECT count(*) AS n FROM audit_logs WHERE id='email-only-order'").get()?.n, 0);
+    f.sqlite.exec("INSERT INTO account_email_verifications VALUES ('buyer','buyer@local.hastabazaar.test',2)");
+    await attemptedInsert();
+    assert.equal(f.sqlite.prepare("SELECT count(*) AS n FROM audit_logs WHERE id='email-only-order'").get()?.n, 1);
+    assert.equal(f.sqlite.prepare("SELECT count(*) AS n FROM account_phone_verifications WHERE user_id='buyer'").get()?.n, 0);
+  } finally {
+    f.sqlite.close();
+  }
+});
+
+void test('email-only contact panel asks for email proof without offering unavailable SMS', async () => {
+  const { ContactVerificationPanel } = await import('../components/account/contact-verification');
+  const props = {
+    ownerKey: 'buyer',
+    initialStatus: {
+      email: 'buyer@local.hastabazaar.test',
+      phone: '+9779811111111',
+      emailVerified: false,
+      phoneVerified: false,
+    },
+  };
+  const emailOnly = renderToStaticMarkup(createElement(ContactVerificationPanel, {
+    ...props, contactPolicy: 'email_only',
+  }));
+  assert.match(emailOnly, /Verify your email before checkout/);
+  assert.match(emailOnly, /SMS verification is temporarily unavailable/);
+  assert.match(emailOnly, /Send email code/);
+  assert.doesNotMatch(emailOnly, /Send phone code|Verify phone/);
+  const strict = renderToStaticMarkup(createElement(ContactVerificationPanel, props));
+  assert.match(strict, /Send phone code/);
+});
+
 void test('profile format-only edits preserve phone proof; meaningful replacement revokes it', async () => {
   const { updateCustomerProfile } =
     await import('../lib/db/repositories/customers');
@@ -1009,6 +1081,27 @@ async function realCart(f: ReturnType<typeof fixture>) {
     },
   };
 }
+void test('email-only release policy places a real COD order without SMS proof while default policy remains strict', async () => {
+  const { createCodOrder } = await import('../lib/db/repositories/orders');
+  const f = fixture();
+  try {
+    const input = await realCart(f);
+    f.sqlite.exec("DELETE FROM account_phone_verifications WHERE user_id='buyer'");
+    await assert.rejects(
+      createCodOrder(f.db, 'cart', 'receipt', input, 1000, 'buyer'),
+      /verify.*phone/i,
+    );
+    assert.equal(f.sqlite.prepare('SELECT count(*) AS n FROM orders').get()?.n, 0);
+    const placed = await createCodOrder(
+      f.db, 'cart', 'receipt', input, 1000, 'buyer', undefined, 'email_only',
+    );
+    assert.equal(placed.grandTotalPaisa, 25000);
+    assert.equal(f.sqlite.prepare('SELECT count(*) AS n FROM orders').get()?.n, 1);
+    assert.equal(f.sqlite.prepare("SELECT count(*) AS n FROM account_phone_verifications WHERE user_id='buyer'").get()?.n, 0);
+  } finally {
+    f.sqlite.close();
+  }
+});
 void test('verified gift checkout creates one order; identical retry remains available after contact changes', async () => {
   const { createCodOrder } = await import('../lib/db/repositories/orders');
   const f = fixture();

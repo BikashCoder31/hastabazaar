@@ -46,6 +46,7 @@ const migrationNames = [
   'mariadb-managed-fixed-supply.sql',
   'mariadb-homepage-hero-carousel.sql',
   'mariadb-form-catalog.sql',
+  'mariadb-category-images.sql',
   'mariadb-data-rights-legal-holds.sql',
   'mariadb-address-answer-owner-tombstones.sql',
   'mariadb-feedback-delivery-jobs.sql',
@@ -98,6 +99,10 @@ triggers.order_items_require_available_inventory = [
   'for update',
 ];
 const requiredChecks = {
+  'category_media.category_media_size': ['size_bytes', '0', '5242880'],
+  'category_media.category_media_dimensions': ['width', 'height', '0', '2400', '1600'],
+  'category_media.category_media_mime': ['mime_type', 'image/webp'],
+  'category_media.category_media_hash': ['content_hash', 'char_length', '64'],
   'orders.chk_cancellation_totals': [
     'current_total_paisa',
     'current_subtotal_paisa',

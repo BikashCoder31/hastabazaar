@@ -7,8 +7,6 @@ import {
   ArrowUpRight,
   BriefcaseBusiness,
   Cake,
-  ChevronLeft,
-  ChevronRight,
   Flower2,
   Gift,
   HandHeart,
@@ -16,15 +14,14 @@ import {
   House,
   MapPin,
   Paintbrush,
-  Pause,
   Plane,
-  Play,
   Sparkles,
   type LucideIcon,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { Button } from '@/components/ui/button';
+import { SliderDots } from '@/components/ui/slider-dots';
+import { useSliderAutoplay } from '@/lib/homepage/slider-autoplay';
 import {
   Carousel,
   type CarouselApi,
@@ -33,11 +30,7 @@ import {
 } from '@/components/ui/carousel';
 import {
   nextOccasionIndex,
-  occasionAdvanceDelayMs,
   occasionSelectionAnnouncement,
-  shouldAutoplayOccasions,
-  type OccasionPauseReason,
-  type OccasionSelectionKind,
 } from '@/lib/homepage/occasion-autoplay';
 import type {
   HomepageOccasionIcon,
@@ -85,67 +78,30 @@ export function HomepageOccasionCarousel({
   );
   const [api, setApi] = useState<CarouselApi>();
   const [current, setCurrent] = useState(0);
-  const [manualPause, setManualPause] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  const [focusWithin, setFocusWithin] = useState(false);
-  const [documentHidden, setDocumentHidden] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(false);
-  const [timerRevision, setTimerRevision] = useState(0);
   const [announcement, setAnnouncement] = useState('');
-  const selectionKind = useRef<OccasionSelectionKind | null>(null);
-  const pointerSelection = useRef(false);
-  const pointerClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const {
+    reset: resetAutoplay,
+    selectionKind,
+    interactionProps,
+  } = useSliderAutoplay(api, enabledSlides.length);
   const initialIndex = Math.max(
     0,
     enabledSlides.findIndex((slide) => slide.id === initialSlideId),
   );
 
-  const pauseReasons = useMemo(() => {
-    const reasons = new Set<OccasionPauseReason>();
-    if (manualPause) reasons.add('manual');
-    if (hovered) reasons.add('hover');
-    if (focusWithin) reasons.add('focus');
-    if (documentHidden) reasons.add('document-hidden');
-    if (reducedMotion) reasons.add('reduced-motion');
-    return reasons;
-  }, [documentHidden, focusWithin, hovered, manualPause, reducedMotion]);
-  const autoplay = shouldAutoplayOccasions(pauseReasons);
-
-  useEffect(() => {
-    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const update = () => setReducedMotion(media.matches);
-    update();
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
-
-  useEffect(() => {
-    const update = () =>
-      setDocumentHidden(document.visibilityState === 'hidden');
-    update();
-    document.addEventListener('visibilitychange', update);
-    return () => document.removeEventListener('visibilitychange', update);
-  }, []);
-
   useEffect(() => {
     if (!api) return;
     const selected = () => {
       const index = api.selectedScrollSnap();
-      const kind = pointerSelection.current
-        ? 'manual'
-        : (selectionKind.current ?? 'automatic');
       setCurrent(index);
       setAnnouncement(
         occasionSelectionAnnouncement(
           index,
           enabledSlides.length,
           heading(enabledSlides, index),
-          kind,
+          selectionKind(),
         ),
       );
-      if (kind === 'manual') setTimerRevision((revision) => revision + 1);
-      selectionKind.current = null;
-      pointerSelection.current = false;
     };
     selected();
     api.on('select', selected);
@@ -154,7 +110,7 @@ export function HomepageOccasionCarousel({
       api.off('select', selected);
       api.off('reInit', selected);
     };
-  }, [api, enabledSlides]);
+  }, [api, enabledSlides, selectionKind]);
 
   useEffect(() => {
     if (!api || !initialSlideId) return;
@@ -167,7 +123,7 @@ export function HomepageOccasionCarousel({
   const selectManually = useCallback(
     (index: number) => {
       if (!api || !enabledSlides.length) return;
-      selectionKind.current = 'manual';
+      resetAutoplay();
       if (index === current) {
         setAnnouncement(
           occasionSelectionAnnouncement(
@@ -177,38 +133,24 @@ export function HomepageOccasionCarousel({
             'manual',
           ),
         );
-        setTimerRevision((revision) => revision + 1);
-        selectionKind.current = null;
         return;
       }
-      api.scrollTo(index);
+      api.scrollTo(
+        index,
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+      );
     },
-    [api, current, enabledSlides],
+    [api, current, enabledSlides, resetAutoplay],
   );
 
   const move = useCallback(
-    (direction: 'next' | 'previous', kind: OccasionSelectionKind) => {
+    (direction: 'next' | 'previous') => {
       if (!api || enabledSlides.length < 2) return;
-      selectionKind.current = kind;
-      api.scrollTo(nextOccasionIndex(current, enabledSlides.length, direction));
+      selectManually(
+        nextOccasionIndex(current, enabledSlides.length, direction),
+      );
     },
-    [api, current, enabledSlides.length],
-  );
-
-  useEffect(() => {
-    if (!api || enabledSlides.length < 2 || !autoplay) return;
-    const timeout = window.setTimeout(
-      () => move('next', 'automatic'),
-      occasionAdvanceDelayMs(),
-    );
-    return () => window.clearTimeout(timeout);
-  }, [api, autoplay, current, enabledSlides.length, move, timerRevision]);
-
-  useEffect(
-    () => () => {
-      if (pointerClearTimer.current) clearTimeout(pointerClearTimer.current);
-    },
-    [],
+    [api, current, enabledSlides.length, selectManually],
   );
 
   if (!enabledSlides.length) return null;
@@ -218,13 +160,7 @@ export function HomepageOccasionCarousel({
       id="occasions"
       className="homepage-occasion-section"
       aria-label="Gifts for meaningful moments"
-      onPointerEnter={() => setHovered(true)}
-      onPointerLeave={() => setHovered(false)}
-      onFocusCapture={() => setFocusWithin(true)}
-      onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget))
-          setFocusWithin(false);
-      }}
+      {...interactionProps}
     >
       <div
         data-media-frame="cover"
@@ -245,26 +181,15 @@ export function HomepageOccasionCarousel({
         setApi={setApi}
         aria-label="Hastabazaar gifting stories"
         aria-roledescription="carousel"
-        onPointerDown={() => {
-          pointerSelection.current = true;
-          if (pointerClearTimer.current)
-            clearTimeout(pointerClearTimer.current);
-        }}
-        onPointerUp={() => {
-          pointerClearTimer.current = setTimeout(() => {
-            pointerSelection.current = false;
-          }, 300);
-        }}
-        onPointerCancel={() => {
-          pointerSelection.current = false;
-        }}
         onKeyDownCapture={(event) => {
+          if ((event.target as HTMLElement).closest('[data-slider-dots]'))
+            return;
           if (event.key === 'ArrowLeft') {
             event.preventDefault();
-            move('previous', 'manual');
+            move('previous');
           } else if (event.key === 'ArrowRight') {
             event.preventDefault();
-            move('next', 'manual');
+            move('next');
           }
         }}
       >
@@ -340,62 +265,17 @@ export function HomepageOccasionCarousel({
           ))}
         </CarouselContent>
 
-        {enabledSlides.length > 1 ? (
-          <div
-            className="homepage-occasion-controls"
-            aria-label="Gifting carousel controls"
-          >
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              onClick={() => move('previous', 'manual')}
-              aria-label="Previous gifting story"
-            >
-              <ChevronLeft />
-            </Button>
-            <div
-              className="homepage-occasion-dots"
-              aria-label="Choose gifting story"
-            >
-              {enabledSlides.map((slide, index) => (
-                <button
-                  key={slide.id}
-                  type="button"
-                  aria-label={`Show slide ${index + 1}: ${heading(enabledSlides, index)}`}
-                  aria-current={index === current ? 'true' : undefined}
-                  onClick={() => selectManually(index)}
-                >
-                  <span aria-hidden="true" />
-                </button>
-              ))}
-            </div>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              onClick={() => move('next', 'manual')}
-              aria-label="Next gifting story"
-            >
-              <ChevronRight />
-            </Button>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              aria-pressed={manualPause}
-              aria-label={
-                manualPause ? 'Play gifting stories' : 'Pause gifting stories'
-              }
-              onClick={() => {
-                setManualPause((value) => !value);
-                setTimerRevision((revision) => revision + 1);
-              }}
-            >
-              {manualPause ? <Play /> : <Pause />}
-            </Button>
-          </div>
-        ) : null}
+        <SliderDots
+          label="Choose gifting story"
+          appearance="light"
+          labels={enabledSlides.map(
+            (_, index) =>
+              `Show slide ${index + 1}: ${heading(enabledSlides, index)}`,
+          )}
+          current={current}
+          onSelect={selectManually}
+          className="mt-4"
+        />
       </Carousel>
       <p className="sr-only" aria-live="polite" aria-atomic="true">
         {announcement}

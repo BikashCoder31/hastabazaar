@@ -63,12 +63,13 @@ async function mounted(surface = 'checkout', checkoutContext = false) {
         name: 'fixture',
         setup(b) {
           stubFixtureLink(b);
+          b.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'fixture' }));
           b.onResolve(
             { filter: /^@\/components\/delivery\/location-picker$/ },
             () => ({ path: 'location', namespace: 'fixture' }),
           );
-          b.onLoad({ filter: /location/, namespace: 'fixture' }, () => ({
-            contents: 'export function LocationPicker(){return null}',
+          b.onLoad({ filter: /location|navigation/, namespace: 'fixture' }, (args) => ({
+            contents: args.path === 'navigation' ? 'export function useRouter(){return {refresh(){}}}' : 'export function LocationPicker(){return null}',
             loader: 'js',
           }));
         },
@@ -119,6 +120,15 @@ async function mounted(surface = 'checkout', checkoutContext = false) {
     assert.equal(url.origin, 'https://promo-ui.test');
     const path = url.pathname;
     if (path.startsWith('/api/')) reads.push(path);
+    if (path === '/api/account/contact-verification' && route.request().method() === 'GET')
+      return route.fulfill({
+        status: surface === 'guest' ? 401 : 200,
+        contentType: 'application/json',
+        body: JSON.stringify(surface === 'guest' ? { error: 'Sign in required.' } : {
+          email: 'buyer@example.test', phone: '+9779811111111',
+          emailVerified: true, phoneVerified: true, captureAvailable: false,
+        }),
+      });
     if (path.startsWith('/api/forms/'))
       return route.fulfill({
         status: 200,

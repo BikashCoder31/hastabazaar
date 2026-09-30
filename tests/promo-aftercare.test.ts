@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createIncentiveDb, seedIncentiveCustomer, seedIncentiveInventory, incentiveOrder } from './helpers/incentive-db';
 import { createCodOrder, getOrderReceipt, getOrderDocument } from '../lib/db/repositories/orders';
+import { confirmFirstCodReview } from '../lib/orders/first-cod-review';
 import { savePromoDraft, publishPromo, quotePromo } from '../lib/db/repositories/promo-codes';
 import { quoteCheckoutPromo } from '../lib/incentives/quote-intent';
 import { SELLER_AGREEMENT_VERSION } from '../lib/content/legal-policies';
@@ -326,6 +327,7 @@ void test('unsafe gross item plus delivery refund rejects before its financial b
  const f=await fixture({price:Number.MAX_SAFE_INTEGER,delivery:500});
  try {
   const o=await place(f.db);
+  await confirmFirstCodReview(f.db,{orderId:o.id,actorId:'super',reason:'Fictional high-value COD order contact confirmed for this refund test.',requestId:crypto.randomUUID(),now:150});
   await deliver(f.db,o.id);
   const r=await createCustomerReturnRequest(f.db,{orderNumber:o.orderNumber,receiptTokenHash:null,customerId:'customer',orderItemId:o.items[0].id,quantity:1,reason:'defective',requestedResolution:'refund',detail:'The fictional product has a documented defect.',locale:'en-NP',idempotencyKey:crypto.randomUUID(),evidence:[],now:300});
   let enteredBatch=false;

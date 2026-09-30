@@ -22,7 +22,7 @@ export function nextOccasionIndex(
     : (current - 1 + count) % count;
 }
 
-export const occasionAdvanceDelayMs = () => 7_000;
+export const occasionAdvanceDelayMs = () => 6_000;
 
 export function shouldAutoplayOccasions(reasons: ReadonlySet<string>): boolean {
   return reasons.size === 0;

@@ -75,7 +75,9 @@ void test('all five managed decisions preserve opaque attempts across lost repli
             if (response === 'lost') return route.abort('failed');
             if (response === 'conflict') return route.fulfill({ status: 409, contentType: 'application/json', body: '{"error":"Different content for prior request."}' });
             if (response === 'stale') return route.fulfill({ status: 409, contentType: 'application/json', body: '{"error":"Form changed.","code":"stale_version"}' });
-            return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"paymentId":"new-payment"}' });
+            return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(
+              action === 'prepare_payment' ? { ok: true, paymentId: 'new-payment' } : { ok: true },
+            ) });
           }
           return route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
         });
@@ -104,7 +106,7 @@ void test('all five managed decisions preserve opaque attempts across lost repli
           await form.getByLabel('Review reason').fill('SIMULATED transition reason');
         await form.getByRole('button', { name: action === 'decide_supply' ? 'Record supply decision'
           : action === 'add_adjustment' ? 'Record adjustment'
-            : action === 'prepare_payment' ? 'Prepare simulated payment'
+            : action === 'prepare_payment' ? 'Create approved simulated payment'
               : action === 'approve_payment' ? 'Record payment action' : 'Record transition decision' }).click();
         await completed(null);
         assert.equal(requests.length, 1, `${formId}: lost response sent once`);
@@ -130,7 +132,7 @@ void test('all five managed decisions preserve opaque attempts across lost repli
         response = 'conflict';
         await form.getByRole('button', { name: action === 'decide_supply' ? 'Record supply decision'
           : action === 'add_adjustment' ? 'Record adjustment'
-            : action === 'prepare_payment' ? 'Prepare simulated payment'
+            : action === 'prepare_payment' ? 'Create approved simulated payment'
               : action === 'approve_payment' ? 'Record payment action' : 'Record transition decision' }).click();
         await completed('Different content for prior request.');
         assert.equal(requests[1]?.requestId, firstId, `${formId}: changed retry must retain request ID`);
@@ -139,7 +141,7 @@ void test('all five managed decisions preserve opaque attempts across lost repli
         response = 'stale';
         await form.getByRole('button', { name: action === 'decide_supply' ? 'Record supply decision'
           : action === 'add_adjustment' ? 'Record adjustment'
-            : action === 'prepare_payment' ? 'Prepare simulated payment'
+            : action === 'prepare_payment' ? 'Create approved simulated payment'
               : action === 'approve_payment' ? 'Record payment action' : 'Record transition decision' }).click();
         await completed('Form changed.');
         assert.equal(requests[2]?.requestId, firstId);
@@ -152,9 +154,10 @@ void test('all five managed decisions preserve opaque attempts across lost repli
         response = 'success';
         await form.getByRole('button', { name: action === 'decide_supply' ? 'Record supply decision'
           : action === 'add_adjustment' ? 'Record adjustment'
-            : action === 'prepare_payment' ? 'Prepare simulated payment'
+            : action === 'prepare_payment' ? 'Create approved simulated payment'
               : action === 'approve_payment' ? 'Record payment action' : 'Record transition decision' }).click();
-        await completed('Prepared simulated payment new-payment.');
+        await completed(action === 'prepare_payment'
+          ? 'Approved simulated payment new-payment.' : 'Simulated staging decision recorded.');
         assert.notEqual(requests[3]?.requestId, firstId);
         assert.equal(await page.evaluate(key => sessionStorage.getItem(key), attemptKey), null,
           `${formId}: confirmed success removes its exact persisted attempt`);

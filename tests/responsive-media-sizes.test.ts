@@ -35,35 +35,44 @@ function arithmetic(expression: ts.Expression): number {
 // viewport widths. Expected widths below come from the actual grids' column,
 // gap, shell-padding and maximum-width rules, not from mediaSizes.
 function slot(sizes: string, width: number): number {
-  for (const entry of sizes.split(',')) {
-    const clause = /^\s*(?:\(min-width:\s*([\d.]+)px\)\s*)?(.+)$/.exec(entry)!;
-    if (clause[1] && width < Number(clause[1])) continue;
-    const length = clause[2]
-      .replace(/^calc\((.*)\)$/, '$1')
-      .replace(/([\d.]+)vw/g, (_, number) =>
-        String((Number(number) * width) / 100),
-      )
+  let depth = 0;
+  const entries = [''];
+  for (const char of sizes) {
+    if (char === '(') depth++;
+    if (char === ')') depth--;
+    if (char === ',' && depth === 0) entries.push('');
+    else entries[entries.length - 1] += char;
+  }
+  function evaluate(value: string): number {
+    const length = value
+      .replace(/([\d.]+)vw/g, (_, number) => String((Number(number) * width) / 100))
       .replace(/px/g, '');
     assert.match(length, /^[\d.\s()+*/-]+$/);
-    const parsed = ts.createSourceFile(
-      'size.ts',
-      length,
-      ts.ScriptTarget.Latest,
-    ).statements[0];
+    const parsed = ts.createSourceFile('size.ts', length, ts.ScriptTarget.Latest).statements[0];
     assert.ok(ts.isExpressionStatement(parsed));
     return arithmetic(parsed.expression);
+  }
+  for (const entry of entries) {
+    const clause = /^\s*(?:\(min-width:\s*([\d.]+)px\)\s*)?(.+)$/.exec(entry)!;
+    if (clause[1] && width < Number(clause[1])) continue;
+    const clamped = clause[2].replace(/clamp\(([^()]*)\)/g, (_, argumentsText: string) => {
+      const values = argumentsText.split(',').map((part) => evaluate(part));
+      assert.equal(values.length, 3);
+      return String(Math.max(values[0], Math.min(values[1], values[2])));
+    });
+    return evaluate(clamped.replace(/^calc\((.*)\)$/, '$1'));
   }
   throw new Error('No sizes fallback');
 }
 
 void test('responsive image hints follow real grid breakpoints and stop at shell bounds', () => {
   const cases: readonly [keyof typeof mediaSizes, number, number][] = [
-    ['productGrid', 320, 280],
+    ['productGrid', 320, 288],
     ['productGrid', 768, 340],
     ['productGrid', 1024, 214],
     ['productGrid', 1440, 318],
     ['productGrid', 1920, 318],
-    ['shopGrid', 320, 132],
+    ['shopGrid', 320, 136],
     ['shopGrid', 768, 342],
     ['shopGrid', 1024, 294],
     ['shopGrid', 1440, 328],
@@ -75,23 +84,23 @@ void test('responsive image hints follow real grid breakpoints and stop at shell
     ['savedProduct', 768, 342],
     ['savedProduct', 1024, 314],
     ['savedProduct', 1920, 341.3333],
-    ['productGallery', 320, 280],
+    ['productGallery', 320, 288],
     ['productGallery', 768, 704],
     ['productGallery', 1024, 466.2],
     ['productGallery', 1280, 588],
     ['productGallery', 1920, 672],
-    ['galleryThumbnail', 320, 49.6],
+    ['galleryThumbnail', 320, 51.2],
     ['galleryThumbnail', 768, 131.2],
     ['galleryThumbnail', 1024, 83.64],
     ['galleryThumbnail', 1920, 124.8],
-    ['productSlider', 320, 218.4],
+    ['productSlider', 320, 224.64],
     ['productSlider', 768, 295.68],
     ['productSlider', 1024, 214],
     ['productSlider', 1920, 318],
-    ['editorial', 320, 278],
-    ['editorial', 1024, 500.04],
-    ['editorial', 1920, 724.68],
-    ['notFound', 320, 280],
+    ['editorial', 320, 288],
+    ['editorial', 1024, 479.0016],
+    ['editorial', 1920, 691.2],
+    ['notFound', 320, 288],
     ['notFound', 1024, 483.84],
     ['notFound', 1920, 716.8],
   ];
@@ -144,8 +153,8 @@ void test('regular and wide product sliders advertise their distinct rendered sl
   for (const [wideDesktop, width, expected] of [
     [false, 1920, 318],
     [true, 1920, 297.6],
-    [true, 1024, 198.64],
-    [true, 320, 203.424],
+    [true, 1024, 214],
+    [true, 320, 224.64],
   ] as const) {
     const html = renderToStaticMarkup(
       createElement(renderedModule.exports.ProductSlider, {

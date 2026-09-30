@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import type {
   ContactChannel,
   ContactVerificationStatus,
+  CheckoutContactPolicy,
 } from '@/lib/auth/contact-verification';
 import {
   parseContactStatus,
@@ -29,11 +30,13 @@ export function ContactVerificationPanel({
   captureAvailable = false,
   onStatusChange,
   ownerKey,
+  contactPolicy = 'email_and_phone',
 }: {
   initialStatus?: Status | null;
   captureAvailable?: boolean;
   onStatusChange?: (status: Status | null) => void;
   ownerKey?: string;
+  contactPolicy?: CheckoutContactPolicy;
 }) {
   const router = useRouter();
   const [status, setStatus] = useState<Status | null>(initialStatus ?? null);
@@ -253,7 +256,7 @@ export function ContactVerificationPanel({
       <section className="rounded-2xl border bg-card p-5 sm:p-7">
         <h2 className="font-heading text-2xl">Verify your contact details</h2>
         <p className="mt-3 text-sm leading-6">
-          Sign in to verify your email and phone before placing your first
+          Sign in to verify your {contactPolicy === 'email_only' ? 'email' : 'email and phone'} before placing your first
           order. We remember verification while your contacts stay the same.
         </p>
         <Link
@@ -270,6 +273,9 @@ export function ContactVerificationPanel({
       </section>
     );
   const local = status.captureAvailable || captureAvailable;
+  const channels: readonly ContactChannel[] = contactPolicy === 'email_only'
+    ? ['email']
+    : ['email', 'phone'];
   return (
     <section
       className="rounded-2xl border bg-card p-5 sm:p-7"
@@ -277,8 +283,9 @@ export function ContactVerificationPanel({
     >
       <h2 className="font-heading text-2xl">Verify your contact details</h2>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">
-        Verify your email and phone once before checkout. Verification is
-        remembered while each contact stays the same.
+        {contactPolicy === 'email_only'
+          ? 'Verify your email before checkout. Your Nepal mobile number is still needed for delivery; SMS verification is temporarily unavailable.'
+          : 'Verify your email and phone once before checkout. Verification is remembered while each contact stays the same.'}
       </p>
       {!status.emailVerified ? (
         <p className="mt-3 rounded-xl bg-secondary/60 p-3 text-sm leading-6">
@@ -289,7 +296,7 @@ export function ContactVerificationPanel({
         </p>
       ) : null}
       <div className="mt-5 grid gap-5 sm:grid-cols-2">
-        {(['email', 'phone'] as const).map((channel) => {
+        {channels.map((channel) => {
           const verified =
             channel === 'email' ? status.emailVerified : status.phoneVerified;
           return (
@@ -363,7 +370,9 @@ export function ContactVerificationPanel({
         <Link className="underline" href="/account/profile">
           Update your contact phone in your profile
         </Link>
-        . Changing a contact requires verification again.
+        . {contactPolicy === 'email_only'
+          ? 'Changing your email requires verification again.'
+          : 'Changing a contact requires verification again.'}
       </p>
       {message ? (
         <output className="mt-3 block text-sm text-primary">{message}</output>

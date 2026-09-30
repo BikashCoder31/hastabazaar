@@ -12,12 +12,12 @@ void test('homepage hero media states share one responsive cover contract', asyn
   );
 
   assert.match(hero, /data-media-frame="cover"/);
-  assert.equal((hero.match(/data-media-mode="cover"/g) ?? []).length, 3);
+  assert.equal((hero.match(/data-media-mode="cover"/g) ?? []).length, 2);
   assert.match(hero, /mediaFrameClass\(\s*'cover'/);
   assert.match(hero, /mediaObjectClass\('cover'/);
   assert.equal(
     (hero.match(/loading=\{index === 0 \? 'eager' : 'lazy'\}/g) ?? []).length,
-    2,
+    1,
   );
   assert.match(hero, /poster=\{posterUrl\}/);
   assert.match(hero, /preload=\{index === current \? 'metadata' : 'none'\}/);

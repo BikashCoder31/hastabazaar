@@ -6,7 +6,7 @@ import { requireCustomerPage } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
 import { listFormAnswersForSubjectPage } from '@/lib/db/repositories/form-answers';
 import {ContactVerificationPanel} from '@/components/account/contact-verification';
-import {getContactVerificationStatus} from '@/lib/auth/contact-verification';
+import {getContactVerificationStatus,resolveCheckoutContactPolicy} from '@/lib/auth/contact-verification';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +45,8 @@ export default async function ProfilePage({ searchParams }: {
         />
       </section>
       <div className="mt-6"><ContactVerificationPanel key={`${customer.userId}:${customer.email}:${customer.phone??''}`}
-        ownerKey={customer.userId} initialStatus={contactStatus}/></div>
+        ownerKey={customer.userId} initialStatus={contactStatus}
+        contactPolicy={resolveCheckoutContactPolicy((env as unknown as {CHECKOUT_CONTACT_POLICY?:string}).CHECKOUT_CONTACT_POLICY)}/></div>
       {answers.length ? (
         <section className="mt-6 space-y-4" aria-label="Your profile answer history">
           <h2 className="font-heading text-2xl">Your previous profile answers</h2>

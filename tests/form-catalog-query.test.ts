@@ -144,6 +144,8 @@ void test('tracking lookup denies an order when the checkout email does not matc
       placed_at INTEGER,delivered_at INTEGER,updated_at INTEGER,customer_email TEXT);
       CREATE TABLE shipments(order_id TEXT,tracking_code TEXT,estimated_min_days INTEGER,estimated_max_days INTEGER);
       CREATE TABLE order_status_events(order_id TEXT,to_status TEXT,created_at INTEGER);
+      CREATE TABLE first_cod_reviews(order_id TEXT PRIMARY KEY,customer_id TEXT,total_paisa INTEGER,status TEXT,
+        created_at INTEGER,confirmed_by TEXT,confirmed_at INTEGER,reason TEXT,request_id TEXT);
       INSERT INTO orders VALUES ('private','HK-PRIVATE','placed','pending',1,NULL,1,'owner@example.test');
       INSERT INTO shipments VALUES ('private','SECRET-TRACKING',2,5);`);
     const db = { prepare(sql: string) { return new Statement(sqlite.prepare(sql)); } } as unknown as D1Database;

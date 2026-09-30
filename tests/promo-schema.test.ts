@@ -1039,18 +1039,26 @@ void test('MariaDB generator ships promo tables after canonical prerequisites an
       ['wallet_entries', 'chk_wallet_gift_source', 'mariadb-loyalty-points.sql'],
       ['wallet_entries', 'chk_wallet_safe_amount', 'mariadb-loyalty-points.sql'],
     ];
-    const checks = await Promise.all(checkSources.map(async ([tableName, name, file]) => {
+    const baseChecks = await Promise.all(checkSources.map(async ([tableName, name, file]) => {
       const sql = await readFile(join(root, 'deployment', 'babal', file), 'utf8');
       const match = sql.match(new RegExp(`CONSTRAINT IF NOT EXISTS ${name} CHECK\\s*(\\([^;]+\\));`, 'i'));
       assert.ok(match, `${file}: ${name}`);
       return { tableName, name, definition: match[1] };
     }));
+    const categorySql = await readFile(join(root, 'deployment', 'babal', 'mariadb-category-images.sql'), 'utf8');
+    const categoryChecks = ['category_media_size', 'category_media_dimensions', 'category_media_mime', 'category_media_hash'].map((name) => {
+      const line = categorySql.split('\n').find((item) => item.includes(`CONSTRAINT \`${name}\` CHECK`));
+      const match = line?.match(/CHECK\s*(\(.*\)),?\s*$/);
+      assert.ok(match, name);
+      return { tableName: 'category_media', name, definition: match[1] };
+    });
+    const checks = [...baseChecks, ...categoryChecks];
     const columns = Object.entries(manifest.requiredTables).flatMap(([tableName, names]) =>
       (names as string[]).map((columnName) => ({ tableName, columnName })),
     );
     const migrationSql = (await Promise.all(manifest.migrations.map((m: { path: string }) => readFile(join(root, m.path), 'utf8')))).join('\n');
     const triggers = Object.keys(manifest.requiredTriggers).map((name) => {
-      const match = migrationSql.match(new RegExp('CREATE TRIGGER `?' + name + '`?[\\s\\S]*?END(?:\\$\\$|;)', 'i'));
+      const match = migrationSql.match(new RegExp('CREATE TRIGGER(?: IF NOT EXISTS)? `?' + name + '`?[\\s\\S]*?END(?:\\$\\$|;)', 'i'));
       assert.ok(match, name);
       return { name, definition: match[0] };
     });

@@ -11,7 +11,28 @@ CREATE TABLE IF NOT EXISTS gift_cards (
  CHECK((redeemed_by IS NULL AND redeemed_at IS NULL AND redemption_request_id IS NULL) OR (redeemed_by IS NOT NULL AND redeemed_at IS NOT NULL AND redemption_request_id IS NOT NULL))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ALTER TABLE wallet_entries MODIFY COLUMN order_id VARCHAR(191) NULL;
-ALTER TABLE wallet_entries ADD COLUMN IF NOT EXISTS gift_card_id VARCHAR(191) NULL REFERENCES gift_cards(id);
+-- ALTER ... ADD COLUMN ... REFERENCES restarts MariaDB's implicit FK names and
+-- can also add another FK when IF NOT EXISTS skips an existing column. Separate
+-- column creation from the named FK, retaining any equivalent legacy constraint.
+ALTER TABLE wallet_entries ADD COLUMN IF NOT EXISTS gift_card_id VARCHAR(191) NULL;
+SET @gift_card_fk_exists = (
+ SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE k
+ JOIN information_schema.REFERENTIAL_CONSTRAINTS r
+  ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME AND r.TABLE_NAME=k.TABLE_NAME
+ WHERE k.CONSTRAINT_SCHEMA=DATABASE() AND k.TABLE_NAME='wallet_entries'
+  AND k.COLUMN_NAME='gift_card_id' AND k.REFERENCED_TABLE_SCHEMA=DATABASE()
+  AND k.REFERENCED_TABLE_NAME='gift_cards' AND k.REFERENCED_COLUMN_NAME='id'
+  AND r.DELETE_RULE IN ('RESTRICT','NO ACTION') AND r.UPDATE_RULE IN ('RESTRICT','NO ACTION')
+  AND NOT EXISTS (
+   SELECT 1 FROM information_schema.KEY_COLUMN_USAGE other_key
+   WHERE other_key.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND other_key.TABLE_NAME=k.TABLE_NAME
+    AND other_key.CONSTRAINT_NAME=k.CONSTRAINT_NAME AND other_key.ORDINAL_POSITION<>1
+  )
+);
+SET @gift_card_fk_sql = IF(@gift_card_fk_exists>0,'SELECT 1','ALTER TABLE wallet_entries ADD CONSTRAINT wallet_entries_gift_card_fk FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id)');
+PREPARE gift_card_fk_statement FROM @gift_card_fk_sql;
+EXECUTE gift_card_fk_statement;
+DEALLOCATE PREPARE gift_card_fk_statement;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_wallet_entries_gift_card ON wallet_entries(gift_card_id);
 -- The existing kind CHECK has a generated MariaDB name; remove only its exact known expression.
 SET @gift_kind_check = (SELECT CONSTRAINT_NAME FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='wallet_entries' AND CHECK_CLAUSE LIKE '%kind%referral_reward%order_spend%cancellation%refund%' LIMIT 1);

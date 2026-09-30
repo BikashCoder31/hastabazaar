@@ -11,6 +11,8 @@ const fixtures = { configs: {} as Record<string, PublishedFormConfig>, failed: n
 (globalThis as unknown as { queryFixtures: typeof fixtures }).queryFixtures = fixtures;
 registerHooks({ resolve(specifier, context, nextResolve) {
   const mocks: Record<string, string> = {
+    './site-header.module.css': 'export default {}',
+    './rewards-shortcut.module.css': 'export default {}',
     'cloudflare:workers': `export const env={DB:{prepare(){return {bind(id){return {async first(){
       if(globalThis.queryFixtures.failed.has(id))throw Error('Configuration read failed');
       return globalThis.queryFixtures.configs[id]?{found:1}:null;

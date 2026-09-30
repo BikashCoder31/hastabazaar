@@ -47,9 +47,10 @@ export function TaxonomyDirectory({
                 href={`/shop?${kind}=${encodeURIComponent(entry.slug)}`}
                 className="group min-w-0 overflow-hidden rounded-2xl border bg-card transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
               >
-                <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-secondary/60">
+                <div data-media-frame="cover" className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-secondary/60">
                   {image ? (
                     <Image
+                      data-media-mode="cover"
                       src={image.src}
                       unoptimized={Boolean(entry.imageId)}
                       alt={image.alt}

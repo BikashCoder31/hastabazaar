@@ -27,7 +27,10 @@ const ids = Object.freeze({
 function initializeBaseSchema(sqlite) {
   sqlite.exec(`
     PRAGMA foreign_keys=ON;
-    CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT NOT NULL);
+    CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active');
+    CREATE TABLE user_roles (user_id TEXT NOT NULL REFERENCES users(id), role TEXT NOT NULL);
+    CREATE TABLE staff_permission_profiles (user_id TEXT PRIMARY KEY REFERENCES users(id), permissions_json TEXT NOT NULL);
+    CREATE TABLE staff_permission_guards (id TEXT PRIMARY KEY, valid INTEGER NOT NULL CHECK(valid = 1));
     CREATE TABLE seller_profiles (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id));
     CREATE TABLE seller_participation_profiles (id TEXT PRIMARY KEY);
     CREATE TABLE orders (
@@ -90,11 +93,15 @@ export async function runManagedMakerDemo() {
     initializeBaseSchema(sqlite);
     await applyManagedCommerceMigration(sqlite);
     sqlite.exec(`
-      INSERT INTO users VALUES
+      INSERT INTO users(id,display_name) VALUES
         ('${ids.makerUser}','SIMULATED Maker'),
         ('${ids.reviewer}','SIMULATED Super Admin'),
         ('${ids.financePreparer}','SIMULATED Finance Preparer'),
         ('${ids.financeApprover}','SIMULATED Finance Approver');
+      INSERT INTO user_roles(user_id,role) VALUES
+        ('${ids.reviewer}','super_admin'),
+        ('${ids.financePreparer}','admin'),
+        ('${ids.financeApprover}','super_admin');
       INSERT INTO seller_profiles VALUES ('${ids.seller}','${ids.makerUser}');
       INSERT INTO seller_participation_profiles(id) VALUES ('${ids.seller}');
       INSERT INTO orders VALUES (

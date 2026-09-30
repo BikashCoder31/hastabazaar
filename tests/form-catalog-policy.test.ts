@@ -8,29 +8,30 @@ import { collectFormSites, scanFormSites } from './helpers/form-policy';
 
 const root = resolve(import.meta.dirname, '..');
 
-void test('the reviewed source inventory adds four incentive forms to 83 forms in 65 files', async () => {
+void test('the reviewed source inventory adds four incentive forms and first COD confirmation to 83 forms in 65 files', async () => {
   const sites = await collectFormSites(root);
-  const incentiveSites = [
+  const reviewedSites = [
     { path: 'components/account/rewards-panel.tsx', ordinal: 1, formId: 'account.daily-reward' },
     { path: 'components/account/rewards-panel.tsx', ordinal: 2, formId: 'account.points-redemption' },
+    { path: 'components/admin/first-cod-confirmation.tsx', ordinal: 1, formId: 'staff.first-cod-confirmation' },
     { path: 'components/admin/loyalty-manager.tsx', ordinal: 1, formId: 'staff.loyalty-settings' },
     { path: 'components/admin/promo-code-manager.tsx', ordinal: 1, formId: 'staff.promo-code' },
   ] as const;
-  const incentivePaths = new Set<string>(incentiveSites.map((site) => site.path));
-  assert.deepEqual(sites.filter((site) => incentivePaths.has(site.path))
-    .map(({ path, ordinal, formId }) => ({ path, ordinal, formId })), incentiveSites);
-  for (const site of incentiveSites) {
+  const reviewedPaths = new Set<string>(reviewedSites.map((site) => site.path));
+  assert.deepEqual(sites.filter((site) => reviewedPaths.has(site.path))
+    .map(({ path, ordinal, formId }) => ({ path, ordinal, formId })), reviewedSites);
+  for (const site of reviewedSites) {
     const definition = FORM_REGISTRY[site.formId];
     assert.equal(definition.adapterId, site.formId);
     assert.deepEqual(IMPLEMENTED_FORM_ADAPTERS[definition.adapterId], {
       formId: site.formId, route: definition.route, mode: definition.mode,
     });
   }
-  const originalSites = sites.filter((site) => !incentivePaths.has(site.path));
+  const originalSites = sites.filter((site) => !reviewedPaths.has(site.path));
   assert.equal(originalSites.length, 83);
   assert.equal(new Set(originalSites.map((site) => site.path)).size, 65);
-  assert.equal(sites.length, 83 + incentiveSites.length);
-  assert.equal(new Set(sites.map((site) => site.path)).size, 65 + incentivePaths.size);
+  assert.equal(sites.length, 83 + reviewedSites.length);
+  assert.equal(new Set(sites.map((site) => site.path)).size, 65 + reviewedPaths.size);
   assert.deepEqual(await scanFormSites(root), []);
 });
 

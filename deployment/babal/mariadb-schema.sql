@@ -1033,6 +1033,27 @@ CREATE TABLE IF NOT EXISTS `business_setting_guards` (
   CONSTRAINT `business_setting_guards_valid` CHECK (`valid` = 1)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Additive, repeatable. Apply before deploying delivery maps and assignments.
+CREATE TABLE IF NOT EXISTS address_locations (
+ address_id VARCHAR(191) PRIMARY KEY NOT NULL,
+ latitude DOUBLE NOT NULL, longitude DOUBLE NOT NULL,
+ FOREIGN KEY(address_id) REFERENCES addresses(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS delivery_assignments (
+ order_id VARCHAR(191) PRIMARY KEY NOT NULL,
+ method VARCHAR(20) NOT NULL,
+ rider_user_id VARCHAR(191) NULL, courier_name VARCHAR(120) NULL,
+ tracking_url VARCHAR(500) NULL, tracking_reference VARCHAR(80) NULL,
+ latitude DOUBLE NULL, longitude DOUBLE NULL, accuracy DOUBLE NULL, position_at BIGINT NULL,
+ assigned_by VARCHAR(191) NOT NULL, updated_at BIGINT NOT NULL,
+ FOREIGN KEY(order_id) REFERENCES orders(id), FOREIGN KEY(rider_user_id) REFERENCES users(id),
+ FOREIGN KEY(assigned_by) REFERENCES users(id), INDEX idx_delivery_rider(rider_user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TRIGGER IF EXISTS clear_closed_delivery_location;
+CREATE TRIGGER clear_closed_delivery_location AFTER UPDATE ON orders FOR EACH ROW
+UPDATE delivery_assignments SET latitude=NULL,longitude=NULL,accuracy=NULL,position_at=NULL
+WHERE order_id=NEW.id AND NEW.status <> 'dispatched';
+
 -- Additive seller and maker participation foundation.
 -- Staging migration only until production migration is separately approved.
 ALTER TABLE `seller_profiles` ADD COLUMN IF NOT EXISTS `tax_registration_number_key` VARCHAR(191)
@@ -1848,6 +1869,45 @@ CREATE TABLE IF NOT EXISTS `form_answer_sets` (
   CONSTRAINT `form_answer_sets_version_fk` FOREIGN KEY (`form_id`,`config_version_id`) REFERENCES `form_config_versions` (`form_id`,`id`) ON DELETE RESTRICT,
   CONSTRAINT `form_answer_sets_actor_fk` FOREIGN KEY (`actor_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- Additive optional category imagery; preserve categories, products and form history.
+-- Asset/request identifiers keep SQLite text equality. Parent IDs keep the
+-- production users/categories utf8mb4_unicode_ci foreign-key contract.
+CREATE TABLE IF NOT EXISTS `category_media` (
+  `id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `category_id` VARCHAR(191) NULL,
+  `object_key` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `original_name` LONGTEXT NOT NULL,
+  `mime_type` VARCHAR(32) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `size_bytes` BIGINT NOT NULL,
+  `width` BIGINT NOT NULL,
+  `height` BIGINT NOT NULL,
+  `content_hash` VARCHAR(64) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `created_by` VARCHAR(191) NOT NULL,
+  `request_id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_category_media_object_key` (`object_key`),
+  UNIQUE KEY `idx_category_media_actor_request` (`created_by`,`request_id`),
+  KEY `idx_category_media_category` (`category_id`,`id`),
+  CONSTRAINT `category_media_size` CHECK (`size_bytes`>0 AND `size_bytes`<=5242880),
+  CONSTRAINT `category_media_dimensions` CHECK (`width`>0 AND `width`<=2400 AND `height`>0 AND `height`<=1600),
+  CONSTRAINT `category_media_mime` CHECK (`mime_type`='image/webp'),
+  CONSTRAINT `category_media_hash` CHECK (CHAR_LENGTH(`content_hash`)=64),
+  CONSTRAINT `category_media_category_fk` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `category_media_created_by_fk` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `category_image_assignments` (
+  `category_id` VARCHAR(191) NOT NULL,
+  `media_id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NULL,
+  `updated_by` VARCHAR(191) NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  PRIMARY KEY (`category_id`),
+  UNIQUE KEY `idx_category_image_assignments_media` (`media_id`),
+  CONSTRAINT `category_image_assignments_category_fk` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `category_image_assignments_media_fk` FOREIGN KEY (`media_id`) REFERENCES `category_media` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `category_image_assignments_updated_by_fk` FOREIGN KEY (`updated_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 -- Additive stored legal-hold state. Placement/release is audited by the privacy repository.
 CREATE TABLE IF NOT EXISTS `data_rights_legal_holds` (
   `id` VARCHAR(191) COLLATE utf8mb4_nopad_bin NOT NULL,
@@ -1956,7 +2016,28 @@ CREATE TABLE IF NOT EXISTS gift_cards (
  CHECK((redeemed_by IS NULL AND redeemed_at IS NULL AND redemption_request_id IS NULL) OR (redeemed_by IS NOT NULL AND redeemed_at IS NOT NULL AND redemption_request_id IS NOT NULL))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ALTER TABLE wallet_entries MODIFY COLUMN order_id VARCHAR(191) NULL;
-ALTER TABLE wallet_entries ADD COLUMN IF NOT EXISTS gift_card_id VARCHAR(191) NULL REFERENCES gift_cards(id);
+-- ALTER ... ADD COLUMN ... REFERENCES restarts MariaDB's implicit FK names and
+-- can also add another FK when IF NOT EXISTS skips an existing column. Separate
+-- column creation from the named FK, retaining any equivalent legacy constraint.
+ALTER TABLE wallet_entries ADD COLUMN IF NOT EXISTS gift_card_id VARCHAR(191) NULL;
+SET @gift_card_fk_exists = (
+ SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE k
+ JOIN information_schema.REFERENTIAL_CONSTRAINTS r
+  ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME AND r.TABLE_NAME=k.TABLE_NAME
+ WHERE k.CONSTRAINT_SCHEMA=DATABASE() AND k.TABLE_NAME='wallet_entries'
+  AND k.COLUMN_NAME='gift_card_id' AND k.REFERENCED_TABLE_SCHEMA=DATABASE()
+  AND k.REFERENCED_TABLE_NAME='gift_cards' AND k.REFERENCED_COLUMN_NAME='id'
+  AND r.DELETE_RULE IN ('RESTRICT','NO ACTION') AND r.UPDATE_RULE IN ('RESTRICT','NO ACTION')
+  AND NOT EXISTS (
+   SELECT 1 FROM information_schema.KEY_COLUMN_USAGE other_key
+   WHERE other_key.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND other_key.TABLE_NAME=k.TABLE_NAME
+    AND other_key.CONSTRAINT_NAME=k.CONSTRAINT_NAME AND other_key.ORDINAL_POSITION<>1
+  )
+);
+SET @gift_card_fk_sql = IF(@gift_card_fk_exists>0,'SELECT 1','ALTER TABLE wallet_entries ADD CONSTRAINT wallet_entries_gift_card_fk FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id)');
+PREPARE gift_card_fk_statement FROM @gift_card_fk_sql;
+EXECUTE gift_card_fk_statement;
+DEALLOCATE PREPARE gift_card_fk_statement;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_wallet_entries_gift_card ON wallet_entries(gift_card_id);
 -- The existing kind CHECK has a generated MariaDB name; remove only its exact known expression.
 SET @gift_kind_check = (SELECT CONSTRAINT_NAME FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='wallet_entries' AND CHECK_CLAUSE LIKE '%kind%referral_reward%order_spend%cancellation%refund%' LIMIT 1);
@@ -2085,7 +2166,27 @@ ALTER TABLE order_items ADD COLUMN IF NOT EXISTS current_promo_discount_paisa BI
 
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS refunded_promo_discount_paisa BIGINT NOT NULL DEFAULT 0 CHECK(refunded_promo_discount_paisa BETWEEN 0 AND 9007199254740991);
 
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS promo_campaign_id VARCHAR(191) REFERENCES promo_campaigns(id);
+-- Inline REFERENCES can add another implicit FK when IF NOT EXISTS skips an
+-- existing column. Keep an equivalent legacy FK, regardless of its name.
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS promo_campaign_id VARCHAR(191) NULL;
+SET @promo_campaign_fk_exists = (
+ SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE k
+ JOIN information_schema.REFERENTIAL_CONSTRAINTS r
+  ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME AND r.TABLE_NAME=k.TABLE_NAME
+ WHERE k.CONSTRAINT_SCHEMA=DATABASE() AND k.TABLE_NAME='orders'
+  AND k.COLUMN_NAME='promo_campaign_id' AND k.REFERENCED_TABLE_SCHEMA=DATABASE()
+  AND k.REFERENCED_TABLE_NAME='promo_campaigns' AND k.REFERENCED_COLUMN_NAME='id'
+  AND r.DELETE_RULE IN ('RESTRICT','NO ACTION') AND r.UPDATE_RULE IN ('RESTRICT','NO ACTION')
+  AND NOT EXISTS (
+   SELECT 1 FROM information_schema.KEY_COLUMN_USAGE other_key
+   WHERE other_key.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND other_key.TABLE_NAME=k.TABLE_NAME
+    AND other_key.CONSTRAINT_NAME=k.CONSTRAINT_NAME AND other_key.ORDINAL_POSITION<>1
+  )
+);
+SET @promo_campaign_fk_sql = IF(@promo_campaign_fk_exists>0,'SELECT 1','ALTER TABLE orders ADD CONSTRAINT orders_promo_campaign_fk FOREIGN KEY (promo_campaign_id) REFERENCES promo_campaigns(id)');
+PREPARE promo_campaign_fk_statement FROM @promo_campaign_fk_sql;
+EXECUTE promo_campaign_fk_statement;
+DEALLOCATE PREPARE promo_campaign_fk_statement;
 
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS promo_revision BIGINT;
 

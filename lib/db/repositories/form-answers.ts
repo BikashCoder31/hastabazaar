@@ -95,6 +95,8 @@ function validateInput(formId: FormId, raw: unknown): FormAnswerSnapshot {
 const validAgainstVersion = `WITH current_version AS MATERIALIZED (
   SELECT v.config_json FROM form_config_versions v
   WHERE v.id=? AND v.form_id=? AND v.status='published' AND v.version=?
+    AND json_type(v.config_json,'$.formId')='text' AND json_extract(v.config_json,'$.formId')=v.form_id
+    AND json_type(v.config_json,'$.fields')='array'
     AND v.version=(SELECT MAX(latest.version) FROM form_config_versions latest
       WHERE latest.form_id=v.form_id AND latest.status='published')
 ), answer_fields AS MATERIALIZED (
@@ -112,6 +114,31 @@ const validAgainstVersion = `WITH current_version AS MATERIALIZED (
   WHERE json_extract(answer.field_json,'$.type') IN ('single_choice','multiple_choice')
 )
 SELECT EXISTS(SELECT 1 FROM current_version)
+  AND NOT EXISTS (SELECT 1 FROM current_version v,json_each(v.config_json,'$.fields') configured_field WHERE
+    json_type(configured_field.value) IS NOT 'object'
+    OR json_type(configured_field.value,'$.id') IS NOT 'text'
+    OR json_type(configured_field.value,'$.key') IS NOT 'text'
+    OR length(trim(json_extract(configured_field.value,'$.key')))=0
+    OR json_type(configured_field.value,'$.label') IS NOT 'text'
+    OR json_type(configured_field.value,'$.type') IS NOT 'text'
+    OR json_extract(configured_field.value,'$.type') NOT IN
+      ('short_text','long_text','number','date','single_choice','multiple_choice','checkbox','email','phone')
+    OR json_type(configured_field.value,'$.status') IS NOT 'text'
+    OR json_extract(configured_field.value,'$.status') NOT IN ('active','archived')
+    OR COALESCE(json_type(configured_field.value,'$.required'),'missing') NOT IN ('true','false')
+    OR (json_type(configured_field.value,'$.integerOnly') IS NOT NULL
+      AND json_type(configured_field.value,'$.integerOnly') NOT IN ('true','false'))
+    OR (json_type(configured_field.value,'$.min') IS NOT NULL
+      AND json_type(configured_field.value,'$.min') NOT IN ('integer','real'))
+    OR (json_type(configured_field.value,'$.max') IS NOT NULL
+      AND json_type(configured_field.value,'$.max') NOT IN ('integer','real'))
+    OR NOT (json_extract(configured_field.value,'$.key')=json_extract(configured_field.value,'$.id')
+      OR (lower(replace(json_extract(configured_field.value,'$.key'),'_',''))=
+            lower(replace(json_extract(configured_field.value,'$.id'),'_',''))
+        AND EXISTS (SELECT 1 FROM json_each(?) built_in WHERE built_in.value=
+          lower(replace(json_extract(configured_field.value,'$.key'),'_','')))))
+  )
+
   AND NOT EXISTS (SELECT 1 FROM answer_fields answer WHERE
     answer.field_json IS NULL
     OR json_extract(answer.field_json,'$.label') IS NOT json_extract(answer.answer_json,'$.label')
@@ -135,7 +162,8 @@ SELECT EXISTS(SELECT 1 FROM current_version)
   )
   AND NOT EXISTS (SELECT 1 FROM selected_choices selected WHERE NOT EXISTS (
     SELECT 1 FROM json_each(selected.field_json,'$.choices') choice
-    WHERE json_extract(choice.value,'$.value')=selected.selected_value
+    WHERE json_type(choice.value,'$.label')='text'
+      AND json_extract(choice.value,'$.value')=selected.selected_value
       AND (json_type(selected.answer_json,'$.choiceLabels') IS NULL OR
         json_extract(choice.value,'$.label')=
           json_extract(selected.answer_json,'$.choiceLabels['||selected.selected_index||']'))
@@ -155,6 +183,106 @@ SELECT EXISTS(SELECT 1 FROM current_version)
         WHERE json_extract(given.value,'$.fieldId')=json_extract(required_field.value,'$.id'))
   )`;
 
+// MariaDB has no MATERIALIZED hint or json_each. JSON_TABLE provides the same
+// array rows. String type guards and binary scalar comparisons preserve both
+// JSON types and text identity; JSON_VALUE alone coerces numbers into text.
+const mariaValidAgainstVersion = `WITH current_version AS (
+  SELECT v.config_json FROM form_config_versions v
+  WHERE v.id=? AND v.form_id=? AND v.status='published' AND v.version=?
+    AND JSON_TYPE(JSON_EXTRACT(v.config_json,'$.formId'))='STRING'
+    AND BINARY JSON_VALUE(v.config_json,'$.formId')=BINARY v.form_id
+    AND JSON_TYPE(JSON_EXTRACT(v.config_json,'$.fields'))='ARRAY'
+    AND v.version=(SELECT MAX(latest.version) FROM form_config_versions latest
+      WHERE latest.form_id=v.form_id AND latest.status='published')
+), answer_fields AS (
+  SELECT answer.value AS answer_json,
+    (SELECT field.value FROM JSON_TABLE(v.config_json,'$.fields[*]' COLUMNS (value JSON PATH '$')) field
+      WHERE BINARY JSON_VALUE(field.value,'$.id')=BINARY JSON_VALUE(answer.value,'$.fieldId') LIMIT 1) AS field_json
+  FROM current_version v,JSON_TABLE(?,'$.answers[*]' COLUMNS (value JSON PATH '$')) answer
+), selected_choices AS (
+  SELECT answer.answer_json,answer.field_json,selected.value AS selected_value,
+    selected.ordinality-1 AS selected_index
+  FROM answer_fields answer,JSON_TABLE(
+    CASE WHEN JSON_VALUE(answer.field_json,'$.type')='multiple_choice'
+      THEN JSON_EXTRACT(answer.answer_json,'$.value')
+      ELSE JSON_ARRAY(JSON_VALUE(answer.answer_json,'$.value')) END,
+    '$[*]' COLUMNS (ordinality FOR ORDINALITY,value LONGTEXT PATH '$')) selected
+  WHERE JSON_VALUE(answer.field_json,'$.type') IN ('single_choice','multiple_choice')
+)
+SELECT EXISTS(SELECT 1 FROM current_version)
+  AND NOT EXISTS (SELECT 1 FROM current_version v,
+    JSON_TABLE(v.config_json,'$.fields[*]' COLUMNS (value JSON PATH '$')) configured_field WHERE
+    NOT (JSON_TYPE(configured_field.value) <=> 'OBJECT')
+    OR NOT (JSON_TYPE(JSON_EXTRACT(configured_field.value,'$.id')) <=> 'STRING')
+    OR NOT (JSON_TYPE(JSON_EXTRACT(configured_field.value,'$.key')) <=> 'STRING')
+    OR CHAR_LENGTH(TRIM(JSON_VALUE(configured_field.value,'$.key')))=0
+    OR NOT (JSON_TYPE(JSON_EXTRACT(configured_field.value,'$.label')) <=> 'STRING')
+    OR NOT (JSON_TYPE(JSON_EXTRACT(configured_field.value,'$.type')) <=> 'STRING')
+    OR BINARY JSON_VALUE(configured_field.value,'$.type') NOT IN
+      ('short_text','long_text','number','date','single_choice','multiple_choice','checkbox','email','phone')
+    OR NOT (JSON_TYPE(JSON_EXTRACT(configured_field.value,'$.status')) <=> 'STRING')
+    OR BINARY JSON_VALUE(configured_field.value,'$.status') NOT IN ('active','archived')
+    OR NOT (JSON_TYPE(JSON_EXTRACT(configured_field.value,'$.required')) <=> 'BOOLEAN')
+    OR (JSON_TYPE(JSON_EXTRACT(configured_field.value,'$.integerOnly')) IS NOT NULL
+      AND JSON_TYPE(JSON_EXTRACT(configured_field.value,'$.integerOnly'))!='BOOLEAN')
+    OR (JSON_TYPE(JSON_EXTRACT(configured_field.value,'$.min')) IS NOT NULL
+      AND JSON_TYPE(JSON_EXTRACT(configured_field.value,'$.min')) NOT IN ('INTEGER','DOUBLE'))
+    OR (JSON_TYPE(JSON_EXTRACT(configured_field.value,'$.max')) IS NOT NULL
+      AND JSON_TYPE(JSON_EXTRACT(configured_field.value,'$.max')) NOT IN ('INTEGER','DOUBLE'))
+    OR NOT (BINARY JSON_VALUE(configured_field.value,'$.key')=BINARY JSON_VALUE(configured_field.value,'$.id')
+      OR (BINARY LOWER(REPLACE(JSON_VALUE(configured_field.value,'$.key'),'_',''))=
+            BINARY LOWER(REPLACE(JSON_VALUE(configured_field.value,'$.id'),'_',''))
+        AND EXISTS (SELECT 1 FROM JSON_TABLE(?,'$[*]' COLUMNS (value LONGTEXT PATH '$')) built_in
+          WHERE BINARY built_in.value=BINARY LOWER(REPLACE(JSON_VALUE(configured_field.value,'$.key'),'_','')))))
+  )
+
+  AND NOT EXISTS (SELECT 1 FROM answer_fields answer WHERE
+    answer.field_json IS NULL
+    OR JSON_TYPE(JSON_EXTRACT(answer.field_json,'$.label'))!='STRING'
+    OR NOT (BINARY JSON_VALUE(answer.field_json,'$.label') <=> BINARY JSON_VALUE(answer.answer_json,'$.label'))
+    OR NOT (BINARY JSON_VALUE(answer.field_json,'$.type') <=> BINARY JSON_VALUE(answer.answer_json,'$.type'))
+    OR NOT (BINARY JSON_VALUE(answer.field_json,'$.status') <=> BINARY 'active')
+    OR (JSON_VALUE(answer.field_json,'$.type')='checkbox'
+      AND (NULLIF(JSON_EXTRACT(answer.field_json,'$.required'),'null')!='true'
+        OR JSON_EXTRACT(answer.answer_json,'$.value')='true') IS NOT TRUE)
+    OR (JSON_VALUE(answer.field_json,'$.type') IN ('single_choice','multiple_choice')
+      AND JSON_TYPE(JSON_EXTRACT(answer.answer_json,'$.choiceLabels')) IS NOT NULL
+      AND JSON_LENGTH(answer.answer_json,'$.choiceLabels')!=
+        CASE WHEN JSON_VALUE(answer.field_json,'$.type')='multiple_choice'
+          THEN JSON_LENGTH(answer.answer_json,'$.value') ELSE 1 END)
+    OR (JSON_VALUE(answer.field_json,'$.type')='number'
+      AND ((JSON_VALUE(answer.field_json,'$.min') IS NOT NULL
+          AND JSON_VALUE(answer.answer_json,'$.value')+0e0<JSON_VALUE(answer.field_json,'$.min')+0e0)
+        OR (JSON_VALUE(answer.field_json,'$.max') IS NOT NULL
+          AND JSON_VALUE(answer.answer_json,'$.value')+0e0>JSON_VALUE(answer.field_json,'$.max')+0e0)
+        OR (JSON_EXTRACT(answer.field_json,'$.integerOnly')='true'
+          AND JSON_VALUE(answer.answer_json,'$.value')+0e0!=FLOOR(JSON_VALUE(answer.answer_json,'$.value')+0e0))))
+  )
+  AND NOT EXISTS (SELECT 1 FROM selected_choices selected WHERE NOT EXISTS (
+    SELECT 1 FROM JSON_TABLE(selected.field_json,'$.choices[*]' COLUMNS (value JSON PATH '$')) choice
+    WHERE JSON_TYPE(JSON_EXTRACT(choice.value,'$.value'))='STRING'
+      AND JSON_TYPE(JSON_EXTRACT(choice.value,'$.label'))='STRING'
+      AND BINARY JSON_VALUE(choice.value,'$.value')=BINARY selected.selected_value
+      AND (JSON_TYPE(JSON_EXTRACT(selected.answer_json,'$.choiceLabels')) IS NULL OR
+        (JSON_TYPE(JSON_EXTRACT(choice.value,'$.label'))='STRING'
+          AND BINARY JSON_VALUE(choice.value,'$.label')=
+            BINARY JSON_VALUE(selected.answer_json,CONCAT('$.choiceLabels[',selected.selected_index,']'))))
+      AND LOWER(JSON_VALUE(choice.value,'$.label')) NOT LIKE '%password%'
+      AND LOWER(JSON_VALUE(choice.value,'$.label')) NOT LIKE '%credential%'
+      AND LOWER(JSON_VALUE(choice.value,'$.label')) NOT LIKE '%secret%'
+      AND LOWER(JSON_VALUE(choice.value,'$.label')) NOT LIKE '%token%'
+      AND LOWER(JSON_VALUE(choice.value,'$.label')) NOT LIKE '%payment%'
+      AND LOWER(JSON_VALUE(choice.value,'$.label')) NOT LIKE '%captcha%'
+  ))
+  AND NOT EXISTS (SELECT 1 FROM current_version v,JSON_TABLE(v.config_json,'$.fields[*]' COLUMNS (value JSON PATH '$')) required_field
+    WHERE JSON_VALUE(required_field.value,'$.status')='active'
+      AND JSON_EXTRACT(required_field.value,'$.required')='true'
+      AND NOT EXISTS (SELECT 1 FROM JSON_TABLE(?,'$[*]' COLUMNS (value LONGTEXT PATH '$')) built_in
+        WHERE BINARY built_in.value=BINARY LOWER(REPLACE(JSON_VALUE(required_field.value,'$.key'),'_','')))
+      AND NOT EXISTS (SELECT 1 FROM JSON_TABLE(?,'$.answers[*]' COLUMNS (value JSON PATH '$')) given
+        WHERE BINARY JSON_VALUE(given.value,'$.fieldId')=BINARY JSON_VALUE(required_field.value,'$.id'))
+  )`;
+
 /** Returns an unexecuted native statement for the parent domain batch. */
 export function buildFormAnswerInsert(db: D1Database, input: {
   formId: FormId; requestId: string; versionId: string; subjectType: string; subjectId: string;
@@ -172,11 +300,14 @@ export function buildFormAnswerInsert(db: D1Database, input: {
     field.key.replace(/[^a-z0-9]/gi, '').toLowerCase()));
   const json = JSON.stringify(snapshot);
   if (new TextEncoder().encode(json).length > 131072) throw new FormAnswerRepositoryError('Answer snapshot is too large.');
-  return db.prepare(`INSERT INTO form_answer_sets
+  const maria = (db as D1Database & { dialect?: string }).dialect === 'mariadb';
+  const validation = maria ? mariaValidAgainstVersion : validAgainstVersion;
+  const failure = maria ? 'NULL' : "json_extract('invalid', '$')";
+  return db.prepare(`${maria ? '/* form-answer-insert */ ' : ''}INSERT INTO form_answer_sets
     (id,form_id,request_id,config_version_id,subject_type,subject_id,actor_id,answers_json,created_at)
-    VALUES (?,?,?,?,?,?,?,CASE WHEN (${validAgainstVersion}) THEN ? ELSE json_extract('invalid', '$') END,?)`)
+    VALUES (?,?,?,?,?,?,?,CASE WHEN (${validation}) THEN ? ELSE ${failure} END,?)`)
     .bind(crypto.randomUUID(), formId, requestId, versionId, subjectType, subjectId, actorId,
-      versionId, formId, snapshot.version, json, builtInKeys, json, json, input.now);
+      versionId, formId, snapshot.version, json, builtInKeys, builtInKeys, json, json, input.now);
 }
 
 type AnswerRow = Omit<StoredFormAnswer, 'answers' | 'historicalFieldIds'> & {

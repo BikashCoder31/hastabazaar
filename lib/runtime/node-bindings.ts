@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
@@ -125,6 +126,9 @@ async function executeStatement<T>(
       mysqlBindings(bindings),
     );
     if (Array.isArray(value)) {
+      if (sql.startsWith('/* form-catalog-guard */') && Number((value[0] as { valid?: unknown })?.valid) !== 1) {
+        throw new Error('Form catalog transaction guard rejected the write.');
+      }
       return result(value as T[], 0, 0, startedAt);
     }
     const header = value as ResultSetHeader;
@@ -201,11 +205,15 @@ class MariaDbPreparedStatement {
   }
 
   async run<T = Record<string, unknown>>(): Promise<D1LikeResult<T>> {
+    if (this.sql.startsWith('/* form-answer-insert */')) {
+      return (await new MariaDbD1Database().batch<T>([this]))[0];
+    }
     return executeStatement<T>(databasePool(), this.sql, this.bindings);
   }
 }
 
 class MariaDbD1Database {
+  readonly dialect = 'mariadb';
   prepare(sql: string): MariaDbPreparedStatement {
     return new MariaDbPreparedStatement(sql);
   }
@@ -213,18 +221,38 @@ class MariaDbD1Database {
   async batch<T = Record<string, unknown>>(
     statements: MariaDbPreparedStatement[],
   ): Promise<D1LikeResult<T>[]> {
+    const formStatements = statements.filter((s) => s.sql.startsWith('/* form-catalog-guard */') || s.sql.startsWith('/* form-answer-insert */'));
+    const formIds = [...new Set(formStatements.map((s) => {
+      const formId = s.bindings[1];
+      if (typeof formId !== 'string' || !formId) throw new Error('Form transaction ID is invalid.');
+      return formId;
+    }))].sort();
     const connection = await databasePool().getConnection();
+    const locks: string[] = [];
     try {
+      // Only form batches need a fresh read after waiting. SET TRANSACTION is
+      // one-shot and does not change the pooled connection's session default.
+      if (formStatements.length) await connection.query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED');
       await connection.beginTransaction();
+      for (const formId of formIds) {
+        // A form may have no rows yet. Named locks cover that empty allocation
+        // race and serialize answer acceptance with publication on every worker.
+        const key = 'form:' + createHash('sha256').update(requiredEnvironment('DB_NAME') + '\0' + formId).digest('hex').slice(0, 59);
+        const [rows] = await connection.execute<RowDataPacket[]>('SELECT GET_LOCK(?,30) AS acquired', [key]);
+        if (Number(rows[0]?.acquired) !== 1) throw new Error('Form transaction lock unavailable.');
+        locks.push(key);
+      }
+      for (const statement of formStatements) {
+        if (statement.sql.startsWith('/* form-catalog-guard */')) {
+          // Role revocation and account deactivation must settle before the
+          // atomic guard, and cannot change between guard and catalog write.
+          await connection.execute('SELECT id FROM users WHERE id=? FOR UPDATE', mysqlBindings([statement.bindings[0]]));
+          await connection.execute('SELECT role FROM user_roles WHERE user_id=? FOR UPDATE', mysqlBindings([statement.bindings[0]]));
+        }
+      }
       const responses: D1LikeResult<T>[] = [];
       for (const statement of statements) {
-        responses.push(
-          await executeStatement<T>(
-            connection,
-            statement.sql,
-            statement.bindings,
-          ),
-        );
+        responses.push(await executeStatement<T>(connection, statement.sql, statement.bindings));
       }
       await connection.commit();
       return responses;
@@ -232,7 +260,14 @@ class MariaDbD1Database {
       await connection.rollback();
       throw normalizedError(error);
     } finally {
-      connection.release();
+      try {
+        for (const key of locks.reverse()) await connection.execute('SELECT RELEASE_LOCK(?)', [key]);
+        connection.release();
+      } catch {
+        // Closing the socket releases any remaining named locks. Preserve the
+        // committed result or the original rollback error after cleanup.
+        connection.destroy();
+      }
     }
   }
 }
@@ -496,6 +531,9 @@ export const env = {
   },
   get CONTACT_DAILY_SEND_LIMIT() {
     return process.env.CONTACT_DAILY_SEND_LIMIT;
+  },
+  get CHECKOUT_CONTACT_POLICY() {
+    return process.env.CHECKOUT_CONTACT_POLICY;
   },
   get ORDER_EMAIL_JOB_SECRET() {
     return process.env.ORDER_EMAIL_JOB_SECRET;

@@ -120,6 +120,7 @@ export function HomepageVisibilityControl({
           type="button"
           variant={hidden ? 'default' : 'outline'}
           size="sm"
+          className="h-auto min-h-9 max-w-full whitespace-normal py-2 text-center"
           onClick={prepare}
         >
           <Icon /> {hidden ? 'Show on homepage' : 'Hide from homepage'}

@@ -26,6 +26,7 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
   'staff.business-settings-manager': { formId: 'staff.business-settings-manager', route: '/api/admin/business-settings', mode: 'operation' },
   'staff.homepage-visibility': { formId: 'staff.homepage-visibility', route: '/api/admin/products/:id/homepage', mode: 'operation' },
   'staff.order-fulfillment': { formId: 'staff.order-fulfillment', route: '/api/admin/orders/:id/fulfillment', mode: 'operation' },
+  'staff.first-cod-confirmation': { formId: 'staff.first-cod-confirmation', route: '/api/admin/orders/:id/first-cod-confirmation', mode: 'operation' },
   'staff.review-moderation': { formId: 'staff.review-moderation', route: '/api/admin/reviews/:id', mode: 'operation' },
   'staff.seller-governance': { formId: 'staff.seller-governance', route: '/api/admin/sellers/:id/governance', mode: 'operation' },
   'staff.product-review': { formId: 'staff.product-review', route: '/api/admin/products/:id/review', mode: 'operation' },
@@ -614,8 +615,22 @@ function sellerCaseDefinition(id: 'seller.case-return-response' |
   } satisfies FormDefinition);
 }
 
+// This fixed decision uses the native COD evidence and audit, not configurable answers.
+const FIRST_COD_CONFIRMATION_DEFINITION = Object.freeze({
+  id: 'staff.first-cod-confirmation', audience: 'staff', mode: 'operation',
+  route: '/api/admin/orders/:id/first-cod-confirmation', adapterId: 'staff.first-cod-confirmation',
+  baseFields: Object.freeze(['orderId', 'reason', 'requestId', 'actorId'].map((key) => ({
+    key, type: 'existing', label: key, capability: 'protected' as const,
+    explanation: 'The order, required 8–500 character reason, exact replay and current order.manage authority remain server enforced.',
+  }))),
+  capabilities: Object.freeze({
+    explanation: 'Admin or Super Admin with current order.manage authority confirms once with a required reason. The native immutable COD audit records the decision; custom fields and generic answer recording are unavailable.',
+    customFieldTypes: Object.freeze([]), answerBehavior: 'none',
+  }),
+} satisfies FormDefinition);
+
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
-  Object.assign({ 'account.points-redemption': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.points-redemption'], adapterId: 'account.points-redemption' }), 'staff.loyalty-settings': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.loyalty-settings'], adapterId: 'staff.loyalty-settings' }), 'account.daily-reward': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.daily-reward'], adapterId: 'account.daily-reward' }), 'commerce.promo-quote': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['commerce.promo-quote'], adapterId: 'commerce.promo-quote' }), 'staff.promo-code': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.promo-code'], adapterId: 'staff.promo-code' }) }, Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
+  Object.assign({ 'staff.first-cod-confirmation': FIRST_COD_CONFIRMATION_DEFINITION, 'account.points-redemption': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.points-redemption'], adapterId: 'account.points-redemption' }), 'staff.loyalty-settings': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.loyalty-settings'], adapterId: 'staff.loyalty-settings' }), 'account.daily-reward': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.daily-reward'], adapterId: 'account.daily-reward' }), 'commerce.promo-quote': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['commerce.promo-quote'], adapterId: 'commerce.promo-quote' }), 'staff.promo-code': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.promo-code'], adapterId: 'staff.promo-code' }) }, Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
     const item = Object.hasOwn(PROGRAMMATIC_KEYS, row.split('|')[0])
       ? programmaticDefinition(row.split('|')[0] as ProgrammaticFormId)
       : Object.hasOwn(QUERY_FIELDS, row.split('|')[0]) || row.startsWith('system.local-testing-role|')

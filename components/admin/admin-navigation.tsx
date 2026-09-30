@@ -73,7 +73,7 @@ export function AdminNavigation({ role, permissions }: { role: 'admin' | 'super_
                 <p className="px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   {group}
                 </p>
-                <SidebarMenu className="grid grid-cols-2 gap-1 sm:flex">
+                <SidebarMenu className="grid grid-cols-1 gap-1 min-[360px]:grid-cols-2 sm:flex">
                   {links
                     .filter((link) => link.group === group)
                     .map((link) => {

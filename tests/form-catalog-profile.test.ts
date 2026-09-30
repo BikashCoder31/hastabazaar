@@ -113,7 +113,7 @@ void test('profile adapter records a required answer and preserves its old label
     assert.equal(IMPLEMENTED_FORM_ADAPTERS['account.profile']?.route, '/api/account/profile');
     assert.equal(FORM_REGISTRY['account.profile'].capabilities.answerBehavior, 'record');
     assert.equal((await PATCH(request(input('profile-1')))).status, 200);
-    assert.deepEqual(user(sqlite), { name: 'Asha Rai', phone: '9812345678' });
+    assert.deepEqual(user(sqlite), { name: 'Asha Rai', phone: '+9779812345678' });
     assert.equal(count(sqlite, 'audit_logs'), 1);
     const initial = await listFormAnswersForSubject(globalThis.profileTestDb, 'user', 'customer');
     assert.equal(initial.length, 1);
@@ -211,7 +211,7 @@ void test('repeating a request ID does not update profile or duplicate its answe
     const changed = await PATCH(request({ ...input('once'), displayName: 'Changed on retry' }));
     assert.equal(changed.status, 409);
     assert.match((await changed.json() as { error: string }).error, /already used/i);
-    assert.deepEqual(user(sqlite), { name: 'Asha Rai', phone: '9812345678' });
+    assert.deepEqual(user(sqlite), { name: 'Asha Rai', phone: '+9779812345678' });
     assert.equal(count(sqlite, 'form_answer_sets'), 1);
     assert.equal(count(sqlite, 'audit_logs'), 1);
   } finally { sqlite.close(); }
@@ -234,7 +234,7 @@ void test('exact replay omits optional empty answers even after a later publicat
     ] }))).status, 409);
     assert.equal(count(sqlite, 'form_answer_sets'), 1);
     assert.equal(count(sqlite, 'audit_logs'), 1);
-    assert.deepEqual(user(sqlite), { name: 'Asha Rai', phone: '9812345678' });
+    assert.deepEqual(user(sqlite), { name: 'Asha Rai', phone: '+9779812345678' });
   } finally { sqlite.close(); }
 });
 

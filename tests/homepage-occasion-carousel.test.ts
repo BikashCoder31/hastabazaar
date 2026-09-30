@@ -223,7 +223,7 @@ void test('occasion editor adds, reorders, enables, disables, and removes while 
   );
 });
 
-void test('occasion carousel wraps, uses seven seconds, pauses, and announces manual changes', async () => {
+void test('occasion carousel wraps, uses six seconds, pauses, and announces manual changes', async () => {
   const modulePath = '../lib/homepage/occasion-autoplay';
   const autoplay = (await import(modulePath).catch(() => null)) as null | {
     nextOccasionIndex: (
@@ -243,7 +243,7 @@ void test('occasion carousel wraps, uses seven seconds, pauses, and announces ma
   assert.ok(autoplay, 'occasion autoplay module must exist');
   assert.equal(autoplay.nextOccasionIndex(1, 2, 'next'), 0);
   assert.equal(autoplay.nextOccasionIndex(0, 2, 'previous'), 1);
-  assert.equal(autoplay.occasionAdvanceDelayMs(), 7_000);
+  assert.equal(autoplay.occasionAdvanceDelayMs(), 6_000);
   for (const reason of [
     'manual',
     'hover',
@@ -293,7 +293,16 @@ void test('public and Super Admin surfaces reuse the central setting and actual 
   );
   assert.match(page, /CURRENT_OCCASION_RECOVERY_SLIDES/);
   assert.match(page, /<HomepageOccasionCarousel slides=\{occasionSlides\}/);
-  assert.doesNotMatch(page, /occasions\.map/);
+  assert.equal((page.match(/<HomepageOccasionCarousel/g) ?? []).length, 1);
+  const navigation =
+    page.match(/<nav\s+aria-label="Gift occasions"[\s\S]*?<\/nav>/)?.[0] ?? '';
+  assert.match(navigation, /occasions\.map/);
+  assert.match(navigation, /encodeURIComponent\(occasion.slug\)/);
+  assert.match(navigation, /occasion.nameEn/);
+  assert.doesNotMatch(
+    navigation,
+    /HomepageOccasionCarousel|aria-hidden|inert=/,
+  );
   assert.match(adminPage, /<HomepageOccasionManager/);
   assert.match(
     adminPage,
@@ -306,22 +315,15 @@ void test('public and Super Admin surfaces reuse the central setting and actual 
   assert.match(manager, /initialSlideId=\{previewId\}/);
   assert.match(carousel, /opts=\{\{ loop: true, startIndex: initialIndex \}\}/);
   assert.match(carousel, /aria-live="polite"/);
-  assert.match(carousel, /onPointerEnter/);
-  assert.match(carousel, /onFocusCapture/);
-  assert.match(carousel, /visibilitychange/);
   assert.match(carousel, /prefers-reduced-motion: reduce/);
+  assert.doesNotMatch(carousel, /setTimeout/);
   assert.match(carousel, /ArrowLeft/);
   assert.match(carousel, /ArrowRight/);
-  assert.match(carousel, /onPointerDown/);
-  assert.match(carousel, /onPointerUp/);
-  assert.match(carousel, /pointerClearTimer/);
   assert.match(carousel, /inert=\{index === current \? undefined : true\}/);
   assert.match(
     carousel,
     /aria-hidden=\{index === current \? undefined : true\}/,
   );
-  assert.match(carousel, /Pause/);
-  assert.match(carousel, /Play/);
   assert.match(
     styles,
     /:where\(section, article, main\)\[id\]\s*\{[\s\S]*?scroll-margin-top:\s*12rem/,

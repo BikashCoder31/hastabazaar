@@ -102,7 +102,10 @@ async function nextVersion(db: D1Database, formId: FormId): Promise<number> {
 // A SELECT that raises on failure is deliberately part of D1's atomic batch.
 // This guards races between the earlier user-facing read and the actual write.
 function guard(db: D1Database, predicate: string, values: readonly (string | number)[]): D1PreparedStatement {
-  return db.prepare(`SELECT CASE WHEN (${predicate}) THEN 1 ELSE json_extract('not-json', '$') END AS valid`).bind(...values);
+  const maria = (db as D1Database & { dialect?: string }).dialect === 'mariadb';
+  const sql = maria ? `/* form-catalog-guard */ SELECT (${predicate.replace(historyCompatible, () => mariaHistoryCompatible)}) AS valid`
+    : `SELECT CASE WHEN (${predicate}) THEN 1 ELSE json_extract('not-json', '$') END AS valid`;
+  return db.prepare(sql).bind(...values);
 }
 
 const activeAdmin = `EXISTS (SELECT 1 FROM users u JOIN user_roles r ON r.user_id = u.id
@@ -117,6 +120,19 @@ const historyCompatible = `NOT EXISTS (
     WHERE json_extract(candidate.value, '$.id') = json_extract(old_field.value, '$.id')
       AND json_extract(candidate.value, '$.key') = json_extract(old_field.value, '$.key')
       AND json_extract(candidate.value, '$.type') = json_extract(old_field.value, '$.type')
+  )
+)`;
+
+// JSON_TABLE retains one row per historical field; binary scalar equality matches
+// D1 identifiers, including case, accents, and trailing spaces.
+const mariaHistoryCompatible = `NOT EXISTS (
+  SELECT 1 FROM form_config_versions h,
+    JSON_TABLE(h.config_json, '$.fields[*]' COLUMNS (value JSON PATH '$')) old_field
+  WHERE h.form_id = ? AND NOT EXISTS (
+    SELECT 1 FROM JSON_TABLE(?, '$.fields[*]' COLUMNS (value JSON PATH '$')) candidate
+    WHERE BINARY JSON_VALUE(candidate.value, '$.id') = BINARY JSON_VALUE(old_field.value, '$.id')
+      AND BINARY JSON_VALUE(candidate.value, '$.key') = BINARY JSON_VALUE(old_field.value, '$.key')
+      AND BINARY JSON_VALUE(candidate.value, '$.type') = BINARY JSON_VALUE(old_field.value, '$.type')
   )
 )`;
 

@@ -138,7 +138,10 @@ void test('mounted invoice attempts are independent per selected invoice and ret
     assert.equal(await h.page.evaluate(() => (window as unknown as { staleCalls?: number }).staleCalls ?? 0), 0);
     h.respond(200, {}); await form.getByRole('button', { name: 'Issue simulated document' }).click(); await form.getByText(/response could not be verified/i).waitFor(); assert.equal(h.requests[8].body.requestId, replacement);
     h.respond(200, { id: 'adjustment-a', adjustmentNumber: 'SIM-CREDIT-A', created: false, simulation: true });
-    await Promise.all([h.page.waitForEvent('load'), form.getByRole('button', { name: 'Issue simulated document' }).click()]);
+    const reloaded = h.page.waitForEvent('framenavigated', { predicate: (frame: { url(): string }) => frame.url() === 'https://deferred-retry.test/' });
+    await form.getByRole('button', { name: 'Issue simulated document' }).click();
+    await reloaded;
+    await h.page.waitForLoadState('domcontentloaded');
     await h.page.waitForFunction((id: string) => !Object.values(sessionStorage).includes(id), String(replacement));
     const stored = await h.page.evaluate(() => Object.values(sessionStorage));
     assert.ok(stored.includes(String(b)), 'success of A preserves B');

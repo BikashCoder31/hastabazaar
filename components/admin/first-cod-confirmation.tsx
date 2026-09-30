@@ -67,7 +67,11 @@ export function FirstCodConfirmation({ orderId }: { orderId: string }) {
         order of NPR 5,000 or more before shopping credit. Confirm the buyer and
         order before releasing packing or delivery.
       </p>
-      <form onSubmit={submit} className="mt-4 space-y-3">
+      <form
+        data-form-id="staff.first-cod-confirmation"
+        onSubmit={submit}
+        className="mt-4 space-y-3"
+      >
         <Label htmlFor="cod-confirmation-reason">Confirmation reason</Label>
         <Textarea
           id="cod-confirmation-reason"

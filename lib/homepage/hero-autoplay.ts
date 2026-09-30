@@ -18,7 +18,9 @@ export function nextHeroIndex(
     throw new RangeError('Hero slide count must be a positive integer.');
   }
   if (!Number.isSafeInteger(current) || current < 0 || current >= count) {
-    throw new RangeError('Current hero slide index is outside the slide count.');
+    throw new RangeError(
+      'Current hero slide index is outside the slide count.',
+    );
   }
   return direction === 'next'
     ? (current + 1) % count
@@ -27,7 +29,7 @@ export function nextHeroIndex(
 
 export function heroAdvanceDelayMs(mediaType: HomepageHeroMediaType): number {
   if (mediaType === 'image') return 6_000;
-  if (mediaType === 'video') return 15_000;
+  if (mediaType === 'video') return 6_000;
   throw new RangeError('Unsupported homepage hero media type.');
 }
 

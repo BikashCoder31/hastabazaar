@@ -936,6 +936,7 @@ void test('checkout client submits the published answer with the core order payl
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'checkout-stubs', setup(bundler) {
       bundler.onResolve({ filter: /^next\/link$/ }, () => ({ path: 'link', namespace: 'checkout-shim' }));
+      bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'checkout-shim' }));
       bundler.onResolve({ filter: /^@\/components\/delivery\/location-picker$/ },
         () => ({ path: 'location', namespace: 'checkout-shim' }));
       bundler.onLoad({ filter: /^link$/, namespace: 'checkout-shim' }, () => ({
@@ -943,6 +944,9 @@ void test('checkout client submits the published answer with the core order payl
       }));
       bundler.onLoad({ filter: /^location$/, namespace: 'checkout-shim' }, () => ({
         contents: 'export function LocationPicker(){return null}', loader: 'js',
+      }));
+      bundler.onLoad({ filter: /^navigation$/, namespace: 'checkout-shim' }, () => ({
+        contents: 'export function useRouter(){return {refresh(){}}}', loader: 'js',
       }));
     } }],
   });

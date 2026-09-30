@@ -124,6 +124,9 @@ async function fixture() {
   for (const statement of migration.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
   const tombstoneMigration = await readFile(new URL('../drizzle/0058_address_answer_owner_tombstones.sql', import.meta.url), 'utf8');
   for (const statement of tombstoneMigration.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
+  // Order presentation needs the canonical review table, without unrelated fulfillment triggers.
+  const firstCodMigration = await readFile(new URL('../drizzle/0065_first_cod_review.sql', import.meta.url), 'utf8');
+  for (const statement of firstCodMigration.split('--> statement-breakpoint').slice(0, 2)) sqlite.exec(statement);
   const db = new Database(sqlite);
   globalThis.accountCatalogDb = db as unknown as D1Database;
   globalThis.accountCatalogActor = { userId: 'customer' };

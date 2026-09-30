@@ -371,15 +371,15 @@ export function HomepageHeroManager({
               }}
             />
           </Label>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {media.map((item) => (
-              <div key={item.id} className="rounded-xl border p-3 text-xs">
-                <p className="truncate font-semibold">{item.originalName}</p>
+              <div key={item.id} className="min-w-0 rounded-xl border p-3 text-xs">
+                <p className="break-words font-semibold">{item.originalName}</p>
                 <p className="mt-1 text-muted-foreground">
                   {item.mimeType} · {item.width}×{item.height}
                   {item.archivedAt ? ' · archived' : ''}
                 </p>
-                <code className="mt-2 block truncate text-[11px]">{item.id}</code>
+                <code className="mt-2 block break-all text-[11px]">{item.id}</code>
               </div>
             ))}
           </div>

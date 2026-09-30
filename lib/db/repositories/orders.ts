@@ -1,5 +1,5 @@
 import { quotePromo, preparePromoConsumption } from './promo-codes';
-import { requireCheckoutContactProof, checkoutContactGuards } from '@/lib/auth/contact-verification';
+import { requireCheckoutContactProof, checkoutContactGuards, type CheckoutContactPolicy } from '@/lib/auth/contact-verification';
 import {prepareFirstCodReview} from '@/lib/orders/first-cod-review';
 import { promoQuoteIntent } from '@/lib/incentives/quote-intent';
 import { allocatePromoDiscount } from '@/lib/incentives/promo-policy';
@@ -164,6 +164,7 @@ export async function createCodOrder(
   now: number,
   customerId: string | null = null,
   form?: CommerceForm,
+  contactPolicy: CheckoutContactPolicy = 'email_and_phone',
 ): Promise<CheckoutResult> {
   if (input.promoCode) {
     if (!customerId || typeof input.customerAuthSubject !== 'string' || !input.customerAuthSubject || input.referralCode || !Number.isSafeInteger(input.promoRevision) || !/^[a-f0-9]{64}$/.test(input.promoQuoteIntent ?? ''))
@@ -223,7 +224,7 @@ export async function createCodOrder(
 
   const contactProof = await requireCheckoutContactProof(database,
     customerId && input.customerAuthSubject ? {userId:customerId,authSubject:input.customerAuthSubject} : null,
-    input.customerEmail,input.customerPhone);
+    input.customerEmail,input.customerPhone,contactPolicy);
   const cartId = await getCartId(database, tokenHash);
   if (!cartId) throw new CheckoutConflictError('Your cart is empty.');
   const cart = await getCart(database, tokenHash);

@@ -8,6 +8,10 @@ import { createHostedSessionForUser } from './hosted-session';
 import { normalizeNepalMobile } from './nepal-phone';
 
 export type ContactChannel = 'email' | 'phone';
+export type CheckoutContactPolicy = 'email_and_phone' | 'email_only';
+export function resolveCheckoutContactPolicy(value: string | undefined): CheckoutContactPolicy {
+  return value === 'email_only' ? 'email_only' : 'email_and_phone';
+}
 export type ContactActor = { userId: string; authSubject: string };
 export class ContactVerificationError extends Error {
   constructor(
@@ -329,16 +333,22 @@ export type CheckoutContactProof = {
   email: string;
   phone: string;
   rawPhone: string;
+  policy: CheckoutContactPolicy;
 };
 export async function requireCheckoutContactProof(
   db: D1Database,
   actor: ContactActor | null,
   email: string,
   phone: string,
+  policy: CheckoutContactPolicy = 'email_and_phone',
 ): Promise<CheckoutContactProof> {
+  if (policy !== 'email_and_phone' && policy !== 'email_only')
+    throw new Error('Unknown checkout contact policy.');
   if (!actor)
     throw new ContactVerificationError(
-      'Sign in and verify your email and phone before placing an order.',
+      policy === 'email_only'
+        ? 'Sign in and verify your email before placing an order.'
+        : 'Sign in and verify your email and phone before placing an order.',
       401,
     );
   const current = await account(db, actor);
@@ -351,24 +361,30 @@ export async function requireCheckoutContactProof(
     );
   if (
     !current.emailVerified ||
-    !current.phoneVerified ||
+    (policy === 'email_and_phone' && !current.phoneVerified) ||
     !current.phone ||
     !current.rawPhone
   )
     throw new ContactVerificationError(
-      'Verify your current email and contact phone before placing an order.',
+      policy === 'email_only'
+        ? 'Verify your current email before placing an order.'
+        : 'Verify your current email and contact phone before placing an order.',
     );
   return {
     actor,
     email: current.email,
     phone: current.phone,
     rawPhone: current.rawPhone,
+    policy,
   };
 }
 export function checkoutContactGuards(
   db: D1Database,
   proof: CheckoutContactProof,
 ): D1PreparedStatement[] {
+  if (proof.policy !== 'email_and_phone' && proof.policy !== 'email_only')
+    throw new Error('Unknown checkout contact policy.');
+  const requirePhoneProof = proof.policy === 'email_and_phone';
   return [
     db
       .prepare('UPDATE users SET updated_at=updated_at WHERE id=?')
@@ -377,10 +393,10 @@ export function checkoutContactGuards(
       db,
       `EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id AND r.role='customer'
       JOIN account_email_verifications e ON e.user_id=u.id AND e.email=lower(u.email)
-      JOIN account_phone_verifications p ON p.user_id=u.id AND p.phone=?
+      ${requirePhoneProof ? 'JOIN account_phone_verifications p ON p.user_id=u.id AND p.phone=?' : ''}
       WHERE u.id=? AND u.auth_subject=? AND u.status='active' AND lower(u.email)=? AND u.phone=?)`,
       [
-        proof.phone,
+        ...(requirePhoneProof ? [proof.phone] : []),
         proof.actor.userId,
         proof.actor.authSubject,
         proof.email,

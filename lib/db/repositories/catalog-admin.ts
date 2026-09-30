@@ -186,6 +186,12 @@ export async function saveTaxonomy(
       if (!permitted) throw new CatalogManagementConflictError('Choose your uploaded image or an image already belonging to this category.');
     }
   }
+  // MariaDB's upsert can also match the unique media key. Reject that path
+  // instead of updating another category; updated_by is canonically NOT NULL.
+  const imageConflict = (database as D1Database & { dialect?: string }).dialect === 'mariadb'
+    ? `ON DUPLICATE KEY UPDATE updated_by=CASE WHEN category_id=VALUES(category_id) THEN VALUES(updated_by) ELSE NULL END,
+        media_id=VALUES(media_id),updated_at=VALUES(updated_at)`
+    : 'ON CONFLICT(category_id) DO UPDATE SET media_id=excluded.media_id,updated_by=excluded.updated_by,updated_at=excluded.updated_at';
   try {
     await database.batch([
       ...(authority?.statements ?? []),
@@ -243,7 +249,7 @@ export async function saveTaxonomy(
       ...(imageChange && options.input.imageId !== null ? [database.prepare('UPDATE category_media SET category_id=? WHERE id=? AND category_id IS NULL')
         .bind(id, options.input.imageId!)] : []),
       ...(imageChange ? [database.prepare(`INSERT INTO category_image_assignments(category_id,media_id,updated_by,updated_at)
-        VALUES (?,?,?,?) ON CONFLICT(category_id) DO UPDATE SET media_id=excluded.media_id,updated_by=excluded.updated_by,updated_at=excluded.updated_at`)
+        VALUES (?,?,?,?) ${imageConflict}`)
         .bind(id, options.input.imageId!, options.actorId, options.now)] : []),
       database
         .prepare(

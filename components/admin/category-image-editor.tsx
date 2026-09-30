@@ -78,6 +78,7 @@ export function CategoryImageEditor({
       </legend>
       {value ? (
         <Image
+          data-media-mode="cover"
           unoptimized
           src={`/api/admin/catalog/category-media/${encodeURIComponent(value)}`}
           alt="Category image preview"

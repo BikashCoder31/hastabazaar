@@ -84,6 +84,8 @@ function fixture() {
     CREATE TABLE staff_permission_guards(id TEXT,valid INTEGER CHECK(valid=1));
     CREATE TABLE operation_transaction_guards(id TEXT,valid INTEGER CHECK(valid=1));
     CREATE TABLE orders(id TEXT PRIMARY KEY,order_number TEXT,payment_mode TEXT,customer_id TEXT,receipt_token_hash TEXT,status TEXT,customer_email TEXT,recipient_email TEXT);
+    CREATE TABLE first_cod_reviews(order_id TEXT PRIMARY KEY,customer_id TEXT,total_paisa INTEGER,status TEXT,
+      created_at INTEGER,confirmed_by TEXT,confirmed_at INTEGER,reason TEXT,request_id TEXT);
     CREATE TABLE order_items(id TEXT PRIMARY KEY,order_id TEXT);
     CREATE TABLE managed_commercial_snapshots(id TEXT PRIMARY KEY,order_item_id TEXT);
     CREATE TABLE shipping_jobs(id TEXT PRIMARY KEY,order_id TEXT,status TEXT);

@@ -33,14 +33,14 @@ export async function resolve(specifier, context, nextResolve) {
   if (specifier === 'next/navigation') return { url: 'data:text/javascript,export function useRouter(){return {refresh(){}}}', shortCircuit: true };
   if (specifier === '@/app/auth' || specifier.endsWith('/app/auth.ts')) return { url: 'data:text/javascript,export async function getAuthenticatedUser(){return globalThis.answerTestSubject ? {userId:globalThis.answerTestSubject,email:"test@example.invalid"} : null}', shortCircuit: true };
   if (specifier === '@/lib/db/repositories/staff-permissions' || specifier.endsWith('/lib/db/repositories/staff-permissions.ts')) return { url: 'data:text/javascript,export async function getStaffPermissionProfile(){return {permissions:globalThis.answerTestStaffPermissions}};export async function hasStaffPermissionBySubject(){return false}', shortCircuit: true };
-  if (specifier === '@/lib/auth/customer' || specifier.endsWith('/lib/auth/customer.ts')) return { url: 'data:text/javascript,export async function requireCustomerPage(){return {userId:"owner",email:"owner@example.invalid",displayName:"Owner",phone:null,locale:"en-NP"}}', shortCircuit: true };
+  if (specifier === '@/lib/auth/customer' || specifier.endsWith('/lib/auth/customer.ts')) return { url: 'data:text/javascript,export async function requireCustomerPage(){return {userId:"owner",authSubject:"auth-owner",email:"owner@example.invalid",displayName:"Owner",phone:null,locale:"en-NP"}}', shortCircuit: true };
   if (specifier === '@/components/account/account-ui' || specifier.endsWith('/components/account/account-ui.tsx')) return { url: 'data:text/javascript,export function AccountHeading(){return null}', shortCircuit: true };
   if (specifier === '@/components/account/profile-form' || specifier.endsWith('/components/account/profile-form.tsx')) return { url: 'data:text/javascript,export function ProfileForm(){return null}', shortCircuit: true };
   if (specifier === '@/lib/auth/staff' || specifier.endsWith('/lib/auth/staff.ts')) return { url: 'data:text/javascript,export class StaffAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}};export async function requireStaffApi(){if(!globalThis.answerTestStaffActor)throw new StaffAuthorizationError("Authentication is required.",401);return globalThis.answerTestStaffActor}', shortCircuit: true };
   const resolved = await nextResolve(specifier, context);
   if (resolved.url.endsWith('/app/auth.ts')) return { url: 'data:text/javascript,export async function getAuthenticatedUser(){return globalThis.answerTestSubject ? {userId:globalThis.answerTestSubject,email:"test@example.invalid"} : null}', shortCircuit: true };
   if (resolved.url.endsWith('/lib/db/repositories/staff-permissions.ts')) return { url: 'data:text/javascript,export async function getStaffPermissionProfile(){return {permissions:globalThis.answerTestStaffPermissions}};export async function hasStaffPermissionBySubject(){return false}', shortCircuit: true };
-  if (resolved.url.endsWith('/lib/auth/customer.ts')) return { url: 'data:text/javascript,export async function requireCustomerPage(){return {userId:"owner",email:"owner@example.invalid",displayName:"Owner",phone:null,locale:"en-NP"}}', shortCircuit: true };
+  if (resolved.url.endsWith('/lib/auth/customer.ts')) return { url: 'data:text/javascript,export async function requireCustomerPage(){return {userId:"owner",authSubject:"auth-owner",email:"owner@example.invalid",displayName:"Owner",phone:null,locale:"en-NP"}}', shortCircuit: true };
   if (resolved.url.endsWith('/components/account/account-ui.tsx')) return { url: 'data:text/javascript,export function AccountHeading(){return null}', shortCircuit: true };
   if (resolved.url.endsWith('/components/account/profile-form.tsx')) return { url: 'data:text/javascript,export function ProfileForm(){return null}', shortCircuit: true };
   if (resolved.url.endsWith('/lib/auth/staff.ts')) return { url: 'data:text/javascript,export class StaffAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}};export async function requireStaffApi(){if(!globalThis.answerTestStaffActor)throw new StaffAuthorizationError("Authentication is required.",401);return globalThis.answerTestStaffActor}', shortCircuit: true };
@@ -185,6 +185,14 @@ async function fixture() {
       VALUES (?, 'account.profile', ?, 'v1', ?, ?, ?, ?, 1)`)
       .run(id, `request-${id}`, subjectType, subjectId, actorId, answer);
   }
+  // Profile rendering reads identity proofs; use canonical table DDL at this partial fixture boundary.
+  sqlite.exec('ALTER TABLE users ADD COLUMN email TEXT');
+  sqlite.exec('ALTER TABLE users ADD COLUMN phone TEXT');
+  sqlite.exec("UPDATE users SET email=id || '@example.invalid'");
+  for (const path of ['0028_identity_purchase_security.sql', '0064_checkout_contact_verification.sql']) {
+    const migration = await readFile(new URL(`../drizzle/${path}`, import.meta.url), 'utf8');
+    sqlite.exec(migration.split('--> statement-breakpoint')[0]);
+  }
   const database = new Database(sqlite);
   globalThis.answerTestDb = database as unknown as D1Database;
   globalThis.answerTestSubject = 'auth-owner';
@@ -261,6 +269,7 @@ void test('answer details preserve submission labels and choice labels and mark 
     assert.match(html, /Original color/);
     assert.match(html, /Original blue/);
     assert.match(html, /Historical/);
+
     assert.doesNotMatch(html, /password|token|credential/i);
   } finally { sqlite.close(); }
 });
@@ -317,6 +326,8 @@ void test('profile page shows only the owner historical answers', async () => {
     assert.match(html, /Original color/);
     assert.match(html, /Original blue/);
     assert.match(html, /Historical/);
+    assert.match(html, /Verify your contact details/);
+    assert.doesNotMatch(html, />Verified</);
     assert.doesNotMatch(html, /a-other|auth-other/);
   } finally { sqlite.close(); }
 });

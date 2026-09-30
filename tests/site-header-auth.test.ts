@@ -14,6 +14,7 @@ void test('header Orders link is visible only to authenticated customers', async
   const compiled = await build({
     entryPoints: ['components/layout/site-header.tsx'],
     bundle: true,
+    outfile: 'header-test.cjs',
     write: false,
     platform: 'node',
     format: 'cjs',

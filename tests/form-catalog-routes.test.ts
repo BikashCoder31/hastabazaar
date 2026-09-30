@@ -274,7 +274,7 @@ void test('every staff form keeps its page or receiver permission, including ret
       'staff.privacy-action', 'staff.product-classification', 'staff.recorded-progress-filter',
       'staff.rider-control-1', 'staff.delivery-assignment', 'shipping.console-action-staff',
       'staff.return-case-action', 'staff.complaint-case-action', 'staff.cancellation-review',
-      'staff.seller-review-action', 'staff.order-fulfillment', 'staff.review-moderation',
+      'staff.seller-review-action', 'staff.order-fulfillment', 'staff.first-cod-confirmation', 'staff.review-moderation',
       'staff.product-review',
     ];
     const superAdminForms = [

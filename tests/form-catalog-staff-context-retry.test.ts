@@ -1,4 +1,4 @@
-import { stubFixtureLink } from './helpers/browser-fixture-link';
+import { stubFixtureImage, stubFixtureLink } from './helpers/browser-fixture-link';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
@@ -100,6 +100,7 @@ void test('staff catalogue, exception, payout, privacy and both rider sites requ
   define: { 'process.env.NODE_ENV': '"production"' },
   plugins: [{ name: 'staff-context-retry-stubs', setup(bundler) {
     stubFixtureLink(bundler);
+    stubFixtureImage(bundler);
     bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'fixture' }));
     bundler.onResolve({ filter: /^@\/components\/forms\/form-config-client$/ }, () => ({ path: 'config', namespace: 'fixture' }));
     bundler.onResolve({ filter: /^@\/components\/admin\/confirm-operation$/ }, () => ({ path: 'confirm', namespace: 'fixture' }));

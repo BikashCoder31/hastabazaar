@@ -1,4 +1,4 @@
-import { stubFixtureLink } from './helpers/browser-fixture-link';
+import { stubFixtureImage, stubFixtureLink } from './helpers/browser-fixture-link';
 import type { FixtureBrowser } from './helpers/browser-fixture-types';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -940,7 +940,7 @@ void test('mounted staff marketplace, parcel, and payout forms send published co
         <RiderPolicyForm policy={{version:0,openBox:0,otpScope:'off'}} /></>);
     `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
-    plugins: [{ name: 'staff-catalog-stubs', setup(bundler) { stubFixtureLink(bundler);
+    plugins: [{ name: 'staff-catalog-stubs', setup(bundler) { stubFixtureLink(bundler); stubFixtureImage(bundler);
       bundler.onResolve({ filter: /^@\/components\/admin\/use-admin-mutation$/ }, () => ({ path: 'admin-mutation', namespace: 'staff-stub' }));
       bundler.onResolve({ filter: /^@\/components\/forms\/form-config-client$/ }, () => ({ path: 'form-config', namespace: 'staff-stub' }));
       bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'staff-stub' }));

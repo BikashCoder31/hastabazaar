@@ -1,5 +1,26 @@
 {
   "requiredChecks": {
+    "category_media.category_media_size": [
+      "size_bytes",
+      "0",
+      "5242880"
+    ],
+    "category_media.category_media_dimensions": [
+      "width",
+      "height",
+      "0",
+      "2400",
+      "1600"
+    ],
+    "category_media.category_media_mime": [
+      "mime_type",
+      "image/webp"
+    ],
+    "category_media.category_media_hash": [
+      "content_hash",
+      "char_length",
+      "64"
+    ],
     "orders.chk_cancellation_totals": [
       "current_total_paisa",
       "current_subtotal_paisa",
@@ -35,14 +56,14 @@
       "9007199254740991"
     ]
   },
-  "release": "hastabazaar-release-2026-09-29-preflight",
+  "release": "local-category-images-20260929",
   "startup": "app.cjs",
   "hosting": "Babal.Host",
   "requiredNodeMajor": 22,
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "af3d3a03765d38c03e9f2bc9ec6613d519a3908ba2708440e604959b402d994c",
+      "sha256": "d6fe66b9d4fdc80094f3abf7ae5dcacbf08f82ed429670704555be89b232f167",
       "usage": "empty-database-only"
     },
     {
@@ -127,7 +148,7 @@
     },
     {
       "path": "deployment/babal/mariadb-gift-cards.sql",
-      "sha256": "c9b193bf50a5a03820f1b23d2a8b5d17e982285dd2f9425cb66d7719ce5ce86b",
+      "sha256": "ab93e84a0beed4f7107b414153aeb104ea756b573307a1e50351906cb969bdc1",
       "usage": "additive-maintenance"
     },
     {
@@ -231,6 +252,11 @@
       "usage": "additive-maintenance"
     },
     {
+      "path": "deployment/babal/mariadb-category-images.sql",
+      "sha256": "ec58a7de2d3b02797ce09512b211ee29d195c8de5fb772d4e7c11194052b998c",
+      "usage": "additive-maintenance"
+    },
+    {
       "path": "deployment/babal/mariadb-data-rights-legal-holds.sql",
       "sha256": "ec2747009238fe2e5e8a2b917098e07f552a5dcaf5ab6b7d438fa3047953afc6",
       "usage": "additive-maintenance"
@@ -262,7 +288,7 @@
     },
     {
       "path": "deployment/babal/mariadb-promo-codes.sql",
-      "sha256": "877bb68776c9dd444ad776d60bc6da4b4bdd262e085ad9327a6ef57407cab9a4",
+      "sha256": "9fbbdb85225acb7988700b25858969e01e03de48670f2bbc6d8b7482762991a1",
       "usage": "additive-maintenance"
     },
     {
@@ -1087,6 +1113,25 @@
       "id",
       "valid"
     ],
+    "address_locations": [
+      "address_id",
+      "latitude",
+      "longitude"
+    ],
+    "delivery_assignments": [
+      "accuracy",
+      "assigned_by",
+      "courier_name",
+      "latitude",
+      "longitude",
+      "method",
+      "order_id",
+      "position_at",
+      "rider_user_id",
+      "tracking_reference",
+      "tracking_url",
+      "updated_at"
+    ],
     "seller_participation_profiles": [
       "application_stage",
       "commercial_model",
@@ -1617,6 +1662,26 @@
       "subject_id",
       "subject_type"
     ],
+    "category_media": [
+      "category_id",
+      "content_hash",
+      "created_at",
+      "created_by",
+      "height",
+      "id",
+      "mime_type",
+      "object_key",
+      "original_name",
+      "request_id",
+      "size_bytes",
+      "width"
+    ],
+    "category_image_assignments": [
+      "category_id",
+      "media_id",
+      "updated_at",
+      "updated_by"
+    ],
     "data_rights_legal_holds": [
       "active_user_id",
       "id",
@@ -1939,25 +2004,6 @@
       "product_id",
       "request_id"
     ],
-    "address_locations": [
-      "address_id",
-      "latitude",
-      "longitude"
-    ],
-    "delivery_assignments": [
-      "accuracy",
-      "assigned_by",
-      "courier_name",
-      "latitude",
-      "longitude",
-      "method",
-      "order_id",
-      "position_at",
-      "rider_user_id",
-      "tracking_reference",
-      "tracking_url",
-      "updated_at"
-    ],
     "product_sku_claims": [
       "product_id",
       "sku"
@@ -2069,6 +2115,7 @@
     ]
   },
   "requiredTriggers": {
+    "clear_closed_delivery_location": [],
     "invalidate_delivery_otp_after_destination_change": [],
     "seller_restriction_events_no_update": [],
     "seller_restriction_events_no_delete": [],
@@ -2207,7 +2254,6 @@
     "referral_first_order": [],
     "queue_order_email_insert": [],
     "queue_order_email_update": [],
-    "clear_closed_delivery_location": [],
     "claim_new_product_sku": [],
     "delivery_rate_versions_no_update": [],
     "delivery_rate_versions_no_delete": [],

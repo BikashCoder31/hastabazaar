@@ -66,7 +66,7 @@ export function SellerNavigation({
         </SidebarHeader>
         <SidebarContent className="p-2 xl:max-h-[calc(100dvh-17rem)]">
           <nav aria-label="Seller workspace">
-            <SidebarMenu className="grid grid-cols-2 gap-1 sm:grid-cols-3 xl:flex">
+            <SidebarMenu className="grid grid-cols-1 gap-1 min-[380px]:grid-cols-2 sm:grid-cols-3 xl:flex">
               {links.map(({ href, label, icon: Icon }) => {
                 const active =
                   pathname === href ||

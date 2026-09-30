@@ -1,3 +1,4 @@
+import type { FixtureBrowser } from './helpers/browser-fixture-types';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
@@ -52,10 +53,16 @@ void test('HTTP 200 with malformed status or capture cannot establish verified c
 
 void test('mounted panel rejects malformed success and discards a late code response after owner changes', async () => {
   const playwrightPath =
+    process.env.PLAYWRIGHT_MODULE ??
     'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
-  const { chromium } = (await import(
-    playwrightPath
-  )) as typeof import('C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+  const { chromium } = (await import(playwrightPath)) as {
+    chromium: {
+      launch(options: {
+        headless: boolean;
+        executablePath: string;
+      }): Promise<FixtureBrowser>;
+    };
+  };
   const bundle = await build({
     stdin: {
       resolveDir: process.cwd(),
