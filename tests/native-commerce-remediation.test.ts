@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import mysql, { type Pool } from 'mysql2/promise';
 import { env } from '../lib/runtime/node-bindings';
-import { createCustomerReturnRequest, reviewReturnAsAdmin, advanceReturnAsAdmin } from '../lib/db/repositories/returns';
+import { createCustomerReturnRequest, reviewReturnAsAdmin, advanceReturnAsAdmin, decideHighValueRefund } from '../lib/db/repositories/returns';
 import { accrueManagedEntitlements, getManagedFinanceSummary } from '../lib/db/repositories/managed-settlements';
 import { createCodOrder } from '../lib/db/repositories/orders';
 import { prepareSellerParcels, operateParcel, listParcels } from '../lib/operations/parcels';
@@ -72,10 +72,10 @@ async function fixture(label: string) {
   return {prefix,admin,owner,seller,buyer,order,items,products,phone,receipt:prefix+'-receipt'};
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
-async function createReturn(f:Fixture,index=0) {
+async function createReturn(f:Fixture,index=0,customerId?:string) {
   return createCustomerReturnRequest(db,{orderNumber:f.order,receiptTokenHash:f.receipt,orderItemId:f.items[index],quantity:1,
     reason:'defective',requestedResolution:'refund',detail:'SIMULATED native defective delivered item.',locale:'en-NP',
-    idempotencyKey:f.prefix+'-return-'+index,evidence:[],now});
+    idempotencyKey:f.prefix+'-return-'+index,evidence:[],now,customerId});
 }
 function review(f:Fixture,id:string,requestId:string,deliveryRefundPaisa=0) {
   return {returnRequestId:id,actorId:f.admin,actorRole:'admin' as const,action:'approve' as const,
@@ -205,4 +205,66 @@ void test('native F06 first parcel refund waits for collected whole-order facts 
   assert.deepEqual((await db.prepare('SELECT type,amount_paisa AS amount FROM managed_settlement_entries WHERE entitlement_id=? ORDER BY amount_paisa DESC').bind(entitlement).all<{type:string;amount:number}>()).results.map(row=>({...row})),[{type:'earned',amount:91000},{type:'refund_adjustment',amount:-45500}]);
   assert.equal((await db.prepare('SELECT payment_status AS status FROM orders WHERE id=?').bind(f.order).first<{status:string}>())?.status,'part_refunded');
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM seller_ledger_entries WHERE order_item_id=?').bind(f.items[0]).first<{n:number}>())?.n,0);
+  const invoices=await db.prepare('SELECT snapshot_json AS snapshot FROM managed_invoice_groups WHERE order_id=?').bind(f.order).all<{snapshot:string}>();
+  assert.equal(invoices.results.length,1);
+  assert.equal(JSON.parse(invoices.results[0]!.snapshot).productTotalPaisa,100000);
+  assert.equal(JSON.parse(invoices.results[0]!.snapshot).taxDocument,false);
+});
+
+
+void test('native F04 high-value checker blocks requester owner and owner-change decisions with rollback',{skip:!enabled},async()=>{
+  const f=await fixture('f04'),checker=f.prefix+'-checker';
+  await db.prepare("INSERT INTO users(id,auth_subject,email,display_name,locale,status,created_at,updated_at) VALUES (?,?,?,'SIMULATED high-value checker','en-NP','active',?,?)")
+    .bind(checker,checker,checker+'@example.test',now,now).run();
+  for(const role of ['super_admin','customer'])await db.prepare('INSERT INTO user_roles(user_id,role,assigned_at) VALUES (?,?,?)').bind(checker,role,now).run();
+  await db.prepare('UPDATE orders SET customer_id=?,return_policy_snapshot_json=? WHERE id=?').bind(checker,JSON.stringify({...policy,highValueRefundThresholdPaisa:50000}),f.order).run();
+  const created=await createReturn(f,0,checker);
+  await reviewReturnAsAdmin(db,{...review(f,created.id,f.prefix+'-admin-review'),itemRefundPaisa:100000});
+  const decision=(approve:boolean,requestId:string)=>({returnRequestId:created.id,actorId:checker,approve,
+    note:'SIMULATED high-value owner review.',publicMessageEn:'Reviewed.',publicMessageNe:'Reviewed.',requestId,now});
+  for(const approve of [true,false])await assert.rejects(decideHighValueRefund(db,decision(approve,f.prefix+'-self-'+approve)),/cannot review/);
+  for(const identity of ['owner','requester']){
+    await db.prepare('UPDATE orders SET customer_id=NULL WHERE id=?').bind(f.order).run();
+    await db.prepare('UPDATE return_requests SET requested_by=NULL WHERE id=?').bind(created.id).run();
+    const requestId=f.prefix+'-race-'+identity;
+    const raced=beforeBatch(db,()=>identity==='owner'
+      ? db.prepare('UPDATE orders SET customer_id=? WHERE id=?').bind(checker,f.order).run()
+      : db.prepare('UPDATE return_requests SET requested_by=? WHERE id=?').bind(checker,created.id).run());
+    await assert.rejects(decideHighValueRefund(raced,decision(identity==='owner',requestId)),/stale-high-value-return-owner/);
+    assert.equal(await db.prepare('SELECT id FROM audit_logs WHERE request_id=?').bind(requestId).first(),null);
+    assert.equal(await db.prepare('SELECT id FROM return_request_events WHERE request_id=?').bind(requestId).first(),null);
+  }
+  const state=await db.prepare('SELECT c.status,f.status AS refundStatus,f.high_value_approved_by AS checker FROM return_requests c JOIN refunds f ON f.return_request_id=c.id WHERE c.id=?').bind(created.id).first();
+  assert.deepEqual({...state},{status:'pending_high_value_approval',refundStatus:'pending_high_value_approval',checker:null});
+  await db.prepare('UPDATE orders SET customer_id=NULL WHERE id=?').bind(f.order).run();
+  await db.prepare('UPDATE return_requests SET requested_by=NULL WHERE id=?').bind(created.id).run();
+  const independent=decision(true,f.prefix+'-independent');await decideHighValueRefund(db,independent);await decideHighValueRefund(db,independent);
+  assert.equal((await db.prepare('SELECT status FROM refunds WHERE return_request_id=?').bind(created.id).first<{status:string}>())?.status,'approved');
+});
+
+void test('native F02 failed refund restart and new approval compete for one current delivery reservation',{skip:!enabled},async()=>{
+  const f=await fixture('f02-restart');
+  await db.prepare('UPDATE orders SET current_delivery_paisa=40000,current_subtotal_paisa=200000,current_total_paisa=240000,current_wallet_paisa=0,current_discount_paisa=0 WHERE id=?').bind(f.order).run();
+  const a=await createReturn(f),b=await createReturn(f,1);
+  await reviewReturnAsAdmin(db,review(f,a.id,f.prefix+'-approve-a',40000));
+  const action=(id:string,action:'start_refund'|'fail_refund'|'complete_refund',requestId:string)=>({returnRequestId:id,actorId:f.admin,actorRole:'admin' as const,action,
+    note:'SIMULATED native refund restart.',publicMessageEn:'Reviewed.',publicMessageNe:'Reviewed.',requestId,now,reference:action==='complete_refund'?f.prefix+'-paid-ref':undefined});
+  await advanceReturnAsAdmin(db,action(a.id,'start_refund',f.prefix+'-start-a'));
+  await advanceReturnAsAdmin(db,action(a.id,'fail_refund',f.prefix+'-fail-a'));
+  const concurrent=simultaneousBatches(db);
+  const results=await Promise.allSettled([
+    advanceReturnAsAdmin(concurrent,action(a.id,'start_refund',f.prefix+'-restart-race')),
+    reviewReturnAsAdmin(concurrent,review(f,b.id,f.prefix+'-approval-race',40000)),
+  ]);
+  assert.equal(results.filter(result=>result.status==='fulfilled').length,1);
+  const failure=results.find(result=>result.status==='rejected') as PromiseRejectedResult;
+  assert.match(String(failure.reason),/stale-refund-restart-capacity|stale-delivery-refund-capacity/);
+  assert.equal((await db.prepare("SELECT SUM(delivery_amount_paisa) AS n FROM refunds WHERE order_id=? AND status NOT IN ('failed','rejected')").bind(f.order).first<{n:number}>())?.n,40000);
+  if(results[0].status==='fulfilled')await advanceReturnAsAdmin(db,action(a.id,'complete_refund',f.prefix+'-complete-a'));
+  else{
+    await advanceReturnAsAdmin(db,action(b.id,'start_refund',f.prefix+'-start-b'));
+    await advanceReturnAsAdmin(db,action(b.id,'complete_refund',f.prefix+'-complete-b'));
+    await assert.rejects(advanceReturnAsAdmin(db,action(a.id,'start_refund',f.prefix+'-retry-denied')),/remaining delivery charge/);
+  }
+  assert.equal((await db.prepare("SELECT SUM(delivery_amount_paisa) AS n FROM refunds WHERE order_id=? AND status='paid'").bind(f.order).first<{n:number}>())?.n,40000);
 });

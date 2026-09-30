@@ -128,7 +128,9 @@ void test('the actual loopback Vite client module response never contains the wo
   let server: ViteDevServer | undefined;
   try {
     server = await createViteServer({ configFile: false, root: process.cwd(), cacheDir, logLevel: 'silent',
-      plugins: [f.plugin], server: { host: '127.0.0.1', port: f.port, strictPort: true }, optimizeDeps: { noDiscovery: true } });
+      // This HTTP privacy fixture does not exercise HMR. Avoid a recursive
+      // worktree watcher whose asynchronous scan can outlive server.close().
+      plugins: [f.plugin], server: { host: '127.0.0.1', port: f.port, strictPort: true, watch: null }, optimizeDeps: { noDiscovery: true } });
     await server.listen();
     for (const path of ['/lib/riders/media-upload.ts', '/lib/riders/media-upload.ts?import']) {
       const response = await fetch(`http://127.0.0.1:${f.port}${path}`);

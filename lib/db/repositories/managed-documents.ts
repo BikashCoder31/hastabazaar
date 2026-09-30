@@ -9,8 +9,12 @@ export async function issueManagedInvoiceGroups(
   options:{orderId:string;requestId:string;now:number},
 ):Promise<number>{
   const order=await database.prepare(`SELECT order_number AS orderNumber,customer_email AS customerEmail,
-    payment_status AS paymentStatus,currency,delivered_at AS deliveredAt FROM orders
-    WHERE id=? AND status='delivered' AND payment_status='paid'`).bind(options.orderId).first<{orderNumber:string;customerEmail:string;paymentStatus:string;currency:string;deliveredAt:number}>();
+    payment_status AS paymentStatus,currency,delivered_at AS deliveredAt FROM orders o
+    WHERE o.id=? AND o.status='delivered'
+      AND (o.payment_status='paid' OR (o.payment_status IN ('part_refunded','refunded')
+        AND EXISTS(SELECT 1 FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id WHERE j.order_id=o.id)
+        AND NOT EXISTS(SELECT 1 FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id
+          WHERE j.order_id=o.id AND p.collected_paisa<>p.cod_due_paisa)))`).bind(options.orderId).first<{orderNumber:string;customerEmail:string;paymentStatus:string;currency:string;deliveredAt:number}>();
   if(!order)return 0;
   const rows=await database.prepare(`SELECT s.invoice_issuer_reference AS issuerReference,
     s.legal_seller_reference AS legalSellerReference,s.agreement_version AS agreementVersion,

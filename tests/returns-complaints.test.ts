@@ -6411,6 +6411,12 @@ void test('F06 first collected managed parcel refund defers debit until final pa
 
     assert.equal((await db.prepare("SELECT payment_status AS status FROM orders WHERE id='order-1'").first<{status:string}>())?.status,'part_refunded');
     assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,45500);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_invoice_groups WHERE order_id='order-1'").first<{n:number}>())?.n,1);
+    const invoice=await db.prepare("SELECT snapshot_json AS snapshot FROM managed_invoice_groups WHERE order_id='order-1'").first<{snapshot:string}>();
+    assert.equal(JSON.parse(invoice!.snapshot).productTotalPaisa,100000);
+    assert.equal(JSON.parse(invoice!.snapshot).taxDocument,false);
+    await operateParcel(db,finalCollection);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_invoice_groups WHERE order_id='order-1'").first<{n:number}>())?.n,1);
     assert.equal(await accrueManagedEntitlements(db,{orderId:'order-1',actorId:'admin-1',requestId:'audit-deferred-retry',now}),0);
     assert.deepEqual((await db.prepare("SELECT type,amount_paisa AS amount FROM managed_settlement_entries WHERE entitlement_id='audit-entitlement' ORDER BY amount_paisa DESC").all<{type:string;amount:number}>()).results.map(row=>({...row})),
       [{type:'earned',amount:91000},{type:'refund_adjustment',amount:-45500}]);
@@ -6471,5 +6477,130 @@ void test('F06 several unearned tiny refunds aggregate original rounding and con
       refundedEligibleBasePaisa:1,actorId:'admin-1',reasonCode:'consumed_refund_replay',requestId:'audit-consumed-'+refundId,now});
     assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_settlement_entries WHERE entitlement_id='audit-entitlement'").first<{n:number}>())?.n,2);
     assert.equal((await db.prepare("SELECT SUM(base_amount_paisa) AS n FROM managed_settlement_entries WHERE type='refund_adjustment'").first<{n:number}>())?.n,3);
+  }finally{await f.dispose();}
+});
+
+
+async function auditHighValueCase(db:D1Database,customerId?:string) {
+  const created=await createCustomerReturnRequest(db,{orderNumber:'HK-TEST-2',receiptTokenHash:'receipt-hash-2',orderItemId:'item-2',quantity:1,
+    reason:'wrong_item',requestedResolution:'refund',detail:'SIMULATED high-value ownership review.',locale:'en-NP',
+    idempotencyKey:'audit-high-owner-create',evidence:[],now,customerId});
+  await reviewReturnAsAdmin(db,{...auditReview(created.id,'audit-high-owner-admin'),itemRefundPaisa:2000000});
+  return created;
+}
+function auditHighDecision(id:string,approve=true) {
+  return {returnRequestId:id,actorId:'super-1',approve,note:'SIMULATED independent high-value decision.',
+    publicMessageEn:'Reviewed.',publicMessageNe:'Reviewed.',requestId:'audit-high-owner-checker',now};
+}
+void test('F04 high-value checker rejects own requester and actual-owner decisions for approval and rejection',async()=>{
+  for(const identity of ['requester','owner','both'])for(const approve of [true,false]) {
+    const f=await databaseFixture(),db=f.database as unknown as D1Database;
+    try {
+      await db.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('super-1','customer',?)").bind(now).run();
+      await db.prepare("UPDATE orders SET customer_id=? WHERE id='order-2'").bind(identity==='requester'?null:'super-1').run();
+      const created=await auditHighValueCase(db,identity==='owner'?undefined:'super-1');
+      const beforeNotifications=(await db.prepare('SELECT COUNT(*) AS n FROM notification_messages').first<{n:number}>())!.n;
+      await assert.rejects(decideHighValueRefund(db,auditHighDecision(created.id,approve)),/cannot review/);
+      const state=await db.prepare(`SELECT c.status,f.status AS refundStatus,f.high_value_approved_by AS checker
+        FROM return_requests c JOIN refunds f ON f.return_request_id=c.id WHERE c.id=?`).bind(created.id).first();
+      assert.deepEqual({...state},{status:'pending_high_value_approval',refundStatus:'pending_high_value_approval',checker:null});
+      assert.equal(await db.prepare("SELECT id FROM return_request_events WHERE request_id='audit-high-owner-checker'").first(),null);
+      assert.equal(await db.prepare("SELECT id FROM audit_logs WHERE request_id='audit-high-owner-checker'").first(),null);
+      assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM notification_messages').first<{n:number}>())?.n,beforeNotifications);
+    }finally{await f.dispose();}
+  }
+});
+void test('F04 high-value owner or requester reassignment before commit rolls both checker decisions back',async()=>{
+  for(const identity of ['owner','requester'])for(const approve of [true,false]) {
+    const f=await databaseFixture(),db=f.database as unknown as D1Database;
+    try {
+      const created=await auditHighValueCase(db);
+      const raced=beforeAuditBatch(db,()=>identity==='owner'
+        ? db.prepare("UPDATE orders SET customer_id='super-1' WHERE id='order-2'").run()
+        : db.prepare("UPDATE return_requests SET requested_by='super-1' WHERE id=?").bind(created.id).run());
+      await assert.rejects(decideHighValueRefund(raced,auditHighDecision(created.id,approve)),/stale-high-value-return-owner/);
+      const state=await db.prepare(`SELECT c.status,f.status AS refundStatus,f.high_value_approved_by AS checker
+        FROM return_requests c JOIN refunds f ON f.return_request_id=c.id WHERE c.id=?`).bind(created.id).first();
+      assert.deepEqual({...state},{status:'pending_high_value_approval',refundStatus:'pending_high_value_approval',checker:null});
+      assert.equal(await db.prepare("SELECT id FROM return_request_events WHERE request_id='audit-high-owner-checker'").first(),null);
+      assert.equal(await db.prepare("SELECT id FROM audit_logs WHERE request_id='audit-high-owner-checker'").first(),null);
+    }finally{await f.dispose();}
+  }
+});
+
+
+async function auditFailedDeliveryRefund(db:D1Database) {
+  await db.prepare("UPDATE orders SET delivery_charge_paisa=60000,current_delivery_paisa=40000,current_subtotal_paisa=item_subtotal_paisa,current_total_paisa=item_subtotal_paisa+40000,current_wallet_paisa=0,current_discount_paisa=0 WHERE id='order-1'").run();
+  await db.prepare("UPDATE order_items SET order_id='order-1' WHERE id='item-3'").run();
+  const a=await auditReturn(db),b=await auditReturn(db,'item-3');
+  await reviewReturnAsAdmin(db,auditReview(a.id,'audit-restart-approve-a',40000));
+  const action=(id:string,action:'start_refund'|'fail_refund'|'complete_refund',requestId:string)=>({returnRequestId:id,actorId:'admin-1',actorRole:'admin' as const,action,
+    note:'SIMULATED failed delivery refund reacquisition.',publicMessageEn:'Reviewed.',publicMessageNe:'Reviewed.',requestId,now,reference:action==='complete_refund'?'SIM-RESTART-PAID':undefined});
+  await advanceReturnAsAdmin(db,action(a.id,'start_refund','audit-restart-start-a'));
+  await advanceReturnAsAdmin(db,action(a.id,'fail_refund','audit-restart-fail-a'));
+  return {a,b,action};
+}
+void test('F02 failed standard refund cannot restart after another refund reserves its released delivery allowance',async()=>{
+  const f=await databaseFixture(),db=f.database as unknown as D1Database;
+  try {
+    const {a,b,action}=await auditFailedDeliveryRefund(db);
+    await reviewReturnAsAdmin(db,auditReview(b.id,'audit-restart-approve-b',40000));
+    await assert.rejects(advanceReturnAsAdmin(db,action(a.id,'start_refund','audit-restart-denied')),/remaining delivery charge/);
+    assert.equal((await db.prepare('SELECT status FROM refunds WHERE return_request_id=?').bind(a.id).first<{status:string}>())?.status,'failed');
+    assert.equal(await db.prepare("SELECT id FROM return_request_events WHERE request_id='audit-restart-denied'").first(),null);
+    await advanceReturnAsAdmin(db,action(b.id,'start_refund','audit-restart-start-b'));
+    await advanceReturnAsAdmin(db,action(b.id,'complete_refund','audit-restart-complete-b'));
+    await assert.rejects(advanceReturnAsAdmin(db,action(a.id,'start_refund','audit-restart-denied-paid')),/remaining delivery charge/);
+    assert.equal((await db.prepare("SELECT SUM(delivery_amount_paisa) AS n FROM refunds WHERE order_id='order-1' AND status='paid'").first<{n:number}>())?.n,40000);
+  }finally{await f.dispose();}
+});
+void test('F02 competing failed-refund restart and new approval reserve only one delivery allowance',async()=>{
+  for(const winner of ['approval','restart']){
+    const f=await databaseFixture(),db=f.database as unknown as D1Database;
+    try {
+      const {a,b,action}=await auditFailedDeliveryRefund(db);
+      const approve=()=>reviewReturnAsAdmin(db,auditReview(b.id,'audit-restart-race-approve',40000));
+      const restart=()=>advanceReturnAsAdmin(db,action(a.id,'start_refund','audit-restart-race-start'));
+      const loserCase=winner==='approval'?a.id:b.id;
+      const beforeNotifications=(await db.prepare('SELECT COUNT(*) AS n FROM notification_messages WHERE related_id=?').bind(loserCase).first<{n:number}>())!.n;
+      if(winner==='approval') {
+        await assert.rejects(advanceReturnAsAdmin(beforeAuditBatch(db,approve),action(a.id,'start_refund','audit-restart-race-loser')),/stale-refund-restart-capacity/);
+        assert.equal((await db.prepare('SELECT status FROM refunds WHERE return_request_id=?').bind(a.id).first<{status:string}>())?.status,'failed');
+      }else {
+        await assert.rejects(reviewReturnAsAdmin(beforeAuditBatch(db,restart),auditReview(b.id,'audit-restart-race-loser',40000)),/stale-delivery-refund-capacity/);
+        assert.equal((await db.prepare('SELECT status FROM return_requests WHERE id=?').bind(b.id).first<{status:string}>())?.status,'requested');
+      }
+      assert.equal((await db.prepare("SELECT SUM(delivery_amount_paisa) AS n FROM refunds WHERE order_id='order-1' AND status NOT IN ('failed','rejected')").first<{n:number}>())?.n,40000);
+      assert.equal(await db.prepare("SELECT id FROM audit_logs WHERE request_id='audit-restart-race-loser'").first(),null);
+      assert.equal(await db.prepare("SELECT id FROM return_request_events WHERE request_id='audit-restart-race-loser'").first(),null);
+      assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM notification_messages WHERE related_id=?').bind(loserCase).first<{n:number}>())?.n,beforeNotifications);
+    }finally{await f.dispose();}
+  }
+});
+
+
+void test('managed paid parcel exact replay resumes a failed invoice after committed cash and earned credit',async()=>{
+  const f=await parcelFixture(),db=f.db;
+  try {
+    await auditManagedSnapshot(db);
+    await db.prepare("UPDATE orders SET status='delivered',payment_status='pending',delivered_at=? WHERE id='order-1'").bind(now).run();
+    await db.prepare("UPDATE order_items SET fulfillment_status='delivered' WHERE order_id='order-1'").run();
+    await db.prepare("UPDATE shipping_jobs SET status='delivered' WHERE order_id='order-1'").run();
+    const [first,second]=await listParcels(db,'order-1');
+    await db.prepare('UPDATE shipping_parcels SET collected_paisa=cod_due_paisa WHERE shipping_job_id=?').bind(first.id).run();
+    const collect={jobId:second.id,actorId:'admin-1',action:'collect' as const,version:second.version,amountPaisa:second.codDuePaisa,
+      reference:'SIM-INVOICE-REPLAY-CASH',note:'SIMULATED paid invoice post-commit failure.',requestId:'audit-invoice-replay-collect',now};
+    let batches=0;
+    const interrupted={prepare:db.prepare.bind(db),batch:async(statements:D1PreparedStatement[])=>{
+      if(++batches===3)throw new Error('SIMULATED transient managed invoice failure');
+      return db.batch(statements);
+    }} as D1Database;
+    await assert.rejects(operateParcel(interrupted,collect),/SIMULATED transient managed invoice/);
+    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,91000);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_invoice_groups WHERE order_id='order-1'").first<{n:number}>())?.n,0);
+    await operateParcel(db,collect);await operateParcel(db,collect);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_invoice_groups WHERE order_id='order-1'").first<{n:number}>())?.n,1);
+    assert.equal((await db.prepare('SELECT collected_paisa AS n FROM shipping_parcels WHERE shipping_job_id=?').bind(second.id).first<{n:number}>())?.n,second.codDuePaisa);
+    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,91000);
   }finally{await f.dispose();}
 });

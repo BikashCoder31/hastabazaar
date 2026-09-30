@@ -485,10 +485,13 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
     .first<Parcel>();
   if (!p) throw new ParcelConflictError('Parcel not found.');
   if(replay) {
+    // These operations originally return before the managed post-commit hooks.
+    if(o.action==='record_cost' || o.action==='cancel')return;
     // The parcel commit can succeed before its managed accrual. A verified replay
     // resumes that atomic, idempotent accrual without repeating collection.
     await accrueManagedEntitlements(db,{orderId:p.orderId,actorId:o.actorId,
       requestId:o.requestId+':managed-accrue',now:o.now});
+    await issueManagedInvoiceGroups(db,{orderId:p.orderId,requestId:o.requestId+':managed-invoice',now:o.now});
     return;
   }
   if (o.action !== 'cancel' && o.action !== 'record_cost')

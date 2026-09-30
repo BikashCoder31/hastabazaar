@@ -1377,18 +1377,23 @@ export async function decideHighValueRefund(
     return;
   const current = await database
     .prepare(
-      `SELECT return_requests.status, refunds.id AS refundId,
+      `SELECT return_requests.status, return_requests.requested_by AS requestedBy,
+        orders.customer_id AS customerId, refunds.id AS refundId,
         refunds.approved_by AS approvedBy FROM return_requests
+       INNER JOIN order_items ON order_items.id=return_requests.order_item_id
+       INNER JOIN orders ON orders.id=order_items.order_id
        INNER JOIN refunds ON refunds.return_request_id = return_requests.id
        WHERE return_requests.id = ? AND refunds.status = 'pending_high_value_approval'
        LIMIT 1`,
     )
     .bind(options.returnRequestId)
-    .first<{ status: string; refundId: string; approvedBy: string | null }>();
+    .first<{ status: string; refundId: string; approvedBy: string | null; requestedBy:string|null; customerId:string|null }>();
   if (!current || current.status !== 'pending_high_value_approval')
     throw new ReturnConflictError(
       'This refund is not awaiting Super Admin approval.',
     );
+  if(current.requestedBy===options.actorId || current.customerId===options.actorId)
+    throw new ReturnConflictError('You cannot review a refund for a return request that you created or an order that you own.');
   const toStatus = options.approve ? 'approved' : 'rejected';
   const refundStatus = options.approve ? 'approved' : 'rejected';
   const outcomeGuardId = crypto.randomUUID();
@@ -1476,6 +1481,15 @@ export async function decideHighValueRefund(
       .bind(outcomeGuardId,options.returnRequestId,toStatus,options.requestId,
         current.refundId,refundStatus,options.requestId,options.actorId),
     database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(outcomeGuardId),
+    database.prepare(`UPDATE orders SET updated_at=updated_at WHERE id=(
+      SELECT i.order_id FROM return_requests c JOIN order_items i ON i.id=c.order_item_id WHERE c.id=?)`)
+      .bind(options.returnRequestId),
+    database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM return_requests c
+      JOIN order_items i ON i.id=c.order_item_id JOIN orders o ON o.id=i.order_id
+      WHERE c.id=? AND (c.requested_by IS NULL OR c.requested_by<>?)
+        AND (o.customer_id IS NULL OR o.customer_id<>?))
+      THEN 1 ELSE json_extract('stale-high-value-return-owner','$') END`)
+      .bind(options.returnRequestId,options.actorId,options.actorId),
     ...returnFormStatements(database, options, toStatus, refundStatus),
     ...(authority?.statements ?? []),
     ...(await caseBusinessNotificationStatements(database, {
@@ -1603,6 +1617,13 @@ export async function advanceReturnAsAdmin(
   let resolvedOutcome: 'refund' | 'replacement' | 'return_to_origin' | null =
     null;
 
+  const refundDeliveryCapacity=`COALESCE(o.current_delivery_paisa,o.delivery_charge_paisa)
+    +CASE WHEN o.promo_discount_paisa>0 AND o.current_delivery_paisa IS NOT NULL
+      THEN COALESCE((SELECT SUM(x.delivery_amount_paisa) FROM refunds x WHERE x.order_id=o.id AND x.status='paid'),0)
+      ELSE 0 END
+    -COALESCE((SELECT SUM(x.delivery_amount_paisa) FROM refunds x WHERE x.order_id=o.id AND x.id<>r.id
+      AND x.status<>'rejected' AND (x.status<>'failed' OR o.promo_discount_paisa>0)),0)`;
+
   if (options.action === 'mark_in_transit') {
     if (current.status !== 'approved')
       throw new ReturnConflictError(
@@ -1656,6 +1677,11 @@ export async function advanceReturnAsAdmin(
       throw new ReturnConflictError(
         'This refund is not approved for processing.',
       );
+    const capacity=await database.prepare(`SELECT r.delivery_amount_paisa AS requested,
+      ${refundDeliveryCapacity} AS available FROM orders o JOIN refunds r ON r.order_id=o.id
+      WHERE o.id=? AND r.id=?`).bind(current.orderId,current.refundId).first<{requested:number;available:number}>();
+    if(!capacity || capacity.requested>capacity.available)
+      throw new ReturnConflictError('Refund exceeds the remaining delivery charge.');
     refundFrom = current.refundStatus;
     refundTo = 'processing';
   } else if (options.action === 'complete_refund') {
@@ -1718,6 +1744,14 @@ export async function advanceReturnAsAdmin(
       ),
   ];
   if (refundFrom && refundTo && current.refundId) {
+    if(refundTo==='processing')statements.push(
+      // Failed standard refunds release capacity. Reacquire it under the same
+      // order lock used by approval before moving any refund into processing.
+      database.prepare('UPDATE orders SET updated_at=updated_at WHERE id=?').bind(current.orderId),
+      database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM orders o JOIN refunds r ON r.order_id=o.id
+        WHERE o.id=? AND r.id=? AND ${refundDeliveryCapacity}>=r.delivery_amount_paisa)
+        THEN 1 ELSE json_extract('stale-refund-restart-capacity','$') END`).bind(current.orderId,current.refundId),
+    );
     statements.push(
       database
         .prepare(

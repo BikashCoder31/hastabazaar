@@ -16,6 +16,8 @@ import { SIMULATED_RECORD_LABEL } from '../lib/staging/environment';
 
 function fixture(){
   const sqlite=new DatabaseSync(':memory:');sqlite.exec(`
+    CREATE TABLE shipping_jobs(id TEXT PRIMARY KEY,order_id TEXT NOT NULL);
+    CREATE TABLE shipping_parcels(shipping_job_id TEXT PRIMARY KEY REFERENCES shipping_jobs(id),cod_due_paisa INTEGER NOT NULL CHECK(cod_due_paisa>=0),collected_paisa INTEGER NOT NULL DEFAULT 0 CHECK(collected_paisa>=0 AND collected_paisa<=cod_due_paisa));
     CREATE TABLE orders(id TEXT PRIMARY KEY,order_number TEXT,customer_email TEXT,payment_status TEXT,currency TEXT,delivered_at INTEGER,status TEXT);
     CREATE TABLE order_items(id TEXT PRIMARY KEY,order_id TEXT,product_name_snapshot TEXT,sku_snapshot TEXT,quantity INTEGER,unit_price_paisa INTEGER,line_total_paisa INTEGER);
     CREATE TABLE managed_commercial_snapshots(id TEXT PRIMARY KEY,order_item_id TEXT,invoice_issuer_reference TEXT,legal_seller_reference TEXT,agreement_version TEXT);
@@ -120,4 +122,22 @@ void test('invoice correction API is bounded, Super-Admin tax-authorized, and si
   assert.match(reader,/FORM_JSON_BODY_BYTES = 256 \* 1024/);
   assert.match(source,/assertSimulationAllowed/);
   assert.match(source,/managed_adjustment_reason_codes/);
+});
+
+
+void test('refunded managed orders issue original gross simulated groups only after all original parcel cash is collected',async()=>{
+  for(const status of ['part_refunded','refunded']){
+    const {sqlite,db}=fixture();try{
+      sqlite.prepare('UPDATE orders SET payment_status=? WHERE id=?').run(status,'order');
+      sqlite.exec("INSERT INTO shipping_jobs VALUES ('first','order'),('second','order'); INSERT INTO shipping_parcels VALUES ('first',100000,100000),('second',180000,0)");
+      assert.equal(await issueManagedInvoiceGroups(db,{orderId:'order',requestId:'invoice-refunded-uncollected',now:2000}),0);
+      sqlite.exec("UPDATE shipping_parcels SET collected_paisa=cod_due_paisa WHERE shipping_job_id='second'");
+      assert.equal(await issueManagedInvoiceGroups(db,{orderId:'order',requestId:'invoice-refunded-collected',now:2001}),2);
+      assert.equal(await issueManagedInvoiceGroups(db,{orderId:'order',requestId:'invoice-refunded-collected',now:2002}),0);
+      const snapshots=sqlite.prepare('SELECT snapshot_json AS snapshot FROM managed_invoice_groups').all() as {snapshot:string}[];
+      assert.equal(snapshots.reduce((total,row)=>total+JSON.parse(row.snapshot).productTotalPaisa,0),280000);
+      assert.ok(snapshots.every(row=>JSON.parse(row.snapshot).taxDocument===false));
+      assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM managed_invoice_adjustments').get()?.n,0);
+    }finally{sqlite.close();}
+  }
 });
