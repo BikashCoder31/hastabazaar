@@ -49,7 +49,7 @@ type SubmissionState =
   | { status: 'error'; message: string }
   | { status: 'success' };
 
-const catalogBaseKeys = ['nameEn', 'descriptionEn', 'sku', 'price', 'pricePaisa', 'inventoryQuantity',
+const catalogBaseKeys = ['nameEn', 'nameNe', 'descriptionEn', 'descriptionNe', 'sku', 'price', 'pricePaisa', 'inventoryQuantity',
   'image', 'video', 'reviewRequestId', 'categoryId', 'occasionIds', 'sellerId', 'producer', 'materials',
   'requestId', 'formVersion', 'customAnswers'];
 const uncertainSubmissionMessage = 'Submission status is uncertain. Your product or private media may already have been saved. Check your products before starting a new attempt.';
@@ -693,6 +693,10 @@ export function ProductSubmissionForm({
             />
             {fieldDisplay(catalog.config, 'nameEn')?.helpText ? <FieldDescription id="nameEn-catalog-help">{fieldDisplay(catalog.config, 'nameEn')?.helpText}</FieldDescription> : null}
           </Field>
+          <Field>
+            <FieldLabel htmlFor="nameNe">Product name — Nepali (optional)</FieldLabel>
+            <Input id="nameNe" name="nameNe" maxLength={160} defaultValue={initial?.nameNe ?? ''} />
+          </Field>
         </FieldGroup>
       </FieldSet>
 
@@ -745,6 +749,11 @@ export function ProductSubmissionForm({
             />
             {fieldDisplay(catalog.config, 'descriptionEn')?.helpText ? <FieldDescription id="descriptionEn-catalog-help">{fieldDisplay(catalog.config, 'descriptionEn')?.helpText}</FieldDescription> : null}
           </Field>
+          <Field>
+            <FieldLabel htmlFor="descriptionNe">Description — Nepali (optional)</FieldLabel>
+            <Textarea id="descriptionNe" name="descriptionNe" maxLength={4000} rows={6} defaultValue={initial?.descriptionNe ?? ''} />
+          </Field>
+          <input type="hidden" name="materials" value="" />
           <MaterialsEditor initial={initial?.materials ?? ''} suggestions={materialSuggestions}/>
           <Field>
             <FieldLabel htmlFor="originStory">The story behind this product — optional</FieldLabel>

@@ -195,7 +195,7 @@ export function CustomerContactForm({
           <Input name="orderReference" maxLength={80} disabled={busy} />
         </Field>
       )}
-      {catalog.config ? <div className="sm:col-span-2"><ConfiguredFields config={catalog.config} baseKeys={displayKeys} errors={fieldErrors} /></div> : null}
+      {catalog.config ? <fieldset disabled={busy} className="min-w-0 sm:col-span-2"><ConfiguredFields config={catalog.config} baseKeys={displayKeys} errors={fieldErrors} /></fieldset> : null}
       <label className="flex items-start gap-3 text-sm leading-6 text-muted-foreground sm:col-span-2">
         <input
           type="checkbox"
@@ -226,7 +226,7 @@ export function CustomerContactForm({
               : 'Send message'}
         </Button>
         {!catalog.canSubmit ? <output className="text-sm text-muted-foreground">{catalog.message || 'Form configuration is loading.'}</output> : null}
-        {catalog.status === 'stale' ? <Button type="button" onClick={catalog.refresh}>Refresh form</Button> : null}
+        {catalog.status === 'stale' || catalog.status === 'unavailable' ? <Button type="button" disabled={busy} onClick={catalog.refresh}>Refresh form</Button> : null}
         <Button type="button" className="h-auto min-h-8 max-w-full whitespace-normal" disabled={busy} onClick={(event) => {
           const form = event.currentTarget.closest('form');
           if (form) startNewMessage(form);

@@ -49,6 +49,9 @@ const returnBaseKeys = ['orderItemId', 'quantity', 'requestedResolution', 'reaso
   'detail', 'originalSealIntact', 'locale', 'evidence', 'idempotencyKey'];
 const complaintBaseKeys = ['orderItemId', 'category', 'subject', 'detail',
   'locale', 'idempotencyKey'];
+function uncertainCaseMessage(kind: 'return request' | 'complaint') {
+  return `The ${kind} result is uncertain and may already have been saved. Refresh this receipt and check the saved cases above before retrying this same form with the same answers. Your saved request reference is reused for retries.`;
+}
 
 function confirmedCase(result: Record<string, unknown> | null): result is Record<string, unknown> & { message: string } {
   return result !== null && typeof result.id === 'string' && result.id.trim().length > 0 && result.id.length <= 100 &&
@@ -108,16 +111,16 @@ export function CustomerAftercare({
       const response = await fetch(
         `/orders/${encodeURIComponent(orderNumber)}/returns`,
         { method: 'POST', body: form },
-      );
+      ).catch(() => { throw new Error(uncertainCaseMessage('return request')); });
       const decoded: unknown = await response.json().catch(() => null);
       const result = decoded !== null && typeof decoded === 'object' && !Array.isArray(decoded)
         ? decoded as Record<string, unknown> : null;
       if (response.status === 409 && result?.code === 'stale_version')
         returnForm.handleSubmissionResponse(response);
       if (!response.ok)
-        throw new Error(typeof result?.error === 'string' ? result.error : 'Return request could not be sent.');
+        throw new Error(response.status >= 500 ? uncertainCaseMessage('return request') : typeof result?.error === 'string' ? result.error : 'Return request could not be sent.');
       if (!confirmedCase(result))
-        throw new Error('The result could not be confirmed. Retry this same return request to check its result.');
+        throw new Error(uncertainCaseMessage('return request'));
       setReturnMessage(result.message);
       clearSessionAttempt(returnAttemptKey);
       formElement.reset();
@@ -163,16 +166,16 @@ export function CustomerAftercare({
             ...configuredJsonPayload(complaintForm.config, configured.answers, complaintBaseKeys),
           }),
         },
-      );
+      ).catch(() => { throw new Error(uncertainCaseMessage('complaint')); });
       const decoded: unknown = await response.json().catch(() => null);
       const result = decoded !== null && typeof decoded === 'object' && !Array.isArray(decoded)
         ? decoded as Record<string, unknown> : null;
       if (response.status === 409 && result?.code === 'stale_version')
         complaintForm.handleSubmissionResponse(response);
       if (!response.ok)
-        throw new Error(typeof result?.error === 'string' ? result.error : 'Complaint could not be sent.');
+        throw new Error(response.status >= 500 ? uncertainCaseMessage('complaint') : typeof result?.error === 'string' ? result.error : 'Complaint could not be sent.');
       if (!confirmedCase(result))
-        throw new Error('The result could not be confirmed. Retry this same complaint to check its result.');
+        throw new Error(uncertainCaseMessage('complaint'));
       setComplaintMessage(result.message);
       clearSessionAttempt(complaintAttemptKey);
       formElement.reset();

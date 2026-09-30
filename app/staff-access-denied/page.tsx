@@ -66,13 +66,14 @@ export default async function StaffAccessDeniedPage() {
             Seller application
           </Link>
           {user ? (
-            <a
-              href={signOutPath('/staff-access-denied')}
-              target="_top"
+            <form method="POST" action={signOutPath('/staff-access-denied')} target="_top">
+            <button
+              type="submit"
               className="rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-muted"
             >
               Use an invited staff account
-            </a>
+            </button>
+            </form>
           ) : (
             <a
               href={signInPath('/admin')}

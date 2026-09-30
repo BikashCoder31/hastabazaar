@@ -269,3 +269,19 @@ void test('generated SKU collision retries atomically without changing an existi
  const created=await db.prepare("SELECT sku FROM products WHERE id='new-generated-product'").first<{sku:string}>();assert.ok(created);assert.match(created.sku,/^HB-[A-F0-9]{32}$/);assert.notEqual(created.sku,claimed);assert.notEqual(created.sku,o.input.sku);
  assert.equal((await db.prepare('SELECT product_id AS owner FROM product_sku_claims WHERE sku=?').bind(claimed).first<{owner:string}>())?.owner,'historical-owner');assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='product.submitted' AND subject_id='new-generated-product'").first<{n:number}>())?.n,1);assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM product_media WHERE product_id='new-generated-product'").first<{n:number}>())?.n,4);
  }finally{await f.dispose();}});
+
+void test('an unrelated revision retains omitted translations while explicit empty translations clear them', async () => {
+ const f=await databaseFixture(); const db=f.database as unknown as D1Database;
+ try {
+  const o=await options(db); for(let i=0;i<4;i++)await insertMedia(db,'translation-photo-'+i);
+  await db.prepare("UPDATE products SET name_ne='Nepali name', description_ne='Nepali description' WHERE id='product-1'").run();
+  const input={...o.input}; delete input.nameNe; delete input.descriptionNe;
+  await reviseAndResubmitProduct(db,{...o,input,images:[]});
+  const row=await db.prepare("SELECT name_ne, description_ne FROM products WHERE id='product-1'").first();
+  assert.deepEqual({...row},{name_ne:'Nepali name',description_ne:'Nepali description'});
+  const next=await getSellerProductForRevision(db,'seller-1','product-1');assert.ok(next);
+  await db.prepare("UPDATE products SET status='needs_changes' WHERE id='product-1'").run();
+  await reviseAndResubmitProduct(db,{...o,input:{...input,nameNe:null,descriptionNe:null},images:[],expectedReviewRequestId:next.reviewRequestId});
+  assert.deepEqual({...await db.prepare("SELECT name_ne, description_ne FROM products WHERE id='product-1'").first()},{name_ne:null,description_ne:null});
+ } finally {await f.dispose();}
+});

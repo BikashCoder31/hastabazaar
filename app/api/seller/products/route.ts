@@ -1,4 +1,5 @@
 import { validateProductVideo } from '@/lib/media/product-video';
+import { ProductWatermarkError } from '@/lib/products/watermark';
 import { productPhotoCountError } from '@/lib/products/submission';
 import { readBoundedForm, BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
@@ -151,7 +152,7 @@ export async function POST(request: Request): Promise<Response> {
         mimeType: file.type,
         sizeBytes: file.size,
         altEn: parsed.input.nameEn,
-        altNe: parsed.input.nameNe,
+        altNe: parsed.input.nameNe ?? null,
         sortOrder: file.type === 'video/mp4' ? 1_000_000 : index,
       });
     }
@@ -192,6 +193,7 @@ export async function POST(request: Request): Promise<Response> {
         uploadedKeys.map((key) => cleanupBucket.delete(key)),
       );
     }
+    if (error instanceof ProductWatermarkError) return json({ error: error.message }, error.status);
     if (error instanceof SellerAuthorizationError) {
       return json({ error: error.message }, error.status);
     }

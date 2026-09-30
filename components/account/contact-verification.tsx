@@ -49,6 +49,9 @@ export function ContactVerificationPanel({
   const [captures, setCaptures] = useState<Capture[]>([]);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [unavailable, setUnavailable] = useState(false);
+  const [statusRetry, setStatusRetry] = useState(0);
+  const subscription = useRef<{ ownerKey?: string; initialStatus?: Status | null } | null>(null);
   const statusCallback = useRef(onStatusChange);
   useEffect(() => {
     statusCallback.current = onStatusChange;
@@ -69,13 +72,18 @@ export function ContactVerificationPanel({
     busyRef.current = false;
     // Synchronize all owner-bound state when this verification subscription changes owner.
     /* oxlint-disable react/react-compiler */
-    setBusy(null);
-    setPending({});
-    setCodes({ email: '', phone: '' });
-    setCaptures([]);
+    const changedOwner = !subscription.current || subscription.current.ownerKey !== ownerKey || subscription.current.initialStatus !== initialStatus;
+    subscription.current = { ownerKey, initialStatus };
+    if (changedOwner) {
+      setBusy(null);
+      setPending({});
+      setCodes({ email: '', phone: '' });
+      setCaptures([]);
+      setStatus(initialStatus ?? null);
+    }
     setError('');
     setMessage('');
-    setStatus(initialStatus ?? null);
+    setUnavailable(false);
     setLoading(true);
     /* oxlint-enable react/react-compiler */
     statusCallback.current?.(null);
@@ -85,7 +93,7 @@ export function ContactVerificationPanel({
     })
       .then(async (response) => {
         if (!current(version)) return;
-        if (response.status === 401 || response.status === 403) {
+        if (response.status === 401) {
           setStatus(null);
           statusCallback.current?.(null);
           return;
@@ -100,7 +108,7 @@ export function ContactVerificationPanel({
       })
       .catch((reason) => {
         if (current(version) && !controller.signal.aborted) {
-          setStatus(null);
+          setUnavailable(true);
           setError(
             reason instanceof Error
               ? reason.message
@@ -122,7 +130,7 @@ export function ContactVerificationPanel({
       // oxlint-disable-next-line react-hooks/exhaustive-deps
       activeController.current?.abort();
     };
-  }, [ownerKey, initialStatus]);
+  }, [ownerKey, initialStatus, statusRetry]);
   async function capturedCodes(version: number, signal: AbortSignal) {
     const response = await fetch('/api/account/contact-verification/capture', {
       cache: 'no-store',
@@ -251,6 +259,14 @@ export function ContactVerificationPanel({
         Checking your contact verification…
       </section>
     );
+  if (!status && unavailable)
+    return (
+      <section className="rounded-2xl border bg-card p-5 sm:p-7" aria-label="Contact verification">
+        <h2 className="font-heading text-2xl">Verify your contact details</h2>
+        <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>
+        <Button type="button" className="mt-4" onClick={() => setStatusRetry(value => value + 1)}>Retry contact status</Button>
+      </section>
+    );
   if (!status)
     return (
       <section className="rounded-2xl border bg-card p-5 sm:p-7">
@@ -319,7 +335,7 @@ export function ContactVerificationPanel({
                     type="button"
                     variant="outline"
                     disabled={
-                      busy !== null || (channel === 'phone' && !status.phone)
+                      unavailable || busy !== null || (channel === 'phone' && !status.phone)
                     }
                     onClick={() => void act(channel, 'request')}
                   >
@@ -349,7 +365,7 @@ export function ContactVerificationPanel({
                       />
                       <Button
                         type="button"
-                        disabled={busy !== null || codes[channel].length !== 6}
+                        disabled={unavailable || busy !== null || codes[channel].length !== 6}
                         onClick={() => void act(channel, 'verify')}
                       >
                         Verify {channel} code
@@ -382,6 +398,7 @@ export function ContactVerificationPanel({
           {error}
         </p>
       ) : null}
+      {unavailable ? <Button type="button" className="mt-3" disabled={loading} onClick={() => setStatusRetry(value => value + 1)}>Retry contact status</Button> : null}
       {local ? (
         <details className="mt-4 rounded-xl border border-dashed p-3">
           <summary className="cursor-pointer text-sm font-semibold">

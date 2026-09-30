@@ -83,6 +83,8 @@ export function HomepageOccasionCarousel({
     reset: resetAutoplay,
     selectionKind,
     interactionProps,
+    pausedByUser,
+    toggleUserPause,
   } = useSliderAutoplay(api, enabledSlides.length);
   const initialIndex = Math.max(
     0,
@@ -276,6 +278,12 @@ export function HomepageOccasionCarousel({
           onSelect={selectManually}
           className="mt-4"
         />
+        {enabledSlides.length > 1 ? <div className="mt-3 flex justify-center">
+          <button type="button" onClick={toggleUserPause} aria-pressed={pausedByUser}
+            className="min-h-11 rounded-full border border-[#f2ebe1]/50 px-4 text-sm font-semibold text-[#f2ebe1] hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f2ebe1]">
+            {pausedByUser ? 'Resume gifting stories' : 'Pause gifting stories'}
+          </button>
+        </div> : null}
       </Carousel>
       <p className="sr-only" aria-live="polite" aria-atomic="true">
         {announcement}

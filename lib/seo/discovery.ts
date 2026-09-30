@@ -3,7 +3,6 @@ export const PUBLIC_ORIGIN = 'https://hastabazaar.com';
 export const PUBLIC_PAGES = [
   '/',
   '/shop',
-  '/makers',
   '/about',
   '/contact',
   '/legal',
@@ -50,20 +49,21 @@ export function productStructuredData(
     descriptionEn: string;
     pricePaisa: number;
     inventoryQuantity: number;
-    media: readonly { id: string }[];
+    media: readonly { id: string; mimeType?: string }[];
   },
   rating: { count: number; average: number | null },
 ) {
   const url = publicUrl('/products/' + encodeURIComponent(product.slug));
+  const images = product.media.filter(media => ['image/jpeg', 'image/png', 'image/webp'].includes(media.mimeType ?? ''));
   return {
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: product.nameEn,
     description: product.descriptionEn,
     url,
-    ...(product.media.length
+    ...(images.length
       ? {
-          image: product.media.map((m) =>
+          image: images.map((m) =>
             publicUrl('/api/product-media/' + encodeURIComponent(m.id)),
           ),
         }

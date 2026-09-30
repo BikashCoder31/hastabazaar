@@ -1,4 +1,5 @@
 import { validateProductVideo } from '@/lib/media/product-video';
+import { ProductWatermarkError } from '@/lib/products/watermark';
 import { productPhotoCountError } from '@/lib/products/submission';
 import { readBoundedForm, BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
@@ -92,7 +93,7 @@ export async function PATCH(
     const submitted = configuredMultipartAnswers(formData, config);
     // Removed seller fields retain their original persisted values on revision.
     formData.set('producer', current.producer);
-    formData.set('materials', current.materials);
+    if (!formData.has('materials')) formData.set('materials', current.materials);
     if (!formData.has('warrantyOffered')) formData.set('warranty', current.warranty ?? '');
     formData.set('sku', ''); // New SKUs are generated; revisions retain the persisted SKU.
     const parsed = parseProductSubmission(formData);
@@ -195,7 +196,7 @@ export async function PATCH(
         mimeType: file.type,
         sizeBytes: file.size,
         altEn: parsed.input.nameEn,
-        altNe: parsed.input.nameNe,
+        altNe: parsed.input.nameNe === undefined ? current.nameNe : parsed.input.nameNe,
         sortOrder: file.type === 'video/mp4' ? 1_000_000 : nextImageSort + imageOffset++,
       });
     }
@@ -241,6 +242,7 @@ export async function PATCH(
         uploadedKeys.map((key) => cleanupBucket.delete(key)),
       );
     }
+    if (error instanceof ProductWatermarkError) return json({ error: error.message }, error.status);
     if (error instanceof SellerAuthorizationError)
       return json({ error: error.message }, error.status);
     if (error instanceof ProductRevisionConflictError)

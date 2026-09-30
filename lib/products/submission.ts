@@ -29,9 +29,9 @@ export interface ProductSubmissionInput {
   occasionIds: readonly string[];
   sku: string;
   nameEn: string;
-  nameNe: string | null;
+  nameNe?: string | null;
   descriptionEn: string;
-  descriptionNe: string | null;
+  descriptionNe?: string | null;
   pricePaisa: number;
   compareAtPricePaisa: number | null;
   inventoryQuantity: number;
@@ -129,9 +129,9 @@ export function parseProductSubmission(formData: FormData): {
     occasionIds,
     sku: textField(formData, 'sku').toUpperCase(),
     nameEn: textField(formData, 'nameEn'),
-    nameNe: textField(formData, 'nameNe') || null,
+    nameNe: formData.has('nameNe') ? textField(formData, 'nameNe') || null : undefined,
     descriptionEn: textField(formData, 'descriptionEn'),
-    descriptionNe: textField(formData, 'descriptionNe') || null,
+    descriptionNe: formData.has('descriptionNe') ? textField(formData, 'descriptionNe') || null : undefined,
     pricePaisa: typeof pricePaisa === 'number' ? pricePaisa : 0,
     compareAtPricePaisa:
       typeof compareAtPricePaisa === 'number' ? compareAtPricePaisa : null,
@@ -320,7 +320,20 @@ export async function validateProductImageContent(
     (file.type === 'image/jpeg' && isJpeg) ||
     (file.type === 'image/png' && isPng) ||
     (file.type === 'image/webp' && isWebp);
-  return matches ? null : 'The image content does not match its declared type.';
+  if (!matches) return 'The image content does not match its declared type.';
+  // Exercise the same bounded decoder and metadata stripping used for public
+  // derivatives before accepting private source bytes. Signature checks alone
+  // do not detect truncated or oversized images.
+  const { renderProductWatermark, ProductWatermarkError } = await import('./watermark');
+  const { defaultProductWatermarkPolicy } = await import('./watermark-policy');
+  try {
+    await renderProductWatermark(new Uint8Array(await file.arrayBuffer()), file.type,
+      { ...defaultProductWatermarkPolicy, enabled: false });
+    return null;
+  } catch (error) {
+    if (error instanceof ProductWatermarkError && error.status === 503) throw error;
+    return error instanceof Error ? error.message : 'The product photo could not be safely decoded.';
+  }
 }
 
 export function createProductSlug(name: string): string {

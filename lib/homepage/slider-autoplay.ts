@@ -48,9 +48,11 @@ export function useSliderAutoplay(
   const [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [pausedByUser, setPausedByUser] = useState(false);
   const timer = useRef<ReturnType<typeof createSliderAutoplay> | null>(null);
   const automaticSelection = useRef(true);
-  const paused = hovered || focused || hidden || reducedMotion || videoPlaying;
+  const paused = pausedByUser || hovered || focused || hidden || reducedMotion || videoPlaying;
+  const toggleUserPause = useCallback(() => setPausedByUser(value => !value), []);
 
   const reset = useCallback(() => {
     automaticSelection.current = false;
@@ -100,6 +102,8 @@ export function useSliderAutoplay(
   return {
     reset,
     selectionKind,
+    pausedByUser,
+    toggleUserPause,
     interactionProps: {
       onPointerEnter: (event: PointerEvent<HTMLElement>) => {
         if (event.pointerType !== 'touch') setHovered(true);

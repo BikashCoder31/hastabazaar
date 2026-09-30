@@ -186,6 +186,7 @@ export default async function Home() {
     <div className="min-h-screen bg-background text-foreground">
       <SiteHeader />
       <main tabIndex={-1} id="main-content">
+        <h1 className="sr-only">Handmade gifts and crafts from Nepali makers</h1>
         <HomepageHeroCarousel slides={heroSlides} />
 
         <div id="categories" className="homepage-category-wrap shell">

@@ -40,13 +40,14 @@ export default async function SellerAccessDeniedPage() {
         </p>
         <div className="mt-7 flex flex-wrap justify-center gap-3">
           {user ? (
-            <a
-              href={signOutPath('/seller-access-denied')}
-              target="_top"
+            <form method="POST" action={signOutPath('/seller-access-denied')} target="_top">
+            <button
+              type="submit"
               className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
             >
               Use another account
-            </a>
+            </button>
+            </form>
           ) : (
             <a
               href={signInPath('/seller')}

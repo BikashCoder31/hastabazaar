@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { feedbackTopics } from '@/lib/feedback/customer-feedback';
 import { clearFeedbackAttemptId, reserveFeedbackAttemptId } from '@/lib/feedback/attempt-id';
@@ -28,6 +28,11 @@ export function FooterFeedbackForm() {
     message: '',
   });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    const fieldId = Object.keys(fieldErrors)[0];
+    if (!busy && fieldId && formRef.current) focusConfiguredField(formRef.current, fieldId);
+  }, [busy, fieldErrors]);
   function startNewMessage(form: HTMLFormElement) {
     if (!window.confirm('Have you contacted support to check your earlier message? Starting a new message may create a duplicate.')) return;
     clearFeedbackAttemptId('public.footer-feedback');
@@ -65,7 +70,6 @@ export function FooterFeedbackForm() {
       catalog.handleSubmissionResponse(response, result?.code);
       if (result?.fieldId) setFieldErrors({ [result.fieldId]: result.error || 'Invalid answer.' });
       if (!response.ok || !result?.ok) {
-        if (result?.fieldId) focusConfiguredField(form, result.fieldId);
         throw new Error(
           result?.error ?? uncertainDeliveryMessage,
         );
@@ -108,7 +112,7 @@ export function FooterFeedbackForm() {
           </p>
         </div>
 
-        <form data-form-id="public.footer-feedback" onSubmit={submit}
+        <form ref={formRef} data-form-id="public.footer-feedback" onSubmit={submit}
           className="grid gap-4 sm:grid-cols-2">
           <input type="hidden" name="pagePath" value={pathname || '/'} />
           <input type="hidden" name="kind" value="footer" />
@@ -219,7 +223,7 @@ export function FooterFeedbackForm() {
               .
             </span>
           </label>
-          {catalog.config ? <div className="sm:col-span-2 [&_[data-configured-field]_input]:text-foreground [&_[data-configured-field]_select]:text-foreground [&_[data-configured-field]_textarea]:text-foreground [&_[data-configured-field]_p]:text-white/70"><ConfiguredFields config={catalog.config} baseKeys={displayKeys} errors={fieldErrors} /></div> : null}
+          {catalog.config ? <fieldset disabled={busy} className="min-w-0 sm:col-span-2 [&_[data-configured-field]_input]:text-foreground [&_[data-configured-field]_select]:text-foreground [&_[data-configured-field]_textarea]:text-foreground [&_[data-configured-field]_p]:text-white/70"><ConfiguredFields config={catalog.config} baseKeys={displayKeys} errors={fieldErrors} /></fieldset> : null}
           <div className="flex flex-wrap items-center gap-4 sm:col-span-2">
             <button
               type="submit"
@@ -229,7 +233,7 @@ export function FooterFeedbackForm() {
               {busy ? 'Sending…' : 'Send query'}
             </button>
             {!catalog.canSubmit ? <output className="text-sm text-white/70">{catalog.message || 'Form configuration is loading.'}</output> : null}
-            {catalog.status === 'stale' ? <button type="button" onClick={catalog.refresh}>Refresh form</button> : null}
+            {catalog.status === 'stale' || catalog.status === 'unavailable' ? <button type="button" disabled={busy} onClick={catalog.refresh}>Refresh form</button> : null}
             <button type="button" disabled={busy}
               className="min-h-11 rounded-full border border-white/40 px-4 text-sm font-semibold"
               onClick={(event) => {

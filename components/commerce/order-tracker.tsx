@@ -4,7 +4,7 @@ import { useState, type SyntheticEvent } from 'react';
 import { Check, Package, Truck } from 'lucide-react';
 import type { OrderTracking } from '@/lib/db/repositories/order-tracking';
 import { orderProgress, orderStages } from '@/lib/orders/progress';
-import { sendJson } from '@/lib/http/client-request';
+import { HttpResponseError, sendJson } from '@/lib/http/client-request';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { queryFieldPresentation } from '@/lib/catalog/shop-query';
 import type { PublishedFormConfig } from '@/lib/forms/types';
@@ -30,7 +30,6 @@ export function OrderTracker({ initialOrder, presentationConfig }: { initialOrde
     if (busy) return;
     setBusy(true);
     setError('');
-    setTracking(null);
     try {
       const result = await sendJson<{ tracking: OrderTracking }>(
         '/api/orders/track',
@@ -40,6 +39,7 @@ export function OrderTracker({ initialOrder, presentationConfig }: { initialOrde
       );
       setTracking(result.tracking);
     } catch (e) {
+      if (e instanceof HttpResponseError && e.status < 500 && e.status !== 408 && e.status !== 429) setTracking(null);
       setError(e instanceof Error ? e.message : 'Please try again.');
     } finally {
       setBusy(false);
@@ -63,6 +63,7 @@ export function OrderTracker({ initialOrder, presentationConfig }: { initialOrde
               onChange={(e) => {
                 setOrder(e.target.value);
                 setTracking(null);
+                setError('');
               }}
               placeholder={orderField.placeholder}
               aria-describedby={orderField.helpText ? 'tracking-order-help' : undefined}
@@ -83,6 +84,7 @@ export function OrderTracker({ initialOrder, presentationConfig }: { initialOrde
               onChange={(e) => {
                 setEmail(e.target.value);
                 setTracking(null);
+                setError('');
               }}
               placeholder={emailField.placeholder}
               aria-describedby={emailField.helpText ? 'tracking-email-help' : undefined}
@@ -99,7 +101,7 @@ export function OrderTracker({ initialOrder, presentationConfig }: { initialOrde
           disabled={busy}
           className="mt-5 rounded-full bg-primary px-7 py-3 font-semibold text-primary-foreground disabled:opacity-60"
         >
-          {busy ? 'Checking…' : tracking ? 'Refresh tracking' : 'Track order'}
+          {busy ? 'Checking…' : error ? 'Retry tracking' : tracking ? 'Refresh tracking' : 'Track order'}
         </button>
         {error ? (
           <p role="alert" className="mt-4 text-sm text-destructive">
@@ -113,6 +115,7 @@ export function OrderTracker({ initialOrder, presentationConfig }: { initialOrde
             className="rounded-3xl border bg-card p-6 sm:p-8"
             aria-label="Order progress"
           >
+            {error ? <output className="mb-4 block rounded-xl bg-secondary p-3 text-sm">Last successful tracking is shown. It may be out of date.</output> : null}
             <div className="flex items-start gap-4">
               <span className="rounded-2xl bg-secondary p-3">
                 <Package aria-hidden="true" />

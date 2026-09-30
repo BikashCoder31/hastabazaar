@@ -230,6 +230,11 @@ void test('mounted panel rejects malformed success and discards a late code resp
       const w = window as unknown as { mount: (owner: string) => void };
       w.mount('buyer');
     });
+    // Wait until the new owner's subscription is committed before delivering
+    // the old owner's pending verification response.
+    await page.waitForFunction(() =>
+      (window as unknown as { requests: unknown[] }).requests.length > 1,
+    );
     await page.evaluate(() => {
       const w = window as unknown as {
         requests: { resolve: (response: Response) => void }[];

@@ -173,9 +173,9 @@ async function insertProductSubmission(
         slug,
         input.sku,
         input.nameEn,
-        input.nameNe,
+        input.nameNe ?? null,
         input.descriptionEn,
-        input.descriptionNe,
+        input.descriptionNe ?? null,
         input.pricePaisa,
         input.compareAtPricePaisa,
         input.inventoryQuantity,
@@ -511,8 +511,8 @@ export async function reviseAndResubmitProduct(
   const statements: D1PreparedStatement[] = [
     database
       .prepare(
-        `UPDATE products SET category_id = ?, name_en = ?, name_ne = ?,
-          description_en = ?, description_ne = ?, price_paisa = ?,
+        `UPDATE products SET category_id = ?, name_en = ?, name_ne = CASE WHEN ? THEN ? ELSE name_ne END,
+          description_en = ?, description_ne = CASE WHEN ? THEN ? ELSE description_ne END, price_paisa = ?,
           compare_at_price_paisa = ?, inventory_quantity = ?, dimensions = ?,
           materials = ?, materials_json = ?, origin_story = ?,
           size = ?, colour = ?, variations = ?, specifications = ?, care_instructions = ?,
@@ -528,9 +528,11 @@ export async function reviseAndResubmitProduct(
       .bind(
         options.input.categoryId,
         options.input.nameEn,
-        options.input.nameNe,
+        options.input.nameNe !== undefined ? 1 : 0,
+        options.input.nameNe ?? null,
         options.input.descriptionEn,
-        options.input.descriptionNe,
+        options.input.descriptionNe !== undefined ? 1 : 0,
+        options.input.descriptionNe ?? null,
         options.input.pricePaisa,
         options.input.compareAtPricePaisa,
         options.input.inventoryQuantity,
