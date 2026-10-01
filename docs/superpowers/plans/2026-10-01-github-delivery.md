@@ -33,9 +33,9 @@
 
 **Interfaces:** `inventoryRelease(root)` returns sorted `{path,bytes,sha256}` records; `verifyRelease(root,manifest)` rejects unexpected files, unsafe paths, secrets and hash differences. CLI packaging takes a versioned release ID and emits one archive plus checksum/inventory under ignored `outputs/`.
 
-- [ ] Add tests for forbidden files, symlinks, tampering and exact required-file verification; observe RED.
-- [ ] Implement deterministic inventory and Linux archive verification; observe GREEN.
-- [ ] Add push/PR/manual CI with read-only token, locked installation, lint/type/test/build, packaged Linux artifact and bounded retention.
+- [x] Add tests for forbidden files, symlinks, tampering and exact required-file verification; observe RED.
+- [x] Implement deterministic inventory and Linux archive verification; observe GREEN.
+- [x] Add push/PR/manual CI with read-only token, locked installation, lint/type/test/build, packaged Linux artifact and bounded retention.
 - [ ] Verify the full candidate suite and actual GitHub run. Publish only audited source, not historical backups or preparation folders.
 
 ### Task 2: Hosting Integration
@@ -44,10 +44,10 @@
 
 **Interfaces:** Deployment consumes the exact CI artifact and its checksum, not a rebuild. Production is manual and separately gated. Database migrations remain separately reviewed additive maintenance.
 
-- [ ] Inventory the current release, host resources, latest recovery set and SSH capabilities read-only.
-- [ ] With exact access approval, configure least-privilege deploy access and isolated staging. No production data import.
-- [ ] Test a staging deployment and record actual checks. Keep production disabled if any prerequisite remains unverified.
-- [ ] Record configured settings, usage, limits, backup policy and outstanding acceptance evidence in the operations guide.
+- [x] Inventory the current release, host resources, latest recovery set and SSH capabilities read-only.
+- [x] With exact access approval, configure least-privilege deploy access and isolated staging. No production data import.
+- [x] Test a staging deployment and record actual checks. Keep production disabled if any prerequisite remains unverified.
+- [x] Record configured settings, usage, limits, backup policy and outstanding acceptance evidence in the operations guide.
 
 ## Progress
 
@@ -55,4 +55,9 @@
 - Live health confirms `hastabazaar-release-2026-10-01-112000`; production remains unchanged.
 - Host inventory: 1 GB RAM, 398.63 MB used; 1 of 3 databases; SSH and Terminal enabled, no existing SSH keys.
 - Latest observed separate recovery set: `deployment-backups/pre-migration-20260930T105316Z-0f199f4a/`. This predates later writes and is not certified as a current deployment backup.
-- Candidate dependencies installed from lockfile; full serial regression running.
+- Candidate full serial regression: 2,263 passed, 14 skips, zero failures.
+- First actual GitHub Linux CI and extracted native/runtime smoke passed in run 36882980032.
+- Separate staging database initialized from 48 verified files, with zero users, sellers, products and orders.
+- User-approved restricted staging key rejects arbitrary commands and completed its first HTTPS-ready deployment; production stayed unchanged.
+- Review regressions cover timeout-before/after-switch rollback, bounded payloads, parser link/path/file rejection and exact checksums; temporary incoming data is removed without pruning installed releases or backups.
+- Final main integration/automatic staging run and temporary setup-key removal remain to be verified.
