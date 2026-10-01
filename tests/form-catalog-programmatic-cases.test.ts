@@ -355,6 +355,13 @@ void test('all conditional staff case controls mount published fields and retain
     import {createRoot} from 'react-dom/client';
     import {ReturnCaseActions} from './components/admin/return-case-actions';
     import {ComplaintCaseActions} from './components/admin/complaint-case-actions';
+    // Response arrival must not stand in for completed client processing.
+    const fetchResponse=window.fetch.bind(window);
+    window.fetch=async (...args)=>{
+      const response=await fetchResponse(...args),json=response.json.bind(response);
+      response.json=async ()=>{const body=await json();await new Promise(resolve=>setTimeout(resolve,50));return body;};
+      return response;
+    };
     const mode=new URLSearchParams(location.search).get('mode');
     createRoot(document.getElementById('root')).render(mode==='complaint'
       ? <ComplaintCaseActions id="complaint-one" status="open"/>
@@ -366,7 +373,7 @@ void test('all conditional staff case controls mount published fields and retain
     plugins: [{ name: 'case-form-browser-stubs', setup(bundler) {
       bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'case-stub' }));
       bundler.onResolve({ filter: /^@\/components\/forms\/form-config-client$/ }, () => ({ path: 'config', namespace: 'case-stub' }));
-      bundler.onLoad({ filter: /^navigation$/, namespace: 'case-stub' }, () => ({ contents: 'export function useRouter(){return {refresh(){}}}', loader: 'js' }));
+      bundler.onLoad({ filter: /^navigation$/, namespace: 'case-stub' }, () => ({ contents: 'export function useRouter(){return {refresh(){window.__caseRefreshes=(window.__caseRefreshes??0)+1}}}', loader: 'js' }));
       bundler.onLoad({ filter: /^config$/, namespace: 'case-stub' }, () => ({ contents: `
         export function usePublishedFormConfig(formId){return {config:{formId,version:1,publishedAt:1,
           fields:[{id:'case_context',key:'case_context',label:'Case context',type:'short_text',required:true,order:0,status:'active'}]},
@@ -427,6 +434,7 @@ void test('all conditional staff case controls mount published fields and retain
         const success = page.waitForResponse((response) => response.request().method() === 'POST' && response.status() === 200);
         await form.getByRole('button', { name: button }).click();
         await success;
+        await page.waitForFunction(() => (window as unknown as { __caseRefreshes?: number }).__caseRefreshes === 1);
         assert.notEqual(bodies[2].idempotencyKey, requestId, `${mode}: confirmed reset starts a new attempt`);
         assert.equal(await page.evaluate((id: string) => Object.values(sessionStorage).includes(id), String(bodies[2].idempotencyKey)), false,
           `${mode}: confirmed success clears the attempt`);
