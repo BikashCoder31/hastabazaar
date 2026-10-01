@@ -9,6 +9,7 @@ import { extractStagingArchive } from './staging-archive.mjs';
 import { assertStagingCommand, receiveStagingPayload } from './staging-protocol.mjs';
 import { verifyRelease } from '../release-files.mjs';
 import { guardedStagingSwitch } from './staging-switch.mjs';
+import { captureStagingWorkers, stopCapturedStagingWorkers } from './staging-workers.mjs';
 
 const execute = promisify(execFile);
 const home = '/home2/hastabaz';
@@ -41,8 +42,10 @@ let incoming;
 let incomingOwned = false;
 
 async function restart(restartSignal) {
+  const workers = await captureStagingWorkers(restartSignal);
   const { stdout } = await execute('/usr/sbin/cloudlinux-selector', ['restart', '--json', '--interpreter', 'nodejs', '--app-root', 'hastabazaar-staging-app'], { timeout: 60_000, signal: restartSignal });
   assert.equal(JSON.parse(stdout).result, 'success', 'Staging restart failed.');
+  await stopCapturedStagingWorkers(workers, restartSignal);
 }
 
 async function activate(target) {

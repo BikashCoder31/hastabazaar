@@ -36,7 +36,7 @@
 - [x] Add tests for forbidden files, symlinks, tampering and exact required-file verification; observe RED.
 - [x] Implement deterministic inventory and Linux archive verification; observe GREEN.
 - [x] Add push/PR/manual CI with read-only token, locked installation, lint/type/test/build, packaged Linux artifact and bounded retention.
-- [ ] Verify the full candidate suite and actual GitHub run. Publish only audited source, not historical backups or preparation folders.
+- [x] Verify the full candidate suite and actual GitHub run. Publish only audited source, not historical backups or preparation folders.
 
 ### Task 2: Hosting Integration
 
@@ -60,4 +60,5 @@
 - Separate staging database initialized from 48 verified files, with zero users, sellers, products and orders.
 - User-approved restricted staging key rejects arbitrary commands and completed its first HTTPS-ready deployment; production stayed unchanged.
 - Review regressions cover timeout-before/after-switch rollback, bounded payloads, parser link/path/file rejection and exact checksums; temporary incoming data is removed without pruning installed releases or backups.
-- Final main integration/automatic staging run and temporary setup-key removal remain to be verified.
+- Main automatic staging run 36891199973 passed after the host-specific worker restart was corrected. Linux 5.14 x64 and the standard Perl runtime support the PID-descriptor safeguard; its harmless host probe passed.
+- Record final acceptance separately in local ignored `outputs/hosting-setup/final-verification.md`, including the latest main run, active staging identity, rollback evidence and temporary setup-key removal. Do not treat an earlier run as proof for a later source revision.
