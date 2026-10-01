@@ -21,7 +21,7 @@ The changes retain integer-paisa calculations, immutable commercial snapshots, o
 
 ## Usability and performance
 
-Both homepage carousels have persistent Pause and Resume controls, and the homepage has one meaningful H1. Tracking preserves the last successful result during transient errors and offers retry. Aftercare explains recovery through existing saved cases and the same replay identity.
+The audit initially added persistent Pause and Resume controls to both homepage carousels. The user subsequently requested removal of the featured-story control; that correction is recorded below. The homepage has one meaningful H1. Tracking preserves the last successful result during transient errors and offers retry. Aftercare explains recovery through existing saved cases and the same replay identity.
 
 An 8 MiB synthetic video previously returned 8,388,608 bytes for a 64 KiB seek request. The corrected route returns status 206 and 65,536 bytes, a 99.21875% transfer reduction for that request. The native bucket reads the requested range, preserves full object size, and supplies validators without loading the whole video. Eligibility checks precede storage access; photos retain their watermark path.
 
@@ -29,7 +29,7 @@ Two other bottlenecks remain measured follow-ups. One product repository load pe
 
 ## Verification
 
-Both complete test partitions, fresh lint/TypeScript checks and both refreshed builds pass. Independent follow-up review approved the repairs. Earlier failures remain in the execution logs and are not omitted from the record. This verifies the local candidate within the acceptance limits below.
+At audit checkpoint `21e1b48`, both complete test partitions, fresh lint/TypeScript checks and both refreshed builds passed. Independent follow-up review approved the repairs. Earlier failures remain in the execution logs and are not omitted from the record. The subsequent homepage correction has separate focused verification below; the broad suites and builds were not repeated for that small correction.
 
 | Check | Evidence |
 | --- | --- |
@@ -55,13 +55,29 @@ Final integration evidence is in `final-source-reviewed-tests.log`, `final-nativ
 
 ## Browser checks
 
-The actual local application was inspected through the in-app browser. Home controls work on desktop and a 390px mobile viewport; keyboard Enter toggles pause. Contact configuration loads, controls disable during sending, and an unavailable transport preserves answers with retry. Seller and admin sign-out use POST; seller access afterward redirects to sign-in.
+Before the user correction below, the actual local application was inspected through the in-app browser. Home controls worked on desktop and a 390px mobile viewport; keyboard Enter toggled pause. Contact configuration loaded, controls disabled during sending, and an unavailable transport preserved answers with retry. Seller and admin sign-out used POST; seller access afterward redirected to sign-in.
 
 Contact and catalog controls fit their forms without horizontal overflow at the browser's actual 240px minimum. Keyboard Tab moves from name to email. A requested 232px viewport is clamped to 240px, so the existing automatic 232px test remains skipped. Selected browser console checks returned no warnings/errors; HMR server diagnostics are recorded separately. These checks do not certify a complete rendered shopping, checkout and return journey.
 
-![Keyboard pause in the restored local storefront](C:/Users/abinash/.codex/visualizations/2026/09/30/01a0f2dd-89c4-77c1-9b97-f0cf98fec1b0/local-remediation-final-preview.png)
+![Earlier audit snapshot before the requested featured-story control removal](C:/Users/abinash/.codex/visualizations/2026/09/30/01a0f2dd-89c4-77c1-9b97-f0cf98fec1b0/local-remediation-final-preview.png)
 
-![Actual mobile pause controls](C:/Users/abinash/.codex/visualizations/2026/09/30/01a0f2dd-89c4-77c1-9b97-f0cf98fec1b0/local-remediation-mobile-paused.jpg)
+![Earlier mobile audit snapshot before the user correction](C:/Users/abinash/.codex/visualizations/2026/09/30/01a0f2dd-89c4-77c1-9b97-f0cf98fec1b0/local-remediation-mobile-paused.jpg)
+
+## User homepage correction — 1 October 2026
+
+Removed the featured-story Pause/Resume control at the user's request. Slide dots, autoplay and the existing hover, focus, video, visibility and reduced-motion handling remain. The gifting carousel is unchanged. Independent review found no actionable issue in the component delta. Existing focused checks passed: eight hero/timer tests, two rendered component regressions, scoped lint, non-incremental TypeScript and whitespace checks.
+
+The missing categories were a preview setup gap: the isolated `.staging` database contained only Others, while the preserved desktop `.wrangler` database still contained all ten screenshot categories. Fresh migrations seed Others; the fictional staging setup does not import the development catalog. The homepage already renders every active category. No original category or image was deleted.
+
+After a coherent recovery snapshot of the disposable preview database, its audited catalog API created only the ten missing public categories, with the original bilingual names, slugs and sort orders 10–100. The API generated new local IDs and retained staff/form/audit guards. All existing rows, including Others, were verified unchanged. Ten matching audit and form-answer records were verified, and the destination foreign-key check passed. No original database was copied or changed. The six existing static image assets needed no changes. Canonical source preservation remains 96/96 matching hashes.
+
+The actual loopback application at `http://127.0.0.1:4317/` was reloaded and checked through the in-app browser: all ten category links appear in the correct order, all six image assets decode to 420px width, later categories are reachable by keyboard and horizontal scrolling, Gifts opens the selected shop filter, slide dots select with mouse/Enter, and no featured Pause/Resume control remains. Selected browser warning/error logs were empty. These follow-up rendered checks used the default desktop viewport; earlier mobile and broad integration results above remain historical evidence.
+
+Forensic, media, component-review and API-restoration evidence is preserved in the local execution record as `category-preview-forensics.md`, `category-media-inventory.md`, `hero-control-removal-report.md` and `category-restoration-result.json`.
+
+![Restored original categories and featured-story dots](C:/Users/abinash/.codex/visualizations/2026/09/30/01a0f2dd-89c4-77c1-9b97-f0cf98fec1b0/local-categories-restored.png)
+
+![Later categories remain reachable in the horizontal strip](C:/Users/abinash/.codex/visualizations/2026/09/30/01a0f2dd-89c4-77c1-9b97-f0cf98fec1b0/local-categories-restored-end.png)
 
 ## Remaining setup and acceptance gaps
 

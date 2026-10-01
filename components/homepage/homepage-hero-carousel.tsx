@@ -60,8 +60,6 @@ export function HomepageHeroCarousel({
     reset: resetAutoplay,
     selectionKind,
     interactionProps,
-    pausedByUser,
-    toggleUserPause,
   } = useSliderAutoplay(api, enabledSlides.length, playingVideo !== null);
 
   useEffect(() => {
@@ -236,12 +234,6 @@ export function HomepageHeroCarousel({
           dotClassName="homepage-hero-dot"
           className="py-3"
         />
-        {enabledSlides.length > 1 ? <div className="flex justify-center pb-3">
-          <button type="button" onClick={toggleUserPause} aria-pressed={pausedByUser}
-            className="min-h-11 rounded-full border border-[#0d3154]/30 px-4 text-sm font-semibold text-[#0d3154] hover:bg-white/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0d3154]">
-            {pausedByUser ? 'Resume featured stories' : 'Pause featured stories'}
-          </button>
-        </div> : null}
       </Carousel>
       <p className="sr-only" aria-live="polite" aria-atomic="true">
         {announcement}
