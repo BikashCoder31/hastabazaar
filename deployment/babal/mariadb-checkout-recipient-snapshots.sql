@@ -1,9 +1,9 @@
 -- Additive purchaser, recipient, and saved-address checkout snapshots.
 ALTER TABLE `orders`
-  ADD COLUMN `delivery_for` VARCHAR(16) NOT NULL DEFAULT 'self',
-  ADD COLUMN `recipient_email` VARCHAR(254) NULL,
-  ADD COLUMN `source_address_id` VARCHAR(191) NULL,
-  ADD COLUMN `address_saved_for_future` BIGINT NOT NULL DEFAULT 0;
+  ADD COLUMN IF NOT EXISTS `delivery_for` VARCHAR(16) NOT NULL DEFAULT 'self',
+  ADD COLUMN IF NOT EXISTS `recipient_email` VARCHAR(254) NULL,
+  ADD COLUMN IF NOT EXISTS `source_address_id` VARCHAR(191) NULL,
+  ADD COLUMN IF NOT EXISTS `address_saved_for_future` BIGINT NOT NULL DEFAULT 0;
 
 DROP TRIGGER IF EXISTS `invalidate_delivery_otp_after_destination_change`;
 CREATE TRIGGER `invalidate_delivery_otp_after_destination_change`

@@ -1,6 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { prepareRiderEvidence } from '../../lib/riders/media-upload';
@@ -8,7 +9,7 @@ import { createLocalProductWatermarkPlugin } from './product-watermark-plugin';
 import { createLocalCategoryDecoderPlugin } from './category-media-plugin';
 import { assertDisposableStagingContext, readAndVerifyStagingMarker, resolveDisposableStagingPaths } from './guards.mjs';
 
-const approvedProject = 'C:/Users/abinash/.codex/worktrees/hastabazaar-v1-2-1-staging/Hatskala';
+const approvedProject = fileURLToPath(new URL('../..', import.meta.url));
 const endpointPath = '/__staging/rider-media-decode';
 const maxBytes = 5 * 1024 * 1024;
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);

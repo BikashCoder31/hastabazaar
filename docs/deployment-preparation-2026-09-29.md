@@ -2,6 +2,17 @@
 
 **Release gate: HOLD — not approved for upload or production migration.**
 
+**1 October update:** This document records the historical 29 September candidate.
+The current local remediation candidate and its evidence are tracked in
+[the readiness continuation report](superpowers/reports/2026-10-01-local-readiness-continuation.md).
+The owner has explicitly deferred SMS and selected temporary email-only checkout:
+the eventual host must set `CHECKOUT_CONTACT_POLICY=email_only`, require verified
+email and valid delivery phone numbers, and retain unverified phone status.
+The older phone-OTP blocker below does not apply to this explicitly selected policy.
+Missing or unknown settings still require both email and phone verification;
+restore `email_and_phone` only after the chosen SMS adapter and delivery are verified.
+This update does not authorize deployment or certify the installed host/schema.
+
 Target confirmed by owner: existing Babal.Host site `https://hastabazaar.com`.
 This document supersedes older deployment instructions for this candidate only. Existing base/reset import instructions are not valid for upgrading this marketplace.
 

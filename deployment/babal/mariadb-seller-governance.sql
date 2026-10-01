@@ -69,17 +69,17 @@ CREATE TRIGGER `seller_deletion_preflights_no_delete` BEFORE DELETE ON `seller_d
 DROP TRIGGER IF EXISTS `order_items_require_available_inventory`;
 DELIMITER $$
 CREATE TRIGGER `order_items_require_available_inventory` BEFORE INSERT ON `order_items` FOR EACH ROW BEGIN
-  DECLARE seller_state VARCHAR(40) DEFAULT NULL;
-  DECLARE owner_state VARCHAR(40) DEFAULT NULL;
-  DECLARE seller_id_value VARCHAR(191) DEFAULT NULL;
-  DECLARE owner_id_value VARCHAR(191) DEFAULT NULL;
-  DECLARE participation_route_value VARCHAR(40) DEFAULT NULL;
-  DECLARE application_stage_value VARCHAR(40) DEFAULT NULL;
-  DECLARE commercial_model_value VARCHAR(80) DEFAULT NULL;
-  DECLARE legal_seller_value VARCHAR(191) DEFAULT NULL;
-  DECLARE invoice_issuer_value VARCHAR(191) DEFAULT NULL;
-  DECLARE payout_beneficiary_value VARCHAR(191) DEFAULT NULL;
-  DECLARE agreement_version_value VARCHAR(191) DEFAULT NULL;
+  DECLARE seller_state VARCHAR(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE owner_state VARCHAR(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE seller_id_value VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE owner_id_value VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE participation_route_value VARCHAR(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE application_stage_value VARCHAR(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE commercial_model_value VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE legal_seller_value VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE invoice_issuer_value VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE payout_beneficiary_value VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE agreement_version_value VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
   DECLARE agreement_accepted_value BIGINT DEFAULT NULL;
   DECLARE active_restrictions BIGINT DEFAULT 0;
 

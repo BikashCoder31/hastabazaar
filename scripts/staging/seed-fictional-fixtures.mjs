@@ -4,6 +4,7 @@ import {
   resolveDisposableStagingPaths,
 } from './guards.mjs';
 import { applyLocalD1Migrations } from './local-d1.mjs';
+import { runIdentityFormReadiness } from './identity-form-readiness.mjs';
 import { randomUUID } from 'node:crypto';
 
 assertDisposableStagingContext(process.env);
@@ -51,6 +52,9 @@ for (const role of ['customer', 'buyer', 'rider', 'seller', 'admin', 'super_admi
   if (!cookie) throw new Error(`The fictional ${role} session cookie was not returned.`);
   cookies.set(role, cookie);
 }
+
+const featureForms = await runIdentityFormReadiness(process.cwd(), process.cwd(), process.env, '--apply');
+console.log(`Required feature-managed forms: ${featureForms.created.length} initialized; ${featureForms.preserved.length} preserved.`);
 
 const managedMaker = new FormData();
 async function catalogRequest(path, body) {

@@ -11,7 +11,7 @@ registerHooks({
   resolve(specifier, context, next) {
     if (specifier === 'cloudflare:workers')
       return {
-        url: 'data:text/javascript,export const env={get DB(){return globalThis.contactRouteDb},HASTABAZAAR_RUNTIME_ENV:"local_staging",APP_ORIGIN:"http://127.0.0.1:4173"}',
+        url: 'data:text/javascript,export const env={get DB(){return globalThis.contactRouteDb},get CHECKOUT_CONTACT_POLICY(){return globalThis.contactRoutePolicy},HASTABAZAAR_RUNTIME_ENV:"local_staging",APP_ORIGIN:"http://127.0.0.1:4173"}',
         shortCircuit: true,
       };
     if (specifier === '@/lib/auth/customer')
@@ -35,6 +35,7 @@ registerHooks({
 declare global {
   var contactRouteDb: D1Database;
   var contactRouteActor: { userId: string; authSubject: string } | null;
+  var contactRoutePolicy: string | undefined;
 }
 
 function fixture() {
@@ -402,6 +403,38 @@ void test('actual contact receiver rejects spoofed owner/origin, hides codes, an
       403,
     );
   } finally {
+    globalThis.contactRouteActor = null;
+    f.sqlite.close();
+  }
+});
+
+void test('email-only mode rejects dormant phone OTP requests and verification without challenges or budget usage', async () => {
+  const { POST } = await import('../app/api/account/contact-verification/route');
+  const f = fixture();
+  const previousPolicy = globalThis.contactRoutePolicy;
+  globalThis.contactRouteDb = f.db;
+  globalThis.contactRouteActor = f.actor;
+  globalThis.contactRoutePolicy = 'email_only';
+  const request = (body: unknown) => new Request('http://127.0.0.1:4173/api/account/contact-verification', {
+    method: 'POST', headers: { origin: 'http://127.0.0.1:4173', cookie: 'hastabazaar_session=fixture-session',
+      'content-type': 'application/json' }, body: JSON.stringify(body),
+  });
+  try {
+    for (const body of [{ action: 'request', channel: 'phone' },
+      { action: 'verify', channel: 'phone', token: 'A'.repeat(43), code: '123456' }]) {
+      const response = await POST(request(body));
+      assert.equal(response.status, 503);
+      assert.match((await response.json() as { error: string }).error, /SMS.*temporarily unavailable/i);
+    }
+    for (const table of ['account_contact_challenges', 'local_contact_captures', 'account_phone_verifications', 'request_rate_limits'])
+      assert.equal(f.sqlite.prepare(`SELECT count(*) AS n FROM ${table}`).get()?.n, 0, table);
+    const email = await POST(request({ action: 'request', channel: 'email' }));
+    assert.equal(email.status, 200);
+    assert.equal(f.sqlite.prepare('SELECT channel FROM account_contact_challenges').get()?.channel, 'email');
+    assert.equal(f.sqlite.prepare('SELECT channel FROM local_contact_captures').get()?.channel, 'email');
+    assert.equal(f.sqlite.prepare('SELECT count(*) AS n FROM account_phone_verifications').get()?.n, 0);
+  } finally {
+    globalThis.contactRoutePolicy = previousPolicy;
     globalThis.contactRouteActor = null;
     f.sqlite.close();
   }

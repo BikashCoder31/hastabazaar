@@ -41,10 +41,22 @@ $releaseManifestDestination = Join-Path $standalone 'deployment\babal\release-ma
 Copy-Item -LiteralPath $releaseManifestSource -Destination $releaseManifestDestination
 
 function Get-ReleaseFiles([string]$Root) {
+  $resolvedRoot = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $Root).Path)
+  $rootPrefix = $resolvedRoot.TrimEnd([char[]]@('\', '/')) + [IO.Path]::DirectorySeparatorChar
+  $hasRelativePath = [IO.Path].GetMethods().Name -contains 'GetRelativePath'
   return Get-ChildItem -LiteralPath $Root -Recurse -File -Force |
     ForEach-Object {
-      $relative = [IO.Path]::GetRelativePath($Root, $_.FullName).Replace('\', '/')
-      [ordered]@{
+      $filePath = [IO.Path]::GetFullPath($_.FullName)
+      if (-not $filePath.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Release file is outside its resolved root: $filePath"
+      }
+      $relative = if ($hasRelativePath) {
+        [IO.Path]::GetRelativePath($resolvedRoot, $filePath)
+      } else {
+        $filePath.Substring($rootPrefix.Length)
+      }
+      $relative = $relative.Replace('\', '/')
+      [pscustomobject][ordered]@{
         path = $relative
         bytes = $_.Length
         sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()

@@ -7,5 +7,6 @@ export function localPreviewBindings(environment: Record<string, string | undefi
     throw new Error('Local preview bindings are forbidden in hosted runtimes.');
   }
   resolveRuntimeEnvironment({ runtimeEnvironment: 'local_staging', nodeEnvironment: environment.NODE_ENV, appOrigin: environment.APP_ORIGIN });
-  return { HASTABAZAAR_RUNTIME_ENV: 'local_staging', APP_ORIGIN: environment.APP_ORIGIN! };
+  return { HASTABAZAAR_RUNTIME_ENV: 'local_staging', APP_ORIGIN: environment.APP_ORIGIN!,
+    ...(environment.CHECKOUT_CONTACT_POLICY === 'email_only' ? { CHECKOUT_CONTACT_POLICY: 'email_only' } : {}) };
 }

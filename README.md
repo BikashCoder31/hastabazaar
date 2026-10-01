@@ -11,6 +11,7 @@ $env:HASTABAZAAR_MAIL_MODE = 'capture'
 $env:HASTABAZAAR_PAYMENT_MODE = 'simulated'
 $env:HASTABAZAAR_RECIPIENT_DOMAIN = 'local.hastabazaar.test'
 $env:APP_ORIGIN = 'http://127.0.0.1:4317'
+$env:CHECKOUT_CONTACT_POLICY = 'email_only'
 npm run staging:verify -- --initialize
 npm run dev -- --hostname 127.0.0.1 --port 4317
 ```
@@ -18,7 +19,7 @@ npm run dev -- --hostname 127.0.0.1 --port 4317
 Use a clean shell without production database, SMTP, Cloudflare, or object-storage
 credentials. The guarded setup targets this checkout's `.staging` directory.
 The initial verification may report that the server is not running; start it,
-then use a second shell with the same five environment variables:
+then use a second shell with the same environment variables:
 
 ```powershell
 npm run staging:seed
@@ -28,8 +29,13 @@ Invoke-RestMethod "$env:APP_ORIGIN/health"
 ```
 
 Seeding applies the tracked SQLite migrations, creates fictional roles, and
-publishes only missing form configurations through the audited admin APIs.
-It refuses to replace existing drafts. The auth prerequisite helper backs up
+publishes missing editable form configurations through the audited admin APIs.
+It also initializes the 24 protected identity and feature-managed baselines
+with existing Super Admin authority, an atomic audit trail and a coherent local
+backup. Existing publications and drafts are preserved; draft-only history blocks
+initialization. For an existing fixture, inspect with
+`npx tsx scripts/staging/identity-form-readiness.mjs --plan` and apply only missing
+baselines with the same command using `--apply`. The auth prerequisite helper backs up
 the local database before creating missing runtime auth tables; it creates no
 auth records. `/health` should report `marketplaceReady: true`.
 
@@ -37,6 +43,20 @@ Open `http://127.0.0.1:4317/local-testing` to choose a fictional role. The switc
 is unavailable in production builds. Live providers remain unconfigured;
 the contact form therefore shows a retryable delivery failure in this D1 preview.
 Local fixture setup does not certify an empty MariaDB production installation.
+
+SMS verification is temporarily dormant until a provider is selected. Explicit
+`CHECKOUT_CONTACT_POLICY=email_only` keeps email ownership verification required
+and still requires a valid account phone number for delivery. It neither marks
+phones verified nor sends SMS. Set `CHECKOUT_CONTACT_POLICY=email_and_phone` after
+the SMS adapter and delivery are configured and verified to restore phone OTP;
+an absent or unknown value retains the stricter email-and-phone requirement.
+The production Node runtime reads this setting from its environment; a local
+preview forwards only the explicit email-only setting, never provider secrets.
+
+To exercise real photo uploads in the local Cloudflare preview, set
+`$env:HASTABAZAAR_LOCAL_RIDER_DECODER='1'` before starting the dev server.
+The decoder is restricted to its own marked checkout and guarded loopback
+transport. Remove that variable before building; builds reject the local decoder.
 
 Source and build checks:
 

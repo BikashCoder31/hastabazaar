@@ -1,7 +1,7 @@
 -- Additive Managed Maker commercial snapshots and settlement records.
-ALTER TABLE `seller_participation_profiles` ADD COLUMN `managed_agreement_version` VARCHAR(191) NULL;
-ALTER TABLE `seller_participation_profiles` ADD COLUMN `managed_agreement_language` VARCHAR(8) NULL;
-ALTER TABLE `seller_participation_profiles` ADD COLUMN `managed_agreement_accepted_at` BIGINT NULL;
+ALTER TABLE `seller_participation_profiles` ADD COLUMN IF NOT EXISTS `managed_agreement_version` VARCHAR(191) NULL;
+ALTER TABLE `seller_participation_profiles` ADD COLUMN IF NOT EXISTS `managed_agreement_language` VARCHAR(8) NULL;
+ALTER TABLE `seller_participation_profiles` ADD COLUMN IF NOT EXISTS `managed_agreement_accepted_at` BIGINT NULL;
 
 CREATE TABLE IF NOT EXISTS `managed_commercial_snapshots` (
   `id` VARCHAR(191) NOT NULL,
@@ -92,16 +92,16 @@ CREATE TABLE IF NOT EXISTS `managed_invoice_groups` (
   UNIQUE KEY `idx_managed_invoice_order_issuer` (`order_id`,`issuer_reference`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-ALTER TABLE `managed_commercial_snapshots` ADD CONSTRAINT `managed_snapshots_order_item_fk` FOREIGN KEY (`order_item_id`) REFERENCES `order_items` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_commercial_snapshots` ADD CONSTRAINT `managed_snapshots_seller_fk` FOREIGN KEY (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_entitlements` ADD CONSTRAINT `managed_entitlements_snapshot_fk` FOREIGN KEY (`snapshot_id`) REFERENCES `managed_commercial_snapshots` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_entitlements` ADD CONSTRAINT `managed_entitlements_seller_fk` FOREIGN KEY (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_settlement_entries` ADD CONSTRAINT `managed_settlement_entitlement_fk` FOREIGN KEY (`entitlement_id`) REFERENCES `managed_entitlements` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_settlement_entries` ADD CONSTRAINT `managed_settlement_refund_fk` FOREIGN KEY (`refund_id`) REFERENCES `refunds` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_settlement_entries` ADD CONSTRAINT `managed_settlement_user_fk` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL;
-ALTER TABLE `managed_payouts` ADD CONSTRAINT `managed_payouts_seller_fk` FOREIGN KEY (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_payouts` ADD CONSTRAINT `managed_payouts_preparer_fk` FOREIGN KEY (`prepared_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_payouts` ADD CONSTRAINT `managed_payouts_approver_fk` FOREIGN KEY (`approved_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_payout_entries` ADD CONSTRAINT `managed_payout_entries_payout_fk` FOREIGN KEY (`payout_id`) REFERENCES `managed_payouts` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_payout_entries` ADD CONSTRAINT `managed_payout_entries_settlement_fk` FOREIGN KEY (`settlement_entry_id`) REFERENCES `managed_settlement_entries` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_invoice_groups` ADD CONSTRAINT `managed_invoice_order_fk` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_commercial_snapshots` ADD CONSTRAINT `managed_snapshots_order_item_fk` FOREIGN KEY IF NOT EXISTS `managed_snapshots_order_item_fk` (`order_item_id`) REFERENCES `order_items` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_commercial_snapshots` ADD CONSTRAINT `managed_snapshots_seller_fk` FOREIGN KEY IF NOT EXISTS `managed_snapshots_seller_fk` (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_entitlements` ADD CONSTRAINT `managed_entitlements_snapshot_fk` FOREIGN KEY IF NOT EXISTS `managed_entitlements_snapshot_fk` (`snapshot_id`) REFERENCES `managed_commercial_snapshots` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_entitlements` ADD CONSTRAINT `managed_entitlements_seller_fk` FOREIGN KEY IF NOT EXISTS `managed_entitlements_seller_fk` (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_settlement_entries` ADD CONSTRAINT `managed_settlement_entitlement_fk` FOREIGN KEY IF NOT EXISTS `managed_settlement_entitlement_fk` (`entitlement_id`) REFERENCES `managed_entitlements` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_settlement_entries` ADD CONSTRAINT `managed_settlement_refund_fk` FOREIGN KEY IF NOT EXISTS `managed_settlement_refund_fk` (`refund_id`) REFERENCES `refunds` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_settlement_entries` ADD CONSTRAINT `managed_settlement_user_fk` FOREIGN KEY IF NOT EXISTS `managed_settlement_user_fk` (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL;
+ALTER TABLE `managed_payouts` ADD CONSTRAINT `managed_payouts_seller_fk` FOREIGN KEY IF NOT EXISTS `managed_payouts_seller_fk` (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_payouts` ADD CONSTRAINT `managed_payouts_preparer_fk` FOREIGN KEY IF NOT EXISTS `managed_payouts_preparer_fk` (`prepared_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_payouts` ADD CONSTRAINT `managed_payouts_approver_fk` FOREIGN KEY IF NOT EXISTS `managed_payouts_approver_fk` (`approved_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_payout_entries` ADD CONSTRAINT `managed_payout_entries_payout_fk` FOREIGN KEY IF NOT EXISTS `managed_payout_entries_payout_fk` (`payout_id`) REFERENCES `managed_payouts` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_payout_entries` ADD CONSTRAINT `managed_payout_entries_settlement_fk` FOREIGN KEY IF NOT EXISTS `managed_payout_entries_settlement_fk` (`settlement_entry_id`) REFERENCES `managed_settlement_entries` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_invoice_groups` ADD CONSTRAINT `managed_invoice_order_fk` FOREIGN KEY IF NOT EXISTS `managed_invoice_order_fk` (`order_id`) REFERENCES `orders` (`id`) ON DELETE RESTRICT;

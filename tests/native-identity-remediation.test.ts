@@ -7,18 +7,15 @@ import { createEmailOtpChallenge } from '../lib/auth/email-otp';
 import { PasswordResetStore } from '../lib/auth/password-reset-store';
 import { resetPassword } from '../lib/auth/password-reset';
 import { requestContactVerification, verifyContactVerification } from '../lib/auth/contact-verification';
+import { assertNativeFixtureScope } from './helpers/native-fixture-scope';
 
 // Dedicated disposable local fixture only. No schema changes, provider calls,
-// environment-file loading, or access to rows outside this harness's unique IDs.
+// provider credentials, or access to rows outside this harness's unique IDs.
 const enabled = process.env.HATSKALA_NATIVE_IDENTITY === '1';
 const pools: Pool[] = [];
 const originalCreatePool = mysql.createPool;
+const fixtureScope = enabled ? await assertNativeFixtureScope() : undefined;
 if (enabled) {
-  assert.equal(process.env.DB_HOST, '127.0.0.1');
-  assert.equal(process.env.DB_PORT, '13327');
-  assert.equal(process.env.DB_NAME, 'hastabazaar_audit');
-  assert.equal(process.env.DB_USER, 'audit_fixture');
-  assert.equal(process.env.HASTABAZAAR_RUNTIME_ENV, 'local_staging');
   mysql.createPool = new Proxy(originalCreatePool, { apply(target, thisArg, args) {
     const pool = Reflect.apply(target, thisArg, args) as Pool; pools.push(pool); return pool;
   } });
@@ -35,8 +32,8 @@ function latch() {
   return { reached, release };
 }
 async function observer(): Promise<Connection> {
-  return mysql.createConnection({ host: '127.0.0.1', port: 13327, database: 'hastabazaar_audit',
-    user: 'audit_fixture', password: process.env.DB_PASSWORD });
+  assert.ok(fixtureScope);
+  return mysql.createConnection(fixtureScope);
 }
 async function fixture() {
   const id = `native-identity-${randomUUID()}`;

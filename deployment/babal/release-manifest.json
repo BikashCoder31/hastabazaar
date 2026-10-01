@@ -56,14 +56,14 @@
       "9007199254740991"
     ]
   },
-  "release": "local-audit-remediation-20261001",
+  "release": "hastabazaar-release-local-readiness-20261001",
   "startup": "app.cjs",
   "hosting": "Babal.Host",
   "requiredNodeMajor": 22,
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "d6fe66b9d4fdc80094f3abf7ae5dcacbf08f82ed429670704555be89b232f167",
+      "sha256": "7c284de67917abb8a4a527b45fae22318a24eb11e7c8298161a089ee383e732e",
       "usage": "empty-database-only"
     },
     {
@@ -108,7 +108,7 @@
     },
     {
       "path": "deployment/babal/mariadb-identity-purchase-security.sql",
-      "sha256": "7f4c44f0f0a77e059fbf757a532eb577a573cb0ffd2255a2c89ecd617d6e6935",
+      "sha256": "2a255ec3413c66af096493d8f126e88ca538bb63831d88ff304c5aaccce5774b",
       "usage": "additive-maintenance"
     },
     {
@@ -148,7 +148,7 @@
     },
     {
       "path": "deployment/babal/mariadb-gift-cards.sql",
-      "sha256": "ab93e84a0beed4f7107b414153aeb104ea756b573307a1e50351906cb969bdc1",
+      "sha256": "1c79eff6e6148b76d14981be6f20fb7e85fb9f74cfbad82ced018fa4bc7c01f5",
       "usage": "additive-maintenance"
     },
     {
@@ -198,22 +198,22 @@
     },
     {
       "path": "deployment/babal/mariadb-managed-commerce.sql",
-      "sha256": "cd73c07f42494de775342fe959471669843a7bf369d0b435b715012d5b4896be",
+      "sha256": "873d21899ea9998950d55056321ec62486395ce2c64617610c995c2958d93572",
       "usage": "additive-maintenance"
     },
     {
       "path": "deployment/babal/mariadb-product-story-materials.sql",
-      "sha256": "4a61f45ce687db5907dc3b895c518227de9894efcff051f476ff70ba58e00c51",
+      "sha256": "a8acb830a1d9423aeb99d2255df41d75874d548341d8a9c0550eb65d2718d882",
       "usage": "additive-maintenance"
     },
     {
       "path": "deployment/babal/mariadb-checkout-recipient-snapshots.sql",
-      "sha256": "ac28325ad770a3f0a327e7fb12610cb14a57e034d7bcf639db73a25169fe4ee4",
+      "sha256": "404613c95109a8cc5503acb30fe953581af7727ecc1676191dc2e2c804fcc8b5",
       "usage": "additive-maintenance"
     },
     {
       "path": "deployment/babal/mariadb-seller-governance.sql",
-      "sha256": "548d0f3f9cfd7ad2c77aef70957a8ed493b053d972ae6c18011a25d6a70d9e8f",
+      "sha256": "96fd0184c713693bc8ae127fbaf7c8767204e03194f63583a07a35e64717820f",
       "usage": "additive-maintenance"
     },
     {
@@ -228,7 +228,7 @@
     },
     {
       "path": "deployment/babal/mariadb-rider-open-box-finance.sql",
-      "sha256": "b48fde6b945b98bb8feb15b923f76ff5dd087a0b062856a803a343a61053f200",
+      "sha256": "e8f39d75bd7cefc8f92ace2f80f83f37d1c6f5e3aca8e0017dbf1bba1b373175",
       "usage": "additive-maintenance"
     },
     {
@@ -253,7 +253,7 @@
     },
     {
       "path": "deployment/babal/mariadb-category-images.sql",
-      "sha256": "ec58a7de2d3b02797ce09512b211ee29d195c8de5fb772d4e7c11194052b998c",
+      "sha256": "26060323f62fbed24347ff06937d86b2461e7c480da8382da0eaa1a26334e749",
       "usage": "additive-maintenance"
     },
     {
@@ -288,7 +288,7 @@
     },
     {
       "path": "deployment/babal/mariadb-promo-codes.sql",
-      "sha256": "9fbbdb85225acb7988700b25858969e01e03de48670f2bbc6d8b7482762991a1",
+      "sha256": "4dca06baea82fdcf768f04e5cd435f686a3278a8f40afb739dce956fb4444a7c",
       "usage": "additive-maintenance"
     },
     {
@@ -601,6 +601,7 @@
       "customer_phone",
       "delivered_at",
       "delivery_charge_paisa",
+      "delivery_for",
       "delivery_rate_snapshot_json",
       "discount_source",
       "grand_total_paisa",
@@ -762,6 +763,7 @@
       "made_to_order",
       "manufactured_at",
       "materials",
+      "materials_json",
       "name_en",
       "name_ne",
       "preparation_days",
@@ -1139,6 +1141,9 @@
       "created_at",
       "invoice_issuer_reference",
       "legal_seller_reference",
+      "managed_agreement_accepted_at",
+      "managed_agreement_language",
+      "managed_agreement_version",
       "participation_route",
       "payout_beneficiary_reference",
       "public_city",
@@ -1345,6 +1350,7 @@
       "latitude",
       "longitude",
       "method",
+      "open_box_required",
       "operation_request_id",
       "position_at",
       "remitted_paisa",
@@ -1362,6 +1368,7 @@
       "evidence_reference",
       "id",
       "kind",
+      "rider_user_id",
       "shipping_job_id",
       "status"
     ],
@@ -1423,6 +1430,7 @@
     ],
     "rider_profiles": [
       "application_id",
+      "open_box_eligible",
       "review_note",
       "reviewed_by",
       "status",
@@ -1461,6 +1469,7 @@
       "note",
       "object_key",
       "open_box",
+      "open_box_outcome",
       "policy_version",
       "request_id",
       "review_note",

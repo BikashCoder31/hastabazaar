@@ -15,6 +15,7 @@ import {
   getContactVerificationStatus,
   requestContactVerification,
   verifyContactVerification,
+  resolveCheckoutContactPolicy,
 } from '@/lib/auth/contact-verification';
 import {
   deliverContactCode,
@@ -27,6 +28,7 @@ import { getLocalTestIdentity } from '@/lib/auth/local-test-access';
 export const dynamic = 'force-dynamic';
 const environment = env as unknown as ContactDeliveryEnvironment & {
   DB?: D1Database;
+  CHECKOUT_CONTACT_POLICY?: string;
 };
 function json(value: unknown, status = 200) {
   return Response.json(value, {
@@ -92,6 +94,8 @@ export async function POST(request: Request): Promise<Response> {
         : ['action', 'channel', 'token', 'code'];
     if (Object.keys(body).some((key) => !allowed.includes(key)))
       return json({ error: 'Invalid verification request.' }, 400);
+    if (body.channel === 'phone' && resolveCheckoutContactPolicy(environment.CHECKOUT_CONTACT_POLICY) === 'email_only')
+      return json({ error: 'SMS verification is temporarily unavailable. Verify your email before checkout.' }, 503);
     if (
       body.action === 'verify' &&
       (typeof body.token !== 'string' ||

@@ -1,25 +1,25 @@
 -- Per-assignment open-box and rider-finance snapshots. This is additive and
 -- contains no production values or fictional records.
 ALTER TABLE `rider_profiles`
-  ADD COLUMN `open_box_eligible` BIGINT NOT NULL DEFAULT 0,
-  ADD COLUMN `open_box_reviewed_by` VARCHAR(191) NULL,
-  ADD COLUMN `open_box_reviewed_at` BIGINT NULL,
-  ADD CONSTRAINT `rider_profiles_open_box_eligible_check` CHECK (`open_box_eligible` IN (0,1)),
-  ADD CONSTRAINT `rider_profiles_open_box_reviewer_fk` FOREIGN KEY (`open_box_reviewed_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT;
+  ADD COLUMN IF NOT EXISTS `open_box_eligible` BIGINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS `open_box_reviewed_by` VARCHAR(191) NULL,
+  ADD COLUMN IF NOT EXISTS `open_box_reviewed_at` BIGINT NULL,
+  ADD CONSTRAINT IF NOT EXISTS `rider_profiles_open_box_eligible_check` CHECK (`open_box_eligible` IN (0,1)),
+  ADD CONSTRAINT `rider_profiles_open_box_reviewer_fk` FOREIGN KEY IF NOT EXISTS `rider_profiles_open_box_reviewer_fk` (`open_box_reviewed_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT;
 
 ALTER TABLE `shipping_parcels`
-  ADD COLUMN `open_box_required` BIGINT NOT NULL DEFAULT 0,
-  ADD COLUMN `open_box_snapshot_json` LONGTEXT NULL,
-  ADD COLUMN `rider_finance_snapshot_json` LONGTEXT NULL,
-  ADD CONSTRAINT `shipping_parcels_open_box_required_check` CHECK (`open_box_required` IN (0,1));
+  ADD COLUMN IF NOT EXISTS `open_box_required` BIGINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS `open_box_snapshot_json` LONGTEXT NULL,
+  ADD COLUMN IF NOT EXISTS `rider_finance_snapshot_json` LONGTEXT NULL,
+  ADD CONSTRAINT IF NOT EXISTS `shipping_parcels_open_box_required_check` CHECK (`open_box_required` IN (0,1));
 
 ALTER TABLE `parcel_cash_records`
-  ADD COLUMN `rider_user_id` VARCHAR(191) NULL,
-  ADD CONSTRAINT `parcel_cash_records_rider_fk` FOREIGN KEY (`rider_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT;
+  ADD COLUMN IF NOT EXISTS `rider_user_id` VARCHAR(191) NULL,
+  ADD CONSTRAINT `parcel_cash_records_rider_fk` FOREIGN KEY IF NOT EXISTS `parcel_cash_records_rider_fk` (`rider_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT;
 
 ALTER TABLE `rider_reports`
-  ADD COLUMN `open_box_outcome` VARCHAR(80) NOT NULL DEFAULT 'not_applicable',
-  ADD CONSTRAINT `rider_reports_open_box_outcome_check` CHECK (`open_box_outcome` IN ('not_applicable','accepted_after_inspection','accepted_outer_packaging_inner_seal_intact','inspection_declined','refused_whole_parcel_wrong_item','refused_whole_parcel_damage','refused_whole_parcel_other'));
+  ADD COLUMN IF NOT EXISTS `open_box_outcome` VARCHAR(80) NOT NULL DEFAULT 'not_applicable',
+  ADD CONSTRAINT IF NOT EXISTS `rider_reports_open_box_outcome_check` CHECK (`open_box_outcome` IN ('not_applicable','accepted_after_inspection','accepted_outer_packaging_inner_seal_intact','inspection_declined','refused_whole_parcel_wrong_item','refused_whole_parcel_damage','refused_whole_parcel_other'));
 
 CREATE TABLE IF NOT EXISTS `rider_assignment_snapshots` (
   `id` VARCHAR(191) NOT NULL,

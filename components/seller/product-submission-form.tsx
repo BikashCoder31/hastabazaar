@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Field,
@@ -624,15 +624,15 @@ export function ProductSubmissionForm({
           >
             {mode === 'draft' ? 'Back to application' : 'View my products'}
           </Link>
-          <Button
-            variant="outline"
-            render={<Link href={mode === 'draft' ? '/sell/application/products/new' : '/seller/products/new'} />}
+          <Link
+            className={buttonVariants({ variant: 'outline' })}
+            href={mode === 'draft' ? '/sell/application/products/new' : '/seller/products/new'}
             onClick={() => {
               if (!isRevision) setState({ status: 'idle' });
             }}
           >
             Add another product
-          </Button>
+          </Link>
         </div>
       </div>
     );

@@ -157,7 +157,7 @@ export default async function SellerProductsPage({
       {products.length ? (
         <div className="relative overflow-x-auto rounded-2xl border bg-card">
           <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+            <thead className="border-b bg-muted/40 text-xs uppercase tracking-wide whitespace-nowrap text-muted-foreground">
               <tr>
                 <th className="px-4 py-3">Product</th>
                 <th className="px-4 py-3 text-right">Price</th>
@@ -247,7 +247,7 @@ function ProductRow({
             </div>
           </div>
         </td>
-        <td className="px-4 py-4 text-right font-semibold tabular-nums">
+        <td className="px-4 py-4 text-right font-semibold whitespace-nowrap tabular-nums">
           {sellerMoney(product.pricePaisa)}
         </td>
         <td className="px-4 py-4">

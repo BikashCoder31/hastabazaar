@@ -7,6 +7,8 @@ import { accrueManagedEntitlements, getManagedFinanceSummary } from '../lib/db/r
 import { createCodOrder } from '../lib/db/repositories/orders';
 import { prepareSellerParcels, operateParcel, listParcels } from '../lib/operations/parcels';
 import { SELLER_AGREEMENT_VERSION } from '../lib/content/legal-policies';
+import { assertNativeFixtureScope } from './helpers/native-fixture-scope';
+import { cancellationPreview, cancelSelectedParcels } from '../lib/cancellation/repository';
 
 // Explicit opt-in: this harness only writes fictional rows in the coordinator's
 // isolated loopback MariaDB database. It never creates/imports schema or deletes data.
@@ -14,11 +16,7 @@ const enabled = process.env.HATSKALA_NATIVE_COMMERCE === '1';
 const pools: Pool[] = [];
 const originalCreatePool = mysql.createPool;
 if (enabled) {
-  assert.equal(process.env.DB_HOST, '127.0.0.1');
-  assert.equal(process.env.DB_PORT, '13327');
-  assert.equal(process.env.DB_NAME, 'hastabazaar_audit');
-  assert.equal(process.env.DB_USER, 'audit_fixture');
-  assert.equal(process.env.HASTABAZAAR_RUNTIME_ENV, 'local_staging');
+  await assertNativeFixtureScope();
   // Capture the actual pool for teardown; all database traffic still uses the
   // unmodified production adapter and real independent MySQL connections.
   mysql.createPool = (config: string | mysql.PoolOptions) => {
@@ -267,4 +265,32 @@ void test('native F02 failed refund restart and new approval compete for one cur
     await assert.rejects(advanceReturnAsAdmin(db,action(a.id,'start_refund',f.prefix+'-retry-denied')),/remaining delivery charge/);
   }
   assert.equal((await db.prepare("SELECT SUM(delivery_amount_paisa) AS n FROM refunds WHERE order_id=? AND status='paid'").bind(f.order).first<{n:number}>())?.n,40000);
+});
+
+void test('native real email-only COD checkout cancellation restores stock once and preserves original totals on replay', {skip: !enabled}, async () => {
+  const f = await fixture('release-cancellation');
+  await db.prepare('UPDATE users SET phone=? WHERE id=?').bind('+977' + f.phone, f.buyer).run();
+  await db.prepare('INSERT INTO account_email_verifications(user_id,email,verified_at) VALUES (?,?,?)').bind(f.buyer, f.buyer + '@example.test', now).run();
+  assert.equal(await db.prepare('SELECT user_id FROM account_phone_verifications WHERE user_id=?').bind(f.buyer).first(), null);
+  const cart = f.prefix + '-cart', token = f.prefix + '-cart-token', receipt = f.prefix + '-new-receipt';
+  await db.prepare("INSERT INTO carts(id,anonymous_token_hash,currency,created_at,updated_at) VALUES (?,?,'NPR',?,?)").bind(cart, token, now, now).run();
+  await db.prepare('INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES (?,?,?,1,?,?)').bind(f.prefix + '-cart-item', cart, f.products[0], now, now).run();
+  const checkout = {customerEmail: f.buyer + '@example.test', customerAuthSubject: f.buyer, customerPhone: f.phone, locale: 'en-NP' as const,
+    termsAccepted: true as const, idempotencyKey: crypto.randomUUID(), address: {recipientName: 'SIMULATED buyer', phone: f.phone,
+      province: 'Madhesh', district: 'Dhanusha', municipality: 'Janakpur', locality: 'Ward 1'}};
+  const purchased = await createCodOrder(db, token, receipt, checkout, now, f.buyer, undefined, 'email_only');
+  assert.deepEqual(await createCodOrder(db, token, receipt, checkout, now, f.buyer, undefined, 'email_only'), purchased);
+  const order = await db.prepare('SELECT id,grand_total_paisa AS original FROM orders WHERE order_number=?').bind(purchased.orderNumber).first<{id: string; original: number}>();
+  assert.ok(order);
+  assert.equal((await db.prepare('SELECT inventory_quantity AS n FROM products WHERE id=?').bind(f.products[0]).first<{n: number}>())?.n, 0);
+  const access = {orderNumber: purchased.orderNumber, customerId: f.buyer, receiptTokenHash: receipt};
+  await assert.rejects(cancellationPreview(db, {...access, customerId: 'another-fictional-customer', receiptTokenHash: null}, [f.seller]));
+  const preview = await cancellationPreview(db, access, [f.seller]);
+  const cancel = {sellerIds: [f.seller], fingerprint: preview.fingerprint, requestId: f.prefix + '-cancel', note: 'SIMULATED native cancellation', now};
+  await cancelSelectedParcels(db, access, cancel); await cancelSelectedParcels(db, access, cancel);
+  const after = await db.prepare('SELECT status,grand_total_paisa AS original,current_total_paisa AS current FROM orders WHERE id=?').bind(order.id).first();
+  assert.deepEqual({...after}, {status: 'cancelled', original: order.original, current: 0});
+  assert.equal((await db.prepare('SELECT inventory_quantity AS n FROM products WHERE id=?').bind(f.products[0]).first<{n: number}>())?.n, 1);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM order_cancellation_events WHERE order_id=?').bind(order.id).first<{n: number}>())?.n, 1);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM seller_ledger_entries l JOIN order_items i ON i.id=l.order_item_id WHERE i.order_id=?').bind(order.id).first<{n: number}>())?.n, 0);
 });

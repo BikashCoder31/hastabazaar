@@ -1160,9 +1160,9 @@ SELECT CONCAT('verification-', `id`), `id`, 'verification', NULL, `province`, `d
 FROM `seller_profiles`;
 
 -- Additive Managed Maker commercial snapshots and settlement records.
-ALTER TABLE `seller_participation_profiles` ADD COLUMN `managed_agreement_version` VARCHAR(191) NULL;
-ALTER TABLE `seller_participation_profiles` ADD COLUMN `managed_agreement_language` VARCHAR(8) NULL;
-ALTER TABLE `seller_participation_profiles` ADD COLUMN `managed_agreement_accepted_at` BIGINT NULL;
+ALTER TABLE `seller_participation_profiles` ADD COLUMN IF NOT EXISTS `managed_agreement_version` VARCHAR(191) NULL;
+ALTER TABLE `seller_participation_profiles` ADD COLUMN IF NOT EXISTS `managed_agreement_language` VARCHAR(8) NULL;
+ALTER TABLE `seller_participation_profiles` ADD COLUMN IF NOT EXISTS `managed_agreement_accepted_at` BIGINT NULL;
 
 CREATE TABLE IF NOT EXISTS `managed_commercial_snapshots` (
   `id` VARCHAR(191) NOT NULL,
@@ -1253,31 +1253,31 @@ CREATE TABLE IF NOT EXISTS `managed_invoice_groups` (
   UNIQUE KEY `idx_managed_invoice_order_issuer` (`order_id`,`issuer_reference`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-ALTER TABLE `managed_commercial_snapshots` ADD CONSTRAINT `managed_snapshots_order_item_fk` FOREIGN KEY (`order_item_id`) REFERENCES `order_items` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_commercial_snapshots` ADD CONSTRAINT `managed_snapshots_seller_fk` FOREIGN KEY (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_entitlements` ADD CONSTRAINT `managed_entitlements_snapshot_fk` FOREIGN KEY (`snapshot_id`) REFERENCES `managed_commercial_snapshots` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_entitlements` ADD CONSTRAINT `managed_entitlements_seller_fk` FOREIGN KEY (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_settlement_entries` ADD CONSTRAINT `managed_settlement_entitlement_fk` FOREIGN KEY (`entitlement_id`) REFERENCES `managed_entitlements` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_settlement_entries` ADD CONSTRAINT `managed_settlement_refund_fk` FOREIGN KEY (`refund_id`) REFERENCES `refunds` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_settlement_entries` ADD CONSTRAINT `managed_settlement_user_fk` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL;
-ALTER TABLE `managed_payouts` ADD CONSTRAINT `managed_payouts_seller_fk` FOREIGN KEY (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_payouts` ADD CONSTRAINT `managed_payouts_preparer_fk` FOREIGN KEY (`prepared_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_payouts` ADD CONSTRAINT `managed_payouts_approver_fk` FOREIGN KEY (`approved_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_payout_entries` ADD CONSTRAINT `managed_payout_entries_payout_fk` FOREIGN KEY (`payout_id`) REFERENCES `managed_payouts` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_payout_entries` ADD CONSTRAINT `managed_payout_entries_settlement_fk` FOREIGN KEY (`settlement_entry_id`) REFERENCES `managed_settlement_entries` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `managed_invoice_groups` ADD CONSTRAINT `managed_invoice_order_fk` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_commercial_snapshots` ADD CONSTRAINT `managed_snapshots_order_item_fk` FOREIGN KEY IF NOT EXISTS `managed_snapshots_order_item_fk` (`order_item_id`) REFERENCES `order_items` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_commercial_snapshots` ADD CONSTRAINT `managed_snapshots_seller_fk` FOREIGN KEY IF NOT EXISTS `managed_snapshots_seller_fk` (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_entitlements` ADD CONSTRAINT `managed_entitlements_snapshot_fk` FOREIGN KEY IF NOT EXISTS `managed_entitlements_snapshot_fk` (`snapshot_id`) REFERENCES `managed_commercial_snapshots` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_entitlements` ADD CONSTRAINT `managed_entitlements_seller_fk` FOREIGN KEY IF NOT EXISTS `managed_entitlements_seller_fk` (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_settlement_entries` ADD CONSTRAINT `managed_settlement_entitlement_fk` FOREIGN KEY IF NOT EXISTS `managed_settlement_entitlement_fk` (`entitlement_id`) REFERENCES `managed_entitlements` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_settlement_entries` ADD CONSTRAINT `managed_settlement_refund_fk` FOREIGN KEY IF NOT EXISTS `managed_settlement_refund_fk` (`refund_id`) REFERENCES `refunds` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_settlement_entries` ADD CONSTRAINT `managed_settlement_user_fk` FOREIGN KEY IF NOT EXISTS `managed_settlement_user_fk` (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL;
+ALTER TABLE `managed_payouts` ADD CONSTRAINT `managed_payouts_seller_fk` FOREIGN KEY IF NOT EXISTS `managed_payouts_seller_fk` (`seller_id`) REFERENCES `seller_profiles` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_payouts` ADD CONSTRAINT `managed_payouts_preparer_fk` FOREIGN KEY IF NOT EXISTS `managed_payouts_preparer_fk` (`prepared_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_payouts` ADD CONSTRAINT `managed_payouts_approver_fk` FOREIGN KEY IF NOT EXISTS `managed_payouts_approver_fk` (`approved_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_payout_entries` ADD CONSTRAINT `managed_payout_entries_payout_fk` FOREIGN KEY IF NOT EXISTS `managed_payout_entries_payout_fk` (`payout_id`) REFERENCES `managed_payouts` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_payout_entries` ADD CONSTRAINT `managed_payout_entries_settlement_fk` FOREIGN KEY IF NOT EXISTS `managed_payout_entries_settlement_fk` (`settlement_entry_id`) REFERENCES `managed_settlement_entries` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `managed_invoice_groups` ADD CONSTRAINT `managed_invoice_order_fk` FOREIGN KEY IF NOT EXISTS `managed_invoice_order_fk` (`order_id`) REFERENCES `orders` (`id`) ON DELETE RESTRICT;
 
 -- Additive product-specific materials and origin story fields.
 ALTER TABLE `products`
-  ADD COLUMN `materials_json` LONGTEXT NOT NULL DEFAULT '[]',
-  ADD COLUMN `origin_story` LONGTEXT NULL;
+  ADD COLUMN IF NOT EXISTS `materials_json` LONGTEXT NOT NULL DEFAULT '[]',
+  ADD COLUMN IF NOT EXISTS `origin_story` LONGTEXT NULL;
 
 -- Additive purchaser, recipient, and saved-address checkout snapshots.
 ALTER TABLE `orders`
-  ADD COLUMN `delivery_for` VARCHAR(16) NOT NULL DEFAULT 'self',
-  ADD COLUMN `recipient_email` VARCHAR(254) NULL,
-  ADD COLUMN `source_address_id` VARCHAR(191) NULL,
-  ADD COLUMN `address_saved_for_future` BIGINT NOT NULL DEFAULT 0;
+  ADD COLUMN IF NOT EXISTS `delivery_for` VARCHAR(16) NOT NULL DEFAULT 'self',
+  ADD COLUMN IF NOT EXISTS `recipient_email` VARCHAR(254) NULL,
+  ADD COLUMN IF NOT EXISTS `source_address_id` VARCHAR(191) NULL,
+  ADD COLUMN IF NOT EXISTS `address_saved_for_future` BIGINT NOT NULL DEFAULT 0;
 
 DROP TRIGGER IF EXISTS `invalidate_delivery_otp_after_destination_change`;
 CREATE TRIGGER `invalidate_delivery_otp_after_destination_change`
@@ -1359,17 +1359,17 @@ CREATE TRIGGER `seller_deletion_preflights_no_delete` BEFORE DELETE ON `seller_d
 DROP TRIGGER IF EXISTS `order_items_require_available_inventory`;
 DELIMITER $$
 CREATE TRIGGER `order_items_require_available_inventory` BEFORE INSERT ON `order_items` FOR EACH ROW BEGIN
-  DECLARE seller_state VARCHAR(40) DEFAULT NULL;
-  DECLARE owner_state VARCHAR(40) DEFAULT NULL;
-  DECLARE seller_id_value VARCHAR(191) DEFAULT NULL;
-  DECLARE owner_id_value VARCHAR(191) DEFAULT NULL;
-  DECLARE participation_route_value VARCHAR(40) DEFAULT NULL;
-  DECLARE application_stage_value VARCHAR(40) DEFAULT NULL;
-  DECLARE commercial_model_value VARCHAR(80) DEFAULT NULL;
-  DECLARE legal_seller_value VARCHAR(191) DEFAULT NULL;
-  DECLARE invoice_issuer_value VARCHAR(191) DEFAULT NULL;
-  DECLARE payout_beneficiary_value VARCHAR(191) DEFAULT NULL;
-  DECLARE agreement_version_value VARCHAR(191) DEFAULT NULL;
+  DECLARE seller_state VARCHAR(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE owner_state VARCHAR(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE seller_id_value VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE owner_id_value VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE participation_route_value VARCHAR(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE application_stage_value VARCHAR(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE commercial_model_value VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE legal_seller_value VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE invoice_issuer_value VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE payout_beneficiary_value VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+  DECLARE agreement_version_value VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
   DECLARE agreement_accepted_value BIGINT DEFAULT NULL;
   DECLARE active_restrictions BIGINT DEFAULT 0;
 
@@ -1664,25 +1664,25 @@ DELIMITER ;
 -- Per-assignment open-box and rider-finance snapshots. This is additive and
 -- contains no production values or fictional records.
 ALTER TABLE `rider_profiles`
-  ADD COLUMN `open_box_eligible` BIGINT NOT NULL DEFAULT 0,
-  ADD COLUMN `open_box_reviewed_by` VARCHAR(191) NULL,
-  ADD COLUMN `open_box_reviewed_at` BIGINT NULL,
-  ADD CONSTRAINT `rider_profiles_open_box_eligible_check` CHECK (`open_box_eligible` IN (0,1)),
-  ADD CONSTRAINT `rider_profiles_open_box_reviewer_fk` FOREIGN KEY (`open_box_reviewed_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT;
+  ADD COLUMN IF NOT EXISTS `open_box_eligible` BIGINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS `open_box_reviewed_by` VARCHAR(191) NULL,
+  ADD COLUMN IF NOT EXISTS `open_box_reviewed_at` BIGINT NULL,
+  ADD CONSTRAINT IF NOT EXISTS `rider_profiles_open_box_eligible_check` CHECK (`open_box_eligible` IN (0,1)),
+  ADD CONSTRAINT `rider_profiles_open_box_reviewer_fk` FOREIGN KEY IF NOT EXISTS `rider_profiles_open_box_reviewer_fk` (`open_box_reviewed_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT;
 
 ALTER TABLE `shipping_parcels`
-  ADD COLUMN `open_box_required` BIGINT NOT NULL DEFAULT 0,
-  ADD COLUMN `open_box_snapshot_json` LONGTEXT NULL,
-  ADD COLUMN `rider_finance_snapshot_json` LONGTEXT NULL,
-  ADD CONSTRAINT `shipping_parcels_open_box_required_check` CHECK (`open_box_required` IN (0,1));
+  ADD COLUMN IF NOT EXISTS `open_box_required` BIGINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS `open_box_snapshot_json` LONGTEXT NULL,
+  ADD COLUMN IF NOT EXISTS `rider_finance_snapshot_json` LONGTEXT NULL,
+  ADD CONSTRAINT IF NOT EXISTS `shipping_parcels_open_box_required_check` CHECK (`open_box_required` IN (0,1));
 
 ALTER TABLE `parcel_cash_records`
-  ADD COLUMN `rider_user_id` VARCHAR(191) NULL,
-  ADD CONSTRAINT `parcel_cash_records_rider_fk` FOREIGN KEY (`rider_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT;
+  ADD COLUMN IF NOT EXISTS `rider_user_id` VARCHAR(191) NULL,
+  ADD CONSTRAINT `parcel_cash_records_rider_fk` FOREIGN KEY IF NOT EXISTS `parcel_cash_records_rider_fk` (`rider_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT;
 
 ALTER TABLE `rider_reports`
-  ADD COLUMN `open_box_outcome` VARCHAR(80) NOT NULL DEFAULT 'not_applicable',
-  ADD CONSTRAINT `rider_reports_open_box_outcome_check` CHECK (`open_box_outcome` IN ('not_applicable','accepted_after_inspection','accepted_outer_packaging_inner_seal_intact','inspection_declined','refused_whole_parcel_wrong_item','refused_whole_parcel_damage','refused_whole_parcel_other'));
+  ADD COLUMN IF NOT EXISTS `open_box_outcome` VARCHAR(80) NOT NULL DEFAULT 'not_applicable',
+  ADD CONSTRAINT IF NOT EXISTS `rider_reports_open_box_outcome_check` CHECK (`open_box_outcome` IN ('not_applicable','accepted_after_inspection','accepted_outer_packaging_inner_seal_intact','inspection_declined','refused_whole_parcel_wrong_item','refused_whole_parcel_damage','refused_whole_parcel_other'));
 
 CREATE TABLE IF NOT EXISTS `rider_assignment_snapshots` (
   `id` VARCHAR(191) NOT NULL,

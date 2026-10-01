@@ -664,6 +664,12 @@ export async function cancelSelectedParcels(
           : remaining.some((i) => i.status !== 'confirmed')
             ? 'packing'
             : 'confirmed';
+  // MariaDB rejects a trigger updating a table read by its invoking statement.
+  // Cancellation closes shipping jobs through the existing order trigger, so
+  // only read those jobs when the resulting order actually becomes delivered.
+  const deliveredAtUpdate = status === 'delivered'
+    ? "CASE WHEN EXISTS(SELECT 1 FROM order_items WHERE order_id=orders.id AND fulfillment_status='delivered') AND NOT EXISTS(SELECT 1 FROM order_items WHERE order_id=orders.id AND fulfillment_status NOT IN ('delivered','cancelled')) THEN COALESCE(delivered_at,(SELECT MAX(p.delivered_at) FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id WHERE j.order_id=orders.id AND j.status='delivered'),?) ELSE delivered_at END"
+    : 'delivered_at';
   statements.push(
     db
       .prepare(
@@ -686,7 +692,7 @@ export async function cancelSelectedParcels(
       ),
     db
       .prepare(
-        "UPDATE orders SET status=?,current_total_paisa=?,current_subtotal_paisa=?,current_delivery_paisa=?,current_wallet_paisa=?,current_discount_paisa=?,current_promo_discount_paisa=?,delivered_at=CASE WHEN ?='delivered' AND EXISTS(SELECT 1 FROM order_items WHERE order_id=orders.id AND fulfillment_status='delivered') AND NOT EXISTS(SELECT 1 FROM order_items WHERE order_id=orders.id AND fulfillment_status NOT IN ('delivered','cancelled')) THEN COALESCE(delivered_at,(SELECT MAX(p.delivered_at) FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id WHERE j.order_id=orders.id AND j.status='delivered'),?) ELSE delivered_at END,payment_status=CASE WHEN ?='cancelled' THEN 'cancelled' ELSE 'pending' END,cancelled_at=CASE WHEN ?='cancelled' THEN ? ELSE cancelled_at END,updated_at=? WHERE id=?",
+        `UPDATE orders SET status=?,current_total_paisa=?,current_subtotal_paisa=?,current_delivery_paisa=?,current_wallet_paisa=?,current_discount_paisa=?,current_promo_discount_paisa=?,delivered_at=${deliveredAtUpdate},payment_status=CASE WHEN ?='cancelled' THEN 'cancelled' ELSE 'pending' END,cancelled_at=CASE WHEN ?='cancelled' THEN ? ELSE cancelled_at END,updated_at=? WHERE id=?`,
       )
       .bind(
         status,
@@ -696,8 +702,7 @@ export async function cancelSelectedParcels(
         p.next.wallet,
         p.next.discount,
         p.next.promoDiscount,
-        status,
-        o.now,
+        ...(status === 'delivered' ? [o.now] : []),
         status,
         status,
         o.now,

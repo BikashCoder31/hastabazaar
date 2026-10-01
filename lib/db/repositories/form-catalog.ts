@@ -183,6 +183,120 @@ function sameRequest(record: FormConfigVersion, input: { formId: FormId; actorId
     record.reason === input.reason && (!config || JSON.stringify(record.config) === JSON.stringify(config));
 }
 
+export const PUBLIC_IDENTITY_FORM_IDS: readonly FormId[] = Object.freeze([
+  'identity.register', 'identity.login-password', 'identity.email-code-request',
+  'identity.email-code-verify', 'identity.password-reset-request', 'identity.password-reset-complete',
+]);
+
+export const FEATURE_MANAGED_BASELINE_FORM_IDS: readonly FormId[] = Object.freeze([
+  ...PUBLIC_IDENTITY_FORM_IDS,
+  'account.profile', 'account.address', 'account.daily-reward', 'account.points-redemption',
+  'commerce.promo-quote', 'commerce.gift-card-redeem', 'staff.staff-invitation',
+  'staff.staff-permission-1', 'staff.staff-permission-2', 'rider.code-verify',
+  'staff.homepage-hero-manager', 'staff.homepage-occasion-manager', 'staff.homepage-visibility',
+  'staff.business-settings-manager', 'staff.delivery-rate', 'staff.promo-code',
+  'staff.loyalty-settings', 'staff.referral-settings',
+]);
+
+type FormBaselineInput = { actorId: string; actorRole: 'super_admin'; reason: string; requestId: string; now: number };
+
+export function initializePublicIdentityForms(db: D1Database, input: FormBaselineInput) {
+  return initializeFormBaselines(db, { ...input, formIds: PUBLIC_IDENTITY_FORM_IDS });
+}
+
+export function initializeFeatureManagedForms(db: D1Database, input: FormBaselineInput) {
+  return initializeFormBaselines(db, { ...input, formIds: FEATURE_MANAGED_BASELINE_FORM_IDS });
+}
+
+/** Explicit installation step; public reads and catalog policy never initialize forms. */
+export async function initializeFormBaselines(db: D1Database, input: FormBaselineInput & {
+  formIds: readonly FormId[];
+}): Promise<{ created: readonly FormConfigVersion[]; preserved: readonly FormConfigVersion[] }> {
+  const data = basic({ ...input, expectedPublishedVersion: 0 });
+  if (!Array.isArray(input.formIds) || !input.formIds.length ||
+    new Set(input.formIds).size !== input.formIds.length ||
+    input.formIds.some((id) => !FEATURE_MANAGED_BASELINE_FORM_IDS.includes(id))) {
+    throw new FormCatalogConflictError('Only the required feature-managed form baselines can be initialized.');
+  }
+  await assertActiveAdmin(db, data.actorId);
+  const preserved: FormConfigVersion[] = [];
+  const preservedHistory: { formId: FormId; rows: readonly Row[] }[] = [];
+  const missing: { formId: FormId; config: FormConfigDraft; requestId: string; id: string }[] = [];
+  for (const formId of input.formIds) {
+    const requestId = required(`${data.requestId}:${formId}`, 'Request ID', 191);
+    const config = validateFormDraft(formId, { formId, fields: [] });
+    const repeat = await byRequest(db, requestId);
+    if (repeat) {
+      const prior = await db.prepare(`SELECT 1 AS initialized FROM audit_logs
+        WHERE request_id = ? AND action = 'form_catalog.initialized' AND subject_type = 'form_config'
+          AND subject_id = ? AND actor_id = ? LIMIT 1`)
+        .bind(requestId, formId, data.actorId).first<{ initialized: number }>();
+      if (!prior || repeat.version !== 1 || !sameRequest(repeat, { formId, ...data }, 'published', config))
+        throw new FormCatalogConflictError('Request ID was already used.');
+    } else if (await usedRequest(db, requestId)) {
+      throw new FormCatalogConflictError('Request ID was already used.');
+    }
+    const history = await db.prepare(`SELECT ${columns} FROM form_config_versions
+      WHERE form_id = ? ORDER BY version DESC`).bind(formId).all<Row>();
+    const row = history.results.find((version) => version.status === 'published');
+    if (row) {
+      preserved.push(parse(row));
+      preservedHistory.push({ formId, rows: history.results });
+      continue;
+    }
+    if (history.results.length) throw new FormCatalogConflictError(`Resolve existing ${formId} draft history before initialization.`);
+    missing.push({ formId, config, requestId, id: crypto.randomUUID() });
+  }
+  if (!missing.length) return { created: [], preserved };
+  const statements: D1PreparedStatement[] = [];
+  const maria = (db as D1Database & { dialect?: string }).dialect === 'mariadb';
+  // Every preserved version participates in the installation snapshot. Checking
+  // only missing forms would admit a concurrent draft/publication on another form.
+  // The MariaDB adapter locks bindings[0] as actor and bindings[1] as form.
+  // Keep that prefix in each guard through real authorization/form predicates.
+  for (const history of preservedHistory) {
+    statements.push(guard(db, `${activeAdmin} AND (SELECT COUNT(*) FROM form_config_versions WHERE form_id = ?) = ?`,
+      [data.actorId, history.formId, history.rows.length]));
+    for (const row of history.rows) {
+      const fields: readonly (readonly [string, string | number | null])[] = [
+        ['form_id', row.formId], ['id', row.id], ['version', row.version], ['revision', row.revision],
+        ['status', row.status], ['config_json', row.configJson], ['reason', row.reason],
+        ['created_by', row.createdBy], ['created_at', row.createdAt], ['updated_by', row.updatedBy],
+        ['updated_at', row.updatedAt], ['published_by', row.publishedBy], ['published_at', row.publishedAt],
+        ['last_request_id', row.lastRequestId],
+      ];
+      const values: (string | number)[] = [data.actorId];
+      const predicate = fields.map(([column, value]) => {
+        if (value === null) return `${column} IS NULL`;
+        values.push(value);
+        return maria && typeof value === 'string' ? `BINARY ${column} = BINARY ?` : `${column} = ?`;
+      }).join(' AND ');
+      statements.push(guard(db, `${activeAdmin} AND EXISTS (SELECT 1 FROM form_config_versions WHERE ${predicate})`, values));
+    }
+  }
+  for (const item of missing) {
+    statements.push(
+      guard(db, `${activeAdmin} AND ${publishedIs} AND ${requestUnused} AND
+        NOT EXISTS (SELECT 1 FROM form_config_versions WHERE form_id = ?)`,
+      [data.actorId, item.formId, 0, item.requestId, item.formId]),
+      db.prepare(`INSERT INTO form_config_versions
+        (id,form_id,version,revision,status,config_json,reason,created_by,created_at,
+         updated_by,updated_at,published_by,published_at,last_request_id)
+        VALUES (?,?,1,1,'published',?,?,?,?,?,?,?,?,?)`)
+        .bind(item.id, item.formId, JSON.stringify(item.config), data.reason, data.actorId, data.now,
+          data.actorId, data.now, data.actorId, data.now, item.requestId),
+      audit(db, { actorId: data.actorId, action: 'form_catalog.initialized', formId: item.formId,
+        versionId: item.id, reason: data.reason, previous: null,
+        next: { status: 'published', version: 1, config: item.config }, requestId: item.requestId, now: data.now }),
+    );
+  }
+  try { await db.batch(statements); }
+  catch { throw new FormCatalogConflictError(); }
+  const created = [];
+  for (const item of missing) created.push((await byId(db, item.id))!);
+  return { created, preserved };
+}
+
 export async function saveFormDraft(db: D1Database, input: { formId: FormId; draftId?: string; actorId: string;
   actorRole: 'super_admin'; expectedDraftRevision?: number; expectedPublishedVersion: number;
   config: FormConfigDraft; reason: string; requestId: string; now: number }): Promise<FormConfigVersion> {
