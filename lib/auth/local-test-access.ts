@@ -1,4 +1,4 @@
-import type { ChatGPTUser } from '@/app/chatgpt-auth';
+import type { AuthenticatedUser } from '@/app/auth';
 
 export const localTestRoles = [
   'customer',
@@ -11,7 +11,7 @@ export type LocalTestRole = (typeof localTestRoles)[number];
 
 export const localTestCookieName = 'hastabazaar_local_test_role';
 
-const identities: Record<LocalTestRole, ChatGPTUser> = {
+const identities: Record<LocalTestRole, AuthenticatedUser> = {
   customer: {
     userId: 'local-test-customer',
     displayName: 'Maya Customer',
@@ -63,12 +63,11 @@ export function readLocalTestRole(requestHeaders: Headers): LocalTestRole | null
   return localTestRoles.find((role) => role === decoded) ?? null;
 }
 
-export function getLocalTestIdentity(requestHeaders: Headers): ChatGPTUser | null {
+export function getLocalTestIdentity(requestHeaders: Headers): AuthenticatedUser | null {
   const role = readLocalTestRole(requestHeaders);
   return role ? identities[role] : null;
 }
 
-export function localTestIdentity(role: LocalTestRole): ChatGPTUser {
+export function localTestIdentity(role: LocalTestRole): AuthenticatedUser {
   return identities[role];
 }
-

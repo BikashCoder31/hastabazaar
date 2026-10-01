@@ -1,3 +1,4 @@
+import { can } from '@/lib/marketplace/permissions';
 import { env } from 'cloudflare:workers';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -12,6 +13,7 @@ import {
 } from 'lucide-react';
 
 import { ProductReviewActions } from '@/components/admin/product-review-actions';
+import { HomepageVisibilityControl } from '@/components/admin/homepage-visibility-control';
 import { ProductClassificationForm } from '@/components/admin/product-classification-form';
 import { StatusBadge } from '@/components/admin/status-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -59,7 +61,7 @@ export default async function ProductReviewPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  await requireStaffPage(`/admin/products/${id}`, 'product.review');
+  const staff = await requireStaffPage(`/admin/products/${id}`, 'product.review');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const [product, categories, occasions] = await Promise.all([
     getProductForReview(database, id),
@@ -84,7 +86,7 @@ export default async function ProductReviewPage({
         </div>
         <StatusBadge status={product.status} />
       </div>
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(20rem,0.6fr)]">
+      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.4fr)_minmax(20rem,0.6fr)]">
         <div className="space-y-6">
           <Card>
             <CardHeader>
@@ -137,6 +139,10 @@ export default async function ProductReviewPage({
                 <Detail label="Origin">Nepal</Detail>
                 <Detail label="Materials">{product.materials}</Detail>
                 <Detail label="Dimensions">{product.dimensions}</Detail>
+                <Detail label="Size">{product.size}</Detail>
+                <Detail label="Colour">{product.colour}</Detail>
+                <Detail label="Variations">{product.variations}</Detail>
+                <Detail label="Specifications">{product.specifications}</Detail>
                 <Detail label="Preparation">
                   {product.madeToOrder ? 'Made to order · ' : ''}
                   {product.preparationDays} day(s)
@@ -193,6 +199,26 @@ export default async function ProductReviewPage({
           </Card>
         </div>
         <div className="space-y-6">
+          {staff.role === 'super_admin' ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Homepage visibility</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm leading-6 text-muted-foreground">
+                  This controls Offers, Latest, and Top Products only. The
+                  listing remains published and available in the shop.
+                </p>
+                <HomepageVisibilityControl
+                  productId={product.id}
+                  productName={product.nameEn}
+                  hidden={Boolean(product.homepageHidden)}
+                  version={product.homepageVersion}
+                  lastReason={product.homepageReason}
+                />
+              </CardContent>
+            </Card>
+          ) : null}
           <Card>
             <CardHeader>
               <CardTitle>Review decision</CardTitle>
@@ -200,6 +226,8 @@ export default async function ProductReviewPage({
             <CardContent>
               <ProductReviewActions
                 productId={product.id}
+                canUnpublish={staff.role === 'super_admin'}
+                canPublish={can(staff, 'product.publish')}
                 status={product.status}
               />
             </CardContent>
@@ -209,7 +237,7 @@ export default async function ProductReviewPage({
               <CardTitle>Discovery classification</CardTitle>
             </CardHeader>
             <CardContent>
-              <ProductClassificationForm
+              {can(staff, 'catalog.manage') && <ProductClassificationForm
                 productId={product.id}
                 categoryId={product.categoryId}
                 occasionIds={
@@ -217,7 +245,7 @@ export default async function ProductReviewPage({
                 }
                 categories={categories}
                 occasions={occasions}
-              />
+              />}
             </CardContent>
           </Card>
           <Card>

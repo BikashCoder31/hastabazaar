@@ -1,13 +1,86 @@
 'use client';
-
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-
+import { useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-
-export function ReviewModerationActions({ id, status }: { id: string; status: string }) {
-  const router = useRouter(); const [note, setNote] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
-  async function act(action: 'publish' | 'reject' | 'hide') { setBusy(true); setError(''); const response = await fetch(`/api/admin/reviews/${id}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action, note, idempotencyKey: crypto.randomUUID() }) }); const result = await response.json() as { error?: string }; setBusy(false); if (!response.ok) return setError(result.error || 'Review action failed.'); setNote(''); router.refresh(); }
-  return <div className="mt-4"><Input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Required moderation note" minLength={8} maxLength={1000} />{error ? <p className="mt-2 text-sm text-destructive">{error}</p> : null}<div className="mt-3 flex flex-wrap gap-2">{status === 'pending' ? <><Button size="sm" disabled={busy || note.trim().length < 8} onClick={() => void act('publish')}>Publish</Button><Button size="sm" variant="destructive" disabled={busy || note.trim().length < 8} onClick={() => void act('reject')}>Reject</Button></> : <Button size="sm" variant="outline" disabled={busy || note.trim().length < 8} onClick={() => void act('hide')}>Hide</Button>}</div></div>;
+import { Label } from '@/components/ui/label';
+import { useAdminMutation } from '@/components/admin/use-admin-mutation';
+export function ReviewModerationActions({
+  id,
+  status,
+  replyVersion,
+}: {
+  id: string;
+  status: string;
+  replyVersion?: number;
+}) {
+  const { send, pending, error } = useAdminMutation();
+  const [note, setNote] = useState('');
+  const fieldId = useId();
+  async function act(action: 'publish' | 'reject' | 'hide') {
+    if (
+      await send(
+        '/api/admin/reviews/' +
+          encodeURIComponent(id) +
+          (replyVersion ? '/reply' : ''),
+        { action, note, ...(replyVersion ? { version: replyVersion } : {}) },
+        'idempotencyKey',
+      )
+    )
+      setNote('');
+  }
+  if (status !== 'pending' && status !== 'published')
+    return (
+      <p className="mt-4 text-sm text-muted-foreground">
+        No moderation action is available at this stage.
+      </p>
+    );
+  return (
+    <fieldset disabled={pending} className="mt-4">
+      <Label htmlFor={fieldId}>Moderation note</Label>
+      <Input
+        id={fieldId}
+        className="mt-2"
+        value={note}
+        onChange={(event) => setNote(event.target.value)}
+        minLength={8}
+        maxLength={1000}
+        placeholder="Explain the decision for the audit record."
+      />
+      {error ? (
+        <p role="alert" className="mt-2 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {status === 'pending' ? (
+          <>
+            <Button
+              size="sm"
+              disabled={pending || note.trim().length < 8}
+              onClick={() => void act('publish')}
+            >
+              Publish {replyVersion ? 'reply' : 'review'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending || note.trim().length < 8}
+              onClick={() => void act('reject')}
+            >
+              Reject {replyVersion ? 'reply' : 'review'}
+            </Button>
+          </>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending || note.trim().length < 8}
+            onClick={() => void act('hide')}
+          >
+            Hide {replyVersion ? 'reply' : 'review'}
+          </Button>
+        )}
+      </div>
+    </fieldset>
+  );
 }

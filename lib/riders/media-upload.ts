@@ -1,0 +1,11 @@
+import sharpImport from 'sharp';
+interface ImagePipeline {metadata():Promise<{width?:number;height?:number;pages?:number;format?:string}>;rotate():ImagePipeline;resize(options:object):ImagePipeline;jpeg(options:object):ImagePipeline;toBuffer():Promise<Uint8Array>;}
+const sharp=sharpImport as (data:Uint8Array,options:object)=>ImagePipeline;
+import {validateProductVideo} from '../media/product-video';
+export class RiderMediaError extends Error {}
+export async function prepareRiderEvidence(file:File,videoAllowed:boolean):Promise<{bytes:Uint8Array;mime:string}>{
+ if(file.type==='video/mp4'&&videoAllowed){const error=await validateProductVideo(file);if(error)throw new RiderMediaError(error);return {bytes:new Uint8Array(await file.arrayBuffer()),mime:'video/mp4'};}
+ if(!['image/jpeg','image/png','image/webp'].includes(file.type)||!file.size||file.size>5*1024*1024)throw new RiderMediaError('Use a JPG, PNG or WebP image up to 5 MB.');
+ try{const data=new Uint8Array(await file.arrayBuffer());const image=sharp(data,{limitInputPixels:20_000_000,animated:false});const metadata=await image.metadata();if(!metadata.width||!metadata.height||metadata.pages&&metadata.pages>1||!['jpeg','png','webp'].includes(metadata.format??''))throw new Error('Invalid image');const expected={jpeg:'image/jpeg',png:'image/png',webp:'image/webp'}[metadata.format as 'jpeg'|'png'|'webp'];if(expected!==file.type)throw new Error('Type mismatch');const output=await image.rotate().resize({width:4096,height:4096,fit:'inside',withoutEnlargement:true}).jpeg({quality:90}).toBuffer();if(output.length>5*1024*1024)throw new Error('Image too large');return {bytes:new Uint8Array(output),mime:'image/jpeg'};}catch{throw new RiderMediaError('The image could not be safely read. Use a valid image with at most 20 million pixels.');}
+}
+export function singleRiderFile(form:FormData,fields:readonly string[],required:boolean):File|null{const files=fields.flatMap(field=>form.getAll(field)).filter((v):v is File=>v instanceof File&&v.size>0);if(files.length>1||required&&files.length!==1)throw new RiderMediaError('Attach exactly one photo or video as proof.');return files[0]??null;}

@@ -1,51 +1,100 @@
 'use client';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-export function PayoutRequestForm() {
+import { HandCoins } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { sendJson } from '@/lib/http/client-request';
+import { payoutRequestBlock } from '@/lib/seller/presentation';
+
+export function PayoutRequestForm({
+  availablePaisa,
+  hasOpenRequest,
+}: {
+  availablePaisa: number;
+  hasOpenRequest: boolean;
+}) {
   const router = useRouter();
-  const [message, setMessage] = useState('');
+  const [requestId] = useState(() => crypto.randomUUID());
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  async function submit(form: FormData) {
+  const blocked = payoutRequestBlock(
+    availablePaisa,
+    hasOpenRequest || submitted,
+  );
+  async function submit(event: {
+    preventDefault(): void;
+    currentTarget: HTMLFormElement;
+  }) {
+    event.preventDefault();
+    if (busy || blocked) return;
+    const form = new FormData(event.currentTarget);
     setBusy(true);
-    setMessage('');
-    const response = await fetch('/api/seller/payout-requests', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        note: form.get('note'),
-        requestId: crypto.randomUUID(),
-      }),
-    });
-    const body = (await response.json().catch(() => ({}))) as {
-      error?: string;
-    };
-    setBusy(false);
-    setMessage(
-      response.ok
-        ? 'Payout request submitted for Admin preparation.'
-        : (body.error ?? 'Request failed.'),
-    );
-    if (response.ok) router.refresh();
+    setError('');
+    try {
+      await sendJson(
+        '/api/seller/payout-requests',
+        'POST',
+        { note: form.get('note'), requestId },
+        'Payout request could not be submitted.',
+      );
+      setSubmitted(true);
+      router.refresh();
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : 'Payout request could not be submitted.',
+      );
+    } finally {
+      setBusy(false);
+    }
   }
   return (
-    <form
-      action={submit}
-      className="flex flex-wrap gap-2 rounded-2xl border bg-card p-5"
-    >
-      <input
-        name="note"
-        required
-        minLength={8}
-        placeholder="Payout request note"
-        className="min-w-64 flex-1 rounded-lg border bg-background p-3"
-      />
-      <button
-        disabled={busy}
-        className="rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground"
-      >
-        Request payout
-      </button>
-      {message ? <output className="w-full text-sm">{message}</output> : null}
-    </form>
+    <section className="rounded-2xl border bg-card p-6">
+      <h2 className="flex items-center gap-2 font-heading text-2xl">
+        <HandCoins className="size-5 text-primary" />
+        Request a payout
+      </h2>
+      <p className="mt-3 text-base leading-7 text-muted-foreground">
+        Admin prepares your payout, then a different Super Admin approves it.
+        Submitting a request does not transfer money.
+      </p>
+      {blocked ? (
+        <output className="mt-4 block rounded-xl bg-secondary p-4 text-sm font-semibold text-primary">
+          {blocked}
+        </output>
+      ) : (
+        <form onSubmit={submit} className="mt-5 space-y-3">
+<p className="text-xs text-muted-foreground">* Required field</p>
+
+          <Label htmlFor="payout-note">Note for the payout reviewer <span aria-hidden="true">*</span></Label>
+          <Textarea
+            id="payout-note"
+            name="note"
+            required
+            minLength={8}
+            maxLength={500}
+            disabled={busy}
+            placeholder="Add any relevant settlement details (8–500 characters)."
+            className="min-h-24 text-base"
+          />
+          <Button
+            type="submit"
+            disabled={busy}
+            className="min-h-11 rounded-full"
+          >
+            {busy ? 'Submitting…' : 'Send payout request'}
+          </Button>
+        </form>
+      )}
+      {error ? (
+        <p role="alert" className="mt-3 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </section>
   );
 }

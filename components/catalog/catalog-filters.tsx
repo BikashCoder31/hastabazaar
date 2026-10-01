@@ -12,9 +12,11 @@ interface CatalogueFiltersProps {
   selectedCategories: readonly string[];
   selectedOccasions: readonly string[];
   sort: string;
+  idPrefix?: string;
 }
 
 export function CatalogueFilters(props: CatalogueFiltersProps) {
+  const idPrefix = props.idPrefix ?? 'catalogue';
   const hasFilters = Boolean(
     props.query ||
     props.selectedCategories.length ||
@@ -22,9 +24,15 @@ export function CatalogueFilters(props: CatalogueFiltersProps) {
   );
   return (
     <form
+      key={JSON.stringify([
+        props.query,
+        props.selectedCategories,
+        props.selectedOccasions,
+        props.sort,
+      ])}
       action="/shop"
       method="get"
-      className="rounded-3xl border bg-card p-5 shadow-sm lg:sticky lg:top-28"
+      className="rounded-3xl border bg-card p-5 shadow-sm"
     >
       <div className="flex items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 font-heading text-2xl">
@@ -40,7 +48,7 @@ export function CatalogueFilters(props: CatalogueFiltersProps) {
         ) : null}
       </div>
       <label
-        htmlFor="catalogue-search"
+        htmlFor={`${idPrefix}-search`}
         className="mt-5 block text-sm font-semibold"
       >
         Search
@@ -48,7 +56,7 @@ export function CatalogueFilters(props: CatalogueFiltersProps) {
       <div className="relative mt-2">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          id="catalogue-search"
+          id={`${idPrefix}-search`}
           name="q"
           defaultValue={props.query}
           maxLength={100}
@@ -57,13 +65,13 @@ export function CatalogueFilters(props: CatalogueFiltersProps) {
         />
       </div>
       <label
-        htmlFor="catalogue-sort"
+        htmlFor={`${idPrefix}-sort`}
         className="mt-5 block text-sm font-semibold"
       >
         Sort by
       </label>
       <select
-        id="catalogue-sort"
+        id={`${idPrefix}-sort`}
         name="sort"
         defaultValue={props.sort}
         className="mt-2 h-10 w-full rounded-lg border bg-background px-3 text-sm"
@@ -78,6 +86,7 @@ export function CatalogueFilters(props: CatalogueFiltersProps) {
         {props.occasions.map((occasion) => (
           <FilterOption
             key={occasion.id}
+            idPrefix={idPrefix}
             name="occasion"
             value={occasion.slug}
             checked={props.selectedOccasions.includes(occasion.slug)}
@@ -90,6 +99,7 @@ export function CatalogueFilters(props: CatalogueFiltersProps) {
         {props.categories.map((category) => (
           <FilterOption
             key={category.id}
+            idPrefix={idPrefix}
             name="category"
             value={category.slug}
             checked={props.selectedCategories.includes(category.slug)}
@@ -121,17 +131,19 @@ function FilterGroup({
 }
 
 function FilterOption({
+  idPrefix,
   name,
   value,
   checked,
   label,
 }: {
+  idPrefix: string;
   name: string;
   value: string;
   checked: boolean;
   label: string;
 }) {
-  const id = `filter-${name}-${value}`;
+  const id = `${idPrefix}-filter-${name}-${value}`;
   return (
     <label
       htmlFor={id}

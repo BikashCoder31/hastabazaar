@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { getMarketplaceAnalytics } from '@/lib/db/repositories/operations';
+import { getCommissionSetting } from '@/lib/db/repositories/marketplace-settings';
 export const dynamic = 'force-dynamic';
 const money = (paisa: number) =>
   new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR' }).format(
@@ -9,9 +10,11 @@ const money = (paisa: number) =>
   );
 export default async function AdminAnalyticsPage() {
   await requireStaffPage('/admin/analytics', 'audit_log.view');
-  const d = await getMarketplaceAnalytics(
-    requireDatabase(env as unknown as { DB?: D1Database }),
-  );
+  const database = requireDatabase(env as unknown as { DB?: D1Database });
+  const [d, commission] = await Promise.all([
+    getMarketplaceAnalytics(database),
+    getCommissionSetting(database),
+  ]);
   const cards = [
     ['Orders', d.commerce?.orders ?? 0],
     ['Gross order value', money(d.commerce?.grossOrderValuePaisa ?? 0)],
@@ -24,6 +27,7 @@ export default async function AdminAnalyticsPage() {
     ['Open complaints', d.cases?.openComplaints ?? 0],
     ['Refunded', money(d.finance?.refundedPaisa ?? 0)],
     ['Paid out', money(d.finance?.paidOutPaisa ?? 0)],
+    ['Current commission', `${commission.percent}%`],
   ];
   return (
     <div className="space-y-7">

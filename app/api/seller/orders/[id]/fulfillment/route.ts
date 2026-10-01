@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:workers';
+import { sendPendingOrderUpdates } from '@/lib/email/send-order-updates';
 
 import { requireSellerApi, SellerAuthorizationError } from '@/lib/auth/seller';
 import { requireDatabase } from '@/lib/db/d1';
@@ -40,6 +41,7 @@ export async function POST(
         now: Date.now(),
       },
     );
+    await sendPendingOrderUpdates({ orderId: id });
     return json({ ok: true });
   } catch (error) {
     if (error instanceof SellerAuthorizationError) return json({ error: error.message }, error.status);

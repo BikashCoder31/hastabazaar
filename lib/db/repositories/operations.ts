@@ -1,8 +1,20 @@
+import {riderNotificationSourceSql} from '../../operations/rider-notification-access';
+import { operationalBusinessNotificationStatements } from '../../operations/business-notifications';
 import type { StaffRole } from '@/lib/auth/staff';
 
 export class OperationsConflictError extends Error {}
 
+function workflowAudit(db:D1Database,kind:'shipping'|'privacy',o:{actorId:string;requestId:string;now:number},subjectId:string,action:string){
+ const source=kind==='shipping'?'shipping_job_events':'data_rights_events';const requestColumn=kind==='shipping'?'request_id':'operation_request_id';
+ return db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,created_at) SELECT ?,?,?,?,?,'Workflow step recorded',NULL,NULL,?,? FROM ${source} WHERE ${requestColumn}=?`).bind(crypto.randomUUID(),o.actorId,kind+'.'+action,kind==='shipping'?'shipping_job':'data_rights_request',subjectId,o.requestId+':audit',o.now,o.requestId);
+}
+
+
 export interface NotificationRow {
+  audienceRole: string;
+  requiredPermission: string | null;
+  orderNumber: string | null;
+  productStatus: string | null;
   id: string;
   channel: string;
   subjectEn: string;
@@ -50,12 +62,13 @@ export async function listNotifications(
   database: D1Database,
   userId: string,
   limit = 100,
+  audience?: 'customer' | 'seller' | 'staff',
 ): Promise<readonly NotificationRow[]> {
   const result = await database
     .prepare(
-      `SELECT id, channel, subject_en AS subjectEn, subject_ne AS subjectNe, body_en AS bodyEn, body_ne AS bodyNe, status, related_type AS relatedType, related_id AS relatedId, created_at AS createdAt, read_at AS readAt FROM notification_messages WHERE recipient_user_id = ? ORDER BY created_at DESC LIMIT ?`,
+      `SELECT n.id, n.audience_role AS audienceRole, n.required_permission AS requiredPermission, n.channel, n.subject_en AS subjectEn, n.subject_ne AS subjectNe, n.body_en AS bodyEn, n.body_ne AS bodyNe, n.status, n.related_type AS relatedType, n.related_id AS relatedId, n.created_at AS createdAt, n.read_at AS readAt, (SELECT o.order_number FROM orders o WHERE o.customer_id=n.recipient_user_id AND ((n.related_type='order' AND o.id=n.related_id) OR (n.related_type='return_request' AND o.id=(SELECT i.order_id FROM return_requests r JOIN order_items i ON i.id=r.order_item_id WHERE r.id=n.related_id)) OR (n.related_type='complaint' AND o.id=(SELECT c.order_id FROM complaints c WHERE c.id=n.related_id)))) AS orderNumber, (SELECT p.status FROM products p JOIN seller_profiles s ON s.id=p.seller_id WHERE n.related_type='product' AND p.id=n.related_id AND s.user_id=n.recipient_user_id) AS productStatus FROM notification_messages n WHERE n.recipient_user_id = ? AND (? IS NULL OR (n.audience_role = ? AND n.channel = 'in_app')) AND (n.related_type <> 'exception_work' OR n.related_type IS NULL OR EXISTS(SELECT 1 FROM exception_work_items w WHERE w.id=n.related_id AND w.owner_id=n.recipient_user_id AND w.status='open')) AND (n.audience_role<>'staff' OR n.related_type IS NULL OR n.related_type<>'return_request' OR EXISTS(SELECT 1 FROM return_requests r WHERE r.id=n.related_id AND r.status NOT IN ('resolved','closed','rejected') AND (r.reviewed_by IS NULL OR r.reviewed_by=n.recipient_user_id OR (n.required_permission='refund.approve.high_value' AND r.status='pending_high_value_approval')))) AND (n.audience_role<>'staff' OR n.related_type IS NULL OR n.related_type<>'complaint' OR EXISTS(SELECT 1 FROM complaints c WHERE c.id=n.related_id AND c.status NOT IN ('resolved','closed','rejected') AND (COALESCE(c.escalated_to,c.assigned_to) IS NULL OR COALESCE(c.escalated_to,c.assigned_to)=n.recipient_user_id))) AND ${riderNotificationSourceSql()} ORDER BY n.created_at DESC LIMIT ?`,
     )
-    .bind(userId, limit)
+    .bind(userId, audience ?? null, audience ?? null, limit)
     .all<NotificationRow>();
   return result.results;
 }
@@ -68,7 +81,7 @@ export async function markNotificationRead(
 ): Promise<void> {
   const result = await database
     .prepare(
-      `UPDATE notification_messages SET status = CASE WHEN channel = 'in_app' THEN 'read' ELSE status END, read_at = COALESCE(read_at, ?) WHERE id = ? AND recipient_user_id = ?`,
+      `UPDATE notification_messages SET status = CASE WHEN channel = 'in_app' THEN 'read' ELSE status END, read_at = COALESCE(read_at, ?) WHERE id = ? AND recipient_user_id = ? AND ${riderNotificationSourceSql('notification_messages')}`,
     )
     .bind(now, notificationId, userId)
     .run();
@@ -83,9 +96,13 @@ export async function getSellerAnalytics(
   const [summary, inventory, monthly] = await Promise.all([
     database
       .prepare(
-        `SELECT COUNT(DISTINCT orders.id) AS orderCount, COALESCE(SUM(CASE WHEN order_items.fulfillment_status = 'delivered' THEN order_items.line_total_paisa ELSE 0 END),0) AS deliveredSalesPaisa, COALESCE(SUM(CASE WHEN order_items.fulfillment_status = 'delivered' THEN order_items.quantity ELSE 0 END),0) AS unitsDelivered, COUNT(DISTINCT CASE WHEN return_requests.id IS NOT NULL THEN return_requests.id END) AS returnCount FROM order_items INNER JOIN orders ON orders.id = order_items.order_id LEFT JOIN return_requests ON return_requests.order_item_id = order_items.id WHERE order_items.seller_id = ?`,
+        `SELECT COUNT(DISTINCT orders.id) AS orderCount,
+          COALESCE(SUM(CASE WHEN order_items.fulfillment_status = 'delivered' THEN order_items.line_total_paisa ELSE 0 END),0) AS deliveredSalesPaisa,
+          COALESCE(SUM(CASE WHEN order_items.fulfillment_status = 'delivered' THEN order_items.quantity ELSE 0 END),0) AS unitsDelivered,
+          (SELECT COUNT(*) FROM return_requests INNER JOIN order_items AS return_items ON return_items.id = return_requests.order_item_id WHERE return_items.seller_id = ?) AS returnCount
+         FROM order_items INNER JOIN orders ON orders.id = order_items.order_id WHERE order_items.seller_id = ?`,
       )
-      .bind(sellerId)
+      .bind(sellerId, sellerId)
       .first<{
         orderCount: number;
         deliveredSalesPaisa: number;
@@ -225,6 +242,7 @@ export async function createShippingJob(
           options.requestId,
           options.now,
         ),
+    workflowAudit(database,'shipping',options,id,'request_pickup'),
     ]);
   } catch (error) {
     if (error instanceof Error && error.message.includes('UNIQUE constraint'))
@@ -262,6 +280,7 @@ export async function operateShippingJob(
       .first()
   )
     return;
+  if (await database.prepare('SELECT shipping_job_id FROM shipping_parcels WHERE shipping_job_id=?').bind(options.jobId).first()) throw new OperationsConflictError('Use the order parcel controls for this shipping job.');
   const current = await database
     .prepare(
       `SELECT status, seller_id AS sellerId FROM shipping_jobs WHERE id = ?`,
@@ -342,7 +361,8 @@ export async function operateShippingJob(
         options.jobId,
         options.now,
       ),
-  ]);
+  workflowAudit(database,'shipping',options,options.jobId,options.action),
+    ]);
   if (
     (results[0].meta.changes ?? 0) !== 1 ||
     (results[1].meta.changes ?? 0) !== 1
@@ -406,7 +426,8 @@ export async function createDataRightsRequest(
         options.requestId,
         options.now,
       ),
-  ]);
+  workflowAudit(database,'privacy',{actorId:options.customerId,requestId:options.requestId,now:options.now},id,'submit'),
+    ]);
   return id;
 }
 
@@ -512,7 +533,8 @@ export async function operateDataRightsRequest(
         options.id,
         options.requestId,
       ),
-  ]);
+  workflowAudit(database,'privacy',options,options.id,options.action),
+    ]);
   if (
     (results[0].meta.changes ?? 0) !== 1 ||
     (results[1].meta.changes ?? 0) !== 1
@@ -540,6 +562,7 @@ export interface GovernanceOverview {
     startsAt: number;
     endsAt: number;
     creatorName: string;
+    createdBy: string;
     approverName: string | null;
   }[];
   products: readonly { id: string; nameEn: string }[];
@@ -548,7 +571,7 @@ export interface GovernanceOverview {
     displayName: string;
     email: string;
     status: string;
-    roles: string;
+    roles: string | null;
   }[];
   incidents: readonly {
     id: string;
@@ -570,7 +593,10 @@ export interface GovernanceOverview {
 
 export async function getGovernanceOverview(
   database: D1Database,
+  role: StaffRole,
 ): Promise<GovernanceOverview> {
+  if (role !== 'admin' && role !== 'super_admin')
+    throw new OperationsConflictError('Staff access required.');
   const [rules, promotions, products, users, incidents, backups] =
     await Promise.all([
       database
@@ -580,7 +606,7 @@ export async function getGovernanceOverview(
         .all<GovernanceOverview['rules'][number]>(),
       database
         .prepare(
-          `SELECT promotions.id, promotions.name_en AS nameEn, promotions.name_ne AS nameNe, promotions.placement, promotions.status, promotions.starts_at AS startsAt, promotions.ends_at AS endsAt, creator.display_name AS creatorName, approver.display_name AS approverName FROM promotions INNER JOIN users creator ON creator.id = promotions.created_by LEFT JOIN users approver ON approver.id = promotions.approved_by ORDER BY promotions.created_at DESC`,
+          `SELECT promotions.id, promotions.name_en AS nameEn, promotions.name_ne AS nameNe, promotions.placement, promotions.status, promotions.starts_at AS startsAt, promotions.ends_at AS endsAt, promotions.created_by AS createdBy, creator.display_name AS creatorName, approver.display_name AS approverName FROM promotions INNER JOIN users creator ON creator.id = promotions.created_by LEFT JOIN users approver ON approver.id = promotions.approved_by ORDER BY promotions.created_at DESC`,
         )
         .all<GovernanceOverview['promotions'][number]>(),
       database
@@ -588,21 +614,27 @@ export async function getGovernanceOverview(
           `SELECT id, name_en AS nameEn FROM products WHERE status = 'published' ORDER BY name_en`,
         )
         .all<GovernanceOverview['products'][number]>(),
-      database
-        .prepare(
-          `SELECT users.id, users.display_name AS displayName, users.email, users.status, GROUP_CONCAT(user_roles.role, ', ') AS roles FROM users LEFT JOIN user_roles ON user_roles.user_id = users.id GROUP BY users.id ORDER BY users.created_at DESC LIMIT 300`,
-        )
-        .all<GovernanceOverview['users'][number]>(),
-      database
-        .prepare(
-          `SELECT id, reference_number AS referenceNumber, severity, status, title, resolution FROM operational_incidents ORDER BY created_at DESC LIMIT 100`,
-        )
-        .all<GovernanceOverview['incidents'][number]>(),
-      database
-        .prepare(
-          `SELECT id, scope, status, evidence_reference AS evidenceReference, note, verified_at AS verifiedAt FROM backup_verifications ORDER BY verified_at DESC LIMIT 100`,
-        )
-        .all<GovernanceOverview['backups'][number]>(),
+      role === 'super_admin'
+        ? database
+            .prepare(
+              `SELECT users.id, users.display_name AS displayName, users.email, users.status, GROUP_CONCAT(user_roles.role, ', ') AS roles FROM users LEFT JOIN user_roles ON user_roles.user_id = users.id GROUP BY users.id ORDER BY users.created_at DESC LIMIT 300`,
+            )
+            .all<GovernanceOverview['users'][number]>()
+        : Promise.resolve({ results: [] }),
+      role === 'super_admin'
+        ? database
+            .prepare(
+              `SELECT id, reference_number AS referenceNumber, severity, status, title, resolution FROM operational_incidents ORDER BY created_at DESC LIMIT 100`,
+            )
+            .all<GovernanceOverview['incidents'][number]>()
+        : Promise.resolve({ results: [] }),
+      role === 'super_admin'
+        ? database
+            .prepare(
+              `SELECT id, scope, status, evidence_reference AS evidenceReference, note, verified_at AS verifiedAt FROM backup_verifications ORDER BY verified_at DESC LIMIT 100`,
+            )
+            .all<GovernanceOverview['backups'][number]>()
+        : Promise.resolve({ results: [] }),
     ]);
   return {
     rules: rules.results,
@@ -968,6 +1000,8 @@ export async function performGovernanceAction(
         options.now,
       ),
   );
+  const businessKind = options.action==='promotion.create'?'promotion.proposed':options.action==='promotion.approve'||options.action==='promotion.reject'?'promotion.result':options.action==='incident.update'?'incident.updated':options.action==='user.status'?'account.status':null;
+  if(businessKind) statements.push(...(await operationalBusinessNotificationStatements(database,{kind:businessKind,sourceId:subjectId,eventId:options.requestId,actorId:options.actorId,now:options.now,status:typeof next.status==='string'?next.status:undefined})));
   try {
     await database.batch(statements);
   } catch (error) {

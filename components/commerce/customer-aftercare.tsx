@@ -2,12 +2,18 @@
 
 import { CircleAlert, FileImage, RotateCcw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
 import type { ComplaintRow } from '@/lib/db/repositories/complaints';
 import type { ReturnCaseRow } from '@/lib/db/repositories/returns';
 
@@ -17,6 +23,7 @@ interface ReceiptItem {
   sellerName: string;
   quantity: number;
   returnEligible: boolean;
+  fulfillmentStatus?: string;
 }
 
 const reasonLabels: Record<string, string> = {
@@ -48,6 +55,7 @@ export function CustomerAftercare({
   complaints: readonly ComplaintRow[];
 }) {
   const router = useRouter();
+  const returnItems=items.filter(item=>item.fulfillmentStatus==='delivered'||(!item.fulfillmentStatus&&orderStatus==='delivered'));
   const [returnKey, setReturnKey] = useState(newKey);
   const [complaintKey, setComplaintKey] = useState(newKey);
   const [returnPending, setReturnPending] = useState(false);
@@ -56,6 +64,8 @@ export function CustomerAftercare({
   const [complaintError, setComplaintError] = useState('');
   const [returnMessage, setReturnMessage] = useState('');
   const [complaintMessage, setComplaintMessage] = useState('');
+  const [selectedItemId, setSelectedItemId] = useState(returnItems[0]?.id ?? '');
+  const selectedItem = items.find((item) => item.id === selectedItemId);
 
   async function submitReturn(
     event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>,
@@ -138,12 +148,15 @@ export function CustomerAftercare({
   }
 
   return (
-    <section className="mt-8 border-t pt-8" aria-labelledby="aftercare-title">
+    <section
+      className="customer-form mt-8 border-t pt-8"
+      aria-labelledby="aftercare-title"
+    >
       <p className="eyebrow">Returns and support</p>
       <h2 id="aftercare-title" className="mt-2 font-heading text-3xl">
         Help after your order
       </h2>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+      <p className="mt-2 max-w-2xl text-base leading-7 text-muted-foreground">
         Requests are handled per item, so another seller’s item is not affected.
       </p>
 
@@ -177,7 +190,8 @@ export function CustomerAftercare({
               ) : null}
               {item.refundAmountPaisa ? (
                 <p className="mt-3 text-sm font-semibold">
-                  Refund: {money(item.refundAmountPaisa)} ·{' '}
+                  Cash refund: {money(item.refundAmountPaisa - (item.refundWalletPaisa || 0) - (item.refundDiscountPaisa || 0))}
+                  {item.refundWalletPaisa ? ` + ${money(item.refundWalletPaisa)} shopping credit` : ''} ·{' '}
                   {item.refundStatus?.replaceAll('_', ' ')}
                 </p>
               ) : null}
@@ -221,178 +235,227 @@ export function CustomerAftercare({
         </div>
       ) : null}
 
-      <div className="mt-7 grid gap-6 lg:grid-cols-2">
-        <form
-          onSubmit={submitReturn}
-          className="rounded-2xl border bg-card p-5 sm:p-6"
+      <Accordion multiple className="mt-7 gap-4">
+        <AccordionItem
+          value="return"
+          className="overflow-hidden rounded-2xl border bg-card px-5 sm:px-6"
         >
-          <div className="flex items-center gap-2">
-            <RotateCcw className="size-5 text-primary" />
-            <h3 className="font-heading text-2xl">Request a return</h3>
-          </div>
-          {orderStatus !== 'delivered' ? (
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              Return requests become available after delivery is confirmed.
-            </p>
-          ) : (
-            <div className="mt-5 space-y-4">
-              <Field label="Item">
-                <select
-                  name="orderItemId"
-                  required
-                  className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
-                >
-                  {items.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.productName} · {item.sellerName}
-                      {item.returnEligible ? '' : ' · defect-only return'}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Quantity">
-                  <Input
-                    name="quantity"
-                    type="number"
-                    min={1}
-                    max={Math.max(...items.map((item) => item.quantity))}
-                    defaultValue={1}
-                    required
-                  />
-                </Field>
-                <Field label="Preferred resolution">
+          <AccordionTrigger className="min-h-16 py-5 text-lg font-semibold">
+            <span className="flex items-center gap-3">
+              <RotateCcw className="size-5 text-primary" />
+              Return or replace an item
+            </span>
+          </AccordionTrigger>
+          <AccordionContent className="h-auto pb-6">
+            <form onSubmit={submitReturn} className="border-t pt-5">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="size-5 text-primary" />
+                <h3 className="font-heading text-2xl">Request a return</h3>
+              </div>
+              {returnItems.length===0 ? (
+                <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                  Return requests become available after delivery is confirmed.
+                </p>
+              ) : (
+                <div className="mt-5 space-y-4">
+                  <Field label="Item">
+                    <select
+                      name="orderItemId"
+                      value={selectedItemId}
+                      onChange={(event) =>
+                        setSelectedItemId(event.target.value)
+                      }
+                      required
+                      className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
+                    >
+                      {returnItems.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.productName} · {item.sellerName}
+                          {item.returnEligible ? '' : ' · defect-only return'}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Quantity">
+                      <Input
+                        key={selectedItemId}
+                        name="quantity"
+                        type="number"
+                        min={1}
+                        max={selectedItem?.quantity ?? 1}
+                        defaultValue={1}
+                        required
+                      />
+                    </Field>
+                    <Field label="Preferred resolution">
+                      <select
+                        name="requestedResolution"
+                        required
+                        className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
+                      >
+                        <option value="refund">Refund</option>
+                        <option value="replacement">Replacement</option>
+                      </select>
+                    </Field>
+                  </div>
+                  <Field label="Reason">
+                    <select
+                      name="reason"
+                      required
+                      className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
+                    >
+                      {Object.entries(reasonLabels).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="What happened?">
+                    <Textarea
+                      name="detail"
+                      minLength={20}
+                      maxLength={2000}
+                      required
+                      placeholder="Describe the issue, condition, and when you noticed it."
+                    />
+                  </Field>
+                  <label className="flex items-start gap-3 rounded-lg border p-3 text-sm leading-6">
+                    <input
+                      className="mt-1"
+                      type="checkbox"
+                      name="originalSealIntact"
+                      value="yes"
+                    />
+                    <span>
+                      This product was supplied with an original seal and that
+                      seal is still intact. HastaBazaar will verify this for the
+                      15-calendar-day sealed-goods window.
+                    </span>
+                  </label>
+                  <input type="hidden" name="locale" value="en-NP" />
+                  <Field label="Photos or evidence (optional, up to 5)">
+                    <Input
+                      name="evidence"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,application/pdf"
+                      multiple
+                    />
+                    <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                      <FileImage className="size-3.5" /> JPG, PNG, WebP, or PDF
+                      · 5 MB each. Missing photos do not automatically
+                      invalidate a statutory claim.
+                    </p>
+                  </Field>
+                  {returnError ? (
+                    <p
+                      role="alert"
+                      className="text-sm font-medium text-destructive"
+                    >
+                      {returnError}
+                    </p>
+                  ) : null}
+                  {returnMessage ? (
+                    <output className="block text-sm font-medium text-emerald-700">
+                      {returnMessage}
+                    </output>
+                  ) : null}
+                  <Button type="submit" disabled={returnPending}>
+                    {returnPending ? 'Sending…' : 'Send return request'}
+                  </Button>
+                </div>
+              )}
+            </form>
+          </AccordionContent>
+        </AccordionItem>
+        <AccordionItem
+          value="complaint"
+          className="overflow-hidden rounded-2xl border bg-card px-5 sm:px-6"
+        >
+          <AccordionTrigger className="min-h-16 py-5 text-lg font-semibold">
+            <span className="flex items-center gap-3">
+              <CircleAlert className="size-5 text-primary" />
+              Get help or raise a complaint
+            </span>
+          </AccordionTrigger>
+          <AccordionContent className="h-auto pb-6">
+            <form onSubmit={submitComplaint} className="border-t pt-5">
+              <div className="flex items-center gap-2">
+                <CircleAlert className="size-5 text-primary" />
+                <h3 className="font-heading text-2xl">Raise a complaint</h3>
+              </div>
+              <div className="mt-5 space-y-4">
+                <Field label="Related item (optional)">
                   <select
-                    name="requestedResolution"
+                    name="orderItemId"
+                    className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
+                  >
+                    <option value="">Whole order or service</option>
+                    {items.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.productName} · {item.sellerName}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Category">
+                  <select
+                    name="category"
                     required
                     className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
                   >
+                    <option value="product">Product</option>
+                    <option value="delivery">Delivery</option>
+                    <option value="seller">Seller</option>
                     <option value="refund">Refund</option>
-                    <option value="replacement">Replacement</option>
+                    <option value="service">HastaBazaar service</option>
+                    <option value="safety">Safety or urgent concern</option>
+                    <option value="other">Other</option>
                   </select>
                 </Field>
+                <Field label="Subject">
+                  <Input
+                    name="subject"
+                    minLength={5}
+                    maxLength={120}
+                    required
+                  />
+                </Field>
+                <Field label="Details">
+                  <Textarea
+                    name="detail"
+                    minLength={20}
+                    maxLength={3000}
+                    required
+                    placeholder="Explain what happened and what help you need."
+                  />
+                </Field>
+                {complaintError ? (
+                  <p
+                    role="alert"
+                    className="text-sm font-medium text-destructive"
+                  >
+                    {complaintError}
+                  </p>
+                ) : null}
+                {complaintMessage ? (
+                  <output className="block text-sm font-medium text-emerald-700">
+                    {complaintMessage}
+                  </output>
+                ) : null}
+                <Button
+                  type="submit"
+                  variant="outline"
+                  disabled={complaintPending}
+                >
+                  {complaintPending ? 'Sending…' : 'Send complaint'}
+                </Button>
               </div>
-              <Field label="Reason">
-                <select
-                  name="reason"
-                  required
-                  className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
-                >
-                  {Object.entries(reasonLabels).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="What happened?">
-                <Textarea
-                  name="detail"
-                  minLength={20}
-                  maxLength={2000}
-                  required
-                  placeholder="Describe the issue, condition, and when you noticed it."
-                />
-              </Field>
-              <input type="hidden" name="locale" value="en-NP" />
-              <Field label="Photos or evidence (optional, up to 5)">
-                <Input
-                  name="evidence"
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,application/pdf"
-                  multiple
-                />
-                <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                  <FileImage className="size-3.5" /> JPG, PNG, WebP, or PDF · 5
-                  MB each. Missing photos do not automatically invalidate a
-                  statutory claim.
-                </p>
-              </Field>
-              {returnError ? (
-                <p
-                  role="alert"
-                  className="text-sm font-medium text-destructive"
-                >
-                  {returnError}
-                </p>
-              ) : null}
-              {returnMessage ? (
-                <output className="block text-sm font-medium text-emerald-700">
-                  {returnMessage}
-                </output>
-              ) : null}
-              <Button type="submit" disabled={returnPending}>
-                {returnPending ? 'Sending…' : 'Send return request'}
-              </Button>
-            </div>
-          )}
-        </form>
-
-        <form
-          onSubmit={submitComplaint}
-          className="rounded-2xl border bg-card p-5 sm:p-6"
-        >
-          <div className="flex items-center gap-2">
-            <CircleAlert className="size-5 text-primary" />
-            <h3 className="font-heading text-2xl">Raise a complaint</h3>
-          </div>
-          <div className="mt-5 space-y-4">
-            <Field label="Related item (optional)">
-              <select
-                name="orderItemId"
-                className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
-              >
-                <option value="">Whole order or service</option>
-                {items.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.productName} · {item.sellerName}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Category">
-              <select
-                name="category"
-                required
-                className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
-              >
-                <option value="product">Product</option>
-                <option value="delivery">Delivery</option>
-                <option value="seller">Seller</option>
-                <option value="refund">Refund</option>
-                <option value="service">Hastabazaar service</option>
-                <option value="safety">Safety or urgent concern</option>
-                <option value="other">Other</option>
-              </select>
-            </Field>
-            <Field label="Subject">
-              <Input name="subject" minLength={5} maxLength={120} required />
-            </Field>
-            <Field label="Details">
-              <Textarea
-                name="detail"
-                minLength={20}
-                maxLength={3000}
-                required
-                placeholder="Explain what happened and what help you need."
-              />
-            </Field>
-            {complaintError ? (
-              <p role="alert" className="text-sm font-medium text-destructive">
-                {complaintError}
-              </p>
-            ) : null}
-            {complaintMessage ? (
-              <output className="block text-sm font-medium text-emerald-700">
-                {complaintMessage}
-              </output>
-            ) : null}
-            <Button type="submit" variant="outline" disabled={complaintPending}>
-              {complaintPending ? 'Sending…' : 'Send complaint'}
-            </Button>
-          </div>
-        </form>
-      </div>
+            </form>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
     </section>
   );
 }
@@ -405,10 +468,10 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-2">
-      <Label>{label}</Label>
+    <Label className="block space-y-2">
+      <span className="block">{label}</span>
       {children}
-    </div>
+    </Label>
   );
 }
 function CaseStatus({ status }: { status: string }) {
@@ -426,6 +489,7 @@ function money(paisa: number) {
 }
 
 function CustomerReply({ endpoint }: { endpoint: string }) {
+  const replyId = useId();
   const router = useRouter();
   const [message, setMessage] = useState('');
   const [key, setKey] = useState(newKey);
@@ -456,8 +520,9 @@ function CustomerReply({ endpoint }: { endpoint: string }) {
   }
   return (
     <div className="mt-4 space-y-2">
-      <Label>Requested information</Label>
+      <Label htmlFor={replyId}>Requested information</Label>
       <Textarea
+        id={replyId}
         value={message}
         onChange={(event) => setMessage(event.target.value)}
         minLength={8}

@@ -15,16 +15,19 @@ function money(paisa: number): string {
   return new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR' }).format(paisa / 100);
 }
 
-export default async function ProductReviewQueuePage() {
+export default async function ProductReviewQueuePage({searchParams}: {searchParams: Promise<{view?: string}>}) {
+  const publishedOnly = (await searchParams).view === 'published';
   await requireStaffPage('/admin/products', 'product.review');
   const products = await listProductsForReview(
     requireDatabase(env as unknown as { DB?: D1Database }),
+    100, publishedOnly,
   );
   return (
     <div className="space-y-7">
-      <div><p className="eyebrow">Catalogue controls</p><h1 className="mt-2 font-heading text-4xl tracking-tight">Product review queue</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Review product facts and photos before approval. Approved products require a separate publish action.</p></div>
+      <div><p className="eyebrow">Catalogue controls</p><h1 className="mt-2 font-heading text-4xl tracking-tight">{publishedOnly ? 'Published products' : 'Product review queue'}</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Review product facts and photos before approval. Approved products require a separate publish action.</p></div>
+      <nav className="flex gap-4"><Link href="/admin/products" className="section-link">Review queue</Link><Link href="/admin/products?view=published" className="section-link">Published products</Link></nav>
       {products.length === 0 ? (
-        <Card><CardContent className="flex flex-col items-center py-14 text-center"><PackageCheck className="size-9 text-muted-foreground" /><h2 className="mt-4 font-heading text-xl">The product queue is clear</h2><p className="mt-2 text-sm text-muted-foreground">No listings are waiting for review or publication.</p></CardContent></Card>
+        <Card><CardContent className="flex flex-col items-center py-14 text-center"><PackageCheck className="size-9 text-muted-foreground" /><h2 className="mt-4 font-heading text-xl">{publishedOnly ? 'No published products' : 'The product queue is clear'}</h2><p className="mt-2 text-sm text-muted-foreground">{publishedOnly ? 'Published listings will appear here for review and unpublishing.' : 'No listings are waiting for review or publication.'}</p></CardContent></Card>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {products.map((product) => (

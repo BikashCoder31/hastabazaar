@@ -4,6 +4,7 @@ import {
   check,
   index,
   integer,
+  real,
   primaryKey,
   sqliteTable,
   text,
@@ -120,6 +121,7 @@ export const sellerProfiles = sqliteTable(
     ward: text('ward'),
     locality: text('locality').notNull(),
     payoutAccountReference: text('payout_account_reference'),
+    settlementTermsReference: text('settlement_terms_reference'),
     status: text('status', {
       enum: [
         'draft',
@@ -264,6 +266,10 @@ export const products = sqliteTable(
     countryOfOrigin: text('country_of_origin').notNull().default('NP'),
     materials: text('materials').notNull(),
     dimensions: text('dimensions'),
+    size: text('size'),
+    colour: text('colour'),
+    variations: text('variations'),
+    specifications: text('specifications'),
     careInstructions: text('care_instructions'),
     safetyInformation: text('safety_information'),
     returnConditions: text('return_conditions'),
@@ -322,6 +328,43 @@ export const products = sqliteTable(
       'products_inventory_non_negative',
       sql`${table.inventoryQuantity} >= 0`,
     ),
+  ],
+);
+
+export const marketplaceSettings = sqliteTable('marketplace_settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedBy: text('updated_by').references(() => users.id, {
+    onDelete: 'set null',
+  }),
+  updatedAt: timestamp('updated_at').notNull(),
+});
+
+export const homepageProductControls = sqliteTable(
+  'homepage_product_controls',
+  {
+    productId: text('product_id')
+      .primaryKey()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    isHidden: integer('is_hidden', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    reason: text('reason').notNull(),
+    version: integer('version').notNull().default(1),
+    updatedBy: text('updated_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    lastRequestId: text('last_request_id').notNull(),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
+  },
+  (table) => [
+    index('idx_homepage_product_controls_hidden_updated').on(
+      table.isHidden,
+      table.updatedAt,
+    ),
+    check('homepage_product_controls_hidden_boolean', sql`${table.isHidden} IN (0, 1)`),
+    check('homepage_product_controls_version_positive', sql`${table.version} >= 1`),
   ],
 );
 
@@ -613,6 +656,10 @@ export const orders = sqliteTable(
       .default(0),
     taxTotalPaisa: integer('tax_total_paisa').notNull().default(0),
     grandTotalPaisa: integer('grand_total_paisa').notNull(),
+    walletCreditPaisa: integer('wallet_credit_paisa').notNull().default(0),
+    referralDiscountPaisa: integer('referral_discount_paisa')
+      .notNull()
+      .default(0),
     paymentMode: text('payment_mode', { enum: ['cod', 'prepaid'] }).notNull(),
     paymentStatus: text('payment_status', {
       enum: [
@@ -687,6 +734,10 @@ export const orderItems = sqliteTable(
     unitPricePaisa: integer('unit_price_paisa').notNull(),
     quantity: integer('quantity').notNull(),
     sellerDiscountPaisa: integer('seller_discount_paisa').notNull().default(0),
+    platformDiscountPaisa: integer('platform_discount_paisa').notNull().default(0),
+    commissionBasePaisa: integer('commission_base_paisa'),
+    commissionRuleVersion: text('commission_rule_version'),
+    sellerAgreementVersion: text('seller_agreement_version'),
     commissionBps: integer('commission_bps').notNull(),
     commissionPaisa: integer('commission_paisa').notNull(),
     taxPaisa: integer('tax_paisa').notNull().default(0),
@@ -948,6 +999,9 @@ export const returnRequests = sqliteTable(
     })
       .notNull()
       .default('refund'),
+    originalSealIntact: integer('original_seal_intact', { mode: 'boolean' })
+      .notNull()
+      .default(false),
     status: text('status', {
       enum: [
         'requested',
@@ -1107,6 +1161,11 @@ export const refunds = sqliteTable(
     }).notNull(),
     amountPaisa: integer('amount_paisa').notNull(),
     itemAmountPaisa: integer('item_amount_paisa'),
+    walletCreditPaisa: integer('wallet_credit_paisa').notNull().default(0),
+    referralDiscountPaisa: integer('referral_discount_paisa')
+      .notNull()
+      .default(0),
+    creditBasePaisa: integer('credit_base_paisa').notNull().default(0),
     deliveryAmountPaisa: integer('delivery_amount_paisa').notNull().default(0),
     reason: text('reason').notNull(),
     requestedBy: text('requested_by').references(() => users.id, {
@@ -1137,6 +1196,12 @@ export const refunds = sqliteTable(
     requestedAt: timestamp('requested_at').notNull(),
     approvedAt: timestamp('approved_at'),
     processedAt: timestamp('processed_at'),
+    commissionBaseRefundedPaisa: integer('commission_base_refunded_paisa')
+      .notNull()
+      .default(0),
+    commissionReversalPaisa: integer('commission_reversal_paisa')
+      .notNull()
+      .default(0),
   },
   (table) => [
     index('idx_refunds_order').on(table.orderId),
@@ -1232,6 +1297,7 @@ export const sellerLedgerEntries = sqliteTable(
       enum: [
         'sale',
         'commission',
+        'commission_reversal',
         'reserve_hold',
         'reserve_release',
         'refund',
@@ -1249,7 +1315,10 @@ export const sellerLedgerEntries = sqliteTable(
   (table) => [
     index('idx_seller_ledger_balance').on(table.sellerId, table.availableAt),
     index('idx_seller_ledger_order_item').on(table.orderItemId),
-    uniqueIndex('idx_seller_ledger_refund_unique').on(table.refundId),
+    uniqueIndex('idx_seller_ledger_refund_type_unique').on(
+      table.refundId,
+      table.type,
+    ),
     uniqueIndex('idx_seller_ledger_payout_unique').on(table.payoutId),
     uniqueIndex('idx_seller_ledger_order_item_type_unique')
       .on(table.orderItemId, table.type)
@@ -1921,3 +1990,170 @@ export const backupVerifications = sqliteTable(
     index('idx_backup_verifications_verified_at').on(table.verifiedAt),
   ],
 );
+
+// Store-credit triggers and cross-row guards are generated by scripts/generate-wallet-schema.mjs.
+export const walletAccounts = sqliteTable(
+  'wallet_accounts',
+  {
+    userId: text('user_id')
+      .primaryKey()
+      .references(() => users.id),
+    referralCode: text('referral_code').notNull().unique(),
+    balancePaisa: integer('balance_paisa').notNull().default(0),
+    createdAt: timestamp('created_at').notNull(),
+  },
+  (t) => [check('wallet_balance_nonnegative', sql`${t.balancePaisa} >= 0`)],
+);
+
+export const referralCampaign = sqliteTable(
+  'referral_campaign',
+  {
+    id: id(),
+    enabled: integer('enabled').notNull().default(1),
+    friendDiscountPaisa: integer('friend_discount_paisa').notNull(),
+    rewardPaisa: integer('reward_paisa').notNull(),
+    minimumSubtotalPaisa: integer('minimum_subtotal_paisa').notNull(),
+    returnWindowDays: integer('return_window_days').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
+  },
+  (t) => [
+    check(
+      'referral_offer_valid',
+      sql`${t.friendDiscountPaisa}>0 AND ${t.rewardPaisa}>0 AND ${t.minimumSubtotalPaisa}>${t.friendDiscountPaisa} AND ${t.returnWindowDays}>=7`,
+    ),
+  ],
+);
+
+export const referralRedemptions = sqliteTable(
+  'referral_redemptions',
+  {
+    customerId: text('customer_id')
+      .primaryKey()
+      .references(() => users.id),
+    referrerId: text('referrer_id')
+      .notNull()
+      .references(() => walletAccounts.userId),
+    orderId: text('order_id')
+      .notNull()
+      .unique()
+      .references(() => orders.id),
+    phoneKey: text('phone_key').notNull().unique(),
+    rewardPaisa: integer('reward_paisa').notNull(),
+    waitDays: integer('wait_days').notNull(),
+    createdAt: timestamp('created_at').notNull(),
+  },
+  (t) => [
+    index('idx_referrals_referrer').on(t.referrerId, t.createdAt),
+    check('referral_no_self', sql`${t.customerId} <> ${t.referrerId}`),
+  ],
+);
+
+export const reviewPhotos = sqliteTable('review_photos', {
+  id: id(),
+  reviewId: text('review_id').notNull().references(()=>productReviews.id),
+  objectKey: text('object_key').notNull().unique(),
+  mimeType: text('mime_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  sortOrder: integer('sort_order').notNull(),
+  createdAt: timestamp('created_at').notNull(),
+}, t=>[uniqueIndex('idx_review_photo_slot').on(t.reviewId,t.sortOrder)]);
+
+export const reviewReplies = sqliteTable('review_replies', {
+  id: id(),
+  reviewId: text('review_id').notNull().references(()=>productReviews.id),
+  sellerId: text('seller_id').notNull().references(()=>sellerProfiles.id),
+  body: text('body').notNull(),
+  version: integer('version').notNull(),
+  status: text('status').notNull().default('pending'),
+  createdAt: timestamp('created_at').notNull(),
+  moderatedBy: text('moderated_by').references(()=>users.id),
+  moderationNote: text('moderation_note'),
+},t=>[uniqueIndex('idx_review_reply_version').on(t.reviewId,t.version)]);
+
+export const orderEmailJobs = sqliteTable('order_email_jobs', {
+  id: id(),
+  orderId: text('order_id').notNull().references(() => orders.id),
+  orderStatus: text('order_status').notNull(),
+  createdAt: timestamp('created_at').notNull(),
+  status: text('status').notNull().default('queued'),
+  attempts: integer('attempts').notNull().default(0),
+  nextAttemptAt: integer('next_attempt_at').notNull().default(0),
+  leaseUntil: integer('lease_until').notNull().default(0),
+  claimToken: text('claim_token'),
+  sentAt: timestamp('sent_at'),
+  failureCode: text('failure_code'),
+}, t => [uniqueIndex('idx_order_email_event').on(t.orderId,t.orderStatus),index('idx_order_email_due').on(t.status,t.nextAttemptAt,t.leaseUntil)]);
+
+export const passwordResetChallenges = sqliteTable('password_reset_challenges', {
+  tokenHash: text('token_hash').primaryKey(),
+  codeHash: text('code_hash').notNull(),
+  userId: text('user_id').notNull().references(() => users.id),
+  attempts: integer('attempts').notNull().default(0),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').notNull(),
+  consumedAt: timestamp('consumed_at'),
+  completionId: text('completion_id'),
+}, t => [index('idx_password_reset_user').on(t.userId)]);
+
+export const walletEntries = sqliteTable(
+  'wallet_entries',
+  {
+    id: id(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => walletAccounts.userId),
+    orderId: text('order_id')
+      .notNull()
+      .references(() => orders.id),
+    amountPaisa: integer('amount_paisa').notNull(),
+    platformAmountPaisa: integer('platform_amount_paisa').notNull(),
+    kind: text('kind', {
+      enum: ['referral_reward', 'order_spend', 'cancellation', 'refund'],
+    }).notNull(),
+    createdAt: timestamp('created_at').notNull(),
+  },
+  (t) => [
+    index('idx_wallet_entries_user').on(t.userId, t.createdAt),
+    check(
+      'wallet_entry_balanced',
+      sql`${t.amountPaisa}+${t.platformAmountPaisa}=0 AND ${t.amountPaisa}<>0`,
+    ),
+  ],
+);
+
+export const productDeletions = sqliteTable('product_deletions', {
+  productId: text('product_id').primaryKey().notNull().references(() => products.id),
+  deletedBy: text('deleted_by').notNull().references(() => users.id),
+  deletedAt: timestamp('deleted_at').notNull(),
+  requestId: text('request_id').notNull(),
+});
+
+export const addressLocations = sqliteTable('address_locations', {
+ addressId:text('address_id').primaryKey().notNull().references(()=>addresses.id,{onDelete:'cascade'}),
+ latitude:real('latitude').notNull(),longitude:real('longitude').notNull(),
+});
+export const deliveryAssignments = sqliteTable('delivery_assignments', {
+ orderId:text('order_id').primaryKey().notNull().references(()=>orders.id),method:text('method').notNull(),
+ riderUserId:text('rider_user_id').references(()=>users.id),courierName:text('courier_name'),trackingUrl:text('tracking_url'),trackingReference:text('tracking_reference'),
+ latitude:real('latitude'),longitude:real('longitude'),accuracy:real('accuracy'),positionAt:timestamp('position_at'),
+ assignedBy:text('assigned_by').notNull().references(()=>users.id),updatedAt:timestamp('updated_at').notNull(),
+});
+
+export const accountEmailVerifications = sqliteTable('account_email_verifications', {
+ userId:text('user_id').primaryKey().notNull().references(()=>users.id),
+ email:text('email').notNull(), verifiedAt:timestamp('verified_at').notNull(),
+});
+
+
+// Seller parcels extend the existing outbound shipping job identity.
+export const shippingParcels = sqliteTable('shipping_parcels', {
+ shippingJobId:text('shipping_job_id').primaryKey().references(()=>shippingJobs.id),
+ codDuePaisa:integer('cod_due_paisa').notNull(),collectedPaisa:integer('collected_paisa').notNull().default(0),remittedPaisa:integer('remitted_paisa').notNull().default(0),
+ version:integer('version').notNull().default(0),operationRequestId:text('operation_request_id'),method:text('method'),riderUserId:text('rider_user_id').references(()=>users.id),courierName:text('courier_name'),trackingUrl:text('tracking_url'),
+ latitude:real('latitude'),longitude:real('longitude'),accuracy:real('accuracy'),positionAt:integer('position_at'),deliveredAt:integer('delivered_at'),createdAt:integer('created_at').notNull(),
+},t=>[check('parcel_cod_nonnegative',sql`${t.codDuePaisa}>=0`),check('parcel_collected_bound',sql`${t.collectedPaisa}>=0 AND ${t.collectedPaisa}<=${t.codDuePaisa}`),check('parcel_remitted_bound',sql`${t.remittedPaisa}>=0 AND ${t.remittedPaisa}<=${t.collectedPaisa}`)]);
+export const parcelCashRecords=sqliteTable('parcel_cash_records',{
+ id:id(),shippingJobId:text('shipping_job_id').notNull().references(()=>shippingParcels.shippingJobId),kind:text('kind').notNull(),amountPaisa:integer('amount_paisa').notNull(),evidenceReference:text('evidence_reference').notNull(),status:text('status').notNull(),createdBy:text('created_by').notNull().references(()=>users.id),approvedBy:text('approved_by').references(()=>users.id),createdAt:integer('created_at').notNull(),approvedAt:integer('approved_at'),
+},t=>[uniqueIndex('parcel_cash_evidence').on(t.kind,t.evidenceReference),index('idx_parcel_cash_status').on(t.status,t.createdAt),check('parcel_cash_positive',sql`${t.amountPaisa}>0`),check('parcel_cash_kind',sql`${t.kind} IN ('collection','remittance')`),check('parcel_cash_state',sql`${t.status} IN ('pending','posted','rejected')`),check('parcel_cash_checker',sql`${t.kind}<>'remittance' OR ${t.status}<>'posted' OR (${t.approvedBy} IS NOT NULL AND ${t.approvedBy}<>${t.createdBy})`)]);
+export const parcelOperationEvents=sqliteTable('parcel_operation_events',{id:id(),orderId:text('order_id').notNull().references(()=>orders.id),shippingJobId:text('shipping_job_id').references(()=>shippingParcels.shippingJobId),actorId:text('actor_id').notNull().references(()=>users.id),action:text('action').notNull(),payloadJson:text('payload_json').notNull(),note:text('note').notNull(),createdAt:integer('created_at').notNull()});
+export const operationTransactionGuards=sqliteTable('operation_transaction_guards',{id:id(),valid:integer('valid').notNull()},t=>[check('operation_transaction_valid',sql`${t.valid}=1`)]);

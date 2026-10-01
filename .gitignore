@@ -1,5 +1,6 @@
 # dependencies
 /node_modules
+/.pnpm-store/
 /.pnp
 .pnp.*
 .yarn/*
@@ -28,6 +29,36 @@ yarn-error.log*
 
 # local environment
 .env*
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# runtime data and private uploads
+/private-media/
+/uploads/
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-wal
+*.db-shm
+
+# local archives, logs, browser captures, and dated work folders
+*.log
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.sql.gz
+/*-20??????/
+/local-testing-preservation-*.json
+/products/
+/tools/
+/test-results/
+/playwright-report/
 
 # deployment and generated files
 .vercel

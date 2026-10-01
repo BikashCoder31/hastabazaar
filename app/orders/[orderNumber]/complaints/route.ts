@@ -12,7 +12,7 @@ import {
   type ComplaintCategory,
 } from '@/lib/db/repositories/complaints';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
+import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import { getCustomerUser } from '@/lib/auth/customer';
 
 export const dynamic = 'force-dynamic';

@@ -1,19 +1,9 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import {
-  Banknote,
-  Bell,
-  ChartNoAxesCombined,
-  CircleAlert,
-  LayoutDashboard,
-  PackagePlus,
-  ReceiptText,
-  ShoppingBag,
-  Truck,
-  UserRound,
-} from 'lucide-react';
-
-import { chatGPTSignOutPath } from '@/app/chatgpt-auth';
+import { ArrowUpRight, Plus } from 'lucide-react';
+import { signOutPath } from '@/app/auth';
+import { BrandWordmark } from '@/components/layout/brand-wordmark';
+import { SellerNavigation } from '@/components/seller/seller-navigation';
 import { requireSellerPage } from '@/lib/auth/seller';
 
 export const dynamic = 'force-dynamic';
@@ -23,79 +13,65 @@ export default async function SellerLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const seller = await requireSellerPage('/seller');
   return (
-    <div className="min-h-screen bg-muted/35">
-      <header className="border-b bg-background">
+    <div className="min-h-screen bg-secondary/35">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-xl focus:bg-background focus:p-4"
+      >
+        Skip to workspace
+      </a>
+      <header className="border-b bg-card xl:sticky xl:top-0 xl:z-30">
         <div className="shell flex min-h-20 flex-wrap items-center justify-between gap-4 py-3">
-          <Link
-            href="/seller"
-            className="flex items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
+          <Link href="/seller" className="flex items-center gap-3 rounded-xl">
             <Image
-              src="/brand/hastabazaar-logo.png"
+              src="/brand/hastabazaar-mark-96.png"
               alt=""
               width={44}
               height={44}
-              className="h-11 w-11 rounded-full object-cover"
+              className="size-11 object-contain"
             />
             <span>
-              <span className="block font-heading text-xl leading-tight">
-                {seller.tradingName}
-              </span>
-              <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Hastabazaar seller
+              <BrandWordmark className="block text-xl" />
+              <span className="block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Seller workspace
               </span>
             </span>
           </Link>
-          <nav
-            aria-label="Seller navigation"
-            className="order-3 flex w-full gap-1 overflow-x-auto sm:order-none sm:w-auto"
-          >
-            <Link className="admin-nav-link" href="/seller">
-              <LayoutDashboard /> Overview
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/account" className="header-action">Switch to customer dashboard</Link>
+            <Link href="/shop" className="header-action">
+              <span className="hidden sm:inline">Marketplace</span>
+              <ArrowUpRight className="size-4" />
+              <span className="sr-only sm:hidden">Marketplace</span>
             </Link>
-            <Link className="admin-nav-link" href="/seller/products">
-              <ShoppingBag /> Products
+            <Link
+              href="/seller/products/new"
+              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground"
+            >
+              <Plus className="size-4" />
+              Add product
             </Link>
-            <Link className="admin-nav-link" href="/seller/orders">
-              <ReceiptText /> Orders
-            </Link>
-            <Link className="admin-nav-link" href="/seller/cases">
-              <CircleAlert /> Cases
-            </Link>
-            <Link className="admin-nav-link" href="/seller/finance">
-              <Banknote /> Earnings
-            </Link>
-            <Link className="admin-nav-link" href="/seller/analytics">
-              <ChartNoAxesCombined /> Analytics
-            </Link>
-            <Link className="admin-nav-link" href="/seller/shipping">
-              <Truck /> Shipping
-            </Link>
-            <Link className="admin-nav-link" href="/seller/notifications">
-              <Bell /> Alerts
-            </Link>
-            <Link className="admin-nav-link" href="/seller/profile">
-              <UserRound /> Profile
-            </Link>
-            <Link className="admin-nav-link" href="/seller/products/new">
-              <PackagePlus /> Add product
-            </Link>
-          </nav>
-          <div className="flex items-center gap-3">
-            <span className="hidden max-w-52 truncate text-sm font-semibold sm:block">
-              {seller.displayName}
-            </span>
             <a
-              href={chatGPTSignOutPath('/')}
+              href={signOutPath('/')}
               target="_top"
-              className="rounded-lg border px-3 py-2 text-sm font-semibold hover:bg-muted"
+              className="inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-semibold hover:bg-muted"
             >
               Sign out
             </a>
           </div>
         </div>
       </header>
-      <main className="shell py-8 sm:py-10">{children}</main>
+      <div className="shell grid items-start gap-6 py-6 xl:grid-cols-[15rem_minmax(0,1fr)] xl:gap-8 xl:py-8">
+        <aside className="min-w-0 xl:sticky xl:top-28">
+          <SellerNavigation
+            tradingName={seller.tradingName}
+            sellerId={seller.sellerId}
+          />
+        </aside>
+        <main tabIndex={-1} id="main-content" className="min-w-0 pb-10">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

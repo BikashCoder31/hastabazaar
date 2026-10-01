@@ -98,7 +98,7 @@ export default async function PayoutsPage() {
           <CardContent>
             <p className="font-heading text-4xl">{candidates.length}</p>
             <p className="mt-2 text-sm text-muted-foreground">
-              At or above the NPR 1,000 minimum
+              Positive available balances with a verified payout destination
             </p>
           </CardContent>
         </Card>
@@ -120,7 +120,8 @@ export default async function PayoutsPage() {
               }
             </p>
             <p className="mt-2 text-sm text-muted-foreground">
-              Maker-checker separation enforced
+              Among the loaded payout history · maker-checker separation
+              enforced
             </p>
           </CardContent>
         </Card>
@@ -132,7 +133,7 @@ export default async function PayoutsPage() {
         <CardContent>
           {candidates.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No verified seller balance currently meets the payout minimum.
+              No verified seller currently has a positive available payout balance.
             </p>
           ) : (
             <Table>
@@ -157,7 +158,11 @@ export default async function PayoutsPage() {
                     </TableCell>
                     <TableCell>{money(candidate.amountPaisa)}</TableCell>
                     <TableCell>
-                      <PreparePayoutButton sellerId={candidate.sellerId} />
+                      <PreparePayoutButton
+                        sellerId={candidate.sellerId}
+                        sellerName={candidate.tradingName}
+                        amount={money(candidate.amountPaisa)}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}

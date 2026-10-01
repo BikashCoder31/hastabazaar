@@ -1,3 +1,4 @@
+import { can } from '@/lib/marketplace/permissions';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -42,7 +43,7 @@ export default async function AdminReturnCasePage({
         </div>
         <Status value={item.status} />
       </div>
-      <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_23rem]">
+      <div className="mt-8 grid gap-6 2xl:grid-cols-[minmax(0,1fr)_23rem]">
         <div className="space-y-6">
           <section className="rounded-2xl border bg-card p-6">
             <h2 className="font-heading text-2xl">Request and eligibility</h2>
@@ -56,6 +57,9 @@ export default async function AdminReturnCasePage({
               </Detail>
               <Detail label="Automated eligibility">
                 {item.eligibilityDecision}
+              </Detail>
+              <Detail label="Original seal reported intact">
+                {item.originalSealIntact ? 'Yes — verify during review' : 'No'}
               </Detail>
               <Detail label="Item value">
                 {money(item.lineTotalPaisa || 0)}
@@ -152,6 +156,7 @@ export default async function AdminReturnCasePage({
                 outcome={item.resolutionOutcome}
                 refundStatus={item.refundStatus}
                 role={staff.role}
+                canApproveStandard={can(staff, 'refund.approve.standard')}
                 quantity={item.quantity}
               />
             </div>
@@ -161,9 +166,12 @@ export default async function AdminReturnCasePage({
               <h2 className="font-heading text-2xl">Refund record</h2>
               <dl className="mt-4 space-y-3 text-sm">
                 <div className="flex justify-between">
-                  <dt>Amount</dt>
-                  <dd>{money(item.refundAmountPaisa || 0)}</dd>
+                  <dt>Cash to refund</dt>
+                  <dd>{money((item.refundAmountPaisa || 0) - (item.refundWalletPaisa || 0) - (item.refundDiscountPaisa || 0))}</dd>
                 </div>
+                <div className="flex justify-between"><dt>Shopping credit to restore</dt><dd>{money(item.refundWalletPaisa || 0)}</dd></div>
+                <div className="flex justify-between"><dt>Referral discount (not refundable)</dt><dd>{money(item.refundDiscountPaisa || 0)}</dd></div>
+                <p className="text-xs leading-5 text-muted-foreground">Refund only the cash amount shown. Shopping credit is restored automatically when this refund is completed. For a credit-only refund, use an internal completion reference.</p>
                 <div className="flex justify-between">
                   <dt>Status</dt>
                   <dd className="capitalize">

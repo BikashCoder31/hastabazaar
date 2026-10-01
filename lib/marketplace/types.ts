@@ -117,6 +117,7 @@ export interface MarketplacePolicy {
   };
   returns: {
     generalRequestWindowDays: number;
+    sealedGoodsWindowDays: number;
     deliveryDamageEvidenceWindowHours: number;
     changeOfMindEnabled: boolean;
     highValueRefundThresholdPaisa: MoneyPaisa;

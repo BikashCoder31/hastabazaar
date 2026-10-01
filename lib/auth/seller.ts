@@ -1,7 +1,11 @@
 import { env } from 'cloudflare:workers';
 import { redirect } from 'next/navigation';
 
-import { getChatGPTUser, requireChatGPTUser, type ChatGPTUser } from '@/app/chatgpt-auth';
+import {
+  getAuthenticatedUser,
+  requireAuthenticatedUser,
+  type AuthenticatedUser,
+} from '@/app/auth';
 import { requireDatabase } from '@/lib/db/d1';
 
 export interface SellerUser {
@@ -11,6 +15,8 @@ export interface SellerUser {
   email: string;
   displayName: string;
   tradingName: string;
+  sellerAgreementVersion: string | null;
+  sellerAgreementAcceptedAt: number | null;
   status: 'approved';
 }
 
@@ -38,6 +44,8 @@ async function findSellerBySubject(
           users.auth_subject AS authSubject, users.email,
           users.display_name AS displayName,
           seller_profiles.trading_name AS tradingName,
+          seller_profiles.seller_agreement_version AS sellerAgreementVersion,
+          seller_profiles.seller_agreement_accepted_at AS sellerAgreementAcceptedAt,
           seller_profiles.status
          FROM users
          INNER JOIN user_roles ON user_roles.user_id = users.id AND user_roles.role = 'seller'
@@ -53,7 +61,7 @@ async function findSellerBySubject(
 
 async function resolveSeller(
   database: D1Database,
-  identity: ChatGPTUser,
+  identity: AuthenticatedUser,
 ): Promise<SellerUser | null> {
   const bySubject = await findSellerBySubject(database, identity.userId);
   if (bySubject) return bySubject;
@@ -86,15 +94,20 @@ async function resolveSeller(
   return findSellerBySubject(database, identity.userId);
 }
 
+export async function getSellerUser(): Promise<SellerUser | null> {
+  const identity = await getAuthenticatedUser();
+  return identity ? resolveSeller(databaseFromEnvironment(), identity) : null;
+}
+
 export async function requireSellerPage(returnTo: string): Promise<SellerUser> {
-  const identity = await requireChatGPTUser(returnTo);
+  const identity = await requireAuthenticatedUser(returnTo);
   const seller = await resolveSeller(databaseFromEnvironment(), identity);
   if (!seller) redirect('/seller-access-denied');
   return seller;
 }
 
 export async function requireSellerApi(): Promise<SellerUser> {
-  const identity = await getChatGPTUser();
+  const identity = await getAuthenticatedUser();
   if (!identity) throw new SellerAuthorizationError('Authentication is required.', 401);
   const seller = await resolveSeller(databaseFromEnvironment(), identity);
   if (!seller) throw new SellerAuthorizationError('Approved seller access is required.', 403);

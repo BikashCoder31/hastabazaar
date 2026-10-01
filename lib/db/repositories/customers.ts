@@ -1,3 +1,6 @@
+import {normalizeProvince,normalizeDistrict,districtBelongsToProvince,validWard} from '@/lib/checkout/nepal-address';
+import { publicProductEligibility } from '@/lib/products/eligibility';
+import {parseLocation} from '@/lib/delivery/validation';
 export class CustomerDataConflictError extends Error {}
 
 export interface CustomerOrderRow {
@@ -11,6 +14,8 @@ export interface CustomerOrderRow {
 }
 
 export interface CustomerAddressRow {
+  latitude?: number | null;
+  longitude?: number | null;
   id: string;
   label: string;
   recipientName: string;
@@ -26,6 +31,7 @@ export interface CustomerAddressRow {
 }
 
 export interface CustomerAddressInput {
+  location?: import('@/lib/delivery/validation').DeliveryLocation;
   label: string;
   recipientName: string;
   phone: string;
@@ -78,8 +84,8 @@ export async function getPublicMakerProfile(database: D1Database, sellerId: stri
       seller_profiles.product_categories AS productCategories,
       seller_profiles.province, seller_profiles.district,
       seller_profiles.approved_at AS approvedAt, COUNT(products.id) AS productCount
-     FROM seller_profiles LEFT JOIN products ON products.seller_id = seller_profiles.id AND products.status = 'published'
-     WHERE seller_profiles.id = ? AND seller_profiles.status = 'approved'
+     FROM seller_profiles LEFT JOIN products ON products.seller_id = seller_profiles.id AND ${publicProductEligibility()}
+     WHERE seller_profiles.id = ? AND seller_profiles.status = 'approved' AND EXISTS(SELECT 1 FROM users maker_owner WHERE maker_owner.id=seller_profiles.user_id AND maker_owner.status='active')
      GROUP BY seller_profiles.id LIMIT 1`,
   ).bind(sellerId).first<PublicMakerProfile>()) ?? null;
 }
@@ -91,7 +97,7 @@ export async function listPublishedProductsByMaker(database: D1Database, sellerI
       seller_profiles.trading_name AS tradingName, products.published_at AS savedAt,
       (SELECT product_media.id FROM product_media WHERE product_media.product_id = products.id ORDER BY product_media.sort_order LIMIT 1) AS primaryMediaId
      FROM products INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
-     WHERE products.seller_id = ? AND products.status = 'published' AND seller_profiles.status = 'approved'
+     WHERE products.seller_id = ? AND ${publicProductEligibility()} AND seller_profiles.status = 'approved'
      ORDER BY products.published_at DESC`,
   ).bind(sellerId).all<WishlistProductRow>();
   return result.results;
@@ -100,7 +106,7 @@ export async function listPublishedProductsByMaker(database: D1Database, sellerI
 export async function listCustomerOrders(database: D1Database, userId: string, limit = 100): Promise<readonly CustomerOrderRow[]> {
   const result = await database.prepare(
     `SELECT orders.order_number AS orderNumber, orders.status,
-      orders.payment_status AS paymentStatus, orders.grand_total_paisa AS grandTotalPaisa,
+      orders.payment_status AS paymentStatus, COALESCE(orders.current_total_paisa,orders.grand_total_paisa) AS grandTotalPaisa,
       orders.placed_at AS placedAt, orders.delivered_at AS deliveredAt,
       COALESCE(SUM(order_items.quantity), 0) AS itemCount
      FROM orders LEFT JOIN order_items ON order_items.order_id = orders.id
@@ -112,7 +118,7 @@ export async function listCustomerOrders(database: D1Database, userId: string, l
 
 export async function listCustomerAddresses(database: D1Database, userId: string): Promise<readonly CustomerAddressRow[]> {
   const result = await database.prepare(
-    `SELECT id, label, recipient_name AS recipientName, phone, province, district,
+    `SELECT (SELECT latitude FROM address_locations WHERE address_id=addresses.id) AS latitude, (SELECT longitude FROM address_locations WHERE address_id=addresses.id) AS longitude, id, label, recipient_name AS recipientName, phone, province, district,
       municipality, ward, locality, landmark, postal_code AS postalCode,
       is_default AS isDefault FROM addresses WHERE user_id = ?
      ORDER BY is_default DESC, updated_at DESC`,
@@ -125,6 +131,11 @@ function normalizedAddress(input: CustomerAddressInput): CustomerAddressInput {
   const required = [normalized.label, normalized.recipientName, normalized.phone, normalized.province, normalized.district, normalized.municipality, normalized.locality];
   if (required.some((value) => !value || value.length > 120)) throw new CustomerDataConflictError('Complete every required address field using 120 characters or fewer.');
   if (!/^(?:\+?977)?9[678]\d{8}$/.test(normalized.phone.replace(/[\s-]/g, ''))) throw new CustomerDataConflictError('Enter a valid Nepal mobile number.');
+  if (!districtBelongsToProvince(normalized.district,normalized.province)) throw new CustomerDataConflictError('Choose a district in your selected province, including East or West where needed.');
+  if (!validWard(normalized.ward)) throw new CustomerDataConflictError('Ward must be a number from 1–99.');
+  normalized.province=normalizeProvince(normalized.province)!;normalized.district=normalizeDistrict(normalized.district)!;
+  if(normalized.ward) normalized.ward=String(Number(normalized.ward));
+  try { normalized.location=parseLocation(input.location); } catch { throw new CustomerDataConflictError('Invalid delivery map pin.'); }
   return normalized;
 }
 
@@ -145,6 +156,8 @@ export async function saveCustomerAddress(database: D1Database, options: { userI
       `INSERT INTO addresses (id, user_id, label, recipient_name, phone, province, district, municipality, ward, locality, landmark, postal_code, is_default, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(id, options.userId, input.label, input.recipientName, input.phone, input.province, input.district, input.municipality, input.ward || null, input.locality, input.landmark || null, input.postalCode || null, input.isDefault ? 1 : 0, options.now, options.now));
+  statements.push(database.prepare('DELETE FROM address_locations WHERE address_id = ?').bind(id));
+  if(input.location) statements.push(database.prepare('INSERT INTO address_locations(address_id,latitude,longitude) VALUES (?,?,?)').bind(id,input.location.latitude,input.location.longitude));
   statements.push(database.prepare(
     `INSERT INTO audit_logs (id, actor_id, action, subject_type, subject_id, reason, previous_json, next_json, request_id, ip_hash, created_at)
      VALUES (?, ?, ?, 'address', ?, 'Customer managed own saved delivery address', NULL, ?, ?, NULL, ?)`,
@@ -170,7 +183,7 @@ export async function deleteCustomerAddress(database: D1Database, options: { use
 export async function updateCustomerProfile(database: D1Database, options: { userId: string; displayName: string; phone: string; locale: 'en-NP' | 'ne-NP'; requestId: string; now: number }): Promise<void> {
   const displayName = options.displayName.trim();
   const phone = options.phone.trim().replace(/[\s-]/g, '');
-  if (displayName.length < 2 || displayName.length > 100) throw new CustomerDataConflictError('Name must be 2–100 characters.');
+  if (displayName.length < 2 || displayName.length > 100) throw new CustomerDataConflictError('Name must be 2â€“100 characters.');
   if (phone && !/^(?:\+?977)?9[678]\d{8}$/.test(phone)) throw new CustomerDataConflictError('Enter a valid Nepal mobile number.');
   const duplicate = await database.prepare(`SELECT id FROM audit_logs WHERE request_id = ? AND actor_id = ? LIMIT 1`).bind(options.requestId, options.userId).first();
   if (duplicate) return;
@@ -191,7 +204,7 @@ export async function listWishlist(database: D1Database, userId: string): Promis
       (SELECT product_media.id FROM product_media WHERE product_media.product_id = products.id ORDER BY product_media.sort_order LIMIT 1) AS primaryMediaId
      FROM wishlist_items INNER JOIN products ON products.id = wishlist_items.product_id
      INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
-     WHERE wishlist_items.user_id = ? AND products.status = 'published'
+     WHERE wishlist_items.user_id = ? AND ${publicProductEligibility()}
      ORDER BY wishlist_items.created_at DESC`,
   ).bind(userId).all<WishlistProductRow>();
   return result.results;
@@ -233,12 +246,15 @@ export async function getReviewableOrderItem(database: D1Database, userId: strin
   ).bind(userId, productId).first<{ orderItemId: string; orderNumber: string }>()) ?? null;
 }
 
-export async function createProductReview(database: D1Database, options: { userId: string; productId: string; orderItemId: string; rating: number; title: string; body: string; requestId: string; now: number }): Promise<string> {
+export interface ReviewPhotoInput {id:string;objectKey:string;mimeType:string;sizeBytes:number;sortOrder:number}
+export async function createProductReview(database: D1Database, options: { userId: string; productId: string; orderItemId: string; rating: number; title: string; body: string; requestId: string; now: number;photos?:readonly ReviewPhotoInput[] }): Promise<string> {
+  const photos=options.photos??[];
+  if(photos.length>3 || photos.some((p,i)=>p.sortOrder!==i || !['image/jpeg','image/png','image/webp'].includes(p.mimeType) || p.sizeBytes<1 || p.sizeBytes>5*1024*1024)) throw new CustomerDataConflictError('Add up to three JPG, PNG or WebP photos, each no larger than 5 MB.');
   if (!Number.isInteger(options.rating) || options.rating < 1 || options.rating > 5) throw new CustomerDataConflictError('Choose a rating from 1 to 5.');
   const title = options.title.trim();
   const body = options.body.trim();
-  if (title.length > 120 || body.length < 10 || body.length > 2000) throw new CustomerDataConflictError('Review text must be 10–2,000 characters and the title at most 120 characters.');
-  const duplicate = await database.prepare(`SELECT subject_id AS id FROM audit_logs WHERE request_id = ? AND actor_id = ? LIMIT 1`).bind(options.requestId, options.userId).first<{ id: string }>();
+  if (title.length > 120 || body.length < 10 || body.length > 2000) throw new CustomerDataConflictError('Review text must be 10â€“2,000 characters and the title at most 120 characters.');
+  const duplicate = await database.prepare(`SELECT subject_id AS id FROM audit_logs WHERE request_id = ? AND actor_id = ? AND action='review.submitted' AND subject_type='product_review' LIMIT 1`).bind(options.requestId, options.userId).first<{ id: string }>();
   if (duplicate) return duplicate.id;
   const eligible = await database.prepare(
     `SELECT order_items.id FROM order_items INNER JOIN orders ON orders.id = order_items.order_id
@@ -253,13 +269,14 @@ export async function createProductReview(database: D1Database, options: { userI
         `INSERT INTO product_reviews (id, product_id, customer_id, order_item_id, rating, title, body, status, moderation_note, moderated_by, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?)`,
       ).bind(id, options.productId, options.userId, options.orderItemId, options.rating, title || null, body, options.now, options.now),
+      ...photos.map(p=>database.prepare('INSERT INTO review_photos(id,review_id,object_key,mime_type,size_bytes,sort_order,created_at) VALUES (?,?,?,?,?,?,?)').bind(p.id,id,p.objectKey,p.mimeType,p.sizeBytes,p.sortOrder,options.now)),
       database.prepare(
         `INSERT INTO audit_logs (id, actor_id, action, subject_type, subject_id, reason, previous_json, next_json, request_id, ip_hash, created_at)
          VALUES (?, ?, 'review.submitted', 'product_review', ?, 'Verified customer submitted a product review', NULL, ?, ?, NULL, ?)`,
       ).bind(crypto.randomUUID(), options.userId, id, JSON.stringify({ status: 'pending', rating: options.rating }), options.requestId, options.now),
     ]);
   } catch (error) {
-    if (error instanceof Error && error.message.includes('UNIQUE constraint')) throw new CustomerDataConflictError('This delivered item has already been reviewed.');
+    if (error instanceof Error && /UNIQUE constraint|Duplicate entry/.test(error.message)) throw new CustomerDataConflictError('This delivered item has already been reviewed.');
     throw error;
   }
   return id;
@@ -290,7 +307,7 @@ export async function listReviewsForModeration(database: D1Database, limit = 100
 export async function moderateProductReview(database: D1Database, options: { reviewId: string; actorId: string; action: 'publish' | 'reject' | 'hide'; note: string; requestId: string; now: number }): Promise<void> {
   if (await database.prepare(`SELECT id FROM audit_logs WHERE request_id = ? LIMIT 1`).bind(options.requestId).first()) return;
   const note = options.note.trim();
-  if (note.length < 8 || note.length > 1000) throw new CustomerDataConflictError('Add a moderation note of 8–1,000 characters.');
+  if (note.length < 8 || note.length > 1000) throw new CustomerDataConflictError('Add a moderation note of 8â€“1,000 characters.');
   const current = await database.prepare(`SELECT status FROM product_reviews WHERE id = ? LIMIT 1`).bind(options.reviewId).first<{ status: string }>();
   if (!current) throw new CustomerDataConflictError('Review not found.');
   const next = options.action === 'publish' ? 'published' : options.action === 'reject' ? 'rejected' : 'hidden';

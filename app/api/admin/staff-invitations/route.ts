@@ -11,6 +11,7 @@ import {
   StaffInvitationConflictError,
 } from '@/lib/db/repositories/staff';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { sendStaffInvitationEmail } from '@/lib/email/staff-invitation';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,10 +50,28 @@ export async function POST(request: Request): Promise<Response> {
         now: Date.now(),
       },
     );
+    try {
+      await sendStaffInvitationEmail({
+        email,
+        role: role as StaffRole,
+        expiresAt: invitation.expiresAt,
+      });
+    } catch {
+      return json(
+        {
+          ...invitation,
+          message:
+            'Access invitation created, but its email could not be delivered. Share the /admin address with the invited person and check the email settings.',
+          emailDelivered: false,
+        },
+        201,
+      );
+    }
     return json(
       {
         ...invitation,
-        message: 'Access invitation created. No email was sent automatically.',
+        message: 'Access invitation created and emailed.',
+        emailDelivered: true,
       },
       201,
     );

@@ -16,6 +16,7 @@ export type RequestedResolution = 'refund' | 'replacement';
 
 export interface ReturnPolicySnapshot {
   generalRequestWindowDays: number;
+  sealedGoodsWindowDays: number;
   deliveryDamageEvidenceWindowHours: number;
   changeOfMindEnabled: boolean;
   highValueRefundThresholdPaisa: number;
@@ -31,6 +32,7 @@ export interface ReturnRequestInput {
   detail: string;
   locale: SupportedLocale;
   idempotencyKey: string;
+  originalSealIntact: boolean;
 }
 
 export interface EligibilityResult {
@@ -59,6 +61,7 @@ export function parseReturnRequest(formData: FormData): {
   const detail = text('detail');
   const locale = text('locale');
   const idempotencyKey = text('idempotencyKey');
+  const originalSealIntact = text('originalSealIntact') === 'yes';
 
   if (!orderItemId || orderItemId.length > 64) errors.push('Select a valid order item.');
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1_000) errors.push('Return quantity must be a positive whole number.');
@@ -80,6 +83,7 @@ export function parseReturnRequest(formData: FormData): {
           detail,
           locale: locale as SupportedLocale,
           idempotencyKey,
+          originalSealIntact,
         },
       };
 }
@@ -97,7 +101,24 @@ export function parseReturnPolicySnapshot(value: string): ReturnPolicySnapshot {
   ) {
     throw new Error('The order return policy snapshot is invalid.');
   }
-  return parsed as ReturnPolicySnapshot;
+  return {
+    ...(parsed as Omit<ReturnPolicySnapshot, 'sealedGoodsWindowDays'>),
+    sealedGoodsWindowDays: Number.isInteger(parsed.sealedGoodsWindowDays)
+      ? parsed.sealedGoodsWindowDays!
+      : 15,
+  };
+}
+
+function calendarDayIndex(value: number): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kathmandu',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  }).formatToParts(new Date(value));
+  const part = (type: 'year' | 'month' | 'day') =>
+    Number(parts.find((entry) => entry.type === type)?.value);
+  return Math.floor(Date.UTC(part('year'), part('month') - 1, part('day')) / 86_400_000);
 }
 
 export function evaluateReturnEligibility(options: {
@@ -105,11 +126,15 @@ export function evaluateReturnEligibility(options: {
   deliveredAt: number;
   now: number;
   productReturnEligible: boolean;
+  originalSealIntact?: boolean;
   policy: ReturnPolicySnapshot;
 }): EligibilityResult {
-  const elapsedMs = Math.max(0, options.now - options.deliveredAt);
-  const generalWindowMs = options.policy.generalRequestWindowDays * 86_400_000;
+  const elapsedCalendarDays = Math.max(
+    0,
+    calendarDayIndex(options.now) - calendarDayIndex(options.deliveredAt),
+  );
   const evidenceWindowMs = options.policy.deliveryDamageEvidenceWindowHours * 3_600_000;
+  const elapsedMs = Math.max(0, options.now - options.deliveredAt);
   const statutoryReasons: readonly ReturnReason[] = [
     'damaged',
     'defective',
@@ -127,7 +152,17 @@ export function evaluateReturnEligibility(options: {
         reasonNe: 'स्न्यापसट गरिएको नीतिअनुसार यो सामान मन परिवर्तनका कारण फिर्ता गर्न योग्य छैन।',
       };
     }
-    if (elapsedMs > generalWindowMs) {
+    if (elapsedCalendarDays > options.policy.generalRequestWindowDays) {
+      if (
+        options.originalSealIntact &&
+        elapsedCalendarDays <= options.policy.sealedGoodsWindowDays
+      ) {
+        return {
+          decision: 'manual_review',
+          reasonEn: `The request is within the ${options.policy.sealedGoodsWindowDays}-day sealed-goods window; the original seal must be verified.`,
+          reasonNe: `अनुरोध ${options.policy.sealedGoodsWindowDays}-दिने सिलबन्द सामान अवधिभित्र छ; मूल सिल जाँच गर्नुपर्छ।`,
+        };
+      }
       return {
         decision: 'ineligible',
         reasonEn: `The ${options.policy.generalRequestWindowDays}-day change-of-mind window has ended.`,
@@ -156,7 +191,18 @@ export function evaluateReturnEligibility(options: {
     };
   }
 
-  return elapsedMs <= generalWindowMs
+  if (
+    options.originalSealIntact &&
+    elapsedCalendarDays <= options.policy.sealedGoodsWindowDays
+  ) {
+    return {
+      decision: 'manual_review',
+      reasonEn: `The request is within the ${options.policy.sealedGoodsWindowDays}-day sealed-goods window; the original seal must be verified.`,
+      reasonNe: `अनुरोध ${options.policy.sealedGoodsWindowDays}-दिने सिलबन्द सामान अवधिभित्र छ; मूल सिल जाँच गर्नुपर्छ।`,
+    };
+  }
+
+  return elapsedCalendarDays <= options.policy.generalRequestWindowDays
     ? {
         decision: 'manual_review',
         reasonEn: 'The request is within the return window and needs an administrator decision.',

@@ -5,7 +5,7 @@
 When Admin confirms delivery, Hastabazaar appends seller-ledger entries from the commercial values already snapshotted on each order item:
 
 - `sale` credits the item line total;
-- `commission` debits the snapshotted 12% marketplace commission;
+- `commission` debits the marketplace commission snapshotted on the order item (9% default);
 - eligible new sellers receive a 5% `reserve_hold` debit and a matching future `reserve_release` credit;
 - seller-liable paid refunds remain separate negative `refund` entries.
 
@@ -23,6 +23,8 @@ An approved seller can view only their own:
 - payout status, amount, date, and confirmed provider reference.
 
 Payout destination details are masked in interfaces. Sellers cannot change a verified destination through the finance page.
+
+The seller interface explains minimum-balance eligibility, retains request identifiers across retries, shows Admin processing notes, and distinguishes a payout request from a transfer. See [Seller workspace](seller-workspace.md) for interface behaviour and validation.
 
 ## Maker-checker payout workflow
 

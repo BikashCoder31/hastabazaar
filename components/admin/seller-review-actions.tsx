@@ -78,6 +78,8 @@ export function SellerReviewActions({
   const [selected, setSelected] = useState<ActionDefinition | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
+  const [payoutAccountReference, setPayoutAccountReference] = useState('');
+  const [settlementTermsReference, setSettlementTermsReference] = useState('');
 
   const available =
     status === 'submitted'
@@ -117,7 +119,12 @@ export function SellerReviewActions({
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: selected.action, reason }),
+          body: JSON.stringify({
+            action: selected.action,
+            reason,
+            payoutAccountReference,
+            settlementTermsReference,
+          }),
         },
       );
       const result = (await response.json()) as { error?: string };
@@ -150,6 +157,31 @@ export function SellerReviewActions({
           />
           <p className="text-xs text-muted-foreground">
             This note becomes part of the permanent moderation history.
+          </p>
+          <label htmlFor="payout-account-reference" className="block text-sm font-semibold">
+            Verified receiving-account reference
+          </label>
+          <input
+            id="payout-account-reference"
+            value={payoutAccountReference}
+            onChange={(event) => setPayoutAccountReference(event.target.value)}
+            maxLength={200}
+            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            placeholder="Internal verification record reference"
+          />
+          <label htmlFor="settlement-terms-reference" className="block text-sm font-semibold">
+            Written payout method and settlement schedule reference
+          </label>
+          <input
+            id="settlement-terms-reference"
+            value={settlementTermsReference}
+            onChange={(event) => setSettlementTermsReference(event.target.value)}
+            maxLength={200}
+            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            placeholder="Signed agreement or approved record reference"
+          />
+          <p className="text-xs text-muted-foreground">
+            Both references and bank evidence are required only when approving a seller. Do not enter full bank credentials here.
           </p>
         </div>
       ) : null}

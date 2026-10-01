@@ -1,6 +1,8 @@
+import { getSellerUser } from '@/lib/auth/seller';
 import Link from 'next/link';
-
-import { chatGPTSignOutPath } from '@/app/chatgpt-auth';
+import { ChevronRight } from 'lucide-react';
+import { signOutPath } from '@/app/auth';
+import { AccountNavigation } from '@/components/account/account-navigation';
 import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
 import { requireCustomerPage } from '@/lib/auth/customer';
@@ -13,66 +15,38 @@ export default async function AccountLayout({
   children: React.ReactNode;
 }) {
   const customer = await requireCustomerPage('/account');
+  const seller = await getSellerUser();
   return (
-    <div className="min-h-screen bg-muted/20">
+    <div className="min-h-screen bg-secondary/35">
       <SiteHeader />
-      <div className="border-b bg-card">
-        <div className="shell flex flex-wrap items-center justify-between gap-4 py-5">
-          <div>
-            <p className="text-sm font-semibold">{customer.displayName}</p>
-            <p className="text-xs text-muted-foreground">{customer.email}</p>
-          </div>
-          <nav
-            className="flex flex-wrap gap-2 text-sm"
-            aria-label="Customer account"
-          >
-            <Link
-              className="rounded-full px-3 py-2 hover:bg-muted"
-              href="/account"
-            >
-              Profile
-            </Link>
-            <Link
-              className="rounded-full px-3 py-2 hover:bg-muted"
-              href="/account/orders"
-            >
-              Orders
-            </Link>
-            <Link
-              className="rounded-full px-3 py-2 hover:bg-muted"
-              href="/account/addresses"
-            >
-              Addresses
-            </Link>
-            <Link
-              className="rounded-full px-3 py-2 hover:bg-muted"
-              href="/account/wishlist"
-            >
-              Wishlist
-            </Link>
-            <Link
-              className="rounded-full px-3 py-2 hover:bg-muted"
-              href="/account/notifications"
-            >
-              Notifications
-            </Link>
-            <Link
-              className="rounded-full px-3 py-2 hover:bg-muted"
-              href="/account/privacy"
-            >
-              Privacy
-            </Link>
-            <a
-              className="rounded-full px-3 py-2 text-muted-foreground hover:bg-muted"
-              href={chatGPTSignOutPath('/')}
-              target="_top"
-            >
-              Sign out
-            </a>
-          </nav>
+      <div className="shell py-6 sm:py-8">
+        <nav
+          aria-label="Breadcrumb"
+          className="mb-6 flex items-center gap-2 text-sm text-muted-foreground"
+        >
+          <Link href="/" className="rounded-md hover:text-primary">
+            Home
+          </Link>
+          <ChevronRight className="size-3.5" />
+          <Link href="/account" className="rounded-md hover:text-primary">
+            My account
+          </Link>
+        </nav>
+        <div className="grid items-start gap-6 lg:grid-cols-[15.5rem_minmax(0,1fr)] lg:gap-8">
+          <aside className="min-w-0 lg:sticky lg:top-40">
+            {seller ? <Link href="/seller" className="mb-3 flex min-h-11 items-center justify-center rounded-xl border bg-card px-4 py-3 text-sm font-semibold text-primary">Switch to seller dashboard</Link> : null}
+            <Link href="/rider" className="mb-3 flex min-h-11 items-center justify-center rounded-xl border bg-card px-4 py-3 text-sm font-semibold text-primary">Rider dashboard / apply</Link>
+            <AccountNavigation
+              displayName={customer.displayName}
+              email={customer.email}
+              signOutPath={signOutPath('/')}
+            />
+          </aside>
+          <main tabIndex={-1} id="main-content" className="min-w-0 pb-10">
+            {children}
+          </main>
         </div>
       </div>
-      <main className="shell py-10 sm:py-14">{children}</main>
       <SiteFooter />
     </div>
   );

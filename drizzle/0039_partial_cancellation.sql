@@ -1,0 +1,20 @@
+ALTER TABLE orders ADD COLUMN cancellation_version INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN current_total_paisa INTEGER;
+ALTER TABLE orders ADD COLUMN current_subtotal_paisa INTEGER;
+ALTER TABLE orders ADD COLUMN current_delivery_paisa INTEGER;
+ALTER TABLE orders ADD COLUMN current_wallet_paisa INTEGER;
+ALTER TABLE orders ADD COLUMN current_discount_paisa INTEGER CHECK((current_total_paisa IS NULL AND current_subtotal_paisa IS NULL AND current_delivery_paisa IS NULL AND current_wallet_paisa IS NULL AND current_discount_paisa IS NULL) OR (current_total_paisa IS NOT NULL AND current_total_paisa>=0 AND current_total_paisa<=9007199254740991 AND current_subtotal_paisa IS NOT NULL AND current_subtotal_paisa>=0 AND current_subtotal_paisa<=9007199254740991 AND current_delivery_paisa IS NOT NULL AND current_delivery_paisa>=0 AND current_delivery_paisa<=9007199254740991 AND current_wallet_paisa IS NOT NULL AND current_wallet_paisa>=0 AND current_wallet_paisa<=9007199254740991 AND current_discount_paisa IS NOT NULL AND current_discount_paisa>=0 AND current_discount_paisa<=9007199254740991 AND current_total_paisa=current_subtotal_paisa+current_delivery_paisa-current_wallet_paisa-current_discount_paisa));
+ALTER TABLE order_items ADD COLUMN made_to_order_snapshot INTEGER;
+CREATE TABLE IF NOT EXISTS order_cancellation_events (id TEXT PRIMARY KEY,order_id TEXT NOT NULL REFERENCES orders(id),actor_id TEXT,version INTEGER NOT NULL,seller_ids_json TEXT NOT NULL,original_allocations_json TEXT NOT NULL,previous_json TEXT NOT NULL,next_json TEXT NOT NULL,note TEXT NOT NULL,wallet_restored_paisa INTEGER NOT NULL CHECK(wallet_restored_paisa>=0),discount_removed_paisa INTEGER NOT NULL CHECK(discount_removed_paisa>=0),item_removed_paisa INTEGER NOT NULL CHECK(item_removed_paisa>=0),created_at INTEGER NOT NULL,UNIQUE(order_id,version));
+CREATE TABLE IF NOT EXISTS order_cancellation_reviews (id TEXT PRIMARY KEY,order_id TEXT NOT NULL REFERENCES orders(id),seller_ids_json TEXT NOT NULL,note TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),requested_by TEXT,reviewed_by TEXT,review_note TEXT,created_at INTEGER NOT NULL,reviewed_at INTEGER);
+CREATE INDEX IF NOT EXISTS idx_cancellation_review_queue ON order_cancellation_reviews(status,created_at);
+DROP TRIGGER IF EXISTS wallet_cancel_restore;
+CREATE TRIGGER wallet_cancel_restore AFTER UPDATE ON orders FOR EACH ROW WHEN NEW.status='cancelled' AND OLD.status<>'cancelled' BEGIN
+INSERT INTO wallet_entries(id,user_id,order_id,amount_paisa,platform_amount_paisa,kind,created_at)
+SELECT 'cancel:'||NEW.id,NEW.customer_id,NEW.id,NEW.wallet_credit_paisa-COALESCE(SUM(amount_paisa),0),-(NEW.wallet_credit_paisa-COALESCE(SUM(amount_paisa),0)),'cancellation',NEW.updated_at FROM wallet_entries WHERE order_id=NEW.id AND kind IN ('cancellation','refund') HAVING NEW.wallet_credit_paisa>COALESCE(SUM(amount_paisa),0);
+END;
+CREATE TRIGGER IF NOT EXISTS cancellation_event_no_update BEFORE UPDATE ON order_cancellation_events BEGIN SELECT RAISE(ABORT,'Cancellation accounting is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS cancellation_event_no_delete BEFORE DELETE ON order_cancellation_events BEGIN SELECT RAISE(ABORT,'Cancellation accounting is immutable'); END;
+
+CREATE TRIGGER IF NOT EXISTS cancellation_review_immutable BEFORE UPDATE ON order_cancellation_reviews WHEN NOT (NEW.id IS OLD.id AND NEW.order_id IS OLD.order_id AND NEW.seller_ids_json IS OLD.seller_ids_json AND NEW.note IS OLD.note AND NEW.requested_by IS OLD.requested_by AND NEW.created_at IS OLD.created_at) OR (OLD.status<>'pending' AND NOT (NEW.status IS OLD.status AND NEW.reviewed_by IS OLD.reviewed_by AND NEW.review_note IS OLD.review_note AND NEW.reviewed_at IS OLD.reviewed_at)) BEGIN SELECT RAISE(ABORT,'Cancellation review history is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS cancellation_review_no_delete BEFORE DELETE ON order_cancellation_reviews BEGIN SELECT RAISE(ABORT,'Cancellation review history is immutable'); END;

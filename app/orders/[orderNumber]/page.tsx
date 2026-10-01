@@ -1,9 +1,20 @@
+import {CancellationHistory} from '@/components/commerce/cancellation-history';
+import {CustomerRiderCode} from '@/components/rider/rider-code';
+import {customerRiderCodeJobs} from '@/lib/riders/customer-code';
+import {CustomerDelivery} from '@/components/delivery/customer-delivery';
 import { env } from 'cloudflare:workers';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
-import { Banknote, CheckCircle2, MapPin, Truck } from 'lucide-react';
+import {
+  ArrowLeft,
+  Banknote,
+  CheckCircle2,
+  MapPin,
+  Truck,
+  XCircle,
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { CustomerOrderCancellation } from '@/components/commerce/customer-order-cancellation';
@@ -21,9 +32,10 @@ import { getOrderReceipt } from '@/lib/db/repositories/orders';
 import { listReturnsForCustomerReceipt } from '@/lib/db/repositories/returns';
 import { listComplaintsForCustomerReceipt } from '@/lib/db/repositories/complaints';
 import { getCustomerUser } from '@/lib/auth/customer';
+import { orderPresentation } from '@/lib/commerce/order-presentation';
 
 export const dynamic = 'force-dynamic';
-export const metadata: Metadata = { title: 'Order confirmed' };
+export const metadata: Metadata = { title: 'Your order' };
 
 function money(paisa: number): string {
   return new Intl.NumberFormat('en-NP', {
@@ -65,17 +77,32 @@ export default async function OrderReceiptPage({
       customer?.userId ?? null,
     ),
   ]);
+  const codeJobs=await customerRiderCodeJobs(database,{orderNumber,customerId:customer?.userId??null,receiptTokenHash});
   const address = receipt.address;
+  const presentation = orderPresentation(receipt.status, receipt.paymentStatus);
   return (
     <div className="min-h-screen bg-muted/25">
       <SiteHeader />
-      <main className="shell py-10 sm:py-16">
-        <div className="mx-auto max-w-4xl">
+      <main tabIndex={-1} id="main-content" className="shell py-8 sm:py-12">
+        <CustomerDelivery orderNumber={orderNumber}/>
+        <CustomerRiderCode orderNumber={orderNumber} jobs={codeJobs}/>
+        <div className="mx-auto max-w-5xl">
+          <Link
+            href={customer ? '/account/orders' : '/shop'}
+            className="section-link mb-5"
+          >
+            <ArrowLeft className="size-4" />
+            {customer ? 'Back to my orders' : 'Back to the collection'}
+          </Link>
           <div className="rounded-3xl border bg-card p-6 sm:p-10">
-            <CheckCircle2 className="size-12 text-emerald-600" />
-            <p className="mt-6 eyebrow">Order confirmed</p>
+            {receipt.status === 'cancelled' ? (
+              <XCircle className="size-12 text-muted-foreground" />
+            ) : (
+              <CheckCircle2 className="size-12 text-primary" />
+            )}
+            <p className="mt-6 eyebrow">Your order, at a glance</p>
             <h1 className="mt-2 font-heading text-4xl tracking-tight sm:text-5xl">
-              Thank you for supporting Nepal’s makers.
+              {presentation.title}
             </h1>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <p className="text-lg leading-8 text-muted-foreground">
@@ -84,21 +111,26 @@ export default async function OrderReceiptPage({
                   {receipt.orderNumber}
                 </strong>
               </p>
-              <OrderStatusBadge status={receipt.status} />
+                <OrderStatusBadge status={receipt.status} />
+                <Link href={`/track?order=${encodeURIComponent(receipt.orderNumber)}`} className="text-sm font-semibold underline underline-offset-4">Track this order</Link>
             </div>
             <div className="mt-8 grid gap-4 sm:grid-cols-3">
               <Info
                 icon={<Banknote />}
                 title="Payment"
-                detail={`${money(receipt.grandTotalPaisa)} cash on delivery`}
+                detail={presentation.paymentLabel}
               />
               <Info
                 icon={<Truck />}
                 title="Delivery"
                 detail={
-                  receipt.trackingCode
-                    ? `Tracking: ${receipt.trackingCode}`
-                    : `${receipt.estimatedMinDays}–${receipt.estimatedMaxDays} days`
+                  receipt.status === 'cancelled'
+                    ? 'Delivery cancelled'
+                    : receipt.deliveredAt
+                      ? `Delivered ${new Date(receipt.deliveredAt).toLocaleDateString('en-NP')}`
+                      : receipt.trackingCode
+                        ? `Tracking: ${receipt.trackingCode}`
+                        : `Estimate at checkout: ${receipt.estimatedMinDays}–${receipt.estimatedMaxDays} days`
                 }
               />
               <Info
@@ -123,6 +155,9 @@ export default async function OrderReceiptPage({
                         <span className="text-muted-foreground">
                           Sold by {item.sellerName}
                         </span>
+                        <span className="mt-2 block">
+                          <OrderStatusBadge status={item.fulfillmentStatus} />
+                        </span>
                       </span>
                       <strong>{money(item.lineTotalPaisa)}</strong>
                     </li>
@@ -132,6 +167,8 @@ export default async function OrderReceiptPage({
               <aside>
                 <h2 className="font-heading text-2xl">Summary</h2>
                 <dl className="mt-4 space-y-3 text-sm">
+                  {receipt.referralDiscountPaisa>0?<div className="flex justify-between"><dt>Referral discount</dt><dd>−{money(receipt.referralDiscountPaisa)}</dd></div>:null}
+                  {receipt.walletCreditPaisa>0?<div className="flex justify-between"><dt>Shopping credit used</dt><dd>−{money(receipt.walletCreditPaisa)}</dd></div>:null}
                   <div className="flex justify-between">
                     <dt>Items</dt>
                     <dd>{money(receipt.itemSubtotalPaisa)}</dd>
@@ -141,10 +178,15 @@ export default async function OrderReceiptPage({
                     <dd>{money(receipt.deliveryChargePaisa)}</dd>
                   </div>
                   <div className="flex justify-between border-t pt-3 text-base font-semibold">
-                    <dt>Total due</dt>
+                    <dt>Order total</dt>
                     <dd>{money(receipt.grandTotalPaisa)}</dd>
                   </div>
                 </dl>
+                <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                  {receipt.deliveryPricing
+                    ? `Calculated for ${receipt.deliveryPricing.currentStoreCount} ${receipt.deliveryPricing.currentStoreCount===1?'remaining store':'remaining stores'}: ${money(receipt.deliveryPricing.baseChargePaisa)} for the first store, plus 50% of that base for each additional store.`
+                    : 'This order retains the delivery policy and amount recorded when it was placed.'}
+                </p>
               </aside>
             </div>
             <div className="mt-8 rounded-xl bg-secondary/40 p-5 text-sm leading-7">
@@ -162,8 +204,8 @@ export default async function OrderReceiptPage({
               </span>
             </div>
             <p className="mt-6 text-sm leading-6 text-muted-foreground">
-              A Hastabazaar operations member or delivery representative may call
-              to confirm the address.{' '}
+              A HastaBazaar operations member or delivery representative may
+              call to confirm the address.{' '}
               {receipt.paymentStatus === 'paid'
                 ? 'COD payment is recorded as collected.'
                 : receipt.status === 'cancelled'
@@ -185,6 +227,7 @@ export default async function OrderReceiptPage({
                   {receipt.documents.map((document) => (
                     <Button
                       key={document.id}
+                      className="h-auto max-w-full whitespace-normal break-all py-2 text-left"
                       variant="outline"
                       render={
                         <Link
@@ -205,6 +248,7 @@ export default async function OrderReceiptPage({
                 </p>
               )}
             </section>
+            <CancellationHistory db={database} orderNumber={orderNumber}/>
             <CustomerAftercare
               orderNumber={receipt.orderNumber}
               orderStatus={receipt.status}
@@ -216,7 +260,7 @@ export default async function OrderReceiptPage({
               <Button render={<Link href="/shop" />} className="rounded-full">
                 Continue shopping
               </Button>
-              {receipt.status === 'confirmed' ? (
+              {['confirmed','packing','ready_for_pickup','dispatched'].includes(receipt.status) ? (
                 <CustomerOrderCancellation orderNumber={receipt.orderNumber} />
               ) : null}
             </div>

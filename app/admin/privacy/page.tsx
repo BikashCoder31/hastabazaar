@@ -38,7 +38,9 @@ export default async function AdminPrivacyPage() {
             </p>
             <p className="text-sm text-muted-foreground">{row.detail}</p>
             <PrivacyActions
+              key={row.id + ':' + row.status}
               id={row.id}
+              status={row.status}
               canDecide={staff.role === 'super_admin'}
             />
           </article>

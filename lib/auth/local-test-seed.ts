@@ -1,4 +1,7 @@
-import { localTestIdentity, type LocalTestRole } from '@/lib/auth/local-test-access';
+import {
+  localTestIdentity,
+  type LocalTestRole,
+} from '@/lib/auth/local-test-access';
 
 const now = 1788681600000;
 
@@ -16,7 +19,14 @@ export async function ensureLocalTestAccount(
           created_at, updated_at
         ) VALUES (?, ?, ?, NULL, ?, 'en-NP', 'active', ?, ?)`,
       )
-      .bind(userId, identity.userId, identity.email, identity.displayName, now, now),
+      .bind(
+        userId,
+        identity.userId,
+        identity.email,
+        identity.displayName,
+        now,
+        now,
+      ),
     database
       .prepare(
         `UPDATE users
@@ -57,7 +67,7 @@ export async function ensureLocalTestAccount(
             'LOCAL TEST DATA - NOT A LEGAL AUTHORITY', 'LOCAL-TEST-REGISTRATION',
             'PAN', 'LOCAL-TEST-PAN', 'Sita Artisan',
             'Sample seller used only for local interface testing.',
-            'Traditional textiles, gifts and home décor', '+9779800000000', ?,
+            'Traditional textiles, gifts and home decor', '+9779800000000', ?,
             'Madhesh', 'Dhanusha', 'Janakpurdham', '4', 'Local test workshop',
             NULL, 'approved', 'local-test-v1', ?,
             'Approved local test fixture. Not a real seller.',

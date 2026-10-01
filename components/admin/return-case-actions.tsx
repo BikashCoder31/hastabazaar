@@ -14,6 +14,7 @@ type Props = {
   refundStatus: string | null;
   role: 'admin' | 'super_admin';
   quantity: number;
+  canApproveStandard?: boolean;
 };
 
 const operationLabels: Record<string, string> = {
@@ -40,7 +41,7 @@ export function ReturnCaseActions(props: Props) {
   const [key, setKey] = useState(() => crypto.randomUUID());
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
-  const reviewable = [
+  const reviewable = props.canApproveStandard && [
     'requested',
     'under_investigation',
     'needs_customer_changes',
@@ -48,11 +49,11 @@ export function ReturnCaseActions(props: Props) {
   const highValue =
     props.status === 'pending_high_value_approval' &&
     props.role === 'super_admin';
-  const operations = availableOperations(
+  const operations = props.canApproveStandard ? availableOperations(
     props.status,
     props.outcome,
     props.refundStatus,
-  );
+  ) : [];
 
   async function send(endpoint: string, body: Record<string, unknown>) {
     setPending(true);
@@ -130,7 +131,7 @@ export function ReturnCaseActions(props: Props) {
                 >
                   <option value="seller">Seller</option>
                   <option value="carrier">Carrier</option>
-                  <option value="platform">Hastabazaar</option>
+                  <option value="platform">HastaBazaar</option>
                   <option value="buyer">Customer</option>
                 </select>
               </Field>

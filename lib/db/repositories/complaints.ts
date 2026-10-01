@@ -1,3 +1,4 @@
+import { caseBusinessNotificationStatements } from '../../operations/business-notifications';
 import type { StaffRole } from '@/lib/auth/staff';
 import type { SupportedLocale } from '@/lib/marketplace/types';
 
@@ -128,7 +129,7 @@ export async function createCustomerComplaint(
             actor_type, public_message_en, public_message_ne, internal_note,
             request_id, created_at
           ) SELECT ?, id, NULL, 'open', 'customer_created', NULL, 'customer',
-            'Complaint received. Hastabazaar will review it.',
+            'Complaint received. HastaBazaar will review it.',
             'गुनासो प्राप्त भयो। हथकृतिले यसको समीक्षा गर्नेछ।', NULL, ?, ?
             FROM complaints WHERE id = ? AND created_request_id = ?`,
         )
@@ -160,6 +161,14 @@ export async function createCustomerComplaint(
           id,
           options.requestId,
         ),
+      ...(await caseBusinessNotificationStatements(database, {
+        sourceType: 'complaint',
+        sourceId: id,
+        eventId: options.requestId,
+        actorId: options.customerId,
+        action: 'created',
+        now: options.now,
+      })),
     ]);
     if ((results[0].meta.changes ?? 0) !== 1)
       throw new ComplaintConflictError(
@@ -367,6 +376,14 @@ export async function addCustomerComplaintReply(
         options.complaintId,
         options.requestId,
       ),
+    ...(await caseBusinessNotificationStatements(database, {
+      sourceType: 'complaint',
+      sourceId: options.complaintId,
+      eventId: options.requestId,
+      actorId: options.customerId,
+      action: 'customer_response',
+      now: options.now,
+    })),
   ]);
   if ((results[0].meta.changes ?? 0) !== 1)
     throw new ComplaintConflictError(
@@ -494,6 +511,14 @@ export async function respondToComplaintAsSeller(
         options.complaintId,
         options.requestId,
       ),
+    ...(await caseBusinessNotificationStatements(database, {
+      sourceType: 'complaint',
+      sourceId: options.complaintId,
+      eventId: options.requestId,
+      actorId: options.actorId,
+      action: 'seller_response',
+      now: options.now,
+    })),
   ]);
   if ((results[0].meta.changes ?? 0) !== 1)
     throw new ComplaintConflictError(
@@ -718,6 +743,14 @@ export async function updateComplaintAsAdmin(
         options.complaintId,
         options.requestId,
       ),
+    ...(await caseBusinessNotificationStatements(database, {
+      sourceType: 'complaint',
+      sourceId: options.complaintId,
+      eventId: options.requestId,
+      actorId: options.actorId,
+      action: options.action,
+      now: options.now,
+    })),
   ]);
   if ((results[0].meta.changes ?? 0) !== 1)
     throw new ComplaintConflictError(

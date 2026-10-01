@@ -1,3 +1,4 @@
+import { readBoundedForm, BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
 
 import {
@@ -12,7 +13,7 @@ import {
   type ReturnEvidenceInput,
 } from '@/lib/db/repositories/returns';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
+import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import { getCustomerUser } from '@/lib/auth/customer';
 import {
   maximumEvidenceFiles,
@@ -56,8 +57,9 @@ export async function POST(
     return json({ error: 'The return request upload is too large.' }, 413);
   let formData: FormData;
   try {
-    formData = await request.formData();
-  } catch {
+    formData = await readBoundedForm(request, maximumReturnRequestBytes);
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) return json({ error: error.message }, 413);
     return json({ error: 'The return request could not be read.' }, 400);
   }
   const parsed = parseReturnRequest(formData);

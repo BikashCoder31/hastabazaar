@@ -1,3 +1,4 @@
+import { publicProductEligibility } from '@/lib/products/eligibility';
 const CART_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_ITEM_QUANTITY = 10;
 const MAX_CART_LINES = 20;
@@ -11,6 +12,7 @@ interface CartRow {
 export interface CartItemRow {
   id: string;
   productId: string;
+  sellerId: string;
   slug: string;
   nameEn: string;
   nameNe: string | null;
@@ -18,6 +20,7 @@ export interface CartItemRow {
   pricePaisa: number;
   quantity: number;
   inventoryQuantity: number;
+  preparationDays: number;
   productStatus: string;
   primaryMediaId: string | null;
 }
@@ -64,11 +67,13 @@ export async function getCart(database: D1Database, tokenHash: string): Promise<
   const result = await database
     .prepare(
       `SELECT cart_items.id, cart_items.product_id AS productId,
+        products.seller_id AS sellerId,
         products.slug, products.name_en AS nameEn, products.name_ne AS nameNe,
         seller_profiles.trading_name AS tradingName,
         products.price_paisa AS pricePaisa, cart_items.quantity,
         products.inventory_quantity AS inventoryQuantity,
-        products.status AS productStatus,
+        products.preparation_days AS preparationDays,
+        CASE WHEN ${publicProductEligibility()} THEN 'published' ELSE 'archived' END AS productStatus,
         (SELECT product_media.id FROM product_media
           WHERE product_media.product_id = products.id
           ORDER BY product_media.sort_order ASC LIMIT 1) AS primaryMediaId
@@ -102,7 +107,7 @@ export async function addCartItem(
     throw new CartConflictError(`Choose a quantity from 1 to ${MAX_ITEM_QUANTITY}.`);
   }
   const product = await database
-    .prepare(`SELECT inventory_quantity AS inventoryQuantity FROM products WHERE id = ? AND status = 'published' LIMIT 1`)
+    .prepare(`SELECT inventory_quantity AS inventoryQuantity FROM products WHERE id = ? AND ${publicProductEligibility()} LIMIT 1`)
     .bind(productId)
     .first<{ inventoryQuantity: number }>();
   if (!product || product.inventoryQuantity < 1) throw new CartConflictError('This product is currently unavailable.');

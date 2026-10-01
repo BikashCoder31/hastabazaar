@@ -1,6 +1,7 @@
+import { hasStaffPermissionBySubject } from '@/lib/db/repositories/staff-permissions';
 import { env } from 'cloudflare:workers';
 
-import { getChatGPTUser } from '@/app/chatgpt-auth';
+import { getAuthenticatedUser } from '@/app/auth';
 import { requireDatabase, requireMediaBucket } from '@/lib/db/d1';
 import { getProductMediaObject } from '@/lib/db/repositories/products';
 
@@ -18,6 +19,7 @@ async function canViewPrivateMedia(
   authSubject: string,
   sellerId: string,
 ): Promise<boolean> {
+  if (await hasStaffPermissionBySubject(database, authSubject, 'product.review')) return true;
   return Boolean(
     await database
       .prepare(
@@ -27,8 +29,7 @@ async function canViewPrivateMedia(
          LEFT JOIN seller_profiles ON seller_profiles.user_id = users.id
          WHERE users.auth_subject = ? AND users.status = 'active'
            AND (
-             user_roles.role IN ('admin', 'super_admin')
-             OR (user_roles.role = 'seller' AND seller_profiles.id = ? AND seller_profiles.status = 'approved')
+             (user_roles.role = 'seller' AND seller_profiles.id = ? AND seller_profiles.status = 'approved')
            )
          LIMIT 1`,
       )
@@ -49,7 +50,7 @@ export async function GET(
 
   const isPublic = media.productStatus === 'published';
   if (!isPublic) {
-    const identity = await getChatGPTUser();
+    const identity = await getAuthenticatedUser();
     if (!identity || !(await canViewPrivateMedia(database, identity.userId, media.sellerId))) {
       return notFound();
     }
@@ -57,13 +58,13 @@ export async function GET(
 
   const object = await requireMediaBucket(bindings).get(media.objectKey);
   if (!object) return notFound();
-  const mimeType = new Set(['image/jpeg', 'image/png', 'image/webp']).has(media.mimeType)
+  const mimeType = new Set(['image/jpeg', 'image/png', 'image/webp', 'video/mp4']).has(media.mimeType)
     ? media.mimeType
     : 'application/octet-stream';
   return new Response(object.body, {
     headers: {
       'Content-Type': mimeType,
-      'Cache-Control': isPublic ? 'public, max-age=86400' : 'private, no-store, max-age=0',
+      'Cache-Control': 'private, no-store, max-age=0',
       'X-Content-Type-Options': 'nosniff',
       ETag: object.httpEtag,
     },

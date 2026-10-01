@@ -1,14 +1,26 @@
 'use client';
 
+import {LocationPicker} from '@/components/delivery/location-picker';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MapPin, Pencil, Plus, Trash2, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { sendJson } from '@/lib/http/client-request';
 import type { CustomerAddressRow } from '@/lib/db/repositories/customers';
-import { NEPAL_PROVINCES } from '@/lib/checkout/validation';
+import { NEPAL_PROVINCES, DISTRICTS_BY_PROVINCE,normalizeProvince,normalizeDistrict } from '@/lib/checkout/nepal-address';
 
 export function AddressManager({
   addresses,
@@ -19,11 +31,21 @@ export function AddressManager({
   const [editing, setEditing] = useState<CustomerAddressRow | null | undefined>(
     undefined,
   );
+  const errorSummary=useRef<HTMLParagraphElement>(null);
+  const addressForm=useRef<HTMLFormElement>(null);
+  const openButton=useRef<HTMLButtonElement>(null);
+  useEffect(()=>{if(editing!==undefined) addressForm.current?.querySelector<HTMLInputElement>('input[name=label]')?.focus();},[editing]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  useEffect(()=>{if(error) errorSummary.current?.focus();},[error]);
+  const [deleting, setDeleting] = useState<CustomerAddressRow | null>(null);
 
-  async function save(event: { preventDefault(): void; currentTarget: HTMLFormElement }) {
+  async function save(event: {
+    preventDefault(): void;
+    currentTarget: HTMLFormElement;
+  }) {
     event.preventDefault();
+    if (busy) return;
     setBusy(true);
     setError('');
     const data = new FormData(event.currentTarget);
@@ -31,35 +53,53 @@ export function AddressManager({
     const url = editing?.id
       ? `/api/account/addresses/${editing.id}`
       : '/api/account/addresses';
-    const response = await fetch(url, {
-      method: editing?.id ? 'PATCH' : 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        address: { ...address, isDefault: data.get('isDefault') === 'on' },
-        idempotencyKey: crypto.randomUUID(),
-      }),
-    });
-    const result = (await response.json()) as { error?: string };
-    setBusy(false);
-    if (!response.ok)
-      return setError(result.error || 'Address could not be saved.');
-    setEditing(undefined);
-    router.refresh();
+    try {
+      await sendJson(
+        url,
+        editing?.id ? 'PATCH' : 'POST',
+        {
+          address: { ...address, location: data.get('latitude') && data.get('longitude') ? {latitude:Number(data.get('latitude')),longitude:Number(data.get('longitude'))}:undefined, isDefault: data.get('isDefault') === 'on' },
+          idempotencyKey: crypto.randomUUID(),
+        },
+        'Address could not be saved.',
+      );
+      setEditing(undefined);
+      router.refresh();
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : 'Address could not be saved.',
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function remove(id: string) {
+    if (busy) return;
     setBusy(true);
     setError('');
-    const response = await fetch(`/api/account/addresses/${id}`, {
-      method: 'DELETE',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ idempotencyKey: crypto.randomUUID() }),
-    });
-    const result = (await response.json()) as { error?: string };
-    setBusy(false);
-    if (!response.ok)
-      return setError(result.error || 'Address could not be deleted.');
-    router.refresh();
+    try {
+      await sendJson(
+        `/api/account/addresses/${id}`,
+        'DELETE',
+        { idempotencyKey: crypto.randomUUID() },
+        'Address could not be deleted.',
+      );
+      setDeleting(null);
+      if (editing?.id === id) setEditing(undefined);
+      router.refresh();
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : 'Address could not be deleted.',
+      );
+      setDeleting(null);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -67,22 +107,43 @@ export function AddressManager({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="eyebrow">Delivery book</p>
-          <h1 className="mt-2 font-heading text-4xl">Saved addresses</h1>
+          <h1 className="mt-3 font-heading text-4xl tracking-tight sm:text-5xl">
+            Your favourite destinations.
+          </h1>
+          <p className="mt-3 max-w-xl text-base leading-7 text-muted-foreground">
+            Home, work, or someone special. Save an address for an easier
+            checkout.
+          </p>
         </div>
-        <Button onClick={() => setEditing(null)}>
+        <Button
+          ref={openButton}
+          disabled={busy}
+          className="min-h-11 rounded-full px-5"
+          onClick={() => {
+            setError('');
+            setEditing(null);
+          }}
+        >
           <Plus /> Add address
         </Button>
       </div>
       {error ? (
         <p
           role="alert"
+          ref={errorSummary}
+          tabIndex={-1}
           className="mt-5 rounded-xl bg-destructive/10 p-4 text-sm text-destructive"
         >
           {error}
         </p>
       ) : null}
       {editing !== undefined ? (
-        <form onSubmit={save} className="mt-7 rounded-2xl border bg-card p-6">
+        <form
+          ref={addressForm}
+          key={editing?.id ?? 'new'}
+          onSubmit={save}
+          className="customer-form mt-7 rounded-2xl border bg-card p-6"
+        >
           <div className="flex justify-between gap-4">
             <h2 className="font-heading text-2xl">
               {editing ? 'Edit address' : 'New address'}
@@ -91,8 +152,9 @@ export function AddressManager({
               type="button"
               variant="ghost"
               size="icon"
-              onClick={() => setEditing(undefined)}
+              onClick={() => {setEditing(undefined);openButton.current?.focus();}}
               aria-label="Close form"
+              disabled={busy}
             >
               <X />
             </Button>
@@ -113,6 +175,8 @@ export function AddressManager({
             />
             <Field
               name="phone"
+              type="tel"
+              autoComplete="tel"
               label="Recipient phone"
               defaultValue={editing?.phone ?? ''}
               placeholder="98XXXXXXXX"
@@ -123,7 +187,7 @@ export function AddressManager({
               <select
                 id="province"
                 name="province"
-                defaultValue={editing?.province ?? 'Madhesh'}
+                defaultValue={normalizeProvince(editing?.province ?? '') ?? 'Madhesh'}
                 className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
               >
                 {NEPAL_PROVINCES.map((item) => (
@@ -134,9 +198,13 @@ export function AddressManager({
             <Field
               name="district"
               label="District"
-              defaultValue={editing?.district ?? ''}
+              defaultValue={normalizeDistrict(editing?.district ?? '') ?? editing?.district ?? ''}
+              list="address-districts"
+              aria-describedby="address-district-help"
               required
             />
+            <datalist id="address-districts">{Object.values(DISTRICTS_BY_PROVINCE).flat().map(name=><option key={name} value={name}>{name}</option>)}</datalist>
+            <p id="address-district-help" className="text-xs text-muted-foreground sm:col-span-2">Choose a district in your selected province. For Nawalparasi and Rukum, choose East or West.</p>
             <Field
               name="municipality"
               label="Municipality / rural municipality"
@@ -146,6 +214,9 @@ export function AddressManager({
             <Field
               name="ward"
               label="Ward"
+              inputMode="numeric"
+              pattern="0?[1-9]|[1-9][0-9]"
+              title="Ward number from 1 to 99"
               defaultValue={editing?.ward ?? ''}
             />
             <Field
@@ -173,7 +244,8 @@ export function AddressManager({
               />{' '}
               Use as default
             </label>
-            <div className="flex justify-end">
+            <LocationPicker key={editing?.id??"new"} initial={editing?.latitude!=null && editing?.longitude!=null ? {latitude:editing.latitude,longitude:editing.longitude}:undefined} />
+              <div className="flex justify-end">
               <Button type="submit" disabled={busy}>
                 {busy ? 'Saving…' : 'Save address'}
               </Button>
@@ -186,9 +258,9 @@ export function AddressManager({
           {addresses.map((address) => (
             <article
               key={address.id}
-              className="rounded-2xl border bg-card p-5"
+              className={`rounded-2xl border bg-card p-5 ${address.isDefault ? 'border-primary/40' : ''}`}
             >
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="flex gap-3">
                   <MapPin className="mt-1 size-5 text-primary" />
                   <div>
@@ -200,7 +272,7 @@ export function AddressManager({
                         </span>
                       ) : null}
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    <p className="mt-2 break-words text-base leading-7 text-muted-foreground">
                       {address.recipientName} · {address.phone}
                       <br />
                       {address.locality}
@@ -216,6 +288,7 @@ export function AddressManager({
                     variant="ghost"
                     size="icon"
                     onClick={() => setEditing(address)}
+                    disabled={busy}
                     aria-label={`Edit ${address.label}`}
                   >
                     <Pencil />
@@ -223,7 +296,7 @@ export function AddressManager({
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => void remove(address.id)}
+                    onClick={() => setDeleting(address)}
                     disabled={busy}
                     aria-label={`Delete ${address.label}`}
                   >
@@ -235,10 +308,39 @@ export function AddressManager({
           ))}
         </div>
       ) : (
-        <div className="mt-7 rounded-2xl border border-dashed p-10 text-center text-muted-foreground">
-          Save a delivery address for faster checkout.
+        <div className="mt-7 rounded-2xl border border-dashed bg-card p-10 text-center text-muted-foreground">
+          <MapPin className="mx-auto mb-4 size-9 text-primary" />
+          Your address book is waiting. Add your first delivery address above.
         </div>
       )}
+      <AlertDialog
+        open={Boolean(deleting)}
+        onOpenChange={(open) => {
+          if (!open && !busy) setDeleting(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {deleting?.label}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the saved address from your address book. Existing
+              orders keep their original delivery details.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Keep address</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={busy}
+              onClick={() => {
+                if (deleting) void remove(deleting.id);
+              }}
+            >
+              {busy ? 'Removing…' : 'Remove address'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

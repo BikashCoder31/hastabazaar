@@ -1,3 +1,5 @@
+import { StaffPermissionManager } from '@/components/admin/staff-permission-manager';
+import { getStaffPermissionProfile, listStaffPermissionChanges } from '@/lib/db/repositories/staff-permissions';
 import { env } from 'cloudflare:workers';
 import { KeyRound, UsersRound } from 'lucide-react';
 
@@ -8,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { listStaffInvitations, listStaffMembers } from '@/lib/db/repositories/staff';
+import { isEmailDeliveryConfigured } from '@/lib/email/staff-invitation';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,13 +20,16 @@ const dateFormatter = new Intl.DateTimeFormat('en-NP', {
 });
 
 export default async function TeamAccessPage() {
-  await requireStaffPage('/admin/team', 'admin.invite');
+  const staff = await requireStaffPage('/admin/team', 'admin.invite');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const [members, invitations] = await Promise.all([
     listStaffMembers(database),
     listStaffInvitations(database),
   ]);
 
+  const changes = await listStaffPermissionChanges(database);
+  const superAdminIds = new Set(members.filter(m => m.role === 'super_admin').map(m => m.id));
+  const permissionMembers = await Promise.all(members.filter(m => m.role === 'admin' && !superAdminIds.has(m.id)).map(async m => ({...await getStaffPermissionProfile(database,m.id),displayName:m.displayName,email:m.email})));
   return (
     <div className="space-y-7">
       <div>
@@ -34,12 +40,16 @@ export default async function TeamAccessPage() {
         </p>
       </div>
 
+      <StaffPermissionManager actorId={staff.id} members={permissionMembers} {...changes} />
+
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><KeyRound className="size-5 text-primary" /> Create staff access</CardTitle></CardHeader>
         <CardContent>
           <StaffInvitationManager pendingInvitations={invitations.filter((invitation) => invitation.status === 'pending').map(({ id, email }) => ({ id, email }))} />
           <p className="mt-5 text-xs leading-5 text-muted-foreground">
-            Invitations expire after 7 days. Email delivery is not connected yet, so share the protected <strong>/admin</strong> address with the invited person separately.
+            Invitations expire after 7 days. {isEmailDeliveryConfigured()
+              ? 'The invited person will receive an email with the protected staff workspace address.'
+              : <>Email delivery needs configuration, so share the protected <strong>/admin</strong> address with the invited person separately.</>}
           </p>
         </CardContent>
       </Card>

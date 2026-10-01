@@ -1,12 +1,17 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { productDiscountLabel } from '@/lib/products/discount';
 import Link from 'next/link';
 import {
   CheckCircle2,
   ImagePlus,
   LoaderCircle,
+  Plus,
+  RefreshCw,
   ShieldCheck,
+  Trash2,
+  Video,
 } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -71,6 +76,240 @@ function dateInputValue(value: number | null | undefined): string {
   return value ? new Date(value).toISOString().slice(0, 10) : '';
 }
 
+function discountPercentage(price: string, originalPrice: string): string {
+  const current = Number(price);
+  const original = Number(originalPrice);
+  if (
+    !Number.isFinite(current) ||
+    !Number.isFinite(original) ||
+    original <= current ||
+    current < 0
+  ) {
+    return '';
+  }
+  return (((original - current) / original) * 100)
+    .toFixed(2)
+    .replace(/\.00$/, '')
+    .replace(/(\.\d)0$/, '$1');
+}
+
+function useFilePreview(file: File | null): string | null {
+  const url = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
+  useEffect(() => {
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [url]);
+  return url;
+}
+
+function ImageUploadSlot({
+  slot,
+  required,
+  removable,
+  onRemove,
+}: {
+  slot: number;
+  required: boolean;
+  removable: boolean;
+  onRemove: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const preview = useFilePreview(file);
+  return (
+    <div className="rounded-xl border p-4">
+      <div className="aspect-[4/3] overflow-hidden rounded-lg bg-muted">
+        {preview ? (
+          <div
+            title="Selected product preview"
+            className="size-full bg-cover bg-center"
+            style={{ backgroundImage: `url(${preview})` }}
+          />
+        ) : (
+          <div className="grid size-full place-items-center text-sm text-muted-foreground">
+            <ImagePlus className="mb-2 size-7" />
+            Image {slot}
+            {required ? ' *' : ''}
+          </div>
+        )}
+      </div>
+      <Input
+        ref={inputRef}
+        className="mt-3 h-11 py-2"
+        name={required && slot <= 4 ? `image${slot}` : 'images'}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        required={required}
+        onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)}
+      />
+      <div className="mt-3 flex flex-wrap gap-2">
+        {file ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              if (inputRef.current) inputRef.current.value = '';
+              setFile(null);
+            }}
+          >
+            <Trash2 /> Remove image
+          </Button>
+        ) : null}
+        {removable ? (
+          <Button type="button" size="sm" variant="ghost" onClick={onRemove}>
+            Remove slot
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ExistingImageEditor({
+  media,
+  removed,
+  onToggleRemoved,
+}: {
+  media: SellerProductRevision['media'][number];
+  removed: boolean;
+  onToggleRemoved: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [replacement, setReplacement] = useState<File | null>(null);
+  const preview = useFilePreview(replacement);
+  return (
+    <div className={`rounded-xl border p-4 ${removed ? 'opacity-60' : ''}`}>
+      <div className="aspect-[4/3] overflow-hidden rounded-lg bg-muted">
+        <div
+          title={preview ? 'Replacement image preview' : media.originalName}
+          className="size-full bg-cover bg-center"
+          style={{
+            backgroundImage: `url(${preview ?? `/api/product-media/${media.id}`})`,
+          }}
+        />
+      </div>
+      <p className="mt-2 truncate text-xs text-muted-foreground">
+        {media.originalName}
+      </p>
+      {removed ? (
+        <input type="hidden" name="removeMediaId" value={media.id} />
+      ) : null}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {!removed ? (
+          <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm font-medium">
+            <RefreshCw className="size-4" /> Replace image
+            <input
+              ref={inputRef}
+              className="sr-only"
+              name={`replaceImage:${media.id}`}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(event) =>
+                setReplacement(event.currentTarget.files?.[0] ?? null)
+              }
+            />
+          </label>
+        ) : null}
+        <Button
+          type="button"
+          size="sm"
+          variant={removed ? 'outline' : 'ghost'}
+          onClick={() => {
+            if (!removed && inputRef.current) inputRef.current.value = '';
+            if (!removed) setReplacement(null);
+            onToggleRemoved();
+          }}
+        >
+          {removed ? (
+            'Undo remove'
+          ) : (
+            <>
+              <Trash2 /> Remove image
+            </>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function VideoUploadControl({
+  existing,
+}: {
+  existing?: SellerProductRevision['media'][number];
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [removed, setRemoved] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const preview = useFilePreview(file);
+  const source =
+    preview ??
+    (existing && !removed ? `/api/product-media/${existing.id}` : null);
+  return (
+    <div className="rounded-xl border p-4">
+      {source ? (
+        <video
+          controls
+          muted
+          preload="metadata"
+          src={source}
+          className="max-h-80 w-full rounded-lg bg-black"
+        />
+      ) : (
+        <div className="grid min-h-40 place-items-center rounded-lg bg-muted text-sm text-muted-foreground">
+          <Video className="mb-2 size-8" /> No video uploaded
+        </div>
+      )}
+      {removed && existing ? (
+        <input type="hidden" name="removeMediaId" value={existing.id} />
+      ) : null}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm font-medium">
+          <RefreshCw className="size-4" />{' '}
+          {source ? 'Replace video' : 'Upload video'}
+          <input
+            ref={inputRef}
+            className="sr-only"
+            name={existing ? 'replacementVideo' : 'video'}
+            type="file"
+            accept="video/mp4"
+            onChange={(event) => {
+              setFile(event.currentTarget.files?.[0] ?? null);
+              setRemoved(false);
+            }}
+          />
+        </label>
+        {source ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              if (inputRef.current) inputRef.current.value = '';
+              setFile(null);
+              setRemoved(Boolean(existing));
+            }}
+          >
+            <Trash2 /> Remove video
+          </Button>
+        ) : null}
+        {removed ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setRemoved(false)}
+          >
+            Restore video
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function ProductSubmissionForm({
   categories,
   occasions,
@@ -82,7 +321,40 @@ export function ProductSubmissionForm({
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [state, setState] = useState<SubmissionState>({ status: 'idle' });
+  const [price, setPrice] = useState(
+    initial ? String(initial.pricePaisa / 100) : '',
+  );
+  const [originalPrice, setOriginalPrice] = useState(
+    initial?.compareAtPricePaisa
+      ? String(initial.compareAtPricePaisa / 100)
+      : '',
+  );
+  const [discountPercent, setDiscountPercent] = useState(() =>
+    discountPercentage(
+      initial ? String(initial.pricePaisa / 100) : '',
+      initial?.compareAtPricePaisa
+        ? String(initial.compareAtPricePaisa / 100)
+        : '',
+    ),
+  );
+  const discount = productDiscountLabel(
+    Math.round(Number(price) * 100),
+    Math.round(Number(originalPrice) * 100),
+  );
   const isRevision = Boolean(initial);
+  const [warrantyChoice, setWarrantyChoice] = useState(
+    initial?.warranty ? 'preserve' : 'no',
+  );
+  const [returnEligible, setReturnEligible] = useState(
+    initial ? Boolean(initial.returnEligible) : true,
+  );
+  const [imageSlots, setImageSlots] = useState(() =>
+    initial ? ([] as number[]) : [1, 2, 3, 4],
+  );
+  const [nextImageSlot, setNextImageSlot] = useState(5);
+  const [removedMedia, setRemovedMedia] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   useEffect(() => {
     const modelContext = (
@@ -97,28 +369,18 @@ export function ProductSubmissionForm({
             name: 'prepare_product_submission',
             title: 'Prepare product submission',
             description:
-              'Fill the main text and pricing fields for a Hastabazaar product listing. The seller must review the form, choose a category, attach real product photos, and submit it.',
+              'Fill the main text and pricing fields for a HastaBazaar product listing. The seller must review the form, choose a category, attach real product photos, and submit it.',
             inputSchema: {
               type: 'object',
               properties: {
-                sku: { type: 'string' },
                 nameEn: { type: 'string' },
                 descriptionEn: { type: 'string' },
                 price: { type: 'string' },
                 inventoryQuantity: { type: 'string' },
-                producer: { type: 'string' },
-                materials: { type: 'string' },
                 dimensions: { type: 'string' },
                 careInstructions: { type: 'string' },
               },
-              required: [
-                'sku',
-                'nameEn',
-                'descriptionEn',
-                'price',
-                'producer',
-                'materials',
-              ],
+              required: ['nameEn', 'descriptionEn', 'price'],
               additionalProperties: false,
             },
             annotations: { readOnlyHint: false, untrustedContentHint: false },
@@ -134,7 +396,7 @@ export function ProductSubmissionForm({
               }
               form.scrollIntoView({ behavior: 'smooth', block: 'start' });
               form
-                .querySelector<HTMLInputElement>('input[name="sku"]')
+                .querySelector<HTMLInputElement>('input[name="nameEn"]')
                 ?.focus();
               return {
                 status: 'prepared',
@@ -155,6 +417,7 @@ export function ProductSubmissionForm({
     event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>,
   ) {
     event.preventDefault();
+    if (state.status === 'submitting') return;
     setState({ status: 'submitting' });
     const form = event.currentTarget;
     try {
@@ -172,6 +435,22 @@ export function ProductSubmissionForm({
       if (!response.ok)
         throw new Error(result.error || 'Product submission failed.');
       form.reset();
+      setPrice(initial ? String(initial.pricePaisa / 100) : '');
+      setOriginalPrice(
+        initial?.compareAtPricePaisa
+          ? String(initial.compareAtPricePaisa / 100)
+          : '',
+      );
+      setDiscountPercent(
+        discountPercentage(
+          initial ? String(initial.pricePaisa / 100) : '',
+          initial?.compareAtPricePaisa
+            ? String(initial.compareAtPricePaisa / 100)
+            : '',
+        ),
+      );
+      setWarrantyChoice(initial?.warranty ? 'preserve' : 'no');
+      setReturnEligible(initial ? Boolean(initial.returnEligible) : true);
       setState({ status: 'success' });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
@@ -188,12 +467,14 @@ export function ProductSubmissionForm({
       <div className="rounded-2xl border bg-card p-8 shadow-sm">
         <CheckCircle2 className="size-10 text-primary" />
         <h2 className="mt-5 font-heading text-3xl">
-          {isRevision
-            ? 'Product revised and resubmitted'
-            : 'Product sent for review'}
+          {initial?.status === 'published' || initial?.status === 'approved'
+            ? 'Product updated successfully'
+            : isRevision
+              ? 'Product revised and resubmitted'
+              : 'Product sent for review'}
         </h2>
         <p className="mt-3 max-w-xl leading-7 text-muted-foreground">
-          Hastabazaar will verify the listing before it can appear in the public
+          HastaBazaar will verify the listing before it can appear in the public
           shop.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
@@ -205,7 +486,10 @@ export function ProductSubmissionForm({
           </Link>
           <Button
             variant="outline"
-            onClick={() => setState({ status: 'idle' })}
+            render={<Link href="/seller/products/new" />}
+            onClick={() => {
+              if (!isRevision) setState({ status: 'idle' });
+            }}
           >
             Add another product
           </Button>
@@ -218,16 +502,27 @@ export function ProductSubmissionForm({
     <form
       ref={formRef}
       onSubmit={submit}
-      className="space-y-9 rounded-2xl border bg-card p-6 shadow-sm sm:p-8"
+      className="seller-form space-y-9 rounded-2xl border bg-card p-6 shadow-sm sm:p-8"
     >
+      {initial ? (
+        <input
+          type="hidden"
+          name="reviewRequestId"
+          value={initial.reviewRequestId ?? ''}
+        />
+      ) : null}
+      <p className="text-sm text-muted-foreground">
+        * Required field. Conditional requirements are shown beside the field.
+      </p>
       <FieldSet>
         <FieldLegend>Listing identity</FieldLegend>
         <FieldDescription>
-          Use a unique SKU from your own stock records.
+          Each new product receives a unique SKU automatically. Existing SKUs
+          are retained.
         </FieldDescription>
         <FieldGroup className="grid gap-5 md:grid-cols-2">
           <Field>
-            <FieldLabel htmlFor="categoryId">Category</FieldLabel>
+            <FieldLabel htmlFor="categoryId">Category *</FieldLabel>
             <NativeSelect
               id="categoryId"
               name="categoryId"
@@ -243,20 +538,9 @@ export function ProductSubmissionForm({
               ))}
             </NativeSelect>
           </Field>
+          {initial ? <p className="text-sm">SKU: {initial.sku}</p> : null}
           <Field>
-            <FieldLabel htmlFor="sku">SKU</FieldLabel>
-            <Input
-              id="sku"
-              name="sku"
-              required
-              minLength={3}
-              maxLength={40}
-              placeholder="HK-BAG-001"
-              defaultValue={initial?.sku}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="nameEn">Product name — English</FieldLabel>
+            <FieldLabel htmlFor="nameEn">Product name — English *</FieldLabel>
             <Input
               id="nameEn"
               name="nameEn"
@@ -269,7 +553,7 @@ export function ProductSubmissionForm({
       </FieldSet>
 
       <FieldSet>
-        <FieldLegend>Gift occasions</FieldLegend>
+        <FieldLegend>Gift occasions *</FieldLegend>
         <FieldDescription>
           Select 1–5 occasions where this product is a good fit. These choices
           power customer discovery and are checked during moderation.
@@ -299,11 +583,11 @@ export function ProductSubmissionForm({
       </FieldSet>
 
       <FieldSet>
-        <FieldLegend>Story and details</FieldLegend>
+        <FieldLegend>Product description</FieldLegend>
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="descriptionEn">
-              Description — English
+              Description — English *
             </FieldLabel>
             <Textarea
               id="descriptionEn"
@@ -316,26 +600,6 @@ export function ProductSubmissionForm({
             />
           </Field>
           <div className="grid gap-5 md:grid-cols-2">
-            <Field>
-              <FieldLabel htmlFor="producer">Producer or maker</FieldLabel>
-              <Input
-                id="producer"
-                name="producer"
-                required
-                maxLength={180}
-                defaultValue={initial?.producer}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="materials">Materials</FieldLabel>
-              <Input
-                id="materials"
-                name="materials"
-                required
-                maxLength={1000}
-                defaultValue={initial?.materials}
-              />
-            </Field>
             <Field>
               <FieldLabel htmlFor="dimensions">Dimensions</FieldLabel>
               <Input
@@ -358,6 +622,52 @@ export function ProductSubmissionForm({
               />
             </Field>
           </div>
+          <div className="grid gap-5 md:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="size">Size</FieldLabel>
+              <Input
+                id="size"
+                name="size"
+                maxLength={300}
+                placeholder="For example, Medium or 30 cm"
+                defaultValue={initial?.size ?? ''}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="colour">Colour</FieldLabel>
+              <Input
+                id="colour"
+                name="colour"
+                maxLength={300}
+                placeholder="For example, Natural brown"
+                defaultValue={initial?.colour ?? ''}
+              />
+            </Field>
+          </div>
+          <Field>
+            <FieldLabel htmlFor="variations">Available variations</FieldLabel>
+            <Textarea
+              id="variations"
+              name="variations"
+              maxLength={1500}
+              rows={3}
+              placeholder="List the selectable sizes, colours, or other variants."
+              defaultValue={initial?.variations ?? ''}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="specifications">
+              Basic product specifications
+            </FieldLabel>
+            <Textarea
+              id="specifications"
+              name="specifications"
+              maxLength={2000}
+              rows={4}
+              placeholder="Record other verified product specifications."
+              defaultValue={initial?.specifications ?? ''}
+            />
+          </Field>
           <Field>
             <FieldLabel htmlFor="careInstructions">
               Care instructions
@@ -383,22 +693,66 @@ export function ProductSubmissionForm({
             />
           </Field>
           <Field>
-            <FieldLabel htmlFor="warranty">Warranty or guarantee</FieldLabel>
-            <Input
-              id="warranty"
-              name="warranty"
-              maxLength={500}
-              placeholder="For example, 30-day workmanship guarantee; or Not offered"
-              defaultValue={initial?.warranty ?? ''}
-            />
+            <FieldLabel htmlFor="warrantyOffered">
+              Warranty or guarantee *
+            </FieldLabel>
+            {initial?.warranty ? (
+              <p className="text-sm text-muted-foreground">
+                Existing terms: {initial.warranty}. Keep these unless you intend
+                to replace them.
+              </p>
+            ) : null}
+            <NativeSelect
+              id="warrantyOffered"
+              name={
+                warrantyChoice === 'preserve' ? undefined : 'warrantyOffered'
+              }
+              value={warrantyChoice}
+              onChange={(event) => setWarrantyChoice(event.target.value)}
+              required
+            >
+              {initial?.warranty ? (
+                <NativeSelectOption value="preserve">
+                  Keep existing terms
+                </NativeSelectOption>
+              ) : null}
+              <NativeSelectOption value="no">No</NativeSelectOption>
+              <NativeSelectOption value="yes">Yes</NativeSelectOption>
+            </NativeSelect>
+            {warrantyChoice === 'yes' ? (
+              <div>
+                <p className="text-sm text-muted-foreground">
+                  Duration * — enter at least one positive unit; leave other
+                  units blank.
+                </p>
+                <div className="grid grid-cols-3 gap-3">
+                  {['Years', 'Months', 'Days'].map((unit) => (
+                    <Field key={unit}>
+                      <FieldLabel htmlFor={'warranty' + unit}>
+                        {unit}
+                      </FieldLabel>
+                      <Input
+                        id={'warranty' + unit}
+                        name={'warranty' + unit}
+                        type="number"
+                        min={0}
+                        max={999999}
+                        step={1}
+                      />
+                    </Field>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </Field>
           <Field>
             <FieldLabel htmlFor="returnConditions">
-              Return conditions
+              Return conditions {returnEligible ? '*' : '(optional)'}
             </FieldLabel>
             <Textarea
               id="returnConditions"
               name="returnConditions"
+              required={returnEligible}
               maxLength={1500}
               minLength={10}
               rows={3}
@@ -409,7 +763,7 @@ export function ProductSubmissionForm({
           <div className="grid gap-5 md:grid-cols-3">
             <Field>
               <FieldLabel htmlFor="preparationDays">
-                Preparation time (days)
+                Time needed to prepare the product (days) *
               </FieldLabel>
               <Input
                 id="preparationDays"
@@ -461,42 +815,83 @@ export function ProductSubmissionForm({
 
       <FieldSet>
         <FieldLegend>Price and stock</FieldLegend>
+        <output
+          aria-live="polite"
+          className="text-sm font-semibold text-primary"
+        >
+          {discount ? `Customer price discount: ${discount}` : ''}
+        </output>
         <FieldDescription>
-          Enter Nepalese rupees. Hastabazaar stores money precisely in paisa.
+          Enter Nepalese rupees. HastaBazaar stores money precisely in paisa.
         </FieldDescription>
-        <FieldGroup className="grid gap-5 md:grid-cols-3">
-          <Field>
-            <FieldLabel htmlFor="price">Selling price (NPR)</FieldLabel>
-            <Input
-              id="price"
-              name="price"
-              required
-              inputMode="decimal"
-              placeholder="1500.00"
-              defaultValue={
-                initial ? (initial.pricePaisa / 100).toFixed(2) : undefined
-              }
-            />
-          </Field>
+        <FieldGroup className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
           <Field>
             <FieldLabel htmlFor="compareAtPrice">
-              Original price (optional)
+              Original price (NPR)
             </FieldLabel>
             <Input
               id="compareAtPrice"
               name="compareAtPrice"
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                setOriginalPrice(value);
+                setDiscountPercent(discountPercentage(price, value));
+              }}
               inputMode="decimal"
-              placeholder="1800.00"
-              defaultValue={
-                initial?.compareAtPricePaisa
-                  ? (initial.compareAtPricePaisa / 100).toFixed(2)
-                  : ''
-              }
+              placeholder="2000.00"
+              value={originalPrice}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="discountPercentage">
+              Discount percentage
+            </FieldLabel>
+            <Input
+              id="discountPercentage"
+              name="discountPercentage"
+              type="number"
+              min={0}
+              max={99.99}
+              step="0.01"
+              placeholder="20"
+              value={discountPercent}
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                setDiscountPercent(value);
+                const percent = Number(value);
+                const original = Number(originalPrice);
+                if (
+                  Number.isFinite(percent) &&
+                  percent >= 0 &&
+                  percent < 100 &&
+                  original > 0
+                ) {
+                  setPrice((original * (1 - percent / 100)).toFixed(2));
+                }
+              }}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="price">
+              Current / selling price (NPR) *
+            </FieldLabel>
+            <Input
+              id="price"
+              name="price"
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                setPrice(value);
+                setDiscountPercent(discountPercentage(value, originalPrice));
+              }}
+              required
+              inputMode="decimal"
+              placeholder="1600.00"
+              value={price}
             />
           </Field>
           <Field>
             <FieldLabel htmlFor="inventoryQuantity">
-              Available quantity
+              Available quantity *
             </FieldLabel>
             <Input
               id="inventoryQuantity"
@@ -515,10 +910,11 @@ export function ProductSubmissionForm({
             id="returnEligible"
             name="returnEligible"
             value="yes"
-            defaultChecked={initial ? Boolean(initial.returnEligible) : true}
+            checked={returnEligible}
+            onCheckedChange={(checked) => setReturnEligible(Boolean(checked))}
           />
           <FieldLabel htmlFor="returnEligible" className="font-normal">
-            Eligible for the standard Hastabazaar return policy
+            Eligible for the standard HastaBazaar return policy
           </FieldLabel>
         </Field>
       </FieldSet>
@@ -527,30 +923,64 @@ export function ProductSubmissionForm({
         <FieldLegend>Product photos</FieldLegend>
         <FieldDescription>
           {isRevision
-            ? `You already have ${initial?.mediaCount ?? 0} photo(s). Add replacements or extra angles only if the total will remain at 5 or fewer.`
-            : 'Attach 1–5 clear photos. JPG, PNG, or WebP; maximum 5 MB each.'}
+            ? `Manage the ${initial?.mediaCount ?? 0} saved photo(s), replace any image, or add more. At least four images must remain when you save.`
+            : 'Attach at least four useful photos from different angles. Add as many additional images as the product needs. JPG, PNG, or WebP; maximum 5 MB each.'}
         </FieldDescription>
         <FieldGroup className="grid gap-5 md:grid-cols-2">
-          {[1, 2, 3, 4, 5].map((number) => (
-            <Field key={number}>
-              <FieldLabel
-                htmlFor={`image${number}`}
-                className="flex items-center gap-2"
-              >
-                <ImagePlus className="size-4" /> Additional photo {number}
-                {number === 1 && !isRevision ? ' (required)' : ''}
-              </FieldLabel>
-              <Input
-                id={`image${number}`}
-                name={`image${number}`}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                required={number === 1 && !isRevision}
-                className="h-11 py-2"
+          {initial?.media
+            .filter((media) => media.mimeType.startsWith('image/'))
+            .map((media) => (
+              <ExistingImageEditor
+                key={media.id}
+                media={media}
+                removed={removedMedia.has(media.id)}
+                onToggleRemoved={() =>
+                  setRemovedMedia((current) => {
+                    const next = new Set(current);
+                    if (next.has(media.id)) next.delete(media.id);
+                    else next.add(media.id);
+                    return next;
+                  })
+                }
               />
-            </Field>
+            ))}
+          {imageSlots.map((slot, index) => (
+            <ImageUploadSlot
+              key={slot}
+              slot={index + 1 + (initial?.mediaCount ?? 0)}
+              required={!isRevision && index < 4}
+              removable={isRevision || index >= 4}
+              onRemove={() =>
+                setImageSlots((current) =>
+                  current.filter((value) => value !== slot),
+                )
+              }
+            />
           ))}
         </FieldGroup>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            setImageSlots((current) => [...current, nextImageSlot]);
+            setNextImageSlot((current) => current + 1);
+          }}
+        >
+          <Plus /> Add Image
+        </Button>
+      </FieldSet>
+
+      <FieldSet>
+        <FieldLegend>Product video (optional)</FieldLegend>
+        <FieldDescription>
+          A short product demonstration: MP4, up to 20 MB and 60 seconds.
+          Preview, replace, or remove it at any time.
+        </FieldDescription>
+        <VideoUploadControl
+          existing={initial?.media.find(
+            (media) => media.mimeType === 'video/mp4',
+          )}
+        />
       </FieldSet>
 
       {state.status === 'error' ? (
@@ -577,7 +1007,12 @@ export function ProductSubmissionForm({
               <LoaderCircle className="animate-spin" /> Submitting…
             </>
           ) : isRevision ? (
-            'Resubmit product'
+            initial?.status === 'rejected' ||
+            initial?.status === 'needs_changes' ? (
+              'Resubmit for approval'
+            ) : (
+              'Save changes'
+            )
           ) : (
             'Submit product for review'
           )}

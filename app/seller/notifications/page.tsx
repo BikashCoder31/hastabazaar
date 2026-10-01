@@ -11,6 +11,8 @@ export default async function SellerNotificationsPage() {
   const items = await listNotifications(
     requireDatabase(env as unknown as { DB?: D1Database }),
     seller.userId,
+    100,
+    'seller',
   );
   return (
     <div className="space-y-6">
@@ -18,7 +20,7 @@ export default async function SellerNotificationsPage() {
         <p className="eyebrow">Seller</p>
         <h1 className="section-title">Notifications</h1>
       </div>
-      <NotificationList initial={items} />
+      <NotificationList workspace="seller" initial={items} />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:workers';
+import { sendPendingOrderUpdates } from '@/lib/email/send-order-updates';
 
 import {
   CART_COOKIE,
@@ -13,8 +14,9 @@ import {
   createCodOrder,
 } from '@/lib/db/repositories/orders';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
+import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import { getCustomerUser } from '@/lib/auth/customer';
+import { WalletConflictError } from '@/lib/db/repositories/wallet';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +45,7 @@ export async function POST(request: Request): Promise<Response> {
     const parsed = parseCheckoutInput(await request.json());
     if (!parsed.value)
       return json({ error: parsed.errors[0], errors: parsed.errors }, 400);
+    if(!parsed.value.deliveryRateVersion)return json({error:'Reload checkout to review current delivery rates.'},409);
     const customer = await getCustomerUser();
     if (customer) parsed.value.customerEmail = customer.email;
     const [cartHash, receiptHash] = await Promise.all([
@@ -57,13 +60,22 @@ export async function POST(request: Request): Promise<Response> {
       Date.now(),
       customer?.userId ?? null,
     );
-    return json(
+    await sendPendingOrderUpdates({ orderNumber: result.orderNumber });
+    const response = json(
       result,
       201,
       receiptCookie(request, parsed.value.idempotencyKey),
     );
+    response.headers.append(
+      'Set-Cookie',
+      'hastabazaar_referral=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure',
+    );
+    return response;
   } catch (error) {
-    if (error instanceof CheckoutConflictError)
+    if (
+      error instanceof CheckoutConflictError ||
+      error instanceof WalletConflictError
+    )
       return json({ error: error.message }, 409);
     if (error instanceof SyntaxError)
       return json({ error: 'Invalid checkout request.' }, 400);

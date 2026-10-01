@@ -1,6 +1,7 @@
+import { hasStaffPermissionBySubject } from '@/lib/db/repositories/staff-permissions';
 import { env } from 'cloudflare:workers';
 
-import { getChatGPTUser } from '@/app/chatgpt-auth';
+import { getAuthenticatedUser } from '@/app/auth';
 import { RECEIPT_COOKIE, hashOpaqueToken, readCookie } from '@/lib/cart/session';
 import { requireDatabase, requireMediaBucket } from '@/lib/db/d1';
 import { getReturnEvidenceAccess } from '@/lib/db/repositories/returns';
@@ -22,16 +23,16 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     authorised = (await hashOpaqueToken(receiptToken)) === evidence.receiptTokenHash;
   }
   if (!authorised) {
-    const identity = await getChatGPTUser();
+    const identity = await getAuthenticatedUser();
     if (identity) {
-      authorised = Boolean(
+      authorised = (await hasStaffPermissionBySubject(database, identity.userId, 'support.manage')) || Boolean(
         await database
           .prepare(
             `SELECT 1 FROM users
              LEFT JOIN user_roles ON user_roles.user_id = users.id
              LEFT JOIN seller_profiles ON seller_profiles.user_id = users.id
              WHERE users.auth_subject = ? AND users.status = 'active'
-               AND (user_roles.role IN ('admin', 'super_admin') OR seller_profiles.id = ?)
+               AND seller_profiles.id = ?
              LIMIT 1`,
           )
           .bind(identity.userId, evidence.sellerId)

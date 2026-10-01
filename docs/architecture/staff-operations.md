@@ -2,7 +2,7 @@
 
 ## Authentication and authorization
 
-The internal `/admin` workspace uses the Sites platform's dispatch-owned Sign in with ChatGPT flow. Approved sellers use the same protected identity bridge during the controlled launch period. This is not the planned public customer authentication system, and the seller-facing provider can be replaced behind the existing role boundary before wider rollout.
+The internal `/admin` workspace uses Hastabazaar's email-and-password account system. Approved sellers use the same protected identity and role boundary.
 
 A successful sign-in supplies identity, not authority. Every protected page, API mutation, and private document response performs a server-side D1 role lookup. Access is granted only when the signed-in email has an active Admin or Super Admin role, or a live invitation that is atomically accepted at first sign-in.
 
@@ -11,6 +11,11 @@ A successful sign-in supplies identity, not authority. Every protected page, API
 - A staff member cannot review their own seller application.
 - Only Super Admin can create or revoke staff invitations.
 - UI visibility is never treated as an authorization boundary.
+
+The refreshed [Admin workspace](admin-workspace.md) separates routine queues
+from independent approvals and groups the available destinations by role.
+Governance data is filtered on the server: ordinary Admins do not receive the
+Super Admin-only user, incident, or backup datasets.
 
 ## Seller review workflow
 

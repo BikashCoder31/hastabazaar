@@ -24,7 +24,7 @@ export default async function AdminCasesPage() {
         Investigate item-level cases, preserve seller boundaries, and record
         every customer-facing decision in the current English interface.
       </p>
-      <div className="mt-8 grid gap-6 xl:grid-cols-2">
+      <div className="mt-8 grid gap-6 2xl:grid-cols-2">
         <Queue
           title="Return and refund queue"
           icon={<RotateCcw />}
@@ -79,7 +79,7 @@ function Queue({
         <div className="mt-5 divide-y">
           {rows.map((row) => (
             <article key={row.id} className="py-4">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <Link
                     href={row.href}
