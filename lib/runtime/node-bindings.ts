@@ -78,8 +78,8 @@ export function translateSqliteSql(sql: string): string {
       /strftime\('%Y-%m',\s*orders\.delivered_at\s*\/\s*1000,\s*'unixepoch'\)/gi,
       "DATE_FORMAT(FROM_UNIXTIME(orders.delivered_at / 1000), '%Y-%m')",
     )
-    // MySQL already treats backslash as the default LIKE escape character.
-    .replace(/\s+ESCAPE\s+'\\\\'/gi, '');
+    // MySQL defaults to backslash; accept SQLite and legacy doubled spellings.
+    .replace(/\s+ESCAPE\s+'\\{1,2}'/gi, '');
 }
 
 function normalizedError(error: unknown): Error {
