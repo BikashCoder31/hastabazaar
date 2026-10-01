@@ -525,6 +525,19 @@ class SmtpEmailService {
 
   async send(message: OutgoingEmail): Promise<void> {
     if (!this.configured) throw new Error('Email delivery is not configured.');
+    const allowlist = process.env.SMTP_RECIPIENT_ALLOWLIST;
+    if (allowlist !== undefined || process.env.APP_ORIGIN === 'https://staging.hastabazaar.com') {
+      let recipients: unknown;
+      try { recipients = JSON.parse(allowlist ?? ''); } catch { /* Fail closed below. */ }
+      if (!Array.isArray(recipients) || recipients.length === 0 || recipients.length > 64 ||
+        recipients.some((recipient) => typeof recipient !== 'string' ||
+          !/^[a-z0-9.!#$%&'+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(recipient))) {
+        throw new Error('SMTP recipient allowlist is invalid.');
+      }
+      if (!recipients.some((recipient: string) => recipient.toLowerCase() === message.to.trim().toLowerCase())) {
+        throw new Error('SMTP recipient is not permitted.');
+      }
+    }
     const host = requiredEnvironment('SMTP_HOST');
     const port = Number(process.env.SMTP_PORT ?? '465');
     if (!Number.isInteger(port) || port < 1 || port > 65_535) {

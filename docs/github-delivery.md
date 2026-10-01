@@ -24,11 +24,19 @@ The user selected the newer audit candidate `5e3f6a2`, rather than the older ini
 - cPanel app: `hastabazaar-staging-app`; separate document root outside production `public_html`.
 - Database: `hastabaz_staging`, with a user scoped to that database only.
 - Media: `/home2/hastabaz/hastabazaar-staging-private-media`; no production media imported.
-- Production-like runtime, one database connection, bounded Node heap, no SMTP, Google, SMS or payment credentials. No simulation guard has been relaxed.
-- The initial staging schema was built from 48 verified files into a newly empty database. Users, sellers, products and orders were all zero. No production dump was imported. Login-email delivery and authenticated business journeys require a later staging-only mail/test-account setup; existing local QA remains available.
+- Production-like runtime, one database connection and bounded Node heap. Google, SMS and payment credentials remain forbidden. SMTP is initially disabled; the separately approved QA profile below is the only permitted mail configuration. No simulation guard has been relaxed.
+- The initial staging schema was built from 48 verified files into a newly empty database. Users, sellers, products and orders were all zero. No production dump was imported. The later QA setup uses fictional staging identities rather than live customer data.
 - Basic login details are kept in the local ignored `outputs/hosting-setup/staging-access.json`, not GitHub or chat.
 
 Both apps share one cPanel user and a 1 GB hosting resource allowance. Separate database/media bindings prevent accidental mixing, but this is **not a separate tenant/security boundary**: application code still executes with that account's permissions. Limit repository write access and use a separate hosting account for stronger isolation. Do not enable untrusted code or pull-request deployment.
+
+## Staging QA Email
+
+The optional, explicitly approved QA profile uses a dedicated `qa-staging@hastabazaar.com` mailbox, not the production sender's credentials. Buyer, seller, maker, rider, admin and super-admin identities use its `+buyer`, `+seller`, `+maker`, `+rider`, `+admin` and `+superadmin` aliases. Credentials and verification codes must stay out of GitHub, packages, logs and chat.
+
+`SMTP_RECIPIENT_ALLOWLIST` is a JSON array of exact addresses. Hosted staging refuses mail when this list is absent, empty or malformed, and rejects recipients outside it before connecting. The deployment controller permits only the six QA aliases plus their shared QA inbox, implicit TLS on port 465, the fixed hosting SMTP server, and the two staging staff-bootstrap identities. It rejects other runtime keys, production providers and changed database/media/origin bindings. Other environments keep their existing SMTP behavior when no allowlist is configured; a configured allowlist is always enforced.
+
+Install the reviewed gateway separately before enabling the QA profile, and deploy the reviewed application recipient restriction before adding SMTP credentials. Keep the private local account handbook under ignored `outputs/hosting-setup/`. Test normal passwords and actual mailbox verification; do not enable local-testing routes or manufacture verified sessions on hosted staging. A shared QA inbox is suitable for owner-run testing, not access isolation between different testers.
 
 ## Deployment Guarantees
 
