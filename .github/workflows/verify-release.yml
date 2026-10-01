@@ -2,7 +2,7 @@ name: Verify and Package
 
 on:
   push:
-    branches: [main, codex/github-delivery]
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: verify-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 defaults:
   run:
@@ -65,6 +65,8 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      release_id: ${{ steps.identity.outputs.release_id }}
     env:
       HASTABAZAAR_RELEASE_ID: hastabazaar-release-ci-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
@@ -76,6 +78,8 @@ jobs:
           node-version: '22.23.2'
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - id: identity
+        run: printf 'release_id=%s\n' "$HASTABAZAAR_RELEASE_ID" >> "$GITHUB_OUTPUT"
       - run: npm run build:babal
       - run: npm run package:babal:ci -- "$HASTABAZAAR_RELEASE_ID"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -100,7 +104,7 @@ jobs:
       group: babal-staging
       cancel-in-progress: false
     env:
-      HASTABAZAAR_RELEASE_ID: hastabazaar-release-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      HASTABAZAAR_RELEASE_ID: ${{ needs.package.outputs.release_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

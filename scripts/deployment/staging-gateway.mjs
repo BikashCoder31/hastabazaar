@@ -34,6 +34,7 @@ deadline.unref();
 const terminate = () => cancellation.abort(new Error('Staging deployment interrupted.'));
 process.once('SIGTERM', terminate);
 process.once('SIGINT', terminate);
+process.once('SIGHUP', terminate);
 const signal = cancellation.signal;
 let previous = null;
 let incoming;
@@ -95,7 +96,14 @@ try {
   assert.equal(manifest.release, identity.release);
   await verifyRelease(candidate, identity.files, manifest.migrations.map((migration) => migration.path));
   const target = `${releases}/${identity.release}`;
-  await rename(candidate, target);
+  let exists = false;
+  try { await lstat(target); exists = true; } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (exists) {
+    assert.equal(await realpath(target), target, 'Existing staging artifact must not redirect.');
+    await verifyRelease(target, identity.files, manifest.migrations.map((migration) => migration.path));
+  } else {
+    await rename(candidate, target);
+  }
   await appendFile(`${tools}/history.jsonl`, JSON.stringify({ event: 'verified', release: identity.release, commit: identity.commit,
     sha256: identity.archiveSha256, time: new Date().toISOString() }) + '\n', { mode: 0o600 });
   try {
@@ -127,6 +135,7 @@ try {
   clearTimeout(deadline);
   process.removeListener('SIGTERM', terminate);
   process.removeListener('SIGINT', terminate);
+  process.removeListener('SIGHUP', terminate);
   try {
     if (incomingOwned && await realpath(incoming) === incoming) await rm(incoming, { recursive: true });
   } finally { await lock.close(); await unlink(lockPath); }

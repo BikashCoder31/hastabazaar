@@ -12,6 +12,8 @@ Repository: https://github.com/BikashCoder31/hastabazaar (private).
 
 The workflow is `Verify and Package`; artifacts expire after 14 days. A manual run builds the selected branch; only `main` can deploy staging. Each artifact records its exact source commit, release ID, archive checksum and file inventory. Failed checks do not deploy.
 
+Active `main` runs are not cancelled by a newer push. Staging retries use the package job's actual release ID, and an already-uploaded release is reused only after exact file verification. Never overwrite an existing release or rebuild an artifact during deployment.
+
 ## Source Baseline
 
 The user selected the newer audit candidate `5e3f6a2`, rather than the older initial GitHub snapshot or the live October 1 source. Its application code is not thereby approved for production. Existing Git history is retained without force-pushing. Original working folders and their unpublished changes are not replaced by this setup; the delivery checkout is a separate managed worktree.
@@ -63,3 +65,4 @@ All production test-data cleanup is deferred. Before the first public release, p
 - Local source regression: 2,263 passed, 14 opt-in skips, zero failures; new delivery tests are verified separately.
 - First restricted-key staging deployment: `hastabazaar-release-ci-36882980032-1`, source `bd78f22c30bc90f2dad32c73e32c47d3f641b9e7`, HTTPS readiness passed; deployment migrations: zero.
 - Live production identity at the same check: `hastabazaar-release-2026-10-01-112000`, healthy and unchanged.
+- A diagnostic artifact with a deliberately mismatched compiled identity was rejected after switching; the previous healthy staging release was restored. No database migration or business-data cleanup was performed by that test.
