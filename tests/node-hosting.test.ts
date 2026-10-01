@@ -95,6 +95,42 @@ void test('SMTP connection buffers a greeting sent immediately after TLS connect
   assert.equal(response, '220 mail.hastabazaar.com ready');
 });
 
+void test('hosted staging SMTP rejects recipients outside its exact QA allowlist before connecting', async () => {
+  const values: Record<string, string> = {
+    APP_ORIGIN: 'https://staging.hastabazaar.com', SMTP_HOST: 'localhost', SMTP_PORT: '0',
+    SMTP_USER: 'qa-staging@example.test', SMTP_PASSWORD: 'test-only-password',
+    EMAIL_FROM: 'qa-staging@example.test',
+    SMTP_RECIPIENT_ALLOWLIST: '["qa-staging+buyer@example.test"]',
+  };
+  const previous = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]));
+  const message = { subject: 'QA', text: 'QA', html: '<p>QA</p>' };
+  try {
+    Object.assign(process.env, values);
+    await assert.rejects(env.EMAIL.send({ ...message, to: 'customer@example.test' }), /recipient is not permitted/i);
+    for (const recipient of ['Buyer <qa-staging+buyer@example.test>',
+      'qa-staging+buyer@example.test,customer@example.test', 'qa-staging+buyer@example.test\r\nBcc: customer@example.test']) {
+      await assert.rejects(env.EMAIL.send({ ...message, to: recipient }), /recipient is not permitted/i);
+    }
+    await assert.rejects(env.EMAIL.send({ ...message, to: 'QA-STAGING+BUYER@example.test' }), /SMTP_PORT must be a valid TCP port/);
+    delete process.env.SMTP_RECIPIENT_ALLOWLIST;
+    await assert.rejects(env.EMAIL.send({ ...message, to: 'qa-staging+buyer@example.test' }), /recipient allowlist is invalid/i);
+    for (const invalid of ['*', '[]', '["*@example.test"]', '["qa-staging+buyer@example.test",null]']) {
+      process.env.SMTP_RECIPIENT_ALLOWLIST = invalid;
+      await assert.rejects(env.EMAIL.send({ ...message, to: 'qa-staging+buyer@example.test' }), /recipient allowlist is invalid/i);
+    }
+    process.env.APP_ORIGIN = 'https://hastabazaar.com';
+    process.env.SMTP_RECIPIENT_ALLOWLIST = values.SMTP_RECIPIENT_ALLOWLIST;
+    await assert.rejects(env.EMAIL.send({ ...message, to: 'customer@example.test' }), /recipient is not permitted/i);
+    delete process.env.SMTP_RECIPIENT_ALLOWLIST;
+    await assert.rejects(env.EMAIL.send({ ...message, to: 'customer@example.test' }), /SMTP_PORT must be a valid TCP port/);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
 void test('MariaDB adapter translates the SQLite-only SQL used by the marketplace', () => {
   const translated = translateSqliteSql(
     `INSERT OR IGNORE INTO products (id) VALUES (?);

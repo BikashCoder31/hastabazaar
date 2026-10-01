@@ -10,6 +10,7 @@ import { assertStagingCommand, receiveStagingPayload } from './staging-protocol.
 import { verifyRelease } from '../release-files.mjs';
 import { guardedStagingSwitch } from './staging-switch.mjs';
 import { captureStagingWorkers, stopCapturedStagingWorkers } from './staging-workers.mjs';
+import { assertStagingRuntime } from './staging-runtime.mjs';
 
 const execute = promisify(execFile);
 const home = '/home2/hastabaz';
@@ -70,13 +71,7 @@ async function health(release) {
 
 try {
   const runtime = JSON.parse(await readFile(`${tools}/runtime.json`, 'utf8'));
-  assert.equal(runtime.DB_NAME, guard.database);
-  assert.equal(runtime.DB_USER, 'hastabaz_stageapp');
-  assert.equal(runtime.MEDIA_ROOT, guard.media);
-  assert.equal(runtime.APP_ORIGIN, guard.origin);
-  assert.equal(runtime.EMAIL_DELIVERY_CONFIGURED, 'false');
-  assert.equal(runtime.CHECKOUT_CONTACT_POLICY, 'email_only');
-  assert.ok(!Object.keys(runtime).some((key) => /SMTP|GOOGLE|PAYMENT|API_KEY|SMS|SUPER_ADMIN/i.test(key)), 'Staging provider credentials are forbidden.');
+  assertStagingRuntime(runtime);
   const { stdout } = await execute('/usr/sbin/cloudlinux-selector', ['get', '--json', '--interpreter', 'nodejs'], { timeout: 30_000, signal });
   const configuration = JSON.parse(stdout).available_versions['22.23.2'].users.hastabaz.applications['hastabazaar-staging-app'];
   assert.equal(configuration.domain, 'staging.hastabazaar.com');
