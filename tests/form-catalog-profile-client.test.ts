@@ -5,7 +5,7 @@ import { build } from 'esbuild';
 const playwrightPath = process.env.PLAYWRIGHT_MODULE ??
   'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
 
-void test('maker and seller profile attempts retain opaque IDs across lost responses and reload', async () => {
+void test('maker save clicks submit validated profiles and profile attempts survive lost responses and reload', async () => {
   // oxlint-disable-next-line typescript/no-explicit-any -- Bundled Playwright supplies the browser type.
   const { chromium } = await import(playwrightPath) as { chromium: { launch(options: { headless: boolean; executablePath: string }): Promise<any> } };
   const bundle = await build({
@@ -73,6 +73,10 @@ void test('maker and seller profile attempts retain opaque IDs across lost respo
         document.querySelector<HTMLButtonElement>('form button')?.disabled === false);
     }
     async function submit() {
+      if (await page.locator('form').getAttribute('data-form-id') === 'seller.maker-profile') {
+        await page.getByRole('button', { name: 'Save maker profile', exact: true }).click();
+        return;
+      }
       await page.evaluate(() => document.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
     }
     for (const [path, endpoint, storage] of [
@@ -80,6 +84,13 @@ void test('maker and seller profile attempts retain opaque IDs across lost respo
       ['/seller/seller-one', '/api/seller/profile', 'hastabazaar:profile-attempt:seller.profile:seller-one'],
     ] as const) {
       await mount(path);
+      if (path.startsWith('/maker/')) {
+        await page.getByRole('textbox', { name: 'Public city/town only', exact: true }).fill('');
+        await submit();
+        assert.equal(await page.locator('input[name="publicCity"]').evaluate((input: HTMLInputElement) => input.validity.valueMissing), true);
+        assert.equal(attempts.get(`${endpoint}:`)?.length ?? 0, 0);
+        await page.getByRole('textbox', { name: 'Public city/town only', exact: true }).fill('Birgunj');
+      }
       await submit();
       await page.waitForFunction(() => document.querySelector('form')?.textContent?.includes('couldn’t connect'));
       const first = attempts.get(`${endpoint}:`)?.[0]?.requestId;

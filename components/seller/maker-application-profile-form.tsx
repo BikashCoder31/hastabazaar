@@ -95,7 +95,7 @@ export function MakerApplicationProfileForm({ profile }: { profile: SellerPartic
     {catalog.config ? <div className="sm:col-span-2"><ConfiguredFields config={catalog.config} baseKeys={catalogBaseKeys} /></div> : null}
     {catalog.status !== 'ready' ? <p role="alert" className="text-sm text-destructive sm:col-span-2">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}
     <div className="flex items-center gap-3 sm:col-span-2">
-      <Button disabled={busy || !catalog.canSubmit}>{busy ? 'Saving…' : 'Save maker profile'}</Button>
+      <Button type="submit" disabled={busy || !catalog.canSubmit}>{busy ? 'Saving…' : 'Save maker profile'}</Button>
       <output className="text-sm text-muted-foreground" aria-live="polite">{message}</output>
     </div>
     {hasPendingAttempt ? <div className="space-y-2 sm:col-span-2">
