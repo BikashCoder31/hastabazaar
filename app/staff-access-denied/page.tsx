@@ -48,12 +48,14 @@ export default async function StaffAccessDeniedPage() {
         </p>
         <div className="mt-7 flex flex-wrap justify-center gap-3">
           {user ? (
-            <Link
+            // oxlint-disable-next-line next/no-html-link-for-pages -- Authentication redirects need full document navigation.
+            <a
               href="/auth/continue"
+              target="_top"
               className="rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-muted"
             >
               Return to your workspace
-            </Link>
+            </a>
           ) : null}
           <Link
             href="/login?return_to=/admin"

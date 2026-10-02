@@ -55,3 +55,11 @@ void test('anonymous denial retains invitation verification and sign-in instead 
   assert.match(html, /href="\/sell"/);
   assert.doesNotMatch(html, /href="\/auth\/continue"|data-form-id="identity.logout"|Use another account/);
 });
+
+void test('workspace recovery delegates the authentication redirect to top-level navigation', async () => {
+  const html = await renderDeniedPage({ userId: 'qa-admin', displayName: 'Fictional QA Admin',
+    email: 'qa-staging+admin@hastabazaar.com', fullName: 'Fictional QA Admin', mailboxVerified: true });
+  const recoveryLink = html.match(/<a[^>]*href="\/auth\/continue"[^>]*>Return to your workspace<\/a>/)?.[0] ?? '';
+  assert.notEqual(recoveryLink, '', 'Authenticated users retain workspace recovery.');
+  assert.match(recoveryLink, /target="_top"/, 'Authentication redirects must not use client-side RSC navigation.');
+});
