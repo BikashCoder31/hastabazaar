@@ -6,6 +6,7 @@ import type { TLSSocket } from 'node:tls';
 
 import { passwordRecord, verifyPassword } from '../lib/auth/hosted-session';
 import { countPublishedProducts, listPublishedProducts } from '../lib/db/repositories/products';
+import { getProductMaterialSuggestions } from '../lib/products/material-settings';
 import * as nodeBindings from '../lib/runtime/node-bindings';
 
 const { env, translateSqliteSql } = nodeBindings;
@@ -156,6 +157,68 @@ void test('MariaDB adapter removes the single-backslash LIKE escape emitted by S
     translateSqliteSql("SELECT 1 WHERE 'craft' LIKE ? ESCAPE '!'"),
     "SELECT 1 WHERE 'craft' LIKE ? ESCAPE '!'",
   );
+});
+
+void test('MariaDB adapter preserves the database clock in integer milliseconds', () => {
+  for (const sql of [
+    "SELECT unixepoch('now') * 1000 AS now",
+    "SELECT UNIXEPOCH( 'now' ) * 1000 AS now",
+  ]) {
+    assert.equal(translateSqliteSql(sql), 'SELECT UNIX_TIMESTAMP() * 1000 AS now');
+  }
+});
+
+void test('MariaDB clock translation does not reinterpret other SQLite date expressions', () => {
+  for (const sql of [
+    "SELECT unixepoch('2026-10-02') AS timestamp",
+    "SELECT unixepoch('now', 'subsec') AS timestamp",
+    "SELECT unixepoch(?) AS timestamp",
+    "SELECT datetime('now') AS timestamp",
+  ]) {
+    assert.equal(translateSqliteSql(sql), sql);
+  }
+});
+
+void test('MariaDB product materials use the database clock for the effective setting window', async () => {
+  const queries: { sql: string; bindings: unknown[] }[] = [];
+  const database = {
+    prepare(sql: string) {
+      const query = { sql: translateSqliteSql(sql), bindings: [] as unknown[] };
+      queries.push(query);
+      return {
+        first: async () => {
+          assert.equal(query.sql, 'SELECT UNIX_TIMESTAMP() * 1000 AS now');
+          return { now: 1_790_985_600_000 };
+        },
+        bind(...bindings: unknown[]) {
+          query.bindings = bindings;
+          return {
+            first: async () => ({
+              id: 'qa-material-setting', settingKey: 'product_material_suggestions',
+              version: 2, valueJson: '["Cotton","Bamboo"]', status: 'published',
+              revision: 1, changeControl: 'controlled', effectiveFrom: 1_790_985_599_000,
+              effectiveUntil: null, reason: 'Fictional material setting',
+              createdBy: 'qa-admin', createdAt: 1_790_985_598_000,
+              submittedBy: 'qa-admin', submittedAt: 1_790_985_598_000,
+              approvedBy: 'qa-super-admin', approvedAt: 1_790_985_599_000,
+              publishedBy: 'qa-super-admin', publishedAt: 1_790_985_599_000,
+              decisionNote: null, supersedesId: null, lastRequestId: 'qa-material-setting',
+            }),
+          };
+        },
+      };
+    },
+  } as unknown as D1Database;
+
+  assert.deepEqual(await getProductMaterialSuggestions(database), ['Cotton', 'Bamboo']);
+  assert.equal(queries.length, 2);
+  assert.deepEqual(queries[0].bindings, []);
+  assert.match(queries[1].sql, /status = 'published'/);
+  assert.match(queries[1].sql, /effective_from <= \?/);
+  assert.match(queries[1].sql, /effective_until IS NULL OR effective_until > \?/);
+  assert.deepEqual(queries[1].bindings, [
+    'product_material_suggestions', 1_790_985_600_000, 1_790_985_600_000,
+  ]);
 });
 
 for (const operation of ['count', 'list'] as const) {
