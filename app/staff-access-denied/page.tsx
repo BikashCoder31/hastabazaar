@@ -32,21 +32,29 @@ export default async function StaffAccessDeniedPage() {
         </Link>
         <ShieldX className="mx-auto mt-8 size-12 text-primary" />
         <h1 className="mt-4 font-heading text-3xl tracking-tight">
-          Staff invitation required
+          {user ? 'Staff access restricted' : 'Staff invitation required'}
         </h1>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
           {user
-            ? `${user.email} is authenticated, but this account has not been granted HastaBazaar staff access.`
+            ? `${user.email} is signed in, but does not have permission to access this page.`
             : 'Sign in with the email address invited by a HastaBazaar Super Admin.'}
         </p>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          To accept a new staff invitation, verify your email by signing in with
+          If you are accepting a new staff invitation, verify your email by signing in with
           an email code or Google. Password registration alone does not verify
           an invitation. This area is for HastaBazaar Admins and Super Admins.
           Sellers use a separate dashboard and do not need a staff invitation.
           Seller applications are reviewed by the marketplace team.
         </p>
         <div className="mt-7 flex flex-wrap justify-center gap-3">
+          {user ? (
+            <Link
+              href="/auth/continue"
+              className="rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-muted"
+            >
+              Return to your workspace
+            </Link>
+          ) : null}
           <Link
             href="/login?return_to=/admin"
             className="rounded-lg border px-4 py-2 text-sm font-semibold"
@@ -71,7 +79,7 @@ export default async function StaffAccessDeniedPage() {
               type="submit"
               className="rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-muted"
             >
-              Use an invited staff account
+              Use another account
             </button>
             </form>
           ) : (
