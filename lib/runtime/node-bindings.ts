@@ -61,6 +61,7 @@ function databasePool(): Pool {
 export function translateSqliteSql(sql: string): string {
   return sql
     .replace(/\bchanges\(\)/gi, 'ROW_COUNT()')
+    .replace(/\bunixepoch\(\s*'now'\s*\)/gi, 'UNIX_TIMESTAMP()')
     // Exact new claim/redemption empty-field predicates; retain the array type guard.
     .replace(
       /json_type\(v\.config_json,'\$\.fields'\)='array'/g,
