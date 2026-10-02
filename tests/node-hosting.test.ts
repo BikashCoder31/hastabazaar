@@ -5,6 +5,7 @@ import test from 'node:test';
 import type { TLSSocket } from 'node:tls';
 
 import { passwordRecord, verifyPassword } from '../lib/auth/hosted-session';
+import { countPublishedProducts, listPublishedProducts } from '../lib/db/repositories/products';
 import * as nodeBindings from '../lib/runtime/node-bindings';
 
 const { env, translateSqliteSql } = nodeBindings;
@@ -145,6 +146,51 @@ void test('MariaDB adapter translates the SQLite-only SQL used by the marketplac
     `SELECT 1 WHERE 'craft' LIKE ?`,
   );
 });
+
+void test('MariaDB adapter removes the single-backslash LIKE escape emitted by SQLite queries', () => {
+  assert.equal(
+    translateSqliteSql(String.raw`SELECT 1 WHERE 'craft' LIKE ? ESCAPE '\'`),
+    "SELECT 1 WHERE 'craft' LIKE ?",
+  );
+  assert.equal(
+    translateSqliteSql("SELECT 1 WHERE 'craft' LIKE ? ESCAPE '!'"),
+    "SELECT 1 WHERE 'craft' LIKE ? ESCAPE '!'",
+  );
+});
+
+for (const operation of ['count', 'list'] as const) {
+  void test(`MariaDB ${operation} catalogue search preserves literal wildcard bindings`, async () => {
+    let emittedSql = '';
+    let emittedBindings: unknown[] = [];
+    const database = {
+      prepare(sql: string) {
+        emittedSql = translateSqliteSql(sql);
+        return {
+          bind(...bindings: unknown[]) {
+            emittedBindings = bindings;
+            return {
+              first: async () => ({ count: 0 }),
+              all: async () => ({ results: [], success: true, meta: {} }),
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+    const filters = { query: String.raw`50%_\craft`, categorySlugs: ['qa-samples-fictional'] };
+    if (operation === 'count') await countPublishedProducts(database, filters);
+    else await listPublishedProducts(database, { ...filters, sort: 'price-low', limit: 12, page: 2 });
+
+    assert.doesNotMatch(emittedSql, /\bESCAPE\b/i);
+    assert.equal(emittedSql.match(/LIKE \?/g)?.length, 7);
+    assert.deepEqual(emittedBindings, [
+      String.raw`%50\%\_\\craft%`, String.raw`%50\%\_\\craft%`,
+      String.raw`%50\%\_\\craft%`, String.raw`%50\%\_\\craft%`,
+      String.raw`%50\%\_\\craft%`, String.raw`%50\%\_\\craft%`,
+      String.raw`%50\%\_\\craft%`, 'qa-samples-fictional',
+      ...(operation === 'list' ? [12, 12] : []),
+    ]);
+  });
+}
 
 class FailingSmtpSocket extends EventEmitter {
   destroyed = false;
