@@ -518,6 +518,27 @@ void test('feedback answers require a current support grant and exact saved pare
   } finally { sqlite.close(); }
 });
 
+void test('feedback answer reads reject corrupt or disallowed explicit support profiles', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    seed(sqlite, 'public.contact', 1);
+    const { POST } = await import('../app/api/feedback/route');
+    assert.equal((await POST(request('invalid-profile-view'))).status, 200);
+    const job = sqlite.prepare('SELECT id FROM feedback_delivery_jobs WHERE request_id=?')
+      .get('invalid-profile-view') as { id: string };
+    const answer = (await listFormAnswersForSubject(db as unknown as D1Database, 'feedback_submission', job.id))[0];
+    const viewer = { id: 'admin', role: 'admin' as const, permissions: ['support.manage' as const] };
+    for (const profile of ['invalid-json', '{}', 'null', '[]', '["support.manage",1]',
+      '["support.manage","admin.invite"]', '["support.manage","unknown"]']) {
+      sqlite.prepare('UPDATE staff_permission_profiles SET permissions_json=? WHERE user_id=?').run(profile, viewer.id);
+      assert.equal(await authorizeFormAnswerRead(db as unknown as D1Database, viewer, answer), false, profile);
+    }
+    sqlite.prepare('UPDATE staff_permission_profiles SET permissions_json=? WHERE user_id=?')
+      .run('["support.manage"]', viewer.id);
+    assert.equal(await authorizeFormAnswerRead(db as unknown as D1Database, viewer, answer), true);
+  } finally { sqlite.close(); }
+});
+
 void test('staff feedback page shows sent historical answer only while current grant remains active', async () => {
   const { sqlite } = await fixture();
   try {

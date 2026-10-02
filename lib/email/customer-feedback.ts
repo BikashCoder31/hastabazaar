@@ -16,6 +16,7 @@ type EmailService = {
 };
 
 type FeedbackEmailEnvironment = {
+  APP_ORIGIN?: string;
   EMAIL?: EmailService;
   EMAIL_DELIVERY_CONFIGURED?: string;
 };
@@ -38,7 +39,9 @@ export async function sendCustomerFeedbackEmail(
   }
 
   await current.EMAIL.send({
-    to: feedbackRecipient,
+    to: current.APP_ORIGIN === 'https://staging.hastabazaar.com'
+      ? 'qa-staging@hastabazaar.com'
+      : feedbackRecipient,
     ...createCustomerFeedbackEmail(feedback, new Date()),
   });
 }
