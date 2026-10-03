@@ -36,6 +36,10 @@ export interface ProductSubmissionInput {
   compareAtPricePaisa: number | null;
   inventoryQuantity: number;
   producer: string;
+  countryOfOrigin?: string;
+  originEvidenceStatus?: 'unverified' | 'seller_declared';
+  originEvidenceReference?: string | null;
+  originDeclarationProvided?: boolean;
   materials: readonly string[];
   originStory: string | null;
   dimensions: string | null;
@@ -137,6 +141,10 @@ export function parseProductSubmission(formData: FormData): {
       typeof compareAtPricePaisa === 'number' ? compareAtPricePaisa : null,
     inventoryQuantity,
     producer: textField(formData, 'producer'),
+    countryOfOrigin: textField(formData, 'countryOfOrigin'),
+    originDeclarationProvided: formData.has('countryOfOrigin'),
+    originEvidenceStatus: textField(formData, 'countryOfOrigin') ? 'seller_declared' : 'unverified',
+    originEvidenceReference: textField(formData, 'originEvidenceReference') || null,
     materials,
     originStory: textField(formData,'originStory') || null,
     dimensions: textField(formData, 'dimensions') || null,
@@ -258,6 +266,8 @@ export function parseProductSubmission(formData: FormData): {
     ['descriptionEn', 'English description', 4000],
     ['descriptionNe', 'Nepali description', 4000],
     ['producer', 'Producer', 180],
+    ['countryOfOrigin', 'Country of origin', 100],
+    ['originEvidenceReference', 'Origin evidence reference', 500],
     ['originStory', 'Product story', 2000],
     ['dimensions', 'Dimensions', 500],
     ['size', 'Size', 300],

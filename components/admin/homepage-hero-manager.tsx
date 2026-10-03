@@ -23,12 +23,14 @@ import { configuredMultipartAnswers } from '@/lib/forms/submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 import {
   addHomepageHeroSlide,
+  addSellerRegistrationSlide,
   homepageHeroReadiness,
   moveHomepageHeroSlide,
   removeHomepageHeroSlide,
   setHomepageHeroSlideEnabled,
 } from '@/lib/homepage/hero-editor';
 import {
+  SELLER_REGISTRATION_HERO_SLIDE,
   validateHomepageHeroDraft,
   type HomepageHeroSlide,
   type HomepageHeroSlides,
@@ -271,6 +273,18 @@ export function HomepageHeroManager({
             private until the Business Settings publication flow completes.
           </p>
         </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy || slides.length >= 8 || slides.some((slide) => slide.id === SELLER_REGISTRATION_HERO_SLIDE.id)}
+            onClick={() => {
+              apply(() => addSellerRegistrationSlide(slides));
+              setPreviewId(SELLER_REGISTRATION_HERO_SLIDE.id);
+            }}
+          >
+            <Plus aria-hidden="true" /> Add seller slide first
+          </Button>
         <Button
           type="button"
           variant="outline"
@@ -281,6 +295,7 @@ export function HomepageHeroManager({
         >
           <Plus /> Add slide ({slides.length}/8)
         </Button>
+        </div>
       </div>
 
       <Card className={readiness.publicationReady ? 'ring-emerald-600/30' : ''}>
@@ -639,6 +654,9 @@ function SlideEditor({
               onChange={(event) => onChange({ mediaId: event.target.value })}
             >
               <option value="">Select media</option>
+              {slide.id === SELLER_REGISTRATION_HERO_SLIDE.id && slide.mediaType === 'image' ? (
+                <option value={SELLER_REGISTRATION_HERO_SLIDE.mediaId}>Seller application panel</option>
+              ) : null}
               {(slide.mediaType === 'image' ? imageOptions : videoOptions).map((item) => (
                 <option key={item.id} value={item.id}>{item.originalName}</option>
               ))}

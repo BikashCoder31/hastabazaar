@@ -37,6 +37,7 @@ const migrationNames = [
   'mariadb-seller-participation.sql',
   'mariadb-managed-commerce.sql',
   'mariadb-product-story-materials.sql',
+  'mariadb-product-origin-evidence.sql',
   'mariadb-checkout-recipient-snapshots.sql',
   'mariadb-seller-governance.sql',
   'mariadb-first-party-analytics.sql',

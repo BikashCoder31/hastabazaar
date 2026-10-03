@@ -117,10 +117,10 @@ void test('admin hero image and poster-bearing video preserve public cover geome
       assert.match(html, /homepage-hero-layout/);
       assert.match(html, /homepage-hero-visual/);
       for (const text of [
-        'Authentic handmade',
-        'Support local makers',
+        'Product details',
+        'Meet the seller',
         'Thoughtful choices',
-        'A stronger Nepal',
+        'Help with your order',
       ])
         assert.ok(html.includes(text));
       assert.doesNotMatch(html, /<a\b/); // Scaled draft actions cannot navigate away from the editor.

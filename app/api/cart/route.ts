@@ -33,6 +33,26 @@ function json(data: unknown, status = 200, cookie?: string): Response {
   return new Response(JSON.stringify(data), { status, headers });
 }
 
+function rejectedOrigin(request: Request): Response {
+  const reference = crypto.randomUUID();
+  let origin = 'invalid';
+  try { origin = new URL(request.headers.get('origin') ?? '').origin; } catch { /* malformed header */ }
+  const site = request.headers.get('sec-fetch-site');
+  // Keep diagnostic context server-side; exclude cookies, query strings,
+  // authorization, request bodies and unbounded/raw header values.
+  console.warn('cart.origin_rejected', {
+    reference, method: request.method, path: new URL(request.url).pathname,
+    origin: origin.slice(0, 300),
+    fetchSite: ['same-origin', 'same-site', 'cross-site', 'none'].includes(site ?? '') ? site : 'unknown',
+  });
+  const response = json({
+    error: `We couldn’t update your cart. Refresh this page and try again. If it still fails, contact support with reference ${reference}.`,
+    reference,
+  }, 403);
+  response.headers.set('x-request-id', reference);
+  return response;
+}
+
 async function cartIdentity(
   request: Request,
 ): Promise<{ hash: string; cookie?: string }> {
@@ -58,7 +78,7 @@ export async function GET(request: Request): Promise<Response> {
 
 export async function POST(request: Request): Promise<Response> {
   if (!isTrustedMutationRequest(request))
-    return json({ error: 'Request origin was not accepted.' }, 403);
+    return rejectedOrigin(request);
   const identity = await cartIdentity(request);
   try {
     const submitted: unknown = await request.json();
@@ -110,7 +130,7 @@ export async function POST(request: Request): Promise<Response> {
 
 export async function PATCH(request: Request): Promise<Response> {
   if (!isTrustedMutationRequest(request))
-    return json({ error: 'Request origin was not accepted.' }, 403);
+    return rejectedOrigin(request);
   const identity = await cartIdentity(request);
   try {
     const body = (await request.json()) as Record<string, unknown>;
@@ -145,7 +165,7 @@ export async function PATCH(request: Request): Promise<Response> {
 
 export async function DELETE(request: Request): Promise<Response> {
   if (!isTrustedMutationRequest(request))
-    return json({ error: 'Request origin was not accepted.' }, 403);
+    return rejectedOrigin(request);
   const identity = await cartIdentity(request);
   try {
     const body = (await request.json()) as Record<string, unknown>;

@@ -47,17 +47,17 @@ export default async function MakerPage({
       <main tabIndex={-1} id="main-content">
         <section className="border-b bg-secondary/30">
           <div className="shell py-12">
-            <p className="eyebrow">Approved Hastabazaar maker</p>
+            <p className="eyebrow">{maker.participationRoute === 'managed_maker' ? 'Managed maker profile' : 'Seller profile'}</p>
             <h1 className="mt-3 font-heading text-5xl">{displayName}</h1>
             <div className="mt-5 flex flex-wrap gap-4 text-sm text-muted-foreground">
               <span className="flex items-center gap-2">
-                <ShieldCheck className="size-4 text-primary" />{' '}
+                <ShieldCheck className="size-4 text-primary" aria-hidden="true" />{' '}
                 {maker.participationRoute === 'managed_maker'
                   ? 'Approved Managed Maker'
-                  : 'Verified seller'}
+                  : 'Approved seller'}
               </span>
               <span className="flex items-center gap-2">
-                <MapPin className="size-4 text-primary" /> {maker.publicCity}
+                <MapPin className="size-4 text-primary" aria-hidden="true" /> {maker.publicCity}
               </span>
             </div>
             {maker.businessDescription ? (
@@ -70,7 +70,7 @@ export default async function MakerPage({
         <section className="shell py-12">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <p className="eyebrow">From this maker</p>
+              <p className="eyebrow">{maker.participationRoute === 'managed_maker' ? 'From this maker' : 'From this seller'}</p>
               <h2 className="mt-2 font-heading text-3xl">
                 Published collection
               </h2>

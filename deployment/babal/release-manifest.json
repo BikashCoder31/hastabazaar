@@ -56,14 +56,14 @@
       "9007199254740991"
     ]
   },
-  "release": "hastabazaar-release-local-readiness-20261001",
+  "release": "local-unversioned-candidate",
   "startup": "app.cjs",
   "hosting": "Babal.Host",
   "requiredNodeMajor": 22,
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "7c284de67917abb8a4a527b45fae22318a24eb11e7c8298161a089ee383e732e",
+      "sha256": "d099ae6be55deb18c0cef4f26f5299d15914610b7c5227cfc1a8178d4f433efa",
       "usage": "empty-database-only"
     },
     {
@@ -204,6 +204,11 @@
     {
       "path": "deployment/babal/mariadb-product-story-materials.sql",
       "sha256": "a8acb830a1d9423aeb99d2255df41d75874d548341d8a9c0550eb65d2718d882",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-product-origin-evidence.sql",
+      "sha256": "9b909964c877791de30fbe4283baad83f74eef77ba66e76b696de3d6d182c539",
       "usage": "additive-maintenance"
     },
     {
@@ -766,6 +771,8 @@
       "materials_json",
       "name_en",
       "name_ne",
+      "origin_evidence_reference",
+      "origin_evidence_status",
       "preparation_days",
       "price_paisa",
       "producer",

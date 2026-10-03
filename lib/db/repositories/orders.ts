@@ -8,6 +8,7 @@ import { buildFormAnswerInsert } from './form-answers';
 import { assertCommerceFormReplay, type CommerceForm } from './commerce-form-replay';
 import { getCommissionSetting, sellerAcceptedCommissionVersion } from './marketplace-settings';
 import { publicProductEligibility } from '@/lib/products/eligibility';
+import { publicProductName } from '@/lib/products/truthful-presentation';
 import {
   getDeliveryEstimate,
   type CheckoutInput,
@@ -405,7 +406,7 @@ export async function createCodOrder(
     paymentMethod: 'Cash on delivery',
     paymentStatus: 'pending',
     items: items.map((item) => ({
-      productName: item.nameEn,
+      productName: publicProductName(item.nameEn),
       sellerName: item.tradingName,
       sku: item.sku,
       unitPricePaisa: item.pricePaisa,
@@ -627,7 +628,7 @@ export async function createCodOrder(
           item.productId,
           item.sellerId,
           item.tradingName,
-          item.nameEn,
+          publicProductName(item.nameEn),
           item.sku,
           item.pricePaisa,
           item.quantity,

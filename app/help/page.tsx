@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { DELIVERY_ESTIMATE_NOTICE } from '@/lib/checkout/delivery-presentation';
 
 import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
@@ -14,7 +15,7 @@ const topics = [
   {
     id: 'shipping',
     title: 'Shipping',
-    body: 'Delivery availability and charges are confirmed during checkout from the Nepal address you provide. Orders may contain separate seller shipments, while your order total and receipt remain unified.',
+    body: 'Review delivery charges and the estimated delivery period at checkout before placing an order. ' + DELIVERY_ESTIMATE_NOTICE + ' Items from different sellers may ship separately, with one order total and receipt.',
   },
   {
     id: 'tracking',
@@ -52,7 +53,7 @@ export default function HelpPage() {
         </section>
         <div className="shell pb-12"><Link href="/contact" className="inline-flex min-h-11 items-center font-semibold text-primary underline underline-offset-4">Contact & support →</Link></div>
       </main>
-      <SiteFooter />
+      <SiteFooter compact />
     </div>
   );
 }

@@ -50,18 +50,19 @@ async function officialLinks(): Promise<OfficialSocialLinks> {
   }
 }
 
-export async function SiteFooter() {
+export async function SiteFooter({ compact = false }: { compact?: boolean } = {}) {
   const socialLinks = await officialLinks();
 
   return (
     <footer className={`site-footer ${styles.footer}`}>
+      {!compact ? (
       <div className="shell site-footer-cta-shell">
         <div className="site-footer-cta">
           <div>
-            <p className="site-footer-kicker">Handmade with purpose</p>
-            <h2>Crafted in Nepal. Connected to the world.</h2>
+            <p className="site-footer-kicker">Find your next favourite</p>
+            <h2>Thoughtful finds. Everyday possibilities.</h2>
             <p>
-              Discover meaningful pieces and the independent makers behind them.
+              Explore the collection and read each listing for product and seller details.
             </p>
           </div>
           <div className="site-footer-cta-actions">
@@ -78,6 +79,7 @@ export async function SiteFooter() {
           </div>
         </div>
       </div>
+      ) : null}
 
       <div className="shell site-footer-main">
         <div className="site-footer-grid">
@@ -89,7 +91,7 @@ export async function SiteFooter() {
             >
               <Image
                 src="/brand/hastabazaar-logo-lockup-640.webp"
-                alt="Hastabazaar — Handmade Nepal. For a Sustainable World."
+                alt="Hastabazaar"
                 width={640}
                 height={640}
                 data-media-mode="natural"
@@ -98,8 +100,8 @@ export async function SiteFooter() {
               />
             </Link>
             <p className="site-footer-tagline">
-              Handmade finds. Human stories. A little piece of Nepal, chosen
-              with heart.
+              Explore gifts and everyday finds, with product details to help
+              you choose.
             </p>
             <a
               href="mailto:support@hastabazaar.com"
@@ -137,7 +139,7 @@ export async function SiteFooter() {
             <FooterLink href="/shop">Shop all</FooterLink>
             <FooterLink href="/categories">Categories</FooterLink>
             <FooterLink href="/occasions">Gifts by occasion</FooterLink>
-            <FooterLink href="/#makers">Our makers</FooterLink>
+            <FooterLink href="/#craft-guide">Craft guide</FooterLink>
             <FooterLink href="/#our-standard">Our standard</FooterLink>
           </FooterGroup>
           <FooterGroup title="Customer care">

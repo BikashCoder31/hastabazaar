@@ -500,6 +500,7 @@ function sellerDefinition(id: 'seller.application' | 'seller.maker-profile' | 's
       ...['sku', 'price', 'pricePaisa', 'inventoryQuantity', 'image', 'video', 'reviewRequestId', 'categoryId',
         'occasionIds', 'sellerId', 'producer', 'materials', 'nameNe', 'descriptionNe', 'compareAtPrice',
         'discountPercentage', 'returnEligible', 'madeToOrder', 'preparationDays', 'originStory',
+        'countryOfOrigin', 'originEvidenceReference', 'originEvidenceStatus',
         'dimensions', 'size', 'colour', 'variations', 'specifications', 'careInstructions',
         'safetyInformation', 'returnConditions', 'warrantyOffered', 'warranty', 'warrantyYears',
         'warrantyMonths', 'manufacturedAt', 'expiresAt', 'licenceReference', 'image1', 'image2',

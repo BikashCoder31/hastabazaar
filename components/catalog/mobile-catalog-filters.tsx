@@ -37,9 +37,9 @@ export function MobileCatalogFilters({
         </SheetTrigger>
         <SheetContent
           side="left"
-          className="w-[min(26rem,calc(100%-1rem))]! overflow-y-auto overscroll-contain pb-5"
+          className="w-[min(26rem,calc(100%-1rem))]! h-dvh! gap-0 overflow-hidden"
         >
-          <SheetHeader className="px-6 pb-0 pt-6">
+          <SheetHeader className="shrink-0 border-b px-5 pb-4 pr-12 pt-6">
             <SheetTitle className="font-heading text-2xl">
               Make it your collection
             </SheetTitle>
@@ -47,7 +47,7 @@ export function MobileCatalogFilters({
               Choose a craft or occasion, then show your matches.
             </SheetDescription>
           </SheetHeader>
-          <div className="px-3">{children}</div>
+          <div className="flex min-h-0 flex-1 flex-col">{children}</div>
         </SheetContent>
       </Sheet>
     </div>

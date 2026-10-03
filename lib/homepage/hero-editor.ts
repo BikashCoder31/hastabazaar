@@ -1,4 +1,5 @@
 import {
+  SELLER_REGISTRATION_HERO_SLIDE,
   assertHomepageHeroPublicationReady,
   validateHomepageHeroDraft,
   type HomepageHeroSlide,
@@ -51,6 +52,20 @@ export function addHomepageHeroSlide(
       imageNote: null,
     },
   ];
+}
+
+/** Insert an editable seller introduction without replacing any existing card. */
+export function addSellerRegistrationSlide(
+  slides: readonly HomepageHeroSlide[],
+): HomepageHeroSlide[] {
+  const validated = validateHomepageHeroDraft(slides);
+  if (validated.some((slide) => slide.id === SELLER_REGISTRATION_HERO_SLIDE.id)) {
+    throw new RangeError('The seller registration slide already exists. Edit or move that slide instead.');
+  }
+  if (validated.length >= 8) {
+    throw new RangeError('All 8 slide slots are in use. No existing slide was removed.');
+  }
+  return renumber([SELLER_REGISTRATION_HERO_SLIDE, ...validated]);
 }
 
 export function moveHomepageHeroSlide(

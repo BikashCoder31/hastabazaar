@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { sendJson } from '@/lib/http/client-request';
 
 export function AddToCart({
   productId,
@@ -35,14 +36,8 @@ export function AddToCart({
     setError('');
     let openingCheckout = false;
     try {
-      const response = await fetch('/api/cart', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ productId, quantity }),
-      });
-      const result = (await response.json()) as { error?: string };
-      if (!response.ok)
-        throw new Error(result.error || 'Could not add this product.');
+      await sendJson('/api/cart', 'POST', { productId, quantity },
+        'We couldn’t add this product. Please try again.');
       if (action === 'buy_now') {
         openingCheckout = true;
         router.push('/checkout');

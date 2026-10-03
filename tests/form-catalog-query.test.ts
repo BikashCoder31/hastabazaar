@@ -104,6 +104,8 @@ void test('minimum price changes both published product results and count', asyn
       CREATE TABLE categories(id TEXT PRIMARY KEY,slug TEXT,is_active INTEGER,name_en TEXT);
       CREATE TABLE products(id TEXT PRIMARY KEY,slug TEXT,name_en TEXT,name_ne TEXT,description_en TEXT,
         description_ne TEXT,price_paisa INTEGER,compare_at_price_paisa INTEGER,inventory_quantity INTEGER,
+        country_of_origin TEXT NOT NULL DEFAULT '',origin_evidence_status TEXT NOT NULL DEFAULT 'unverified',
+        origin_evidence_reference TEXT,
         producer TEXT,materials TEXT,origin_story TEXT,dimensions TEXT,size TEXT,colour TEXT,variations TEXT,
         specifications TEXT,care_instructions TEXT,safety_information TEXT,return_conditions TEXT,
         return_eligible INTEGER,warranty TEXT,made_to_order INTEGER,preparation_days INTEGER,

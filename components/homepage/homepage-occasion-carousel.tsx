@@ -32,9 +32,10 @@ import {
   nextOccasionIndex,
   occasionSelectionAnnouncement,
 } from '@/lib/homepage/occasion-autoplay';
-import type {
-  HomepageOccasionIcon,
-  HomepageOccasionSlides,
+import {
+  presentHomepageOccasionSlide,
+  type HomepageOccasionIcon,
+  type HomepageOccasionSlides,
 } from '@/lib/homepage/occasion-slides';
 import {
   mediaFrameClass,
@@ -73,6 +74,7 @@ export function HomepageOccasionCarousel({
     () =>
       [...slides]
         .filter((slide) => slide.enabled)
+        .map(presentHomepageOccasionSlide)
         .sort((a, b) => a.position - b.position),
     [slides],
   );

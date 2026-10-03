@@ -1,6 +1,7 @@
 import type { FeaturedProduct } from '@/lib/catalog/featured-products';
 import type { RecentlyViewedPolicy } from '@/lib/configuration/types';
 import { publicProductEligibility } from '@/lib/products/eligibility';
+import { publicProductName } from '@/lib/products/truthful-presentation';
 
 export type RecentlyViewedProduct = FeaturedProduct & Readonly<{
   id: string;
@@ -22,13 +23,13 @@ function asProduct(row: ProductRow): RecentlyViewedProduct {
   return {
     id: row.id,
     slug: row.slug,
-    name: row.name,
+    name: publicProductName(row.name),
     pricePaisa,
     compareAtPricePaisa: row.compareAtPricePaisa === null ? null : Number(row.compareAtPricePaisa),
     price: new Intl.NumberFormat('en-NP').format(pricePaisa / 100),
     category: row.category,
     image: `/api/product-media/${row.mediaId}`,
-    imageAlt: row.name,
+    imageAlt: publicProductName(row.name),
     tradingName: row.tradingName,
     available: Number(row.inventoryQuantity) > 0,
     lastViewedAt: row.lastViewedAt === null ? null : Number(row.lastViewedAt),

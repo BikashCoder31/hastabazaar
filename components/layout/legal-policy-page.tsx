@@ -5,9 +5,9 @@ import { FileText } from 'lucide-react';
 import {
   getLegalPolicyDocument,
   publicLegalPolicies,
-  publicLegalPolicyNavigation,
   type PublicLegalPolicyKey,
 } from '@/lib/content/legal-policies';
+import { LegalPolicyNavigation } from './legal-policy-navigation';
 import { SiteFooter } from './site-footer';
 import { SiteHeader } from './site-header';
 
@@ -154,7 +154,8 @@ function safeHref(href: string): string | null {
 }
 
 function inline(value: string): ReactNode[] {
-  const token = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\)|Return, Exchange, Cancellation & Refund Policy|Prohibited & Restricted Products Policy|Seller Marketplace Agreement|Shipping & Delivery Policy|Terms & Conditions|Privacy Policy|Cookie Policy|support@hastabazaar\.com)/g;
+  const token =
+    /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\)|Return, Exchange, Cancellation & Refund Policy|Prohibited & Restricted Products Policy|Seller Marketplace Agreement|Shipping & Delivery Policy|Terms & Conditions|Privacy Policy|Cookie Policy|support@hastabazaar\.com)/g;
   const nodes: ReactNode[] = [];
   let cursor = 0;
 
@@ -347,56 +348,25 @@ export function LegalPolicyPage({
       <SiteHeader />
       <main id="main-content">
         <div className="border-b bg-secondary/30">
-          <div className="shell py-10 sm:py-14">
+          <div className="shell py-6 sm:py-14">
             <p className="eyebrow">HastaBazaar · Legal & Policies</p>
-            <h1 className="mt-3 max-w-4xl font-heading text-4xl tracking-tight sm:text-5xl">
+            <h1 className="mt-2 max-w-4xl font-heading text-3xl leading-tight tracking-tight sm:mt-3 sm:text-5xl">
               {policy.title}
             </h1>
-            <p className="mt-4 max-w-3xl text-lg leading-8 text-muted-foreground">
+            <p className="mt-3 max-w-3xl text-base leading-7 text-muted-foreground sm:mt-4 sm:text-lg sm:leading-8">
               {policy.description}
             </p>
           </div>
         </div>
-        <div className="shell grid gap-8 py-8 lg:grid-cols-[17rem_minmax(0,1fr)] lg:gap-12 lg:py-12">
-          <aside className="min-w-0 lg:sticky lg:top-32 lg:max-h-[calc(100vh-9rem)] lg:self-start lg:overflow-y-auto">
-            <nav
-              aria-label="Legal policies"
-              className="flex flex-wrap gap-2 lg:flex-col"
-            >
-              <Link
-                href="/legal"
-                className="rounded-xl border px-4 py-3 text-sm font-semibold hover:bg-secondary"
-              >
-                Legal & Policies
-              </Link>
-              {publicLegalPolicyNavigation.map((item) => (
-                <Link
-                  key={item.key}
-                  href={item.href}
-                  aria-current={item.key === policyKey ? 'page' : undefined}
-                  className={`rounded-xl px-4 py-3 text-sm font-semibold ${item.key === policyKey ? 'bg-primary text-primary-foreground' : 'border hover:bg-secondary'}`}
-                >
-                  {item.title}
-                </Link>
-              ))}
-            </nav>
-            <details className="mt-5 rounded-2xl border p-4" open>
-              <summary className="cursor-pointer text-sm font-semibold">
-                On this page
-              </summary>
-              <ul className="mt-2 space-y-1">
-                {headings.map((heading) => (
-                  <li key={heading.id}>
-                    <a
-                      href={`#${heading.id}`}
-                      className="inline-block py-1.5 text-sm leading-5 text-primary underline-offset-4 hover:underline"
-                    >
-                      {plainText(heading.text)}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </details>
+        <div className="shell grid gap-5 py-5 sm:gap-8 sm:py-8 lg:grid-cols-[17rem_minmax(0,1fr)] lg:gap-12 lg:py-12 print:block">
+          <aside className="min-w-0 lg:sticky lg:top-32 lg:max-h-[calc(100vh-9rem)] lg:self-start lg:overflow-y-auto print:hidden">
+            <LegalPolicyNavigation
+              policyKey={policyKey}
+              headings={headings.map((heading) => ({
+                id: heading.id,
+                text: plainText(heading.text),
+              }))}
+            />
           </aside>
           <article className="min-w-0 max-w-4xl rounded-3xl border bg-card p-5 shadow-sm sm:p-8 lg:p-10">
             <div className="mb-8 flex items-center gap-2 border-b pb-5 text-sm text-muted-foreground">
@@ -407,7 +377,7 @@ export function LegalPolicyPage({
           </article>
         </div>
       </main>
-      <SiteFooter />
+      <SiteFooter compact />
     </div>
   );
 }

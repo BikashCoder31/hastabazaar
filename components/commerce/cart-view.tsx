@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { sendJson } from '@/lib/http/client-request';
 import {
   mediaFrameClass,
   mediaObjectClass,
@@ -79,16 +80,10 @@ export function CartView() {
     setBusy(itemId);
     setError('');
     try {
-      const response = await fetch('/api/cart', {
-        method: quantity === undefined ? 'DELETE' : 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(
-          quantity === undefined ? { itemId } : { itemId, quantity },
-        ),
-      });
-      const result = (await response.json()) as CartData & { error?: string };
-      if (!response.ok)
-        throw new Error(result.error || 'Cart could not be updated.');
+      const result = await sendJson<CartData>('/api/cart',
+        quantity === undefined ? 'DELETE' : 'PATCH',
+        quantity === undefined ? { itemId } : { itemId, quantity },
+        'We couldn’t update your cart. Please try again.');
       setCart(result);
     } catch (reason) {
       setError(
@@ -133,7 +128,7 @@ export function CartView() {
         <PackageOpen className="mx-auto size-10 text-primary" />
         <h2 className="mt-5 font-heading text-3xl">Your cart is empty</h2>
         <p className="mt-3 text-muted-foreground">
-          Browse work from verified makers across Nepal.
+          Explore products and seller details in the collection.
         </p>
         <Button nativeButton={false} render={<Link href="/shop" />} className="mt-7 rounded-full">
           Explore the collection

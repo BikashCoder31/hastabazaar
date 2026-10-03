@@ -29,9 +29,9 @@ export async function generateMetadata({searchParams}:{searchParams:Promise<Reco
  const filtered=Object.keys(await searchParams).length>0;return {
  alternates:{canonical:'https://hastabazaar.com/shop'},
  robots:filtered?{index:false,follow:true}:{index:true,follow:true},
-  title: 'Shop handmade products',
+  title: 'Shop products',
   description:
-    'Browse verified handmade products from approved makers and businesses across Nepal.',
+    'Browse gifts and everyday finds from marketplace sellers. Read each listing for materials, origin and seller details.',
 };}
 
 function money(paisa: number): string {
@@ -140,7 +140,7 @@ export default async function ShopPage({
               <ChevronRight className="size-3.5" />
               <span aria-current="page">The collection</span>
             </nav>
-            <p className="eyebrow">Independent makers · Thoughtful finds</p>
+            <p className="eyebrow">Independent sellers · Thoughtful finds</p>
             <h1 className="mt-3 font-heading text-4xl tracking-[-0.035em] sm:text-5xl">
               Something special starts here.
             </h1>
@@ -166,6 +166,7 @@ export default async function ShopPage({
                 <CatalogueFilters
                   {...filterProps}
                   idPrefix="mobile-catalogue"
+                  presentation="sheet"
                 />
               </MobileCatalogFilters>
             </div>

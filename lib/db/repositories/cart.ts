@@ -1,4 +1,5 @@
 import { publicProductEligibility } from '@/lib/products/eligibility';
+import { publicProductName } from '@/lib/products/truthful-presentation';
 const CART_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_ITEM_QUANTITY = 10;
 const MAX_CART_LINES = 20;
@@ -85,7 +86,7 @@ export async function getCart(database: D1Database, tokenHash: string): Promise<
     )
     .bind(cart.id)
     .all<CartItemRow>();
-  const items = result.results;
+  const items = result.results.map(item => ({...item,nameEn:publicProductName(item.nameEn)}));
   return {
     items,
     itemSubtotalPaisa: items.reduce((total, item) => total + item.pricePaisa * item.quantity, 0),

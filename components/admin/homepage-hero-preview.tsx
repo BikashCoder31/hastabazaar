@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { HomepageHeroSlide } from '@/lib/homepage/hero-slides';
+import { isNativeSellerRegistrationSlide, type HomepageHeroSlide } from '@/lib/homepage/hero-slides';
+import { SellerRegistrationPanel } from '@/components/homepage/seller-registration-panel';
 import {
   heroLayoutClass,
   heroMediaVisualClass,
@@ -38,7 +39,8 @@ export function HomepageHeroPreview({
     return () => observer.disconnect();
   }, [viewport]);
   const scale = Math.min(1, geometry.width / viewport);
-  const mediaUrl = slide.mediaId
+  const nativePanel = isNativeSellerRegistrationSlide(slide);
+  const mediaUrl = !nativePanel && slide.mediaId
     ? `/api/admin/homepage/hero-media/${encodeURIComponent(slide.mediaId)}`
     : '';
   const posterUrl = slide.posterMediaId
@@ -72,6 +74,7 @@ export function HomepageHeroPreview({
                 data-media-frame="cover"
                 className={mediaFrameClass('cover', 'homepage-hero-frame')}
               >
+                {nativePanel ? <SellerRegistrationPanel /> : null}
                 {mediaUrl && slide.mediaType === 'image' ? (
                   // eslint-disable-next-line @next/next/no-img-element -- authenticated preview URL is dynamic.
                   <img
@@ -96,12 +99,12 @@ export function HomepageHeroPreview({
                     className={mediaObjectClass('cover', heroMediaVisualClass)}
                   />
                 ) : null}
-                {!mediaUrl ? (
+                {!mediaUrl && !nativePanel ? (
                   <div className="absolute inset-0 grid place-items-center p-6 text-center text-sm text-[#687483]">
                     Select an image or video to preview this slide.
                   </div>
                 ) : null}
-                <div className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-tr from-[#071d35]/25 via-[#102b43]/5 to-[#5a3824]/10" />
+                {!nativePanel ? <div className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-tr from-[#071d35]/25 via-[#102b43]/5 to-[#5a3824]/10" /> : null}
               </div>
               {slide.imageNote ? (
                 <p className={heroNoteClass}>{slide.imageNote}</p>

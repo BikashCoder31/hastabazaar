@@ -13,9 +13,9 @@ void test('public footer uses the editorial customer-facing presentation', async
 
   assert.match(footer, /site-footer-cta/);
   assert.match(footer, /hastabazaar-logo-lockup-640\.webp/);
-  assert.match(footer, /alt="Hastabazaar — Handmade Nepal\. For a Sustainable World\."/);
+  assert.match(footer, /alt="Hastabazaar"/);
   assert.doesNotMatch(footer, /HastaBazaar<span>\.<\/span>/);
-  assert.match(footer, /Crafted in Nepal\. Connected to the world\./);
+  assert.match(footer, /Thoughtful finds\. Everyday possibilities\./);
   assert.match(footer, /Shop & discover/);
   assert.match(footer, /Official Hastabazaar social media/);
   assert.match(footer, /SocialBrandIcon/);

@@ -94,6 +94,5 @@ void test('protected add-to-cart rejects custom form envelopes and preserves the
 void test('add-to-cart quantity surface has a stable catalog identity without a custom answer input', () => {
   const source = readFileSync('components/commerce/add-to-cart.tsx', 'utf8');
   assert.match(source, /data-form-id="commerce\.add-to-cart"/);
-  assert.match(source, /body: JSON\.stringify\(\{ productId, quantity \}\)/);
   assert.doesNotMatch(source, /ConfiguredFields|customAnswers|formVersion/);
 });

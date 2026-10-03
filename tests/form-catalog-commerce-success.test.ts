@@ -21,7 +21,7 @@ function bundle() {
       createRoot(document.getElementById('root')).render(mode.startsWith('customer-')?
         <CustomerAftercare orderNumber="HK-TEST" orderStatus="delivered" items={[{id:'item',productName:'Product',sellerName:'Shop',quantity:1,returnEligible:true}]} returns={[]} complaints={[]}/>:
         mode.startsWith('seller-')?<SellerCaseResponseForm kind={mode==='seller-return'?'return':'complaint'} id="case-1" disabled={false}/>:
-        mode.startsWith('gift-')?<GiftCardForm issue={mode==='gift-issue'}/>:<CheckoutForm/>);` },
+        mode.startsWith('gift-')?<GiftCardForm issue={mode==='gift-issue'}/>:<CheckoutForm customerId="customer-fixture"/>);` },
     bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' }, plugins: [{ name: 'navigation-fixture', setup(builder) {
       builder.onResolve({ filter: /^next\/navigation$|^next\/link$|^@\/components\/delivery\/location-picker$/ },
@@ -209,7 +209,7 @@ for (const [mode, formId] of modes) void test(`${formId} retains attempts and in
         reply = { status: 409, body: '{"error":"Current config changed.","code":"stale_version"}' };
       }
       await submitAttempt(page, form, false);
-      await page.getByText(/This form changed while/).first().waitFor();
+      await page.getByText(mode === 'checkout' ? /Checkout details changed/ : /This form changed while/).first().waitFor();
       assert.equal(await form.getByRole('button', { name: /Send return request|Send complaint|Submit response|Issue gift card|Redeem into wallet|Place COD order/ }).isDisabled(), true);
     }
   } finally { await page.close(); await browser.close(); }
