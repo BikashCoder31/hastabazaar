@@ -137,6 +137,55 @@ async function fixture(
   return { browser, page };
 }
 
+
+for (const policyKey of ['returns', 'shipping'] as const) {
+  void test(policyKey + ' key answer is visible before navigation in the first mobile and desktop viewport', async () => {
+    for (const width of [360, 390, 430, 1440]) {
+      const h = await fixture(policyKey, width, width < 1000 ? 844 : 900);
+      try {
+        const answer = h.page.locator('[data-policy-key-answer]');
+        assert.equal(await answer.count(), 1, 'A shopper sees the policy key answer near the title');
+        const text = await answer.textContent();
+        if (policyKey === 'returns') {
+          assert.match(text ?? '', /unused, unaltered/);
+          assert.match(text ?? '', /accessories and labels/);
+          assert.match(text ?? '', /7 calendar days after delivery/);
+          assert.match(text ?? '', /goods supplied sealed.*15 calendar days.*original seal remains intact/i);
+          assert.match(text ?? '', /exclusions and full conditions apply/);
+          assert.match(text ?? '', /protections for damaged, defective or misdescribed items remain/i);
+        } else {
+          assert.match(text ?? '', /district estimates do not confirm delivery availability/i);
+          assert.match(text ?? '', /address accepted for your order/i);
+          assert.match(text ?? '', /each store.s delivery charge.*checkout total before you order/i);
+          assert.match(text ?? '', /different stores may arrive separately/i);
+        }
+        const layout = await h.page.evaluate(() => {
+          const answer = document.querySelector<HTMLElement>('[data-policy-key-answer]')!;
+          const navigation = document.querySelector<HTMLElement>('aside')!;
+          const article = document.querySelector<HTMLElement>('article')!;
+          const mobile = document.querySelector<HTMLElement>('[data-policy-navigation="mobile"]')!;
+          return {
+            answerTop: answer.getBoundingClientRect().top,
+            answerBottom: answer.getBoundingClientRect().bottom,
+            navigationTop: navigation.getBoundingClientRect().top,
+            articleTop: article.getBoundingClientRect().top,
+            viewportHeight: innerHeight,
+            pageWidth: document.documentElement.scrollWidth,
+            closed: Array.from(mobile.querySelectorAll('details')).every(disclosure => !disclosure.open),
+          };
+        });
+        assert.ok(layout.answerTop >= 0 && layout.answerBottom <= layout.viewportHeight, 'The complete key answer fits the first viewport at ' + width + 'px');
+        assert.ok(layout.answerBottom <= layout.navigationTop && layout.answerBottom <= layout.articleTop, 'The key answer precedes both navigation and full terms');
+        assert.equal(layout.closed, true, 'Mobile navigation begins collapsed');
+        assert.ok(layout.pageWidth <= width, 'No horizontal overflow');
+        assert.equal(await answer.getByRole('link', { name: 'Read full conditions' }).getAttribute('href'), policyKey === 'returns' ? '#standard-returns' : '#delivery-availability-and-charges');
+      } finally {
+        await h.browser.close();
+      }
+    }
+  });
+}
+
 void test('mobile policy disclosures begin closed and keep full terms close to the introduction without overflow', async () => {
   for (const policyKey of ['returns', 'shipping'] as const) {
     for (const width of [320, 360, 390, 430, 768]) {
@@ -147,13 +196,13 @@ void test('mobile policy disclosures begin closed and keep full terms close to t
             '[data-policy-navigation="mobile"]',
           )!;
           const article = document.querySelector<HTMLElement>('article')!;
-          const description = document.querySelector<HTMLElement>('h1 + p')!;
+          const introduction = document.querySelector<HTMLElement>('[data-policy-key-answer]') ?? document.querySelector<HTMLElement>('h1 + p')!;
           return {
             open: Array.from(mobile.querySelectorAll('details')).map(
               (el) => el.open,
             ),
             navHeight: mobile.getBoundingClientRect().height,
-            descriptionBottom: description.getBoundingClientRect().bottom,
+            introductionBottom: introduction.getBoundingClientRect().bottom,
             articleTop: article.getBoundingClientRect().top,
             pageWidth: document.documentElement.scrollWidth,
           };
@@ -164,7 +213,7 @@ void test('mobile policy disclosures begin closed and keep full terms close to t
           'Collapsed controls leave room for actual policy content',
         );
         assert.ok(
-          layout.articleTop - layout.descriptionBottom <= 225,
+          layout.articleTop - layout.introductionBottom <= 225,
           'Full policy follows the compact controls',
         );
         assert.ok(layout.pageWidth <= width, 'No horizontal page overflow');

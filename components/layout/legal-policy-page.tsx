@@ -5,6 +5,7 @@ import { FileText } from 'lucide-react';
 import {
   getLegalPolicyDocument,
   publicLegalPolicies,
+  publicLegalPolicySummaries,
   type PublicLegalPolicyKey,
 } from '@/lib/content/legal-policies';
 import { LegalPolicyNavigation } from './legal-policy-navigation';
@@ -337,6 +338,7 @@ export function LegalPolicyPage({
   policyKey: PublicLegalPolicyKey;
 }) {
   const policy = publicLegalPolicies[policyKey];
+  const summary = publicLegalPolicySummaries[policyKey];
   const markdown = getLegalPolicyDocument(policyKey);
   const headings = parseDocument(markdown).filter(
     (block): block is Extract<Block, { type: 'heading' }> =>
@@ -356,6 +358,24 @@ export function LegalPolicyPage({
             <p className="mt-3 max-w-3xl text-base leading-7 text-muted-foreground sm:mt-4 sm:text-lg sm:leading-8">
               {policy.description}
             </p>
+            {summary ? (
+              <section
+                aria-labelledby="policy-key-answer-title"
+                data-policy-key-answer
+                className="mt-4 max-w-3xl rounded-2xl border bg-card p-4 text-sm leading-6 sm:text-base"
+              >
+                <h2 id="policy-key-answer-title" className="font-semibold">
+                  {summary.title}
+                </h2>
+                <p className="mt-2 text-muted-foreground">{summary.answer}</p>
+                <a
+                  href={summary.detailsHref}
+                  className="mt-2 inline-block py-1 font-semibold text-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                >
+                  Read full conditions
+                </a>
+              </section>
+            ) : null}
           </div>
         </div>
         <div className="shell grid gap-5 py-5 sm:gap-8 sm:py-8 lg:grid-cols-[17rem_minmax(0,1fr)] lg:gap-12 lg:py-12 print:block">
