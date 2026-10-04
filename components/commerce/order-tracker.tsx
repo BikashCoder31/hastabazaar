@@ -15,9 +15,33 @@ const date = (value: number) =>
     timeStyle: 'short',
     timeZone: 'Asia/Kathmandu',
   }).format(value);
-export function OrderTracker({ initialOrder, presentationConfig }: { initialOrder: string; presentationConfig?: PublishedFormConfig }) {
-  const published = usePublishedFormConfig('commerce.order-tracking');
-  const config = presentationConfig ?? published.config;
+export function OrderTracker({
+  initialOrder,
+  presentationConfig,
+  presentationUnavailable = false,
+}: {
+  initialOrder: string;
+  presentationConfig?: PublishedFormConfig | null;
+  presentationUnavailable?: boolean;
+}) {
+  // Tracking has a fixed identity contract. Optional published text changes only
+  // its presentation, and a known missing publication does not block lookup.
+  const [retryPresentation, setRetryPresentation] = useState(false);
+  const published = usePublishedFormConfig('commerce.order-tracking', {
+    enabled: presentationConfig === undefined || retryPresentation,
+  });
+  const config = published.config ?? presentationConfig;
+  const presentationFailed =
+    !config &&
+    (published.status === 'unavailable' ||
+      (presentationUnavailable && !retryPresentation));
+  const presentationLoading =
+    retryPresentation && published.status === 'loading';
+  function reloadPresentation() {
+    if (presentationConfig === undefined || retryPresentation)
+      published.refresh();
+    setRetryPresentation(true);
+  }
   const orderField = queryFieldPresentation('commerce.order-tracking', config, 'orderNumber', { label: 'Order number', placeholder: 'e.g. HK-…' });
   const emailField = queryFieldPresentation('commerce.order-tracking', config, 'email', { label: 'Checkout email', placeholder: 'you@example.com' });
   const [orderNumber, setOrder] = useState(initialOrder);
@@ -93,7 +117,23 @@ export function OrderTracker({ initialOrder, presentationConfig }: { initialOrde
             {emailField.helpText ? <span id="tracking-email-help" className="mt-1 block text-xs text-muted-foreground">{emailField.helpText}</span> : null}
           </label>
         </div>
-        {!presentationConfig && published.status === 'unavailable' ? <output className="block mt-3 text-sm text-muted-foreground">Tracking presentation is unavailable. Standard order lookup remains available.</output> : null}
+        {presentationFailed || presentationLoading ? (
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+            <output className="text-muted-foreground" aria-live="polite">
+              {presentationLoading
+                ? 'Loading tracking form…'
+                : 'You can still track your order using your order number and checkout email.'}
+            </output>
+            <button
+              type="button"
+              onClick={reloadPresentation}
+              disabled={presentationLoading}
+              className="min-h-11 rounded-lg px-2 font-semibold underline underline-offset-4 disabled:opacity-60"
+            >
+              Reload tracking form
+            </button>
+          </div>
+        ) : null}
         <p className="mt-3 text-sm text-muted-foreground">
           You’ll find your order number on your confirmation page or email.
         </p>

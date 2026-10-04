@@ -1,3 +1,4 @@
+import { publicProductName } from '@/lib/products/truthful-presentation';
 import {normalizeProvince,normalizeDistrict,districtBelongsToProvince,validWard} from '@/lib/checkout/nepal-address';
 import {normalizeNepalMobile} from '@/lib/auth/nepal-phone';
 import { publicProductEligibility } from '@/lib/products/eligibility';
@@ -120,7 +121,7 @@ export async function listPublishedProductsByMaker(database: D1Database, sellerI
        AND (seller_profiles.status = 'approved' OR (participation.participation_route = 'managed_maker' AND participation.application_stage = 'active'))
      ORDER BY products.published_at DESC`,
   ).bind(sellerId).all<WishlistProductRow>();
-  return result.results;
+  return result.results.map(item => ({...item,nameEn:publicProductName(item.nameEn)}));
 }
 
 export async function listCustomerOrders(database: D1Database, userId: string, limit = 100): Promise<readonly CustomerOrderRow[]> {
@@ -444,7 +445,7 @@ export async function listWishlist(database: D1Database, userId: string): Promis
      WHERE wishlist_items.user_id = ? AND ${publicProductEligibility()}
      ORDER BY wishlist_items.created_at DESC`,
   ).bind(userId).all<WishlistProductRow>();
-  return result.results;
+  return result.results.map(item => ({...item,nameEn:publicProductName(item.nameEn)}));
 }
 
 export async function isWishlisted(database: D1Database, userId: string, productId: string): Promise<boolean> {

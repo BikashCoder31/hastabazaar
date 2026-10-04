@@ -1,18 +1,25 @@
 import type { ElementType, ReactNode } from 'react';
-import { HandHeart, Heart, Sprout, UserRound } from 'lucide-react';
-import type { HomepageHeroSlide } from '@/lib/homepage/hero-slides';
+import { FileCheck2, HandHeart, Heart, ShieldCheck, Sprout, Store, UserRound } from 'lucide-react';
+import { SELLER_REGISTRATION_HERO_SLIDE, presentHomepageHeroSlide, type HomepageHeroSlide } from '@/lib/homepage/hero-slides';
 
 const principles = [
-  { icon: HandHeart, label: 'Authentic handmade' },
-  { icon: UserRound, label: 'Support local makers' },
+  { icon: HandHeart, label: 'Product details' },
+  { icon: UserRound, label: 'Meet the seller' },
   { icon: Sprout, label: 'Thoughtful choices' },
-  { icon: Heart, label: 'A stronger Nepal' },
+  { icon: Heart, label: 'Help with your order' },
+] as const;
+
+const sellerPrinciples = [
+  { icon: Store, label: 'Seller application' },
+  { icon: FileCheck2, label: 'Verification' },
+  { icon: ShieldCheck, label: 'Admin review' },
+  { icon: UserRound, label: 'Your seller profile' },
 ] as const;
 
 // Copy participates in the desktop grid's height, so previews must render the
 // same type, spacing and wrapping as the public slide to reproduce its crop.
 export function HomepageHeroCopy({
-  slide,
+  slide: storedSlide,
   preview = false,
   LinkComponent = 'a',
 }: {
@@ -24,6 +31,9 @@ export function HomepageHeroCopy({
     children: ReactNode;
   }>;
 }) {
+  const slide = presentHomepageHeroSlide(storedSlide);
+  const sellerSlide = slide.id === SELLER_REGISTRATION_HERO_SLIDE.id;
+  const benefits = sellerSlide ? sellerPrinciples : principles;
   const Heading = preview ? 'h3' : 'h2';
   const primaryClass =
     'homepage-hero-action inline-flex min-h-12 max-w-full items-center justify-center rounded-full bg-[#b81925] px-4 py-3 text-sm leading-snug font-bold text-white transition hover:bg-[#971620] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#b81925]';
@@ -83,9 +93,9 @@ export function HomepageHeroCopy({
         </div>
         <div
           className="homepage-hero-benefits text-[#344255]"
-          aria-label="Why shop with us"
+          aria-label={sellerSlide ? "Getting started as a seller" : "Why shop with us"}
         >
-          {principles.map(({ icon: Icon, label }) => (
+          {benefits.map(({ icon: Icon, label }) => (
             <div key={label} className="flex min-w-0 items-center gap-2">
               <Icon
                 aria-hidden="true"

@@ -98,7 +98,7 @@ foreach ($record in $records) {
     }
 
     $returnText = if ([bool]$record.returnable) {
-        'Returns or exchanges are accepted within 10 days of delivery under the standard Hastabazaar return policy.'
+        'Marketplace return eligibility and the current Hastabazaar return policy apply.'
     } else {
         $null
     }

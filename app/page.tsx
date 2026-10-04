@@ -1,7 +1,7 @@
 export const metadata = {
   alternates: { canonical: 'https://hastabazaar.com/' },
   openGraph: {
-    title: 'HastaBazaar — Handmade with a human story',
+    title: 'HastaBazaar — Thoughtful finds for everyday life',
     url: 'https://hastabazaar.com/',
     type: 'website',
   },
@@ -186,7 +186,7 @@ export default async function Home() {
     <div className="min-h-screen bg-background text-foreground">
       <SiteHeader />
       <main tabIndex={-1} id="main-content">
-        <h1 className="sr-only">Handmade gifts and crafts from Nepali makers</h1>
+        <h1 className="sr-only">Gifts and everyday finds from marketplace sellers</h1>
         <HomepageHeroCarousel slides={heroSlides} />
 
         <div id="categories" className="homepage-category-wrap shell">
@@ -263,8 +263,8 @@ export default async function Home() {
             {[
               {
                 icon: HandHeart,
-                label: 'Independent Nepali makers',
-                detail: 'Discover the hands behind the craft',
+                label: 'Discover the seller',
+                detail: 'Seller details on each product page',
               },
               {
                 icon: Banknote,
@@ -295,7 +295,7 @@ export default async function Home() {
           <section id="offers" className="shell py-10 sm:py-14">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
-                <p className="eyebrow">Approved offers</p>
+                <p className="eyebrow">Current offers</p>
                 <h2 className="section-heading mt-3">
                   Worth knowing about now.
                 </h2>
@@ -335,8 +335,8 @@ export default async function Home() {
                   >
                     {promotion.productCount}{' '}
                     {promotion.productCount === 1
-                      ? 'eligible product'
-                      : 'eligible products'}
+                      ? 'product on offer'
+                      : 'products on offer'}
                     {' · '}Available through{' '}
                     {offerDate.format(promotion.endsAt)}
                   </p>
@@ -390,7 +390,7 @@ export default async function Home() {
                   Fresh finds are on the way.
                 </h3>
                 <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">
-                  New handmade pieces will appear here as soon as they’re ready
+                  New products will appear here as soon as they’re ready
                   to shop.
                 </p>
                 <Link href="#categories" className="section-link mt-5">
@@ -401,45 +401,31 @@ export default async function Home() {
           </div>
         </section>
 
-        <section id="top-products" className="shell py-10 sm:py-14">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="eyebrow">
-                {topProducts.length > 0
-                  ? 'Popular with shoppers'
-                  : 'Selected with care'}
-              </p>
-              <h2 className="section-heading mt-3">
-                {topProducts.length > 0
-                  ? 'Top products right now.'
-                  : 'Featured by HastaBazaar.'}
-              </h2>
-              <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">
-                {topProducts.length > 0
-                  ? 'Based on successfully delivered, non-cancelled purchases from the last 90 days.'
-                  : 'Top products will be ranked here after enough successfully delivered purchases. Until then, only products from an active approved homepage promotion appear.'}
-              </p>
+        {topSliderProducts.length > 0 ? (
+          <section id="top-products" className="shell py-10 sm:py-14">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <p className="eyebrow">
+                  {topProducts.length > 0 ? 'Popular with shoppers' : 'Featured finds'}
+                </p>
+                <h2 className="section-heading mt-3">
+                  {topProducts.length > 0
+                    ? 'Top products right now.'
+                    : 'Featured by HastaBazaar.'}
+                </h2>
+              </div>
+              <Link href="/shop" className="section-link">
+                Explore the shop <ArrowUpRight className="size-4" />
+              </Link>
             </div>
-            <Link href="/shop" className="section-link">
-              Explore the shop <ArrowUpRight className="size-4" />
-            </Link>
-          </div>
-          {topSliderProducts.length > 0 ? (
             <div className="mt-8">
               <ProductSlider
                 products={topSliderProducts}
-                label={
-                  topProducts.length > 0 ? 'Top products' : 'Featured products'
-                }
+                label={topProducts.length > 0 ? 'Top products' : 'Featured products'}
               />
             </div>
-          ) : (
-            <p className="mt-7 rounded-2xl border bg-card p-6 text-muted-foreground">
-              Popular products will appear after eligible seller listings
-              receive completed deliveries.
-            </p>
-          )}
-        </section>
+          </section>
+        ) : null}
 
         <section className="shell pb-8 pt-4" aria-label="Browse gift occasions">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -484,8 +470,8 @@ export default async function Home() {
               },
               {
                 icon: HandHeart,
-                title: 'The maker comes first',
-                text: 'Explore materials, making processes, and the independent sellers behind the things you love.',
+                title: 'Details before you decide',
+                text: 'Read each listing for materials, making details, origin information, and the seller behind the product.',
               },
               {
                 icon: MessageCircle,

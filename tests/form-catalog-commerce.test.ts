@@ -931,7 +931,7 @@ void test('checkout client submits the published answer with the core order payl
       import React from 'react';
       import { createRoot } from 'react-dom/client';
       import { CheckoutForm } from './components/commerce/checkout-form';
-      createRoot(document.getElementById('root')!).render(<CheckoutForm />);
+      createRoot(document.getElementById('root')!).render(<CheckoutForm customerId="customer-fixture" />);
     `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'checkout-stubs', setup(bundler) {

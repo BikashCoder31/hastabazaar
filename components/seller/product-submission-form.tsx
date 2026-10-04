@@ -51,7 +51,7 @@ type SubmissionState =
 
 const catalogBaseKeys = ['nameEn', 'nameNe', 'descriptionEn', 'descriptionNe', 'sku', 'price', 'pricePaisa', 'inventoryQuantity',
   'image', 'video', 'reviewRequestId', 'categoryId', 'occasionIds', 'sellerId', 'producer', 'materials',
-  'requestId', 'formVersion', 'customAnswers'];
+  'requestId', 'formVersion', 'customAnswers', 'countryOfOrigin', 'originEvidenceReference', 'originEvidenceStatus'];
 const uncertainSubmissionMessage = 'Submission status is uncertain. Your product or private media may already have been saved. Check your products before starting a new attempt.';
 
 interface ModelContext {
@@ -753,6 +753,18 @@ export function ProductSubmissionForm({
             <FieldLabel htmlFor="descriptionNe">Description — Nepali (optional)</FieldLabel>
             <Textarea id="descriptionNe" name="descriptionNe" maxLength={4000} rows={6} defaultValue={initial?.descriptionNe ?? ''} />
           </Field>
+          <div className="grid gap-5 md:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="countryOfOrigin">Country of origin — optional</FieldLabel>
+              <FieldDescription>Enter the country where this product was made only if you know it. Leave blank if unknown; declarations are reviewed.</FieldDescription>
+              <Input id="countryOfOrigin" name="countryOfOrigin" maxLength={100} defaultValue={initial?.originEvidenceStatus === 'unverified' ? '' : initial?.countryOfOrigin ?? ''} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="originEvidenceReference">Origin evidence reference — optional</FieldLabel>
+              <FieldDescription>Record a supplier or manufacturer declaration that supports the country. This reference stays private.</FieldDescription>
+              <Input id="originEvidenceReference" name="originEvidenceReference" maxLength={500} defaultValue={initial?.originEvidenceReference ?? ''} />
+            </Field>
+          </div>
           <input type="hidden" name="materials" value="" />
           <MaterialsEditor initial={initial?.materials ?? ''} suggestions={materialSuggestions}/>
           <Field>

@@ -64,7 +64,7 @@ export default async function CheckoutPage() {
           />
         </div>
       </main>
-      <SiteFooter />
+      <SiteFooter compact />
     </div>
   );
 }

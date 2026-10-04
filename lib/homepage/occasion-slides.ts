@@ -1,3 +1,4 @@
+import { publicStorefrontAction } from '../catalog/storefront-navigation';
 import { safeHeroDestination } from './hero-slides';
 
 export const homepageOccasionIcons = [
@@ -54,7 +55,7 @@ const currentOccasionSlide: HomepageOccasionSlide = {
   highlightedPhrase: 'Little surprises.',
   headingTail: null,
   body: 'Birthdays, festivals, thank-yous, or just because. Start with the occasion and find something that feels like them.',
-  supportingNote: 'Delivery available across Nepal.',
+  supportingNote: 'Check delivery details at checkout.',
   cards: [
     {
       kicker: 'THOUGHTFUL GIFTING',
@@ -78,11 +79,11 @@ const humanStorySlide: HomepageOccasionSlide = {
   position: 2,
   enabled: true,
   eyebrow: 'GIFTS WITH A HUMAN STORY',
-  headingLead: 'Made by hand.',
+  headingLead: 'Thoughtful finds.',
   highlightedPhrase: 'Chosen with heart.',
   headingTail: null,
-  body: 'Discover thoughtful pieces from Nepali makers for the people and moments that matter.',
-  supportingNote: 'Thoughtful gifts, delivered across Nepal.',
+  body: 'Discover gifts and everyday finds for the people and moments that matter. Read each listing for materials and origin.',
+  supportingNote: 'Check delivery details at checkout.',
   cards: [
     {
       kicker: 'FRESHLY ADDED',
@@ -92,9 +93,9 @@ const humanStorySlide: HomepageOccasionSlide = {
       theme: 'warm',
     },
     {
-      kicker: 'THE PEOPLE BEHIND THE CRAFT',
-      title: 'Meet our makers',
-      destination: '/#makers',
+      kicker: 'A CLOSER LOOK AT CRAFT',
+      title: 'Craft guide',
+      destination: '/#craft-guide',
       icon: 'hand-heart',
       theme: 'navy',
     },
@@ -320,4 +321,22 @@ export function assertHomepageOccasionPublicationReady(
     }
   }
   return value;
+}
+
+export function presentHomepageOccasionSlide(slide: HomepageOccasionSlide): HomepageOccasionSlide {
+  return {
+    ...slide,
+    headingLead: slide.headingLead === 'Made by hand.' &&
+      slide.highlightedPhrase === 'Chosen with heart.' ? 'Thoughtful finds.' : slide.headingLead,
+    body: slide.body === 'Discover thoughtful pieces from Nepali makers for the people and moments that matter.'
+      ? 'Discover gifts and everyday finds for the people and moments that matter. Read each listing for materials and origin.' : slide.body,
+    supportingNote: slide.supportingNote === 'Delivery available across Nepal.' ||
+      slide.supportingNote === 'Thoughtful gifts, delivered across Nepal.'
+      ? 'Check delivery details at checkout.' : slide.supportingNote,
+    cards: slide.cards.map((card) => {
+      const action = publicStorefrontAction(card.title, card.destination);
+      return { ...card, title: action.label, destination: action.href,
+        kicker: action.href === '/#craft-guide' ? 'A CLOSER LOOK AT CRAFT' : card.kicker };
+    }) as unknown as readonly [HomepageOccasionCard, HomepageOccasionCard],
+  };
 }

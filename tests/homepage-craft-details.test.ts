@@ -53,11 +53,11 @@ async function homepage() {
   const { default: Home } = await import('../app/page');
   const html = renderToStaticMarkup(await Home());
   const section = html.match(
-    /<section\b[^>]*id="makers"[\s\S]*?<\/section>/,
+    /<section\b[^>]*id="craft-guide"[\s\S]*?<\/section>/,
   )?.[0];
   assert.ok(
     section,
-    'Keep the makers navigation anchor attached to the craft guide.',
+    'Name the craft buying guide as the guide navigation destination.',
   );
   const footer = renderToStaticMarkup(globals.craftDetailsFooter).match(
     /<footer\b[\s\S]*?<\/footer>/,
@@ -99,11 +99,11 @@ void test('homepage craft guide has a named heading and a descriptive workshop i
 void test('homepage keeps the footer CTA and surrounding customer care sections intact', async () => {
   const { html, footer } = await homepage();
   assert.equal(html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0], footer);
-  assert.match(footer, /Crafted in Nepal\. Connected to the world\./);
+  assert.match(footer, /Thoughtful finds\. Everyday possibilities\./);
   assert.match(footer, /Shop the collection/);
   assert.match(footer, /Share your craft/);
   assert.equal(
-    (html.match(/Crafted in Nepal\. Connected to the world\./g) ?? []).length,
+    (html.match(/Thoughtful finds\. Everyday possibilities\./g) ?? []).length,
     1,
   );
   assert.match(html, /id="our-standard"/);

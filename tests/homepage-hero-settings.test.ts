@@ -61,7 +61,7 @@ void test('homepage hero is a simple effective-dated setting seeded with three e
   assert.equal(definition.changeControl, 'simple');
   assert.equal(definition.effectiveMode, 'effective_dated');
   assert.equal(definition.defaultValue.length, 3);
-  assert.equal(definition.defaultValue[0].headingLead, 'Handmade today');
+  assert.equal(definition.defaultValue[0].headingLead, 'Thoughtful finds');
   assert.equal(
     definition.defaultValue[0].mediaId,
     'system-nepal-craft-hero',

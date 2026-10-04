@@ -18,7 +18,7 @@ import { Banknote, LockKeyhole, MapPin, Truck } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission, digestFormRequest } from '@/lib/forms/submission';
+import { canonicalKey, configuredJsonPayload, readConfiguredSubmission, digestFormRequest } from '@/lib/forms/submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 import { Button } from '@/components/ui/button';
@@ -38,6 +38,7 @@ import {
   parseCheckoutInput,
   NEPAL_PROVINCES,
 } from '@/lib/checkout/validation';
+import { DELIVERY_ESTIMATE_NOTICE } from '@/lib/checkout/delivery-presentation';
 import type { CustomerAddressRow } from '@/lib/db/repositories/customers';
 import type { CheckoutPromoQuote } from '@/lib/incentives/types';
 import { normalizePromoCode } from '@/lib/incentives/promo-policy';
@@ -64,6 +65,8 @@ const checkoutBaseKeys = [
   'locality', 'landmark', 'postalCode', 'latitude', 'longitude',
   'saveAddressLabel', 'deliveryFor', 'termsAccepted', 'referralCode', 'promoCode', 'promoRevision', 'promoQuoteIntent',
 ];
+
+const checkoutBuiltInKeys = new Set(checkoutBaseKeys.map(canonicalKey));
 
 function money(paisa: number): string {
   return new Intl.NumberFormat('en-NP', {
@@ -97,7 +100,7 @@ export function CheckoutForm({
   referralCampaign?: ReferralCampaign;
   initialReferralCode?: string;
 }) {
-  const published = usePublishedFormConfig('commerce.checkout');
+  const published = usePublishedFormConfig('commerce.checkout', { enabled: Boolean(customerId) });
   const initialAddress =
     savedAddresses.find((item) => item.isDefault) ?? savedAddresses[0];
   const [cart, setCart] = useState<CartData | null>(null);
@@ -512,7 +515,7 @@ export function CheckoutForm({
               >
                 {district && !districtBelongsToProvince(district, province)
                   ? 'Choose a district in this province. Nawalparasi and Rukum need East or West.'
-                  : 'Choose or type your district. The estimate uses our manual tariff; courier coverage is confirmed during order processing.'}
+                  : `Choose or type your district. ${DELIVERY_ESTIMATE_NOTICE}`}
               </p>
             </div>
             <Field
@@ -605,13 +608,33 @@ export function CheckoutForm({
             </p>
           </div>
         </section>
-        {published.config ? (
+        {published.config && published.config.fields.some((field) =>
+          field.status === 'active' && !checkoutBuiltInKeys.has(canonicalKey(field.key))) ? (
           <section className="rounded-2xl border bg-card p-5 sm:p-7">
             <h2 className="font-heading text-2xl">Order details</h2>
             <ConfiguredFields config={published.config} baseKeys={checkoutBaseKeys} />
           </section>
+        ) : published.config ? (
+          <input type="hidden" name="formVersion" value={published.config.version} />
         ) : null}
-        {!published.canSubmit ? <output>{published.message || 'Loading form…'}</output> : null}
+        {published.status !== 'inactive' && !published.canSubmit ? (
+          <section className="space-y-3 rounded-2xl border bg-card p-5 sm:p-7" aria-label="Checkout preparation">
+            <output className="block" aria-live="polite">
+              {published.status === 'loading'
+                ? 'Preparing checkout…'
+                : published.status === 'stale'
+                  ? 'Checkout details changed. Reload checkout and review your answers before trying again.'
+                  : 'We couldn’t prepare checkout. Please retry.'}
+            </output>
+            <p className="text-sm text-muted-foreground">
+              Your entered details stay in this page while checkout reloads. Review them before placing your order.
+            </p>
+            <Button type="button" variant="outline" disabled={published.status === 'loading' || submitting}
+              onClick={published.refresh}>
+              {published.status === 'loading' ? 'Loading checkout…' : 'Retry loading checkout'}
+            </Button>
+          </section>
+        ) : null}
       </div>
       <aside className="h-fit rounded-2xl border bg-card p-6 lg:sticky lg:top-40">
         <h2 className="font-heading text-2xl">Your order</h2>
@@ -621,7 +644,7 @@ export function CheckoutForm({
         <ul className="mt-5 space-y-4">
           {cart.items.map((item) => (
             <li key={item.id} className="flex justify-between gap-4 text-sm">
-              <span>
+              <span className="min-w-0">
                 <strong className="block">
                   {item.nameEn} × {item.quantity}
                 </strong>
@@ -629,7 +652,7 @@ export function CheckoutForm({
                   {item.tradingName}
                 </span>
               </span>
-              <span className="font-semibold">
+              <span className="shrink-0 whitespace-nowrap font-semibold">
                 {money(item.pricePaisa * item.quantity)}
               </span>
             </li>

@@ -1,4 +1,5 @@
 import policyDocuments from './legal-policy-documents.json';
+import { phaseOneMarketplacePolicy } from '../marketplace/policy';
 import { publicPolicyDocuments } from './public-policy-documents';
 
 export const CUSTOMER_POLICY_VERSION =
@@ -53,6 +54,25 @@ export const publicLegalPolicies = {
 
 export type PublicLegalPolicyKey = keyof typeof publicLegalPolicies;
 export type LegalPolicyKey = PublicLegalPolicyKey | 'internal-compliance';
+
+const returnWindows = phaseOneMarketplacePolicy.value.returns;
+
+export const publicLegalPolicySummaries: Partial<Record<PublicLegalPolicyKey, {
+  title: string;
+  answer: string;
+  detailsHref: string;
+}>> = {
+  returns: {
+    title: 'Returns at a glance',
+    answer: `For eligible unused, unaltered items with accessories and labels, request a return within ${returnWindows.generalRequestWindowDays} calendar days after delivery. For goods supplied sealed, the window is ${returnWindows.sealedGoodsWindowDays} calendar days when the original seal remains intact. Product exclusions and full conditions apply; protections for damaged, defective or misdescribed items remain.`,
+    detailsHref: '#standard-returns',
+  },
+  shipping: {
+    title: 'Delivery at a glance',
+    answer: 'District estimates do not confirm delivery availability. Delivery is available only to an address accepted for your order. Each store’s delivery charge is included in the checkout total before you order; products from different stores may arrive separately.',
+    detailsHref: '#delivery-availability-and-charges',
+  },
+};
 
 export const publicLegalPolicyNavigation = Object.entries(
   publicLegalPolicies,

@@ -86,10 +86,10 @@ export default async function SellPage() {
           </ol>
         </section>
 
-        <section className="shell pb-20 lg:pb-28">
+        <section id="seller-application" aria-labelledby="seller-application-heading" className="shell scroll-mt-44 pb-20 lg:pb-28">
           <div className="mb-8 max-w-2xl">
             <p className="eyebrow">Seller application</p>
-            <h2 className="mt-3 font-heading text-4xl tracking-tight">
+            <h2 id="seller-application-heading" className="mt-3 font-heading text-4xl tracking-tight">
               Start verification
             </h2>
           </div>

@@ -31,7 +31,7 @@ export async function SiteHeader() {
     <>
       <div className={styles.utility}>
         <div className="shell flex min-h-9 flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 text-xs sm:text-sm">
-          <p>From the hands of Nepal, with love.</p>
+          <p>Thoughtful finds for everyday life.</p>
           <p className="flex items-center gap-2 text-white/80">
             <MapPin className="size-3.5" />
             Nepal <span aria-hidden="true">·</span> NPR{' '}
@@ -65,7 +65,7 @@ export async function SiteHeader() {
               <div className="min-w-0">
                 <BrandWordmark className="whitespace-nowrap text-[clamp(1rem,5.5vw,1.35rem)] sm:text-3xl" />
                 <span className="mt-0.5 hidden text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground lg:block">
-                  Handmade with heart
+                  Thoughtful finds
                 </span>
               </div>
             </Link>
@@ -133,6 +133,18 @@ export async function SiteHeader() {
             )}
           </div>
         </div>
+        <div className="border-t border-border/60 bg-secondary/25 lg:hidden">
+          <div className="shell flex min-h-11 items-center justify-between gap-3">
+            <span className="text-xs text-muted-foreground">Bring your work to Hastabazaar</span>
+            <Link
+              href="/sell#seller-application"
+              className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-2 text-sm font-bold text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <Store className="size-4" aria-hidden="true" />
+              Sell with us <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+        </div>
         <div className={`hidden lg:block ${styles.navigation}`}>
           <div className="shell flex min-h-12 items-center justify-between gap-4">
             <nav
@@ -189,7 +201,7 @@ function HeaderSearch({ id, config, unavailable }: { id: string; config: Publish
   const search = queryFieldPresentation('catalog.header-search', config, 'q', {
     label: 'Search products, materials, or makers', placeholder: 'Search gifts, crafts & makers…' });
   return (
-    <search aria-label="Search handmade products">
+    <search aria-label="Search products">
       <form
         data-form-id="catalog.header-search"
         action="/shop"

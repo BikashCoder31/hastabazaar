@@ -1,3 +1,4 @@
+import { publicProductDetails, publicProductName } from '@/lib/products/truthful-presentation';
 import { productClosurePredicate } from './product-closure';
 import { businessNotificationStatements } from '../../operations/business-notifications';
 import type { FeaturedProduct } from '@/lib/catalog/featured-products';
@@ -155,14 +156,14 @@ async function insertProductSubmission(
         `INSERT INTO products (
           id, seller_id, category_id, slug, sku, name_en, name_ne,
           description_en, description_ne, price_paisa, compare_at_price_paisa,
-          inventory_quantity, producer, country_of_origin, materials, materials_json, origin_story, dimensions,
+          inventory_quantity, producer, country_of_origin, origin_evidence_status, origin_evidence_reference, materials, materials_json, origin_story, dimensions,
           size, colour, variations, specifications,
           care_instructions, safety_information, return_conditions, return_eligible, warranty,
           made_to_order, preparation_days, manufactured_at, expires_at,
           licence_reference, status, review_note,
           review_request_id, reviewed_by, published_at, created_at, updated_at
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NP', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?
         )`,
       )
@@ -180,6 +181,9 @@ async function insertProductSubmission(
         input.compareAtPricePaisa,
         input.inventoryQuantity,
         input.producer,
+        input.countryOfOrigin?.trim() ?? '',
+        input.countryOfOrigin?.trim() ? 'seller_declared' : 'unverified',
+        input.originEvidenceReference ?? null,
         input.materials.join(', '),
         JSON.stringify(input.materials),
         input.originStory,
@@ -357,6 +361,10 @@ export interface SellerProductRevision {
   compareAtPricePaisa: number | null;
   inventoryQuantity: number;
   producer: string;
+  countryOfOrigin?: string;
+  originEvidenceStatus?: string;
+  originEvidenceReference?: string | null;
+  originDisclosure?: string;
   materials: string;
   originStory: string | null;
   dimensions: string | null;
@@ -408,7 +416,9 @@ export async function getSellerProductForRevision(
           products.price_paisa AS pricePaisa,
           products.compare_at_price_paisa AS compareAtPricePaisa,
           products.inventory_quantity AS inventoryQuantity,
-          products.producer, products.materials, products.origin_story AS originStory, products.dimensions,
+          products.producer, products.country_of_origin AS countryOfOrigin,
+        products.origin_evidence_status AS originEvidenceStatus, products.origin_evidence_reference AS originEvidenceReference,
+        products.materials, products.origin_story AS originStory, products.dimensions,
            products.size, products.colour, products.variations, products.specifications,
            products.care_instructions AS careInstructions,
            products.safety_information AS safetyInformation,
@@ -508,12 +518,22 @@ export async function reviseAndResubmitProduct(
     throw new ProductRevisionConflictError('This product status cannot be edited.');
   }
   const removedMediaIds = [...new Set(options.removedMediaIds ?? [])];
+  const previousOrigin = await database.prepare(`SELECT country_of_origin AS country, origin_evidence_status AS status,
+    origin_evidence_reference AS reference FROM products WHERE id = ? AND seller_id = ? LIMIT 1`)
+    .bind(options.productId, options.sellerId).first<{country:string;status:string;reference:string|null}>();
+  const originProvided = options.input.originDeclarationProvided ?? options.input.countryOfOrigin !== undefined;
+  const countryOfOrigin = originProvided ? options.input.countryOfOrigin?.trim() ?? '' : previousOrigin?.country ?? '';
+  const originEvidenceReference = originProvided ? options.input.originEvidenceReference ?? null : previousOrigin?.reference ?? null;
+  const originEvidenceStatus = !originProvided ? previousOrigin?.status ?? 'unverified'
+    : previousOrigin?.status === 'verified' && previousOrigin.country === countryOfOrigin && previousOrigin.reference === originEvidenceReference
+      ? 'verified' : countryOfOrigin ? 'seller_declared' : 'unverified';
   const statements: D1PreparedStatement[] = [
     database
       .prepare(
         `UPDATE products SET category_id = ?, name_en = ?, name_ne = CASE WHEN ? THEN ? ELSE name_ne END,
           description_en = ?, description_ne = CASE WHEN ? THEN ? ELSE description_ne END, price_paisa = ?,
           compare_at_price_paisa = ?, inventory_quantity = ?, dimensions = ?,
+          country_of_origin = ?, origin_evidence_status = ?, origin_evidence_reference = ?,
           materials = ?, materials_json = ?, origin_story = ?,
           size = ?, colour = ?, variations = ?, specifications = ?, care_instructions = ?,
           safety_information = ?, return_conditions = ?, return_eligible = ?, warranty = ?,
@@ -537,6 +557,9 @@ export async function reviseAndResubmitProduct(
         options.input.compareAtPricePaisa,
         options.input.inventoryQuantity,
         options.input.dimensions,
+        countryOfOrigin,
+        originEvidenceStatus,
+        originEvidenceReference,
         options.input.materials.join(', '),
         JSON.stringify(options.input.materials),
         options.input.originStory,
@@ -582,7 +605,7 @@ export async function reviseAndResubmitProduct(
         crypto.randomUUID(),
         options.actorId,
         options.productId,
-        JSON.stringify({ status: expectedStatus }),
+        JSON.stringify({ status: expectedStatus, origin: previousOrigin }),
         JSON.stringify({ status: 'submitted', identityPreserved: true,
           ...(catalogDigest ? { catalogDigest } : {}) }),
         options.form?.requestId ?? mutationId,
@@ -949,6 +972,10 @@ export interface ProductReviewDetail extends ProductReviewQueueRow {
   descriptionNe: string | null;
   compareAtPricePaisa: number | null;
   producer: string;
+  countryOfOrigin?: string;
+  originEvidenceStatus?: string;
+  originEvidenceReference?: string | null;
+  originDisclosure?: string;
   materials: string;
   originStory: string | null;
   dimensions: string | null;
@@ -989,7 +1016,9 @@ export async function getProductForReview(
         products.price_paisa AS pricePaisa,
         products.compare_at_price_paisa AS compareAtPricePaisa,
         products.inventory_quantity AS inventoryQuantity,
-        products.producer, products.materials, products.origin_story AS originStory, products.dimensions,
+        products.producer, products.country_of_origin AS countryOfOrigin,
+        products.origin_evidence_status AS originEvidenceStatus, products.origin_evidence_reference AS originEvidenceReference,
+        products.materials, products.origin_story AS originStory, products.dimensions,
         products.size, products.colour, products.variations, products.specifications,
         products.care_instructions AS careInstructions,
         products.safety_information AS safetyInformation,
@@ -1307,6 +1336,10 @@ export interface PublicProductRow {
   compareAtPricePaisa: number | null;
   inventoryQuantity: number;
   producer: string;
+  countryOfOrigin?: string;
+  originEvidenceStatus?: string;
+  originEvidenceReference?: string | null;
+  originDisclosure?: string;
   materials: string;
   originStory: string | null;
   dimensions: string | null;
@@ -1390,7 +1423,7 @@ function homepageProduct(
   const pricePaisa = Number(row.pricePaisa);
   return {
     slug: row.slug,
-    name: row.name,
+    name: publicProductName(row.name),
     pricePaisa,
     compareAtPricePaisa:
       row.compareAtPricePaisa === null
@@ -1399,7 +1432,7 @@ function homepageProduct(
     price: new Intl.NumberFormat('en-NP').format(pricePaisa / 100),
     category: row.category,
     image: `/api/product-media/${row.mediaId}`,
-    imageAlt: row.name,
+    imageAlt: publicProductName(row.name),
     tradingName: row.tradingName,
     label,
   };
@@ -1927,7 +1960,9 @@ export async function listPublishedProducts(
         products.price_paisa AS pricePaisa,
         products.compare_at_price_paisa AS compareAtPricePaisa,
         products.inventory_quantity AS inventoryQuantity,
-        products.producer, products.materials, products.origin_story AS originStory, products.dimensions,
+        products.producer, products.country_of_origin AS countryOfOrigin,
+        products.origin_evidence_status AS originEvidenceStatus, products.origin_evidence_reference AS originEvidenceReference,
+        products.materials, products.origin_story AS originStory, products.dimensions,
         products.size, products.colour, products.variations, products.specifications,
         products.care_instructions AS careInstructions,
         products.safety_information AS safetyInformation,
@@ -1951,7 +1986,7 @@ export async function listPublishedProducts(
     )
     .bind(...bindings, limit, (page - 1) * limit)
     .all<PublicProductRow>();
-  return result.results;
+  return result.results.map(publicProductDetails);
 }
 
 export async function countPublishedProducts(
@@ -2022,7 +2057,9 @@ export async function getPublishedProductBySlug(
         products.price_paisa AS pricePaisa,
         products.compare_at_price_paisa AS compareAtPricePaisa,
         products.inventory_quantity AS inventoryQuantity,
-        products.producer, products.materials, products.origin_story AS originStory, products.dimensions,
+        products.producer, products.country_of_origin AS countryOfOrigin,
+        products.origin_evidence_status AS originEvidenceStatus, products.origin_evidence_reference AS originEvidenceReference,
+        products.materials, products.origin_story AS originStory, products.dimensions,
         products.size, products.colour, products.variations, products.specifications,
         products.care_instructions AS careInstructions,
         products.safety_information AS safetyInformation,
@@ -2054,14 +2091,14 @@ export async function getPublishedProductBySlug(
     )
     .bind(product.id)
     .all<ProductMediaRow>();
-  return { ...product, media: media.results };
+  return { ...publicProductDetails(product), media: media.results.map(item => ({...item,altEn:publicProductName(item.altEn)})) };
 }
 
 export async function getUnavailablePublishedProductBySlug(
   database: D1Database,
   slug: string,
 ): Promise<{ slug: string; nameEn: string } | null> {
-  return (
+  const product = (
     (await database.prepare(
       `SELECT products.slug,products.name_en AS nameEn
        FROM products
@@ -2071,6 +2108,7 @@ export async function getUnavailablePublishedProductBySlug(
        LIMIT 1`,
     ).bind(slug).first<{ slug: string; nameEn: string }>()) ?? null
   );
+  return product ? {...product,nameEn:publicProductName(product.nameEn)} : null;
 }
 
 export async function getProductMediaObject(

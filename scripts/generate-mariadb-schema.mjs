@@ -27,6 +27,7 @@ const managedCommerceSql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-managed-commerce.sql'),
   'utf8',
 );
+const productOriginEvidenceSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-product-origin-evidence.sql'), 'utf8');
 const productStoryMaterialsSql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-product-story-materials.sql'),
   'utf8',
@@ -416,6 +417,7 @@ output.push(
   managedCommerceSql.trim(),
   '',
   productStoryMaterialsSql.trim(),
+  productOriginEvidenceSql.trim(),
   '',
   checkoutRecipientSnapshotsSql.trim(),
   '',

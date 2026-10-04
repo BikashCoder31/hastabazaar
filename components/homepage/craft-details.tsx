@@ -19,25 +19,26 @@ const observations = [
 
 export function CraftDetails() {
   return (
-    <section id="makers" aria-labelledby="craft-details-heading" className="shell py-10 sm:py-16">
+    <section id="craft-guide" aria-labelledby="craft-details-heading" className="shell py-10 sm:py-16">
+      <span id="makers" aria-hidden="true" className="block scroll-mt-48" />
       <div className={styles.layout}>
         <figure className={styles.figure}>
           <div data-media-frame="cover" className={mediaFrameClass('cover', `aspect-[16/11] ${styles.media}`)}>
             <Image
               data-media-mode="cover"
               src="/homepage/nepali-maker-workshop.webp"
-              alt="An artisan’s hands painting a geometric pattern onto a terracotta vase in a Nepali workshop"
+              alt="Hands painting a geometric pattern onto a terracotta vase"
               fill
               sizes={mediaSizes.editorial}
               className={mediaObjectClass('cover')}
             />
           </div>
-          <figcaption className={styles.caption}>A closer look at the making process.</figcaption>
+          <figcaption className={styles.caption}>Craft inspiration. Check each listing for product and seller details.</figcaption>
         </figure>
         <div className={styles.content}>
-          <p className={styles.kicker}>A closer look at handmade</p>
+          <p className={styles.kicker}>Craft guide</p>
           <h2 id="craft-details-heading" className={styles.heading}>The beauty is in the details.</h2>
-          <p className={styles.intro}>A few things to notice as you explore a piece and imagine it in your everyday life.</p>
+          <p className={styles.intro}>Use product photos, material details and seller information to choose a piece with confidence. Read the listing for where and how it was made.</p>
           <ol className={styles.observations}>
             {observations.map(({ title, text }, index) => (
               <li key={title} className={styles.observation}>

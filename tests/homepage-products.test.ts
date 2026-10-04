@@ -364,7 +364,7 @@ void test('homepage source has no hard-coded product fallback and retains honest
     'NEW TO HASTABAZAAR',
     'New arrivals.',
     'Fresh finds are on the way.',
-    'New handmade pieces will appear here as soon as they’re ready to shop.',
+    'New products will appear here as soon as they’re ready to shop.',
     'Explore craft categories',
     'Shop all new arrivals',
   ]) {
@@ -377,7 +377,6 @@ void test('homepage source has no hard-coded product fallback and retains honest
     page,
     /Just added by our sellers|approved seller product/i,
   );
-  assert.match(page, /successfully delivered, non-cancelled purchases/);
   assert.match(page, /ProductSlider/);
   assert.match(footer, /support@hastabazaar\.com/);
 });

@@ -1,6 +1,10 @@
 import { SiteHeader } from '@/components/layout/site-header';
 import { SiteFooter } from '@/components/layout/site-footer';
 import { OrderTracker } from '@/components/commerce/order-tracker';
+import { env } from 'cloudflare:workers';
+import { loadQueryPresentationConfig } from '@/lib/catalog/shop-query';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: 'Track your order',
@@ -11,11 +15,21 @@ export default async function TrackPage({
 }: {
   searchParams: Promise<{ order?: string }>;
 }) {
-  const params = await searchParams;
+  const [params, presentation] = await Promise.all([
+    searchParams,
+    loadQueryPresentationConfig(
+      (env as unknown as { DB?: D1Database }).DB,
+      'commerce.order-tracking',
+    ),
+  ]);
   return (
     <>
       <SiteHeader />
-      <main tabIndex={-1} id="main-content" className="shell max-w-3xl py-12 sm:py-16">
+      <main
+        tabIndex={-1}
+        id="main-content"
+        className="shell max-w-3xl py-12 sm:py-16"
+      >
         <p className="eyebrow">From our makers to your door</p>
         <h1 className="mt-3 font-heading text-4xl sm:text-5xl">
           Where’s my order?
@@ -25,12 +39,14 @@ export default async function TrackPage({
           number and checkout email ready—no account needed.
         </p>
         <OrderTracker
+          presentationConfig={presentation.config}
+          presentationUnavailable={presentation.unavailable}
           initialOrder={
             typeof params.order === 'string' ? params.order.slice(0, 80) : ''
           }
         />
       </main>
-      <SiteFooter />
+      <SiteFooter compact />
     </>
   );
 }

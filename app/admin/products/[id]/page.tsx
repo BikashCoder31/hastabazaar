@@ -174,7 +174,17 @@ export default async function ProductReviewPage({
                 <Detail label="Category">{product.categoryName}</Detail>
                 <Detail label="Gift occasions">{product.occasionNames}</Detail>
                 <Detail label="Producer">{product.producer}</Detail>
-                <Detail label="Origin">Nepal</Detail>
+                <Detail label="Origin">{product.countryOfOrigin?.trim() || 'Unknown'}</Detail>
+                <Detail label="Origin evidence status">
+                  {product.originEvidenceStatus === 'verified'
+                    ? 'Verified origin'
+                    : product.originEvidenceStatus === 'seller_declared'
+                      ? 'Seller declared; unverified'
+                      : 'Unverified stored value'}
+                </Detail>
+                {product.originEvidenceReference ? (
+                  <Detail label="Origin evidence reference (private)">{product.originEvidenceReference}</Detail>
+                ) : null}
                 <Detail label="Materials">{product.materials}</Detail>
                 <Detail label="Product-origin story">
                   {product.originStory}

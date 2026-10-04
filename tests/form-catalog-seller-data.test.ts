@@ -84,7 +84,7 @@ void test('seller catalog rejects custom keys colliding with every sensitive app
       'facebookUrl', 'instagramUrl', 'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl', 'representativeIdentity',
       'bankVerification', 'businessRegistration', 'panCertificate', 'vatCertificate'],
     'seller.product-submission': ['nameNe', 'descriptionNe', 'compareAtPrice', 'discountPercentage',
-      'returnEligible', 'madeToOrder', 'preparationDays', 'originStory', 'dimensions', 'size', 'colour',
+      'returnEligible', 'madeToOrder', 'preparationDays', 'originStory', 'countryOfOrigin', 'originEvidenceReference', 'originEvidenceStatus', 'dimensions', 'size', 'colour',
       'variations', 'specifications', 'careInstructions', 'safetyInformation', 'returnConditions',
       'warrantyOffered', 'warranty', 'warrantyYears', 'warrantyMonths', 'manufacturedAt', 'expiresAt',
       'licenceReference', 'image1', 'image2', 'image3', 'image4', 'image5', 'images', 'replacementVideo', 'removeMediaId'],
@@ -564,7 +564,7 @@ function productForm(requestId: string, options: { custom?: string | null; name?
   const form = new FormData();
   for (const [key, value] of Object.entries({ categoryId: 'cat-test', nameEn: options.name ?? 'Fictional Clay Cup',
     descriptionEn: 'A fictional staging-only product.', price: '1000', inventoryQuantity: '4',
-    preparationDays: '3', occasionIds: 'occasion-test', madeToOrder: 'yes', returnEligible: 'no', materials: 'Clay' }))
+    preparationDays: '3', occasionIds: 'occasion-test', madeToOrder: 'yes', returnEligible: 'no', materials: 'Clay', countryOfOrigin: '', originEvidenceReference: '' }))
     form.set(key, value);
   form.set('requestId', requestId);
   form.set('formVersion', String(options.version ?? 1));
@@ -1161,4 +1161,40 @@ void test('inventory oversized bodies return413 while malformed input stays400 w
     assert.equal((sqlite.prepare('SELECT COUNT(*) AS n FROM form_answer_sets').get() as {n:number}).n,0);
     assert.equal((sqlite.prepare('SELECT COUNT(*) AS n FROM inventory_adjustments').get() as {n:number}).n,0);
   }finally{sqlite.close();}
+});
+
+void test('origin controls cross real product create, draft and revision boundaries while remaining unverified', async () => {
+  const {sqlite,database}=await fixture();
+  try {
+    await createSeller(database);
+    seed(sqlite,'seller.product-submission',[field,builtIn('nameEn')]);
+    sqlite.exec("INSERT INTO occasions(id,slug,name_en,is_active,sort_order,created_at,updated_at) VALUES('occasion-test','origin-gift','Origin Gift',1,1,1,1)");
+    const {POST}=await import('../app/api/seller/products/route');
+    const send=(form:FormData,draft=false)=>POST(new Request('http://localhost:3000/api/seller/products'+(draft?'?intent=draft':''),{method:'POST',headers:{origin:'http://localhost:3000'},body:form}));
+    const blank=await send(productForm('origin-blank'));
+    assert.equal(blank.status,201,await blank.clone().text());
+    const blankId=(await blank.json() as {id:string}).id;
+    assert.equal(sqlite.prepare('SELECT country_of_origin FROM products WHERE id=?').get(blankId)?.country_of_origin,'');
+    const populated=productForm('origin-populated');populated.set('countryOfOrigin','India');populated.set('originEvidenceReference','Private supplier declaration');
+    const created=await send(populated);assert.equal(created.status,201,await created.clone().text());
+    const id=(await created.json() as {id:string}).id;
+    const row=sqlite.prepare('SELECT country_of_origin,origin_evidence_status,origin_evidence_reference FROM products WHERE id=?').get(id);
+    assert.equal(row?.country_of_origin,'India');assert.equal(row?.origin_evidence_status,'seller_declared');assert.equal(row?.origin_evidence_reference,'Private supplier declaration');
+    const draft=await send(productForm('origin-draft'),true);assert.equal(draft.status,201,await draft.clone().text());
+    assert.equal((await draft.json() as {status:string}).status,'draft');
+    for(const key of ['countryOfOrigin','originEvidenceReference']){
+      const duplicate=productForm('origin-duplicate-'+key);duplicate.append(key,'Forged second value');
+      const rejected=await send(duplicate);assert.equal(rejected.status,400);assert.match((await rejected.json() as {error:string}).error,/Duplicate form control/);
+    }
+    const forged=productForm('origin-forged-status');forged.set('countryOfOrigin','Nepal');forged.set('originEvidenceStatus','verified');
+    assert.equal((await send(forged)).status,400);
+    sqlite.prepare("UPDATE products SET status='needs_changes' WHERE id=?").run(id);
+    const {PATCH}=await import('../app/api/seller/products/[id]/route');
+    const revision=productForm('origin-revised');revision.set('countryOfOrigin','China');revision.set('originEvidenceReference','Replacement supplier declaration');revision.set('reviewRequestId','');
+    for(let i=1;i<=4;i++)revision.delete('image'+i);
+    const revised=await PATCH(new Request('http://localhost:3000/api/seller/products/'+id,{method:'PATCH',headers:{origin:'http://localhost:3000'},body:revision}),{params:Promise.resolve({id})});
+    assert.equal(revised.status,200,await revised.clone().text());
+    const after=sqlite.prepare('SELECT country_of_origin,origin_evidence_status FROM products WHERE id=?').get(id);
+    assert.equal(after?.country_of_origin,'China');assert.equal(after?.origin_evidence_status,'seller_declared');
+  } finally {sqlite.close();}
 });

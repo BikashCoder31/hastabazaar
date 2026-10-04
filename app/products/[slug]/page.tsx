@@ -131,7 +131,7 @@ export default async function ProductPage({
           </div>
           <div className="min-w-0">
             <p className="eyebrow">{product.categoryName}</p>
-            <h1 className="mt-3 font-heading text-4xl leading-tight tracking-tight sm:text-5xl">
+            <h1 className="mt-3 font-heading text-3xl leading-tight tracking-tight sm:text-4xl">
               {product.nameEn}
             </h1>
             <p className="mt-5 font-heading text-3xl">
@@ -162,9 +162,8 @@ export default async function ProductPage({
                 </Link>
               ) : null}
             </div>
-            <section aria-label="Delivery and returns" className="mt-5 space-y-4 rounded-2xl border bg-secondary/30 p-4 sm:p-5">
-              <ProductDelivery rates={deliveryRates} preparationDays={product.preparationDays} madeToOrder={Boolean(product.madeToOrder)} />
-              <div className="border-t pt-4 text-sm leading-6">
+            <section aria-label="Returns and conditions" className="mt-5 rounded-2xl border bg-secondary/30 p-4 sm:p-5">
+              <div className="text-sm leading-6">
                 <h3 className="flex items-center gap-2 font-semibold"><RotateCcw className="size-4 text-primary" aria-hidden="true" />Returns & conditions</h3>
                 <p className="mt-2 font-medium">{returns.eligibility}</p>
                 <p className="mt-2 whitespace-pre-line break-words text-muted-foreground">{returns.conditions}</p>
@@ -191,6 +190,9 @@ export default async function ProductPage({
                 }
               />
             </div>
+            <section aria-label="Delivery estimate" className="mt-5 rounded-2xl border bg-secondary/30 p-4 sm:p-5">
+              <ProductDelivery rates={deliveryRates} preparationDays={product.preparationDays} madeToOrder={Boolean(product.madeToOrder)} />
+            </section>
             <h2 className="mt-8 border-t pt-7 font-heading text-2xl">
               Product description
             </h2>
@@ -199,7 +201,7 @@ export default async function ProductPage({
             </p>
             <dl className="mt-6 grid gap-5 rounded-2xl border bg-card p-5 text-base sm:grid-cols-2">
               <div>
-                <dt className="font-semibold">Maker</dt>
+                <dt className="font-semibold">{product.producer ? 'Maker or brand' : 'Seller'}</dt>
                 <dd className="mt-1 text-muted-foreground">
                   {product.producer ? product.producer + ' · sold by ' : 'Sold by '}
                   <Link
@@ -212,7 +214,7 @@ export default async function ProductPage({
               </div>
               <div>
                 <dt className="font-semibold">Origin</dt>
-                <dd className="mt-1 text-muted-foreground">Nepal</dd>
+                <dd className="mt-1 text-muted-foreground">{product.originDisclosure}</dd>
               </div>
               {product.materials ? <div>
                 <dt className="font-semibold">Materials</dt>
@@ -303,7 +305,7 @@ export default async function ProductPage({
             {product.originStory ? <section className="mt-7 rounded-2xl border bg-secondary/20 p-6"><h2 className="font-heading text-2xl">The story behind this product</h2><p className="mt-3 whitespace-pre-line leading-7 text-muted-foreground">{product.originStory}</p></section> : null}
             <div className="mt-6 grid gap-3 text-sm text-muted-foreground sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
               <p className="flex items-center gap-2">
-                <ShieldCheck className="size-4 text-primary" /> Verified seller
+                <ShieldCheck className="size-4 text-primary" /> Marketplace seller
               </p>
               <p className="flex items-center gap-2">
                 <PackageCheck className="size-4 text-primary" /> Reviewed

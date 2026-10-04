@@ -1,3 +1,5 @@
+import { publicStorefrontAction } from '../catalog/storefront-navigation';
+
 export type HomepageHeroMediaType = 'image' | 'video';
 
 export type HomepageHeroSlide = Readonly<{
@@ -57,27 +59,57 @@ function freezeSlides(slides: readonly HomepageHeroSlide[]): HomepageHeroSlides 
   return Object.freeze(slides.map((slide) => Object.freeze({ ...slide })));
 }
 
+export const SELLER_REGISTRATION_HERO_SLIDE: HomepageHeroSlide = Object.freeze({
+  id: 'hero-seller-registration',
+  position: 1,
+  enabled: true,
+  eyebrow: 'Sell with Hastabazaar',
+  headingLead: 'Bring your craft to',
+  highlightedPhrase: 'Hastabazaar.',
+  headingTail: null,
+  body: 'Apply as a seller or maker. Complete your details and submit for review before seller access is approved.',
+  primaryActionLabel: 'Become a seller',
+  primaryActionHref: '/sell#seller-application',
+  secondaryActionLabel: null,
+  secondaryActionHref: null,
+  mediaType: 'image',
+  mediaId: 'system-seller-registration-panel',
+  imageAlt: 'Seller application steps: complete details, admin review and seller access after approval',
+  posterMediaId: null,
+  videoDescription: null,
+  imageNote: null,
+});
+
+/** Only this exact image-slide pair is rendered with native interface content. */
+export function isNativeSellerRegistrationSlide(
+  slide: Pick<HomepageHeroSlide, 'id' | 'mediaId' | 'mediaType'>,
+): boolean {
+  return slide.id === SELLER_REGISTRATION_HERO_SLIDE.id &&
+    slide.mediaId === SELLER_REGISTRATION_HERO_SLIDE.mediaId &&
+    slide.mediaType === 'image';
+}
+
 const currentHeroSlide: HomepageHeroSlide = {
   id: 'hero-nepal-craft',
   position: 1,
   enabled: true,
-  eyebrow: 'Nepal’s handicraft marketplace',
-  headingLead: 'Handmade today',
-  highlightedPhrase: 'brighter',
-  headingTail: 'Nepal.',
+  eyebrow: 'Discover Hastabazaar',
+  headingLead: 'Thoughtful finds',
+  highlightedPhrase: 'for every',
+  headingTail: 'day.',
   body:
-    'Discover authentic handmade products, support independent Nepali artisans, and bring home craft with a human story.',
+    'Explore gifts and everyday finds. Read each listing for materials, origin and the seller behind the product.',
   primaryActionLabel: 'Explore the collection',
   primaryActionHref: '/shop',
-  secondaryActionLabel: 'Meet our makers',
-  secondaryActionHref: '/#makers',
+  secondaryActionLabel: 'Craft guide',
+  secondaryActionHref: '/#craft-guide',
   mediaType: 'image',
   mediaId: 'system-nepal-craft-hero',
   imageAlt:
-    'Nepali pottery, carved wood, woven craft and Dhaka textile overlooking temple rooftops and the Himalayas',
+    'Editorial arrangement of pottery, carved wood, woven craft and patterned textile with temple rooftops and mountains',
   posterMediaId: null,
   videoDescription: null,
-  imageNote: 'Small hands · Big stories · Brighter tomorrows',
+  imageNote: 'Craft inspiration · Explore the details',
 };
 
 export const CURRENT_HERO_RECOVERY_SLIDES: HomepageHeroSlides = freezeSlides([
@@ -90,34 +122,34 @@ export const INITIAL_HOMEPAGE_HERO_SLIDES: HomepageHeroSlides = freezeSlides([
     id: 'hero-maker-stories',
     position: 2,
     enabled: true,
-    eyebrow: 'Meet the spirit of Hastabazaar',
-    headingLead: 'Every piece begins',
-    highlightedPhrase: 'with a pair of hands.',
+    eyebrow: 'A closer look at craft',
+    headingLead: 'Look a little closer',
+    highlightedPhrase: 'at the details.',
     headingTail: null,
     body:
-      'Discover the care, patience, and imagination behind handmade work from Nepal.',
-    primaryActionLabel: 'Meet our makers',
-    primaryActionHref: '/#makers',
+      'Explore material, finish and variation in our craft guide, then check each listing for its own making details.',
+    primaryActionLabel: 'Craft guide',
+    primaryActionHref: '/#craft-guide',
     secondaryActionLabel: 'Share your craft',
     secondaryActionHref: '/sell',
     mediaType: 'image',
     mediaId: 'system-maker-hands-hero',
     imageAlt:
-      'Anonymous artisan hands carefully shaping a handmade Nepali craft piece',
+      'Editorial image of anonymous hands working on a craft piece',
     posterMediaId: null,
     videoDescription: null,
-    imageNote: 'Made by hand · Shared with heart',
+    imageNote: 'Craft inspiration · Check each listing',
   },
   {
     id: 'hero-meaningful-gifts',
     position: 3,
     enabled: true,
-    eyebrow: 'Thoughtful gifts from Nepal',
+    eyebrow: 'Thoughtful gifting',
     headingLead: 'For every moment,',
     highlightedPhrase: 'something meaningful.',
     headingTail: null,
     body:
-      'Find handmade gifts for celebrations, thank-yous, milestones, and everyday kindness.',
+      'Find gifts for celebrations, thank-yous, milestones, and everyday kindness.',
     primaryActionLabel: 'Shop gifts',
     primaryActionHref: '/#occasions',
     secondaryActionLabel: 'Explore the collection',
@@ -125,7 +157,7 @@ export const INITIAL_HOMEPAGE_HERO_SLIDES: HomepageHeroSlides = freezeSlides([
     mediaType: 'image',
     mediaId: 'system-meaningful-gifts-hero',
     imageAlt:
-      'An editorial arrangement of Nepali pottery, paper, textile, and small handmade gifts',
+      'An editorial arrangement of pottery, paper, textile, and small gifts',
     posterMediaId: null,
     videoDescription: null,
     imageNote: 'Chosen with care · Made to be remembered',
@@ -357,4 +389,43 @@ export function assertHomepageHeroPublicationReady(
     }
   }
   return value;
+}
+
+// Present known earlier stock copy truthfully without rewriting saved settings
+// or changing seller-specific/custom approved content.
+const legacyHeroText: ReadonlyMap<string, string> = new Map([
+  ['Nepal’s handicraft marketplace', 'Discover Hastabazaar'],
+  ['Discover authentic handmade products, support independent Nepali artisans, and bring home craft with a human story.', 'Explore gifts and everyday finds. Read each listing for materials, origin and the seller behind the product.'],
+  ['Meet the spirit of Hastabazaar', 'A closer look at craft'],
+  ['Discover the care, patience, and imagination behind handmade work from Nepal.', 'Explore material, finish and variation in our craft guide, then check each listing for its own making details.'],
+  ['Thoughtful gifts from Nepal', 'Thoughtful gifting'],
+  ['Find handmade gifts for celebrations, thank-yous, milestones, and everyday kindness.', 'Find gifts for celebrations, thank-yous, milestones, and everyday kindness.'],
+  ['Small hands · Big stories · Brighter tomorrows', 'Craft inspiration · Explore the details'],
+  ['Made by hand · Shared with heart', 'Craft inspiration · Check each listing'],
+  ['Nepali pottery, carved wood, woven craft and Dhaka textile overlooking temple rooftops and the Himalayas', 'Editorial arrangement of pottery, carved wood, woven craft and patterned textile with temple rooftops and mountains'],
+  ['Anonymous artisan hands carefully shaping a handmade Nepali craft piece', 'Editorial image of anonymous hands working on a craft piece'],
+  ['An editorial arrangement of Nepali pottery, paper, textile, and small handmade gifts', 'An editorial arrangement of pottery, paper, textile, and small gifts'],
+]);
+export function presentHomepageHeroSlide(slide: HomepageHeroSlide): HomepageHeroSlide {
+  const firstHeading = slide.headingLead === 'Handmade today' &&
+    slide.highlightedPhrase === 'brighter' && slide.headingTail === 'Nepal.';
+  const guideHeading = slide.headingLead === 'Every piece begins' &&
+    slide.highlightedPhrase === 'with a pair of hands.' && slide.headingTail === null;
+  const primary = publicStorefrontAction(slide.primaryActionLabel, slide.primaryActionHref);
+  const secondary = slide.secondaryActionLabel && slide.secondaryActionHref
+    ? publicStorefrontAction(slide.secondaryActionLabel, slide.secondaryActionHref) : null;
+  return {
+    ...slide,
+    eyebrow: legacyHeroText.get(slide.eyebrow) ?? slide.eyebrow,
+    headingLead: firstHeading ? 'Thoughtful finds' : guideHeading ? 'Look a little closer' : slide.headingLead,
+    highlightedPhrase: firstHeading ? 'for every' : guideHeading ? 'at the details.' : slide.highlightedPhrase,
+    headingTail: firstHeading ? 'day.' : slide.headingTail,
+    body: legacyHeroText.get(slide.body) ?? slide.body,
+    imageNote: slide.imageNote ? legacyHeroText.get(slide.imageNote) ?? slide.imageNote : slide.imageNote,
+    imageAlt: slide.imageAlt ? legacyHeroText.get(slide.imageAlt) ?? slide.imageAlt : slide.imageAlt,
+    primaryActionLabel: primary.label,
+    primaryActionHref: primary.href,
+    secondaryActionLabel: secondary?.label ?? slide.secondaryActionLabel,
+    secondaryActionHref: secondary?.href ?? slide.secondaryActionHref,
+  };
 }

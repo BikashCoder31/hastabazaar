@@ -199,7 +199,7 @@ const productMultipartKeys = new Set([
   'formVersion', 'requestId', 'reviewRequestId', 'categoryId', 'nameEn', 'nameNe',
   'descriptionEn', 'descriptionNe', 'price', 'compareAtPrice', 'discountPercentage',
   'inventoryQuantity', 'preparationDays', 'occasionIds', 'madeToOrder', 'returnEligible',
-  'materials', 'producer', 'sku', 'originStory', 'dimensions', 'size', 'colour', 'variations',
+  'materials', 'producer', 'sku', 'originStory', 'countryOfOrigin', 'originEvidenceReference', 'dimensions', 'size', 'colour', 'variations',
   'specifications', 'careInstructions', 'safetyInformation', 'returnConditions',
   'warrantyOffered', 'warranty', 'warrantyYears', 'warrantyMonths', 'manufacturedAt',
   'expiresAt', 'licenceReference', 'image1', 'image2', 'image3', 'image4', 'image5',

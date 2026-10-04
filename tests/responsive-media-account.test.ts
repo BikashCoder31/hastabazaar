@@ -76,7 +76,7 @@ void test('shared brand marks and footer lockup retain their semantics', async (
   assert.match(footer, /sizes=\{mediaSizes\.footerLogo\}/);
   assert.match(
     footer,
-    /alt="Hastabazaar — Handmade Nepal\. For a Sustainable World\."/,
+    /alt="Hastabazaar"/,
   );
 });
 

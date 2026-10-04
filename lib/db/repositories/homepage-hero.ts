@@ -1,5 +1,6 @@
 import { getEffectiveBusinessSetting } from './business-settings';
 import {
+  isNativeSellerRegistrationSlide,
   validateHomepageHeroDraft,
   type HomepageHeroSlides,
 } from '../../homepage/hero-slides';
@@ -229,7 +230,7 @@ export async function getHomepageHeroMediaForAdmin(
 function referencedMediaIds(slides: HomepageHeroSlides): Set<string> {
   const ids = new Set<string>();
   for (const slide of slides) {
-    if (!slide.enabled) continue;
+    if (!slide.enabled || isNativeSellerRegistrationSlide(slide)) continue;
     if (slide.mediaId) ids.add(slide.mediaId);
     if (slide.mediaType === 'video' && slide.posterMediaId) {
       ids.add(slide.posterMediaId);
@@ -368,7 +369,9 @@ export async function assertHomepageHeroMediaReady(
   slides: HomepageHeroSlides,
 ): Promise<void> {
   for (const slide of slides) {
-    if (!slide.enabled) continue;
+    // A code-rendered panel has no uploaded bytes. Only this exact built-in
+    // slide identity bypasses image lookup; all other media stays validated.
+    if (!slide.enabled || isNativeSellerRegistrationSlide(slide)) continue;
     const media = await mediaById(database, slide.mediaId, false);
     const requiredMime = slide.mediaType === 'video' ? 'video/mp4' : 'image/webp';
     if (!media || media.mimeType !== requiredMime) {
