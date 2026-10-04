@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { Pause, Play } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { SliderDots } from '@/components/ui/slider-dots';
@@ -63,9 +62,9 @@ export function HomepageHeroCarousel({
     reset: resetAutoplay,
     selectionKind,
     interactionProps,
-    pausedByUser,
-    toggleUserPause,
-  } = useSliderAutoplay(api, enabledSlides.length, playingVideo !== null);
+  } = useSliderAutoplay(api, enabledSlides.length, playingVideo !== null, {
+    manualHoldMs: 12_000, pauseOnPointerFocus: false,
+  });
 
   useEffect(() => {
     if (!api) return;
@@ -141,7 +140,7 @@ export function HomepageHeroCarousel({
         aria-roledescription="carousel"
         onKeyDownCapture={(event) => {
           if (
-            (event.target as HTMLElement).closest('video, [data-slider-dots], [data-hero-autoplay]')
+            (event.target as HTMLElement).closest('video, [data-slider-dots]')
           )
             return;
           if (event.key === 'ArrowLeft') {
@@ -242,18 +241,6 @@ export function HomepageHeroCarousel({
             dotClassName="homepage-hero-dot"
             className="!w-auto"
           />
-          {enabledSlides.length > 1 ? (
-            <button
-              data-hero-autoplay
-              type="button"
-              aria-label={pausedByUser ? 'Resume automatic slide changes' : 'Pause automatic slide changes'}
-              onClick={toggleUserPause}
-              className="inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-sm font-semibold text-[#0d3154] hover:bg-[#0d3154]/10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#0d3154]"
-            >
-              {pausedByUser ? <Play className="size-4" aria-hidden="true" /> : <Pause className="size-4" aria-hidden="true" />}
-              {pausedByUser ? 'Resume' : 'Pause'}
-            </button>
-          ) : null}
         </div>
       </Carousel>
       <p className="sr-only" aria-live="polite" aria-atomic="true">

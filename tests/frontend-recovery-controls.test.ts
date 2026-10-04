@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {build} from 'esbuild';
 import {execFileSync} from 'node:child_process';
+import {mkdirSync} from 'node:fs';
 import type {FixtureBrowser,FixturePage} from './helpers/browser-fixture-types';
 type EvidencePage=FixturePage & {screenshot(options:{path:string;fullPage?:boolean}):Promise<Uint8Array>;on(event:'pageerror',handler:(error:Error)=>void):void;};
-const evidenceRoot='C:/Users/abinash/.codex/visualizations/2026/09/30/01a0f2dd-89c4-77c1-9b97-f0cf98fec1b0';
+const evidenceRoot=process.env.FRONTEND_RECOVERY_EVIDENCE_ROOT??'C:/Users/abinash/.codex/visualizations/2026/09/30/01a0f2dd-89c4-77c1-9b97-f0cf98fec1b0';
+mkdirSync(evidenceRoot,{recursive:true});
 const playwrightPath=process.env.PLAYWRIGHT_MODULE??'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
 async function mount(contents:string,carousel=false){
  const bundle=await build({stdin:{resolveDir:process.cwd(),loader:'tsx',contents:`import React from 'react';import {createRoot} from 'react-dom/client';${contents}`},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'recovery-fixtures',setup(b){
@@ -21,29 +23,34 @@ async function mount(contents:string,carousel=false){
  const {chromium}=await import(playwrightPath) as {chromium:{launch(options:object):Promise<FixtureBrowser>}};
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH??'C:/Program Files/Google/Chrome/Application/chrome.exe'});const page=await browser.newPage() as EvidencePage;const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));return {browser,page,errors,script:bundle.outputFiles[0].text};
 }
-for(const mode of ['hero','occasion'] as const)void test(mode==='hero'?'hero keeps automatic/manual browsing and reduced motion':`${mode} user pause persists after focus/hover leave and manual browsing; resume respects reduced motion`,async()=>{
- const name=mode==='hero'?'featured stories':'gifting stories';
+for(const mode of ['hero','occasion'] as const)void test(`${mode} retains dots, six-second rotation, twelve-second manual hold and interaction safeguards`,async()=>{
  const f=await mount(mode==='hero'?`import {HomepageHeroCarousel} from './components/homepage/homepage-hero-carousel';import {INITIAL_HOMEPAGE_HERO_SLIDES} from './lib/homepage/hero-slides';createRoot(document.getElementById('root')).render(<HomepageHeroCarousel slides={INITIAL_HOMEPAGE_HERO_SLIDES}/>);`:`import {HomepageOccasionCarousel} from './components/homepage/homepage-occasion-carousel';import {INITIAL_HOMEPAGE_OCCASION_SLIDES} from './lib/homepage/occasion-slides';createRoot(document.getElementById('root')).render(<HomepageOccasionCarousel slides={INITIAL_HOMEPAGE_OCCASION_SLIDES}/>);`,true);
  try{
   await f.page.route('https://recovery.test/**',async route=>route.fulfill({contentType:'text/html',body:'<title>Carousel recovery fixture</title><div id="root"></div><button id="outside">Outside carousel</button>'}));await f.page.goto('https://recovery.test/');
-  await f.page.evaluate(()=>{const w=window as unknown as {advances:number;tick:()=>void;motion:(value:boolean)=>void};w.advances=0;const timers=new Map<number,()=>void>();let serial=100000;const timeout=window.setTimeout.bind(window),clear=window.clearTimeout.bind(window) as (id:number)=>void;window.setTimeout=((fn:TimerHandler,delay?:number,...args:unknown[])=>{if(delay===6000&&typeof fn==='function'){const id=serial++;timers.set(id,()=>fn(...args));return id;}return timeout(fn,delay,...args);}) as typeof window.setTimeout;window.clearTimeout=(id)=>{if(typeof id==='number'){if(timers.has(id))timers.delete(id);else clear(id);}};w.tick=()=>{const pending=[...timers.values()];timers.clear();pending.forEach(fn=>fn());};let reduced=false;const media=window.matchMedia('(prefers-reduced-motion: reduce)');Object.defineProperty(media,'matches',{get(){return reduced}});window.matchMedia=()=>media;w.motion=value=>{reduced=value;media.dispatchEvent(new Event('change'));};});
-  await f.page.addScriptTag({content:f.script});await f.page.waitForFunction(()=>Boolean(document.querySelector('section')));await f.page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
-  await f.page.evaluate(()=> (window as unknown as {tick:()=>void}).tick());await f.page.waitForFunction(()=> (window as unknown as {advances:number}).advances===1);
-  if(mode==='hero'){
-   await f.page.getByRole('button',{name:/Show slide 2:/}).click();await f.page.locator('#outside').click();await f.page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));await f.page.evaluate(()=> (window as unknown as {tick:()=>void}).tick());await f.page.waitForFunction(()=> (window as unknown as {advances:number}).advances===2);
-   await f.page.evaluate(()=> (window as unknown as {motion:(value:boolean)=>void}).motion(true));await f.page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));await f.page.evaluate(()=> (window as unknown as {tick:()=>void}).tick());assert.equal(await f.page.evaluate(()=> (window as unknown as {advances:number}).advances),2,'reduced motion pauses automatic stories');
-   await f.page.evaluate(()=> (window as unknown as {motion:(value:boolean)=>void}).motion(false));await f.page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));await f.page.evaluate(()=> (window as unknown as {tick:()=>void}).tick());await f.page.waitForFunction(()=> (window as unknown as {advances:number}).advances===3);
-   await f.page.getByRole('button',{name:/Show slide 2:/}).evaluate(element=>element.scrollIntoView({block:'center'}));await f.page.screenshot({path:`${evidenceRoot}/frontend-hero-controls.png`});assert.deepEqual(f.errors,[],'carousel fixture must have no uncaught runtime errors');return;
-  }
-  const pause=f.page.getByRole('button',{name:'Pause '+name,exact:true});assert.equal(await pause.count(),1,'automatic gifting stories need a persistent visible pause control');
-  await pause.click();await f.page.locator('#outside').click();await f.page.evaluate(()=> (window as unknown as {tick:()=>void}).tick());assert.equal(await f.page.evaluate(()=> (window as unknown as {advances:number}).advances),1);
-  await f.page.getByRole('button',{name:'Resume '+name,exact:true}).evaluate(element=>element.scrollIntoView({block:'center'}));await f.page.screenshot({path:`${evidenceRoot}/frontend-${mode}-paused.png`});
-  await f.page.getByRole('button',{name:/Show slide 2:/}).click();await f.page.locator('#outside').click();await f.page.evaluate(()=> (window as unknown as {tick:()=>void}).tick());assert.equal(await f.page.evaluate(()=> (window as unknown as {advances:number}).advances),1);
-  await f.page.evaluate(()=> (window as unknown as {motion:(value:boolean)=>void}).motion(true));await f.page.getByRole('button',{name:'Resume '+name,exact:true}).click();await f.page.locator('#outside').click();await f.page.evaluate(()=> (window as unknown as {tick:()=>void}).tick());assert.equal(await f.page.evaluate(()=> (window as unknown as {advances:number}).advances),1,'resuming cannot override reduced motion');
-  await f.page.evaluate(()=> (window as unknown as {motion:(value:boolean)=>void}).motion(false));await f.page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));await f.page.evaluate(()=> (window as unknown as {tick:()=>void}).tick());await f.page.waitForFunction(()=> (window as unknown as {advances:number}).advances===2);
+  await f.page.evaluate(()=>{const w=window as unknown as {advances:number;tick:(milliseconds?:number)=>void;motion:(value:boolean)=>void};w.advances=0;let now=Date.now();Date.now=()=>now;const timers=new Map<number,[number,()=>void]>();let serial=100000;const timeout=window.setTimeout.bind(window),clear=window.clearTimeout.bind(window) as (id:number)=>void;window.setTimeout=((fn:TimerHandler,delay?:number,...args:unknown[])=>{if((delay===6000||delay===12000)&&typeof fn==='function'){const id=serial++;timers.set(id,[now+delay,()=>fn(...args)]);return id;}return timeout(fn,delay,...args);}) as typeof window.setTimeout;window.clearTimeout=(id)=>{if(typeof id==='number'){if(timers.has(id))timers.delete(id);else clear(id);}};w.tick=(milliseconds=6000)=>{now+=milliseconds;const pending=[...timers].filter(([,timer])=>timer[0]<=now);pending.forEach(([id,timer])=>{timers.delete(id);timer[1]();});};let reduced=false;const media=window.matchMedia('(prefers-reduced-motion: reduce)');Object.defineProperty(media,'matches',{get(){return reduced}});window.matchMedia=()=>media;w.motion=value=>{reduced=value;media.dispatchEvent(new Event('change'));};});
+  await f.page.addScriptTag({content:f.script});await f.page.waitForFunction(()=>Boolean(document.querySelector('section')));
+  const flush=()=>f.page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
+  const tick=()=>f.page.evaluate(()=> (window as unknown as {tick:()=>void}).tick());
+  const advances=()=>f.page.evaluate(()=> (window as unknown as {advances:number}).advances);
+  await flush();assert.equal(await f.page.getByRole('button',{name:/Pause|Resume/}).count(),0,'story sliders expose only dots');
+  await tick();await f.page.waitForFunction(()=> (window as unknown as {advances:number}).advances===1);
+  await f.page.getByRole('button',{name:/Show slide 2:/}).click();await f.page.locator('#outside').click();await flush();
+  await tick();assert.equal(await advances(),1,'manual browsing holds beyond the first six seconds');
+  await tick();await f.page.waitForFunction(()=> (window as unknown as {advances:number}).advances===2);
+  await f.page.locator('section').evaluate(element=>element.dispatchEvent(new PointerEvent('pointerover',{bubbles:true,pointerType:'mouse'})));await flush();
+  await tick();assert.equal(await advances(),2,'hover pauses story rotation');
+  await f.page.locator('section').evaluate(element=>element.dispatchEvent(new PointerEvent('pointerout',{bubbles:true,pointerType:'mouse',relatedTarget:document.querySelector('#outside')})));await flush();
+  await tick();await f.page.waitForFunction(()=> (window as unknown as {advances:number}).advances===3);
+  await f.page.getByRole('button',{name:/Show slide 2:/}).evaluate(element=>{element.focus();element.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,key:'Tab'}));});await flush();
+  await tick();assert.equal(await advances(),3,'keyboard focus pauses story rotation');
+  await f.page.locator('#outside').click();await flush();await tick();await f.page.waitForFunction(()=> (window as unknown as {advances:number}).advances===4);
+  await f.page.evaluate(()=> (window as unknown as {motion:(value:boolean)=>void}).motion(true));await flush();await tick();assert.equal(await advances(),4,'reduced motion pauses automatic stories');
+  await f.page.evaluate(()=> (window as unknown as {motion:(value:boolean)=>void}).motion(false));await flush();await tick();await f.page.waitForFunction(()=> (window as unknown as {advances:number}).advances===5);
+  await f.page.getByRole('button',{name:/Show slide 2:/}).evaluate(element=>element.scrollIntoView({block:'center'}));await f.page.screenshot({path:`${evidenceRoot}/frontend-${mode}-controls.png`});
   assert.deepEqual(f.errors,[],'carousel fixture must have no uncaught runtime errors');
  }finally{await f.page.close();await f.browser.close();}
 });
+
 void test('tracking retains the same-query successful result on outage, marks it stale and retries; query edits clear it',async()=>{
  const f=await mount(`import {OrderTracker} from './components/commerce/order-tracker';createRoot(document.getElementById('root')).render(<OrderTracker initialOrder="HK-FICTIONAL"/>);`);let attempts=0;
  try{
