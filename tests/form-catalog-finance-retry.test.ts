@@ -30,7 +30,7 @@ void test('seven finance and staff forms retain opaque attempts across uncertain
     bundler.onResolve({ filter: /^next\/link$/ }, () => ({ path: 'link', namespace: 'fixture' }));
     bundler.onResolve({ filter: /^@\/components\/admin\/confirm-operation$/ }, () => ({ path: 'confirm', namespace: 'fixture' }));
     bundler.onLoad({ filter: /.*/, namespace: 'fixture' }, (args) => ({ loader: 'js', resolveDir: process.cwd(), contents: args.path === 'navigation'
-      ? 'export function useRouter(){return {refresh(){}}}'
+      ? 'export function useRouter(){return {refresh(){window.__financeRetryRefreshCount=(window.__financeRetryRefreshCount??0)+1}}}'
       : args.path === 'link' ? 'import React from "react";export default function Link(p){return React.createElement("a",p)}'
       : args.path === 'confirm'
         ? 'import React from "react";export function ConfirmOperation(p){return p.open?React.createElement("button",{type:"button",onClick:p.onConfirm},"Confirm decision"):null}'
@@ -152,7 +152,9 @@ void test('seven finance and staff forms retain opaque attempts across uncertain
         assert.equal(await submitButton.isDisabled(), false, `${target.form}: refreshed configuration permits review`);
         assert.equal(await form.getByLabel('Finance context').inputValue(), preservedContext, `${target.form}: reset preserves entered context`);
         assert.deepEqual(await readValues(), preservedValues, `${target.form}: reset preserves all built-in and custom values`);
+        const priorRefreshCount = await page.evaluate(() => (window as Window & { __financeRetryRefreshCount?: number }).__financeRetryRefreshCount ?? 0);
         response = 'success'; await send(form);
+        await page.waitForFunction((priorCount: number) => ((window as Window & { __financeRetryRefreshCount?: number }).__financeRetryRefreshCount ?? 0) > priorCount, priorRefreshCount);
         assert.notEqual(bodies.at(-1)?.[target.key], original, `${target.form}: confirmed reset`);
         assert.equal(bodies.at(-1)?.formVersion, configVersions.get(target.form), `${target.form}: new attempt uses refreshed publication`);
         assert.equal(await page.evaluate((id: string) => Object.values(sessionStorage).includes(id), String(bodies.at(-1)?.[target.key])), false, `${target.form}: confirmed success clears`);
