@@ -11,6 +11,7 @@ import { verifyRelease } from '../release-files.mjs';
 import { guardedStagingSwitch } from './staging-switch.mjs';
 import { captureStagingWorkers, stopCapturedStagingWorkers } from './staging-workers.mjs';
 import { assertStagingRuntime } from './staging-runtime.mjs';
+import { assertStagingSelectorConfiguration } from './staging-selector.mjs';
 
 const execute = promisify(execFile);
 const home = '/home2/hastabaz';
@@ -73,11 +74,7 @@ try {
   const runtime = JSON.parse(await readFile(`${tools}/runtime.json`, 'utf8'));
   assertStagingRuntime(runtime);
   const { stdout } = await execute('/usr/sbin/cloudlinux-selector', ['get', '--json', '--interpreter', 'nodejs'], { timeout: 30_000, signal });
-  const configuration = JSON.parse(stdout).available_versions['22.23.2'].users.hastabaz.applications['hastabazaar-staging-app'];
-  assert.equal(configuration.domain, 'staging.hastabazaar.com');
-  assert.equal(configuration.startup_file, 'app.cjs');
-  const variables = Object.fromEntries(Object.entries(configuration.env_vars).map(([key, value]) => [key, typeof value === 'string' ? value : value.value]));
-  assert.ok(Object.keys(variables).length === Object.keys(runtime).length && Object.entries(runtime).every(([key, value]) => variables[key] === value), 'Passenger environment differs from approved staging bindings.');
+  assertStagingSelectorConfiguration(JSON.parse(stdout), process.versions.node, runtime);
   const production = await fetch('https://hastabazaar.com/health', { signal: AbortSignal.timeout(10_000), redirect: 'error' }).then((response) => response.json());
   assert.equal(production.marketplaceReady, true, 'Production must be healthy before staging deployment.');
   signal.throwIfAborted();
