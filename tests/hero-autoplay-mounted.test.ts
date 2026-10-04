@@ -53,10 +53,43 @@ async function mounted(kind:'hero'|'occasion'='hero') {
     const query=new URLSearchParams(suffix.replace(/^\?/,''));
     if(kind==='occasion')query.set('occasion','1');
     await page.goto('https://hero-autoplay.test/?'+query);
+    // Observe delivered media changes and real six-second timers without advancing the frozen clock.
+    await page.addScriptTag({content:`(() => {
+      const preference=window.matchMedia('(prefers-reduced-motion: reduce)');
+      const timing={motion:preference.matches,timers:new Map()};
+      window.__storyAutoplayTiming=timing;
+      preference.addEventListener('change',()=>{timing.motion=preference.matches;});
+      const schedule=window.setTimeout.bind(window);
+      const cancel=window.clearTimeout.bind(window);
+      window.setTimeout=(handler,delay,...args)=>{
+        if(delay!==6_000||typeof handler!=='function')return schedule(handler,delay,...args);
+        const id=schedule(()=>{timing.timers.delete(id);handler.apply(window,args);},delay);
+        timing.timers.set(id,Date.now());return id;
+      };
+      window.clearTimeout=id=>{timing.timers.delete(id);cancel(id);};
+    })()`});
+
     await page.addScriptTag({ content: await fixtureBundle! });
     await page.waitForFunction(() => document.querySelectorAll('[data-slider-dots] button').length === 4);
   };
   const selected = () => page.locator('[data-slider-dots] [aria-current="true"]').getAttribute('aria-label');
+  const waitForMotion = async (reducedMotion:boolean,rotating:boolean) => {
+    const frozenAt=await page.evaluate(()=>Date.now());
+    const deadline=Date.now()+5_000;
+    while(Date.now()<deadline){
+      const ready=await page.evaluate(({reducedMotion,rotating,frozenAt}:{reducedMotion:boolean;rotating:boolean;frozenAt:number})=>{
+        const timing=(window as unknown as {__storyAutoplayTiming:{motion:boolean;timers:Map<number,number>}}).__storyAutoplayTiming;
+        return timing.motion===reducedMotion&&(rotating
+          ? Array.from(timing.timers.values()).includes(frozenAt)
+          : timing.timers.size===0);
+      },{reducedMotion,rotating,frozenAt});
+      assert.equal(await page.evaluate(()=>Date.now()),frozenAt,'motion synchronization must not advance the fake clock');
+      if(ready)return;
+      await new Promise(resolve=>setTimeout(resolve,20));
+    }
+    assert.fail('motion preference must be delivered and autoplay must '+(rotating?'re-arm':'pause')+' at the frozen clock timestamp');
+  };
+
   const boundary = async (milliseconds:number) => {
     const before = await selected();
     await page.clock.runFor(milliseconds-1);
@@ -65,7 +98,7 @@ async function mounted(kind:'hero'|'occasion'='hero') {
     assert.notEqual(await selected(),before,'automatic browsing resumes at the exact boundary');
   };
   await mount();
-  return {page,mount,selected,boundary,close:async()=>{
+  return {page,mount,selected,boundary,waitForMotion,close:async()=>{
     await page.close();await browser.close();assert.deepEqual(errors,[]);
   }};
 }
@@ -163,13 +196,14 @@ void test(`${kind} keeps hover, keyboard focus, hidden-page and motion safeguard
     await h.boundary(6_000);
 
     await h.page.emulateMedia({reducedMotion:'reduce'});
+    await h.waitForMotion(true,false);
     const reduced=await h.selected();
     await h.page.clock.runFor(18_000);
     assert.equal(await h.selected(),reduced,'reduced motion pauses rotation');
     await h.page.locator('[data-slider-dots] button').nth(0).focus();
     await h.page.emulateMedia({reducedMotion:'no-preference'});
-    await h.page.clock.runFor(50);
     await h.page.locator('#outside').focus();
+    await h.waitForMotion(false,true);
     await h.boundary(6_000);
 
     if(kind==='hero'){
