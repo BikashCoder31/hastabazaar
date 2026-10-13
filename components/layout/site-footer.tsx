@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { companyDetails, companyPanDisplay } from '@/lib/content/company-details';
 
 import styles from '@/components/layout/site-footer.module.css';
 
@@ -172,10 +173,11 @@ export async function SiteFooter({ compact = false }: { compact?: boolean } = {}
             <ShieldCheck className="size-5" aria-hidden="true" />
             <div>
               <h2>Policies and buyer information</h2>
-              <p>Clear guidance before and after every purchase.</p>
+              <p>Operated by {companyDetails.legalName}. Registration: {companyDetails.registrationNumber}. PAN: {companyPanDisplay}.</p>
             </div>
           </div>
           <nav aria-label="Legal and policies">
+            <FooterLink href="/legal#company-details">Company details</FooterLink>
             <FooterLink href="/terms">Terms</FooterLink>
             <FooterLink href="/privacy">Privacy</FooterLink>
             <FooterLink href="/returns">Returns</FooterLink>

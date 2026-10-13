@@ -1,5 +1,9 @@
+import { companyPolicyIdentity } from './company-details';
+
 export const publicPolicyDocuments = {
   terms: `# Terms & Conditions
+
+${companyPolicyIdentity}
 
 Welcome to HastaBazaar. These terms govern shopping, accounts and use of our marketplace. By placing an order or registering an account, you agree to the terms presented to you at that time.
 
@@ -50,6 +54,8 @@ For assistance or complaints, email support@hastabazaar.com with your order or a
 Nepalese law governs these terms. Nothing here excludes a responsibility or remedy that cannot lawfully be excluded. Updated terms apply prospectively and do not reduce rights attached to an existing order. Material changes affecting an ongoing account will be communicated before taking effect.
 `,
   returns: `# Return, Exchange, Cancellation & Refund Policy
+
+${companyPolicyIdentity}
 
 This policy applies to purchases made through HastaBazaar. Contact support@hastabazaar.com with your order number and the assistance you need.
 
@@ -105,6 +111,8 @@ Your bank or payment provider controls when a processed refund appears in your a
 `,
   shipping: `# Shipping & Delivery Policy
 
+${companyPolicyIdentity}
+
 This policy explains delivery arrangements for orders placed through HastaBazaar.
 
 ## Delivery availability and charges
@@ -143,7 +151,9 @@ Returns, replacements and refunds are handled under our Return, Exchange, Cancel
 `,
   privacy: `# Privacy Policy
 
-This policy explains the handling of personal information in connection with HastaBazaar accounts, seller applications, purchases and support requests.
+${companyPolicyIdentity}
+
+Hasta Bazaar Private Limited is responsible for the handling of personal information described in this policy. This policy explains the handling of personal information in connection with HastaBazaar accounts, seller applications, purchases and support requests.
 
 ## Information covered
 
@@ -197,6 +207,8 @@ Material changes to how personal information is handled will be communicated bef
 `,
   cookies: `# Cookie Policy
 
+${companyPolicyIdentity}
+
 This policy covers cookies and similar browser storage used in connection with HastaBazaar.
 
 ## What cookies do
@@ -222,6 +234,8 @@ To withdraw optional consent or ask about browser storage associated with HastaB
 Payment and other third-party services may provide their own cookie information when you use their services. Our Privacy Policy explains the broader handling of personal information.
 `,
   'prohibited-products': `# Prohibited & Restricted Products Policy
+
+${companyPolicyIdentity}
 
 Products listed on HastaBazaar must be lawful, safe and accurately described. This policy applies to product listings, images, descriptions and seller communications.
 
@@ -257,7 +271,9 @@ Sellers must cooperate with safety investigations, recalls and valid refund clai
 `,
   'seller-agreement': `# Seller Marketplace Agreement
 
-This agreement governs selling through HastaBazaar. A seller must accept the agreement and complete the required verification before the seller account is activated. Submitting an application does not guarantee approval.
+${companyPolicyIdentity}
+
+This agreement is between Hasta Bazaar Private Limited, operating as HastaBazaar, and the seller accepting it. It governs selling through HastaBazaar. A seller must accept the agreement and complete the required verification before the seller account is activated. Submitting an application does not guarantee approval.
 
 ## Seller eligibility and information
 

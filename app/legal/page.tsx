@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { CompanyDisclosure } from '@/components/layout/company-disclosure';
 import { ArrowRight, FileText } from 'lucide-react';
 
 import { SiteFooter } from '@/components/layout/site-footer';
@@ -39,6 +40,7 @@ export default function LegalPage() {
           </p>
         </section>
         <section className="shell py-10 sm:py-14">
+          <div className="mb-8"><CompanyDisclosure /></div>
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {publicLegalPolicyNavigation.map((policy) => (
               <Link

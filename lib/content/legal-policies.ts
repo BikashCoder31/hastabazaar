@@ -1,9 +1,12 @@
 import policyDocuments from './legal-policy-documents.json';
 import { phaseOneMarketplacePolicy } from '../marketplace/policy';
+import { companyPanDisplay } from './company-details';
 import { publicPolicyDocuments } from './public-policy-documents';
 
 export const CUSTOMER_POLICY_VERSION =
-  'customer-policy-set-2026-09-18';
+  'customer-policy-set-2026-10-13';
+// Stable acceptance identifier: this company identity update does not require seller reacceptance.
+// The current public document checksum is tracked separately below.
 export const SELLER_AGREEMENT_VERSION =
   'seller-agreement:sha256:4817512b1e2ac55b23a262245a825a26355c640aac3ec4c2e64b2146f396f7a1';
 
@@ -12,43 +15,43 @@ export const publicLegalPolicies = {
     href: '/terms',
     title: 'Terms & Conditions',
     description: 'Rules for accounts, orders and using HastaBazaar.',
-    sha256: 'dab5f74dc949e3e567c9cf6e670eae491b7fd16387acac59bdef87a4734c475a',
+    sha256: 'f048227ae4315b39b04566654996d5a296b9b91b6cf4b4d96c98ae989eaa0ed9',
   },
   returns: {
     href: '/returns',
     title: 'Return, Exchange, Cancellation & Refund Policy',
     description: 'How cancellations, returns, exchanges and refunds work.',
-    sha256: '9afdd3f1f6de09b9c3c81d03640d9c314b27f2e4131a77db67d3f690114c360f',
+    sha256: 'fe1ce8ecb209f94861103a6c0f63418068116861ca47ed136dff6b1f20aae19b',
   },
   shipping: {
     href: '/shipping',
     title: 'Shipping & Delivery Policy',
     description: 'Delivery availability, charges, dispatch and delivery issues.',
-    sha256: '9212a7a0e1959724ee3e4c0d630b9756b89293cc0c54d2f0605fc033937435ce',
+    sha256: '7523ecd552d52161fd13fbb86579616e9f72ff564e955abbdedf31d811030ee2',
   },
   privacy: {
     href: '/privacy',
     title: 'Privacy Policy',
     description: 'How personal information is handled and how to contact us.',
-    sha256: '6843a1271878b41ee14ce2c3c85152330763d4ec16e3e45a4fda2c053cbcbb8d',
+    sha256: 'c73ff698ca068c67ebb4856460ba5020102446929bcadcebec28e34b4068be4e',
   },
   cookies: {
     href: '/cookies',
     title: 'Cookie Policy',
     description: 'Browser storage, optional tracking and privacy choices.',
-    sha256: '55dc1dfb9b5c07c2c7d542fbea037c92c8d115b36c56fffaa50e4ee0958d20af',
+    sha256: '270a7ff94bf7bdae82901474a06b18eace0f2feaf05947b225ccdc4310e8dd7b',
   },
   'prohibited-products': {
     href: '/prohibited-products',
     title: 'Prohibited & Restricted Products Policy',
     description: 'Products that cannot be sold or require prior approval.',
-    sha256: 'fa3f3b8ecaf2989f8d4298e1ce8b45c94971e5d46a190b1b191cf3a06dbcca49',
+    sha256: 'afa80125cd2c1daadc16b242a542f8b3c4c5604545f0ab9a8edbb1a61bd3582a',
   },
   'seller-agreement': {
     href: '/seller-agreement',
     title: 'Seller Marketplace Agreement',
     description: 'Seller responsibilities, 9% commission and settlement terms.',
-    sha256: '4817512b1e2ac55b23a262245a825a26355c640aac3ec4c2e64b2146f396f7a1',
+    sha256: '3bbe5e4b2775ea265ddeffdcd7360a7e7977737b5ac826b3c8c01be55d2ff96d',
   },
 } as const;
 
@@ -83,6 +86,6 @@ export const publicLegalPolicyNavigation = Object.entries(
 
 export function getLegalPolicyDocument(key: LegalPolicyKey): string {
   return key === 'internal-compliance'
-    ? policyDocuments[key]
+    ? policyDocuments[key].replace('PAN registration is in progress.', `PAN: ${companyPanDisplay}.`)
     : publicPolicyDocuments[key];
 }
