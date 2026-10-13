@@ -1,0 +1,21 @@
+// Public disclosure only. PAN status must not control marketplace functionality.
+export const companyDetails = {
+  legalName: 'Hasta Bazaar Private Limited',
+  nepaliName: 'हस्त बजार प्राइभेट लिमिटेड',
+  brandName: 'HastaBazaar',
+  registrationNumber: '406171/83/84',
+  registeringAuthority: 'Office of the Company Registrar, Nepal',
+  incorporationDate: '8 October 2026 (2083-06-22 BS)',
+  registeredOffice:
+    'Birgunj Metropolitan City, Ward 11, Parsa, Madhesh Province, Nepal',
+  supportEmail: 'support@hastabazaar.com',
+  // Replace the empty string with the issued company PAN, then rebuild/deploy.
+  // PAN issuance does not establish VAT registration.
+  pan: '',
+};
+
+export const companyPanDisplay = companyDetails.pan.trim() || 'Registration in progress';
+
+export const companyPolicyIdentity = `HastaBazaar is operated by ${companyDetails.legalName} (${companyDetails.nepaliName}), incorporated in Nepal under the Companies Act, 2063 and registered with the ${companyDetails.registeringAuthority} under registration number ${companyDetails.registrationNumber}. Registered office: ${companyDetails.registeredOffice}.
+
+References to “HastaBazaar”, “we”, “us” and “our” in this policy mean ${companyDetails.legalName}, unless the context states otherwise. Current company and PAN details are available on our [Legal & Policies page](/legal#company-details).`;

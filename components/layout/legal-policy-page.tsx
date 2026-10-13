@@ -9,6 +9,7 @@ import {
   type PublicLegalPolicyKey,
 } from '@/lib/content/legal-policies';
 import { LegalPolicyNavigation } from './legal-policy-navigation';
+import { CompanyDisclosure } from './company-disclosure';
 import { SiteFooter } from './site-footer';
 import { SiteHeader } from './site-header';
 
@@ -394,6 +395,7 @@ export function LegalPolicyPage({
               Policy document
             </div>
             <LegalDocumentContent markdown={markdown} />
+            <div className="mt-10"><CompanyDisclosure /></div>
           </article>
         </div>
       </main>

@@ -7,16 +7,24 @@ import {
   getLegalPolicyDocument,
   publicLegalPolicies,
   publicLegalPolicyNavigation,
+  SELLER_AGREEMENT_VERSION,
 } from '../lib/content/legal-policies';
 
+void test('company identity disclosure does not require existing sellers to reaccept', () => {
+  assert.equal(
+    SELLER_AGREEMENT_VERSION,
+    'seller-agreement:sha256:4817512b1e2ac55b23a262245a825a26355c640aac3ec4c2e64b2146f396f7a1',
+  );
+});
+
 const expected = {
-  terms: 'dab5f74dc949e3e567c9cf6e670eae491b7fd16387acac59bdef87a4734c475a',
-  returns: '9afdd3f1f6de09b9c3c81d03640d9c314b27f2e4131a77db67d3f690114c360f',
-  shipping: '9212a7a0e1959724ee3e4c0d630b9756b89293cc0c54d2f0605fc033937435ce',
-  privacy: '6843a1271878b41ee14ce2c3c85152330763d4ec16e3e45a4fda2c053cbcbb8d',
-  cookies: '55dc1dfb9b5c07c2c7d542fbea037c92c8d115b36c56fffaa50e4ee0958d20af',
-  'prohibited-products': 'fa3f3b8ecaf2989f8d4298e1ce8b45c94971e5d46a190b1b191cf3a06dbcca49',
-  'seller-agreement': '4817512b1e2ac55b23a262245a825a26355c640aac3ec4c2e64b2146f396f7a1',
+  terms: 'f048227ae4315b39b04566654996d5a296b9b91b6cf4b4d96c98ae989eaa0ed9',
+  returns: 'fe1ce8ecb209f94861103a6c0f63418068116861ca47ed136dff6b1f20aae19b',
+  shipping: '7523ecd552d52161fd13fbb86579616e9f72ff564e955abbdedf31d811030ee2',
+  privacy: 'c73ff698ca068c67ebb4856460ba5020102446929bcadcebec28e34b4068be4e',
+  cookies: '270a7ff94bf7bdae82901474a06b18eace0f2feaf05947b225ccdc4310e8dd7b',
+  'prohibited-products': 'afa80125cd2c1daadc16b242a542f8b3c4c5604545f0ab9a8edbb1a61bd3582a',
+  'seller-agreement': '3bbe5e4b2775ea265ddeffdcd7360a7e7977737b5ac826b3c8c01be55d2ff96d',
 } as const;
 
 void test('all seven canonical policy bodies match the supplied normalized hashes', () => {
