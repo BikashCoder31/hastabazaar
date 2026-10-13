@@ -1,3 +1,4 @@
+import { isRiderPortalEnabled } from '@/lib/riders/availability';
 import { getSellerTermsViewer } from '@/lib/auth/seller-commercial-access';
 import { env } from 'cloudflare:workers';
 import { getAuthenticatedUser } from '@/app/auth';
@@ -29,7 +30,6 @@ const STAFF_FORM_PERMISSIONS: Readonly<Partial<Record<string, Permission>>> = {
   'staff.privacy-action': 'support.manage',
   'staff.product-classification': 'catalog.manage',
   'staff.recorded-progress-filter': 'audit_log.view',
-  'staff.rider-control-1': 'order.manage',
   'staff.delivery-assignment': 'order.manage',
   'shipping.console-action-staff': 'order.manage',
   'staff.return-case-action': 'refund.approve.standard',
@@ -107,6 +107,7 @@ export async function GET(_request: Request, context: { params: Promise<{ formId
   const { formId } = await context.params;
   const definition = Object.hasOwn(FORM_REGISTRY, formId) ? FORM_REGISTRY[formId] : null;
   if (!definition) return missing();
+  if (definition.audience === 'rider' && !isRiderPortalEnabled()) return missing();
   if (!await audienceAllowed(definition.audience, formId)) return missing();
   try {
     const db = requireDatabase(env as unknown as { DB?: D1Database });

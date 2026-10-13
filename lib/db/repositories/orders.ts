@@ -1,3 +1,4 @@
+import { publicTrackingReferenceSql } from '../../riders/public-tracking';
 import { quotePromo, preparePromoConsumption } from './promo-codes';
 import { requireCheckoutContactProof, checkoutContactGuards, type CheckoutContactPolicy } from '@/lib/auth/contact-verification';
 import {prepareFirstCodReview} from '@/lib/orders/first-cod-review';
@@ -974,7 +975,7 @@ export async function getOrderReceipt(
         (SELECT COUNT(DISTINCT current_items.seller_id) FROM order_items current_items WHERE current_items.order_id=orders.id AND current_items.fulfillment_status<>'cancelled') AS currentStoreCount,
         orders.policy_version AS policyVersion,
         order_policy_acceptances.accepted_at AS termsAcceptedAt,
-        shipments.status AS shipmentStatus, shipments.tracking_code AS trackingCode,
+        shipments.status AS shipmentStatus, ${publicTrackingReferenceSql('orders.id', 'shipments.tracking_code')} AS trackingCode,
         shipments.estimated_min_days AS estimatedMinDays,
         shipments.estimated_max_days AS estimatedMaxDays
        FROM orders INNER JOIN shipments ON shipments.order_id = orders.id

@@ -26,6 +26,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         body[key] !== undefined && typeof body[key] !== 'string') ||
       typeof body.requestId !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(body.requestId))
       return Response.json({ error: 'Invalid assignment.' }, { status: 400 });
+    if (staff.role !== 'super_admin' && (body.method === 'own_rider' || body.riderEmail))
+      throw new StaffAuthorizationError('Super Admin access is required.', 403);
     if (!Number.isSafeInteger(body.formVersion))
       throw new FormRuntimeError('stale_version', 'This form changed. Refresh it and review your answers.');
     const db = requireDatabase(env as unknown as { DB?: D1Database });

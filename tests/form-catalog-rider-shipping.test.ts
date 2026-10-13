@@ -1,3 +1,4 @@
+import './helpers/rider-enabled-fixture';
 import { stubFixtureLink } from './helpers/browser-fixture-link';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -301,7 +302,7 @@ void test('rider application retry reuses only the same actor and submitted payl
   } finally { sqlite.close(); }
 });
 
-void test('application history remains available to its applicant; staff-only assignment stays private', async () => {
+void test('application history is private to Super Admin while courier history retains staff source checks', async () => {
   const { sqlite, db } = fixture();
   try {
     sqlite.exec("INSERT INTO user_roles VALUES ('rider','customer'); INSERT INTO user_roles VALUES ('customer','customer'); INSERT INTO user_roles VALUES ('admin','super_admin'); DELETE FROM rider_profiles WHERE user_id='rider';");
@@ -312,7 +313,7 @@ void test('application history remains available to its applicant; staff-only as
       form: { requestId: 'access-application', versionId: 'rider.application-v1',
         answers: { formId: 'rider.application', version: 1, answers: [] }, digest: 'access-application-digest' } });
     const application = (await listFormAnswersForSubject(db, 'rider_application', applicationId))[0];
-    assert.equal(await authorizeFormAnswerRead(db, { id: 'rider', role: 'customer' }, application), true);
+    assert.equal(await authorizeFormAnswerRead(db, { id: 'rider', role: 'customer' }, application), false);
     assert.equal(await authorizeFormAnswerRead(db, { id: 'customer', role: 'customer' }, application), false);
     assert.equal(await authorizeFormAnswerRead(db, { id: 'admin', role: 'admin' }, application), false);
     assert.equal(await authorizeFormAnswerRead(db, { id: 'admin', role: 'super_admin' }, application), true);
@@ -1027,7 +1028,7 @@ void test('privacy export follows rider parents and excludes staff shipping answ
     assert.deepEqual(new Set(riderExport.map((answer) => answer.formId)),
       new Set(subjects.map(([formId]) => formId)));
     for (const answer of riderExport) {
-      assert.equal(await authorizeFormAnswerRead(db, { id: 'rider-user', role: 'customer' }, answer), true);
+      assert.equal(await authorizeFormAnswerRead(db, { id: 'rider-user', role: 'customer' }, answer), false);
       assert.equal(await authorizeFormAnswerRead(db, { id: 'buyer', role: 'customer' }, answer), false);
     }
     assert.equal((await collectFormAnswersForPrivacy(db, 'buyer')).length, 0);
@@ -1074,10 +1075,9 @@ void test('rider and staff history page beyond fifty applications without reveal
       kind: 'application', beforeAt: '3', beforeId: 'app-3',
     }) }));
     assert.match(older, /app-1/);
-    const detail = renderToStaticMarkup(await RiderHistory({ searchParams: Promise.resolve({
+    await assert.rejects(RiderHistory({ searchParams: Promise.resolve({
       kind: 'application', id: 'app-1',
-    }) }));
-    assert.match(detail, /Submitted answers/);
+    }) }), /Not found/);
     await assert.rejects(RiderHistory({ searchParams: Promise.resolve({
       kind: 'application', id: 'foreign-app',
     }) }), /Not found/);
@@ -1225,4 +1225,33 @@ void test('mounted shipping console preserves lost action ID and requires confir
     await page.waitForFunction((value: string) => sessionStorage.getItem(value) === null, key);
     assert.notEqual(attempts[4].requestId, original);
   } finally { await page.close(); await browser.close(); }
+});
+
+void test('ordinary Admin cannot overwrite a current or concurrently assigned legacy rider with a courier',async()=>{
+ for(const concurrent of [false,true]){
+  const {sqlite,db,control}=fixture();try{
+   sqlite.exec("DELETE FROM shipping_parcels;INSERT INTO shipments VALUES ('order',NULL)");
+   const assignRider=()=>sqlite.exec("INSERT INTO delivery_assignments(order_id,method,rider_user_id,assigned_by,updated_at) VALUES ('order','own_rider','rider','admin',10)");
+   if(concurrent)control.beforeBatch=assignRider;else assignRider();
+   await assert.rejects(assignDelivery(db,{orderId:'order',actorId:'admin',method:'courier',courierName:'Courier',trackingReference:'PUBLIC',now:100,requestId:'private-overwrite',form:{requestId:'private-overwrite',versionId:'staff.delivery-assignment-v1',digest:'digest',answers:{formId:'staff.delivery-assignment',version:1,answers:[]}}}));
+   assert.equal(sqlite.prepare("SELECT method FROM delivery_assignments WHERE order_id='order'").get()?.method,'own_rider');
+   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM form_answer_sets').get()?.n,0);
+  }finally{sqlite.close();}
+ }
+});
+
+void test('ordinary Admin courier cancellation rolls back if a rider assignment arrives before commit',async()=>{
+ const {sqlite,db}=shippingFixture();try{
+  const {operateParcel}=await import('../lib/operations/parcels');
+  sqlite.exec("UPDATE orders SET status='confirmed' WHERE id='order';UPDATE order_items SET fulfillment_status='packing' WHERE id='item'");
+  const jobId=await createShippingJob(db,{orderId:'order',sellerId:'seller-one',actorId:'seller-user',direction:'outbound',note:'Prepare fictional courier pickup.',requestId:'privacy-cancel-job',now:100});
+  sqlite.prepare("INSERT INTO shipping_parcels(shipping_job_id,cod_due_paisa,method,created_at) VALUES (?,100000,'courier',100)").run(jobId);
+  const control=db as unknown as Database;
+  control.beforeBatch=()=>{sqlite.prepare("UPDATE shipping_parcels SET method='own_rider' WHERE shipping_job_id=?").run(jobId);};
+  await assert.rejects(operateParcel(db,{jobId,actorId:'admin',version:0,action:'cancel',note:'Cancel fictional courier before pickup.',requestId:'privacy-cancel-race',now:200}), /changed|constraint/i);
+  assert.notEqual(sqlite.prepare('SELECT status FROM shipping_jobs WHERE id=?').get(jobId)?.status,'cancelled');
+  assert.equal(sqlite.prepare('SELECT method FROM shipping_parcels WHERE shipping_job_id=?').get(jobId)?.method,'own_rider');
+  assert.equal(sqlite.prepare('SELECT version FROM shipping_parcels WHERE shipping_job_id=?').get(jobId)?.version,0);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM parcel_operation_events WHERE action='cancel'").get()?.n,0);
+ }finally{sqlite.close();}
 });

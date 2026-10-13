@@ -1,3 +1,5 @@
+import { isRiderPortalEnabled } from '@/lib/riders/availability';
+import { RiderProgramHold } from '@/components/rider/rider-program-hold';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -16,6 +18,7 @@ export default async function RiderFormHistoryPage({ searchParams }: {
   searchParams?: Promise<{ kind?: string; id?: string; beforeAt?: string; beforeId?: string;
     afterAt?: string; afterId?: string }>;
 } = {}) {
+  if (!isRiderPortalEnabled()) return <RiderProgramHold />;
   const user = await requireCustomerPage('/rider/form-history');
   const query = await searchParams;
   const kind = historyKind(query?.kind);

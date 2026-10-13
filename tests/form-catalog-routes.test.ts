@@ -1,3 +1,4 @@
+import './helpers/rider-enabled-fixture';
 import { startSellerRegistration } from '../lib/db/repositories/seller-commercial-access';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -275,7 +276,7 @@ void test('every staff form keeps its page or receiver permission, including ret
       'staff.managed-payment-preparation', 'staff.managed-transition-decision',
       'staff.parcel-control', 'staff.payout-1', 'staff.payout-request-action',
       'staff.privacy-action', 'staff.product-classification', 'staff.recorded-progress-filter',
-      'staff.rider-control-1', 'staff.delivery-assignment', 'shipping.console-action-staff',
+      'staff.delivery-assignment', 'shipping.console-action-staff',
       'staff.return-case-action', 'staff.complaint-case-action', 'staff.cancellation-review',
       'staff.seller-review-action', 'staff.order-fulfillment', 'staff.first-cod-confirmation', 'staff.review-moderation',
       'staff.product-review',
@@ -285,7 +286,7 @@ void test('every staff form keeps its page or receiver permission, including ret
       'staff.governance-incident-create', 'staff.governance-incident-update',
       'staff.governance-backup-verify', 'staff.invoice-adjustment',
       'staff.managed-maker-activation', 'staff.managed-adjustment', 'staff.payout-2',
-      'staff.referral-settings', 'staff.rider-control-2', 'commerce.gift-card-issue',
+      'staff.referral-settings', 'staff.rider-control-1', 'staff.rider-control-2', 'commerce.gift-card-issue',
       'staff.homepage-visibility', 'staff.seller-governance',
     ];
     const registered = Object.values(FORM_REGISTRY).filter((form) => form.audience === 'staff').map((form) => form.id).sort();

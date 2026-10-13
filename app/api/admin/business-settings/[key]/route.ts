@@ -21,9 +21,10 @@ export async function GET(
   context: { params: Promise<{ key: string }> },
 ): Promise<Response> {
   try {
-    await requireStaffApi('business_settings.view');
+    const staff = await requireStaffApi('business_settings.view');
     const key = parseBusinessSettingKey((await context.params).key);
     const definition = getBusinessSettingDefinition(key);
+    if (staff.role !== 'super_admin' && definition.affectedSurfaces.includes('rider')) return json({ error: 'Business setting not found.' }, 404);
     const database = requireDatabase(env as unknown as { DB?: D1Database });
     const now = Date.now();
     const [effective, history] = await Promise.all([

@@ -1,3 +1,4 @@
+import { publicTrackingReferenceSql } from '../../riders/public-tracking';
 import { assertFirstCodFulfillmentAllowed } from '../../orders/first-cod-review';
 import {
   cancellationChoices,
@@ -123,7 +124,7 @@ async function loadOrderBase(
           orders.payment_mode AS paymentMode, orders.payment_status AS paymentStatus,
           orders.placed_at AS placedAt, orders.delivered_at AS deliveredAt,
           orders.cancelled_at AS cancelledAt, shipments.id AS shipmentId,
-          shipments.status AS shipmentStatus, shipments.tracking_code AS trackingCode,
+          shipments.status AS shipmentStatus, ${publicTrackingReferenceSql('orders.id', 'shipments.tracking_code')} AS trackingCode,
           shipments.estimated_min_days AS estimatedMinDays,
           shipments.estimated_max_days AS estimatedMaxDays
          FROM orders INNER JOIN shipments ON shipments.order_id = orders.id

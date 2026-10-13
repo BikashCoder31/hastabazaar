@@ -1,3 +1,5 @@
+import { isRiderPortalEnabled } from '@/lib/riders/availability';
+import { riderPortalHoldResponse } from '@/lib/riders/portal-hold';
 import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 import {
@@ -23,6 +25,7 @@ const json = (body: unknown, status: number) =>
   Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
 
 export async function POST(request: Request) {
+  if (!isRiderPortalEnabled()) return riderPortalHoldResponse();
   if (!isTrustedMutationRequest(request))
     return json({ error: 'Cross-site requests are not allowed.' }, 403);
   try {

@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { listRiderReports, riderPolicy } from '@/lib/riders/repository';
@@ -9,9 +10,10 @@ import {
 } from '@/components/admin/rider-controls';
 export const dynamic = 'force-dynamic';
 export default async function RidersPage() {
-  const staff = await requireStaffPage('/admin/riders', 'order.manage'),
-    db = requireDatabase(env as unknown as { DB?: D1Database }),
-    superAdmin = staff.role === 'super_admin';
+  const staff = await requireStaffPage('/admin/riders', 'order.manage');
+  if (staff.role !== 'super_admin') notFound();
+  const db = requireDatabase(env as unknown as { DB?: D1Database });
+  const superAdmin = true;
   const people = superAdmin
     ? (
         await db
@@ -38,9 +40,9 @@ export default async function RidersPage() {
     <div className="space-y-6">
       <h1 className="text-3xl font-semibold">Rider operations</h1>
       <p>
-        Super Admin approves identity; permitted Admins assign parcels from the
-        order workspace and confirm handover evidence. Delivery, collection and
-        remittance remain separate records.
+        Only Super Admin can review rider identity, assignments and evidence.
+        Rider applications and self-service are currently on hold. Delivery,
+        collection and remittance remain separate records.
       </p>
       <Link className="underline" href="/admin/orders">
         Open order assignments

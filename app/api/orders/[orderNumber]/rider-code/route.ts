@@ -1,3 +1,5 @@
+import { isRiderPortalEnabled } from '@/lib/riders/availability';
+import { riderPortalHoldResponse } from '@/lib/riders/portal-hold';
 import { env } from 'cloudflare:workers';
 import {
   getCustomerUser,
@@ -28,6 +30,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ orderNumber: string }> },
 ) {
+  if (!isRiderPortalEnabled()) return riderPortalHoldResponse();
   if (!isTrustedMutationRequest(request))
     return json({ error: 'Cross-site requests are not allowed.' }, 403);
   try {

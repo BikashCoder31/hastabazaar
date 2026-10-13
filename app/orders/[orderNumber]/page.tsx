@@ -1,8 +1,6 @@
 import { getFirstCodReview } from '@/lib/orders/first-cod-review';
 import { listCustomerCancellationAnswers } from '@/lib/forms/cancellation-history';
 import { CancellationHistory } from '@/components/commerce/cancellation-history';
-import { CustomerRiderCode } from '@/components/rider/rider-code';
-import { customerRiderCodeJobs } from '@/lib/riders/customer-code';
 import { CustomerDelivery } from '@/components/delivery/customer-delivery';
 import { env } from 'cloudflare:workers';
 import type { Metadata } from 'next';
@@ -99,11 +97,6 @@ export default async function OrderReceiptPage({
       customer?.userId ?? null,
     ),
   ]);
-  const codeJobs = await customerRiderCodeJobs(database, {
-    orderNumber,
-    customerId: customer?.userId ?? null,
-    receiptTokenHash,
-  });
   const query = await searchParams;
   const historyKind = query?.historyKind ?? 'checkout';
   if (!['checkout', 'return', 'complaint'].includes(historyKind)) notFound();
@@ -187,7 +180,6 @@ export default async function OrderReceiptPage({
       <SiteHeader />
       <main tabIndex={-1} id="main-content" className="shell py-8 sm:py-12">
         <CustomerDelivery orderNumber={orderNumber} />
-        <CustomerRiderCode orderNumber={orderNumber} jobs={codeJobs} />
         <div className="mx-auto max-w-5xl">
           <Link
             href={customer ? '/account/orders' : '/shop'}

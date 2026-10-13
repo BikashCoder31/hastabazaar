@@ -1,3 +1,4 @@
+import './helpers/rider-enabled-fixture';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 import test from 'node:test';

@@ -15,7 +15,7 @@ import { AnswerDetails } from '@/components/forms/answer-details';
 import { listFormAnswersForSubjectPage } from '@/lib/db/repositories/form-answers';
 import { authorizeFormAnswerRead } from '@/lib/forms/access';
 import { readHistoryCursor } from '@/lib/forms/rider-history';
-import { getDelivery } from '@/lib/delivery/repository';
+import { getDelivery, publicDelivery } from '@/lib/delivery/repository';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -72,12 +72,12 @@ export default async function AdminOrderPage({
   } catch {
     notFound();
   }
-  const deliveryAnswers = await listFormAnswersForSubjectPage(db, {
+  const deliveryAnswers = staff.role === 'super_admin' ? await listFormAnswersForSubjectPage(db, {
     subjectType: 'order',
     subjectId: id,
     formId: 'staff.delivery-assignment',
     after: deliveryAfter,
-  });
+  }) : { answers: [], nextCursor: null };
   if (
     (
       await Promise.all(
@@ -94,8 +94,8 @@ export default async function AdminOrderPage({
     notFound();
   const [parcels, cash, compensation, invoiceGroups] = await Promise.all([
     listParcels(db, id),
-    parcelCashRecords(db, id),
-    riderCompensationEntries(db, id),
+    parcelCashRecords(db, id).then(records => staff.role === 'super_admin' ? records : records.filter(record => record.riderId === null)),
+    staff.role === 'super_admin' ? riderCompensationEntries(db, id) : Promise.resolve([]),
     listManagedInvoiceGroupsForOrder(db, id),
   ]);
   const adjustmentReasons = can(staff, 'tax_policy.manage')
@@ -107,18 +107,20 @@ export default async function AdminOrderPage({
         )
       ).value
     : [];
-  const assignedRider = await requireDatabase(
+  const assignedRider = staff.role === 'super_admin' ? await requireDatabase(
     env as unknown as { DB?: D1Database },
   )
     .prepare(
       'SELECT users.email FROM delivery_assignments JOIN users ON users.id=delivery_assignments.rider_user_id WHERE delivery_assignments.order_id=?',
     )
     .bind(id)
-    .first<{ email: string }>();
-  const delivery = await getDelivery(
+    .first<{ email: string }>() : null;
+  const rawDelivery = await getDelivery(
     requireDatabase(env as unknown as { DB?: D1Database }),
     id,
   );
+  const delivery = staff.role === 'super_admin' ? rawDelivery : publicDelivery(rawDelivery);
+  const visibleParcels = staff.role === 'super_admin' ? parcels : parcels.filter(p => p.method !== 'own_rider').map(p => ({ ...p, riderUserId: null, latitude: null, longitude: null, accuracy: null, positionAt: null, riderFinanceSnapshotJson: null }));
   return (
     <div>
       <CancellationReviewSection db={db} orderId={id} />
@@ -172,13 +174,13 @@ export default async function AdminOrderPage({
       <div className="mt-6">
         <ParcelControls
           orderId={id}
-          parcels={parcels}
-          records={cash}
+          parcels={visibleParcels}
+          records={staff.role === 'super_admin' ? cash : cash.filter(record => visibleParcels.some(parcel => parcel.id === record.jobId))}
           compensation={compensation}
           actorId={staff.id}
           isSuperAdmin={staff.role === 'super_admin'}
           canPrepare={
-            !codPending &&
+            !parcels.length && !codPending &&
             ['confirmed', 'packing', 'ready_for_pickup'].includes(order.status)
           }
         />
@@ -310,9 +312,10 @@ export default async function AdminOrderPage({
                   orderId={id}
                   current={delivery}
                   riderEmail={assignedRider?.email}
+                  isSuperAdmin={staff.role === 'super_admin'}
                 />
               ) : null}
-              <section className="mt-6 space-y-3 rounded-xl border p-5">
+              {staff.role === 'super_admin' ? <section className="mt-6 space-y-3 rounded-xl border p-5">
                 <h3 className="font-semibold">
                   Saved delivery-assignment answers
                 </h3>
@@ -331,7 +334,7 @@ export default async function AdminOrderPage({
                     Next 50 answers
                   </Link>
                 ) : null}
-              </section>
+              </section> : null}
               {!parcels.length ? (
                 <AdminOrderFulfillmentActions
                   key={order.trackingCode ?? 'manual'}

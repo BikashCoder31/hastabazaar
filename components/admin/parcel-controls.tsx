@@ -351,12 +351,12 @@ function ParcelForm({
               id={field('method')}
               className="mt-1 block w-full rounded border bg-background p-2"
             >
-              <option value="own_rider">Own rider</option>
+              {isSuperAdmin ? <option value="own_rider">Own rider</option> : null}
               <option value="courier">Courier</option>
             </select>
           </label>
           {[
-            ['riderEmail', 'Registered rider email'],
+            ...(isSuperAdmin ? [['riderEmail', 'Registered rider email']] : []),
             ['courierName', 'Courier company'],
             ['trackingCode', 'Tracking / handover reference'],
             ['trackingUrl', 'Optional HTTPS tracking link'],

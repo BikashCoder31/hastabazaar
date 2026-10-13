@@ -668,11 +668,39 @@ export async function authorizeFormAnswerRead(
   viewer: FormAnswerViewer,
   answerSet: AnswerLink,
 ): Promise<boolean> {
+  if ((answerSet.formId.startsWith('rider.') || answerSet.formId.startsWith('staff.rider-') ||
+      ['rider', 'rider_application', 'rider_report', 'rider_event', 'rider_policy'].includes(answerSet.subjectType) ||
+      (answerSet.formId === 'rider.remittance' && answerSet.subjectType === 'parcel_cash_record')) &&
+      viewer.role !== 'super_admin') return false;
   if (!viewer.id || !['customer', 'seller', 'rider', 'admin', 'super_admin'].includes(viewer.role)) return false;
   const identity = await db.prepare(`SELECT 1 AS valid FROM users u JOIN user_roles r ON r.user_id=u.id
     WHERE u.id=? AND u.status='active' AND r.role=? LIMIT 1`)
     .bind(viewer.id, viewer.role).first<{ valid: number }>();
   if (!identity) return false;
+  if (viewer.role !== 'super_admin' && answerSet.formId === 'staff.exception-work') {
+    const privateSource = await db.prepare(`SELECT 1 FROM exception_work_events e WHERE e.work_id=?
+      AND (e.action LIKE 'rider_%' OR json_extract(CASE WHEN json_valid(e.payload_json) THEN e.payload_json ELSE '{}' END,'$.riderReportId') IS NOT NULL) LIMIT 1`)
+      .bind(answerSet.subjectId).first();
+    if (privateSource) return false;
+  }
+  if (viewer.role !== 'super_admin' && ['staff.parcel-control', 'staff.delivery-assignment'].includes(answerSet.formId)) {
+    if (viewer.role !== 'admin') return false;
+    // Historical assignment context stays private after a courier reassignment.
+    const privateHistory = answerSet.formId === 'staff.parcel-control'
+      ? await db.prepare(`SELECT 1 WHERE
+          EXISTS(SELECT 1 FROM shipping_parcels p WHERE p.shipping_job_id=? AND (p.method='own_rider' OR p.rider_user_id IS NOT NULL))
+          OR EXISTS(SELECT 1 FROM parcel_operation_events e WHERE e.shipping_job_id=? AND
+            (NOT json_valid(e.payload_json) OR json_extract(e.payload_json,'$.method')='own_rider'
+              OR COALESCE(json_extract(e.payload_json,'$.riderEmail'),'')<>''
+              OR COALESCE(json_extract(e.payload_json,'$.riderReportId'),'')<>''))`)
+          .bind(answerSet.subjectId, answerSet.subjectId).first()
+      : await db.prepare(`SELECT 1 FROM audit_logs a WHERE a.subject_type='order' AND a.subject_id=?
+          AND a.action='delivery.assigned' AND (NOT json_valid(a.next_json)
+            OR json_extract(a.next_json,'$.method')='own_rider'
+            OR json_extract(a.next_json,'$.riderId') IS NOT NULL) LIMIT 1`)
+          .bind(answerSet.subjectId).first();
+    if (privateHistory) return false;
+  }
   if (answerSet.formId === 'commerce.order-cancellation') {
     const parent = await cancellationAnswerOrder(db, answerSet);
     if (!parent) return false;

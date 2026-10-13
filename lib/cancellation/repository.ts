@@ -270,7 +270,7 @@ export async function cancelSelectedParcels(
     now: number;
     reviewId?: string;
     form?: CancellationForm;
-    parcelContext?: { jobId: string; payload: string;
+    parcelContext?: { jobId: string; payload: string; riderPrivacyRequired?: boolean;
       form?: {requestId:string;versionId:string;answers:FormAnswerSnapshot} };
   },
 ) {
@@ -295,6 +295,12 @@ export async function cancelSelectedParcels(
     throw new CancellationConflictError('Configured cancellation request does not match its action.');
   const authorizedSource = await source(db, a);
   const actorId = a.actorId ?? (authorizedSource.order.customerId === a.customerId ? a.customerId : null) ?? null;
+  const privateParcelSql = "EXISTS(SELECT 1 FROM users privacy_user JOIN user_roles privacy_role ON privacy_role.user_id=privacy_user.id WHERE privacy_user.id=? AND privacy_user.status='active' AND privacy_role.role='super_admin') OR NOT EXISTS(SELECT 1 FROM shipping_parcels private_parcel WHERE private_parcel.shipping_job_id=? AND (private_parcel.method='own_rider' OR private_parcel.rider_user_id IS NOT NULL))";
+  const privateParcelValues = [a.actorId, o.parcelContext?.jobId];
+  const enforceRiderPrivacy = Boolean(a.actorId && o.parcelContext?.riderPrivacyRequired);
+  if (enforceRiderPrivacy && !await db.prepare('SELECT 1 WHERE ' + privateParcelSql).bind(...privateParcelValues).first())
+    throw new CancellationConflictError('Super Admin access is required.');
+  const privateParcelGuard = () => enforceRiderPrivacy ? guard(db, '(' + privateParcelSql + ')', privateParcelValues) : [];
   const selectedIds = [...new Set(o.sellerIds)].sort();
   const formAction = o.reviewId ? 'approve' : 'confirm';
   const formDigest = form ? await digestFormRequest({ formId: form.formId,
@@ -406,6 +412,7 @@ export async function cancelSelectedParcels(
       : null;
     await db.batch([
       ...(reviewAuthority?.statements ?? []),
+      ...privateParcelGuard(),
       ...(!a.actorId ? guard(db,
         'EXISTS(SELECT 1 FROM orders WHERE id=? AND ((? IS NOT NULL AND customer_id=?) OR (? IS NOT NULL AND receipt_token_hash=?)))',
         [p.order.id, a.customerId ?? null, a.customerId ?? null,
@@ -813,6 +820,7 @@ export async function cancelSelectedParcels(
     formId: form.formId, requestId: o.requestId, versionId: form.versionId,
     subjectType: 'order_cancellation_event', subjectId: o.requestId,
     actorId, answers: form.answers, now: o.now }));
+  statements.push(...privateParcelGuard());
   if (authority) statements.push(...authority.statements);
   try {
     await db.batch(statements);

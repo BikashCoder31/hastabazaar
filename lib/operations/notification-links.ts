@@ -1,9 +1,10 @@
+import { isRiderPortalEnabled } from '../riders/availability';
 import { can, permissions, type PermissionSubject, type Permission } from '../marketplace/permissions';
 export type NotificationAudience = 'customer' | 'seller' | 'staff';
 /** Navigation only; each destination still authorizes the requested record. */
 export function notificationDestination(workspace:NotificationAudience,audience:string,type:string|null,id:string|null,context?:{orderNumber?:string|null;productStatus?:string|null}):string|null {
  if(workspace!==audience||!id||!/^[a-zA-Z0-9_-]{1,160}$/.test(id))return null;
- if(workspace==='customer'&&['rider_profile','rider_report','rider_assignment'].includes(type??''))return '/rider';
+ if(workspace==='customer'&&['rider_profile','rider_report','rider_assignment'].includes(type??''))return isRiderPortalEnabled() ? '/rider' : null;
  if(workspace==='customer'&&type==='gift_card')return '/account/wallet#credit-activity';
  if(workspace==='customer')return ['order','return_request','complaint'].includes(type??'')?(context?.orderNumber&&/^[a-zA-Z0-9_-]{1,160}$/.test(context.orderNumber)?'/orders/'+encodeURIComponent(context.orderNumber)+(type==='order'?'':'#aftercare-title'):'/account/orders'):['seller_application','seller_restriction'].includes(type??'')?'/sell/application':['account_status','account_status_active','account_status_disabled'].includes(type??'')?'/help':null;
  if(workspace==='staff') {
@@ -25,6 +26,8 @@ export function notificationDestination(workspace:NotificationAudience,audience:
 }
 
 export function canViewStaffNotification(staff:PermissionSubject,type:string|null,requiredPermission?:string|null):boolean {
+ if(['rider_profile','rider_report','rider_assignment'].includes(type??'') && staff.role!=='super_admin')return false;
+
  if(type==='exception_work'&&!can(staff,'order.manage'))return false;
  if(requiredPermission != null)return (staff.role==='admin'||staff.role==='super_admin')&&permissions.includes(requiredPermission as Permission)&&can(staff,requiredPermission as Permission);
  const required:Record<string,Permission>={exception_work:'order.manage',order:'order.manage',product:'product.review',seller_application:'seller.application.review',return_request:'support.manage',complaint:'support.manage',payout:'payout.prepare',payout_request:'payout.prepare'};

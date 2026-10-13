@@ -1,3 +1,5 @@
+import { isRiderPortalEnabled } from '@/lib/riders/availability';
+import { RiderProgramHold } from '@/components/rider/rider-program-hold';
 import { RiderCodeVerification } from '@/components/rider/rider-code';
 import Link from 'next/link';
 import { env } from 'cloudflare:workers';
@@ -18,6 +20,7 @@ import type { NepalAddress } from '@/lib/shipping/provider';
 import { riderFinanceDashboard } from '@/lib/riders/operations-policy';
 export const dynamic = 'force-dynamic';
 export default async function RiderPage() {
+  if (!isRiderPortalEnabled()) return <RiderProgramHold />;
   const user = await requireCustomerPage('/rider'),
     db = requireDatabase(env as unknown as { DB?: D1Database }),
     profile = await riderProfile(db, user.userId);

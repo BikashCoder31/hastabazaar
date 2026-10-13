@@ -1,3 +1,5 @@
+import { isRiderPortalEnabled } from '@/lib/riders/availability';
+import { riderPortalHoldResponse } from '@/lib/riders/portal-hold';
 import { env } from 'cloudflare:workers';
 import {
   requireCustomerApi,
@@ -40,6 +42,7 @@ export const dynamic = 'force-dynamic';
 const json = (body: unknown, status: number) =>
   Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
 export async function POST(request: Request) {
+  if (!isRiderPortalEnabled()) return riderPortalHoldResponse();
   if (!isTrustedMutationRequest(request))
     return json({ error: 'Cross-site requests are not allowed.' }, 403);
   let bucket: R2Bucket | null = null,

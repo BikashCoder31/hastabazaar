@@ -1,3 +1,4 @@
+import { isRiderPortalEnabled } from '../riders/availability';
 import { riderNotificationSourceSql } from './rider-notification-access';
 import {
   can,
@@ -407,7 +408,7 @@ export async function deliverBusinessEmails(
           )
           .bind(row.guestOrderId, row.userId ?? row.email)
           .first<{ orderNumber: string }>();
-        authorized = !!order;
+        authorized = isRiderPortalEnabled() && !!order;
         row.orderNumber = order?.orderNumber;
         const match = /^delivery-otp:([^:]+):(\d+)$/.exec(row.requestId);
         const expiresAt = Number(match?.[2] ?? 0);

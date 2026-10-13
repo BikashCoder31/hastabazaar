@@ -21,6 +21,11 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
   const db=requireDatabase(env as unknown as {DB?:D1Database}),requestId=text('requestId');
   if(!requestId||requestId.length>150)return reply({error:'Request reference required.'},400);
   const action=text('action')??'';
+  if(staff.role!=='super_admin'){
+   if(text('method')==='own_rider'||text('riderEmail')||body.riderReportId)return reply({error:'Super Admin access is required.'},403);
+   const target=text('jobId');
+   if(target && await db.prepare("SELECT 1 FROM shipping_parcels WHERE shipping_job_id=? AND (method='own_rider' OR rider_user_id IS NOT NULL)").bind(target).first())return reply({error:'Super Admin access is required.'},403);
+  }
   const form=formActions.has(action)?await validateSellerFormSubmission(db,'staff.parcel-control',body.formVersion,body.customAnswers,requestId):null;
   validatedVersionId=form?.versionId;
   if(body.action==='setup')await prepareSellerParcels(db,{orderId:id,actorId:staff.id,requestId,now:Date.now()});

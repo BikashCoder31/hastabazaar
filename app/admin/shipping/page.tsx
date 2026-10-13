@@ -23,7 +23,7 @@ export default async function AdminShippingPage({ searchParams }: {
     before = readHistoryCursor(query?.beforeAt, query?.beforeId);
     after = readHistoryCursor(query?.afterAt, query?.afterId);
   } catch { notFound(); }
-  const jobs = await listShippingJobs(db);
+  const jobs = await listShippingJobs(db, undefined, staff.role === 'super_admin');
   let answers = null;
   if (query?.historyEvent) {
     if (query.historyEvent.length > 191) notFound();

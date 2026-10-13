@@ -22,6 +22,7 @@ const destinations: readonly {
     group: 'Operations',
     icon: 'shipping',
     permission: 'order.manage',
+    role: 'super_admin',
   },
   {
     href: '/admin/notifications',

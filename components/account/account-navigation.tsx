@@ -1,5 +1,7 @@
 'use client';
 
+import { isRiderPortalEnabled } from '@/lib/riders/availability';
+
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -80,7 +82,7 @@ export function AccountNavigation({
         <SidebarContent className="overflow-visible p-2">
           <nav aria-label="Customer account">
             <SidebarMenu className="grid grid-cols-1 gap-1 min-[360px]:grid-cols-2 sm:grid-cols-4 lg:flex">
-              {links.filter(({ href }) => href !== '/rider' || showAssignedDeliveries).map(({ href, label, icon: Icon }) => (
+              {links.filter(({ href }) => href !== '/rider' || (isRiderPortalEnabled() && showAssignedDeliveries)).map(({ href, label, icon: Icon }) => (
                 <SidebarMenuItem key={href}>
                   <SidebarMenuButton
                     size="lg"

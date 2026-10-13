@@ -41,7 +41,7 @@ export const STAFF_HISTORY_KINDS = [
   { kind: 'payout-request-action', label: 'Payout request actions', formId: 'staff.payout-request-action', subjectType: 'payout_request', permission: 'payout.prepare' },
   { kind: 'privacy-action', label: 'Privacy decisions', formId: 'staff.privacy-action', subjectType: 'data_rights_request', permission: 'support.manage' },
   { kind: 'rider-control', label: 'Rider profile controls', formId: 'staff.rider-control-1', subjectType: 'rider', permission: 'admin.invite', superAdminOnly: true },
-  { kind: 'rider-report-control', label: 'Rider report controls', formId: 'staff.rider-control-1', subjectType: 'rider_report', permission: 'order.manage' },
+  { kind: 'rider-report-control', label: 'Rider report controls', formId: 'staff.rider-control-1', subjectType: 'rider_report', permission: 'order.manage', superAdminOnly: true },
   { kind: 'rider-policy', label: 'Rider policy', formId: 'staff.rider-control-2', subjectType: 'rider_policy', permission: 'admin.invite', superAdminOnly: true },
   { kind: 'governance-rule-create', label: 'Product rules', formId: 'staff.governance-rule-create', subjectType: 'prohibited_product_rule', permission: 'catalog.manage' },
   { kind: 'governance-promotion-create', label: 'Promotion proposals', formId: 'staff.governance-promotion-create', subjectType: 'promotion', permission: 'catalog.manage' },
