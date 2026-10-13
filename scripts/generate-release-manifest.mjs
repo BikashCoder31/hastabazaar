@@ -57,6 +57,7 @@ const migrationNames = [
   'mariadb-promo-codes.sql',
   'mariadb-loyalty-points.sql',
   'mariadb-single-super-admin-approvals.sql',
+  'mariadb-managed-maker-identity.sql',
 ];
 const tables = {},
   triggers = {},

@@ -1,3 +1,5 @@
+import { buildManagedMakerDetailStatements, requireManagedMakerSuperAdmin, ManagedMakerAuthorityError } from './managed-maker-details';
+import { validateManagedMakerIdentity, MANAGED_MAKER_AGREEMENT_VERSION } from '../../sellers/managed-identity';
 import { businessNotificationStatements } from '../../operations/business-notifications';
 import type {
   SellerApplicationDocument,
@@ -57,6 +59,7 @@ export async function createSellerApplication(
     if (replay) return replay;
   }
   const profileMedia = options.profileMedia ?? [];
+  const managedIdentity = input.participationRoute === 'managed_maker' ? validateManagedMakerIdentity(input.managedIdentity) : null;
   if (!['individual','company'].includes(input.applicantType) || !['PAN','VAT','BOTH','NONE'].includes(input.taxMode)) throw new Error('Choose a valid applicant and tax document type.');
   if (input.participationRoute === 'managed_maker' && (input.taxMode !== 'NONE' || input.taxRegistrationNumber || input.registrationNumber || input.registrationAuthority)) throw new Error('Managed Maker applications cannot store placeholder registration or tax identifiers.');
   if (input.participationRoute === 'registered_seller' && (input.taxMode === 'NONE' || !input.taxRegistrationNumber)) throw new Error('Registered Seller tax details are required.');
@@ -212,6 +215,9 @@ export async function createSellerApplication(
         ),
     );
   }
+
+  if (managedIdentity) statements.push(...await buildManagedMakerDetailStatements(database, { sellerId, actorId: userId,
+    identityDocumentId: documents.find(document => document.kind === 'representative_identity')!.id, identity: managedIdentity, now }));
 
   for (const media of profileMedia) {
     statements.push(
@@ -395,6 +401,7 @@ export async function updateSellerParticipationPublicProfile(
     requestId: string;
     now: number;
     form?: SellerFormLink;
+    managedCorrection?: { identity: import('../../sellers/managed-identity').ManagedMakerIdentity; documents: readonly SellerApplicationDocument[] };
   },
 ): Promise<void> {
   const publicName = options.publicName.trim();
@@ -410,8 +417,9 @@ export async function updateSellerParticipationPublicProfile(
     parseCraftExperience(entry.craft, entry.band),
   );
   const socialLinks = parseMakerSocialLinks(options.socialLinks);
-  const catalogDigest = options.form ? await digestFormRequest({ sellerId: options.sellerId,
+  const catalogDigest = options.form ? options.form.digest ?? await digestFormRequest({ sellerId: options.sellerId,
     expectedVersion: options.expectedVersion, publicName, publicCity, craftExperience, socialLinks,
+    ...(options.managedCorrection ? { managedCorrection: options.managedCorrection } : {}),
     versionId: options.form.versionId, answers: options.form.answers }) : null;
   if (options.form && await formRequestReplay(database, { formId: 'seller.maker-profile',
     requestId: options.form.requestId, actorId: options.actorId, action: 'seller.participation_profile.updated',
@@ -421,13 +429,44 @@ export async function updateSellerParticipationPublicProfile(
   ).bind(options.requestId, options.actorId).first()) return;
 
   const owner = await database.prepare(
-    `SELECT participation.version FROM seller_profiles
+    `SELECT participation.version,participation.participation_route AS route,participation.application_stage AS stage,seller_profiles.status FROM seller_profiles
      INNER JOIN seller_participation_profiles participation ON participation.seller_id = seller_profiles.id
      WHERE seller_profiles.id = ? AND seller_profiles.user_id = ?
        AND participation.application_stage NOT IN ('rejected','suspended') LIMIT 1`,
-  ).bind(options.sellerId, options.actorId).first<{ version: number }>();
+  ).bind(options.sellerId, options.actorId).first<{ version: number; route: string; stage: string; status: string }>();
   if (!owner || owner.version !== options.expectedVersion) {
     throw new SellerParticipationConflictError('The profile owner or version changed. Refresh and try again.');
+  }
+
+  const correctionStatements: D1PreparedStatement[] = [];
+  if (options.managedCorrection) {
+    if (owner.route !== 'managed_maker' || owner.stage !== 'changes_requested' || owner.status !== 'needs_changes')
+      throw new SellerParticipationConflictError('Managed Maker evidence corrections require a changes-requested application.');
+    const { identity, documents } = options.managedCorrection;
+    validateManagedMakerIdentity(identity);
+    if (documents.filter(document => document.kind === 'representative_identity').length !== 1 ||
+      documents.some(document => !['representative_identity','pan_certificate'].includes(document.kind) ||
+        !document.objectKey.startsWith(`private/seller-documents/${options.sellerId}/`)) ||
+      documents.filter(document => document.kind === 'pan_certificate').length > 1)
+      throw new SellerParticipationConflictError('Supply one private government identity document and optional personal PAN certificate.');
+    const correctionGuard = crypto.randomUUID();
+    correctionStatements.push(database.prepare(`INSERT INTO operation_transaction_guards(id,valid)
+      SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM seller_profiles p JOIN seller_participation_profiles s ON s.seller_id=p.id
+        WHERE p.id=? AND p.user_id=? AND p.status='needs_changes' AND s.participation_route='managed_maker'
+          AND s.application_stage='changes_requested') THEN 1 ELSE 0 END`).bind(correctionGuard,options.sellerId,options.actorId),
+      database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(correctionGuard));
+    for (const document of documents) correctionStatements.push(database.prepare(`INSERT INTO seller_documents
+      (id,seller_id,kind,object_key,original_name,mime_type,size_bytes,status,uploaded_at,reviewed_at,reviewed_by)
+      VALUES (?,?,?,?,?,?,?,'pending',?,NULL,NULL)`).bind(document.id,options.sellerId,document.kind,document.objectKey,
+        document.originalName,document.mimeType,document.sizeBytes,options.now));
+    correctionStatements.push(...await buildManagedMakerDetailStatements(database, { sellerId: options.sellerId, actorId: options.actorId,
+      identityDocumentId: documents.find(document => document.kind === 'representative_identity')!.id, identity, now: options.now }),
+      database.prepare("UPDATE seller_profiles SET status='submitted',review_note=NULL,updated_at=? WHERE id=? AND status='needs_changes'")
+        .bind(options.now,options.sellerId),
+      database.prepare("UPDATE seller_participation_profiles SET application_stage='submitted' WHERE seller_id=? AND application_stage='changes_requested'")
+        .bind(options.sellerId),
+      ...await businessNotificationStatements(database,{eventId:options.requestId,sourceType:'seller_application',sourceId:options.sellerId,
+        status:'submitted',actorId:options.actorId,now:options.now,kind:'submitted'}));
   }
 
   const guardId = crypto.randomUUID();
@@ -481,6 +520,7 @@ export async function updateSellerParticipationPublicProfile(
       subjectType: 'seller', subjectId: options.sellerId, actorId: options.actorId,
       answers: options.form.answers, now: options.now,
     })] : []),
+    ...correctionStatements,
     database.prepare(`DELETE FROM seller_participation_guards WHERE id = ?`).bind(guardId),
   ]); }
   catch (error) {
@@ -667,7 +707,22 @@ type SellerApplicationBaseRow = Omit<
 export async function getSellerApplicationForReview(
   database: D1Database,
   sellerId: string,
+  actorId?: string,
 ): Promise<SellerApplicationDetail | null> {
+  const route = await database.prepare(`SELECT
+    (SELECT participation_route FROM seller_participation_profiles WHERE seller_id=?) AS route,
+    CASE WHEN EXISTS(SELECT 1 FROM managed_maker_application_details WHERE seller_id=?)
+      OR EXISTS(SELECT 1 FROM seller_route_transition_applications WHERE seller_id=? AND from_route='managed_maker')
+      THEN 1 ELSE 0 END AS managedHistory`).bind(sellerId,sellerId,sellerId)
+    .first<{ route: string | null; managedHistory: number }>();
+  let canReadManagedEvidence = false;
+  if (route?.route === 'managed_maker') {
+    await requireManagedMakerSuperAdmin(database, actorId ?? '');
+    canReadManagedEvidence = true;
+  } else if (route?.managedHistory && actorId) {
+    const authority = await staffMutationGuard(database,actorId,'seller.application.review',ManagedMakerAuthorityError);
+    canReadManagedEvidence = authority.role === 'super_admin';
+  }
   const application = await database
     .prepare(
       `SELECT
@@ -765,9 +820,14 @@ export async function getSellerApplicationForReview(
       .all<SellerModerationEventRow>(),
   ]);
 
+  // Historical maker ID/PAN evidence stays private even after the active route changes.
+  const documents = route?.managedHistory && !canReadManagedEvidence
+    ? documentsResult.results.filter(document => !['representative_identity','pan_certificate'].includes(document.kind))
+    : documentsResult.results;
   return {
     ...application,
-    documents: documentsResult.results,
+    documentCount: documents.length,
+    documents,
     profileMedia: profileMediaResult.results,
     history: historyResult.results,
   };
@@ -865,6 +925,8 @@ export async function reviewSellerApplication(
     auditAction: 'seller.application.approved_for_activation' };
   const authority = await staffMutationGuard(database, options.actorId,
     'seller.application.review', SellerReviewConflictError);
+  const route = await database.prepare('SELECT participation_route AS route FROM seller_participation_profiles WHERE seller_id=?').bind(options.sellerId).first<{ route: string }>();
+  if (route?.route === 'managed_maker' && authority.role !== 'super_admin') throw new SellerReviewConflictError('Current Super Admin authority is required for Managed Maker review.');
   const requestId = options.requestId ?? crypto.randomUUID();
   const payoutAccountReference = options.payoutAccountReference?.trim() ?? '';
   const settlementTermsReference = options.settlementTermsReference?.trim() ?? '';
@@ -926,12 +988,23 @@ export async function reviewSellerApplication(
     if (current.participationRoute !== 'managed_maker' || current.status !== 'under_review' || current.applicationStage !== 'under_review') {
       throw new SellerReviewConflictError('Only a Managed Maker under review can be approved for activation.');
     }
+    const evidence = await database.prepare(`SELECT d.id FROM managed_maker_application_details d
+      JOIN seller_documents document ON document.id=d.identity_document_id AND document.seller_id=d.seller_id
+      JOIN seller_profiles profile ON profile.id=d.seller_id
+      WHERE d.seller_id=? AND d.agreement_version=? AND d.agreement_accepted_at>0
+        AND d.agreement_accepted_by=profile.user_id AND d.id=(SELECT latest.id FROM managed_maker_application_details latest WHERE latest.seller_id=d.seller_id ORDER BY latest.created_at DESC,latest.id DESC LIMIT 1) AND document.kind='representative_identity'
+        AND document.status<>'rejected' ORDER BY d.created_at DESC,d.id DESC LIMIT 1`)
+      .bind(options.sellerId, MANAGED_MAKER_AGREEMENT_VERSION).first<{ id: string }>();
+    if (!evidence) throw new SellerReviewConflictError('Government identity evidence and current accepted Managed Maker agreement are required before approval.');
     const statements: D1PreparedStatement[] = [
       database.prepare(
         `UPDATE seller_participation_profiles SET application_stage = 'approved_for_activation',
           version = version + 1, updated_at = ?
-         WHERE seller_id = ? AND participation_route = 'managed_maker' AND application_stage = 'under_review'`,
-      ).bind(options.now, options.sellerId),
+         WHERE seller_id = ? AND participation_route = 'managed_maker' AND application_stage = 'under_review'
+           AND EXISTS(SELECT 1 FROM managed_maker_application_details d JOIN seller_documents document
+             ON document.id=d.identity_document_id AND document.seller_id=d.seller_id
+             WHERE d.id=? AND document.kind='representative_identity' AND document.status<>'rejected')`,
+      ).bind(options.now, options.sellerId, evidence.id),
       database.prepare(
         `UPDATE seller_profiles SET review_note = ?, review_request_id = ?, reviewed_by = ?, updated_at = ?
          WHERE id = ? AND status = 'under_review'`,
@@ -1167,30 +1240,21 @@ export async function reviewSellerApplication(
   return { from: transition.from, to: transition.to };
 }
 
-export async function getSellerDocumentForStaff(
-  database: D1Database,
-  documentId: string,
-): Promise<{
-  objectKey: string;
-  originalName: string;
-  mimeType: string;
+export async function getSellerDocumentForStaff(database: D1Database, documentId: string, actorId: string): Promise<{
+  objectKey: string; originalName: string; mimeType: string;
 } | null> {
-  return (
-    (await database
-      .prepare(
-        `SELECT object_key AS objectKey, original_name AS originalName,
-          mime_type AS mimeType
-         FROM seller_documents
-         WHERE id = ?
-         LIMIT 1`,
-      )
-      .bind(documentId)
-      .first<{
-        objectKey: string;
-        originalName: string;
-        mimeType: string;
-      }>()) ?? null
-  );
+  const authority = await staffMutationGuard(database, actorId, 'seller.application.review', ManagedMakerAuthorityError);
+  const document = await database.prepare(`SELECT d.object_key AS objectKey,d.original_name AS originalName,d.mime_type AS mimeType,
+    CASE WHEN p.participation_route='managed_maker' OR (d.kind IN ('representative_identity','pan_certificate')
+      AND (EXISTS(SELECT 1 FROM managed_maker_application_details details WHERE details.seller_id=d.seller_id)
+        OR EXISTS(SELECT 1 FROM seller_route_transition_applications transition WHERE transition.seller_id=d.seller_id AND transition.from_route='managed_maker')))
+      THEN 1 ELSE 0 END AS managedPrivateEvidence
+    FROM seller_documents d LEFT JOIN seller_participation_profiles p ON p.seller_id=d.seller_id WHERE d.id=? LIMIT 1`)
+    .bind(documentId).first<{ objectKey: string; originalName: string; mimeType: string; managedPrivateEvidence: number }>();
+  if (!document) return null;
+  if (document.managedPrivateEvidence && authority.role !== 'super_admin') throw new ManagedMakerAuthorityError('Current Super Admin authority is required for Managed Maker private documents, including historical identity evidence.');
+  const { managedPrivateEvidence: _privateEvidence, ...result } = document;
+  return result;
 }
 
 export async function getSellerProfileMediaForStaff(

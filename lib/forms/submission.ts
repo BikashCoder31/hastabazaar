@@ -189,11 +189,11 @@ const applicationMultipartKeys = new Set([
   'municipality', 'ward', 'locality', 'publicCity', 'productCategories', 'businessDescription',
   'experienceCraft', 'experienceBand', 'profileImage', 'makerVideo', 'facebookUrl',
   'instagramUrl', 'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl', 'acceptedTerms',
-  'applicationAcknowledgement', 'representativeIdentity', 'bankVerification',
+  'applicationAcknowledgement', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'personalPanCertificate', 'representativeIdentity', 'bankVerification',
   'businessRegistration', 'panCertificate', 'vatCertificate', 'website', 'participationRoute',
   'document',
 ]);
-const applicationFileKeys = new Set(['profileImage', 'makerVideo', 'representativeIdentity',
+const applicationFileKeys = new Set(['personalPanCertificate', 'profileImage', 'makerVideo', 'representativeIdentity',
   'bankVerification', 'businessRegistration', 'panCertificate', 'vatCertificate', 'document']);
 const productMultipartKeys = new Set([
   'formVersion', 'requestId', 'reviewRequestId', 'categoryId', 'nameEn', 'nameNe',

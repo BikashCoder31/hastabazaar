@@ -7,6 +7,7 @@ export const businessSettingKeys = [
   'managed_sale_linked_platform_retention_bps',
   'managed_maker_program_mode',
   'managed_maker_active_model',
+  'managed_maker_company_account',
   'payout_processing_weekday',
   'payout_cutoff_local_time',
   'payout_timezone',
@@ -78,11 +79,16 @@ export type RiderFinancePolicy = Readonly<{
   receivingAccountLabel: string;
 }>;
 
+export type ManagedMakerCompanyAccount = Readonly<{
+  entityReference: string; storeName: string; contactEmail: string; contactPhone: string; returnAddress: string;
+}>;
+
 export type BusinessSettingValues = Readonly<{
   independent_seller_commission_bps: number;
   managed_sale_linked_platform_retention_bps: number;
   managed_maker_program_mode: ManagedMakerProgramMode;
   managed_maker_active_model: ManagedMakerCommercialModel | null;
+  managed_maker_company_account: ManagedMakerCompanyAccount;
   payout_processing_weekday: BusinessWeekday;
   payout_cutoff_local_time: string;
   payout_timezone: 'Asia/Kathmandu';

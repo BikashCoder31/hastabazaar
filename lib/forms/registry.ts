@@ -472,7 +472,7 @@ function sellerDefinition(id: 'seller.application' | 'seller.maker-profile' | 's
     route = '/api/seller-applications';
     fields = [displayField('tradingName', 'short_text', true), displayField('businessDescription', 'long_text', true),
       ...['legalName', 'representativeName', 'email', 'phone', 'applicantType', 'taxMode', 'taxRegistrationNumber',
-        'registrationNumber', 'registrationAuthority', 'document', 'profileImage', 'makerVideo', 'applicationAcknowledgement',
+        'registrationNumber', 'registrationAuthority', 'document', 'profileImage', 'makerVideo', 'applicationAcknowledgement', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'personalPanCertificate',
         'participationRoute', 'website', 'hasBusinessTaxRegistration', 'taxStatus', 'acceptedTerms',
         'province', 'district', 'municipality', 'ward', 'locality', 'publicCity', 'productCategories',
         'experienceCraft', 'experienceBand', 'facebookUrl', 'instagramUrl', 'linkedinUrl', 'tiktokUrl',
@@ -484,7 +484,7 @@ function sellerDefinition(id: 'seller.application' | 'seller.maker-profile' | 's
     route = '/api/seller-applications/profile';
     fields = [displayField('publicName', 'short_text', true), displayField('publicCity', 'short_text', true),
       ...['sellerId', 'expectedVersion', 'experienceCraft', 'experienceBand', 'facebookUrl', 'instagramUrl',
-        'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl', 'legalName'].map((key) =>
+        'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl', 'legalName', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'representativeIdentity', 'personalPanCertificate'].map((key) =>
         protectedField(key, 'Ownership, version, legal identity, social-link and craft validation stay server enforced.')),
       ...common];
   } else if (id === 'seller.profile') {

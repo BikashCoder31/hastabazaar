@@ -25,7 +25,7 @@ const address = {
   ward: '1',
   locality: 'Fictional locality',
 };
-const cases: { path: string; id: FormId; body: Record<string, unknown> }[] = [
+const cases: { path: string; id: FormId; body: Record<string, unknown>; method?: 'POST' | 'PATCH' | 'PUT' }[] = [
   {
     path: 'app/api/checkout/route.ts',
     id: 'commerce.checkout',
@@ -84,6 +84,7 @@ const cases: { path: string; id: FormId; body: Record<string, unknown> }[] = [
   },
   {
     path: 'app/api/seller-applications/profile/route.ts',
+    method: 'PATCH', // This case exercises the existing JSON endpoint; POST now accepts multipart evidence.
     id: 'seller.maker-profile',
     body: {
       requestId,
@@ -362,7 +363,7 @@ async function receive(
       ) => Promise<Response>
     >
   >;
-  const method = route.POST ? 'POST' : route.PATCH ? 'PATCH' : 'PUT';
+  const method = item.method ?? (route.POST ? 'POST' : route.PATCH ? 'PATCH' : 'PUT');
   const handler = route[method];
   assert.ok(handler);
   const path =

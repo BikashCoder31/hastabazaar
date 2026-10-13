@@ -1,5 +1,6 @@
 // Public disclosure only. PAN status must not control marketplace functionality.
 export const companyDetails = {
+  entityReference: 'hastabazaar-company-406171-83-84',
   legalName: 'Hasta Bazaar Private Limited',
   nepaliName: 'हस्त बजार प्राइभेट लिमिटेड',
   brandName: 'HastaBazaar',

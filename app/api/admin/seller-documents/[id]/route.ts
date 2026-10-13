@@ -1,3 +1,4 @@
+import { ManagedMakerAuthorityError } from '@/lib/db/repositories/managed-maker-details';
 import { env } from 'cloudflare:workers';
 
 import {
@@ -21,7 +22,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   try {
-    await requireStaffApi('seller.application.review');
+    const staff = await requireStaffApi('seller.application.review');
     const { id } = await context.params;
     const bindings = env as unknown as {
       DB?: D1Database;
@@ -30,6 +31,7 @@ export async function GET(
     const document = await getSellerDocumentForStaff(
       requireDatabase(bindings),
       id,
+      staff.id,
     );
     if (!document) return json({ error: 'Document not found.' }, 404);
 
@@ -57,6 +59,7 @@ export async function GET(
       },
     });
   } catch (error) {
+    if (error instanceof ManagedMakerAuthorityError) return json({ error: error.message }, 403);
     if (error instanceof StaffAuthorizationError) {
       return json({ error: error.message }, error.status);
     }

@@ -106,8 +106,17 @@ for (const [name, value] of Object.entries({
   experienceCraft: 'Clay work',
   experienceBand: 'less_than_one_year',
   instagramUrl: 'https://instagram.com/hastabazaar',
+  governmentIdType: 'citizenship',
+  managedAgreementAccepted: 'yes',
   applicationAcknowledgement: 'yes',
 })) managedMaker.set(name, value);
+
+const termsResponse = await fetch(new URL('/api/seller-applications/managed-terms', origin));
+if (!termsResponse.ok) throw new Error('SIMULATED maker agreement terms are unavailable.');
+const terms = await termsResponse.json();
+managedMaker.set('managedAgreementVersion', terms.version);
+managedMaker.set('managedAgreementContext', terms.context);
+managedMaker.set('representativeIdentity', new File(['%PDF-1.4\nSIMULATED — NOT VALID FOR PRODUCTION'], 'SIMULATED-government-id.pdf', { type: 'application/pdf' }));
 
 const applicationResponse = await fetch(new URL('/api/seller-applications', origin), {
   method: 'POST',
