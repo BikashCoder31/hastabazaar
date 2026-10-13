@@ -84,6 +84,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!isTrustedMutationRequest(request)) return reply({ error: 'Cross-site requests are not allowed.' },403);
   const uploaded: string[] = [];
   let bucket: R2Bucket | undefined;
+  let mutationCompleted = false;
   try {
     const customer = await requireCustomerApi();
     const bindings = env as unknown as { DB?: D1Database; MEDIA?: R2Bucket };
@@ -141,12 +142,16 @@ export async function POST(request: Request): Promise<Response> {
       socialLinks:parseMakerSocialLinks({facebook:text('facebookUrl'),instagram:text('instagramUrl'),linkedin:text('linkedinUrl'),
         tiktok:text('tiktokUrl'),x:text('xUrl'),youtube:text('youtubeUrl')}),requestId,now:Date.now(),
       managedCorrection:{identity,documents},form:{requestId,versionId:form.versionId,answers:form.answers,digest}});
+    mutationCompleted = true;
     for (const document of documents) {
       const saved=await database.prepare('SELECT id FROM seller_documents WHERE id=? AND seller_id=?').bind(document.id,participation.sellerId).first();
       if (!saved) await bucket.delete(document.objectKey);
     }
     return reply({ok:true});
   } catch(error) {
+    // The repository has confirmed the durable action (or its exact replay).
+    // A later read/temporary-object cleanup failure must never remove committed evidence.
+    if (mutationCompleted) return reply({ok:true});
     if (bucket) await Promise.allSettled(uploaded.map(key=>bucket!.delete(key)));
     if (error instanceof CustomerAuthorizationError) return reply({error:error.message},error.status);
     if (error instanceof BodyTooLargeError) return reply({error:error.message},413);

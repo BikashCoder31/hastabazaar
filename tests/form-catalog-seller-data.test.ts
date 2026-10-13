@@ -1238,3 +1238,25 @@ void test('managed correction multipart route requires private ID, current agree
     assert.equal((await send(correction('foreign-correction'))).status,404);
   }finally{sqlite.close();}
 });
+
+void test('post-commit correction verification failure preserves durable government evidence and successful outcome',async()=>{
+  const {sqlite,database}=await fixture();
+  try {
+    await createSeller(database);seed(sqlite,'seller.maker-profile');
+    sqlite.exec("UPDATE seller_profiles SET status='needs_changes' WHERE id='seller-one'; UPDATE seller_participation_profiles SET application_stage='changes_requested' WHERE seller_id='seller-one'");
+    globalThis.sellerCatalogActor={sellerId:'seller-one',userId:'seller-user'};
+    const originalPrepare=database.prepare.bind(database);
+    database.prepare=(sql:string)=>{
+      if(sql.startsWith('SELECT id FROM seller_documents WHERE id=? AND seller_id=?')) throw new Error('Synthetic post-commit read failure');
+      return originalPrepare(sql);
+    };
+    const form=new FormData();addManagedIdentityUpload(form);
+    for(const [key,value]of Object.entries({publicName:'Fictional Studio',publicCity:'Birgunj',expectedVersion:'1',formVersion:'1',requestId:'post-commit-correction','custom.workshop_note':'Corrected evidence supplied'}))form.set(key,value);
+    const {POST}=await import('../app/api/seller-applications/profile/route');
+    const response=await POST(new Request('http://localhost:3000/api/seller-applications/profile',{method:'POST',headers:{origin:'http://localhost:3000'},body:form}));
+    assert.equal(sqlite.prepare('SELECT status FROM seller_profiles WHERE id=?').get('seller-one')?.status,'submitted');
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM managed_maker_application_details').get()?.n,2);
+    assert.deepEqual(globalThis.sellerCatalogMedia.deleted,[],'a later read failure must never delete the committed private upload');
+    assert.equal(response.status,200);assert.equal((await response.json() as {ok?:boolean}).ok,true);
+  }finally{sqlite.close();}
+});

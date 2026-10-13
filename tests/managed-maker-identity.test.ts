@@ -1,3 +1,5 @@
+import { submitRegisteredSellerTransition, reviewRouteTransition, applyDueRouteTransitions } from '../lib/managed-commerce/route-transition';
+import { resolveRuntimeEnvironment } from '../lib/staging/environment';
 import { createHash } from 'node:crypto';
 import { managedMakerAgreementSnapshot } from '../lib/sellers/managed-identity';
 import assert from 'node:assert/strict';
@@ -13,6 +15,7 @@ import {
   reviewSellerApplication,
   getSellerDocumentForStaff,
   getSellerParticipationProfile,
+  getSellerApplicationForReview,
   updateSellerParticipationPublicProfile,
 } from '../lib/db/repositories/seller-applications';
 import {
@@ -719,4 +722,51 @@ void test('company account changes between authoritative read and batch cannot s
   } finally {
     sqlite.close();
   }
+});
+
+void test('managed government ID and optional personal PAN evidence stay private after real registered-route transition, including correction and legacy history',async()=>{
+  const {sqlite,database}=await fixture();
+  try {
+    const input=parseSellerApplication(managedMakerForm()).input!;
+    await createSellerApplication(database,{userId:'user-maker',sellerId:'maker',applicationReference:'MAKER',input,
+      documents:[identityDocument('maker'),{...identityDocument('maker'),id:'original-pan',kind:'pan_certificate',objectKey:'private/seller-documents/maker/original-pan',originalName:'123456789-personal-PAN.pdf'}],now:1800000000000});
+    await reviewSellerApplication(database,{sellerId:'maker',actorId:'super',action:'start_review',reason:'Review evidence',now:1800000000001});
+    await reviewSellerApplication(database,{sellerId:'maker',actorId:'super',action:'request_changes',reason:'Supply corrected government evidence',now:1800000000002});
+    const profile=(await getSellerParticipationProfile(database,'maker'))!;
+    await updateSellerParticipationPublicProfile(database,{sellerId:'maker',actorId:'user-maker',expectedVersion:profile.version,publicName:profile.publicName,publicCity:profile.publicCity,
+      craftExperience:[],socialLinks:{},requestId:'corrected-private-evidence',now:1800000000003,managedCorrection:{identity:input.managedIdentity!,documents:[
+        {...identityDocument('maker'),id:'corrected-government',objectKey:'private/seller-documents/maker/corrected-government',originalName:'123456789-corrected-ID.pdf'},
+        {...identityDocument('maker'),id:'corrected-pan',kind:'pan_certificate',objectKey:'private/seller-documents/maker/corrected-pan',originalName:'123456789-corrected-PAN.pdf'}]}});
+    sqlite.exec("UPDATE seller_profiles SET status='approved' WHERE id='maker'; UPDATE seller_participation_profiles SET application_stage='active' WHERE seller_id='maker'");
+    const environment=resolveRuntimeEnvironment({runtimeEnvironment:'local_staging',appOrigin:'http://127.0.0.1:4173'});
+    const id=await submitRegisteredSellerTransition(database,{sellerId:'maker',actorId:'user-maker',legalName:'SIM Registered Maker Business',registrationAuthority:'SIM Registration Office',registrationNumber:'SIM-REG-123',
+      taxMode:'PAN',taxRegistrationNumber:'987654321',evidenceReferences:['SIM-business-registration'],agreementVersion:'SIM-REGISTERED-V1',agreementLanguage:'en',agreementAcceptedAt:1800000000004,requestId:'managed-to-registered',now:1800000000004,environment});
+    await reviewRouteTransition(database,{applicationId:id,actorId:'super',action:'approve',reason:'SIMULATED verified registered evidence',effectiveAt:1800000000005,requestId:'approve-route-transition',now:1800000000005,environment});
+    assert.equal(await applyDueRouteTransitions(database,1800000000006,environment),1);
+    assert.equal((await getSellerParticipationProfile(database,'maker'))?.participationRoute,'registered_seller');
+    for (const documentId of ['id-maker','original-pan','corrected-government','corrected-pan']) {
+      await assert.rejects(getSellerDocumentForStaff(database,documentId,'staff'),/Super Admin/i);
+      assert.ok(await getSellerDocumentForStaff(database,documentId,'super'));
+    }
+    const staffView=await getSellerApplicationForReview(database,'maker','staff');
+    assert.equal(staffView?.documents.length,0);assert.equal(staffView?.documentCount,0);
+    assert.equal(JSON.stringify(staffView).includes('123456789'),false,'private filenames must not reach ordinary staff');
+    assert.equal((await getSellerApplicationForReview(database,'maker','super'))?.documents.length,4);
+    sqlite.exec('DROP TRIGGER managed_maker_details_no_delete; DELETE FROM managed_maker_application_details;');
+    await assert.rejects(getSellerDocumentForStaff(database,'original-pan','staff'),/Super Admin/i,'historical transition also protects legacy makers without new acceptance');
+    assert.equal((await getSellerApplicationForReview(database,'maker','staff'))?.documents.length,0);
+  }finally{sqlite.close();}
+});
+void test('originally registered seller certificates retain ordinary staff document and review access',async()=>{
+  const {sqlite,database}=await fixture();
+  try {
+    const form=managedMakerForm();form.set('hasBusinessTaxRegistration','yes');form.set('taxStatus','business_pan_only');form.set('taxRegistrationNumber','987654321');form.set('acceptedTerms','yes');
+    const parsed=parseSellerApplication(form);assert.ok(parsed.input,parsed.errors.join('\n'));
+    const documents=sellerDocumentsForApplication(parsed.input).filter(d=>d.required||d.kind==='representative_identity').map((definition,index)=>({
+      ...identityDocument('registered'),id:`registered-document-${index}`,kind:definition.kind,objectKey:`private/seller-documents/registered/document-${index}`,originalName:`registered-${definition.kind}.pdf`}));
+    await createSellerApplication(database,{userId:'user-registered',sellerId:'registered',applicationReference:'REGISTERED',input:parsed.input,documents,now:1800000000000});
+    for(const document of documents) assert.ok(await getSellerDocumentForStaff(database,document.id,'staff'));
+    const view=await getSellerApplicationForReview(database,'registered','staff');
+    assert.equal(view?.documents.length,documents.length);assert.equal(view?.documentCount,documents.length);
+  }finally{sqlite.close();}
 });

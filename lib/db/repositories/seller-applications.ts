@@ -709,8 +709,20 @@ export async function getSellerApplicationForReview(
   sellerId: string,
   actorId?: string,
 ): Promise<SellerApplicationDetail | null> {
-  const route = await database.prepare('SELECT participation_route AS route FROM seller_participation_profiles WHERE seller_id=?').bind(sellerId).first<{ route: string }>();
-  if (route?.route === 'managed_maker') await requireManagedMakerSuperAdmin(database, actorId ?? '');
+  const route = await database.prepare(`SELECT
+    (SELECT participation_route FROM seller_participation_profiles WHERE seller_id=?) AS route,
+    CASE WHEN EXISTS(SELECT 1 FROM managed_maker_application_details WHERE seller_id=?)
+      OR EXISTS(SELECT 1 FROM seller_route_transition_applications WHERE seller_id=? AND from_route='managed_maker')
+      THEN 1 ELSE 0 END AS managedHistory`).bind(sellerId,sellerId,sellerId)
+    .first<{ route: string | null; managedHistory: number }>();
+  let canReadManagedEvidence = false;
+  if (route?.route === 'managed_maker') {
+    await requireManagedMakerSuperAdmin(database, actorId ?? '');
+    canReadManagedEvidence = true;
+  } else if (route?.managedHistory && actorId) {
+    const authority = await staffMutationGuard(database,actorId,'seller.application.review',ManagedMakerAuthorityError);
+    canReadManagedEvidence = authority.role === 'super_admin';
+  }
   const application = await database
     .prepare(
       `SELECT
@@ -808,9 +820,14 @@ export async function getSellerApplicationForReview(
       .all<SellerModerationEventRow>(),
   ]);
 
+  // Historical maker ID/PAN evidence stays private even after the active route changes.
+  const documents = route?.managedHistory && !canReadManagedEvidence
+    ? documentsResult.results.filter(document => !['representative_identity','pan_certificate'].includes(document.kind))
+    : documentsResult.results;
   return {
     ...application,
-    documents: documentsResult.results,
+    documentCount: documents.length,
+    documents,
     profileMedia: profileMediaResult.results,
     history: historyResult.results,
   };
@@ -1228,12 +1245,15 @@ export async function getSellerDocumentForStaff(database: D1Database, documentId
 } | null> {
   const authority = await staffMutationGuard(database, actorId, 'seller.application.review', ManagedMakerAuthorityError);
   const document = await database.prepare(`SELECT d.object_key AS objectKey,d.original_name AS originalName,d.mime_type AS mimeType,
-    p.participation_route AS route FROM seller_documents d
-    LEFT JOIN seller_participation_profiles p ON p.seller_id=d.seller_id WHERE d.id=? LIMIT 1`)
-    .bind(documentId).first<{ objectKey: string; originalName: string; mimeType: string; route: string | null }>();
+    CASE WHEN p.participation_route='managed_maker' OR (d.kind IN ('representative_identity','pan_certificate')
+      AND (EXISTS(SELECT 1 FROM managed_maker_application_details details WHERE details.seller_id=d.seller_id)
+        OR EXISTS(SELECT 1 FROM seller_route_transition_applications transition WHERE transition.seller_id=d.seller_id AND transition.from_route='managed_maker')))
+      THEN 1 ELSE 0 END AS managedPrivateEvidence
+    FROM seller_documents d LEFT JOIN seller_participation_profiles p ON p.seller_id=d.seller_id WHERE d.id=? LIMIT 1`)
+    .bind(documentId).first<{ objectKey: string; originalName: string; mimeType: string; managedPrivateEvidence: number }>();
   if (!document) return null;
-  if (document.route === 'managed_maker' && authority.role !== 'super_admin') throw new ManagedMakerAuthorityError('Current Super Admin authority is required for Managed Maker private documents.');
-  const { route: _route, ...result } = document;
+  if (document.managedPrivateEvidence && authority.role !== 'super_admin') throw new ManagedMakerAuthorityError('Current Super Admin authority is required for Managed Maker private documents, including historical identity evidence.');
+  const { managedPrivateEvidence: _privateEvidence, ...result } = document;
   return result;
 }
 
