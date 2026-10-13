@@ -1,5 +1,7 @@
 'use client';
 
+import { ParallaxImage } from './parallax-image';
+
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -180,14 +182,16 @@ export function HomepageHeroCarousel({
                         {isNativeSellerRegistrationSlide(slide) ? (
                           <SellerRegistrationPanel />
                         ) : slide.mediaType === 'image' ? (
-                          // eslint-disable-next-line @next/next/no-img-element -- effective media uses an authorization-aware dynamic route.
-                          <img
-                            data-media-mode="cover"
-                            src={mediaUrl}
-                            alt={slide.imageAlt ?? ''}
-                            className={heroMediaClass}
-                            loading={index === 0 ? 'eager' : 'lazy'}
-                          />
+                          <ParallaxImage kind="hero" enabled={index === current}>
+                            {/* eslint-disable-next-line @next/next/no-img-element -- effective media uses an authorization-aware dynamic route. */}
+                            <img
+                              data-media-mode="cover"
+                              src={mediaUrl}
+                              alt={slide.imageAlt ?? ''}
+                              className={heroMediaClass}
+                              loading={index === 0 ? 'eager' : 'lazy'}
+                            />
+                          </ParallaxImage>
                         ) : (
                           <video
                             data-media-mode="cover"
