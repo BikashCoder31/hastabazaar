@@ -1,3 +1,4 @@
+import { parseManagedMakerIdentity, type ManagedMakerIdentity } from './managed-identity';
 import { SELLER_AGREEMENT_VERSION } from '@/lib/content/legal-policies';
 import {
   parseCraftExperience,
@@ -23,11 +24,12 @@ export function sellerDocumentsForApplication(input: {
 }) {
   if (input.participationRoute === 'managed_maker' || input.taxMode === 'NONE') {
     return [
+      { field: 'personalPanCertificate', kind: 'pan_certificate' as const, label: 'Personal PAN certificate (optional)', required: false },
       {
         field: 'representativeIdentity',
         kind: 'representative_identity' as const,
-        label: 'Identity document (optional during application)',
-        required: false,
+        label: 'Government-issued identity document',
+        required: true,
       },
       {
         field: 'bankVerification',
@@ -85,6 +87,7 @@ export function sellerDocumentsForApplication(input: {
 }
 
 export interface SellerApplicationInput {
+  managedIdentity?: ManagedMakerIdentity;
   participationRoute: ParticipationRoute;
   hasBusinessTaxRegistration: boolean;
   applicantType: 'individual' | 'company';
@@ -197,7 +200,13 @@ export function parseSellerApplication(formData: FormData): {
       ? taxStatus === 'vat_registered' ? 'VAT' : 'PAN'
       : taxMode === 'BOTH' ? 'BOTH' : taxMode === 'VAT' ? 'VAT' : 'PAN';
 
+  let managedIdentity: ManagedMakerIdentity | undefined;
+  if (participationRoute === 'managed_maker') {
+    try { managedIdentity = parseManagedMakerIdentity(formData); }
+    catch (error) { errors.push(error instanceof Error ? error.message : 'Invalid managed identity.'); }
+  }
   const input: SellerApplicationInput = {
+    ...(managedIdentity ? { managedIdentity } : {}),
     participationRoute,
     hasBusinessTaxRegistration: participationRoute === 'registered_seller',
     applicantType: participationRoute === 'managed_maker' ? 'individual' : applicantType === 'company' ? 'company' : 'individual',

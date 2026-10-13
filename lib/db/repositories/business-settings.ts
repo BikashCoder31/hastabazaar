@@ -412,6 +412,7 @@ export async function createBusinessSettingDraft<K extends BusinessSettingKey>(
     form?: BusinessSettingForm;
   },
 ): Promise<BusinessSettingVersion<K>> {
+  const companyAuthority = options.key === 'managed_maker_company_account' ? await decisionAuthority(database, options.actorId) : [];
   const definition = getBusinessSettingDefinition(options.key);
   const value = validateBusinessSettingValue(options.key, options.value);
   const reason = normalizeReason(options.reason);
@@ -495,6 +496,7 @@ export async function createBusinessSettingDraft<K extends BusinessSettingKey>(
         actorId: options.actorId, action: 'business_setting.draft_created', subjectId: id,
         reason, previous: null, next: draftProvenance(version), requestId, now,
       })]), options.form);
+    else if (companyAuthority.length) await atomic(database, [...companyAuthority, insert]);
     else await insert.run();
   } catch (error) {
     if (error instanceof FormRuntimeError) throw error;
@@ -578,6 +580,7 @@ export async function submitBusinessSettingDraft(
   },
 ): Promise<void> {
   const record = await getVersionById(database, options.id);
+  const companyAuthority = record?.key === 'managed_maker_company_account' ? await decisionAuthority(database, options.actorId) : [];
   const reason = normalizeReason(options.reason);
   const requestId = validateRequestId(options.requestId);
   const now = timestamp('Current time', options.now);
@@ -596,6 +599,7 @@ export async function submitBusinessSettingDraft(
   const nextRevision = options.expectedRevision + 1;
   await atomic(database, formStatements(database, record.key, options.form,
     options.actorId, requestId, record.id, now, [
+    ...companyAuthority,
     ...guard(
       database,
       `EXISTS (

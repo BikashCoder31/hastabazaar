@@ -18,7 +18,7 @@ export default async function ProgramsPage() {
   if (staff.role !== 'super_admin') redirect('/staff-access-denied');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const now = new Date().getTime();
-  const settingKeys = ['managed_maker_program_mode', 'managed_maker_active_model', 'managed_sale_linked_platform_retention_bps', 'managed_adjustment_reason_codes'];
+  const settingKeys = ['managed_maker_company_account', 'managed_maker_program_mode', 'managed_maker_active_model', 'managed_sale_linked_platform_retention_bps', 'managed_adjustment_reason_codes'];
   const bindings = env as unknown as Record<string, string | undefined>;
   const environment = resolveRuntimeEnvironment({ runtimeEnvironment: bindings.HASTABAZAAR_RUNTIME_ENV,
     nodeEnvironment: bindings.NODE_ENV ?? process.env.NODE_ENV, appOrigin: bindings.APP_ORIGIN });

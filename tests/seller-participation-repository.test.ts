@@ -1,3 +1,4 @@
+import { managedIdentityFields, managedIdentityDocument } from './helpers/managed-identity-fixture';
 import assert from 'node:assert/strict';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 import { readdir, readFile } from 'node:fs/promises';
@@ -81,6 +82,7 @@ function managedMakerForm() {
     productCategories: 'Clay work',
     experienceCraft: 'Clay work',
     experienceBand: 'less_than_one_year',
+    ...managedIdentityFields(),
     applicationAcknowledgement: 'yes',
   })) form.set(key, value);
   return form;
@@ -133,7 +135,7 @@ void test('managed application persists absent tax data, private address, and ed
       sellerId: 'managed-seller',
       applicationReference: 'HB-M-TEST-1',
       input: parsed.input,
-      documents: [],
+      documents: [managedIdentityDocument('managed-seller')],
       now: 1_800_000_000_000,
     });
     const legacy = sqlite.prepare(`SELECT tax_mode, tax_registration_number, registration_number,

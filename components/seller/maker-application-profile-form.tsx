@@ -1,5 +1,7 @@
 'use client';
 
+import { CompanySellingIdentity, ManagedMakerIdentityFields, ManagedMakerAgreementFields } from './managed-maker-identity-fields';
+import type { ManagedMakerApplicationTerms } from '@/lib/db/repositories/managed-maker-details';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -15,7 +17,7 @@ import { clearVersionedSessionAttempt, getOrCreateVersionedSessionAttempt, hasSe
 
 const catalogBaseKeys = ['publicName', 'publicCity', 'sellerId', 'expectedVersion', 'experienceCraft',
   'experienceBand', 'facebookUrl', 'instagramUrl', 'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl',
-  'legalName', 'requestId', 'formVersion', 'customAnswers'];
+  'legalName', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'representativeIdentity', 'personalPanCertificate', 'requestId', 'formVersion', 'customAnswers'];
 
 const networks = [
   ['facebook', 'Facebook'],
@@ -26,13 +28,14 @@ const networks = [
   ['youtube', 'YouTube'],
 ] as const;
 
-export function MakerApplicationProfileForm({ profile }: { profile: SellerParticipationProfile }) {
+export function MakerApplicationProfileForm({ profile, managedTerms }: { profile: SellerParticipationProfile; managedTerms?: ManagedMakerApplicationTerms }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const attemptKey = sessionAttemptKey('seller.maker-profile', profile.sellerId);
   const [hasPendingAttempt, setHasPendingAttempt] = useState(false);
   const catalog = usePublishedFormConfig('seller.maker-profile');
+  const correcting = profile.participationRoute === 'managed_maker' && profile.applicationStage === 'changes_requested';
   const experience = profile.craftExperience[0];
   useEffect(() => {
     const timeout = window.setTimeout(() => setHasPendingAttempt(hasSessionAttempt(attemptKey)), 0);
@@ -55,15 +58,24 @@ export function MakerApplicationProfileForm({ profile }: { profile: SellerPartic
       const configured = readConfiguredSubmission(event.currentTarget, catalog.config, catalogBaseKeys);
       const attempt = getOrCreateVersionedSessionAttempt(attemptKey, profile.version);
       setHasPendingAttempt(true);
+      if (correcting) {
+        if (!managedTerms) throw new Error('Reload before accepting the Managed Maker agreement.');
+        form.set('expectedVersion',String(attempt.expectedVersion)); form.set('requestId',attempt.requestId);
+        const response=await fetch('/api/seller-applications/profile',{method:'POST',body:form});
+        const result=await response.json().catch(()=>null) as {ok?:boolean;error?:string;code?:string}|null;
+        if (result?.code==='stale_version') catalog.handleSubmissionResponse(response,result.code);
+        if (!response.ok || result?.ok!==true) throw new Error(result?.error ?? 'Correction status is uncertain. Retry the same details to recover its outcome.');
+      } else {
       await sendJson('/api/seller-applications/profile', 'PATCH', {
         ...Object.fromEntries([...form.entries()].filter(([key]) => key !== 'formVersion' && !key.startsWith('custom.'))),
         expectedVersion: attempt.expectedVersion,
         requestId: attempt.requestId,
         ...configuredJsonPayload(catalog.config, configured.answers, catalogBaseKeys),
       }, 'Maker profile could not be saved.');
+      }
       clearVersionedSessionAttempt(attemptKey);
       setHasPendingAttempt(false);
-      setMessage('Maker profile saved.');
+      setMessage(correcting ? 'Evidence supplied and application resubmitted for Super Admin review.' : 'Maker profile saved.');
       router.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Maker profile could not be saved.');
@@ -91,11 +103,12 @@ export function MakerApplicationProfileForm({ profile }: { profile: SellerPartic
       </select>
     </div>
     {networks.map(([network, label]) => <Field key={network} name={`${network}Url`} label={`${label} link (optional)`} type="url" defaultValue={profile.socialLinks[network] ?? ''} />)}
+    {correcting && managedTerms ? <div className="space-y-4 sm:col-span-2"><p className="text-sm">Supply government identity evidence and explicitly accept the current terms to resubmit requested corrections.</p><CompanySellingIdentity terms={managedTerms}/><ManagedMakerIdentityFields includeUploads/><ManagedMakerAgreementFields terms={managedTerms}/></div> : null}
     <p className="text-sm leading-6 text-muted-foreground sm:col-span-2">Your private verification, pickup, return, and invoice addresses are not shown here. Empty optional public sections stay hidden.</p>
     {catalog.config ? <div className="sm:col-span-2"><ConfiguredFields config={catalog.config} baseKeys={catalogBaseKeys} /></div> : null}
     {catalog.status !== 'ready' ? <p role="alert" className="text-sm text-destructive sm:col-span-2">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}
     <div className="flex items-center gap-3 sm:col-span-2">
-      <Button type="submit" disabled={busy || !catalog.canSubmit}>{busy ? 'Saving…' : 'Save maker profile'}</Button>
+      <Button type="submit" disabled={busy || !catalog.canSubmit || (correcting && !managedTerms)}>{busy ? 'Saving…' : correcting ? 'Resubmit application with evidence' : 'Save maker profile'}</Button>
       <output className="text-sm text-muted-foreground" aria-live="polite">{message}</output>
     </div>
     {hasPendingAttempt ? <div className="space-y-2 sm:col-span-2">

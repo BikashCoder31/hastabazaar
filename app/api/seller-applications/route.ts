@@ -1,3 +1,4 @@
+import { ManagedMakerTermsChangedError } from '@/lib/db/repositories/managed-maker-details';
 import { readBoundedForm, BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
 import { getCustomerUser, CustomerAuthorizationError } from '@/lib/auth/customer';
@@ -100,6 +101,7 @@ export async function POST(request: Request): Promise<Response> {
       }
     }
   } catch (error) {
+    if (error instanceof ManagedMakerTermsChangedError) return json({ error: error.message }, 409);
     if (error instanceof FormRequestConflictError) return json({ error: error.message, code: 'request_id_conflict' }, 409);
     return json({ error: 'The application replay state is unavailable.' }, 503);
   }
@@ -242,6 +244,7 @@ export async function POST(request: Request): Promise<Response> {
         409,
       );
     }
+    if (error instanceof ManagedMakerTermsChangedError) return json({ error: error.message }, 409);
     if (error instanceof FormRequestConflictError) return json({ error: error.message, code: 'request_id_conflict' }, 409);
     return json(
       { error: 'The application could not be saved. Please try again.' },

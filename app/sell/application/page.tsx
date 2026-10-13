@@ -1,3 +1,4 @@
+import { getManagedMakerApplicationTerms } from '@/lib/db/repositories/managed-maker-details';
 import type { Metadata } from 'next';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
@@ -68,6 +69,7 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
   const clock = await database.prepare("SELECT unixepoch('now') * 1000 AS now").first<{ now: number }>();
   const program = await getEffectiveBusinessSetting(database, 'managed_maker_program_mode', Number(clock?.now ?? 0));
   const capabilities = applicationCapabilities(profile.applicationStage, program.value);
+  const managedTerms = profile.participationRoute === 'managed_maker' && profile.applicationStage === 'changes_requested' ? await getManagedMakerApplicationTerms(database) : undefined;
   const finance = profile.participationRoute === 'managed_maker'
     ? await getManagedFinanceSummary(database, profile.sellerId)
     : null;
@@ -101,7 +103,7 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
     {finance ? <section className="rounded-2xl border bg-card p-6"><h2 className="font-heading text-2xl">Managed Maker settlement</h2><p className="mt-2 text-sm text-muted-foreground">Simulated amounts keep calculated, earned, held, eligible, and paid states separate. Rider cash reconciliation is tracked elsewhere.</p><dl className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">{[
       ['Calculated',finance.calculatedPaisa],['Earned',finance.earnedPaisa],['Held',finance.heldPaisa],['Eligible',finance.eligiblePaisa],['Paid',finance.paidPaisa],
     ].map(([label,value])=><div key={String(label)}><dt className="text-xs uppercase text-muted-foreground">{label}</dt><dd className="mt-1 font-semibold">NPR {(Number(value)/100).toFixed(2)}</dd></div>)}</dl></section> : null}
-    {capabilities.editProfile ? <section><h2 className="font-heading text-2xl">Shared maker profile</h2><MakerApplicationProfileForm profile={profile} /></section> : null}
+    {capabilities.editProfile ? <section><h2 className="font-heading text-2xl">Shared maker profile</h2><MakerApplicationProfileForm profile={profile} managedTerms={managedTerms} /></section> : null}
     <section className="space-y-4" aria-label="Application answer history">
       <h2 className="font-heading text-2xl">Application answer history</h2>
       {applications.answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)}

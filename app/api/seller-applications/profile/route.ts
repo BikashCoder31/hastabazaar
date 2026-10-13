@@ -1,14 +1,19 @@
+import { parseManagedMakerIdentity } from '@/lib/sellers/managed-identity';
+import { maximumApplicationBytes, validateSellerDocument, validateSellerDocumentContent, type SellerApplicationDocument } from '@/lib/sellers/application';
+import { ManagedMakerTermsChangedError } from '@/lib/db/repositories/managed-maker-details';
+import { resolvePublishedForm } from '@/lib/forms/runtime';
+import { configuredMultipartAnswers, digestMultipartRequest, formRequestReplay } from '@/lib/forms/submission';
 import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 
 import { CustomerAuthorizationError, requireCustomerApi } from '@/lib/auth/customer';
-import { requireDatabase } from '@/lib/db/d1';
+import { requireDatabase, requireMediaBucket } from '@/lib/db/d1';
 import {
   getSellerParticipationForUser,
   SellerParticipationConflictError,
   updateSellerParticipationPublicProfile,
 } from '@/lib/db/repositories/seller-applications';
-import { BodyTooLargeError } from '@/lib/http/bounded-body';
+import { BodyTooLargeError, readBoundedForm } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { parseCraftExperience, parseMakerSocialLinks } from '@/lib/sellers/participation';
 import { FormRequestConflictError, validateSellerFormSubmission } from '@/lib/forms/submission';
@@ -71,5 +76,83 @@ export async function PATCH(request: Request): Promise<Response> {
     if (error instanceof FormRuntimeError) return reply({ error: error.message, code: error.code }, error.code === 'stale_version' ? 409 : 503);
     if (error instanceof FormValidationError) return reply({ error: error.message, fieldId: error.fieldId }, 400);
     return reply({ error: error instanceof Error ? error.message : 'The maker profile could not be saved.' }, 400);
+  }
+}
+
+/** Evidence corrections use the existing owned maker-profile flow and form publication. */
+export async function POST(request: Request): Promise<Response> {
+  if (!isTrustedMutationRequest(request)) return reply({ error: 'Cross-site requests are not allowed.' },403);
+  const uploaded: string[] = [];
+  let bucket: R2Bucket | undefined;
+  try {
+    const customer = await requireCustomerApi();
+    const bindings = env as unknown as { DB?: D1Database; MEDIA?: R2Bucket };
+    const database = requireDatabase(bindings);
+    const participation = await getSellerParticipationForUser(database,customer.userId);
+    if (!participation || participation.participationRoute !== 'managed_maker') return reply({ error:'Managed Maker application not found.' },404);
+    const data = await readBoundedForm(request, maximumApplicationBytes);
+    const allowed = new Set(['publicName','publicCity','experienceCraft','experienceBand','facebookUrl','instagramUrl','linkedinUrl',
+      'tiktokUrl','xUrl','youtubeUrl','requestId','expectedVersion','formVersion','governmentIdType','governmentIdDescription',
+      'personalPan','managedAgreementAccepted','managedAgreementVersion','managedAgreementContext','representativeIdentity','personalPanCertificate']);
+    const seen = new Set<string>();
+    for (const [key,value] of data) {
+      if (!allowed.has(key) && !key.startsWith('custom.')) throw new Error('Unknown maker correction control.');
+      if (seen.has(key) && !key.startsWith('custom.')) throw new Error('Duplicate maker correction control.');
+      seen.add(key);
+      if (!key.startsWith('custom.')) {
+        const isFile = key==='representativeIdentity'||key==='personalPanCertificate';
+        if (isFile ? !(value instanceof File) && value!=='' : value instanceof File) throw new Error('Invalid maker correction control value.');
+      }
+    }
+    const text = (key: string) => { const value = data.get(key); return typeof value === 'string' ? value.trim() : ''; };
+    const requestId = text('requestId');
+    if (!/^[a-zA-Z0-9_-]{1,100}$/.test(requestId)) throw new Error('A stable correction request reference is required.');
+    const digest = await digestMultipartRequest(data);
+    if (await formRequestReplay(database,{formId:'seller.maker-profile',requestId,actorId:customer.userId,
+      action:'seller.participation_profile.updated',subjectId:participation.sellerId,digest})) return reply({ok:true});
+    if (participation.applicationStage !== 'changes_requested') return reply({error:'Evidence corrections require a changes-requested application.'},409);
+    const identity = parseManagedMakerIdentity(data);
+    const config = await resolvePublishedForm(database,'seller.maker-profile');
+    const submitted = configuredMultipartAnswers(data,config);
+    const form = await validateSellerFormSubmission(database,'seller.maker-profile',submitted.version,submitted.customAnswers,requestId,
+      {publicName:text('publicName'),publicCity:text('publicCity')});
+    const files: Array<{file: File;kind: SellerApplicationDocument['kind']}> = [];
+    for (const [field,kind] of [['representativeIdentity','representative_identity'],['personalPanCertificate','pan_certificate']] as const) {
+      const file=data.get(field);
+      if (!(file instanceof File)||file.size===0) {
+        if (field==='representativeIdentity') throw new Error('A government-issued identity document is required.');
+        continue;
+      }
+      const error=validateSellerDocument(file) ?? await validateSellerDocumentContent(file);
+      if (error) throw new Error(error);
+      files.push({file,kind});
+    }
+    bucket=requireMediaBucket(bindings);
+    const documents: SellerApplicationDocument[]=[];
+    for (const {file,kind} of files) {
+      const id=crypto.randomUUID(),objectKey=`private/seller-documents/${participation.sellerId}/${id}`;
+      await bucket.put(objectKey,file.stream(),{httpMetadata:{contentType:file.type},customMetadata:{sellerId:participation.sellerId,documentKind:kind}});
+      uploaded.push(objectKey);
+      documents.push({id,kind,objectKey,originalName:file.name.slice(0,180),mimeType:file.type,sizeBytes:file.size});
+    }
+    await updateSellerParticipationPublicProfile(database,{sellerId:participation.sellerId,actorId:customer.userId,
+      expectedVersion:Number(text('expectedVersion')),publicName:text('publicName'),publicCity:text('publicCity'),
+      craftExperience:parseCraftExperience(text('experienceCraft'),text('experienceBand')),
+      socialLinks:parseMakerSocialLinks({facebook:text('facebookUrl'),instagram:text('instagramUrl'),linkedin:text('linkedinUrl'),
+        tiktok:text('tiktokUrl'),x:text('xUrl'),youtube:text('youtubeUrl')}),requestId,now:Date.now(),
+      managedCorrection:{identity,documents},form:{requestId,versionId:form.versionId,answers:form.answers,digest}});
+    for (const document of documents) {
+      const saved=await database.prepare('SELECT id FROM seller_documents WHERE id=? AND seller_id=?').bind(document.id,participation.sellerId).first();
+      if (!saved) await bucket.delete(document.objectKey);
+    }
+    return reply({ok:true});
+  } catch(error) {
+    if (bucket) await Promise.allSettled(uploaded.map(key=>bucket!.delete(key)));
+    if (error instanceof CustomerAuthorizationError) return reply({error:error.message},error.status);
+    if (error instanceof BodyTooLargeError) return reply({error:error.message},413);
+    if (error instanceof FormRuntimeError) return reply({error:error.message,code:error.code},error.code==='stale_version'?409:503);
+    if (error instanceof FormRequestConflictError) return reply({error:error.message,code:'request_id_conflict'},409);
+    if (error instanceof ManagedMakerTermsChangedError || error instanceof SellerParticipationConflictError) return reply({error:error.message},409);
+    return reply({error:error instanceof Error?error.message:'The maker correction could not be saved.'},400);
   }
 }

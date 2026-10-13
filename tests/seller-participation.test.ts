@@ -1,3 +1,4 @@
+import { managedIdentityFields } from './helpers/managed-identity-fixture';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -31,6 +32,7 @@ function baseForm(answer: 'yes' | 'no'): FormData {
     experienceCraft: 'Clay work',
     experienceBand: 'less_than_one_year',
     instagramUrl: 'https://instagram.com/fictional-maker',
+    ...managedIdentityFields(),
     applicationAcknowledgement: 'yes',
   };
   for (const [key, value] of Object.entries(values)) form.set(key, value);
@@ -84,7 +86,7 @@ void test('No opens Managed Maker without fake tax or registration identifiers',
     sellerDocumentsForApplication(parsed.input)
       .filter((document) => document.required)
       .map((document) => document.kind),
-    [],
+    ['representative_identity'],
   );
 
   for (const [field, value] of [

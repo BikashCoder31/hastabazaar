@@ -3117,3 +3117,16 @@ export const firstCodReviews = sqliteTable('first_cod_reviews', {
  totalPaisa:integer('total_paisa').notNull(), status:text('status',{enum:['pending','confirmed']}).notNull().default('pending'),
  createdAt:timestamp('created_at').notNull(), confirmedBy:text('confirmed_by').references(()=>users.id), confirmedAt:timestamp('confirmed_at'), reason:text('reason'), requestId:text('request_id').unique(),
 },table=>[index('idx_first_cod_reviews_status').on(table.status,table.createdAt),check('first_cod_review_total',sql`${table.totalPaisa} BETWEEN 500000 AND 9007199254740991`),check('first_cod_review_status',sql`${table.status} IN ('pending','confirmed')`)]);
+
+export const managedMakerApplicationDetails = sqliteTable('managed_maker_application_details', {
+  id: id(), sellerId: text('seller_id').notNull().references(()=>sellerProfiles.id),
+  governmentIdType: text('government_id_type').notNull(), governmentIdDescription: text('government_id_description').notNull().default(''),
+  personalPan: text('personal_pan'), identityDocumentId: text('identity_document_id').notNull().references(()=>sellerDocuments.id),
+  agreementVersion: text('agreement_version').notNull(), agreementAcceptedAt: timestamp('agreement_accepted_at').notNull(),
+  agreementAcceptedBy: text('agreement_accepted_by').notNull().references(()=>users.id), agreementSnapshotJson: text('agreement_snapshot_json').notNull(),
+  createdAt: timestamp('created_at').notNull(),
+}, table => [index('managed_maker_details_seller').on(table.sellerId,table.createdAt),
+  check('managed_maker_details_id_type',sql`${table.governmentIdType} IN ('citizenship','national_id','passport','driving_licence','other_government_id')`),
+  check('managed_maker_details_personal_pan',sql`${table.personalPan} IS NULL OR (length(${table.personalPan})=9 AND ${table.personalPan} NOT GLOB '*[^0-9]*')`),
+  check('managed_maker_details_accepted_at',sql`${table.agreementAcceptedAt}>0`),
+  check('managed_maker_details_snapshot_json',sql`json_valid(${table.agreementSnapshotJson})`)]);

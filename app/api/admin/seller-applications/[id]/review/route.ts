@@ -1,3 +1,4 @@
+import { requireManagedMakerSuperAdmin, ManagedMakerAuthorityError } from '@/lib/db/repositories/managed-maker-details';
 import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 
@@ -77,6 +78,8 @@ export async function POST(
     const database = requireDatabase(
       env as unknown as { DB?: D1Database },
     );
+    const participation=await database.prepare('SELECT participation_route AS route FROM seller_participation_profiles WHERE seller_id=?').bind(id).first<{route:string}>();
+    if (participation?.route==='managed_maker') await requireManagedMakerSuperAdmin(database,staff.id);
     if (typeof body.requestId !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(body.requestId))
       return json({ error: 'A stable request reference is required.' }, 400);
     const form = await validateSellerFormSubmission(database, 'staff.seller-review-action',
@@ -101,6 +104,7 @@ export async function POST(
     });
     return json({ status: result.to, message: 'Application updated.' }, 200);
   } catch (error) {
+    if (error instanceof ManagedMakerAuthorityError) return json({error:error.message},403);
     if (error instanceof StaffAuthorizationError) {
       return json({ error: error.message }, error.status);
     }

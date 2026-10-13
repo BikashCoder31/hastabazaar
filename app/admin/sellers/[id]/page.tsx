@@ -1,7 +1,9 @@
+import { getManagedMakerDetailsForReview, getManagedMakerApplicationTerms, ManagedMakerAuthorityError } from '@/lib/db/repositories/managed-maker-details';
+import { CompanySellingIdentity } from '@/components/seller/managed-maker-identity-fields';
 import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import {
   ArrowLeft,
   ExternalLink,
@@ -67,11 +69,13 @@ export default async function SellerApplicationPage({
     'seller.application.review',
   );
   const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const application = await getSellerApplicationForReview(
-    database,
-    id,
-  );
+  const application = await getSellerApplicationForReview(database, id, staff.id).catch(error => {
+    if (error instanceof ManagedMakerAuthorityError) redirect('/staff-access-denied');
+    throw error;
+  });
   if (!application) notFound();
+  const [managedDetails, managedTerms] = application.participationRoute === 'managed_maker'
+    ? await Promise.all([getManagedMakerDetailsForReview(database,id,staff.id),getManagedMakerApplicationTerms(database)]) : [null,null];
   const governance = await getSellerGovernance(database, id);
   const managedProgram = await getManagedProgramWorkspace(database, id);
 
@@ -125,6 +129,14 @@ export default async function SellerApplicationPage({
 
       <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.4fr)_minmax(20rem,0.6fr)]">
         <div className="space-y-6">
+          {managedTerms ? <CompanySellingIdentity terms={managedTerms}/> : null}
+          {application.participationRoute === 'managed_maker' ? <Card><CardHeader><CardTitle>Private Managed Maker agreement and identity</CardTitle></CardHeader><CardContent>
+            {managedDetails ? <dl className="grid gap-4 sm:grid-cols-2"><Detail label="Government ID">{managedDetails.governmentIdType.replaceAll('_',' ')} {managedDetails.governmentIdDescription}</Detail>
+              <Detail label="Personal PAN (private)">{managedDetails.personalPan ?? 'Not supplied'}</Detail><Detail label="Accepted agreement">{managedDetails.agreementVersion}</Detail>
+              <Detail label="Accepted at">{dateTimeFormatter.format(new Date(managedDetails.agreementAcceptedAt))}</Detail><Detail label="Accepted by">{managedDetails.agreementAcceptedBy}</Detail>
+              <Detail label="Historical accepted terms"><pre className="whitespace-pre-wrap break-words text-xs">{JSON.stringify(JSON.parse(managedDetails.agreementSnapshotJson),null,2)}</pre></Detail></dl>
+              : <p>Current government ID and Managed Maker agreement acceptance have not been supplied. Request changes before approving activation.</p>}
+          </CardContent></Card> : null}
           <ManagedProgramReview sellerId={application.id} workspace={managedProgram} />
           <Card>
             <CardHeader>
@@ -376,7 +388,7 @@ export default async function SellerApplicationPage({
                 applicationStage={application.applicationStage}
               />
               {application.participationRoute === 'managed_maker' && application.applicationStage === 'approved_for_activation' ? (
-                <div className="mt-5"><ManagedMakerActivationForm sellerId={application.id}/></div>
+                <div className="mt-5"><ManagedMakerActivationForm sellerId={application.id} companyAccount={managedTerms?.account}/></div>
               ) : null}
             </CardContent>
           </Card>

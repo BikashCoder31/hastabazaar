@@ -1,4 +1,5 @@
 'use client';
+import { companyDetails, companyPanDisplay } from '@/lib/content/company-details';
 
 import type { ProductWatermarkPolicy } from '@/lib/products/watermark-policy';
 
@@ -34,6 +35,7 @@ import type {
   BusinessSettingEffectiveMode,
   BusinessSettingKey,
   BusinessSettingSensitivity,
+  ManagedMakerCompanyAccount,
   OfficialSocialLinks,
   FirstPartyAnalyticsPolicy,
   RiderFinancePolicy,
@@ -112,6 +114,7 @@ function displayValue(key: BusinessSettingKey, value: unknown): string {
     const policy = value as ProductWatermarkPolicy;
     return (policy.enabled ? 'Enabled' : 'Disabled') + ' · ' + policy.sizePercent + '% width · ' + policy.opacityPercent + '% opacity · ' + policy.position.replaceAll('-', ' ');
   }
+  if (key === 'managed_maker_company_account' && value && typeof value === 'object') return `${(value as ManagedMakerCompanyAccount).storeName} · ${(value as ManagedMakerCompanyAccount).contactEmail}`;
   if (key === 'official_social_links' && typeof value === 'object')
     return 'Six validated official links';
   if (
@@ -585,6 +588,18 @@ function SettingValueEditor({
         />
       </div>
     );
+  }
+  if (settingKey === 'managed_maker_company_account') {
+    const account = value as ManagedMakerCompanyAccount;
+    return <div className="space-y-4">
+      <p className="text-sm">{companyDetails.legalName} · Registration {companyDetails.registrationNumber} · Company PAN: {companyPanDisplay}</p>
+      <p className="text-xs text-muted-foreground">Stable entity: {companyDetails.entityReference}. Legal identity and PAN are read-only. Super Admin operates this account; makers retain their individual accounts.</p>
+      {(['storeName','contactEmail','contactPhone','returnAddress'] as const).map(key=><div key={key} className="space-y-2">
+        <Label htmlFor={`company-${key}`}>{({storeName:'Store name',contactEmail:'Contact email',contactPhone:'Contact phone (optional)',returnAddress:'Return address'})[key]}</Label>
+        <Input id={`company-${key}`} type={key==='contactEmail'?'email':'text'} value={account[key]} maxLength={key==='returnAddress'?500:key==='storeName'?160:key==='contactPhone'?20:254}
+          onChange={event=>onChange({...account,[key]:event.target.value})}/>
+      </div>)}
+    </div>;
   }
   if (settingKey === 'managed_maker_program_mode') {
     return (

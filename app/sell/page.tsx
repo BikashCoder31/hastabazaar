@@ -1,3 +1,6 @@
+import { env } from 'cloudflare:workers';
+import { requireDatabase } from '@/lib/db/d1';
+import { getManagedMakerApplicationTerms } from '@/lib/db/repositories/managed-maker-details';
 import type { Metadata } from 'next';
 import { getAuthenticatedUser } from '@/app/auth';
 export const dynamic = 'force-dynamic';
@@ -23,7 +26,7 @@ const steps = [
   {
     icon: FileCheck2,
     title: 'Provide verification',
-    body: 'Registered Sellers provide applicable business evidence. Managed Makers can apply without unavailable PAN/VAT fields.',
+    body: 'Registered Sellers provide applicable business evidence. Managed Makers without business PAN provide personal details, government ID and explicit company selling terms; personal PAN is optional.',
   },
   {
     icon: ClipboardCheck,
@@ -33,7 +36,7 @@ const steps = [
 ];
 
 export default async function SellPage() {
-  const identity = await getAuthenticatedUser();
+  const [identity, managedTerms] = await Promise.all([getAuthenticatedUser(), getManagedMakerApplicationTerms(requireDatabase(env as unknown as { DB?: D1Database }))]);
   return (
     <div className="min-h-screen bg-background text-foreground">
       <SiteHeader />
@@ -51,7 +54,7 @@ export default async function SellPage() {
                 </p>
               </div>
               <p className="rounded-2xl border border-border bg-background/80 p-5 text-sm leading-6 text-muted-foreground">
-                <strong>Registered Seller terms are separate from Managed Maker test arrangements.</strong>{' '}
+                <strong>Registered Seller terms are separate from Managed Maker selling agreements.</strong>{' '}
                 The current independent-seller agreement uses a 9% commission on the product selling value
                 after seller-funded discounts, excluding separately stated
                 product taxes and delivery charges. Discounts funded entirely by
@@ -93,7 +96,7 @@ export default async function SellPage() {
               Start verification
             </h2>
           </div>
-          <SellerApplicationForm accountEmail={identity?.email} />
+          <SellerApplicationForm accountEmail={identity?.email} managedTerms={managedTerms} />
         </section>
       </main>
       <SiteFooter />

@@ -59,6 +59,7 @@ const recentlyViewedSql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-recently-viewed.sql'),
   'utf8',
 );
+const managedMakerIdentitySql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-managed-maker-identity.sql'), 'utf8');
 const managedFixedSupplySql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-managed-fixed-supply.sql'),
   'utf8',
@@ -435,6 +436,7 @@ output.push(
   recentlyViewedSql.trim(),
   '',
   managedFixedSupplySql.trim(),
+  managedMakerIdentitySql.trim(),
   '',
   formCatalogSql.trim(),
   categoryImagesSql.trim(),
@@ -600,6 +602,7 @@ const resetTables = [
   'managed_settlement_entries',
   'managed_entitlements',
   'managed_commercial_snapshots',
+  'managed_maker_application_details',
   'seller_profile_media',
   'seller_operational_addresses',
   'seller_participation_guards',

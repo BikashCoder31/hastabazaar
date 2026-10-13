@@ -130,6 +130,7 @@ void test('only supported, validated controls exist and demonstration defaults r
     'managed_sale_linked_platform_retention_bps',
     'managed_maker_program_mode',
     'managed_maker_active_model',
+    'managed_maker_company_account',
     'payout_processing_weekday',
     'payout_cutoff_local_time',
     'payout_timezone',

@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { CompanySellingIdentity, ManagedMakerIdentityFields, ManagedMakerAgreementFields } from './managed-maker-identity-fields';
+import type { ManagedMakerApplicationTerms } from '@/lib/db/repositories/managed-maker-details';
 import { sellerDocumentsForApplication } from '@/lib/sellers/application';
 import { CheckCircle2, LoaderCircle, ShieldCheck } from 'lucide-react';
 
@@ -28,7 +30,7 @@ import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sess
 const catalogBaseKeys = ['tradingName', 'businessDescription', 'legalName', 'representativeName',
   'email', 'phone', 'applicantType', 'taxMode', 'taxRegistrationNumber', 'registrationNumber',
   'registrationAuthority', 'document', 'profileImage', 'makerVideo', 'applicationAcknowledgement',
-  'participationRoute', 'website', 'requestId', 'formVersion', 'customAnswers'];
+  'participationRoute', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'personalPanCertificate', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'website', 'requestId', 'formVersion', 'customAnswers'];
 const applicationAttemptKey = sessionAttemptKey('seller.application', 'new');
 const uncertainMessage = 'Application status is uncertain: your application may have been accepted. Retry with the same details to recover its reference, or contact support before starting a new attempt.';
 
@@ -79,8 +81,10 @@ function setFormValue(
 
 export function SellerApplicationForm({
   accountEmail,
+  managedTerms,
 }: {
   accountEmail?: string;
+  managedTerms?: ManagedMakerApplicationTerms;
 }) {
   const [applicantType, setApplicantType] = useState<'individual' | 'company'>(
     'company',
@@ -252,6 +256,7 @@ export function SellerApplicationForm({
         <input id="website" name="website" tabIndex={-1} autoComplete="off" />
       </div>
 
+      {registrationAnswer === 'no' && managedTerms ? <CompanySellingIdentity terms={managedTerms}/> : null}
       <FieldSet>
         <FieldLegend>Choose your participation route</FieldLegend>
         <FieldDescription>
@@ -273,6 +278,7 @@ export function SellerApplicationForm({
               <NativeSelectOption value="no">No</NativeSelectOption>
             </NativeSelect>
             <FieldDescription>
+              If your business has PAN but you cannot upload its certificate now, choose Yes and gather the certificate before submitting. Choose No only if you do not have business PAN/VAT.
               {registrationAnswer === 'yes'
                 ? 'Registered Seller: provide only the registration evidence that applies to the selected status.'
                 : 'Managed Maker application: business PAN/VAT fields are not required. Later identity, supplier, payment, or tax-document requirements will be shown at the stage where they apply.'}
@@ -586,6 +592,9 @@ export function SellerApplicationForm({
         </FieldGroup>
       </FieldSet>
 
+      {registrationAnswer === 'no' ? <ManagedMakerIdentityFields/> : null}
+      {registrationAnswer === 'no' && managedTerms ? <ManagedMakerAgreementFields terms={managedTerms}/> : null}
+      {registrationAnswer === 'no' && !managedTerms ? <p role="alert">Managed Maker agreement terms are unavailable. Reload before submitting.</p> : null}
       {registrationAnswer === 'yes' ? (
         <Field orientation="horizontal">
           <Checkbox id="acceptedTerms" name="acceptedTerms" value="yes" required />
@@ -641,7 +650,7 @@ export function SellerApplicationForm({
           type="submit"
           size="lg"
           className="h-11 px-6"
-          disabled={state.status === 'submitting' || !catalog.canSubmit}
+          disabled={state.status === 'submitting' || !catalog.canSubmit || (registrationAnswer === 'no' && !managedTerms)}
         >
           {state.status === 'submitting' ? (
             <>

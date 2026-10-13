@@ -1,5 +1,6 @@
 'use client';
 
+import type { ManagedMakerCompanyAccount } from '@/lib/configuration/types';
 import { useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -14,7 +15,7 @@ const BASE_KEYS = ['model', 'legalSellerReference', 'invoiceIssuerReference', 'p
 // Hydrate the absent server snapshot; own attempt mutations rerender the client.
 const subscribeToAttempt = () => () => undefined;
 
-export function ManagedMakerActivationForm({ sellerId }: { sellerId: string }) {
+export function ManagedMakerActivationForm({ sellerId, companyAccount }: { sellerId: string; companyAccount?: ManagedMakerCompanyAccount }) {
   const router = useRouter();
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -65,6 +66,7 @@ export function ManagedMakerActivationForm({ sellerId }: { sellerId: string }) {
     onSubmit={submit}>
     <h3 className="font-semibold">Local-staging activation only</h3>
     <a className="text-sm underline" href={`/admin/staff-form-history?kind=managed-maker-activation&id=${encodeURIComponent(sellerId)}`}>View activation form history</a>
+    {companyAccount ? <p>Operational company account: {companyAccount.storeName} ({companyAccount.entityReference}). Its actual identity is recorded separately in the maker’s agreement; the references below remain fictional simulation references.</p> : null}
     <p>This form is rejected outside the guarded disposable environment. All references must be fictional.</p>
     <label className="block">Implemented commercial model<select name="model" required className="mt-1 w-full rounded border p-2"><option value="managed_sale_linked_percentage_v1">Sale-linked percentage settlement (configured rate applies)</option><option value="managed_fixed_supplier_price_v1">Fixed supplier price: owed at documented supply acceptance; no automatic percentage deduction</option></select></label>
     <label className="block">Simulated legal seller reference<input name="legalSellerReference" required minLength={3} maxLength={191} className="mt-1 w-full rounded border p-2" defaultValue="SIM-LEGAL-SELLER"/></label>

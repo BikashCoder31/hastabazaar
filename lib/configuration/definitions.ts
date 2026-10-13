@@ -1,3 +1,4 @@
+import { companyDetails } from '../content/company-details';
 import { defaultProductWatermarkPolicy, validateProductWatermarkPolicy } from '../products/watermark-policy';
 import {
   businessSettingKeys,
@@ -7,6 +8,7 @@ import {
   type BusinessWeekday,
   type ManagedMakerCommercialModel,
   type ManagedMakerProgramMode,
+  type ManagedMakerCompanyAccount,
   type OfficialSocialLinks,
   type FirstPartyAnalyticsPolicy,
   type RiderFinancePolicy,
@@ -362,7 +364,29 @@ const programModes: readonly ManagedMakerProgramMode[] = [
   'activation_enabled',
 ];
 
+function companyAccount(value: unknown): ManagedMakerCompanyAccount {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('Company account must be an object.');
+  const data = value as Record<string, unknown>;
+  const limits = { entityReference: 191, storeName: 160, contactEmail: 254, contactPhone: 20, returnAddress: 500 };
+  if (Object.keys(data).some(key => !(key in limits))) throw new Error('Unsupported company account field; legal identity and PAN are read-only.');
+  for (const [key, max] of Object.entries(limits)) {
+    if (typeof data[key] !== 'string' || String(data[key]).length > max || (key !== 'contactPhone' && !String(data[key]).trim())) throw new Error(`Company account ${key} is required and must fit its limit.`);
+  }
+  if (data.entityReference !== companyDetails.entityReference) throw new Error('Company entity reference is stable and read-only.');
+  if (!/^\S+@\S+\.\S+$/.test(String(data.contactEmail).trim())) throw new Error('Enter a valid company contact email.');
+  if (typeof data.contactPhone === 'string' && data.contactPhone && !/^\+?\d{7,15}$/.test(data.contactPhone.trim())) throw new Error('Enter a valid company contact phone.');
+  return { entityReference: companyDetails.entityReference, storeName: String(data.storeName).trim(), contactEmail: String(data.contactEmail).trim().toLowerCase(),
+    contactPhone: String(data.contactPhone).trim(), returnAddress: String(data.returnAddress).trim() };
+}
+
 const definitions = [
+  { key: 'managed_maker_company_account', label: 'Company selling account',
+    description: 'Super Admin controls the operational store, contact and return destination. Individual makers keep their own identity and login. Company legal identity and PAN come from the canonical company record.',
+    defaultValue: Object.freeze({ entityReference: companyDetails.entityReference, storeName: companyDetails.brandName,
+      contactEmail: companyDetails.supportEmail, contactPhone: '', returnAddress: companyDetails.registeredOffice }),
+    sensitivity: 'operational', changeControl: 'controlled', effectiveMode: 'effective_dated', snapshotOnTransaction: true,
+    affectedSurfaces: ['maker_onboarding', 'admin_review', 'managed_makers'], requiredCapability: null, validate: companyAccount,
+  },
   {
     key: 'product_photo_watermark',
     label: 'Product photo watermark',

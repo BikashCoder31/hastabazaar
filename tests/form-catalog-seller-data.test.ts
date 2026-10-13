@@ -1,3 +1,4 @@
+import { addManagedIdentityUpload, managedIdentityDocument } from './helpers/managed-identity-fixture';
 import assert from 'node:assert/strict';
 import { createRequire, registerHooks } from 'node:module';
 import { readdir, readFile } from 'node:fs/promises';
@@ -260,6 +261,7 @@ function managedApplication() {
     locality: 'Private workshop', publicCity: 'Birgunj', businessDescription: 'Fictional handcrafted goods.',
     productCategories: 'Clay', experienceCraft: 'Clay', experienceBand: 'less_than_one_year', applicationAcknowledgement: 'yes',
   })) form.set(key, value);
+  addManagedIdentityUpload(form);
   return form;
 }
 const answer = { formId: 'seller.application', version: 1, answers: [{ fieldId: field.id, label: field.label, type: field.type, value: 'Fictional answer' }] } as const;
@@ -271,7 +273,7 @@ async function createSeller(database: D1Database, sellerId = 'seller-one', userI
   assert.ok(parsed.input, parsed.errors.join('; '));
   await createSellerApplication(database, { userId, sellerId, applicationReference: `HB-TEST-${sellerId}`,
     input: { ...parsed.input, email: `${sellerId}@example.test`, phone: sellerId === 'seller-one' ? '9800000000' : '9800000001' },
-    documents: [], now: 1_800_000_000_000 });
+    documents: [managedIdentityDocument(sellerId)], now: 1_800_000_000_000 });
 }
 const productInput = {
   categoryId: 'cat-test', occasionIds: [], sku: '', nameEn: 'Fictional clay cup', nameNe: null,
@@ -290,7 +292,7 @@ void test('seller application answer is linked atomically to its new seller and 
     const parsed = parseSellerApplication(managedApplication());
     assert.ok(parsed.input, parsed.errors.join('; '));
     await createSellerApplication(database, { userId: 'seller-user', sellerId: 'seller-one', applicationReference: 'HB-TEST-1',
-      input: parsed.input, documents: [], now: 1_800_000_000_000,
+      input: parsed.input, documents: [managedIdentityDocument('seller-one')], now: 1_800_000_000_000,
       form: formLink('seller.application', 'application-one') } as Parameters<typeof createSellerApplication>[1]);
     const history = await listFormAnswersForSubject(database, 'seller', 'seller-one');
     assert.equal(history.length, 1);
@@ -298,7 +300,7 @@ void test('seller application answer is linked atomically to its new seller and 
     assert.deepEqual(history[0].answers.answers, answer.answers);
     db.failAt = 0;
     await assert.rejects(createSellerApplication(database, { userId: 'failed-user', sellerId: 'failed-seller', applicationReference: 'HB-TEST-FAIL',
-      input: { ...parsed.input, email: 'failed@example.test' }, documents: [], now: 1_800_000_000_001,
+      input: { ...parsed.input, email: 'failed@example.test' }, documents: [managedIdentityDocument('failed-seller')], now: 1_800_000_000_001,
       form: formLink('seller.application', 'application-fail') } as Parameters<typeof createSellerApplication>[1]));
     assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE request_id='application-fail'").get() as { count: number }).count, 0);
   } finally { sqlite.close(); }
@@ -821,7 +823,7 @@ void test('application progress shows only the current maker’s application and
     const parsed = parseSellerApplication(managedApplication());
     assert.ok(parsed.input, parsed.errors.join('; '));
     await createSellerApplication(database, { userId: 'seller-user', sellerId: 'seller-one', applicationReference: 'HB-HISTORY',
-      input: parsed.input, documents: [], now: 1_800_000_000_000,
+      input: parsed.input, documents: [managedIdentityDocument('seller-one')], now: 1_800_000_000_000,
       form: formLink('seller.application', 'application-history') } as Parameters<typeof createSellerApplication>[1]);
     await updateSellerParticipationPublicProfile(database, { sellerId: 'seller-one', actorId: 'seller-user',
       expectedVersion: 1, publicName: 'Fictional Studio', publicCity: 'Birgunj', craftExperience: [],
@@ -993,15 +995,16 @@ void test('application audit-key race replays the winner but rejects changed act
     const parsed = parseSellerApplication(managedApplication());
     assert.ok(parsed.input, parsed.errors.join('; '));
     const winner = { userId: 'winner-user', sellerId: 'winner-seller', applicationReference: 'HB-WINNER',
-      input: parsed.input, documents: [], now: 1_800_000_000_400,
+      input: parsed.input, documents: [managedIdentityDocument('winner-seller')], now: 1_800_000_000_400,
       form: formLink('seller.application', 'application-race-key') } as Parameters<typeof createSellerApplication>[1];
-    const loser = { ...winner, userId: 'loser-user', sellerId: 'loser-seller', applicationReference: 'HB-LOSER' };
+    const loser = { ...winner, userId: 'loser-user', sellerId: 'loser-seller', applicationReference: 'HB-LOSER', documents: [managedIdentityDocument('loser-seller')], form: { ...winner.form!, digest: 'identical-upload-content-digest' } };
+    winner.form!.digest = 'identical-upload-content-digest';
     db.beforeBatch = () => createSellerApplication(database, winner);
     assert.equal(await createSellerApplication(database, loser), 'winner-seller');
     assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM seller_profiles WHERE application_reference='HB-WINNER'").get() as { count: number }).count, 1);
     assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM seller_profiles WHERE application_reference='HB-LOSER'").get() as { count: number }).count, 0);
     await assert.rejects(createSellerApplication(database, { ...loser, userId: 'different-actor', existingAccount: true }), /Request reference/);
-    await assert.rejects(createSellerApplication(database, { ...loser, input: { ...parsed.input, tradingName: 'Changed Studio' } }), /Request reference/);
+    await assert.rejects(createSellerApplication(database, { ...loser, input: { ...parsed.input, tradingName: 'Changed Studio' }, form: { ...loser.form, digest: 'changed-content-digest' } }), /Request reference/);
   } finally { sqlite.close(); }
 });
 
@@ -1020,7 +1023,7 @@ void test('anonymous application batch race responds with the winning reference,
     assert.ok(parsed.input, parsed.errors.join('; '));
     const input = parsed.input;
     db.beforeBatch = () => createSellerApplication(database, { userId: 'winning-user', sellerId: 'winning-seller',
-      applicationReference: 'HB-WINNING', input, documents: [], now: 1_800_000_000_400,
+      applicationReference: 'HB-WINNING', input, documents: [managedIdentityDocument('winning-seller')], now: 1_800_000_000_400,
       form: { ...formLink('seller.application', 'application-route-race'), digest } });
     const { POST } = await import('../app/api/seller-applications/route');
     const send = (form: FormData) => POST(new Request('http://localhost:3000/api/seller-applications', {
@@ -1029,7 +1032,7 @@ void test('anonymous application batch race responds with the winning reference,
     const response = await send(requestForm);
     assert.equal(response.status, 201);
     assert.equal((await response.json() as { applicationReference: string }).applicationReference, 'HB-WINNING');
-    assert.equal(globalThis.sellerCatalogMedia.stored.length, 1);
+    assert.equal(globalThis.sellerCatalogMedia.stored.length, 2);
     assert.deepEqual(globalThis.sellerCatalogMedia.deleted, globalThis.sellerCatalogMedia.stored,
       'the losing application must remove private media uploaded before its DB race');
     const changed = managedApplication();
@@ -1067,7 +1070,7 @@ for (const signedIn of [false, true]) {
         if (this.stored.length !== 1) return;
         await createSellerApplication(database, { userId: winnerUserId, existingAccount: signedIn,
           sellerId: 'winning-seller', applicationReference: 'HB-WINNING-PREBATCH',
-          input: parsed.input!, documents: [], now: 1_800_000_000_400,
+          input: parsed.input!, documents: [managedIdentityDocument('winning-seller')], now: 1_800_000_000_400,
           form: { ...formLink('seller.application', requestId), digest } });
       };
       const { POST } = await import('../app/api/seller-applications/route');
@@ -1077,7 +1080,7 @@ for (const signedIn of [false, true]) {
       const response = await send(form);
       assert.equal(response.status, 201);
       assert.equal((await response.json() as { applicationReference: string }).applicationReference, 'HB-WINNING-PREBATCH');
-      assert.equal(globalThis.sellerCatalogMedia.stored.length, 1);
+      assert.equal(globalThis.sellerCatalogMedia.stored.length, 2);
       assert.deepEqual(globalThis.sellerCatalogMedia.deleted, globalThis.sellerCatalogMedia.stored,
         'the private losing upload must be removed when the pre-batch replay finds a winner');
       assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM seller_profiles').get() as { count: number }).count, 1);
@@ -1098,7 +1101,7 @@ for (const signedIn of [false, true]) {
       assert.equal(changedEmailResponse.status, 409);
       assert.doesNotMatch(await changedEmailResponse.text(), /HB-WINNING-PREBATCH/);
       await assert.rejects(createSellerApplication(database, { userId: 'different-actor', existingAccount: true,
-        sellerId: 'different-seller', applicationReference: 'HB-DIFFERENT', input: parsed.input!, documents: [],
+        sellerId: 'different-seller', applicationReference: 'HB-DIFFERENT', input: parsed.input!, documents: [managedIdentityDocument('different-seller')],
         now: 1_800_000_000_401, form: { ...formLink('seller.application', requestId), digest } }),
       /Request reference/);
       assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM seller_profiles').get() as { count: number }).count, 1);
@@ -1197,4 +1200,41 @@ void test('origin controls cross real product create, draft and revision boundar
     const after=sqlite.prepare('SELECT country_of_origin,origin_evidence_status FROM products WHERE id=?').get(id);
     assert.equal(after?.country_of_origin,'China');assert.equal(after?.origin_evidence_status,'seller_declared');
   } finally {sqlite.close();}
+});
+
+void test('managed correction multipart route requires private ID, current agreement and owned changes-requested state and replays exact lost responses',async()=>{
+  const {sqlite,database}=await fixture();
+  try {
+    await createSeller(database); seed(sqlite,'seller.maker-profile');
+    sqlite.exec("UPDATE seller_profiles SET status='needs_changes' WHERE id='seller-one'; UPDATE seller_participation_profiles SET application_stage='changes_requested' WHERE seller_id='seller-one'");
+    globalThis.sellerCatalogActor={sellerId:'seller-one',userId:'seller-user'};
+    const {POST}=await import('../app/api/seller-applications/profile/route');
+    const correction=(requestId:string)=>{
+      const form=new FormData(); addManagedIdentityUpload(form);
+      for(const [key,value] of Object.entries({publicName:'Fictional Studio',publicCity:'Birgunj',expectedVersion:'1',formVersion:'1',requestId,'custom.workshop_note':'Corrected evidence supplied'}))form.set(key,value);
+      return form;
+    };
+    const send=(body:FormData)=>POST(new Request('http://localhost:3000/api/seller-applications/profile',{method:'POST',headers:{origin:'http://localhost:3000'},body}));
+    for(const missing of ['representativeIdentity','managedAgreementAccepted','managedAgreementContext']){
+      const form=correction(`missing-${missing}`);form.delete(missing);
+      assert.equal((await send(form)).status,400);
+    }
+    const spoofed=correction('spoofed-id');spoofed.set('representativeIdentity',new File(['not PDF'],'forged.pdf',{type:'application/pdf'}));
+    assert.equal((await send(spoofed)).status,400);
+    const duplicate=correction('duplicate-id');duplicate.append('governmentIdType','passport');
+    assert.equal((await send(duplicate)).status,400);
+    assert.equal(globalThis.sellerCatalogMedia.stored.length,0,'invalid evidence fails before upload');
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM managed_maker_application_details').get()?.n,1);
+    const valid=correction('valid-managed-correction');
+    assert.equal((await send(valid)).status,200);
+    assert.equal(sqlite.prepare('SELECT status FROM seller_profiles WHERE id=?').get('seller-one')?.status,'submitted');
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM managed_maker_application_details').get()?.n,2);
+    assert.equal(globalThis.sellerCatalogMedia.stored.length,1);
+    assert.equal((await send(valid)).status,200,'lost response replay returns the original outcome');
+    assert.equal(globalThis.sellerCatalogMedia.stored.length,1,'exact replay uploads nothing');
+    const changed=correction('valid-managed-correction');changed.set('personalPan','123456789');
+    assert.equal((await send(changed)).status,409);
+    globalThis.sellerCatalogActor={sellerId:'seller-one',userId:'different-owner'};
+    assert.equal((await send(correction('foreign-correction'))).status,404);
+  }finally{sqlite.close();}
 });
