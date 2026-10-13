@@ -47,7 +47,7 @@ function policyBundle(policyKey: PublicLegalPolicyKey) {
         resolveDir: process.cwd(),
         contents: `import React from 'react';import {createRoot} from 'react-dom/client';
           import {LegalPolicyPage} from './components/layout/legal-policy-page';
-          createRoot(document.getElementById('root')).render(<LegalPolicyPage policyKey=${JSON.stringify(policyKey)}/>);`,
+          createRoot(document.getElementById('root')).render(<LegalPolicyPage policyKey=${JSON.stringify(policyKey)} document={${JSON.stringify(getLegalPolicyDocument(policyKey, policyKey === 'seller-agreement' ? 900 : undefined))}}/>);`,
       },
       bundle: true,
       write: false,
@@ -111,79 +111,130 @@ async function fixture(
       process.env.CHROME_PATH ??
       'C:/Program Files/Google/Chrome/Application/chrome.exe',
   });
-  const page = await browser.newPage({ viewport: { width, height } });
-  await page.route('**/*', async (route) => {
-    assert.equal(
-      new URL(route.request().url()).origin,
-      'https://legal-policy.test',
-    );
-    assert.equal(route.request().method(), 'GET');
-    return route.fulfill({
-      status: 200,
-      contentType: 'text/html',
-      body: `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><div id="root"></div></body></html>`,
+  try {
+    const page = await browser.newPage({ viewport: { width, height } });
+    await page.route('**/*', async (route) => {
+      assert.equal(
+        new URL(route.request().url()).origin,
+        'https://legal-policy.test',
+      );
+      assert.equal(route.request().method(), 'GET');
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><div id="root"></div></body></html>`,
+      });
     });
-  });
-  await page.goto(
-    'https://legal-policy.test' + publicLegalPolicies[policyKey].href,
-  );
-  await page.addScriptTag({ content: bundle });
-  await page
-    .getByRole('heading', {
-      name: publicLegalPolicies[policyKey].title,
-      exact: true,
-    })
-    .waitFor();
-  return { browser, page };
+    await page.goto(
+      'https://legal-policy.test' + publicLegalPolicies[policyKey].href,
+    );
+    await page.addScriptTag({ content: bundle });
+    await page
+      .getByRole('heading', {
+        name: publicLegalPolicies[policyKey].title,
+        exact: true,
+      })
+      .waitFor();
+    return { browser, page };
+  } catch (error) {
+    await browser.close();
+    throw error;
+  }
 }
 
-
 for (const policyKey of ['returns', 'shipping'] as const) {
-  void test(policyKey + ' key answer is visible before navigation in the first mobile and desktop viewport', async () => {
-    for (const width of [360, 390, 430, 1440]) {
-      const h = await fixture(policyKey, width, width < 1000 ? 844 : 900);
-      try {
-        const answer = h.page.locator('[data-policy-key-answer]');
-        assert.equal(await answer.count(), 1, 'A shopper sees the policy key answer near the title');
-        const text = await answer.textContent();
-        if (policyKey === 'returns') {
-          assert.match(text ?? '', /unused, unaltered/);
-          assert.match(text ?? '', /accessories and labels/);
-          assert.match(text ?? '', /7 calendar days after delivery/);
-          assert.match(text ?? '', /goods supplied sealed.*15 calendar days.*original seal remains intact/i);
-          assert.match(text ?? '', /exclusions and full conditions apply/);
-          assert.match(text ?? '', /protections for damaged, defective or misdescribed items remain/i);
-        } else {
-          assert.match(text ?? '', /district estimates do not confirm delivery availability/i);
-          assert.match(text ?? '', /address accepted for your order/i);
-          assert.match(text ?? '', /each store.s delivery charge.*checkout total before you order/i);
-          assert.match(text ?? '', /different stores may arrive separately/i);
+  void test(
+    policyKey +
+      ' key answer is visible before navigation in the first mobile and desktop viewport',
+    async () => {
+      for (const width of [360, 390, 430, 1440]) {
+        const h = await fixture(policyKey, width, width < 1000 ? 844 : 900);
+        try {
+          const answer = h.page.locator('[data-policy-key-answer]');
+          assert.equal(
+            await answer.count(),
+            1,
+            'A shopper sees the policy key answer near the title',
+          );
+          const text = await answer.textContent();
+          if (policyKey === 'returns') {
+            assert.match(text ?? '', /unused, unaltered/);
+            assert.match(text ?? '', /accessories and labels/);
+            assert.match(text ?? '', /7 calendar days after delivery/);
+            assert.match(
+              text ?? '',
+              /goods supplied sealed.*15 calendar days.*original seal remains intact/i,
+            );
+            assert.match(text ?? '', /exclusions and full conditions apply/);
+            assert.match(
+              text ?? '',
+              /protections for damaged, defective or misdescribed items remain/i,
+            );
+          } else {
+            assert.match(
+              text ?? '',
+              /district estimates do not confirm delivery availability/i,
+            );
+            assert.match(text ?? '', /address accepted for your order/i);
+            assert.match(
+              text ?? '',
+              /each store.s delivery charge.*checkout total before you order/i,
+            );
+            assert.match(text ?? '', /different stores may arrive separately/i);
+          }
+          const layout = await h.page.evaluate(() => {
+            const answer = document.querySelector<HTMLElement>(
+              '[data-policy-key-answer]',
+            )!;
+            const navigation = document.querySelector<HTMLElement>('aside')!;
+            const article = document.querySelector<HTMLElement>('article')!;
+            const mobile = document.querySelector<HTMLElement>(
+              '[data-policy-navigation="mobile"]',
+            )!;
+            return {
+              answerTop: answer.getBoundingClientRect().top,
+              answerBottom: answer.getBoundingClientRect().bottom,
+              navigationTop: navigation.getBoundingClientRect().top,
+              articleTop: article.getBoundingClientRect().top,
+              viewportHeight: innerHeight,
+              pageWidth: document.documentElement.scrollWidth,
+              closed: Array.from(mobile.querySelectorAll('details')).every(
+                (disclosure) => !disclosure.open,
+              ),
+            };
+          });
+          assert.ok(
+            layout.answerTop >= 0 &&
+              layout.answerBottom <= layout.viewportHeight,
+            'The complete key answer fits the first viewport at ' +
+              width +
+              'px',
+          );
+          assert.ok(
+            layout.answerBottom <= layout.navigationTop &&
+              layout.answerBottom <= layout.articleTop,
+            'The key answer precedes both navigation and full terms',
+          );
+          assert.equal(
+            layout.closed,
+            true,
+            'Mobile navigation begins collapsed',
+          );
+          assert.ok(layout.pageWidth <= width, 'No horizontal overflow');
+          assert.equal(
+            await answer
+              .getByRole('link', { name: 'Read full conditions' })
+              .getAttribute('href'),
+            policyKey === 'returns'
+              ? '#standard-returns'
+              : '#delivery-availability-and-charges',
+          );
+        } finally {
+          await h.browser.close();
         }
-        const layout = await h.page.evaluate(() => {
-          const answer = document.querySelector<HTMLElement>('[data-policy-key-answer]')!;
-          const navigation = document.querySelector<HTMLElement>('aside')!;
-          const article = document.querySelector<HTMLElement>('article')!;
-          const mobile = document.querySelector<HTMLElement>('[data-policy-navigation="mobile"]')!;
-          return {
-            answerTop: answer.getBoundingClientRect().top,
-            answerBottom: answer.getBoundingClientRect().bottom,
-            navigationTop: navigation.getBoundingClientRect().top,
-            articleTop: article.getBoundingClientRect().top,
-            viewportHeight: innerHeight,
-            pageWidth: document.documentElement.scrollWidth,
-            closed: Array.from(mobile.querySelectorAll('details')).every(disclosure => !disclosure.open),
-          };
-        });
-        assert.ok(layout.answerTop >= 0 && layout.answerBottom <= layout.viewportHeight, 'The complete key answer fits the first viewport at ' + width + 'px');
-        assert.ok(layout.answerBottom <= layout.navigationTop && layout.answerBottom <= layout.articleTop, 'The key answer precedes both navigation and full terms');
-        assert.equal(layout.closed, true, 'Mobile navigation begins collapsed');
-        assert.ok(layout.pageWidth <= width, 'No horizontal overflow');
-        assert.equal(await answer.getByRole('link', { name: 'Read full conditions' }).getAttribute('href'), policyKey === 'returns' ? '#standard-returns' : '#delivery-availability-and-charges');
-      } finally {
-        await h.browser.close();
       }
-    }
-  });
+    },
+  );
 }
 
 void test('mobile policy disclosures begin closed and keep full terms close to the introduction without overflow', async () => {
@@ -196,7 +247,9 @@ void test('mobile policy disclosures begin closed and keep full terms close to t
             '[data-policy-navigation="mobile"]',
           )!;
           const article = document.querySelector<HTMLElement>('article')!;
-          const introduction = document.querySelector<HTMLElement>('[data-policy-key-answer]') ?? document.querySelector<HTMLElement>('h1 + p')!;
+          const introduction =
+            document.querySelector<HTMLElement>('[data-policy-key-answer]') ??
+            document.querySelector<HTMLElement>('h1 + p')!;
           return {
             open: Array.from(mobile.querySelectorAll('details')).map(
               (el) => el.open,
@@ -269,7 +322,16 @@ void test('native policy disclosures work with keyboard, identify the current pa
           '[data-policy-navigation="mobile"] nav[aria-label="Legal policies"] a',
         )
         .count(),
-      8,
+      7,
+    );
+    assert.equal(
+      await h.page
+        .locator(
+          '[data-policy-navigation="mobile"] a[href="/seller-agreement"]',
+        )
+        .count(),
+      0,
+      'Commercial terms are absent from customer policy navigation',
     );
     await policies.press('Enter');
     assert.equal(await current.isVisible(), false);
@@ -341,7 +403,10 @@ void test('every policy keeps its canonical paragraphs, headings and lists, incl
     const h = await fixture(policyKey, 390);
     try {
       const body = await h.page.locator('article').textContent();
-      const markdown = getLegalPolicyDocument(policyKey, policyKey === 'seller-agreement' ? 900 : undefined);
+      const markdown = getLegalPolicyDocument(
+        policyKey,
+        policyKey === 'seller-agreement' ? 900 : undefined,
+      );
       for (const paragraph of markdown
         .split(/\r?\n\r?\n/)
         .map((part) => part.trim())
