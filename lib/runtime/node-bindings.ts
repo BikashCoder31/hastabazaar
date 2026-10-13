@@ -268,6 +268,13 @@ class MariaDbD1Database {
           await connection.execute('SELECT role FROM user_roles WHERE user_id=? FOR UPDATE', mysqlBindings([statement.bindings[0]]));
         }
       }
+      for (const statement of statements.filter(s => s.sql.startsWith('/* seller-commission-lock */'))) {
+        // Keep account, role and approval changes outside the acceptance transaction.
+        await connection.execute('SELECT id FROM users WHERE id=? FOR UPDATE', mysqlBindings([statement.bindings[0]]));
+        await connection.execute('SELECT role FROM user_roles WHERE user_id=? FOR UPDATE', mysqlBindings([statement.bindings[0]]));
+        await connection.execute('SELECT id FROM seller_profiles WHERE user_id=? AND id=? FOR UPDATE', mysqlBindings(statement.bindings));
+        await connection.execute("SELECT id FROM business_setting_versions WHERE setting_key='independent_seller_commission_bps' FOR UPDATE");
+      }
       const responses: D1LikeResult<T>[] = [];
       for (const statement of statements) {
         responses.push(await executeStatement<T>(connection, statement.sql, statement.bindings));

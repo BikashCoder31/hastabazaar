@@ -157,7 +157,6 @@ export async function SiteFooter({ compact = false }: { compact?: boolean } = {}
             <FooterLink href="/prohibited-products">
               Prohibited products
             </FooterLink>
-            <FooterLink href="/seller-agreement">Seller agreement</FooterLink>
           </FooterGroup>
           <FooterGroup title="About Hastabazaar">
             <FooterLink href="/about">About us</FooterLink>

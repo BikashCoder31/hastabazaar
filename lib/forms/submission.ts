@@ -189,7 +189,7 @@ const applicationMultipartKeys = new Set([
   'municipality', 'ward', 'locality', 'publicCity', 'productCategories', 'businessDescription',
   'experienceCraft', 'experienceBand', 'profileImage', 'makerVideo', 'facebookUrl',
   'instagramUrl', 'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl', 'acceptedTerms',
-  'applicationAcknowledgement', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'personalPanCertificate', 'representativeIdentity', 'bankVerification',
+  'sellerAgreementContext', 'applicationAcknowledgement', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'personalPanCertificate', 'representativeIdentity', 'bankVerification',
   'businessRegistration', 'panCertificate', 'vatCertificate', 'website', 'participationRoute',
   'document',
 ]);

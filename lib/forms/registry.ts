@@ -473,7 +473,7 @@ function sellerDefinition(id: 'seller.application' | 'seller.maker-profile' | 's
     fields = [displayField('tradingName', 'short_text', true), displayField('businessDescription', 'long_text', true),
       ...['legalName', 'representativeName', 'email', 'phone', 'applicantType', 'taxMode', 'taxRegistrationNumber',
         'registrationNumber', 'registrationAuthority', 'document', 'profileImage', 'makerVideo', 'applicationAcknowledgement', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'personalPanCertificate',
-        'participationRoute', 'website', 'hasBusinessTaxRegistration', 'taxStatus', 'acceptedTerms',
+        'participationRoute', 'website', 'hasBusinessTaxRegistration', 'taxStatus', 'sellerAgreementContext', 'acceptedTerms',
         'province', 'district', 'municipality', 'ward', 'locality', 'publicCity', 'productCategories',
         'experienceCraft', 'experienceBand', 'facebookUrl', 'instagramUrl', 'linkedinUrl', 'tiktokUrl',
         'xUrl', 'youtubeUrl', 'representativeIdentity', 'bankVerification', 'businessRegistration',

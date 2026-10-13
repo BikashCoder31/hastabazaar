@@ -289,13 +289,13 @@ Do not describe an item as handmade, locally made or certified without supportin
 
 ## Commission and charges
 
-HastaBazaar charges a 9% commission on completed, paid product sales. There is no joining fee.
+HastaBazaar charges a {{COMMISSION_PERCENT}}% commission on completed, paid product sales. There is no joining fee.
 
 The commission base is the product selling value after seller-funded discounts, excluding separately stated product taxes and delivery charges. A discount funded entirely by HastaBazaar does not reduce the seller's agreed product value.
 
-Commission = commission base x 9%.
+Commission = commission base x {{COMMISSION_PERCENT}}%.
 
-For example, when the commission base is NPR 1,000, the commission is NPR 90. The remaining product proceeds are NPR 910 before any applicable, separately disclosed tax or agreed adjustment. Delivery charges are not included in this calculation.
+For example, when the commission base is NPR 1,000, the commission is NPR {{COMMISSION_EXAMPLE_FEE}}. The remaining product proceeds are NPR {{COMMISSION_EXAMPLE_NET}} before any applicable, separately disclosed tax or agreed adjustment. Delivery charges are not included in this calculation.
 
 Tax legally chargeable on HastaBazaar's commission is itemised separately. Additional optional services require the seller's prior agreement to their charges. No undisclosed fee is deducted.
 
@@ -317,7 +317,7 @@ Cooperate with customer remedies without waiting for a separate dispute about re
 
 ## Settlements and adjustments
 
-The payout method, settlement schedule and verified receiving account must be agreed in writing before seller activation. Settlement statements must identify the orders covered, sales proceeds, 9% commission, relevant taxes, refunds and any other authorised adjustment.
+The payout method, settlement schedule and verified receiving account must be agreed in writing before seller activation. Settlement statements must identify the orders covered, sales proceeds, {{COMMISSION_PERCENT}}% commission, relevant taxes, refunds and any other authorised adjustment.
 
 Amounts genuinely affected by a refund, payment reversal, fraud investigation or legal restriction can be held while the issue is resolved. We will explain the reason and amount, review the hold and release funds when the basis ends. Unrelated, undisputed funds remain payable on the agreed schedule.
 

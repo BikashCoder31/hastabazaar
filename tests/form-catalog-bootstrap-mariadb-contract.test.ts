@@ -130,3 +130,17 @@ void test('actual MariaDB adapter rejects a preserved-history race and releases 
     assert.equal(state.sqlite.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='form_catalog.initialized'").get()?.n, 6);
   } finally { state.sqlite.close(); }
 });
+
+void test('actual MariaDB adapter holds commission actor, roles, profile and setting rows before executing acceptance writes',async()=>{
+  const {sqlite,calls}=fixture();try{
+    await env.DB.batch([
+      env.DB.prepare('/* seller-commission-lock */ SELECT id FROM seller_profiles WHERE user_id=? AND id=?').bind('reviewer','fictional-profile'),
+      env.DB.prepare("INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,created_at) VALUES ('locking-proof','reviewer','verification','user','reviewer','SIMULATED adapter check',1)"),
+    ]);
+    const write=calls.findIndex(c=>/INSERT INTO audit_logs/.test(c.sql));
+    for(const predicate of [/SELECT id FROM users.*FOR UPDATE/,/SELECT role FROM user_roles.*FOR UPDATE/,/SELECT id FROM seller_profiles.*FOR UPDATE/,/SELECT id FROM business_setting_versions.*FOR UPDATE/]){
+      const index=calls.findIndex(c=>predicate.test(c.sql));assert.ok(index>=0&&index<write,predicate.toString());
+    }
+    assert.ok(calls.some(c=>c.sql.includes('WHERE user_id=? AND id=? FOR UPDATE')&&c.values[0]==='reviewer'&&c.values[1]==='fictional-profile'));
+  }finally{sqlite.close();}
+});

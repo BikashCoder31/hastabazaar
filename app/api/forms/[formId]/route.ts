@@ -1,3 +1,4 @@
+import { getSellerTermsViewer } from '@/lib/auth/seller-commercial-access';
 import { env } from 'cloudflare:workers';
 import { getAuthenticatedUser } from '@/app/auth';
 import { requireDatabase } from '@/lib/db/d1';
@@ -76,7 +77,8 @@ async function riderAudienceAllowed(db: D1Database, userId: string, roles: Reado
 }
 
 async function audienceAllowed(audience: FormAudience, formId: string): Promise<boolean> {
-  if (audience === 'public' || formId === 'seller.application') return true;
+  if (formId === 'seller.application') return Boolean(await getSellerTermsViewer());
+  if (audience === 'public') return true;
   try {
     const identity = await getAuthenticatedUser();
     if (!identity) return false;

@@ -30,11 +30,11 @@ const expected = {
 void test('all seven canonical policy bodies match the supplied normalized hashes', () => {
   assert.deepEqual(Object.keys(publicLegalPolicies), Object.keys(expected));
   for (const key of Object.keys(expected) as Array<keyof typeof expected>) {
-    const body = getLegalPolicyDocument(key)
+    const body = getLegalPolicyDocument(key, key === 'seller-agreement' ? 900 : undefined)
       .replace(/\r\n/g, '\n')
       .replace(/\s+$/, '') + '\n';
     assert.equal(createHash('sha256').update(body).digest('hex'), expected[key], key);
-    assert.equal(publicLegalPolicies[key].sha256, expected[key]);
+    assert.equal(key === 'seller-agreement' ? publicLegalPolicies[key].baselineSha256 : publicLegalPolicies[key].sha256, expected[key]);
     assert.doesNotMatch(
       body,
       /Version 3|preparation status|registration pending|draft for|\[DD\/MM\/YYYY\]|sha256_body_utf8_lf/i,
@@ -42,10 +42,10 @@ void test('all seven canonical policy bodies match the supplied normalized hashe
   }
 });
 
-void test('legal hub and navigation expose the eight canonical public routes and exact hub copy', () => {
+void test('customer policy navigation excludes seller commercial terms and preserves hub copy', () => {
   assert.deepEqual(
     publicLegalPolicyNavigation.map(({ href }) => href),
-    ['/terms', '/returns', '/shipping', '/privacy', '/cookies', '/prohibited-products', '/seller-agreement'],
+    ['/terms', '/returns', '/shipping', '/privacy', '/cookies', '/prohibited-products'],
   );
   const hub = readFileSync('app/legal/page.tsx', 'utf8');
   assert.match(hub, />\s*Legal & Policies\s*</);
@@ -65,7 +65,8 @@ void test('connected acceptance surfaces use the current policy wording and link
   assert.match(checkout, /href="\/terms"/);
   assert.doesNotMatch(checkout, /accept the Version 3/);
   const seller = readFileSync('components/seller/seller-application-form.tsx', 'utf8');
-  assert.match(seller, /9% commission on completed, paid product sales/);
+  assert.match(seller, /registeredTerms\?\.percent/);
+  assert.doesNotMatch(seller, /9% commission/);
   assert.match(seller, /href="\/seller-agreement"/);
   assert.match(seller, /href="\/prohibited-products"/);
   assert.match(seller, /href="\/privacy"/);

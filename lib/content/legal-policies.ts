@@ -1,5 +1,5 @@
 import policyDocuments from './legal-policy-documents.json';
-import { phaseOneMarketplacePolicy } from '../marketplace/policy';
+import { phaseOneMarketplacePolicy, calculateSellerCommissionPaisa } from '../marketplace/policy';
 import { companyPanDisplay } from './company-details';
 import { publicPolicyDocuments } from './public-policy-documents';
 
@@ -50,8 +50,9 @@ export const publicLegalPolicies = {
   'seller-agreement': {
     href: '/seller-agreement',
     title: 'Seller Marketplace Agreement',
-    description: 'Seller responsibilities, 9% commission and settlement terms.',
-    sha256: '3bbe5e4b2775ea265ddeffdcd7360a7e7977737b5ac826b3c8c01be55d2ff96d',
+    description: 'Seller responsibilities and agreed commercial terms.',
+    // Checksum of the retained launch-rate document; current terms have their own acceptance context.
+    baselineSha256: '3bbe5e4b2775ea265ddeffdcd7360a7e7977737b5ac826b3c8c01be55d2ff96d',
   },
 } as const;
 
@@ -79,12 +80,20 @@ export const publicLegalPolicySummaries: Partial<Record<PublicLegalPolicyKey, {
 
 export const publicLegalPolicyNavigation = Object.entries(
   publicLegalPolicies,
-).map(([key, value]) => ({
+).filter(([key]) => key !== 'seller-agreement').map(([key, value]) => ({
   key: key as PublicLegalPolicyKey,
   ...value,
 }));
 
-export function getLegalPolicyDocument(key: LegalPolicyKey): string {
+export function getLegalPolicyDocument(key: LegalPolicyKey, commissionBps?: number): string {
+  if (key === 'seller-agreement') {
+    if (commissionBps === undefined) throw new Error('Seller agreement requires a configured commission rate.');
+    const fee=calculateSellerCommissionPaisa(100_000,commissionBps);
+    const money=new Intl.NumberFormat('en-NP',{maximumFractionDigits:2});
+    return publicPolicyDocuments[key].replaceAll('{{COMMISSION_PERCENT}}',String(commissionBps/100))
+      .replaceAll('{{COMMISSION_EXAMPLE_FEE}}',money.format(fee/100))
+      .replaceAll('{{COMMISSION_EXAMPLE_NET}}',money.format((100_000-fee)/100));
+  }
   return key === 'internal-compliance'
     ? policyDocuments[key].replace('PAN registration is in progress.', `PAN: ${companyPanDisplay}.`)
     : publicPolicyDocuments[key];

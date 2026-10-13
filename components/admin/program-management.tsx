@@ -1,3 +1,4 @@
+import { DEFAULT_PLATFORM_SHARE_BPS } from '@/lib/configuration/commission-defaults';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import type { RuntimeEnvironment } from '@/lib/staging/environment';
@@ -21,7 +22,7 @@ export function ProgramManagement({
   capabilities,
   environment,
   environmentVerified = Boolean(environment),
-  platformRetentionBps = 900,
+  platformRetentionBps = DEFAULT_PLATFORM_SHARE_BPS,
   workspace,
 }: {
   programMode: ManagedMakerProgramMode;

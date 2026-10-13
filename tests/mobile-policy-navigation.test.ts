@@ -341,7 +341,7 @@ void test('every policy keeps its canonical paragraphs, headings and lists, incl
     const h = await fixture(policyKey, 390);
     try {
       const body = await h.page.locator('article').textContent();
-      const markdown = getLegalPolicyDocument(policyKey);
+      const markdown = getLegalPolicyDocument(policyKey, policyKey === 'seller-agreement' ? 900 : undefined);
       for (const paragraph of markdown
         .split(/\r?\n\r?\n/)
         .map((part) => part.trim())

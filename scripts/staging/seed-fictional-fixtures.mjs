@@ -79,6 +79,10 @@ for (const row of listing.forms) {
   await catalogRequest(`${path}/publish`, { requestId: randomUUID(), reason, expectedPublishedVersion: 0,
     draftId: draft.draft.id, expectedDraftRevision: draft.draft.revision });
 }
+const onboardingStart=await fetch(new URL('/api/seller-applications/start',origin),{
+  method:'POST',headers:{Origin:origin.origin,Cookie:cookies.get('customer')},
+});
+if(!onboardingStart.ok)throw new Error('Fictional seller onboarding could not start.');
 const configurationResponse = await fetch(new URL('/api/forms/seller.application', origin), {
   headers: { Cookie: cookies.get('customer') },
 });
@@ -111,7 +115,7 @@ for (const [name, value] of Object.entries({
   applicationAcknowledgement: 'yes',
 })) managedMaker.set(name, value);
 
-const termsResponse = await fetch(new URL('/api/seller-applications/managed-terms', origin));
+const termsResponse = await fetch(new URL('/api/seller-applications/managed-terms', origin), { headers: { Cookie: cookies.get('customer') } });
 if (!termsResponse.ok) throw new Error('SIMULATED maker agreement terms are unavailable.');
 const terms = await termsResponse.json();
 managedMaker.set('managedAgreementVersion', terms.version);

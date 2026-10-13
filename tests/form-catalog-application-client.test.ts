@@ -13,7 +13,7 @@ void test('seller application retains one opaque request across lost response an
       import React from 'react';
       import { createRoot } from 'react-dom/client';
       import { SellerApplicationForm } from './components/seller/seller-application-form';
-      createRoot(document.getElementById('root')!).render(<SellerApplicationForm />);
+      createRoot(document.getElementById('root')!).render(<SellerApplicationForm registeredTerms={{percent:10,context:"a".repeat(64)}} />);
     `, loader: 'tsx' },
     bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },

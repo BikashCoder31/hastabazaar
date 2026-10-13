@@ -29,7 +29,7 @@ export const managedMakerCapabilities: readonly ManagedMakerCapability[] =
       readiness: 'implemented',
       milestone: 'Milestone 2 demonstration',
       description:
-        '9% platform retention and the reconciled 91% maker entitlement become earned only after delivered-and-paid conditions.',
+        'The configured platform share and the reconciled maker entitlement become earned only after delivered-and-paid conditions.',
       selectableForLiveActivation: false,
       selectableForStagingSimulation: true,
     }),

@@ -72,7 +72,7 @@ export default async function SellerFinancePage() {
           remain visible as immutable entries.
         </p>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
-          HastaBazaar charges a 9% commission on the product selling value after
+          HastaBazaar charges a {commissionSetting.percent}% commission on the product selling value after
           seller-funded discounts, excluding separately stated product taxes and
           delivery charges. Discounts funded entirely by HastaBazaar do not
           reduce the seller&apos;s agreed product value. Taxes legally chargeable on

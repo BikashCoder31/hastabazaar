@@ -1,6 +1,3 @@
-import { env } from 'cloudflare:workers';
-import { requireDatabase } from '@/lib/db/d1';
-import { getManagedMakerApplicationTerms } from '@/lib/db/repositories/managed-maker-details';
 import type { Metadata } from 'next';
 import { getAuthenticatedUser } from '@/app/auth';
 export const dynamic = 'force-dynamic';
@@ -9,7 +6,8 @@ import Link from 'next/link';
 
 import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
-import { SellerApplicationForm } from '@/components/seller/seller-application-form';
+import { StartSellerRegistration } from '@/components/seller/start-seller-registration';
+import { getSellerTermsViewer } from '@/lib/auth/seller-commercial-access';
 
 export const metadata: Metadata = {
   title: 'Sell with us',
@@ -36,7 +34,7 @@ const steps = [
 ];
 
 export default async function SellPage() {
-  const [identity, managedTerms] = await Promise.all([getAuthenticatedUser(), getManagedMakerApplicationTerms(requireDatabase(env as unknown as { DB?: D1Database }))]);
+  const [identity, viewer] = await Promise.all([getAuthenticatedUser(), getSellerTermsViewer()]);
   return (
     <div className="min-h-screen bg-background text-foreground">
       <SiteHeader />
@@ -55,16 +53,7 @@ export default async function SellPage() {
               </div>
               <p className="rounded-2xl border border-border bg-background/80 p-5 text-sm leading-6 text-muted-foreground">
                 <strong>Registered Seller terms are separate from Managed Maker selling agreements.</strong>{' '}
-                The current independent-seller agreement uses a 9% commission on the product selling value
-                after seller-funded discounts, excluding separately stated
-                product taxes and delivery charges. Discounts funded entirely by
-                HastaBazaar do not reduce the seller&apos;s agreed product value.
-                Taxes legally chargeable on the commission are itemised
-                separately. Managed Maker live terms are not activated by this application.{' '}
-                <Link href="/seller-agreement" className="font-semibold text-primary underline">
-                  Read the Seller Marketplace Agreement
-                </Link>
-                .
+                Sign in and explicitly start seller registration to review the current terms for your route before applying. Application approval does not activate live selling.
               </p>
             </div>
           </div>
@@ -96,7 +85,10 @@ export default async function SellPage() {
               Start verification
             </h2>
           </div>
-          <SellerApplicationForm accountEmail={identity?.email} managedTerms={managedTerms} />
+          <p className="mb-5 max-w-2xl text-muted-foreground">Seller registration starts only when you choose to apply. You can review the applicable commercial terms before submitting an application.</p>
+          {viewer ? <Link href="/sell/apply" className="inline-flex rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground">Continue seller registration</Link>
+            : identity ? <StartSellerRegistration />
+            : <Link href="/login?return_to=%2Fsell" className="inline-flex rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground">Sign in to start seller registration</Link>}
         </section>
       </main>
       <SiteFooter />

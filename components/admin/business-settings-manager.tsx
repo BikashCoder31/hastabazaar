@@ -573,7 +573,7 @@ function SettingValueEditor({
       <div className="space-y-2">
         <Label htmlFor="setting-value">
           {settingKey.endsWith('_bps')
-            ? 'Basis points (900 = 9%)'
+            ? 'Basis points (100 = 1%)'
             : 'Numeric value'}
         </Label>
         <Input

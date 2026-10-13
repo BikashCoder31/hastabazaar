@@ -1,3 +1,4 @@
+import { buildSellerCommissionAcceptanceStatements } from './marketplace-settings';
 import { buildManagedMakerDetailStatements, requireManagedMakerSuperAdmin, ManagedMakerAuthorityError } from './managed-maker-details';
 import { validateManagedMakerIdentity, MANAGED_MAKER_AGREEMENT_VERSION } from '../../sellers/managed-identity';
 import { businessNotificationStatements } from '../../operations/business-notifications';
@@ -27,6 +28,7 @@ type SellerFormLink = { requestId: string; versionId: string; answers: FormAnswe
 interface CreateSellerApplicationOptions {
   userId: string;
   existingAccount?: boolean;
+  registeredAgreementContext?: string;
   sellerId: string;
   applicationReference: string;
   input: SellerApplicationInput;
@@ -214,6 +216,10 @@ export async function createSellerApplication(
           now,
         ),
     );
+  }
+
+  if (input.participationRoute === 'registered_seller' && options.registeredAgreementContext) {
+    statements.push(...await buildSellerCommissionAcceptanceStatements(database,{sellerId,actorId:userId,mode:'application',context:options.registeredAgreementContext,requestId:options.form?.requestId ?? sellerId,now}));
   }
 
   if (managedIdentity) statements.push(...await buildManagedMakerDetailStatements(database, { sellerId, actorId: userId,

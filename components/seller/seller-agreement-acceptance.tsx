@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 
-export function SellerAgreementAcceptance({ commissionPercent }: { commissionPercent: number }) {
+export function SellerAgreementAcceptance({ commissionPercent, termsContext }: { commissionPercent: number; termsContext: string }) {
   const router = useRouter();
   const [accepted, setAccepted] = useState(false);
   const [pending, setPending] = useState(false);
@@ -21,7 +21,7 @@ export function SellerAgreementAcceptance({ commissionPercent }: { commissionPer
       const response = await fetch('/api/seller/agreements', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accepted: true, language: 'ne' }),
+        body: JSON.stringify({ accepted: true, language: 'ne', termsContext }),
       });
       const result = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(result.error || 'Acceptance could not be recorded.');

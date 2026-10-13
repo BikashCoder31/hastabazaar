@@ -1,4 +1,5 @@
 'use client';
+import type { RegisteredSellerTerms } from '@/lib/db/repositories/marketplace-settings';
 
 import { useEffect, useRef, useState } from 'react';
 import { CompanySellingIdentity, ManagedMakerIdentityFields, ManagedMakerAgreementFields } from './managed-maker-identity-fields';
@@ -30,7 +31,7 @@ import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sess
 const catalogBaseKeys = ['tradingName', 'businessDescription', 'legalName', 'representativeName',
   'email', 'phone', 'applicantType', 'taxMode', 'taxRegistrationNumber', 'registrationNumber',
   'registrationAuthority', 'document', 'profileImage', 'makerVideo', 'applicationAcknowledgement',
-  'participationRoute', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'personalPanCertificate', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'website', 'requestId', 'formVersion', 'customAnswers'];
+  'sellerAgreementContext', 'participationRoute', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'personalPanCertificate', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'website', 'requestId', 'formVersion', 'customAnswers'];
 const applicationAttemptKey = sessionAttemptKey('seller.application', 'new');
 const uncertainMessage = 'Application status is uncertain: your application may have been accepted. Retry with the same details to recover its reference, or contact support before starting a new attempt.';
 
@@ -82,9 +83,11 @@ function setFormValue(
 export function SellerApplicationForm({
   accountEmail,
   managedTerms,
+  registeredTerms,
 }: {
   accountEmail?: string;
   managedTerms?: ManagedMakerApplicationTerms;
+  registeredTerms?: Pick<RegisteredSellerTerms, 'percent' | 'context'>;
 }) {
   const [applicantType, setApplicantType] = useState<'individual' | 'company'>(
     'company',
@@ -185,7 +188,7 @@ export function SellerApplicationForm({
     event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>,
   ) {
     event.preventDefault();
-    if (!catalog.canSubmit || !catalog.config) return;
+    if (!catalog.canSubmit || !catalog.config || (registrationAnswer === 'yes' ? !registeredTerms : !managedTerms)) return;
     setState({ status: 'submitting' });
 
     const form = event.currentTarget;
@@ -595,11 +598,13 @@ export function SellerApplicationForm({
       {registrationAnswer === 'no' ? <ManagedMakerIdentityFields/> : null}
       {registrationAnswer === 'no' && managedTerms ? <ManagedMakerAgreementFields terms={managedTerms}/> : null}
       {registrationAnswer === 'no' && !managedTerms ? <p role="alert">Managed Maker agreement terms are unavailable. Reload before submitting.</p> : null}
+      {registrationAnswer === 'yes' && registeredTerms ? <input type="hidden" name="sellerAgreementContext" value={registeredTerms.context} /> : null}
+      {registrationAnswer === 'yes' && !registeredTerms ? <p role="alert">Seller commission terms are unavailable. Reload before submitting.</p> : null}
       {registrationAnswer === 'yes' ? (
         <Field orientation="horizontal">
           <Checkbox id="acceptedTerms" name="acceptedTerms" value="yes" required />
           <FieldLabel htmlFor="acceptedTerms" className="max-w-2xl font-normal">
-            I agree to the <a href="/seller-agreement" target="_blank" rel="noreferrer" className="font-semibold text-primary underline">Seller Marketplace Agreement</a>, including the independent-seller 9% commission on completed, paid product sales, and the <a href="/prohibited-products" target="_blank" rel="noreferrer" className="font-semibold text-primary underline">Prohibited & Restricted Products Policy</a>. <span aria-hidden="true">*</span>
+            I agree to the <a href="/seller-agreement" target="_blank" rel="noreferrer" className="font-semibold text-primary underline">Seller Marketplace Agreement</a>, including the independent-seller {registeredTerms?.percent}% commission on completed, paid product sales, and the <a href="/prohibited-products" target="_blank" rel="noreferrer" className="font-semibold text-primary underline">Prohibited & Restricted Products Policy</a>. <span aria-hidden="true">*</span>
           </FieldLabel>
         </Field>
       ) : (
@@ -650,7 +655,7 @@ export function SellerApplicationForm({
           type="submit"
           size="lg"
           className="h-11 px-6"
-          disabled={state.status === 'submitting' || !catalog.canSubmit || (registrationAnswer === 'no' && !managedTerms)}
+          disabled={state.status === 'submitting' || !catalog.canSubmit || (registrationAnswer === 'yes' ? !registeredTerms : !managedTerms)}
         >
           {state.status === 'submitting' ? (
             <>

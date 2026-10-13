@@ -8,7 +8,7 @@ export function CommissionSettings({ percent }: { percent: number }) {
         <p className="mt-2 font-heading text-4xl">{percent}%</p>
       </div>
       <p className="text-sm leading-6 text-muted-foreground">
-        9% commission on completed, paid product sales. No joining fee.
+        {percent}% commission on completed, paid product sales. No joining fee.
       </p>
       <p className="text-sm leading-6 text-muted-foreground">
         The commission base is the product selling value after seller-funded

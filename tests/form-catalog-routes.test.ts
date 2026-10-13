@@ -1,3 +1,4 @@
+import { startSellerRegistration } from '../lib/db/repositories/seller-commercial-access';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { registerHooks } from 'node:module';
@@ -17,7 +18,8 @@ registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier === 'cloudflare:workers') return { url: 'data:text/javascript,export const env = {get DB(){return globalThis.formCatalogRouteDb}}', shortCircuit: true };
     if (specifier === '@/lib/auth/staff') return { url: `data:text/javascript,export class StaffAuthorizationError extends Error { constructor(message,status){super(message);this.status=status} }; export async function requireStaffApi(){const a=globalThis.formCatalogRouteActor;if(!a)throw new StaffAuthorizationError('Authentication is required.',401);if(a.role!=='super_admin')throw new StaffAuthorizationError('Staff access is not permitted.',403);return a}`, shortCircuit: true };
-    if (specifier === '@/app/auth') return { url: 'data:text/javascript,export async function getAuthenticatedUser(){const a=globalThis.formCatalogRouteActor;return a?{userId:a.id+"-subject"}:null}', shortCircuit: true };
+    if (specifier === '@/app/auth') return { url: 'data:text/javascript,export async function getAuthenticatedUser(){const a=globalThis.formCatalogRouteActor;return a?{userId:a.id+"-subject"}:null};export async function requireAuthenticatedUser(){const user=await getAuthenticatedUser();if(!user)throw new Error("Sign in required");return user}', shortCircuit: true };
+    if (specifier === 'next/navigation') return {url:'data:text/javascript,export function redirect(path){throw new Error("REDIRECT:"+path)}',shortCircuit:true};
     return nextResolve(specifier, context);
   },
 });
@@ -50,6 +52,7 @@ async function fixture() {
     CREATE TABLE seller_profiles(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,status TEXT NOT NULL);
     CREATE TABLE seller_participation_profiles(seller_id TEXT PRIMARY KEY,application_stage TEXT NOT NULL);
     CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY,status TEXT NOT NULL);
+    CREATE TABLE operation_transaction_guards(id TEXT PRIMARY KEY,valid INTEGER CHECK(valid=1));
     CREATE TABLE audit_logs(id TEXT PRIMARY KEY, actor_id TEXT, action TEXT, subject_type TEXT,
       subject_id TEXT, reason TEXT, previous_json TEXT, next_json TEXT, request_id TEXT,
       ip_hash TEXT, created_at INTEGER);
@@ -303,7 +306,7 @@ void test('every staff form keeps its page or receiver permission, including ret
   } finally { sqlite.close(); }
 });
 
-void test('application configs follow guest, customer, and pending participant flows without opening operations', async () => {
+void test('application configs require explicit seller start and retain pending participant access without opening operations', async () => {
   const sqlite = await fixture();
   try {
     for (const formId of ['seller.application', 'seller.maker-profile', 'seller.product-submission',
@@ -314,14 +317,18 @@ void test('application configs follow guest, customer, and pending participant f
     const publicRoute = await import('../app/api/forms/[formId]/route');
     const status = async (formId: string) => (await publicRoute.GET(request(`/api/forms/${formId}`), { params: Promise.resolve({ formId }) })).status;
     globalThis.formCatalogRouteActor = null;
-    assert.equal(await status('seller.application'), 200);
+    assert.equal(await status('seller.application'), 404);
     assert.equal(await status('rider.application'), 404);
     actor('customer', 'customer');
+    assert.equal(await status('seller.application'),404);
+    await startSellerRegistration(globalThis.formCatalogRouteDb,{userId:'customer',requestId:'catalog-start',now:100});
+    assert.equal(await status('seller.application'),200);
     assert.equal(await status('rider.application'), 200);
     assert.equal(await status('seller.maker-profile'), 404);
     assert.equal(await status('seller.product-submission'), 404);
     assert.equal(await status('rider.report'), 404);
     actor('pending', 'customer');
+    assert.equal(await status('seller.application'),200);
     assert.equal(await status('seller.maker-profile'), 200);
     assert.equal(await status('seller.product-submission'), 200);
     assert.equal(await status('seller.product-filter'), 404);

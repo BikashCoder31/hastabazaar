@@ -1,3 +1,4 @@
+import { DEFAULT_PLATFORM_SHARE_BPS } from '../configuration/commission-defaults';
 import { COMMISSION_BPS_DENOMINATOR, roundHalfUpRatio } from '../marketplace/policy';
 
 function nonNegativePaisa(label: string, value: number): number {
@@ -42,7 +43,7 @@ export function calculateManagedSaleLinkedAmounts(input: {
     'Eligible base',
     input.eligibleBasePaisa,
   );
-  const platformRetentionBps = input.platformRetentionBps ?? 900;
+  const platformRetentionBps = input.platformRetentionBps ?? DEFAULT_PLATFORM_SHARE_BPS;
   if (
     !Number.isSafeInteger(platformRetentionBps) ||
     platformRetentionBps < 0 ||

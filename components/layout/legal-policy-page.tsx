@@ -335,12 +335,14 @@ export function LegalDocumentContent({ markdown }: { markdown: string }) {
 
 export function LegalPolicyPage({
   policyKey,
+  document,
 }: {
   policyKey: PublicLegalPolicyKey;
+  document?: string;
 }) {
   const policy = publicLegalPolicies[policyKey];
   const summary = publicLegalPolicySummaries[policyKey];
-  const markdown = getLegalPolicyDocument(policyKey);
+  const markdown = document ?? getLegalPolicyDocument(policyKey);
   const headings = parseDocument(markdown).filter(
     (block): block is Extract<Block, { type: 'heading' }> =>
       block.type === 'heading' && block.level === 2,

@@ -23,7 +23,7 @@ import { SellerManagedProgramWorkspace } from '@/components/seller/managed-progr
 import { requireSellerPage } from '@/lib/auth/seller';
 import { requireDatabase } from '@/lib/db/d1';
 import { getSellerProductStats } from '@/lib/db/repositories/products';
-import { getCommissionSetting, sellerAcceptedCommissionVersion } from '@/lib/db/repositories/marketplace-settings';
+import { getRegisteredSellerTerms, sellerAcceptedCommissionVersion } from '@/lib/db/repositories/marketplace-settings';
 import { listOrdersForSeller } from '@/lib/db/repositories/orders';
 import { getSellerFinanceSummary } from '@/lib/db/repositories/payouts';
 import { getSellerWorkSummary } from '@/lib/db/repositories/seller-workspace';
@@ -40,7 +40,7 @@ export default async function SellerDashboardPage() {
     getSellerWorkSummary(db, seller.sellerId),
     getSellerFinanceSummary(db, seller.sellerId),
     listOrdersForSeller(db, seller.sellerId, 4),
-    getCommissionSetting(db),
+    getRegisteredSellerTerms(db),
     getManagedProgramWorkspace(db, seller.sellerId),
   ]);
   const currentCommissionAccepted = await sellerAcceptedCommissionVersion(db,seller.sellerId,commission.versionId);
@@ -52,7 +52,7 @@ export default async function SellerDashboardPage() {
         description="Prepare your orders, manage listings, and keep track of earnings."
       />
       {seller.sellerAgreementVersion !== SELLER_AGREEMENT_VERSION || !currentCommissionAccepted ? (
-        <SellerAgreementAcceptance commissionPercent={commission.percent} />
+        <SellerAgreementAcceptance commissionPercent={commission.percent} termsContext={commission.context} />
       ) : null}
       <SellerManagedProgramWorkspace workspace={managedProgram} sellerId={seller.sellerId} />
       <p className="flex flex-wrap gap-4 text-sm">
