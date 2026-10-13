@@ -3557,9 +3557,11 @@ void test('delivery assignment restricts rider updates and clears location on re
       (await getDelivery(db, 'order-1', now + 180000))?.latitude,
       null,
     );
+    await assert.rejects(() => assignDelivery(db, { orderId: 'order-1', actorId: 'admin-1',
+      method: 'courier', courierName: 'Test carrier', trackingReference: 'ABC123', now: now + 1 }), /Super Admin access/);
     await assignDelivery(db, {
       orderId: 'order-1',
-      actorId: 'admin-1',
+      actorId: 'super-1',
       method: 'courier',
       courierName: 'Test carrier',
       trackingReference: 'ABC123',
@@ -4033,12 +4035,14 @@ void test('two seller parcels separate delivery, collection, remittance, return 
         requestId: 'seller-' + action,
         now,
       });
+    await assert.rejects(() => op(b.id, 'assign', { method: 'own_rider',
+      riderEmail: 'seller2@example.test', trackingCode: 'DENIED' }), /Super Admin access/);
     await op(b.id, 'assign', {
       method: 'own_rider',
       riderEmail: 'seller2@example.test',
       trackingCode: 'SYN-B',
-    });
-    await op(b.id, 'dispatch');
+    }, 'super-1');
+    await op(b.id, 'dispatch', {}, 'super-1');
     await shareParcelLocation(
       db,
       b.id,
@@ -4049,13 +4053,14 @@ void test('two seller parcels separate delivery, collection, remittance, return 
     const located = (await listParcels(db, 'order-1')).find(
       (p) => p.id === b.id,
     )!;
-    assert.equal(customerParcel(located, now).latitude, 27.7);
+    assert.equal(located.latitude, 27.7);
+    assert.equal(customerParcel(located, now).latitude, null);
     assert.equal(customerParcel(located, now + 120001).latitude, null);
     await op(b.id, 'assign', {
       method: 'own_rider',
       riderEmail: 'seller1@example.test',
       trackingCode: 'SYN-B2',
-    });
+    }, 'super-1');
     await assert.rejects(() =>
       shareParcelLocation(
         db,
@@ -4069,7 +4074,7 @@ void test('two seller parcels separate delivery, collection, remittance, return 
       (await listParcels(db, 'order-1')).find((p) => p.id === b.id)?.latitude,
       null,
     );
-    await op(b.id, 'fail');
+    await op(b.id, 'fail', {}, 'super-1');
     await assert.rejects(() =>
       shareParcelLocation(
         db,
@@ -4079,8 +4084,8 @@ void test('two seller parcels separate delivery, collection, remittance, return 
         now,
       ),
     );
-    await op(b.id, 'retry');
-    await assert.rejects(() => op(b.id, 'deliver'));
+    await op(b.id, 'retry', {}, 'super-1');
+    await assert.rejects(() => op(b.id, 'deliver', {}, 'super-1'));
     const { submitRiderRemittance, submitRiderReport } = await import(
       '../lib/riders/repository'
     );
@@ -4100,7 +4105,7 @@ void test('two seller parcels separate delivery, collection, remittance, return 
       openBox: false,
       now,
     });
-    await op(b.id, 'deliver', { riderReportId: proof });
+    await op(b.id, 'deliver', { riderReportId: proof }, 'super-1');
     assert.equal(
       (
         await db
@@ -4118,7 +4123,7 @@ void test('two seller parcels separate delivery, collection, remittance, return 
         await op(p.id, 'collect', {
           amountPaisa: remainingCollection,
           reference: 'collection-' + p.id,
-        });
+        }, p.id === b.id ? 'super-1' : 'admin-1');
       }
       if (latest.method === 'own_rider' && latest.riderUserId)
         await submitRiderRemittance(db, {
@@ -4169,7 +4174,7 @@ void test('two seller parcels separate delivery, collection, remittance, return 
           'super-1',
         );
       } else
-        await op(r.jobId, 'approve_remittance', { cashRecordId: r.id });
+        await op(r.jobId, 'approve_remittance', { cashRecordId: r.id }, 'super-1');
     }
     assert.ok(
       ((
