@@ -682,7 +682,7 @@ function AuthorizedPromoCodeManager({
             {error}
           </p>
         ) : null}
-        {notice ? <output>{notice}</output> : null}
+        {notice ? <output aria-live="polite">{notice}</output> : null}
         {published.message ? <p role="alert">{published.message}</p> : null}
         <div className="flex flex-wrap gap-3">
           <Button type="submit" disabled={pending || !published.canSubmit}>

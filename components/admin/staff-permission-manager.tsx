@@ -1,4 +1,6 @@
 'use client';
+import { ConfirmOperation } from '@/components/admin/confirm-operation';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -57,6 +59,10 @@ export function StaffPermissionManager({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [review, setReview] = useState<{body:Record<string,unknown>;requestKey:'requestId'|'formRequestId';attemptKey:string;title:string;description:string;confirmLabel:string}|null>(null);
+  const added = configurableAdminPermissions.filter(permission=>permissions.includes(permission)&&!selected?.permissions.includes(permission));
+  const removed = configurableAdminPermissions.filter(permission=>!permissions.includes(permission)&&selected?.permissions.includes(permission));
+  const unchanged = configurableAdminPermissions.filter(permission=>permissions.includes(permission)&&selected?.permissions.includes(permission));
   const proposalCatalog = usePublishedFormConfig('staff.staff-permission-1');
   const decisionCatalog = usePublishedFormConfig('staff.staff-permission-2');
   const [retryKeys, setRetryKeys] = useState<Record<string, boolean>>({});
@@ -70,7 +76,7 @@ export function StaffPermissionManager({
     return () => window.clearTimeout(timer);
   }, [proposalKey, requests]);
   async function submit(body: Record<string, unknown>, requestKey: 'requestId' | 'formRequestId', attemptKey: string) {
-    if (busy) return;
+    if (busy) return false;
     setBusy(true);
     setError('');
     setMessage('');
@@ -87,8 +93,10 @@ export function StaffPermissionManager({
       clearSessionAttempt(attemptKey);
       setRetryKeys((current) => ({ ...current, [attemptKey]: false }));
       router.refresh();
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Permission request failed.');
+      return false;
     } finally {
       setBusy(false);
     }
@@ -103,7 +111,7 @@ export function StaffPermissionManager({
       <div>
         <h2 className="font-heading text-xl">Individual Admin permissions</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Save changes to apply permissions for another Admin immediately.
+          Review changes before saving. Confirmed changes apply to the selected Admin immediately.
           Existing pending requests can still be approved or rejected.
           Reserved Super Admin actions cannot be delegated.
         </p>
@@ -123,15 +131,11 @@ export function StaffPermissionManager({
               setError(cause instanceof Error ? cause.message : 'Review the configured fields.');
               return;
             }
-            void submit({
-              action: 'propose',
-              userId,
-              permissions,
-              version: selected?.version,
-              reason,
-              presetName,
-              ...configured,
-            }, 'requestId', proposalKey);
+            setError('');
+            setReview({ body:{action:'propose',userId,permissions,version:selected?.version,reason,presetName,...configured},requestKey:'requestId',attemptKey:proposalKey,
+              title:'Review permissions for '+(selected?.displayName??userId),
+              description:'This changes feature access for '+(selected?.displayName??userId)+'. Added: '+(added.map(permission=>labels[permission]).join(', ')||'none')+'. Removed: '+(removed.map(permission=>labels[permission]).join(', ')||'none')+'. Reason: '+reason+'. Account access is retained; reserved Super Admin actions cannot be delegated.',
+              confirmLabel:'Confirm permission changes' });
           }}
         >
           <div>
@@ -156,18 +160,8 @@ export function StaffPermissionManager({
               ))}
             </select>
           </div>
-          <p className="text-sm">
-            Current effective access:{' '}
-            {selected?.permissions.map((p) => labels[p] ?? p).join(', ') ||
-              'No operational features'}
-            . Account access is retained. Version {selected?.version}.{' '}
-            {selected?.updatedAt
-              ? 'Last recorded by ' +
-                selected.updatedBy +
-                ' at ' +
-                new Date(selected.updatedAt).toISOString()
-              : 'Legacy access; no saved change.'}
-          </p>
+          <p className="text-sm">Reviewing <strong>{selected?.displayName}</strong> · Current version {selected?.version}. Account access is retained.</p>
+
           <div>
             <Label htmlFor="permission-preset">Reuse an approved preset</Label>
             <select
@@ -212,6 +206,13 @@ export function StaffPermissionManager({
               </label>
             ))}
           </fieldset>
+          <section aria-label="Permission change preview"><Alert role="presentation"><AlertTitle>Changes for {selected?.displayName}</AlertTitle><AlertDescription>
+            <dl className="mt-2 grid gap-3 sm:grid-cols-3">
+              <div><dt className="font-semibold">Added ({added.length})</dt><dd>{added.map(permission=>labels[permission]).join(', ')||'No features added'}</dd></div>
+              <div><dt className="font-semibold">Removed ({removed.length})</dt><dd>{removed.map(permission=>labels[permission]).join(', ')||'No features removed'}</dd></div>
+              <div><dt className="font-semibold">Unchanged ({unchanged.length})</dt><dd>{unchanged.map(permission=>labels[permission]).join(', ')||'No features retained'}</dd></div>
+            </dl>
+          </AlertDescription></Alert></section>
           <div>
             <Label htmlFor="permission-preset-name">
               Save approved selection as a reusable preset (optional)
@@ -252,7 +253,7 @@ export function StaffPermissionManager({
       ) : (
         <p>No active Admin accounts are available.</p>
       )}
-      {message && <output className="block text-sm">{message}</output>}
+      <output className="block text-sm" aria-live="polite">{busy ? 'Saving permission decision…' : message}</output>
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
@@ -303,12 +304,11 @@ export function StaffPermissionManager({
                     }
                     const form = new FormData(e.currentTarget);
                     const action = (e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') ?? 'approve';
-                    void submit({
-                      action,
-                      requestId: r.id,
-                      reason: form.get('reason'),
-                      ...configured,
-                    }, 'formRequestId', sessionAttemptKey('staff.staff-permission-2', r.id + ':' + action));
+                    setError('');
+                    const decisionReason = form.get('reason');
+                    setReview({body:{action,requestId:r.id,reason:form.get('reason'),...configured},requestKey:'formRequestId',attemptKey:sessionAttemptKey('staff.staff-permission-2',r.id+':'+action),
+                      title:(action==='approve'?'Approve':'Reject')+' this permission request?',
+                      description:'Review the requested access for '+(members.find(member=>member.userId===r.userId)?.displayName??r.userId)+'. Reason: '+(typeof decisionReason === 'string' ? decisionReason : '')+'. The recorded request and current authority are checked again when you confirm.',confirmLabel:action==='approve'?'Approve access changes':'Reject access changes'});
                   }}
                 >
                   <Input
@@ -347,6 +347,12 @@ export function StaffPermissionManager({
           </article>
         ))}
       </div>
+      <ConfirmOperation open={review!==null} onOpenChange={open=>{if(!open&&!busy)setReview(null);}} title={review?.title??'Review permission changes'} description={review?.description??''} pending={busy} error={error} confirmLabel={review?.confirmLabel} disabled={review?.requestKey==='requestId'?!proposalCatalog.canSubmit:!decisionCatalog.canSubmit} onConfirm={()=>{
+        if(!review)return;
+        const catalog=review.requestKey==='requestId'?proposalCatalog:decisionCatalog;
+        if(!catalog.canSubmit){setError(catalog.message||'Refresh the form configuration before confirming.');return;}
+        void submit(review.body,review.requestKey,review.attemptKey).then(saved=>{if(saved)setReview(null);});
+      }}/>
     </section>
   );
 }

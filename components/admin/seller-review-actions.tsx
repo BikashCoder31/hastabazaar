@@ -107,6 +107,7 @@ export function SellerReviewActions({
   const [selected, setSelected] = useState<ActionDefinition | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   const [payoutAccountReference, setPayoutAccountReference] = useState('');
   const [settlementTermsReference, setSettlementTermsReference] = useState('');
 
@@ -128,9 +129,10 @@ export function SellerReviewActions({
 
   if (available.length === 0) {
     return (
-      <p className="text-sm leading-6 text-muted-foreground">
-        No review action is available for this application status.
-      </p>
+      <div className="space-y-3">
+        <output className="block text-sm font-medium" aria-live="polite">{message}</output>
+        <p className="text-sm leading-6 text-muted-foreground">No review action is available for this application status.</p>
+      </div>
     );
   }
 
@@ -181,6 +183,7 @@ export function SellerReviewActions({
       clearSessionAttempt(attemptKey);
       setAttemptRevision((revision) => revision + 1);
       fingerprint.current = null;
+      setMessage(selected.action === 'start_review' ? 'Review started. Check the documents and record the next decision.' : 'Review decision saved. Application approval and activation readiness remain separate.');
       setSelected(null);
       setReason('');
       router.refresh();
@@ -193,6 +196,7 @@ export function SellerReviewActions({
 
   return (
     <form ref={formRef} data-form-id={FORM_ID} className="space-y-4" onSubmit={(event) => event.preventDefault()}>
+      <output className="block text-sm font-medium" aria-live="polite">{pending ? 'Saving review decision…' : message}</output>
       {status === 'under_review' ? (
         <div className="space-y-2">
           <label htmlFor="review-note" className="text-sm font-semibold">

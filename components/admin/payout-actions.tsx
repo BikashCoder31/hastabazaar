@@ -52,7 +52,7 @@ export function AccrueEarningsButton() {
         </p>
       ) : null}
       {done ? (
-        <output className="block mt-2 text-sm text-muted-foreground">
+        <output aria-live="polite" className="block mt-2 text-sm text-muted-foreground">
           Delivered earnings checked and missing entries recorded.
         </output>
       ) : null}

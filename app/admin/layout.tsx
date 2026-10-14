@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowUpRight, ShieldCheck } from 'lucide-react';
 import { signOutPath } from '@/app/auth';
+import { AdminTaskContext } from '@/components/admin/admin-task-context';
 import { AdminNavigation } from '@/components/admin/admin-navigation';
 import { BrandWordmark } from '@/components/layout/brand-wordmark';
 import { requireStaffPage } from '@/lib/auth/staff';
@@ -78,6 +79,7 @@ export default async function AdminLayout({
           id="main-content"
           className="admin-workspace min-w-0 pb-10"
         >
+          <AdminTaskContext role={staff.role} permissions={staff.permissions} />
           {children}
         </main>
       </div>

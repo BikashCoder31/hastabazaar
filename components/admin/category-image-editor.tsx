@@ -122,7 +122,7 @@ export function CategoryImageEditor({
         </button>
       ) : null}
       {busy ? (
-        <output className="block text-sm">Uploading image...</output>
+        <output aria-live="polite" className="block text-sm">Uploading image...</output>
       ) : null}
       {error ? (
         <div role="alert" className="text-sm text-destructive">

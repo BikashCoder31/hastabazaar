@@ -4344,6 +4344,8 @@ void test('queue attention identifies delayed retries and expired leases without
   const f = await databaseFixture(),
     db = f.database as unknown as D1Database;
   try {
+    // These are current pending updates, rather than obsolete fixture states.
+    await db.prepare("UPDATE orders SET status='packing' WHERE id IN ('order-1','order-2')").run();
     await db.prepare('DELETE FROM order_email_jobs').run();
     await db
       .prepare(
@@ -5894,7 +5896,7 @@ void test('Super Admin carrier remittance posts directly with audit and exact re
     assert.equal(cash.status,'posted');
     assert.equal(cash.maker,'super-1');
     await operateParcel(db,input);
-    const row = await db.prepare('SELECT status,created_by AS maker,approved_by AS approver FROM parcel_cash_records WHERE id=?').bind(cash.id).first();
+    const row = await db.prepare('SELECT status,created_by AS maker,approved_by AS approver FROM parcel_cash_records WHERE id=?').bind(cash.id).first<{status:string;reason:string;attempts:number}>();
     assert.deepEqual({...row},{status:'posted',maker:'super-1',approver:'super-1'});
     assert.equal((await listParcels(db,'order-1')).find(row=>row.id===p.id)!.remittedPaisa,100);
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM audit_logs WHERE request_id=?').bind(input.requestId+':audit').first<{n:number}>())?.n,1);
@@ -6608,4 +6610,83 @@ void test('managed paid parcel exact replay resumes a failed invoice after commi
     assert.equal((await db.prepare('SELECT collected_paisa AS n FROM shipping_parcels WHERE shipping_job_id=?').bind(second.id).first<{n:number}>())?.n,second.codDuePaisa);
     assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,91000);
   }finally{await f.dispose();}
+});
+
+void test('order email expiry skips a current update at 24 hours and retains its reason', async () => {
+  const f = await databaseFixture(), db = f.database as unknown as D1Database;
+  const now = 2_000_000_000_000;
+  try {
+    await db.prepare('DELETE FROM order_email_jobs').run();
+    await db.prepare("UPDATE orders SET status='packing',updated_at=? WHERE id='order-1'").bind(now-86_400_000).run();
+    let deliveries = 0;
+    const mail = {send: async () => { deliveries++; }};
+    assert.deepEqual(await deliverOrderEmails(db, mail, 'https://hastabazaar.com', {now}), {sent:0,failed:0,cancelled:1});
+    const row = await db.prepare('SELECT status,failure_code AS reason,attempts FROM order_email_jobs').first();
+    assert.deepEqual({...row}, {status:'cancelled',reason:'expired_order_update',attempts:0});
+    assert.equal(deliveries, 0);
+    assert.deepEqual(await deliverOrderEmails(db, mail, 'https://hastabazaar.com', {now:now+60_000}), {sent:0,failed:0,cancelled:0});
+  } finally { await f.dispose(); }
+});
+
+void test('order email expiry still sends a current update just before the boundary', async () => {
+  const f = await databaseFixture(), db = f.database as unknown as D1Database, now = 2_000_000_000_000;
+  try {
+    await db.prepare('DELETE FROM order_email_jobs').run();
+    await db.prepare("UPDATE orders SET status='packing',updated_at=? WHERE id='order-1'").bind(now-86_399_999).run();
+    const messages: string[] = [];
+    assert.deepEqual(await deliverOrderEmails(db, {send:async message => {messages.push(message.subject);}}, 'https://hastabazaar.com', {now}), {sent:1,failed:0,cancelled:0});
+    assert.equal(messages.length, 1);
+    assert.match(messages[0], /Being prepared/);
+    assert.equal((await db.prepare('SELECT status FROM order_email_jobs').first<{status:string}>())?.status, 'sent');
+  } finally { await f.dispose(); }
+});
+
+void test('expiry cleans exhausted and delayed retries without taking an active sending lease', async () => {
+  const f = await databaseFixture(), db = f.database as unknown as D1Database, now = 2_000_000_000_000;
+  try {
+    await db.prepare('DELETE FROM order_email_jobs').run();
+    await db.prepare("UPDATE orders SET status='packing',updated_at=? WHERE id='order-1'").bind(now-86_400_000).run();
+    await db.prepare("UPDATE order_email_jobs SET status='sending',claim_token='active-claim',lease_until=?").bind(now+60_000).run();
+    const mail = {send:async () => {assert.fail('An expired update must not be sent');}};
+    assert.deepEqual(await deliverOrderEmails(db, mail, 'https://hastabazaar.com', {now}), {sent:0,failed:0,cancelled:0});
+    assert.equal((await db.prepare('SELECT claim_token AS token FROM order_email_jobs').first<{token:string}>())?.token, 'active-claim');
+    await db.prepare("UPDATE order_email_jobs SET status='retry',lease_until=0,attempts=5,next_attempt_at=?").bind(now+600_000).run();
+    assert.deepEqual(await deliverOrderEmails(db, mail, 'https://hastabazaar.com', {now}), {sent:0,failed:0,cancelled:1});
+    assert.equal((await db.prepare('SELECT failure_code AS reason FROM order_email_jobs').first<{reason:string}>())?.reason, 'expired_order_update');
+  } finally { await f.dispose(); }
+});
+
+void test('outdated status wins over expiry and does not consume the useful send batch', async () => {
+  const f = await databaseFixture(), db = f.database as unknown as D1Database, now = 2_000_000_000_000;
+  try {
+    await db.prepare('DELETE FROM order_email_jobs').run();
+    await db.prepare("UPDATE orders SET status='packing',updated_at=? WHERE id='order-1'").bind(now-86_400_000).run();
+    await db.prepare("UPDATE orders SET status='delivered',updated_at=? WHERE id='order-1'").bind(now-1_000).run();
+    const subjects: string[] = [];
+    assert.deepEqual(await deliverOrderEmails(db, {send:async message => {subjects.push(message.subject);}}, 'https://hastabazaar.com', {now,limit:1}), {sent:1,failed:0,cancelled:1});
+    assert.equal(subjects.length, 1);
+    assert.match(subjects[0], /Delivered/);
+    assert.equal((await db.prepare("SELECT failure_code AS reason FROM order_email_jobs WHERE order_status='packing'").first<{reason:string}>())?.reason, 'obsolete_order_state');
+  } finally { await f.dispose(); }
+});
+
+void test('claimed update expires before SMTP without recording a delivery attempt',async(t)=>{
+  const f=await databaseFixture(),db=f.database as unknown as D1Database,now=2_000_000_000_000;
+  let clock=now;
+  try {
+    await db.prepare('DELETE FROM order_email_jobs').run();
+    await db.prepare("UPDATE orders SET status='packing',updated_at=? WHERE id='order-1'").bind(now-86_399_999).run();
+    t.mock.method(Date,'now',()=>clock);
+    const observed={prepare(sql:string){
+      const statement=db.prepare(sql);
+      const wrapped={bind(...values:unknown[]){statement.bind(...values);return wrapped;},
+        async first(){const row=await statement.first();if(sql.includes('j.created_at AS occurredAt'))clock=now+1;return row;},
+        all(){return statement.all();},run(){return statement.run();}};
+      return wrapped;
+    }} as unknown as D1Database;
+    const result=await deliverOrderEmails(observed,{send:async()=>assert.fail('Expired before sending')},'https://hastabazaar.com');
+    assert.deepEqual(result,{sent:0,failed:0,cancelled:1});
+    const record=await db.prepare('SELECT attempts,failure_code AS reason FROM order_email_jobs').first<{attempts:number;reason:string}>();
+    assert.equal(record?.attempts,0);assert.equal(record?.reason,'expired_order_update');
+  } finally {await f.dispose();}
 });

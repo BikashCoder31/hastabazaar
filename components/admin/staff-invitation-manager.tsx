@@ -155,7 +155,7 @@ export function StaffInvitationManager({
       </form>
 
       {message ? (
-        <output className="block text-sm font-medium text-emerald-700">
+        <output aria-live="polite" className="block text-sm font-medium text-emerald-700">
           {message}
         </output>
       ) : null}

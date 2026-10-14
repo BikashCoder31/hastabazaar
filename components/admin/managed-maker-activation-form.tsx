@@ -75,7 +75,7 @@ export function ManagedMakerActivationForm({ sellerId, companyAccount }: { selle
     <label className="block">Simulated agreement version<input name="agreementVersion" required minLength={3} maxLength={191} className="mt-1 w-full rounded border p-2" defaultValue="SIM-MANAGED-AGREEMENT-V1"/></label>
     <label className="block">Language presented<select name="agreementLanguage" className="mt-1 w-full rounded border p-2"><option value="ne">Nepali</option><option value="en">English</option></select></label>
     {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={BASE_KEYS} /> : null}
-    {!catalog.canSubmit ? <output className="block">{catalog.message || 'Form configuration is loading.'}</output> : null}
+    {!catalog.canSubmit ? <output aria-live="polite" className="block">{catalog.message || 'Form configuration is loading.'}</output> : null}
     {attemptPresent ? <p>A prior activation may have succeeded. Retry only identical details, or check the seller record before starting a new attempt.</p> : null}
     {attemptPresent ? <Button type="button" variant="outline" disabled={busy}
       onClick={() => { if (window.confirm('This activation may already have succeeded. Check the seller record first. Start a new request reference?')) {

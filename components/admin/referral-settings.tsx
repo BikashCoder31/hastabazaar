@@ -139,7 +139,7 @@ export function ReferralSettings({ campaign }: { campaign: ReferralCampaign }) {
         clearSessionAttempt(attemptKey); setRetry(false); setMessage(''); setError('');
         if (catalog.status === 'stale') catalog.refresh();
       }}>Start a new attempt</Button></div> : null}
-      <output className="block text-sm">
+      <output aria-live="polite" className="block text-sm">
         {message}
       </output>
     </form>

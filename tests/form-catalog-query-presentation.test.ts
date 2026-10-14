@@ -181,3 +181,33 @@ void test('tracking builtin presentation retains required identity controls and 
   assert.match(emailInput, /type="email"/); assert.match(emailInput, /required=""/); assert.match(emailInput, /maxLength="254"/);
   assert.doesNotMatch(html, /customAnswers|formVersion/);
 });
+
+void test('dual calendar controls default to AD and submit the same canonical AD range in BS mode', async () => {
+  const {RecordedDateRangeFields}=await import('../components/admin/recorded-date-range-fields');
+  const props={from:'2026-09-15',to:'2026-10-14',fromField:{label:'From date'},toField:{label:'Through date'}};
+  const ad=renderToStaticMarkup(React.createElement(RecordedDateRangeFields,props));
+  assert.match(ad,/value="ad" selected=""/);
+  assert.match(ad,/<input[^>]*type="date"[^>]*name="from"[^>]*value="2026-09-15"/);
+  assert.match(ad,/३० भदौ २०८३ BS/);
+  assert.match(ad,/२८ असोज २०८३ BS/);
+  assert.match(ad,/Reporting timezone: Nepal time/);
+  assert.doesNotMatch(ad,/From date \(Nepal\)/);
+  const bs=renderToStaticMarkup(React.createElement(RecordedDateRangeFields,{...props,initialCalendar:'bs'}));
+  assert.match(bs,/value="bs" selected=""/);
+  assert.match(bs,/<input[^>]*type="hidden"[^>]*name="from"[^>]*value="2026-09-15"/);
+  assert.match(bs,/<input[^>]*type="hidden"[^>]*name="to"[^>]*value="2026-10-14"/);
+  assert.match(bs,/Gregorian equivalent: 2026-10-14 AD/);
+  assert.match(bs,/value="2083" selected=""/);
+  assert.match(bs,/value="5" selected=""/);
+  assert.match(bs,/value="30" selected=""/);
+  assert.doesNotMatch(bs,/type="date"/);
+});
+
+void test('recorded timestamps label both calendars on the same Nepal local day', async () => {
+  const {RecordedTime}=await import('../components/admin/recorded-time');
+  const html=renderToStaticMarkup(React.createElement(RecordedTime,{timestamp:Date.parse('2026-10-14T18:15:00Z')}));
+  assert.match(html,/dateTime="2026-10-14T18:15:00.000Z"/);
+  assert.match(html,/2026-10-15 AD/);
+  assert.match(html,/२९ असोज २०८३ BS/);
+  assert.match(html,/Nepal time/);
+});

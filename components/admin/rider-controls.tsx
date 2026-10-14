@@ -86,7 +86,7 @@ export function RiderAdminAction({
         </p>
       )}
       {catalog.config?<ConfiguredFields config={catalog.config} baseKeys={BASE_KEYS}/>:null}
-      {!catalog.canSubmit?<output className="block text-sm">{catalog.message||'Form configuration is loading.'}</output>:null}
+      {!catalog.canSubmit?<output aria-live="polite" className="block text-sm">{catalog.message||'Form configuration is loading.'}</output>:null}
       <button type="submit" disabled={busy||!catalog.canSubmit} className="rounded-lg border px-4 py-2">
         {label}
       </button>
@@ -163,7 +163,7 @@ export function RiderPolicyForm({ policy }: { policy: RiderPolicy }) {
         is sent by this setting.
       </p>
       {catalog.config?<ConfiguredFields config={catalog.config} baseKeys={POLICY_KEYS}/>:null}
-      {!catalog.canSubmit?<output className="block text-sm">{catalog.message||'Form configuration is loading.'}</output>:null}
+      {!catalog.canSubmit?<output aria-live="polite" className="block text-sm">{catalog.message||'Form configuration is loading.'}</output>:null}
       <button type="submit" disabled={busy||!catalog.canSubmit} className="rounded border p-2">Save settings</button>
       <output className="block" aria-live="polite">
         {message}

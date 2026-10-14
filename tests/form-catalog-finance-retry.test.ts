@@ -28,13 +28,10 @@ void test('seven finance and staff forms retain opaque attempts across uncertain
   plugins: [{ name: 'finance-retry-stubs', setup(bundler) {
     bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'fixture' }));
     bundler.onResolve({ filter: /^next\/link$/ }, () => ({ path: 'link', namespace: 'fixture' }));
-    bundler.onResolve({ filter: /^@\/components\/admin\/confirm-operation$/ }, () => ({ path: 'confirm', namespace: 'fixture' }));
     bundler.onLoad({ filter: /.*/, namespace: 'fixture' }, (args) => ({ loader: 'js', resolveDir: process.cwd(), contents: args.path === 'navigation'
       ? 'export function useRouter(){return {refresh(){window.__financeRetryRefreshCount=(window.__financeRetryRefreshCount??0)+1}}}'
       : args.path === 'link' ? 'import React from "react";export default function Link(p){return React.createElement("a",p)}'
-      : args.path === 'confirm'
-        ? 'import React from "react";export function ConfirmOperation(p){return p.open?React.createElement("button",{type:"button",onClick:p.onConfirm},"Confirm decision"):null}'
-        : '',
+      : '',
     }));
   } }], });
   const browser = await chromium.launch({ headless: true,
@@ -79,7 +76,7 @@ void test('seven finance and staff forms retain opaque attempts across uncertain
                     : target.mode === 'decision' ? '{"message":"Saved."}' : '{"ok":true}';
             return route.fulfill({ status: 200, contentType: 'application/json', body: result });
           }
-          return route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
+          return route.fulfill({ status: 200, contentType: 'text/html', body: '<style>[data-slot="alert-dialog-content"]{position:fixed;z-index:50;background:white;top:10%;left:10%;width:80%;max-height:80%;overflow:auto}[data-slot="alert-dialog-overlay"]{position:fixed;inset:0;z-index:50}svg{width:1em;height:1em}</style><div id="root"></div>' });
         });
         const mount = async () => {
           await page.goto(`https://finance-retry.test/?mode=${target.mode}`);
@@ -101,8 +98,15 @@ void test('seven finance and staff forms retain opaque attempts across uncertain
         const send = async (form: any) => { // oxlint-disable-line typescript/no-explicit-any -- Playwright runtime locator.
           if (target.mode === 'payout') { await form.getByRole('button', { name: 'Review decision' }).click(); await page.getByRole('button', { name: 'Confirm decision' }).click(); }
           else if (target.mode === 'invitation') { await form.getByRole('button', { name: 'Review invitation' }).click(); await page.getByRole('button', { name: 'Confirm decision' }).click(); }
-          else await form.evaluate((element: HTMLFormElement) => element.requestSubmit());
+          else if (target.mode === 'proposal' || target.mode === 'decision') {
+            await form.evaluate((element: HTMLFormElement) => element.requestSubmit());
+            await page.getByRole('button', { name: target.mode === 'proposal' ? 'Confirm permission changes' : 'Approve access changes' }).click();
+          } else await form.evaluate((element: HTMLFormElement) => element.requestSubmit());
           await page.waitForTimeout(80);
+          if (target.mode === 'proposal' || target.mode === 'decision' || target.mode === 'payout' || target.mode === 'invitation') {
+            const back = page.getByRole('button', { name: 'Go back', exact: true });
+            if (await back.isVisible()) await back.click();
+          }
         };
         let form = await mount();
         await send(form);

@@ -8,11 +8,14 @@ import { collectFormSites, scanFormSites } from './helpers/form-policy';
 
 const root = resolve(import.meta.dirname, '..');
 
-void test('the reviewed source inventory adds incentive, COD confirmation and six secure logout sites to 83 forms in 65 files', async () => {
+void test('the reviewed source inventory adds queue filters, incentive, COD confirmation and six secure logout sites to 83 forms in 65 files', async () => {
   const sites = await collectFormSites(root);
   const reviewedSites = [
     { path: 'app/account-access-denied/page.tsx', ordinal: 1, formId: 'identity.logout' },
     { path: 'app/admin/layout.tsx', ordinal: 1, formId: 'identity.logout' },
+    { path: 'app/admin/order-emails/page.tsx', ordinal: 1, formId: 'staff.order-email-filter' },
+    { path: 'app/admin/orders/page.tsx', ordinal: 1, formId: 'staff.order-queue-filter' },
+    { path: 'app/admin/sellers/page.tsx', ordinal: 1, formId: 'staff.seller-registry-filter' },
     { path: 'app/seller-access-denied/page.tsx', ordinal: 1, formId: 'identity.logout' },
     { path: 'app/seller/layout.tsx', ordinal: 1, formId: 'identity.logout' },
     { path: 'app/staff-access-denied/page.tsx', ordinal: 1, formId: 'identity.logout' },

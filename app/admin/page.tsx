@@ -13,6 +13,7 @@ import {
   Wallet,
   ShieldCheck,
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
@@ -71,6 +72,9 @@ export default async function AdminDashboardPage() {
       description: 'Seller requests awaiting preparation or rejection',
     },
   ];
+  const tasks = adminNavigation(staff.role, staff.permissions);
+  const visibleQueues = queues.filter(queue => tasks.some(task => task.href === queue.href)).sort((a,b) => b.value-a.value);
+  const hasPendingWork = visibleQueues.some(queue => queue.value > 0);
   return (
     <div className="space-y-8">
       <section className="overflow-hidden rounded-3xl border bg-card p-6 sm:p-8">
@@ -109,17 +113,17 @@ export default async function AdminDashboardPage() {
       <section aria-labelledby="queue-heading">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
           <h2 id="queue-heading" className="font-heading text-2xl">
-            Your work queues
+            {hasPendingWork ? 'Work needing attention' : 'Your work queues'}
           </h2>
           <p className="text-sm text-muted-foreground">
             Current totals · open a queue to review
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-          {queues.filter(q => adminNavigation(staff.role, staff.permissions).some(link => link.href === q.href)).map(({ label, value, icon: Icon, href, description }) => (
+          {visibleQueues.map(({ label, value, icon: Icon, href, description }) => (
             <Link
               key={label}
-              href={href}
+              href={href === '/admin/sellers' && value > 0 ? '/admin/sellers?status=awaiting_review' : href}
               className="group rounded-2xl border bg-card p-5 transition-colors hover:border-primary/40 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
             >
               <div className="flex items-center justify-between">
@@ -128,7 +132,7 @@ export default async function AdminDashboardPage() {
                 </span>
                 <ArrowRight className="size-4 text-muted-foreground group-hover:text-primary" />
               </div>
-              <p className="mt-5 font-heading text-4xl tabular-nums">{value}</p>
+              <div className="mt-4 flex items-center justify-between gap-3"><p className="font-heading text-3xl tabular-nums">{value}</p><Badge variant={value > 0 ? 'secondary' : 'outline'}>{value > 0 ? 'Needs review' : 'Nothing pending'}</Badge></div>
               <h3 className="mt-2 font-semibold">{label}</h3>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
                 {description}
@@ -189,6 +193,10 @@ export default async function AdminDashboardPage() {
           with Super Admins.
         </p>
       )}
+      <details className="rounded-2xl border bg-card p-5">
+        <summary className="min-h-7 cursor-pointer font-semibold focus-visible:outline-2 focus-visible:outline-primary">All workspace tasks</summary>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{tasks.map(task => <Link key={task.href} href={task.href} className="flex min-h-11 flex-col gap-1 rounded-xl border p-4 hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"><span className="font-semibold">{task.label}</span><span className="text-xs leading-5 text-muted-foreground">{task.description}</span></Link>)}</div>
+      </details>
       <Card>
         <CardHeader>
           <CardTitle>Before you decide</CardTitle>

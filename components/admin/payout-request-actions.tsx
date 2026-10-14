@@ -78,7 +78,7 @@ export function PayoutRequestActions({ id, role = 'admin' }: { id: string; role?
           />
         </div>
         {catalog.config?<div className="md:col-span-3"><ConfiguredFields config={catalog.config} baseKeys={BASE_KEYS}/></div>:null}
-        {!catalog.canSubmit?<output className="md:col-span-3 text-sm">{catalog.message||'Form configuration is loading.'}</output>:null}
+        {!catalog.canSubmit?<output aria-live="polite" className="md:col-span-3 text-sm">{catalog.message||'Form configuration is loading.'}</output>:null}
         <Button type="submit" variant="outline" disabled={pending}>
           {pending ? 'Saving…' : 'Save decision'}
         </Button>

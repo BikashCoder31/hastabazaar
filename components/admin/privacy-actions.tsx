@@ -125,7 +125,7 @@ export function PrivacyActions({
             {exportPending ? 'Preparing…' : 'Export form answers'}
           </Button>
           {exportError ? <p role="alert" className="mt-2 text-sm text-destructive">{exportError}</p> : null}
-          {exportDone ? <output className="mt-2 block text-sm">Form-answer export prepared. Request status is unchanged.</output> : null}
+          {exportDone ? <output aria-live="polite" className="mt-2 block text-sm">Form-answer export prepared. Request status is unchanged.</output> : null}
           {exportRetry?<div className="mt-3 space-y-2 text-sm"><p>A previous export may have succeeded. Check the downloaded file before starting another attempt.</p><Button type="button" variant="outline" disabled={exportPending} onClick={()=>{if(!window.confirm('Starting a new attempt may duplicate a prior successful export. Check downloaded files first. Continue?'))return;clearSessionAttempt(exportKey);setExportRetry(false);setExportError('');}}>Start a new export attempt</Button></div>:null}
         </div>
       ) : null}
@@ -133,7 +133,7 @@ export function PrivacyActions({
         <div className="mb-5 rounded-xl border p-4">
           <p className="text-sm text-muted-foreground">Erase eligible account-profile answer history after confirming retention and legal holds. Linked seller, rider, order, and case records remain. This action does not close the request.</p>
           <Button type="button" variant="destructive" disabled={pending} onClick={() => setEraseConfirm(true)}>Erase profile answers</Button>
-          {eraseDone ? <output className="mt-2 block text-sm">Eligible profile answers erased. Other linked records and request status are unchanged.</output> : null}
+          {eraseDone ? <output aria-live="polite" className="mt-2 block text-sm">Eligible profile answers erased. Other linked records and request status are unchanged.</output> : null}
           {eraseRetry?<div className="mt-3 space-y-2 text-sm"><p>A prior erasure may have succeeded. Check the request record before another attempt.</p><Button type="button" variant="outline" disabled={pending} onClick={()=>{if(!window.confirm('Starting a new attempt may repeat a prior successful erasure. Check the request record first. Continue?'))return;clearSessionAttempt(eraseKey);setEraseRetry(false);setError('');}}>Start a new erasure attempt</Button></div>:null}
         </div>
       ) : null}
@@ -191,7 +191,7 @@ export function PrivacyActions({
             />
           </div>
           {catalog.config?<div className="sm:col-span-2"><ConfiguredFields config={catalog.config} baseKeys={BASE_KEYS}/></div>:null}
-          {!catalog.canSubmit?<output className="sm:col-span-2 text-sm">{catalog.message||'Form configuration is loading.'}</output>:null}
+          {!catalog.canSubmit?<output aria-live="polite" className="sm:col-span-2 text-sm">{catalog.message||'Form configuration is loading.'}</output>:null}
           <div className="sm:col-span-2">
             <Button type="submit" disabled={pending || note.trim().length < 8}>
               {pending ? 'Saving…' : 'Save decision'}
@@ -211,7 +211,7 @@ export function PrivacyActions({
         </p>
       ) : null}
       {done ? (
-        <output className="block mt-3 text-sm">Decision recorded.</output>
+        <output aria-live="polite" className="block mt-3 text-sm">Decision recorded.</output>
       ) : null}
       {decisionRetry?<div className="mt-3 space-y-2 text-sm"><p>A previous decision may have succeeded. Check the request history before another attempt.</p><Button type="button" variant="outline" disabled={pending} onClick={()=>{if(!window.confirm('Starting a new attempt may duplicate a prior successful decision. Check the request history first. Continue?'))return;clearSessionAttempt(decisionKey);setDecisionRetry(false);setError('');if(catalog.status==='stale')catalog.refresh();}}>Start a new decision attempt</Button></div>:null}
       <ConfirmOperation

@@ -1,3 +1,4 @@
+import { orderQueueWhere, type AdminQueueFilters } from '../../admin/queue-filters';
 import { publicTrackingReferenceSql } from '../../riders/public-tracking';
 import { quotePromo, preparePromoConsumption } from './promo-codes';
 import { requireCheckoutContactProof, checkoutContactGuards, type CheckoutContactPolicy } from '@/lib/auth/contact-verification';
@@ -1119,7 +1120,11 @@ export interface OperationsOrderRow {
 export async function listOrdersForOperations(
   database: D1Database,
   limit = 100,
+  filters: AdminQueueFilters = {},
+  page = 1,
 ): Promise<readonly OperationsOrderRow[]> {
+  const where = orderQueueWhere(filters);
+  if (!Number.isSafeInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100) throw new RangeError('Choose a valid order page and page size.');
   const result = await database
     .prepare(
       `SELECT orders.id, orders.order_number AS orderNumber, orders.status,
@@ -1127,11 +1132,18 @@ export async function listOrdersForOperations(
         COALESCE(orders.current_total_paisa,orders.grand_total_paisa) AS grandTotalPaisa, orders.payment_mode AS paymentMode,
         orders.placed_at AS placedAt, SUM(order_items.quantity) AS itemCount
        FROM orders INNER JOIN order_items ON order_items.order_id = orders.id
-       GROUP BY orders.id ORDER BY orders.created_at DESC LIMIT ?`,
+       ${where.sql}
+       GROUP BY orders.id ORDER BY orders.created_at DESC, orders.id LIMIT ? OFFSET ?`,
     )
-    .bind(limit)
+    .bind(...where.values, limit, (page - 1) * limit)
     .all<OperationsOrderRow>();
   return result.results;
+}
+
+export async function countOrdersForOperations(database:D1Database,filters:AdminQueueFilters={}) {
+ const where=orderQueueWhere(filters);
+ const row=await database.prepare('SELECT COUNT(*) AS total FROM orders '+(where.sql ? where.sql+' AND ' : 'WHERE ')+'EXISTS(SELECT 1 FROM order_items WHERE order_items.order_id=orders.id)').bind(...where.values).first<{total:number}>();
+ return Number(row?.total??0);
 }
 
 export interface SellerOrderRow {

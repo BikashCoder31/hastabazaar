@@ -727,7 +727,7 @@ function AuthorizedLoyaltyManager({
           </p>
         ) : null}
         {incompatibleDraft ? (
-          <output className="block text-sm">
+          <output aria-live="polite" className="block text-sm">
             The saved draft differs from the locked denomination. Save a
             corrected draft before publishing. New draft rate controls use the
             locked denomination; saving creates a new revision.
@@ -736,7 +736,7 @@ function AuthorizedLoyaltyManager({
         {attempt?.terms &&
         locked &&
         !sameDenomination(attempt.terms, locked) ? (
-          <output className="block text-sm">
+          <output aria-live="polite" className="block text-sm">
             This retained attempt keeps its original denomination to recover its
             saved result. A new draft must use the locked denomination.
           </output>
@@ -836,11 +836,11 @@ function AuthorizedLoyaltyManager({
             />
           ) : null}
           {published.message ? (
-            <output className="block">{published.message}</output>
+            <output aria-live="polite" className="block">{published.message}</output>
           ) : null}
         </fieldset>
         {attempt ? (
-          <output className="block text-sm">
+          <output aria-live="polite" className="block text-sm">
             Retained {attempt.action} attempt at administrative version{' '}
             {attempt.expectedVersion}, form version {attempt.formVersion}.
             Re-enter the original private reason and answers to retry. Review
@@ -857,7 +857,7 @@ function AuthorizedLoyaltyManager({
             {error || recoveryError}
           </p>
         ) : null}
-        {notice ? <output className="block text-sm">{notice}</output> : null}
+        {notice ? <output aria-live="polite" className="block text-sm">{notice}</output> : null}
         <div className="flex flex-wrap gap-3">
           <Button
             type="submit"
