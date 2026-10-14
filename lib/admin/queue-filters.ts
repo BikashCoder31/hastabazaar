@@ -9,6 +9,11 @@ export const sellerQueueStatuses = [
   'suspended',
   'awaiting_review',
 ] as const;
+export const emailQueueStatuses = ['ready','needs_review','queued','sending','retry','sent','skipped','expired'] as const;
+export const emailQueueStatusLabels:Readonly<Record<string,string>> = {
+  ready:'Ready to send',needs_review:'Needs review',queued:'Queued',sending:'Sending',
+  retry:'Waiting to retry',sent:'Mail server accepted',skipped:'Skipped',expired:'Expired',
+};
 export const orderQueueStatuses = [
   'pending_payment',
   'awaiting_cod_confirmation',

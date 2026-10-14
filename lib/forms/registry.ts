@@ -1,4 +1,4 @@
-import { sellerQueueStatuses, orderQueueStatuses } from '../admin/queue-filters';
+import { sellerQueueStatuses, orderQueueStatuses, emailQueueStatuses, emailQueueStatusLabels } from '../admin/queue-filters';
 import { INCENTIVE_FORM_CONTRACTS } from '../incentives/forms';
 import type { BaseFieldCapability, FormAudience, FormCapabilities, FormDefinition, FormId, FormMode } from './types';
 import { feedbackTopics } from '../feedback/customer-feedback';
@@ -37,6 +37,7 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
   'seller.product-filter': { formId: 'seller.product-filter', route: '/seller/products', mode: 'query' },
   'staff.seller-registry-filter': { formId: 'staff.seller-registry-filter', route: '/admin/sellers', mode: 'query' },
   'staff.order-queue-filter': { formId: 'staff.order-queue-filter', route: '/admin/orders', mode: 'query' },
+  'staff.order-email-filter': { formId: 'staff.order-email-filter', route: '/admin/order-emails', mode: 'query' },
   'staff.homepage-filter': { formId: 'staff.homepage-filter', route: '/admin/homepage', mode: 'query' },
   'staff.activity-filter': { formId: 'staff.activity-filter', route: '/admin/activity', mode: 'query' },
   'staff.recorded-progress-filter': { formId: 'staff.recorded-progress-filter', route: '/admin/progress', mode: 'query' },
@@ -116,6 +117,7 @@ const SOURCE_ROWS = `
 staff.activity-filter|staff|query|/admin/activity|action
 staff.seller-registry-filter|staff|query|/admin/sellers|query
 staff.order-queue-filter|staff|query|/admin/orders|query
+staff.order-email-filter|staff|query|/admin/order-emails|query
 staff.homepage-filter|staff|query|/admin/homepage|query
 identity.password-reset-request|public|identity|/api/auth/password-reset/request|email
 identity.password-reset-complete|public|identity|/api/auth/password-reset/complete|token
@@ -292,6 +294,7 @@ const QUERY_FIELDS = {
   'seller.product-filter': [['q', 'short_text']],
   'staff.seller-registry-filter': [['q', 'short_text'], ['status', 'single_choice']],
   'staff.order-queue-filter': [['q', 'short_text'], ['status', 'single_choice']],
+  'staff.order-email-filter': [['q', 'short_text'], ['status', 'single_choice']],
   'staff.homepage-filter': [['q', 'short_text'], ['visibility', 'single_choice']],
   'staff.activity-filter': [['action', 'short_text'], ['actor', 'short_text'], ['type', 'short_text'], ['from', 'date'], ['to', 'date']],
   'staff.recorded-progress-filter': [['from', 'date'], ['to', 'date'], ['action', 'short_text']],
@@ -312,10 +315,10 @@ function queryDefinition(id: QueryFormId | 'system.local-testing-role'): FormDef
     capability: 'display_editable' as const, required: id === 'commerce.order-tracking', status: 'active' as const,
     explanation: 'Only labels, help text and placeholders may change; existing keys, types, requiredness, choices and rendered order are fixed.',
     ...(key === 'sort' ? { choices: [{ value: 'newest', label: 'Newest' }, { value: 'price-low', label: 'Price: low to high' },
-      { value: 'price-high', label: 'Price: high to low' }, { value: 'name', label: 'Name' }] } : key === 'status' ? { choices: [{value:'all',label:'All statuses'}, ...(id === 'staff.seller-registry-filter' ? sellerQueueStatuses : orderQueueStatuses).map(value=>({value,label:value.replaceAll('_',' ')}))] } : key === 'visibility'
+      { value: 'price-high', label: 'Price: high to low' }, { value: 'name', label: 'Name' }] } : key === 'status' ? { choices: [{value:'all',label:'All statuses'}, ...(id === 'staff.seller-registry-filter' ? sellerQueueStatuses : id === 'staff.order-email-filter' ? emailQueueStatuses : orderQueueStatuses).map(value=>({value,label:id === 'staff.order-email-filter' ? emailQueueStatusLabels[value] : value.replaceAll('_',' ')}))] } : key === 'visibility'
       ? { choices: [{ value: 'all', label: 'All products' }, { value: 'visible', label: 'Homepage eligible' }, { value: 'hidden', label: 'Hidden from homepage' }] } : {}),
   }));
-  const protectedKeys = ['query', ...(id === 'staff.seller-registry-filter' || id === 'staff.order-queue-filter' ? [] : ['status']), 'actorId', 'customerId', 'sellerId', 'orderId', 'order_number',
+  const protectedKeys = ['query', ...(id === 'staff.seller-registry-filter' || id === 'staff.order-queue-filter' || id === 'staff.order-email-filter' ? [] : ['status']), 'actorId', 'customerId', 'sellerId', 'orderId', 'order_number',
     'formVersion', 'customAnswers', 'requestId', ...(id === 'staff.recorded-progress-filter' ? ['actor', 'type'] : [])];
   return Object.freeze({ id, audience, mode, route, adapterId: id,
     baseFields: Object.freeze([...fields, ...protectedKeys.map(protect)]),

@@ -8,6 +8,7 @@ export const QUERY_PRESENTATION_KEYS = {
   'seller.product-filter': ['q'],
   'staff.seller-registry-filter': ['q', 'status'],
   'staff.order-queue-filter': ['q', 'status'],
+  'staff.order-email-filter': ['q', 'status'],
   'staff.homepage-filter': ['q', 'visibility'],
   'staff.activity-filter': ['action', 'actor', 'type', 'from', 'to'],
   'staff.recorded-progress-filter': ['from', 'to', 'action'],

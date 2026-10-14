@@ -38,6 +38,7 @@ const STAFF_FORM_PERMISSIONS: Readonly<Partial<Record<string, Permission>>> = {
   'staff.seller-review-action': 'seller.application.review',
   'staff.seller-registry-filter': 'seller.application.review',
   'staff.order-queue-filter': 'order.manage',
+  'staff.order-email-filter': 'order.manage',
   'staff.order-fulfillment': 'order.manage',
   'staff.first-cod-confirmation': 'order.manage',
   'staff.review-moderation': 'product.review',

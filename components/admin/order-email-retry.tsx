@@ -2,44 +2,101 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { sendJson } from '@/lib/http/client-request';
-export function OrderEmailRetry() {
+import { Button } from '@/components/ui/button';
+import { ConfirmOperation } from '@/components/admin/confirm-operation';
+import {
+  manualOrderEmailBatchSize,
+  orderEmailExpiryHours,
+} from '@/lib/email/order-update-policy';
+
+export function OrderEmailRetry({ readyCount }: { readyCount: number }) {
   const [busy, setBusy] = useState(false),
-    [message, setMessage] = useState('');
+    [confirm, setConfirm] = useState(false),
+    [message, setMessage] = useState(''),
+    [error, setError] = useState('');
   const router = useRouter();
   async function retry() {
+    if (busy) return;
     setBusy(true);
     setMessage('');
+    setError('');
     try {
-      const r = await sendJson<{
+      const result = await sendJson<{
         sent: number;
         failed: number;
+        cancelled?: number;
         pending?: boolean;
-      }>('/api/admin/order-emails/retry', 'POST', {}, 'Email retry failed.');
+      }>(
+        '/api/admin/order-emails/retry',
+        'POST',
+        {},
+        'Email processing failed.',
+      );
+      setConfirm(false);
       setMessage(
-        r.pending
-          ? 'Email sending is unavailable. Ask the site administrator to check email settings and queue readiness.'
-          : `${r.sent} accepted by the mail server; ${r.failed} email attempts failed and will retry with bounded backoff. Obsolete updates are suppressed and retained. Any other pending updates stay in the queue.`,
+        result.pending
+          ? 'Sending is unavailable. Ask the site administrator to check email settings and queue readiness.'
+          : `${result.sent} accepted by the mail server · ${result.failed} failed · ${result.cancelled ?? 0} skipped.${result.failed ? ' Failed attempts retry with a delay and stop after five attempts.' : ''}`,
       );
       router.refresh();
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : 'Please try again.');
+      setError(
+        e instanceof Error
+          ? e.message
+          : 'Please check the queue before trying again.',
+      );
     } finally {
       setBusy(false);
     }
   }
   return (
-    <div>
-      <p className="mb-3 text-sm text-muted-foreground">This button attempts to send up to six eligible queued or retry emails, including emails with expired sending locks. It can contact customers immediately. It skips accepted and obsolete records. Failed attempts use bounded backoff and stop automatically after five attempts. If a send was interrupted after acceptance but before that result was recorded, a retry can send the email again.</p>
-      <button
-        disabled={busy}
-        onClick={retry}
-        className="rounded-full bg-primary px-6 py-3 font-semibold text-primary-foreground disabled:opacity-60"
-      >
-        {busy ? 'Sending…' : 'Attempt up to 6 eligible emails'}
-      </button>
-      <output aria-live="polite" className="block mt-3 text-sm">
+    <section
+      className="rounded-xl border bg-card p-4"
+      aria-labelledby="send-order-emails-title"
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h2 id="send-order-emails-title" className="font-semibold">
+            Send queued updates
+          </h2>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+            {readyCount > 0
+              ? `${readyCount} ${readyCount === 1 ? 'email is' : 'emails are'} ready across the complete queue. Sending may contact customers immediately.`
+              : 'No emails are ready to send. Refresh the page to check for new work.'}
+          </p>
+        </div>
+        <Button
+          type="button"
+          disabled={busy || readyCount < 1}
+          className="shrink-0"
+          onClick={() => {
+            setError('');
+            setConfirm(true);
+          }}
+        >
+          {busy
+            ? 'Sending…'
+            : `Try sending up to ${manualOrderEmailBatchSize} emails`}
+        </Button>
+      </div>
+      <output aria-live="polite" className="mt-3 block text-sm">
         {message}
       </output>
-    </div>
+      {error && !confirm ? (
+        <p role="alert" className="mt-2 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <ConfirmOperation
+        open={confirm}
+        onOpenChange={setConfirm}
+        pending={busy}
+        error={error}
+        title="Send eligible order updates?"
+        description={`This attempts up to ${manualOrderEmailBatchSize} eligible emails across the complete queue and may contact customers immediately. History filters do not limit sending. Eligibility is checked again. Messages ${orderEmailExpiryHours} hours old, outdated updates and recorded successes are skipped. An interrupted send may have reached the customer before success was recorded; retrying can produce a duplicate. Check the queue before another attempt.`}
+        confirmLabel="Confirm sending"
+        onConfirm={() => void retry()}
+      />
+    </section>
   );
 }

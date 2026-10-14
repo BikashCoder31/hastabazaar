@@ -332,10 +332,10 @@ const taskGuides: Readonly<
     ],
   ],
   '/admin/order-emails': [
-    'Review delivery of order messages and retry eligible failed sends.',
+    'Review order updates, check skipped reasons and send eligible messages.',
     [
       'Find the order message and check its delivery status.',
-      'Review the failure reason before retrying.',
+      'Check the reason, age and current order status before sending.',
       'Check the recorded result to avoid duplicate sends.',
     ],
   ],

@@ -59,13 +59,22 @@ export function AdminTaskContext({
           ) : null}
         </BreadcrumbList>
       </Breadcrumb>
-      <details key={pathname} className="group rounded-xl border bg-card p-4">
+      <details
+        key={pathname}
+        className={
+          guide.href === '/admin/order-emails'
+            ? 'group'
+            : 'group rounded-xl border bg-card p-4'
+        }
+      >
         <summary className="flex min-h-10 w-fit cursor-pointer list-none items-center gap-2 rounded-md py-2 pr-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
           <ChevronRight
             aria-hidden="true"
             className="size-4 shrink-0 transition-transform group-open:rotate-90 motion-reduce:transition-none"
           />
-          How to handle this task
+          {guide.href === '/admin/order-emails'
+            ? 'Help with order emails'
+            : 'How to handle this task'}
         </summary>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
           {guide.description}

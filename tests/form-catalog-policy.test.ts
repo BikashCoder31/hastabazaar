@@ -13,6 +13,7 @@ void test('the reviewed source inventory adds queue filters, incentive, COD conf
   const reviewedSites = [
     { path: 'app/account-access-denied/page.tsx', ordinal: 1, formId: 'identity.logout' },
     { path: 'app/admin/layout.tsx', ordinal: 1, formId: 'identity.logout' },
+    { path: 'app/admin/order-emails/page.tsx', ordinal: 1, formId: 'staff.order-email-filter' },
     { path: 'app/admin/orders/page.tsx', ordinal: 1, formId: 'staff.order-queue-filter' },
     { path: 'app/admin/sellers/page.tsx', ordinal: 1, formId: 'staff.seller-registry-filter' },
     { path: 'app/seller-access-denied/page.tsx', ordinal: 1, formId: 'identity.logout' },
