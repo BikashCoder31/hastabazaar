@@ -37,7 +37,7 @@ export function OrderEmailRetry() {
       >
         {busy ? 'Sending…' : 'Attempt up to 6 eligible emails'}
       </button>
-      <output className="block mt-3 text-sm">
+      <output aria-live="polite" className="block mt-3 text-sm">
         {message}
       </output>
     </div>

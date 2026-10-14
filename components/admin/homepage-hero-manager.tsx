@@ -411,7 +411,7 @@ export function HomepageHeroManager({
         </CardHeader>
         <CardContent className="space-y-4">
           {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={['slides']} /> : null}
-          {!catalog.canSubmit ? <output className="block text-sm">{catalog.message || 'Loading form configuration…'}</output> : null}
+          {!catalog.canSubmit ? <output aria-live="polite" className="block text-sm">{catalog.message || 'Loading form configuration…'}</output> : null}
           <div className="space-y-2">
             <Label htmlFor="hero-change-reason">Reason and expected impact</Label>
             <Textarea
@@ -431,7 +431,7 @@ export function HomepageHeroManager({
               onChange={(event) => setEffectiveFrom(event.target.value)}
             />
           </div>
-          {message ? <output className="block text-sm font-medium">{message}</output> : null}
+          {message ? <output aria-live="polite" className="block text-sm font-medium">{message}</output> : null}
           {failedAttemptKey ? <Button type="button" variant="outline" disabled={busy}
             onClick={() => {
               if (!window.confirm('This attempt may already have succeeded. Check the latest history before starting a new attempt, which could duplicate the action. Continue?')) return;

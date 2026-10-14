@@ -212,7 +212,7 @@ export function GovernanceConsole({
         </> : null}
       </nav>
       {message ? (
-        <output className="block rounded-xl border bg-secondary p-4 text-sm">
+        <output aria-live="polite" className="block rounded-xl border bg-secondary p-4 text-sm">
           {message}
         </output>
       ) : null}

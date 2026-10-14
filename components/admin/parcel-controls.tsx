@@ -412,7 +412,7 @@ function ParcelForm({
         />
       </label>
       {catalog.config ? <div className="sm:col-span-2"><ConfiguredFields config={catalog.config} baseKeys={BASE_KEYS} /></div> : null}
-      {!catalog.canSubmit ? <output className="sm:col-span-2 text-sm">{catalog.message || 'Form configuration is loading.'}</output> : null}
+      {!catalog.canSubmit ? <output aria-live="polite" className="sm:col-span-2 text-sm">{catalog.message || 'Form configuration is loading.'}</output> : null}
       {attemptPresent ? <p className="sm:col-span-2 text-xs text-muted-foreground">A prior parcel action may have succeeded. Retry only identical details, or check the parcel before starting a new attempt.</p> : null}
       {attemptPresent ? <button type="button" disabled={busy} className="rounded border p-2 text-sm"
         onClick={() => { if (window.confirm('A parcel action may already have succeeded. Check the parcel first. Start a new request reference?')) {

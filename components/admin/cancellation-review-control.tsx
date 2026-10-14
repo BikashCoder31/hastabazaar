@@ -165,7 +165,7 @@ export function CancellationReviewControl({ reviewId }: { reviewId: string }) {
       >
         Reject with reason
       </button>
-      <output>{message}</output>
+      <output aria-live="polite">{message}</output>
     </form>
   );
 }

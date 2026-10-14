@@ -142,7 +142,7 @@ export function ProductClassificationForm({
         </p>
       ) : null}
       {message ? (
-        <output className="block text-sm text-muted-foreground">
+        <output aria-live="polite" className="block text-sm text-muted-foreground">
           {message}
         </output>
       ) : null}

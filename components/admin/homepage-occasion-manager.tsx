@@ -393,7 +393,7 @@ export function HomepageOccasionManager({
         </CardHeader>
         <CardContent className="space-y-4">
           {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={['occasions']} /> : null}
-          {!catalog.canSubmit ? <output className="block text-sm">{catalog.message || 'Loading form configuration…'}</output> : null}
+          {!catalog.canSubmit ? <output aria-live="polite" className="block text-sm">{catalog.message || 'Loading form configuration…'}</output> : null}
           <div className="space-y-2">
             <Label htmlFor="occasion-change-reason">
               Reason and expected impact
@@ -417,7 +417,7 @@ export function HomepageOccasionManager({
             />
           </div>
           {message ? (
-            <output className="block text-sm font-medium">{message}</output>
+            <output aria-live="polite" className="block text-sm font-medium">{message}</output>
           ) : null}
           {failedAttemptKey ? <Button type="button" variant="outline" disabled={busy}
             onClick={() => {

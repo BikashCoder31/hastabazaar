@@ -15,7 +15,7 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-export default async function BusinessSettingsPage() {
+export default async function BusinessSettingsPage({searchParams}: {searchParams?: Promise<{setting?: string}>} = {}) {
   const staff = await requireStaffPage('/admin/business-settings', 'business_settings.view');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const now = new Date().getTime();
@@ -35,6 +35,8 @@ export default async function BusinessSettingsPage() {
     })),
   );
 
+  const requestedKey = (await searchParams)?.setting;
+  const initialKey = initialSettings.find(item=>item.key===requestedKey)?.key;
   return (
     <div className="space-y-6">
       <div>
@@ -51,6 +53,7 @@ export default async function BusinessSettingsPage() {
       <BusinessSettingsManager
         initialSettings={initialSettings as readonly BusinessSettingsAdminItem[]}
         asOf={now}
+        initialKey={initialKey}
       />
     </div>
   );

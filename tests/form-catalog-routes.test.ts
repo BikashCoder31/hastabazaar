@@ -279,7 +279,7 @@ void test('every staff form keeps its page or receiver permission, including ret
       'staff.delivery-assignment', 'shipping.console-action-staff',
       'staff.return-case-action', 'staff.complaint-case-action', 'staff.cancellation-review',
       'staff.seller-review-action', 'staff.order-fulfillment', 'staff.first-cod-confirmation', 'staff.review-moderation',
-      'staff.product-review',
+      'staff.product-review', 'staff.seller-registry-filter', 'staff.order-queue-filter',
     ];
     const superAdminForms = [
       'staff.activity-filter', 'staff.homepage-filter', 'staff.delivery-rate',

@@ -1,9 +1,23 @@
+import { AdminQueueFields } from '@/components/admin/admin-queue-fields';
+import { Button } from '@/components/ui/button';
+import { loadQueryPresentationConfig } from '@/lib/catalog/shop-query';
+import {
+  normalizeQueueFilters,
+  sellerQueueStatuses,
+  queuePageHref,
+} from '@/lib/admin/queue-filters';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { ArrowLeft, ArrowRight, Inbox } from 'lucide-react';
 
 import { StatusBadge } from '@/components/admin/status-badge';
-import { Card, CardContent } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from '@/components/ui/card';
 import {
   Table,
   TableBody,
@@ -35,15 +49,21 @@ function normalizedPage(value: string | undefined): number {
 export default async function SellerRegistryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; status?: string }>;
 }) {
   await requireStaffPage('/admin/sellers', 'seller.application.review');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const counts = await getSellerRegistryCounts(database);
-  const pageCount = Math.max(1, Math.ceil(counts.total / pageSize));
-  const requestedPage = normalizedPage((await searchParams).page);
+  const params = await searchParams;
+  const filters = normalizeQueueFilters(params, sellerQueueStatuses);
+  const [counts, matchingCounts, presentation] = await Promise.all([
+    getSellerRegistryCounts(database),
+    getSellerRegistryCounts(database, filters),
+    loadQueryPresentationConfig(database, 'staff.seller-registry-filter'),
+  ]);
+  const pageCount = Math.max(1, Math.ceil(matchingCounts.total / pageSize));
+  const requestedPage = normalizedPage(params.page);
   const page = Math.min(requestedPage, pageCount);
-  const sellers = await listSellerRegistry(database, page, pageSize);
+  const sellers = await listSellerRegistry(database, page, pageSize, filters);
 
   const summaries = [
     { label: 'Total registered', value: counts.total },
@@ -72,7 +92,54 @@ export default async function SellerRegistryPage({
         </p>
       </div>
 
-      <section aria-label="Seller registration totals" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Find a seller</CardTitle>
+          <CardDescription>
+            Search all registered sellers or focus on applications awaiting
+            review.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form
+            data-form-id="staff.seller-registry-filter"
+            method="GET"
+            action="/admin/sellers"
+            className="flex flex-col gap-4"
+          >
+            <AdminQueueFields
+              id="seller-registry"
+              formId="staff.seller-registry-filter"
+              filters={filters}
+              statuses={sellerQueueStatuses}
+              presentation={presentation.config}
+              searchHelp="Seller name, application reference, owner email or phone."
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit">Apply filters</Button>
+              {filters.q || filters.status ? (
+                <Button
+                  variant="outline"
+                  nativeButton={false}
+                  render={<Link href="/admin/sellers" />}
+                >
+                  Clear filters
+                </Button>
+              ) : null}
+            </div>
+          </form>
+          {presentation.unavailable ? (
+            <output className="block mt-3 text-sm text-muted-foreground">
+              Filter labels could not load. Standard filters remain available.
+            </output>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <section
+        aria-label="Seller registration totals"
+        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+      >
         {summaries.map((summary) => (
           <Card key={summary.label}>
             <CardContent className="py-5">
@@ -90,7 +157,7 @@ export default async function SellerRegistryPage({
           <h2 className="font-heading text-2xl">Seller registry</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Newest registrations appear first. Showing {sellers.length} of{' '}
-            {counts.total} seller profiles.
+            {matchingCounts.total} matching seller profiles.
           </p>
         </div>
         <p className="text-sm text-muted-foreground">
@@ -98,15 +165,19 @@ export default async function SellerRegistryPage({
         </p>
       </div>
 
-      {counts.total === 0 ? (
+      {matchingCounts.total === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center py-14 text-center">
             <Inbox className="size-9 text-muted-foreground" />
             <h2 className="mt-4 font-heading text-xl">
-              No seller profiles registered
+              {counts.total === 0
+                ? 'No seller profiles registered'
+                : 'No matching sellers'}
             </h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              New seller applications will appear here after submission.
+              {counts.total === 0
+                ? 'New seller applications will appear here after submission.'
+                : 'Try another name or status, or clear the filters.'}
             </p>
           </CardContent>
         </Card>
@@ -183,6 +254,9 @@ export default async function SellerRegistryPage({
                       href={`/admin/sellers/${seller.id}`}
                       className="inline-flex min-h-11 items-center gap-1 font-semibold text-primary hover:underline"
                     >
+                      <span className="sr-only">
+                        Review {seller.tradingName}:{' '}
+                      </span>
                       Details <ArrowRight className="size-4" />
                     </Link>
                   </TableCell>
@@ -194,10 +268,13 @@ export default async function SellerRegistryPage({
       )}
 
       {pageCount > 1 ? (
-        <nav aria-label="Seller registry pages" className="flex items-center justify-between gap-4">
+        <nav
+          aria-label="Seller registry pages"
+          className="flex items-center justify-between gap-4"
+        >
           {page > 1 ? (
             <Link
-              href={`/admin/sellers?page=${page - 1}`}
+              href={queuePageHref('/admin/sellers', filters, page - 1)}
               className="inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-semibold hover:bg-muted"
             >
               <ArrowLeft className="size-4" /> Previous
@@ -207,7 +284,7 @@ export default async function SellerRegistryPage({
           )}
           {page < pageCount ? (
             <Link
-              href={`/admin/sellers?page=${page + 1}`}
+              href={queuePageHref('/admin/sellers', filters, page + 1)}
               className="inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-semibold hover:bg-muted"
             >
               Next <ArrowRight className="size-4" />

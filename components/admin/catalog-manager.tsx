@@ -193,7 +193,7 @@ function TaxonomySection({
         retained with their existing product associations.
       </p>
       {message ? (
-        <output className="block mt-3 text-sm">
+        <output aria-live="polite" className="block mt-3 text-sm">
           {refreshing
             ? 'Catalogue entry saved. Refreshing entries...'
             : message}
