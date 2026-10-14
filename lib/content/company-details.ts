@@ -10,9 +10,8 @@ export const companyDetails = {
   registeredOffice:
     'Birgunj Metropolitan City, Ward 11, Parsa, Madhesh Province, Nepal',
   supportEmail: 'support@hastabazaar.com',
-  // Replace the empty string with the issued company PAN, then rebuild/deploy.
   // PAN issuance does not establish VAT registration.
-  pan: '',
+  pan: '624749646',
 };
 
 export const companyPanDisplay = companyDetails.pan.trim() || 'Registration in progress';
