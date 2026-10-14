@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 import { Children, isValidElement, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
@@ -259,6 +260,8 @@ export function GovernanceConsole({
                 onSubmit={(event) => void submit(event, 'rule.create')}
                 className="grid gap-4 sm:grid-cols-2"
               >
+      <FormGuide formId="staff.governance-rule-create" />
+
                 <Field label="Rule code">
                   <Input
                     name="code"
@@ -348,6 +351,8 @@ export function GovernanceConsole({
                 onSubmit={(event) => void submit(event, 'promotion.create')}
                 className="grid gap-4 sm:grid-cols-2"
               >
+      <FormGuide formId="staff.governance-promotion-create" />
+
                 <Field label="Campaign name">
                   <Input name="nameEn" required minLength={3} maxLength={160} />
                 </Field>
@@ -545,6 +550,8 @@ export function GovernanceConsole({
                     onSubmit={(event) => void submit(event, 'incident.create')}
                     className="grid gap-4 sm:grid-cols-2"
                   >
+      <FormGuide formId="staff.governance-incident-create" />
+
                     <Field label="Incident title">
                       <Input
                         name="title"
@@ -605,6 +612,8 @@ export function GovernanceConsole({
                               }
                               className="mt-4 grid gap-3 sm:grid-cols-2"
                             >
+      <FormGuide formId="staff.governance-incident-update" />
+
                               <input type="hidden" name="id" value={item.id} />
                               <Field label="Next status">
                                 <select name="status" className={selectClass}>
@@ -647,6 +656,8 @@ export function GovernanceConsole({
                     onSubmit={(event) => void submit(event, 'backup.verify')}
                     className="grid gap-4 sm:grid-cols-2"
                   >
+      <FormGuide formId="staff.governance-backup-verify" />
+
                     <Field label="Scope">
                       <select name="scope" className={selectClass}>
                         <option value="d1">D1 database</option>

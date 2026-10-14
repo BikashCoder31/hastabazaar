@@ -74,7 +74,7 @@ void test('managed workspace mounts configuration only for eligible sellers and 
     await render('managed_maker');
     const supply = page.locator(`form[data-form-id="${supplyId}"]`);
     await supply.getByLabel('Supply context').waitFor({ state: 'visible' });
-    await page.getByText('Apply to transition to Registered Seller', { exact: true }).click();
+    await page.getByText('Request a change to Registered Seller', { exact: true }).click();
     const transition = page.locator(`form[data-form-id="${transitionId}"]`);
     await transition.getByLabel('Transition context').waitFor({ state: 'visible' });
     assert.deepEqual((await reads()).toSorted(), [`/api/forms/${supplyId}`, `/api/forms/${transitionId}`].toSorted());

@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -139,6 +140,8 @@ export function SellerGovernanceActions({
 
   return (
     <form ref={formRef} data-form-id={FORM_ID} className="space-y-5" onSubmit={(event) => event.preventDefault()}>
+      <FormGuide formId={FORM_ID} />
+
       <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm leading-6 dark:bg-amber-950/20">
         This controls only the seller role and sale availability. It does not
         disable the person&apos;s ordinary buyer account. Customers see only

@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -133,6 +134,8 @@ export function ManagedProgramReview({ sellerId, workspace }: { sellerId: string
     {workspace.supplies.map(supply => <div key={supply.id} className="space-y-3 rounded-xl border bg-background p-4">
       <p className="font-semibold">{supply.productName} · {supply.status.replaceAll('_', ' ')}</p><p>{supply.quantityProposed} proposed × {money(supply.agreedUnitPaisa)} · accepted obligation {money(supply.originalOwedPaisa)} · adjustments {money(supply.adjustedPaisa)} · paid {money(supply.paidPaisa)}</p>
       {supply.status === 'proposed' ? <form data-form-id="staff.managed-supply-decision" className="grid gap-2 sm:grid-cols-2" onSubmit={send}>
+      <FormGuide formId="staff.managed-supply-decision" />
+
         <input type="hidden" name="action" value="decide_supply" /><input type="hidden" name="recordId" value={supply.id} />
         <label>Decision<select name="decision" className="mt-1 h-9 w-full rounded border px-2"><option value="accept">Accept</option><option value="reject">Reject</option><option value="cancel">Cancel</option></select></label>
         <label>Accepted quantity<input name="quantityAccepted" type="number" defaultValue={supply.quantityProposed} className="mt-1 h-9 w-full rounded border px-2" /></label>
@@ -140,12 +143,14 @@ export function ManagedProgramReview({ sellerId, workspace }: { sellerId: string
         <label>Quality<select name="qualityStatus" className="mt-1 h-9 w-full rounded border px-2"><option value="accepted">Accepted</option><option value="rejected">Rejected</option><option value="not_inspected">Not inspected</option></select></label>
         <label>Ownership record<select name="ownershipRecordStatus" className="mt-1 h-9 w-full rounded border px-2"><option value="simulated_terms_recorded">Simulated terms recorded</option><option value="not_recorded">Not recorded</option></select></label>
         <label>Risk record<select name="riskRecordStatus" className="mt-1 h-9 w-full rounded border px-2"><option value="simulated_terms_recorded">Simulated terms recorded</option><option value="not_recorded">Not recorded</option></select></label>
-        <label>Evidence reference<input name="evidenceReference" required className="mt-1 h-9 w-full rounded border px-2" /></label>
+        <label>Supporting document or reference<input name="evidenceReference" required className="mt-1 h-9 w-full rounded border px-2" /></label>
         <label>Decision reason<input name="reason" required minLength={10} className="mt-1 h-9 w-full rounded border px-2" /></label>
         <div className="sm:col-span-2">{fields('staff.managed-supply-decision')}{formMessage('staff.managed-supply-decision', supply.id, 'decide_supply')}<Button type="submit" disabled={disabled('staff.managed-supply-decision')}>Record supply decision</Button></div>
       </form> : null}
       {supply.status === 'accepted' ? <div className="grid gap-3 lg:grid-cols-2">
         <form data-form-id="staff.managed-adjustment" className="space-y-2 rounded border p-3" onSubmit={send}>
+      <FormGuide formId="staff.managed-adjustment" />
+
           <input type="hidden" name="action" value="add_adjustment" /><input type="hidden" name="recordId" value={supply.id} /><p className="font-semibold">Append linked adjustment</p>
           <select name="kind" className="h-9 w-full rounded border px-2"><option value="defect">Defect</option><option value="rejection">Rejection</option><option value="cancellation">Cancellation</option></select>
           <input name="amountNpr" type="number" step="0.01" required placeholder="Amount NPR" className="h-9 w-full rounded border px-2" />
@@ -153,10 +158,14 @@ export function ManagedProgramReview({ sellerId, workspace }: { sellerId: string
           {fields('staff.managed-adjustment')}{formMessage('staff.managed-adjustment', supply.id, 'add_adjustment')}<Button type="submit" disabled={disabled('staff.managed-adjustment')} variant="outline">Record adjustment</Button>
         </form>
         {!supply.paymentId ? <form data-form-id="staff.managed-payment-preparation" className="space-y-2 rounded border p-3" onSubmit={send}>
+      <FormGuide formId="staff.managed-payment-preparation" />
+
           <input type="hidden" name="action" value="prepare_payment" /><input type="hidden" name="recordId" value={supply.id} /><p className="font-semibold">Create approved supplier payment</p>
           <input name="destinationReference" required defaultValue="SIM-MAKER-ACCOUNT" className="h-9 w-full rounded border px-2" />
           {fields('staff.managed-payment-preparation')}{formMessage('staff.managed-payment-preparation', supply.id, 'prepare_payment')}<Button type="submit" disabled={disabled('staff.managed-payment-preparation')}>Create approved simulated payment</Button>
         </form> : <form data-form-id="staff.managed-payment-action" className="space-y-2 rounded border p-3" onSubmit={send}>
+      <FormGuide formId="staff.managed-payment-action" />
+
           <input type="hidden" name="paymentId" value={supply.paymentId} /><p className="font-semibold">Payment {supply.paymentStatus} · {supply.paymentId}</p>
           <select name="action" className="h-9 w-full rounded border px-2">{supply.paymentStatus === 'prepared' ? <option value="approve_payment">Approve payment</option> : null}{supply.paymentStatus === 'approved' ? <option value="mark_payment_paid">Mark simulated paid</option> : null}</select>
           {fields('staff.managed-payment-action')}{formMessage('staff.managed-payment-action', supply.paymentId, supply.paymentStatus === 'prepared' ? 'approve_payment' : 'mark_payment_paid')}<Button type="submit" disabled={disabled('staff.managed-payment-action') || supply.paymentStatus === 'paid'}>Record payment action</Button>
@@ -165,6 +174,8 @@ export function ManagedProgramReview({ sellerId, workspace }: { sellerId: string
     </div>)}
     {workspace.transitions.map(item => <div key={item.id} className="space-y-3 rounded-xl border bg-background p-4"><p className="font-semibold">Registered Seller transition · {item.legalName}</p><p>{item.taxMode} · {item.status.replaceAll('_', ' ')}{item.effectiveAt ? ` · effective ${new Date(item.effectiveAt).toLocaleString('en-NP', { timeZone: 'Asia/Kathmandu' })}` : ''}</p>
       {item.status === 'submitted' ? <form data-form-id="staff.managed-transition-decision" className="grid gap-2 sm:grid-cols-2" onSubmit={send}>
+      <FormGuide formId="staff.managed-transition-decision" />
+
         <input type="hidden" name="action" value="review_transition" /><input type="hidden" name="applicationId" value={item.id} />
         <label>Decision<select name="decision" className="mt-1 h-9 w-full rounded border px-2"><option value="approve">Approve and schedule</option><option value="request_changes">Request changes</option><option value="reject">Reject</option></select></label>
         <label>Effective time<input name="effectiveLocal" type="datetime-local" className="mt-1 h-9 w-full rounded border px-2" /></label>

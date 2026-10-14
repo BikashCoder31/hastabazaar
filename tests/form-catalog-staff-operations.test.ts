@@ -1049,7 +1049,7 @@ void test('mounted staff marketplace, parcel, and payout forms send published co
     assert.equal(await parcel.count(), 1);
     await parcel.getByLabel('Action').selectOption('record_cost');
     await parcel.getByLabel('Amount in NPR *').fill('5.00');
-    await parcel.getByLabel('Evidence reference *').fill('COURIER-RECEIPT-1');
+    await parcel.getByLabel('Supporting document or reference *').fill('COURIER-RECEIPT-1');
     await parcel.getByLabel('Operational note *').fill('Actual courier expense recorded after receipt review.');
     await parcel.getByLabel('Staff context').fill('Reviewed courier receipt');
     await parcel.getByRole('button', { name: 'Save parcel action' }).click();

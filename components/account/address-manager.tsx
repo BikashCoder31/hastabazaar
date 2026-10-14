@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import {LocationPicker} from '@/components/delivery/location-picker';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -180,6 +181,8 @@ export function AddressManager({
           onChange={() => { if (!busy) requestId.current = null; }}
           className="customer-form mt-7 rounded-2xl border bg-card p-6"
         >
+      <FormGuide formId="account.address" />
+
           <div className="flex justify-between gap-4">
             <h2 className="font-heading text-2xl">
               {editing ? 'Edit address' : 'New address'}

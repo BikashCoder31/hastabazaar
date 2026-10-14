@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useState, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { sendJson } from '@/lib/http/client-request';
@@ -45,6 +46,8 @@ export function DeliveryAssignment({ orderId, current, riderEmail, isSuperAdmin 
     <h2 className="font-semibold">Delivery assignment</h2>
     <p className="text-sm">One consolidated delivery per order. Assignment does not dispatch the order or change its delivery charge.</p>
     <form data-form-id="staff.delivery-assignment" onSubmit={save} className="space-y-3">
+      <FormGuide formId="staff.delivery-assignment" />
+
       <label className="block">Delivery method
         <select className="mt-1 block w-full rounded border p-2" value={method} onChange={(event) => setMethod(event.target.value)}>
           {isSuperAdmin ? <option value="own_rider">Own rider</option> : null}<option value="courier">Courier company</option>

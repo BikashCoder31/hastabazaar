@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2, FilePenLine, SearchCheck, XCircle } from 'lucide-react';
@@ -196,6 +197,8 @@ export function SellerReviewActions({
 
   return (
     <form ref={formRef} data-form-id={FORM_ID} className="space-y-4" onSubmit={(event) => event.preventDefault()}>
+      <FormGuide formId={FORM_ID} />
+
       <output className="block text-sm font-medium" aria-live="polite">{pending ? 'Saving review decision…' : message}</output>
       {status === 'under_review' ? (
         <div className="space-y-2">

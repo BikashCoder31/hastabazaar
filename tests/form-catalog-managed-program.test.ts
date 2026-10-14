@@ -605,7 +605,7 @@ void test('mounted managed-program forms send their own published answer context
       assert.equal(await form.count(), 1, id);
       assert.equal(await form.locator('[data-configured-field="context_note"]').count(), 1, id);
       await form.getByLabel('Staff context').fill('Reviewed staging evidence');
-      if (action === 'decide_supply') { await form.getByLabel('Evidence reference').fill('SIM-GRN'); await form.getByLabel('Decision reason').fill('SIMULATED approval'); }
+      if (action === 'decide_supply') { await form.getByLabel('Supporting document or reference').fill('SIM-GRN'); await form.getByLabel('Decision reason').fill('SIMULATED approval'); }
       if (action === 'add_adjustment') { await form.locator('[name="amountNpr"]').fill('100.00'); await form.locator('[name="reason"]').fill('SIMULATED adjustment'); }
       if (action === 'review_transition') await form.getByLabel('Review reason').fill('SIMULATED review');
       const before = bodies.length;

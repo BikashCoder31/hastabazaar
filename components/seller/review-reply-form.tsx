@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { sendJson } from '@/lib/http/client-request';
@@ -68,6 +69,8 @@ export function ReviewReplyForm({
   }
   return (
     <form onSubmit={submit} data-form-id="seller.review-reply" className="mt-5 border-t pt-5">
+      <FormGuide formId="seller.review-reply" />
+
       <label className="text-sm font-semibold" htmlFor={`reply-${reviewId}`}>
         {version ? 'Edit your reply' : 'Reply to this customer'}
       </label>

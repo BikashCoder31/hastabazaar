@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 import { useState } from 'react';
 import { feedbackTopics } from '@/lib/feedback/customer-feedback';
@@ -83,6 +84,8 @@ export function CustomerContactForm({
       onSubmit={submit}
       className="grid min-w-0 grid-cols-1 gap-5 rounded-3xl border bg-card p-6 shadow-sm sm:grid-cols-2 sm:p-8"
     >
+      <FormGuide formId={kind === 'feedback' ? 'public.feedback' : 'public.contact'} />
+
       <input
         type="hidden"
         name="pagePath"

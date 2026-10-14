@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -763,6 +764,8 @@ function AuthorizedLoyaltyManager({
         noValidate
         className="min-w-0 space-y-5 rounded-xl border p-4 sm:p-6"
       >
+      <FormGuide formId="staff.loyalty-settings" />
+
         <fieldset
           disabled={pending}
           key={editor + String(snapshot)}

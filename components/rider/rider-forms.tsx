@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import { useState, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { DISTRICTS_BY_PROVINCE } from '@/lib/checkout/nepal-address';
@@ -48,14 +49,16 @@ export function RiderApplicationForm() {
       onSubmit={(e) => void submit(e)}
       className="space-y-4 rounded-xl border p-5"
     >
-      <h2 className="text-xl font-semibold">Apply as a rider</h2>
+      <h2 className="text-xl font-semibold">Apply to become a delivery rider</h2>
+      <FormGuide formId="rider.application" />
+
       <p>
         * Required. Your identity document is private and reviewed by Super
         Admin. It is retained with your application; automatic deletion is not
         enabled.
       </p>
       {[
-        ['legalName', 'Legal name'],
+        ['legalName', "Full name as shown on your document"],
         ['phone', 'Phone number'],
         ['identityNumber', 'Identity document number'],
       ].map(([name, label]) => (
@@ -72,8 +75,7 @@ export function RiderApplicationForm() {
           />
         </label>
       ))}
-      <label className="block">
-        Service district
+      <label className="block">District where you can deliver
         <Star />
         <select className={input} name="district" required>
           <option value="">Select district</option>
@@ -85,8 +87,7 @@ export function RiderApplicationForm() {
             ))}
         </select>
       </label>
-      <label className="block">
-        Identity type
+      <label className="block">Type of identity document
         <Star />
         <select className={input} name="identityType" required>
           {[
@@ -101,8 +102,7 @@ export function RiderApplicationForm() {
           ))}
         </select>
       </label>
-      <label className="block">
-        Private identity photo
+      <label className="block">Photo of your identity document
         <Star />
         <input
           className={input}
@@ -119,8 +119,7 @@ export function RiderApplicationForm() {
       <button
         className="rounded-lg bg-primary p-3 text-primary-foreground"
         disabled={busy || !catalog.canSubmit}
-      >
-        Submit rider application
+      >Send rider application
       </button>
       <output aria-live="polite" className="block">
         {message || catalog.message}
@@ -195,6 +194,8 @@ export function RiderReportForm({
       className="space-y-3 rounded-lg bg-muted p-4"
     >
       <h3 className="font-semibold">Report this delivery attempt</h3>
+      <FormGuide formId="rider.report" />
+
       <p className="text-sm">
         * Required. Proof and cash reports need staff confirmation. COD does not
         require OTP.
@@ -364,7 +365,7 @@ export function RiderRemittanceForm({
     const [whole, fraction = ''] = amount.split('.'),
       paisa = BigInt(whole) * BigInt(100) + BigInt(fraction.padEnd(2, '0'));
     if (paisa < 1 || paisa > BigInt(Number.MAX_SAFE_INTEGER)) {
-      setMessage('Enter a supported positive remittance amount.');
+      setMessage('Enter the cash amount you handed over. It must be more than zero.');
       return;
     }
     setBusy(true);
@@ -383,7 +384,7 @@ export function RiderRemittanceForm({
         }),
         data = (await response.json()) as { error?: string; code?: string };
       if (!catalog.handleSubmissionResponse(response, data.code))
-        throw new Error(data.error ?? 'Remittance submission failed.');
+        throw new Error(data.error ?? 'The cash handover could not be recorded. Please try again.');
       setRequestId(crypto.randomUUID());
       setMessage(
         'Cash handover submitted. A different authorized finance reviewer must verify actual receipt.',
@@ -394,7 +395,7 @@ export function RiderRemittanceForm({
       setMessage(
         error instanceof Error
           ? error.message
-          : 'Remittance submission failed.',
+          : 'The cash handover could not be recorded. Please try again.',
       );
     } finally {
       setBusy(false);
@@ -407,6 +408,8 @@ export function RiderRemittanceForm({
       className="space-y-3 rounded-lg border bg-background p-4"
     >
       <h3 className="font-semibold">Submit cash handover — {orderNumber}</h3>
+      <FormGuide formId="rider.remittance" />
+
       <p className="text-sm">
         Outstanding recorded rider cash: NPR{' '}
         {(outstandingPaisa / 100).toFixed(2)}. This submission does not mark

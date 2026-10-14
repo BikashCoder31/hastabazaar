@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 import { useEffect, useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -50,6 +51,8 @@ export function PayoutRequestActions({ id, role = 'admin' }: { id: string; role?
       }}
       className="mt-4"
     >
+      <FormGuide formId="staff.payout-request-action" />
+
       <Link className="text-sm underline" href={`/admin/staff-form-history?kind=payout-request-action&id=${encodeURIComponent(id)}`}>View payout request form history</Link>
       <fieldset
         disabled={pending||!catalog.canSubmit}

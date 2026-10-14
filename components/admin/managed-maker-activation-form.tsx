@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import type { ManagedMakerCompanyAccount } from '@/lib/configuration/types';
 import { useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
@@ -65,6 +66,8 @@ export function ManagedMakerActivationForm({ sellerId, companyAccount }: { selle
     className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:bg-amber-950/20"
     onSubmit={submit}>
     <h3 className="font-semibold">Local-staging activation only</h3>
+      <FormGuide formId="staff.managed-maker-activation" />
+
     <a className="text-sm underline" href={`/admin/staff-form-history?kind=managed-maker-activation&id=${encodeURIComponent(sellerId)}`}>View activation form history</a>
     {companyAccount ? <p>Operational company account: {companyAccount.storeName} ({companyAccount.entityReference}). Its actual identity is recorded separately in the maker’s agreement; the references below remain fictional simulation references.</p> : null}
     <p>This form is rejected outside the guarded disposable environment. All references must be fictional.</p>

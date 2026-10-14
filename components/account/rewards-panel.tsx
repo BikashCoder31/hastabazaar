@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -565,6 +566,8 @@ export function RewardsPanel({
           className="space-y-4 rounded-2xl border bg-card p-5"
         >
           <h2 className="font-heading text-2xl">Daily points</h2>
+      <FormGuide formId="account.daily-reward" />
+
           <p>{earningMessages[view.state.status]}</p>
           <p>{view.state.dailyPoints} points per daily claim.</p>
           {!claimStatusKnown ? (
@@ -643,6 +646,8 @@ export function RewardsPanel({
           className="space-y-4 rounded-2xl border bg-card p-5"
         >
           <h2 className="font-heading text-2xl">Exchange points</h2>
+      <FormGuide formId="account.points-redemption" />
+
           <p>
             {view.state.pointsPerBlock} points ={' '}
             {formatPaisaExact(view.state.creditPaisaPerBlock)} shopping credit.

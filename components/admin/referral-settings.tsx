@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -59,6 +60,8 @@ export function ReferralSettings({ campaign }: { campaign: ReferralCampaign }) {
         }
       }}
     >
+      <FormGuide formId="staff.referral-settings" />
+
 <p className="text-xs text-muted-foreground">* Required field</p>
 
       <label className="flex gap-3 text-sm">

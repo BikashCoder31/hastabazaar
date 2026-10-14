@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 import {ContactVerificationPanel} from '@/components/account/contact-verification';
 import type {CheckoutContactPolicy, ContactVerificationStatus} from '@/lib/auth/contact-verification';
@@ -358,6 +359,8 @@ export function CheckoutForm({
       onSubmit={submit}
       className="customer-form grid gap-8 lg:grid-cols-[minmax(0,1fr)_23rem]"
     >
+      <FormGuide formId="commerce.checkout" />
+
       <div className="space-y-6">
         <ContactVerificationPanel key={`${customerId??'guest'}:${customerEmail??''}:${customerPhone??''}`}
           ownerKey={customerId} initialStatus={contactStatus} onStatusChange={setCurrentContacts}

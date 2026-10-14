@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -114,6 +115,8 @@ export function FooterFeedbackForm() {
 
         <form ref={formRef} data-form-id="public.footer-feedback" onSubmit={submit}
           className="grid gap-4 sm:grid-cols-2">
+      <FormGuide formId="public.footer-feedback" />
+
           <input type="hidden" name="pagePath" value={pathname || '/'} />
           <input type="hidden" name="kind" value="footer" />
           <div

@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 
@@ -269,6 +270,8 @@ export function HomepageOccasionManager({
   return (
     <form ref={formRef} data-form-id="staff.homepage-occasion-manager" id="occasion-slides"
       className="space-y-6 border-t pt-8" onSubmit={(event) => event.preventDefault()}>
+      <FormGuide formId="staff.homepage-occasion-manager" />
+
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="eyebrow">Customer homepage</p>

@@ -29,7 +29,7 @@ void test('catalog renders business categories and friendly links without univer
   assert.match(html, /Supply &amp; delivery/);
   assert.match(html, /Payouts &amp; finance/);
   assert.match(html, /Governance &amp; operations/);
-  assert.match(html, /href="\/admin\/forms\/seller.application"[^>]*>Seller application<\/a>/);
+  assert.match(html, /href="\/admin\/forms\/seller.application"[^>]*>Apply to sell<\/a>/);
   assert.match(html, /href="\/admin\/form-submissions"/);
   assert.match(html, /href="\/admin\/staff-form-history"/);
 });

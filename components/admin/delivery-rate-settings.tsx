@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useEffect, useState, type SyntheticEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -64,6 +65,8 @@ export function DeliveryRateSettings({ rates }: { rates: DeliveryRates }) {
   );
 
   return <form data-form-id="staff.delivery-rate" onSubmit={(event) => void submit(event)} className="space-y-5 rounded-xl border p-5">
+      <FormGuide formId="staff.delivery-rate" />
+
     <p className="text-xs text-muted-foreground">* Required field</p>
     <fieldset disabled={pending} className="space-y-5">
       <legend className="font-semibold">Zone base rates</legend>

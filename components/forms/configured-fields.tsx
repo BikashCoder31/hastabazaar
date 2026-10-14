@@ -1,6 +1,7 @@
 import type { ConfiguredField, PublishedFormConfig } from '@/lib/forms/types';
 import { useId } from 'react';
 import { canonicalKey } from '@/lib/forms/submission';
+import { builtInDisplayDefault } from '@/lib/forms/plain-language';
 
 export interface FieldDisplay {
   label: string;
@@ -13,7 +14,14 @@ export interface FieldDisplay {
 export function fieldDisplay(config: PublishedFormConfig | null, baseKey: string): FieldDisplay | null {
   const requested = canonicalKey(baseKey);
   const field = config?.fields.find((item) => canonicalKey(item.key) === requested && item.status === 'active');
-  return field ? { label: field.label, helpText: field.helpText, placeholder: field.placeholder, required: field.required } : null;
+  if (field) {
+    const defaults = builtInDisplayDefault(config!.formId, baseKey);
+    return { label: field.label === field.key && defaults ? defaults.label : field.label,
+      helpText: field.helpText ?? defaults?.helpText, placeholder: field.placeholder, required: field.required };
+  }
+  const defaults = config && !config.fields.some(item => canonicalKey(item.key) === requested)
+    ? builtInDisplayDefault(config.formId, baseKey) : null;
+  return defaults ? { ...defaults, helpText: defaults.helpText, placeholder: defaults.placeholder } : null;
 }
 
 function ConfiguredFieldControl({ field, error, idPrefix }: { field: ConfiguredField; error?: string; idPrefix: string }) {
@@ -53,7 +61,7 @@ function ConfiguredFieldControl({ field, error, idPrefix }: { field: ConfiguredF
         step={field.integerOnly ? 1 : 'any'} />;
   }
   return <div className="min-w-0 space-y-2 break-words" data-configured-field={field.id}>
-    <label htmlFor={id} className="block min-w-0 break-words font-medium">{field.label}{field.required ? <span aria-hidden="true"> *</span> : null}</label>
+    <label htmlFor={id} className="block min-w-0 break-words font-medium">{field.label}{field.required ? <span aria-hidden="true"> *</span> : <span className="font-normal text-muted-foreground"> (optional)</span>}</label>
     {control}
     {field.helpText ? <p id={helpId} className="min-w-0 break-words text-sm text-muted-foreground">{field.helpText}</p> : null}
     {error ? <p id={errorId} role="alert" className="min-w-0 break-words text-sm text-destructive">{error}</p> : null}

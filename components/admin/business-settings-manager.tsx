@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import { companyDetails, companyPanDisplay } from '@/lib/content/company-details';
 
 import type { ProductWatermarkPolicy } from '@/lib/products/watermark-policy';
@@ -376,6 +377,8 @@ export function BusinessSettingsManager({
     <form ref={formRef} data-form-id="staff.business-settings-manager"
       className="grid gap-6 xl:grid-cols-[18rem_minmax(0,1fr)]"
       onSubmit={(event) => event.preventDefault()}>
+      <FormGuide formId="staff.business-settings-manager" />
+
       <fieldset disabled={busy} className="contents">
       <Card className="h-fit">
         <CardHeader>

@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { productDiscountLabel } from '@/lib/products/discount';
 import Link from 'next/link';
@@ -645,6 +646,8 @@ export function ProductSubmissionForm({
       onSubmit={submit}
       className="seller-form space-y-9 rounded-2xl border bg-card p-6 shadow-sm sm:p-8"
     >
+      <FormGuide formId="seller.product-submission" />
+
       {initial ? (
         <input
           type="hidden"

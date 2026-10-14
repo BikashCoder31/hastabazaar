@@ -2,6 +2,7 @@ import { sellerQueueStatuses, orderQueueStatuses, emailQueueStatuses, emailQueue
 import { INCENTIVE_FORM_CONTRACTS } from '../incentives/forms';
 import type { BaseFieldCapability, FormAudience, FormCapabilities, FormDefinition, FormId, FormMode } from './types';
 import { feedbackTopics } from '../feedback/customer-feedback';
+import { baseFieldCopy } from './plain-language';
 
 export interface ImplementedFormAdapter {
   readonly formId: FormId;
@@ -705,6 +706,8 @@ export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.fr
         customFieldTypes: Object.freeze(['short_text', 'long_text', 'number', 'date', 'single_choice', 'multiple_choice', 'checkbox', 'email', 'phone'] as const), answerBehavior: 'record' }),
       adapterId: 'account.profile',
     } satisfies FormDefinition) : definition(row);
-    return [item.id, item];
+    return [item.id, Object.freeze({ ...item, baseFields: Object.freeze(item.baseFields.map(field => Object.freeze({
+      ...field, label: field.label === field.key ? baseFieldCopy(item.id, field.key).label : field.label,
+    }))) })];
   }))),
 );

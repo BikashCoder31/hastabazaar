@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import { ConfirmOperation } from '@/components/admin/confirm-operation';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import Link from 'next/link';
@@ -138,6 +139,8 @@ export function StaffPermissionManager({
               confirmLabel:'Confirm permission changes' });
           }}
         >
+      <FormGuide formId="staff.staff-permission-1" />
+
           <div>
             <Label htmlFor="permission-admin">Admin *</Label>
             <select
@@ -311,6 +314,8 @@ export function StaffPermissionManager({
                       description:'Review the requested access for '+(members.find(member=>member.userId===r.userId)?.displayName??r.userId)+'. Reason: '+(typeof decisionReason === 'string' ? decisionReason : '')+'. The recorded request and current authority are checked again when you confirm.',confirmLabel:action==='approve'?'Approve access changes':'Reject access changes'});
                   }}
                 >
+      <FormGuide formId="staff.staff-permission-2" />
+
                   <Input
                     aria-label="Decision reason"
                     name="reason"

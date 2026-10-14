@@ -14,6 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import type { ConfiguredField, CustomFieldType, FormConfigDraft, FormDefinition } from '@/lib/forms/types';
 import { validateFormDraftForDefinition } from '@/lib/forms/validation';
+import { baseFieldCopy, isAutomaticFormField } from '@/lib/forms/plain-language';
+import { formChangeSummary } from '@/lib/forms/catalog-changes';
 
 export interface CatalogVersion {
   id: string;
@@ -83,6 +85,10 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
   const baseKeys = new Set(form.baseFields.map((item) => canonicalKey(item.key)));
   const customFields = ordered(fields.filter((field) => !baseKeys.has(canonicalKey(field.key))));
   const previewConfig = { formId: form.id, version: published?.version ?? 0, publishedAt: published?.publishedAt ?? 0, fields };
+  const changes = formChangeSummary(published?.config.fields ?? [], fields);
+  const questions = form.baseFields.filter(field => !isAutomaticFormField(field.key, form.id) && (field.capability !== 'protected' || field.required !== undefined));
+  const fixedQuestions = form.baseFields.filter(field => !isAutomaticFormField(field.key, form.id) && field.capability === 'protected' && field.required === undefined);
+  const automaticFields = form.baseFields.filter(field => isAutomaticFormField(field.key, form.id));
 
   function announce(problem: string, focus?: HTMLElement | null) {
     setMessage(''); setError(problem);
@@ -246,32 +252,32 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
   return <div className="grid min-w-0 gap-5" aria-busy={busy || replacingHistory}>
     <Card>
       <CardHeader>
-        <CardTitle>Form capability</CardTitle>
-        <CardDescription>{form.capabilities.explanation}</CardDescription>
+        <CardTitle>How to manage this form</CardTitle>
+        <CardDescription>Edit the questions, save a draft, check the preview, then publish. People filling in the form will see the published version. Previous answers keep their original questions.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-2">
-        <Badge variant={pending ? 'secondary' : 'default'}>{pending ? 'Adapter pending' : 'Adapter connected'}</Badge>
-        <Badge variant="outline">{form.capabilities.answerBehavior === 'query' ? 'Query criteria' : form.capabilities.answerBehavior === 'none' ? 'No answers stored' : 'Record linked answers'}</Badge>
-        <span className="min-w-0 break-all text-xs text-muted-foreground">{form.route}</span>
+        <Badge variant={pending ? 'secondary' : 'default'}>{pending ? 'Needs setup before use' : 'Form linked to its task'}</Badge>
+        <Badge variant="outline">{form.capabilities.answerBehavior === 'query' ? 'Search form' : form.capabilities.answerBehavior === 'none' ? 'Answers are not stored here' : 'Answers stay with their related record'}</Badge>
+        <details className="w-full text-sm"><summary className="cursor-pointer text-primary">Where this form is used and what can change</summary><p className="mt-2 break-all text-muted-foreground">{form.route}</p><p className="mt-2 text-muted-foreground">{form.capabilities.explanation}</p></details>
       </CardContent>
     </Card>
 
     <Card>
       <CardHeader>
-        <CardTitle>Fields</CardTitle>
-        <CardDescription>Protected fields keep their server rules. Archived custom fields remain in version history and old answers.</CardDescription>
+        <CardTitle>Questions</CardTitle>
+        <CardDescription>Use short questions and helpful examples. Built-in questions follow the rules of their task. Hiding an added question keeps its previous answers in history.</CardDescription>
       </CardHeader>
       <fieldset disabled={editLocked} aria-busy={editLocked} className="min-w-0">
       <CardContent className="grid min-w-0 gap-4">
-        {form.baseFields.map((base) => {
+        {questions.map((base) => {
           const item = fields.find((field) => canonicalKey(field.key) === canonicalKey(base.key));
           const editable = !pending && base.capability !== 'protected' && customTypes.includes(base.type as CustomFieldType) && typeof base.required === 'boolean' && base.status === 'active';
           const reasonLocked = base.capability === 'protected' ? base.explanation : pending ? 'This form has no connected server adapter yet.' : 'The adapter keeps this built-in field’s required and visibility rules.';
           return <div key={base.key} className="grid min-w-0 gap-3 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
             <div className="min-w-0"><p className="font-medium">{item?.label ?? base.label}</p><p className="break-words text-xs text-muted-foreground">Built-in · {base.key}</p><p className="mt-1 text-xs text-muted-foreground">{reasonLocked}</p></div>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" aria-label={`Required for ${base.label}`} disabled title={reasonLocked}>{base.required ? 'Required' : 'Optional'}</Button>
-              {editable ? <Button type="button" variant="outline" size="sm" onClick={() => setFields((current) => current.some((field) => canonicalKey(field.key) === canonicalKey(base.key)) ? current : canonicalFields([...current, { id: canonicalKey(base.key), key: canonicalKey(base.key), type: base.type as CustomFieldType, label: base.label, required: base.required ?? false, status: 'active', order: current.length, ...(base.choices ? { choices: base.choices } : {}), ...(base.min !== undefined ? { min: base.min } : {}), ...(base.max !== undefined ? { max: base.max } : {}), ...(base.integerOnly !== undefined ? { integerOnly: base.integerOnly } : {}) }]))}>Edit display</Button> : null}
+              <Button type="button" variant="outline" size="sm" aria-label={`Required for ${base.label}`} disabled title={reasonLocked}>{base.required === undefined ? 'Rules set by this task' : base.required ? 'Required' : 'Optional'}</Button>
+              {editable ? <Button type="button" variant="outline" size="sm" onClick={() => setFields((current) => current.some((field) => canonicalKey(field.key) === canonicalKey(base.key)) ? current : canonicalFields([...current, { id: canonicalKey(base.key), key: canonicalKey(base.key), type: base.type as CustomFieldType, label: base.label, ...(baseFieldCopy(form.id, base.key).helpText ? { helpText: baseFieldCopy(form.id, base.key).helpText } : {}), required: base.required ?? false, status: 'active', order: current.length, ...(base.choices ? { choices: base.choices } : {}), ...(base.min !== undefined ? { min: base.min } : {}), ...(base.max !== undefined ? { max: base.max } : {}), ...(base.integerOnly !== undefined ? { integerOnly: base.integerOnly } : {}) }]))}>Edit display</Button> : null}
             </div>
             {item && editable ? <FieldGroup className="sm:col-span-2">
               <Field><FieldLabel htmlFor={`base-${base.key}-label`}>Label</FieldLabel><Input id={`base-${base.key}-label`} value={item.label} onChange={(event) => replaceField(item.id, { label: event.target.value })} /></Field>
@@ -280,6 +286,8 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
             </FieldGroup> : null}
           </div>;
         })}
+        {fixedQuestions.length ? <details className="rounded-lg border p-3 text-sm"><summary className="cursor-pointer font-medium">Built-in questions managed by this task ({fixedQuestions.length})</summary><p className="mt-2 leading-6 text-muted-foreground">These questions follow the rules of the live form.{!pending && customTypes.length ? ' You can add extra questions below.' : ''}</p><ul className="mt-2 list-disc space-y-2 pl-5">{fixedQuestions.map(base => <li key={base.key}><span className="font-medium">{base.label}</span><details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Why this question is fixed</summary><p className="mt-1">{base.explanation}</p></details></li>)}</ul></details> : null}
+        {automaticFields.length ? <details className="rounded-lg border p-3 text-sm"><summary className="cursor-pointer font-medium">Details filled in automatically ({automaticFields.length})</summary><p className="mt-2 text-muted-foreground">These details identify the request and related records. The person filling in the form does not need to enter them.</p><ul className="mt-2 list-disc space-y-1 pl-5">{automaticFields.map(base => <li key={base.key}>{base.label}</li>)}</ul></details> : null}
         {customFields.map((field, index) => <div key={field.id} className="grid min-w-0 gap-3 rounded-lg border p-3" data-editor-field={field.id}>
           <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex min-w-0 flex-wrap items-center gap-2"><strong className="break-words">{field.label}</strong><Badge variant={field.status === 'archived' ? 'secondary' : 'outline'}>{field.status}</Badge></div><span className="text-xs text-muted-foreground">{field.key} · {field.type.replaceAll('_', ' ')}</span></div>
           <FieldGroup className="grid gap-3 sm:grid-cols-2">
@@ -303,22 +311,22 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
       </CardContent>
       <CardFooter className="grid w-full gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
         <Field><FieldLabel htmlFor="new-field-key">New field key</FieldLabel><Input ref={keyRef} id="new-field-key" value={newKey} onChange={(event) => setNewKey(event.target.value)} disabled={pending || customTypes.length === 0} placeholder="e.g. delivery_note" /></Field>
-        <Field><FieldLabel htmlFor="new-field-label">Label</FieldLabel><Input ref={labelRef} id="new-field-label" value={newLabel} onChange={(event) => setNewLabel(event.target.value)} disabled={pending || customTypes.length === 0} /></Field>
+        <Field><FieldLabel htmlFor="new-field-label">Label</FieldLabel><Input ref={labelRef} id="new-field-label" value={newLabel} onChange={(event) => setNewLabel(event.target.value)} disabled={pending || customTypes.length === 0} /><FieldDescription>Write the question people will see. For example, “What time can we contact you?”</FieldDescription></Field>
         <Field><FieldLabel htmlFor="new-field-type">Type</FieldLabel><select id="new-field-type" className="h-8 rounded-md border bg-background px-2" value={newType} onChange={(event) => setNewType(event.target.value as CustomFieldType)} disabled={pending || customTypes.length === 0}>{customTypes.length ? customTypes.map((type) => <option key={type} value={type}>{type.replaceAll('_', ' ')}</option>) : <option value="short_text">Unavailable</option>}</select></Field>
         <Button type="button" variant="outline" className="sm:col-span-3 sm:justify-self-start" disabled={pending || customTypes.length === 0} onClick={addField}><Plus data-icon="inline-start" /> Add field</Button>
-        {pending || customTypes.length === 0 ? <p className="text-xs text-muted-foreground sm:col-span-3">New fields are unavailable until a server adapter defines accepted field types and answer behavior.</p> : null}
+        {pending || customTypes.length === 0 ? <p className="text-xs text-muted-foreground sm:col-span-3">Extra questions are not available for this form.</p> : null}
       </CardFooter>
       </fieldset>
     </Card>
 
-    <Card>
+    <Card id="form-preview" className="scroll-mt-28">
       <CardHeader><CardTitle>Preview</CardTitle><CardDescription>The draft uses the same configured field renderer as live forms. Built-in controls are illustrative; their server rules stay in place.</CardDescription></CardHeader>
       <CardContent><Tabs defaultValue="phone"><TabsList aria-label="Preview width"><TabsTrigger value="phone">Phone</TabsTrigger><TabsTrigger value="desktop">Desktop</TabsTrigger></TabsList><TabsContent value="phone" className="pt-4"><FormCatalogPreview form={form} config={previewConfig} mode="phone" /></TabsContent><TabsContent value="desktop" className="pt-4"><FormCatalogPreview form={form} config={previewConfig} mode="desktop" /></TabsContent></Tabs></CardContent>
     </Card>
 
     <Card>
-      <CardHeader><CardTitle>Save and publish</CardTitle><CardDescription>Save a draft before publishing. Publication changes new visits to {form.route}.</CardDescription></CardHeader>
-      <CardContent><FieldGroup><Field><FieldLabel htmlFor="catalog-reason">Reason for change</FieldLabel><Textarea ref={reasonRef} id="catalog-reason" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={2000} aria-required="true" disabled={editLocked} /><FieldDescription>Recorded in the form catalog audit history.</FieldDescription></Field>
+      <CardHeader><CardTitle>Save and publish</CardTitle><CardDescription>Save your draft, review the changes below, and publish when the form is ready.</CardDescription></CardHeader>
+      <CardContent><div className="mb-5 rounded-lg border bg-secondary/30 p-4"><h3 className="font-semibold">Changes from the published form</h3>{changes.length ? <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">{changes.map((change, index) => <li key={index}>{change}</li>)}</ul> : <p className="mt-2 text-sm text-muted-foreground">No question changes to review.</p>}</div><FieldGroup><Field><FieldLabel htmlFor="catalog-reason">Reason for change</FieldLabel><Textarea ref={reasonRef} id="catalog-reason" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={2000} aria-required="true" disabled={editLocked} /><FieldDescription>Explain why you are changing the form. This note is saved in the change history.</FieldDescription></Field>
         <div ref={errorRef} tabIndex={-1} role="alert" aria-live="assertive" className="text-sm text-destructive focus:outline-none">{error ? <FieldError>{error}</FieldError> : null}</div>
         {uncertainAction === 'draft' ? uncertaintyNotice : null}
         {refreshWarning && !uncertainAction ? <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3 text-sm"><span>{refreshWarning}</span><Button type="button" variant="outline" size="sm" disabled={editLocked} onClick={() => void reload()}>Retry history refresh</Button></div> : null}
@@ -328,7 +336,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
       <CardFooter className="flex flex-wrap gap-2"><Button type="button" onClick={save} disabled={busy || replacingHistory || (uncertainAction !== null && uncertainAction !== 'draft')}><Save data-icon="inline-start" /> Save draft</Button><Button type="button" variant="secondary" disabled={!canPublish || editLocked} onClick={() => { if (validReason()) setDialog('publish'); }}><Send data-icon="inline-start" /> Publish draft</Button>{dirty || (draft && !conflict && !canPublish) ? <span className="text-xs text-muted-foreground">Save your latest edits before publishing.</span> : null}</CardFooter>
     </Card>
 
-    <Card>
+    <Card id="version-history" className="scroll-mt-28">
       <CardHeader><CardTitle>Version history</CardTitle><CardDescription>Restoring a published version creates a new publication. Existing answers stay with their original version.</CardDescription></CardHeader>
       <CardContent className="grid gap-2">{versions.length ? versions.map((entry) => <div key={entry.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b py-2 last:border-b-0"><div className="min-w-0"><p className="font-medium">Version {entry.version} · revision {entry.revision} <Badge variant={entry.status === 'published' ? 'default' : 'secondary'}>{entry.status === 'draft' && entry.version <= (published?.version ?? 0) ? 'stale draft' : entry.status}</Badge></p><p className="break-words text-xs text-muted-foreground">{entry.reason} · {displayDate(entry.updatedAt)}</p></div>{entry.status === 'published' ? <Button type="button" size="sm" variant="outline" disabled={editLocked} onClick={() => { setRestoreVersion(entry.version); if (validReason()) setDialog('restore'); }}><RotateCcw data-icon="inline-start" /> Restore</Button> : null}</div>) : <p className="text-sm text-muted-foreground">No saved versions yet.</p>}</CardContent>
     </Card>

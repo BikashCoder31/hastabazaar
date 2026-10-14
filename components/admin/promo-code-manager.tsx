@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -519,6 +520,8 @@ function AuthorizedPromoCodeManager({
         onSubmit={submit}
         className="min-w-0 space-y-5 rounded-xl border p-4 sm:p-6"
       >
+      <FormGuide formId="staff.promo-code" />
+
         <fieldset
           disabled={pending}
           className="grid min-w-0 gap-4 sm:grid-cols-2"

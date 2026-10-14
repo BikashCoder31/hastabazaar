@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import { useEffect, useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -137,6 +138,8 @@ export function PreparePayoutButton({
           }}
           className="space-y-4"
         >
+      <FormGuide formId="staff.payout-1" />
+
           <div>
             <Label htmlFor={id}>Preparation note</Label>
             <Textarea
@@ -269,6 +272,8 @@ export function PayoutWorkflowActions({
         }}
         className="space-y-4"
       >
+      <FormGuide formId="staff.payout-2" />
+
         <fieldset disabled={pending} className="space-y-4">
           <div>
             <Label htmlFor={id + '-action'}>Next action</Label>

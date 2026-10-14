@@ -84,7 +84,7 @@ void test('reply and managed attempts survive lost success, reject changed repla
           await page.locator(`${selector} input[name="payoutBeneficiaryReference"]`).fill('SIM-MAKER-ACCOUNT');
         }
         if (kind === 'transition') {
-          await page.locator('details summary').click();
+          await page.getByText('Request a change to Registered Seller', { exact: true }).click();
           for (const [name, value] of [['legalName', 'Registered Fictional Maker'], ['registrationAuthority', 'Cottage Office'],
             ['registrationNumber', 'REG-TEST'], ['taxRegistrationNumber', 'PAN-TEST'],
             ['agreementVersion', 'SIM-REGISTERED-V1']] as const)

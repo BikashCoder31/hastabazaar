@@ -456,7 +456,7 @@ void test('catalog simplification lists business forms with friendly names and e
       'rider.application', 'rider.report', 'seller.managed-supply-proposal', 'seller.payout-request',
       'staff.catalog', 'staff.product-classification', 'staff.rider-control-1', 'staff.rider-control-2',
       'commerce.gift-card-issue', 'staff.governance-rule-create']) assert.ok(byId.has(id), id);
-    assert.equal(byId.get('seller.application')?.presentation.label, 'Seller application');
+    assert.equal(byId.get('seller.application')?.presentation.label, 'Apply to sell');
     assert.equal(byId.get('seller.application')?.presentation.category, 'Applications & business profiles');
     assert.equal(byId.get('seller.application')?.publishedVersion, 1);
     assert.equal(count(sqlite, 'form_config_versions'), 2);

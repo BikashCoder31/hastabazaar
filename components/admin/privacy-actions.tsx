@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -155,6 +156,8 @@ export function PrivacyActions({
           else void save();
         }}
       >
+      <FormGuide formId="staff.privacy-action" />
+
         <fieldset disabled={pending||!catalog.canSubmit} className="grid gap-4 sm:grid-cols-2">
           <div>
             <Label htmlFor={fieldId + '-action'}>Next action</Label>

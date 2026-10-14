@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 import { useRef, useState, useSyncExternalStore, type SyntheticEvent } from 'react';
 import { useRouter } from 'next/navigation';
@@ -312,6 +313,8 @@ function ParcelForm({
       onSubmit={(e) => void submit(e)}
       className="grid gap-3 sm:grid-cols-2"
     >
+      <FormGuide formId="staff.parcel-control" />
+
       <p className="text-xs text-muted-foreground">* Required field</p>
       <label htmlFor={field('action')}>
         Action
@@ -387,8 +390,7 @@ function ParcelForm({
               required
             />
           </label>
-          <label htmlFor={field('reference')}>
-            Evidence reference <span aria-hidden="true">*</span>
+          <label htmlFor={field('reference')}>Supporting document or reference <span aria-hidden="true">*</span>
             <input
               className="mt-1 block w-full rounded border p-2"
               id={field('reference')}

@@ -1,3 +1,4 @@
+import { FormGuide } from '@/components/forms/form-guide';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
@@ -33,6 +34,8 @@ export default async function EmailCodePage({
         <p className="mt-2 text-sm leading-6 text-muted-foreground">If an active account exists for that address, a six-digit code may arrive shortly. It expires 10 minutes after the request.</p>
         {error ? <p className="mt-5 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</p> : null}
         <form data-form-id="identity.email-code-verify" action="/api/auth/email-code/verify" method="post" className="mt-6 space-y-4">
+      <FormGuide formId="identity.email-code-verify" />
+
 <p className="text-xs text-muted-foreground">* Required field</p>
 
           <input type="hidden" name="return_to" value={returnTo} />

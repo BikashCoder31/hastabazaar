@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatPaisaExact } from '@/lib/marketplace/money-display';
@@ -131,6 +132,8 @@ export function CustomerOrderCancellation({
       </button>
       {choices ? (
         <form ref={formRef} data-form-id={FORM_ID} onSubmit={(event) => event.preventDefault()} className="space-y-3">
+      <FormGuide formId={FORM_ID} />
+
           <p>
             Cancellation is available until the selected seller parcel is ready
             for pickup. Custom-made production already started requires staff

@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -82,6 +83,8 @@ export function ProductClassificationForm({
       }}
       className="space-y-4"
     >
+      <FormGuide formId="staff.product-classification" />
+
       <Link className="text-sm underline" href={`/admin/staff-form-history?kind=product-classification&id=${encodeURIComponent(productId)}`}>View form history</Link>
 <p className="text-xs text-muted-foreground">* Required field</p>
 

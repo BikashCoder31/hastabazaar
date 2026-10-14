@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { PackageCheck, Truck } from 'lucide-react';
@@ -101,6 +102,8 @@ export function SellerShippingWorkspace({
             data-form-id="seller.shipping-request"
             className="mt-5 grid gap-4 sm:grid-cols-2"
           >
+      <FormGuide formId="seller.shipping-request" />
+
 <p className="text-xs text-muted-foreground">* Required field</p>
 
             <div className="space-y-2">
@@ -279,6 +282,8 @@ function ShippingRecord({ job, sellerId }: { job: ShippingJobRow; sellerId: stri
           }}
           className="mt-5 space-y-3 border-t pt-5"
         >
+      <FormGuide formId="seller.shipping-action" />
+
 <p className="text-xs text-muted-foreground">* Required field</p>
 
           <Label htmlFor={'pickup-' + job.id}>

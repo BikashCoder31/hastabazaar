@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { HandCoins } from 'lucide-react';
@@ -68,8 +69,7 @@ export function PayoutRequestForm({
   return (
     <section className="rounded-2xl border bg-card p-6">
       <h2 className="flex items-center gap-2 font-heading text-2xl">
-        <HandCoins className="size-5 text-primary" />
-        Request a payout
+        <HandCoins className="size-5 text-primary" />Request a payment
       </h2>
       <p className="mt-3 text-base leading-7 text-muted-foreground">
         Admin prepares your payout, then a Super Admin approves it.
@@ -81,9 +81,11 @@ export function PayoutRequestForm({
         </output>
       ) : (
         <form onSubmit={submit} data-form-id="seller.payout-request" className="mt-5 space-y-3">
+      <FormGuide formId="seller.payout-request" />
+
 <p className="text-xs text-muted-foreground">* Required field</p>
 
-          <Label htmlFor="payout-note">Note for the payout reviewer <span aria-hidden="true">*</span></Label>
+          <Label htmlFor="payout-note">What is this payment request for? <span aria-hidden="true">*</span></Label>
           <Textarea
             id="payout-note"
             name="note"
@@ -91,9 +93,11 @@ export function PayoutRequestForm({
             minLength={8}
             maxLength={500}
             disabled={busy}
-            placeholder="Add any relevant settlement details (8–500 characters)."
+            placeholder="For example, payment for my completed orders."
             className="min-h-24 text-base"
+            aria-describedby="payout-note-help"
           />
+          <p id="payout-note-help" className="text-sm text-muted-foreground">Explain your request in 8 to 500 characters.</p>
           {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={catalogBaseKeys} /> : null}
           {catalog.status !== 'ready' ? <p role="alert" className="text-sm text-destructive">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}
           <Button

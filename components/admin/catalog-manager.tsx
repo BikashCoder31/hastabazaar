@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 import { CategoryImageEditor } from '@/components/admin/category-image-editor';
 import { useEffect, useId, useState } from 'react';
@@ -252,6 +253,8 @@ function TaxonomySection({
           }}
           className="mt-5 rounded-xl border bg-muted/35 p-4"
         >
+      <FormGuide formId="staff.catalog" />
+
           <p className="text-xs text-muted-foreground">* Required field</p>
 
           <fieldset

@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 
 import { useRef, useState, useSyncExternalStore, type SyntheticEvent } from 'react';
@@ -99,6 +100,8 @@ export function InvoiceAdjustmentForm({
   return (
     <form data-form-id="staff.invoice-adjustment" onSubmit={(event) => void submit(event)}
       className="mt-4 space-y-3 rounded-xl border p-4">
+      <FormGuide formId="staff.invoice-adjustment" />
+
       <p className="text-sm font-semibold">Issue simulated correction document</p>
       <Link className="text-sm underline" href="/admin/staff-form-history?kind=invoice-adjustment">View correction form history</Link>
       <p className="text-xs leading-5 text-muted-foreground">

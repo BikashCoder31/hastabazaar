@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 
 import { useEffect, useState } from 'react';
@@ -117,6 +118,8 @@ export function StaffInvitationManager({
         }}
         className="grid gap-4 rounded-xl border bg-muted/25 p-4 lg:grid-cols-[minmax(0,1fr)_11rem_auto] lg:items-end"
       >
+      <FormGuide formId="staff.staff-invitation" />
+
 <p className="text-xs text-muted-foreground">* Required field</p>
 
         <div className="space-y-2">

@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -75,6 +76,8 @@ function ManagedProgramForms({workspace,sellerId}:WorkspaceProps){
  return <section className="space-y-5 rounded-2xl border border-amber-300 bg-amber-50 p-5 dark:bg-amber-950/20">
   <div><p className="eyebrow">Local staging simulation</p><h2 className="font-heading text-2xl">Managed Maker program</h2><p className="mt-2 text-sm leading-6">These controls create fictional test records only. They do not approve live supplier, title, risk, tax, or payment terms.</p></div>
   {workspace.commercialModel==='managed_fixed_supplier_price_v1'?<form data-form-id="seller.managed-supply-proposal" className="grid gap-3 sm:grid-cols-2" onSubmit={(event)=>void send(event,'propose_fixed_supply')}>
+      <FormGuide formId="seller.managed-supply-proposal" />
+
    <label className="block text-sm font-medium">Product<select name="productId" required className="mt-1 h-10 w-full rounded-md border bg-background px-3"><option value="">Select product</option>{workspace.products.map(product=><option key={product.id} value={product.id}>{product.name} · {product.sku}</option>)}</select></label>
    <Input label="Quantity offered" name="quantity" type="number"/><Input label="Agreed unit supplier price (NPR)" name="agreedUnitNpr" type="number"/><Input label="Simulated agreement version" name="agreementVersion"/><Input label="Simulated payout beneficiary" name="payoutBeneficiaryReference"/>
    <label className="block text-sm font-medium">Language presented<select name="agreementLanguage" className="mt-1 h-10 w-full rounded-md border bg-background px-3"><option value="ne">Nepali</option><option value="en">English</option></select></label>
@@ -84,7 +87,9 @@ function ManagedProgramForms({workspace,sellerId}:WorkspaceProps){
     {pendingSupply?<Button type="button" variant="outline" disabled={busy} onClick={()=>resetAttempt('supply')}>Start a new managed supply attempt</Button>:null}</div>
   </form>:null}
   {workspace.supplies.length?<div className="space-y-2"><h3 className="font-semibold">Supply history</h3>{workspace.supplies.map(supply=><p key={supply.id} className="rounded-lg border bg-background p-3 text-sm"><span className="font-semibold">{supply.productName}</span> · {supply.quantityProposed} × NPR {(supply.agreedUnitPaisa/100).toFixed(2)} · {supply.status.replaceAll('_',' ')}</p>)}</div>:null}
-  <details className="rounded-lg border bg-background p-4"><summary className="cursor-pointer font-semibold">Apply to transition to Registered Seller</summary><form data-form-id="seller.managed-transition-request" className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={(event)=>void send(event,'request_registered_transition')}>
+  <details className="rounded-lg border bg-background p-4"><summary className="cursor-pointer font-semibold">Request a change to Registered Seller</summary><form data-form-id="seller.managed-transition-request" className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={(event)=>void send(event,'request_registered_transition')}>
+      <FormGuide formId="seller.managed-transition-request" />
+
    <Input label="Registered legal name" name="legalName"/><Input label="Registration authority" name="registrationAuthority"/><Input label="Registration number" name="registrationNumber"/>
    <label className="block text-sm font-medium">Tax status<select name="taxMode" className="mt-1 h-10 w-full rounded-md border bg-background px-3"><option value="PAN">Business PAN</option><option value="VAT">VAT registration</option><option value="BOTH">PAN and VAT status</option></select></label>
    <Input label="Applicable PAN/VAT identifier" name="taxRegistrationNumber"/><Input label="Simulated agreement version" name="agreementVersion"/>
