@@ -319,7 +319,8 @@ function queryDefinition(id: QueryFormId | 'system.local-testing-role'): FormDef
       ? { choices: [{ value: 'all', label: 'All products' }, { value: 'visible', label: 'Homepage eligible' }, { value: 'hidden', label: 'Hidden from homepage' }] } : {}),
   }));
   const protectedKeys = ['query', ...(id === 'staff.seller-registry-filter' || id === 'staff.order-queue-filter' || id === 'staff.order-email-filter' ? [] : ['status']), 'actorId', 'customerId', 'sellerId', 'orderId', 'order_number',
-    'formVersion', 'customAnswers', 'requestId', ...(id === 'staff.recorded-progress-filter' ? ['actor', 'type'] : [])];
+    'formVersion', 'customAnswers', 'requestId', ...(id === 'staff.recorded-progress-filter' ? ['actor', 'type'] : []),
+    ...(id === 'staff.activity-filter' || id === 'staff.recorded-progress-filter' ? ['calendar'] : [])];
   return Object.freeze({ id, audience, mode, route, adapterId: id,
     baseFields: Object.freeze([...fields, ...protectedKeys.map(protect)]),
     capabilities: Object.freeze({ explanation: id === 'catalog.filters'
