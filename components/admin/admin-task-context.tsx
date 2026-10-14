@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { ChevronRight } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import {
   Breadcrumb,
@@ -58,16 +59,31 @@ export function AdminTaskContext({
           ) : null}
         </BreadcrumbList>
       </Breadcrumb>
-      <details key={pathname} className="rounded-xl border bg-card px-4 py-3">
-        <summary className="min-h-7 cursor-pointer text-sm font-semibold focus-visible:rounded focus-visible:outline-2 focus-visible:outline-primary">
+      <details key={pathname} className="group rounded-xl border bg-card p-4">
+        <summary className="flex min-h-10 w-fit cursor-pointer list-none items-center gap-2 rounded-md py-2 pr-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
+          <ChevronRight
+            aria-hidden="true"
+            className="size-4 shrink-0 transition-transform group-open:rotate-90 motion-reduce:transition-none"
+          />
           How to handle this task
         </summary>
-        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
           {guide.description}
         </p>
-        <ol className="mt-3 grid list-decimal gap-3 pl-5 text-sm leading-6 sm:grid-cols-3 sm:gap-6">
-          {guide.steps.map((step) => (
-            <li key={step}>{step}</li>
+        <ol className="mt-4 grid gap-3 lg:grid-cols-3">
+          {guide.steps.map((step, index) => (
+            <li
+              key={step}
+              className="flex min-w-0 items-start gap-3 rounded-lg bg-muted/40 p-3"
+            >
+              <span
+                aria-hidden="true"
+                className="flex size-7 shrink-0 items-center justify-center rounded-full border bg-background text-xs font-semibold text-primary"
+              >
+                {index + 1}
+              </span>
+              <p className="min-w-0 text-sm leading-6">{step}</p>
+            </li>
           ))}
         </ol>
       </details>

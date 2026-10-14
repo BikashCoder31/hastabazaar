@@ -35,8 +35,8 @@ export function AdminQueueFields({
       label: 'Status',
     });
   return (
-    <FieldGroup className="sm:flex-row sm:items-end">
-      <Field className="sm:flex-[2]">
+    <FieldGroup className="grid items-start gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(12rem,1fr)]">
+      <Field className="min-w-0">
         <FieldLabel htmlFor={id + '-search'}>{search.label}</FieldLabel>
         <Input
           id={id + '-search'}
@@ -51,7 +51,7 @@ export function AdminQueueFields({
           {search.helpText || searchHelp}
         </FieldDescription>
       </Field>
-      <Field className="sm:flex-1">
+      <Field className="min-w-0">
         <FieldLabel htmlFor={id + '-status'}>{status.label}</FieldLabel>
         <NativeSelect
           id={id + '-status'}

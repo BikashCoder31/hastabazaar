@@ -115,10 +115,10 @@ export default async function SellerRegistryPage({
               presentation={presentation.config}
               searchHelp="Seller name, application reference, owner email or phone."
             />
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit">Apply filters</Button>
+            <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
               {filters.q || filters.status ? (
                 <Button
+                  className="flex-1 sm:flex-none"
                   variant="outline"
                   nativeButton={false}
                   render={<Link href="/admin/sellers" />}
@@ -126,6 +126,9 @@ export default async function SellerRegistryPage({
                   Clear filters
                 </Button>
               ) : null}
+              <Button type="submit" className="flex-1 sm:flex-none">
+                Apply filters
+              </Button>
             </div>
           </form>
           {presentation.unavailable ? (
