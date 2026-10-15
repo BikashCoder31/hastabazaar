@@ -36,6 +36,29 @@ This report separates temporary test results from checks against the user's save
 
 Chrome component tests use intercepted APIs. Repository and HTTP tests use disposable real-schema databases. Their results do not claim that the complete saved website has passed normal Chrome acceptance.
 
+Final affected regression run: **166 passed, zero failed**. A separate existing transition-contract run passed 86 checks and found two old bank-document fixture assumptions; after correcting those fixtures, the affected 25 checks passed. The final privacy/owner/multipart group passed 14 checks. Native maker schema proof passed. Type checks, full lint and the local production build passed.
+
+The full `npm test` run finished after about 68 minutes: **2,766 checks, 2,738 passed, 12 failed, 16 skipped** (exit 1). It started before the final review corrections, so it is not a clean full-suite result for the final commit. All 12 failing cases passed in the subsequent focused runs. The final public-query fixture run passed 17 checks. These group counts overlap and must not be added as unique tests. The complete suite was not repeated after those corrections.
+
+To reproduce the integration failures on the earlier version, run the listed file with `node --import tsx --test tests/<filename>`. The final-version reruns now pass:
+
+| Failing test file | Cause and correction | Final evidence |
+|---|---|---|
+| `form-catalog-json-envelopes.test.ts` | The module mock made the synchronous finance-action classifier asynchronous; keep the real pure classifier. | 166-check run |
+| `form-catalog-managed-workspace-eligibility.test.ts` | Missing link stub and an expectation for the replaced free-text transition form; assert the single owned multipart flow. | 166-check run |
+| `form-catalog-policy.test.ts` | The source inventory expected the previous form/action totals; enumerate the new required sites. | 166-check run |
+| `form-catalog-query.test.ts`, `homepage-products.test.ts`, `recently-viewed.test.ts` | Narrow catalogue fixtures omitted the accepted-terms evidence tables and legal-name column now used by the shared eligibility query; extend fixtures from the real schema. | 166-check and final 17-check runs |
+| `form-catalog-seller-data.test.ts` | Old draft labels and an unrendered link prevented the history/pagination assertion; check the actual current rendered history. | 166-check run |
+| `form-catalog-stale-reset-polish.test.ts` | The activation fixture lacked the now-required immutable accepted terms; provide genuine evidence. | 166-check run |
+
+These were compatibility failures in existing test fixtures after this work, rather than proof of a pre-existing website defect. Application authorization and accepted-terms checks were retained. The separate transition-contract fixture corrections name bank documents explicitly and assert the intended private-document visibility.
+
+Full-run output is saved in `.superpowers/sdd/2026-10-15-company-store-maker-readiness/integration-full-test.log`; corrected-run output is in `final-affected-regressions.log`, `final-transition-contract-fixed.log`, `final-public-privacy.log` and `final-public-query-fixtures.log` in the same folder.
+
+The broad project run also contains explicit opt-in MariaDB commerce/identity/release tests, screenshots requiring a running site, and a Linux-only process test. Skipped checks are not counted as browser or production proof. No MariaDB service was connected, and deployment upgrade scripts for these new local storage additions remain outside this local verification.
+
+The successful build still reports existing Vinext import-extension warnings, the middleware deprecation and routes its static analysis cannot classify. These are reported separately from the corrected feature defects below; unrelated build configuration was not changed to suppress them.
+
 ## Review findings corrected
 
 1. Prepare a second payment, then refund a previously paid sale. The old code could pay the original second amount despite the new debt. The corrected operation checks every seller-wide refund offset again in the transaction. Tests also cover a new earning masking the debt in the total balance.
@@ -69,6 +92,8 @@ It records four form-publication audit rows under the existing local Super Admin
 
 Manifest approval hash: `f9792ce614f9cd9e1df84eb27fbf2a326183c97c4002e8e1cc83efa94737910d`.
 
+Current launch stop: run `npm run local:check` from the Desktop project. It reports that the new maker and loyalty storage fields/guards are missing. This is expected before the reviewed upgrade and has not been bypassed. Port 3018 was checked on both IPv4 and IPv6 and is free; another preview was not started.
+
 Consistent untouched backup:
 
 `C:/Users/abinash/Desktop/Hatskala/.superpowers/sdd/2026-10-15-company-store-maker-readiness/before-readiness-20261016.sqlite`
@@ -92,6 +117,8 @@ Evidence, including per-table counts/hashes, is in `.superpowers/sdd/2026-10-15-
 7. Repeat the relevant pages at a small screen width and with the keyboard. Check links, required-field messages, loading, failures and reloads. Record each result; do not infer the whole website from these pages.
 
 The public sign-in warning was previously traced to browser-extension DOM changes (`data-sharkid`, `data-sharklabel`, `shark-icon-container`) before hydration. No authentication or security rule was changed to hide it. A fresh normal Chrome check remains part of the browser handoff.
+
+Proposed check/fix: temporarily pause the autofill extension for localhost, reload the public sign-in page, and compare the warning and injected attributes. If that confirms the cause, exclude localhost in that extension's settings. Do not change application authentication or hide hydration warnings as a substitute. Extension settings have not been changed during this work.
 
 ## Pending handoff
 
