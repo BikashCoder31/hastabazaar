@@ -1,6 +1,6 @@
 {
   "migration": "0071_company_store_maker_readiness.sql",
-  "sqlSha256": "1c6bc423bbb5baedd0b418a9dfef1772876487889a6a9ee1ed6ac60f9503dccf",
+  "sqlSha256": "e355fff952e05a0bd814a5415521eec3767e8da47cbde133791d4bd6a7383cd7",
   "forms": [
     "seller.managed-terms-acceptance",
     "staff.managed-eligibility-release",

@@ -6,7 +6,8 @@ const dayMs = 86_400_000;
 const kathmanduOffsetMs = (5 * 60 + 45) * 60_000;
 const weekdayIndex = { sunday:0, monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6 } as const;
 
-export class ManagedSettlementError extends Error {}
+import { ManagedSettlementError } from '../../managed-commerce/settlement-errors';
+export { ManagedSettlementError } from '../../managed-commerce/settlement-errors';
 
 export function nextPayoutProcessingAt(input: {
   eligibleAt: number;
@@ -112,11 +113,6 @@ export async function accrueManagedEntitlements(
   return earnedResultIndices.reduce((count,index)=>count+Number(results[index]?.meta.changes??0),0);
 }
 
-export async function releaseManagedEligibility(database:D1Database, now:number):Promise<number> {
-  const result = await database.prepare(`UPDATE managed_entitlements SET status='eligible',eligible_at=hold_until,version=version+1,updated_at=?
-    WHERE status='held' AND hold_until<=? AND dispute_hold_reason IS NULL`).bind(now,now).run();
-  return Number(result.meta.changes ?? 0);
-}
 
 export async function buildManagedRefundAdjustmentStatements(
   database:D1Database,
@@ -191,66 +187,5 @@ export async function applyManagedRefundAdjustment(
   if(statements.length)await database.batch(statements);
 }
 
-export interface ManagedFinanceSummary { calculatedPaisa:number; earnedPaisa:number; heldPaisa:number; eligiblePaisa:number; paidPaisa:number; balancePaisa:number; }
-export async function getManagedFinanceSummary(database:D1Database,sellerId:string,now=Date.now()):Promise<ManagedFinanceSummary>{
-  const row=await database.prepare(`SELECT
-    COALESCE(SUM(e.calculated_paisa),0) AS calculatedPaisa,
-    COALESCE(SUM(CASE WHEN e.earned_at IS NOT NULL THEN e.calculated_paisa ELSE 0 END),0) AS earnedPaisa,
-    COALESCE(SUM(CASE WHEN e.status='held' THEN (SELECT COALESCE(SUM(amount_paisa),0) FROM managed_settlement_entries x WHERE x.entitlement_id=e.id) ELSE 0 END),0) AS heldPaisa,
-    COALESCE(SUM(CASE WHEN e.status IN ('eligible','part_paid','paid') AND COALESCE(e.eligible_at,?)<=? THEN (SELECT COALESCE(SUM(amount_paisa),0) FROM managed_settlement_entries x WHERE x.entitlement_id=e.id AND NOT EXISTS(SELECT 1 FROM managed_payout_entries pe JOIN managed_payouts p ON p.id=pe.payout_id WHERE pe.settlement_entry_id=x.id AND p.status IN ('prepared','approved','processing','paid'))) ELSE 0 END),0) AS eligiblePaisa,
-    COALESCE((SELECT SUM(amount_paisa) FROM managed_payouts p WHERE p.seller_id=? AND p.status='paid'),0) AS paidPaisa,
-    COALESCE(SUM((SELECT COALESCE(SUM(amount_paisa),0) FROM managed_settlement_entries x WHERE x.entitlement_id=e.id)),0)-COALESCE((SELECT SUM(amount_paisa) FROM managed_payouts p WHERE p.seller_id=? AND p.status='paid'),0) AS balancePaisa
-    FROM managed_entitlements e WHERE e.seller_id=?`).bind(now,now,sellerId,sellerId,sellerId).first<ManagedFinanceSummary>();
-  return {calculatedPaisa:Number(row?.calculatedPaisa??0),earnedPaisa:Number(row?.earnedPaisa??0),heldPaisa:Number(row?.heldPaisa??0),eligiblePaisa:Number(row?.eligiblePaisa??0),paidPaisa:Number(row?.paidPaisa??0),balancePaisa:Number(row?.balancePaisa??0)};
-}
-
-export async function prepareManagedPayout(database:D1Database,options:{sellerId:string;actorId:string;destinationReference:string;requestId:string;now:number;scheduledFor:number}):Promise<string>{
-  const authority=await staffMutationGuard(database,options.actorId,'payout.prepare',ManagedSettlementError);
-  const directApproval=authority.role==='super_admin';
-  const existing=await database.prepare('SELECT id FROM managed_payouts WHERE request_id=?').bind(options.requestId).first<{id:string}>();if(existing)return existing.id;
-  const entries=await database.prepare(`SELECT x.id,x.amount_paisa AS amountPaisa FROM managed_settlement_entries x
-    JOIN managed_entitlements e ON e.id=x.entitlement_id LEFT JOIN managed_payout_entries pe ON pe.settlement_entry_id=x.id
-    WHERE e.seller_id=? AND e.status='eligible' AND e.eligible_at<=? AND pe.settlement_entry_id IS NULL ORDER BY x.created_at,x.id`).bind(options.sellerId,options.now).all<{id:string;amountPaisa:number}>();
-  const amount=entries.results.reduce((sum,row)=>sum+Number(row.amountPaisa),0);if(amount<=0)throw new ManagedSettlementError('A positive eligible Managed Maker balance is required.');
-  const id=crypto.randomUUID(),number=`SIM-MP-${options.now}-${id.slice(0,8).toUpperCase()}`;
-  await database.batch([
-    database.prepare(`INSERT INTO managed_payouts(id,seller_id,payout_number,amount_paisa,status,destination_reference,simulation_label,prepared_by,approved_by,scheduled_for,provider_reference,request_id,created_at,updated_at,paid_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,NULL)`).bind(id,options.sellerId,number,amount,directApproval?'approved':'prepared',options.destinationReference,SIMULATED_RECORD_LABEL,options.actorId,directApproval?options.actorId:null,options.scheduledFor,options.requestId,options.now,options.now),
-    database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at)
-      VALUES (?,?,'managed_payout.prepared','managed_payout',?,'Eligible simulated payout prepared',?,?,?)`)
-      .bind(crypto.randomUUID(),options.actorId,id,JSON.stringify({status:directApproval?'approved':'prepared',approvedBy:directApproval?options.actorId:null,amountPaisa:amount,simulationLabel:SIMULATED_RECORD_LABEL}),options.requestId,options.now),
-    ...authority.statements,
-    ...entries.results.map((entry)=>database.prepare('INSERT INTO managed_payout_entries(payout_id,settlement_entry_id) VALUES (?,?)').bind(id,entry.id)),
-  ]);return id;
-}
-
-export async function transitionManagedPayout(database:D1Database,options:{payoutId:string;actorId:string;action:'approve'|'mark_paid';requestId:string;providerReference?:string;now:number}):Promise<void>{
-  const authority=await staffMutationGuard(database,options.actorId,options.action==='approve'?'payout.approve':'payout.mark_paid',ManagedSettlementError,'super_admin');
-  const duplicate=await database.prepare('SELECT 1 FROM audit_logs WHERE request_id=?').bind(options.requestId).first();
-  if(duplicate)return;
-  const row=await database.prepare('SELECT status,prepared_by AS preparedBy FROM managed_payouts WHERE id=?').bind(options.payoutId).first<{status:string;preparedBy:string}>();
-  if(!row)throw new ManagedSettlementError('Managed payout not found.');
-  if(options.action==='approve'){
-    if(row.status!=='prepared')throw new ManagedSettlementError('Only a prepared payout can be approved.');
-    await database.batch([
-      database.prepare("UPDATE managed_payouts SET status='approved',approved_by=?,updated_at=? WHERE id=? AND status='prepared'").bind(options.actorId,options.now,options.payoutId),
-      database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,ip_hash,created_at)
-        VALUES (?,?,'managed_payout.approved','managed_payout',?,'Super Admin approved the simulated payout',NULL,?,?,NULL,?)`).bind(
-        crypto.randomUUID(),options.actorId,options.payoutId,JSON.stringify({status:'approved'}),options.requestId,options.now,
-      ),
-      ...authority.statements,
-    ]);return;
-  }
-  if(row.status!=='approved')throw new ManagedSettlementError('Only an approved payout can be marked paid.');
-  const reference=options.providerReference?.trim();if(!reference)throw new ManagedSettlementError('Record a simulated payout reference.');
-  await database.batch([
-    database.prepare("UPDATE managed_payouts SET status='paid',provider_reference=?,paid_at=?,updated_at=? WHERE id=? AND status='approved'").bind(reference,options.now,options.now,options.payoutId),
-    database.prepare(`UPDATE managed_entitlements SET status='paid',paid_at=?,version=version+1,updated_at=? WHERE id IN (
-      SELECT DISTINCT x.entitlement_id FROM managed_settlement_entries x JOIN managed_payout_entries pe ON pe.settlement_entry_id=x.id WHERE pe.payout_id=?)`).bind(options.now,options.now,options.payoutId),
-    database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,ip_hash,created_at)
-      VALUES (?,?,'managed_payout.paid','managed_payout',?,'Simulated payout completion recorded',NULL,?,?,NULL,?)`).bind(
-      crypto.randomUUID(),options.actorId,options.payoutId,JSON.stringify({status:'paid',providerReference:reference}),options.requestId,options.now,
-    ),
-    ...authority.statements,
-  ]);
-}
+export { prepareManagedPayout, transitionManagedPayout, cancelManagedPayout, releaseManagedEligibility, getManagedFinanceSummary } from '../../managed-commerce/payout-operations';
+export type { ManagedFinanceSummary } from '../../managed-commerce/payout-operations';

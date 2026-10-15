@@ -24,11 +24,11 @@ export async function companyStoreMakerFixture() {
   assert.ok(parsed.input, parsed.errors.join('\n'));
   await createSellerApplication(db, { sellerId: 'maker', userId: 'maker-user', input: parsed.input,
     applicationReference: 'APP-FICTIONAL-MAKER', documents: [managedIdentityDocument('maker')], now: makerNow });
-  let beforeBatch: (() => void) | undefined;
+  let beforeBatch: (() => void | Promise<void>) | undefined;
   const guardedDb = { prepare: db.prepare.bind(db), async batch(statements: D1PreparedStatement[]) {
-    const callback = beforeBatch; beforeBatch = undefined; callback?.();
+    const callback = beforeBatch; beforeBatch = undefined; await callback?.();
     return db.batch(statements);
   } } as D1Database;
   return { ...fixture, db: guardedDb, sellerId: 'maker', actorId: 'maker-user', now: makerNow,
-    setBeforeBatch(callback: () => void) { beforeBatch = callback; } };
+    setBeforeBatch(callback: () => void | Promise<void>) { beforeBatch = callback; } };
 }

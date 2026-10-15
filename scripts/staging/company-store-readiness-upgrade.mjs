@@ -59,6 +59,10 @@ export function inspectReadinessUpgrade(sqlite, actorId) {
   ].map(([table, column]) => sqlite.prepare(`PRAGMA table_info(${quote(table)})`).all().some(row => row.name === column));
   if ((upgraded || hasAllocations || expected.some(Boolean)) && !(hasAllocations && expected.every(Boolean)))
     throw new Error('Partial readiness schema detected. Review it separately.');
+  if (upgraded && ['managed_allocation_preserve_identity','managed_allocation_no_delete','managed_payout_preserve_identity',
+    'managed_payout_no_delete','managed_payout_preserve_terminal','managed_legacy_payout_link_no_update','managed_legacy_payout_link_no_delete']
+    .some(name => !sqlite.prepare("SELECT 1 FROM sqlite_schema WHERE type='trigger' AND name=?").get(name)))
+    throw new Error('Partial readiness history guards detected. Review them separately.');
   const missingForms = [];
   for (const formId of readinessForms) {
     const rows = sqlite.prepare('SELECT status FROM form_config_versions WHERE form_id=?').all(formId);
