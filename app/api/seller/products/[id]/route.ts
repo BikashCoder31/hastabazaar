@@ -5,6 +5,7 @@ import { readBoundedForm, BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
 
 import { requireSellerApi, SellerAuthorizationError } from '@/lib/auth/seller';
+import { requireManagedMakerApi, ManagedMakerAuthorizationError } from '@/lib/auth/managed-maker';
 import { requireDatabase, requireMediaBucket } from '@/lib/db/d1';
 import {
   areActiveOccasions,
@@ -54,7 +55,8 @@ export async function PATCH(
   let bucket: R2Bucket | null = null;
   const uploadedKeys: string[] = [];
   try {
-    const seller = await requireSellerApi();
+    const makerWorkspace = new URL(request.url).searchParams.get('workspace') === 'maker';
+    const seller = makerWorkspace ? await requireManagedMakerApi() : await requireSellerApi();
     const { id } = await context.params;
     const bindings = env as unknown as { DB?: D1Database; MEDIA?: R2Bucket };
     const database = requireDatabase(bindings);
@@ -211,6 +213,7 @@ export async function PATCH(
       previousInventory: current.inventoryQuantity,
       expectedStatus: current.status,
       expectedReviewRequestId: current.reviewRequestId,
+      workspaceMode: makerWorkspace ? 'maker' : 'seller',
       now: Date.now(),
       form: { requestId, versionId: form.versionId, answers: form.answers, digest: requestDigest },
     });
@@ -245,6 +248,7 @@ export async function PATCH(
     if (error instanceof ProductWatermarkError) return json({ error: error.message }, error.status);
     if (error instanceof SellerAuthorizationError)
       return json({ error: error.message }, error.status);
+    if (error instanceof ManagedMakerAuthorizationError) return json({ error: error.message }, error.status);
     if (error instanceof ProductRevisionConflictError)
       return json({ error: error.message }, 409);
     if (error instanceof FormRequestConflictError) return json({ error: error.message, code: 'request_id_conflict' }, 409);

@@ -14,8 +14,22 @@ import { buildFormAnswerInsert } from './form-answers';
 import type { FormAnswerSnapshot } from '@/lib/forms/types';
 import { digestFormRequest, formRequestReplay } from '@/lib/forms/submission';
 import { staffMutationGuard } from './staff-mutation-guard';
+import { getManagedMakerAuthority, makerMutationGuards, ManagedMakerAuthorizationError } from '../../managed-commerce/maker-authority';
 
 type SellerProductFormLink = { requestId: string; versionId: string; answers: FormAnswerSnapshot; digest?: string };
+
+function makerProductGuards(db: D1Database, options: { sellerId: string; actorId: string; now: number;
+  productId: string; input: ProductSubmissionInput }) {
+  const id = crypto.randomUUID();
+  const occasions = [...new Set(options.input.occasionIds)];
+  return [...makerMutationGuards(db, options),
+    db.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN
+      EXISTS(SELECT 1 FROM categories WHERE id=? AND is_active=1)
+      AND (SELECT COUNT(*) FROM occasions WHERE id IN (${occasions.map(() => '?').join(',') || 'NULL'}) AND is_active=1)=?
+      AND NOT EXISTS(SELECT 1 FROM product_deletions WHERE product_id=?) THEN 1 ELSE 0 END`)
+      .bind(id, options.input.categoryId, ...occasions, occasions.length, options.productId),
+    db.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(id)];
+}
 
 export interface CategoryRow {
   id: string;
@@ -105,6 +119,10 @@ export async function areActiveOccasions(
 }
 
 export async function createProductSubmission(database: D1Database, options: Parameters<typeof insertProductSubmission>[1]): Promise<string> {
+  if (options.workspaceMode === 'maker') {
+    const maker = await getManagedMakerAuthority(database, options.actorId, options.now);
+    if (maker.sellerId !== options.sellerId) throw new ManagedMakerAuthorizationError();
+  }
   const action = options.intent === 'draft' ? 'product.draft.created' : 'product.submitted';
   const catalogDigest = options.form ? options.form.digest ?? await digestFormRequest({ sellerId: options.sellerId,
     intent: options.intent ?? 'submit', input: options.input, images: options.images,
@@ -142,13 +160,17 @@ async function insertProductSubmission(
     input: ProductSubmissionInput;
     images: readonly ProductImageUpload[];
     intent?: 'draft' | 'submit';
+    workspaceMode?: 'seller' | 'maker';
     now: number;
     form?: SellerProductFormLink;
   },
 ): Promise<void> {
   const { productId, sellerId, actorId, slug, input, images, now } = options;
   const productStatus = options.intent === 'draft' ? 'draft' : 'submitted';
+  if (options.workspaceMode === 'maker' && images.some(media => !media.objectKey.startsWith(`private/product-media/${sellerId}/${productId}/`)))
+    throw new ManagedMakerAuthorizationError('Product media must belong to this maker and product.');
   const statements: D1PreparedStatement[] = [
+    ...(options.workspaceMode === 'maker' ? makerProductGuards(database, options) : []),
     ...(options.form ? [database.prepare(`SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
       THEN 1 ELSE json_extract('invalid', '$') END`).bind(options.form.requestId)] : []),
     database
@@ -496,10 +518,17 @@ export async function reviseAndResubmitProduct(
     expectedStatus?: ProductStatus;
     previousInventory: number;
     expectedReviewRequestId?: string | null;
+    workspaceMode?: 'seller' | 'maker';
     now: number;
     form?: SellerProductFormLink;
   },
 ): Promise<'applied' | 'replayed'> {
+  if (options.workspaceMode === 'maker') {
+    const maker = await getManagedMakerAuthority(database, options.actorId, options.now);
+    if (maker.sellerId !== options.sellerId || options.images.some(media =>
+      !media.objectKey.startsWith(`private/product-media/${options.sellerId}/${options.productId}/`)))
+      throw new ManagedMakerAuthorizationError('Product ownership or media ownership could not be verified.');
+  }
   const catalogDigest = options.form ? options.form.digest ?? await digestFormRequest({
     productId: options.productId, sellerId: options.sellerId, input: options.input,
     images: options.images, removedMediaIds: options.removedMediaIds ?? [],
@@ -706,6 +735,7 @@ export async function reviseAndResubmitProduct(
     );
   }
 
+  if (options.workspaceMode === 'maker') statements.push(...makerProductGuards(database, options));
   statements.push(...await businessNotificationStatements(database,{eventId:mutationId,sourceType:'product',sourceId:options.productId,status:'submitted',reviewRequestId:mutationId,actorId:options.actorId,now:options.now,kind:'submitted'}));
   if (options.form) statements.push(
     database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM products WHERE id=? AND seller_id=? AND review_request_id=?)

@@ -27,7 +27,7 @@ export default async function MakerDraftAnswerHistoryPage({ params, searchParams
   const participation = await getSellerParticipationForUser(db, customer.userId);
   if (!participation) notFound();
   const owned = await db.prepare(`SELECT name_en AS nameEn FROM products
-    WHERE id=? AND seller_id=? AND status='draft' LIMIT 1`)
+    WHERE id=? AND seller_id=? AND NOT EXISTS(SELECT 1 FROM product_deletions WHERE product_id=products.id) LIMIT 1`)
     .bind(id, participation.sellerId).first<{ nameEn: string }>();
   if (!owned) notFound();
   const query = await searchParams;

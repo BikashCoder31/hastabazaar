@@ -5,6 +5,7 @@ import { readBoundedForm, BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
 
 import { requireSellerApi, SellerAuthorizationError } from '@/lib/auth/seller';
+import { requireManagedMakerApi, ManagedMakerAuthorizationError } from '@/lib/auth/managed-maker';
 import { CustomerAuthorizationError, requireCustomerApi } from '@/lib/auth/customer';
 import { requireDatabase, requireMediaBucket } from '@/lib/db/d1';
 import { getSellerParticipationForUser } from '@/lib/db/repositories/seller-applications';
@@ -54,12 +55,18 @@ export async function POST(request: Request): Promise<Response> {
     const bindings = env as unknown as { DB?: D1Database; MEDIA?: R2Bucket };
     const database = requireDatabase(bindings);
     const draftIntent = new URL(request.url).searchParams.get('intent') === 'draft';
-    const seller = draftIntent
+    let makerWorkspace = new URL(request.url).searchParams.get('workspace') === 'maker';
+    const seller = makerWorkspace ? await requireManagedMakerApi() : draftIntent
       ? await (async () => {
           const customer = await requireCustomerApi();
           const participation = await getSellerParticipationForUser(database, customer.userId);
           if (!participation || !applicationCapabilities(participation.applicationStage, 'applications_only').prepareProductDrafts) {
             throw new CustomerAuthorizationError('This application cannot prepare product drafts.', 403);
+          }
+          if (participation.participationRoute === 'managed_maker') {
+            const maker = await requireManagedMakerApi();
+            makerWorkspace = true;
+            return maker;
           }
           return { sellerId: participation.sellerId, userId: customer.userId };
         })()
@@ -166,6 +173,7 @@ export async function POST(request: Request): Promise<Response> {
       input: parsed.input,
       images,
       intent: draftIntent ? 'draft' : 'submit',
+      workspaceMode: makerWorkspace ? 'maker' : 'seller',
       now: Date.now(),
       form: { requestId, versionId: form.versionId, answers: form.answers, digest: requestDigest },
     });
@@ -197,6 +205,7 @@ export async function POST(request: Request): Promise<Response> {
     if (error instanceof SellerAuthorizationError) {
       return json({ error: error.message }, error.status);
     }
+    if (error instanceof ManagedMakerAuthorizationError) return json({ error: error.message }, error.status);
     if (error instanceof CustomerAuthorizationError) {
       return json({ error: error.message }, error.status);
     }
