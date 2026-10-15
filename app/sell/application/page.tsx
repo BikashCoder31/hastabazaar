@@ -3,6 +3,7 @@ import { getAcceptedManagedTerms, getManagedTermsOffers } from '@/lib/managed-co
 import { getManagedMakerAuthority } from '@/lib/managed-commerce/maker-authority';
 import { MakerProductWorkspace } from '@/components/seller/maker-product-workspace';
 import { ManagedTermsAcceptance } from '@/components/seller/managed-terms-acceptance';
+import { ManagedTermsRecovery } from '@/components/seller/managed-terms-recovery';
 import { RegisteredTransitionForm } from '@/components/seller/registered-transition-form';
 import type { Metadata } from 'next';
 import { env } from 'cloudflare:workers';
@@ -118,8 +119,9 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
       ['Calculated',finance.calculatedPaisa],['Earned',finance.earnedPaisa],['Held',finance.heldPaisa],['Eligible',finance.eligiblePaisa],['Paid',finance.paidPaisa],
     ].map(([label,value])=><div key={String(label)}><dt className="text-xs uppercase text-muted-foreground">{label}</dt><dd className="mt-1 font-semibold">NPR {(Number(value)/100).toFixed(2)}</dd></div>)}</dl></section> : null}
     {capabilities.editProfile && (profile.participationRoute !== 'managed_maker' || makerCanWrite) ? <section><h2 className="font-heading text-2xl">Shared maker profile</h2><MakerApplicationProfileForm profile={profile} managedTerms={managedTerms} /></section> : null}
-    {offers && makerCanWrite ? <><ManagedTermsAcceptance sellerId={profile.sellerId} offer={offers.current} future={false} alreadyAccepted={Boolean(accepted)} />
-      {offers.upcoming.map(offer => <ManagedTermsAcceptance key={offer.id} sellerId={profile.sellerId} offer={offer} future alreadyAccepted={false} />)}</> : null}
+    {offers && makerCanWrite ? <><ManagedTermsAcceptance key={`${customer.userId}:${profile.sellerId}:${offers.current.id}`} ownerId={customer.userId} sellerId={profile.sellerId} offer={offers.current} future={false} alreadyAccepted={Boolean(accepted)} />
+      {offers.upcoming.map(offer => <ManagedTermsAcceptance key={offer.id} ownerId={customer.userId} sellerId={profile.sellerId} offer={offer} future alreadyAccepted={Boolean(offer.accepted)} />)}</> : null}
+    {offers&&makerCanWrite?<ManagedTermsRecovery ownerId={customer.userId} sellerId={profile.sellerId} visibleOfferIds={[offers.current.id,...offers.upcoming.map(offer=>offer.id)]}/>:null}
     {profile.applicationStage==='active' ? <RegisteredTransitionForm sellerId={profile.sellerId} ownerId={customer.userId}/> : null}
     <section className="space-y-4" aria-label="Application answer history">
       <h2 className="font-heading text-2xl">Application answer history</h2>

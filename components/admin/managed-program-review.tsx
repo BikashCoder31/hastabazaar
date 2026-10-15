@@ -180,6 +180,7 @@ export function ManagedProgramReview({ sellerId, workspace }: { sellerId: string
       {item.acceptedTerms?<details className="rounded-lg border p-3"><summary className="cursor-pointer font-medium">Maker’s accepted seller agreement · {item.acceptedTerms.commissionBps/100}% commission</summary>
         <p className="mt-2 break-all text-xs">Version: {item.acceptedTerms.agreementVersion} · {item.acceptedTerms.language} · accepted {new Date(item.acceptedTerms.acceptedAt).toLocaleString('en-GB',{timeZone:'Asia/Kathmandu'})} Nepal time</p>
         <div className="my-3 max-h-80 overflow-auto whitespace-pre-wrap text-sm">{item.acceptedTerms.document}</div>
+        <p className="break-all text-sm">Verify receiving-account reference: {item.acceptedTerms.payoutAccountReference??'Missing — request corrections'}. Written settlement reference: {item.acceptedTerms.settlementTermsReference??'Missing — request corrections'}.</p>
         <ul className="space-y-2 text-sm">{item.acceptedTerms.evidence.map(document=><li key={document.id}><Link className="underline" href={`/api/admin/seller-documents/${encodeURIComponent(document.id)}`}>Open private {document.kind.replaceAll('_',' ')} certificate</Link></li>)}</ul>
       </details>:<p className="text-sm">The original accepted seller terms need renewed review before this transition can apply.</p>}
       {item.status === 'submitted' ? <form data-form-id="staff.managed-transition-decision" className="grid gap-2 sm:grid-cols-2" onSubmit={send}>

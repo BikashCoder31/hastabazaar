@@ -15,11 +15,11 @@ export interface RegisteredTransitionInput {
   sellerId:string;actorId:string;legalName:string;registrationAuthority:string;registrationNumber:string;
   taxMode:'PAN'|'VAT'|'BOTH';taxRegistrationNumber:string;evidenceReferences:readonly string[];
   agreementVersion:string;agreementLanguage:'en'|'ne';agreementAcceptedAt:number;registeredTermsContext?:string;
-  requestId:string;now:number;environment:RuntimeEnvironment;form?:TransitionForm;documents?:readonly SellerApplicationDocument[];
+  requestId:string;now:number;environment:RuntimeEnvironment;form?:TransitionForm;documents?:readonly SellerApplicationDocument[];payoutAccountReference?:string;
 }
 interface Evidence {id:string;kind:string;objectKey:string;uploadedAt:number;sizeBytes:number}
 interface TermsSnapshot {schema:1;context:string;agreementVersion:string;commissionSettingVersionId:string|null;commissionBps:number;
-  document:Awaited<ReturnType<typeof getRegisteredSellerTerms>>['document'];language:'en';acceptedAt:number;acceptedBy:string;evidence:Evidence[]}
+  document:Awaited<ReturnType<typeof getRegisteredSellerTerms>>['document'];language:'en';acceptedAt:number;acceptedBy:string;evidence:Evidence[];payoutAccountReference:string;settlementTermsReference:string}
 interface TransitionRow {
   id:string;sellerId:string;requestedBy:string;reviewedBy:string|null;status:string;version:number;legalName:string;
   registrationAuthority:string;registrationNumber:string;taxMode:'PAN'|'VAT'|'BOTH';taxRegistrationNumber:string;
@@ -52,16 +52,16 @@ async function owner(db:D1Database,sellerId:string,actorId:string,now:number,all
     throw new RouteTransitionError('Only the active, unrestricted maker account holder may use this transition.');
 }
 async function evidence(db:D1Database,sellerId:string,references:readonly string[],taxMode:string,now:number,uploads:readonly SellerApplicationDocument[] = []) {
-  if(!Array.isArray(references)||references.length<2||references.length>3||new Set(references).size!==references.length)
-    throw new RouteTransitionError('Provide the private company registration and required tax certificates.');
-  const kinds=taxMode==='PAN'?['business_registration','pan_certificate']:taxMode==='VAT'?['business_registration','vat_certificate']:['business_registration','pan_certificate','vat_certificate'];
+  if(!Array.isArray(references)||references.length<3||references.length>4||new Set(references).size!==references.length)
+    throw new RouteTransitionError('Provide private company registration, tax certificates and receiving-account evidence.');
+  const kinds=['bank_verification',...(taxMode==='PAN'?['business_registration','pan_certificate']:taxMode==='VAT'?['business_registration','vat_certificate']:['business_registration','pan_certificate','vat_certificate'])];
   const documents:Evidence[]=[];
   for(const reference of references) {
     const upload=uploads.find(document=>document.id===reference);
     const row=upload ? {id:upload.id,kind:upload.kind,objectKey:upload.objectKey,uploadedAt:now,sizeBytes:upload.sizeBytes} : await db.prepare(`SELECT id,kind,object_key AS objectKey,uploaded_at AS uploadedAt,size_bytes AS sizeBytes
       FROM seller_documents WHERE id=? AND seller_id=? AND status IN ('pending','verified') AND uploaded_at<=?`).bind(required('Private document ID',reference,1),sellerId,now).first<Evidence>();
     if(!row||!row.objectKey.startsWith(`private/seller-documents/${sellerId}/`)||!kinds.includes(row.kind))
-      throw new RouteTransitionError('A required private registration or tax document is missing, rejected or belongs to another maker.');
+      throw new RouteTransitionError('Required private registration, tax or receiving-account evidence is missing, rejected or belongs to another maker.');
     documents.push(row);
   }
   if(kinds.some(kind=>documents.filter(document=>document.kind===kind).length!==1)||documents.length!==kinds.length)
@@ -84,7 +84,8 @@ async function validatedSnapshot(db:D1Database,input:RegisteredTransitionInput):
   if(input.registeredTermsContext!==terms.context||input.agreementVersion!==terms.agreementVersion||input.agreementLanguage!=='en'||input.agreementAcceptedAt!==input.now)
     throw new RouteTransitionError('Review and explicitly accept the current English Registered Seller agreement and commission terms.');
   return {schema:1,context:terms.context,agreementVersion:terms.agreementVersion,commissionSettingVersionId:terms.versionId,commissionBps:terms.basisPoints,
-    document:terms.document,language:'en',acceptedAt:input.now,acceptedBy:input.actorId,evidence:await evidence(db,input.sellerId,input.evidenceReferences,input.taxMode,input.now,input.documents)};
+    document:terms.document,language:'en',acceptedAt:input.now,acceptedBy:input.actorId,payoutAccountReference:required('Receiving-account reference',input.payoutAccountReference??'',4,200),
+    settlementTermsReference:`registered-seller-agreement:${terms.context}`,evidence:await evidence(db,input.sellerId,input.evidenceReferences,input.taxMode,input.now,input.documents)};
 }
 export async function validateRegisteredTransitionInput(db:D1Database,input:RegisteredTransitionInput) {
   assertSimulationAllowed(input.environment);
@@ -98,7 +99,8 @@ function snapshot(row:TransitionRow):TermsSnapshot {
   try {
     const value=JSON.parse(row.snapshotJson??'null') as TermsSnapshot|null;
     if(!value||value.schema!==1||value.acceptedBy!==row.requestedBy||value.acceptedAt!==row.agreementAcceptedAt||value.agreementVersion!==row.agreementVersion||
-      value.language!==row.agreementLanguage||!Array.isArray(value.evidence)||!value.context)throw new Error();
+      value.language!==row.agreementLanguage||!Array.isArray(value.evidence)||!value.context||
+      required('Receiving-account reference',value.payoutAccountReference,4,200)!==value.payoutAccountReference||value.settlementTermsReference!==`registered-seller-agreement:${value.context}`)throw new Error();
     return value;
   } catch {throw new RouteTransitionError('The original registration documents and accepted seller terms need renewed review.');}
 }
@@ -106,7 +108,7 @@ function digestInput(input:RegisteredTransitionInput,applicationId?:string,expec
   if(input.form?.digest)return Promise.resolve(input.form.digest);
   return digestFormRequest({sellerId:input.sellerId,legalName:input.legalName,registrationAuthority:input.registrationAuthority,registrationNumber:input.registrationNumber,
     taxMode:input.taxMode,taxRegistrationNumber:input.taxRegistrationNumber,evidenceReferences:input.evidenceReferences,agreementVersion:input.agreementVersion,
-    agreementLanguage:input.agreementLanguage,registeredTermsContext:input.registeredTermsContext,applicationId,expectedVersion,
+    agreementLanguage:input.agreementLanguage,registeredTermsContext:input.registeredTermsContext,payoutAccountReference:input.payoutAccountReference,applicationId,expectedVersion,
     versionId:input.form?.versionId??null,answers:input.form?.answers??null});
 }
 async function replaySubmission(db:D1Database,input:RegisteredTransitionInput,digest:string,action:string) {
@@ -218,8 +220,8 @@ async function applyOne(db:D1Database,row:TransitionRow,now:number,invocation?:A
       AND reviewed_by=? AND requested_by<>reviewed_by AND registered_terms_snapshot_json=?)`,[row.id,row.version,now,row.reviewedBy,row.snapshotJson]),
     db.prepare(`UPDATE seller_route_transition_applications SET status='applied',applied_at=?,version=version+1,updated_at=? WHERE id=? AND status='scheduled' AND version=?`).bind(now,now,row.id,row.version),
     db.prepare(`UPDATE seller_profiles SET legal_name=?,registration_authority=?,registration_number=?,tax_mode=?,tax_registration_number=?,
-      seller_agreement_version=?,seller_agreement_accepted_at=?,status='approved',approved_at=COALESCE(approved_at,?),updated_at=? WHERE id=?`)
-      .bind(row.legalName,row.registrationAuthority,row.registrationNumber,row.taxMode,row.taxRegistrationNumber,original.agreementVersion,original.acceptedAt,now,now,row.sellerId),
+      seller_agreement_version=?,seller_agreement_accepted_at=?,payout_account_reference=?,settlement_terms_reference=?,status='approved',approved_at=COALESCE(approved_at,?),updated_at=? WHERE id=?`)
+      .bind(row.legalName,row.registrationAuthority,row.registrationNumber,row.taxMode,row.taxRegistrationNumber,original.agreementVersion,original.acceptedAt,original.payoutAccountReference,original.settlementTermsReference,now,now,row.sellerId),
     db.prepare(`UPDATE seller_participation_profiles SET participation_route='registered_seller',application_stage='active',tax_status=?,commercial_model=NULL,version=version+1,updated_at=? WHERE seller_id=? AND participation_route='managed_maker'`)
       .bind(row.taxMode==='PAN'?'business_pan_only':'vat_registered',now,row.sellerId),...acceptance.statements,
     db.prepare(`INSERT OR IGNORE INTO user_roles(user_id,role,assigned_by,assigned_at) VALUES (?,'seller',?,?)`).bind(row.requestedBy,row.reviewedBy,now),

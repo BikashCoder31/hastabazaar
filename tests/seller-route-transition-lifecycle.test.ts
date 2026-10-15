@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { registerHooks } from 'node:module';
-import { earnedMaker } from './helpers/company-store-financial-fixture';
+import { earnedMaker,refund } from './helpers/company-store-financial-fixture';
+import {issueManagedInvoiceGroups} from '../lib/db/repositories/managed-documents';
 import { getRegisteredSellerTerms } from '../lib/db/repositories/marketplace-settings';
 import { submitRegisteredSellerTransition, resubmitRegisteredSellerTransition, reviewRouteTransition, applyDueRouteTransitions,applyReviewedRouteTransition } from '../lib/managed-commerce/route-transition';
 import { createBusinessSettingDraft,publishBusinessSettingDraft } from '../lib/db/repositories/business-settings';
@@ -9,6 +10,7 @@ import {addCartItem} from '../lib/db/repositories/cart';
 import {createCodOrder} from '../lib/db/repositories/orders';
 import {prepareManagedPayout,transitionManagedPayout} from '../lib/managed-commerce/payout-operations';
 import {listStaffFormHistory} from '../lib/forms/staff-history';
+import {accrueExistingDeliveredEarnings,prepareSellerPayout} from '../lib/db/repositories/payouts';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 
@@ -23,13 +25,13 @@ registerHooks({resolve(specifier,context,next){
 }});
 async function fixture(baseNow?:number){
   const f=await earnedMaker(true,baseNow);
-  for(const [id,kind] of [['transition-registration','business_registration'],['transition-pan','pan_certificate']]) f.sqlite.prepare(`INSERT INTO seller_documents(id,seller_id,kind,object_key,original_name,mime_type,size_bytes,status,uploaded_at)
+  for(const [id,kind] of [['transition-registration','business_registration'],['transition-pan','pan_certificate'],['transition-bank','bank_verification']]) f.sqlite.prepare(`INSERT INTO seller_documents(id,seller_id,kind,object_key,original_name,mime_type,size_bytes,status,uploaded_at)
     VALUES(?,?,?,?,?,'application/pdf',100,'pending',?)`).run(id,f.sellerId,kind,`private/seller-documents/${f.sellerId}/${id}`,'SIMULATED.pdf',f.financialNow);
   const terms=await getRegisteredSellerTerms(f.db,f.financialNow);
   f.sqlite.prepare('UPDATE users SET auth_subject=? WHERE id=?').run('transition-auth',f.actorId);
   globalThis.transitionLifecycleDb=f.db;globalThis.transitionLifecycleIdentity={userId:'transition-auth',email:'maker@local.hastabazaar.test'};
   const input={sellerId:f.sellerId,actorId:f.actorId,legalName:'Fictional registered craft company',registrationAuthority:'Fictional company office',registrationNumber:'SIM-REG-001',
-    taxMode:'PAN' as const,taxRegistrationNumber:'SIM-PAN-001',evidenceReferences:['transition-registration','transition-pan'],agreementVersion:terms.agreementVersion,
+    taxMode:'PAN' as const,taxRegistrationNumber:'SIM-PAN-001',payoutAccountReference:'SIM-REGISTERED-RECEIVING',evidenceReferences:['transition-registration','transition-pan','transition-bank'],agreementVersion:terms.agreementVersion,
     agreementLanguage:'en' as const,agreementAcceptedAt:f.financialNow,registeredTermsContext:terms.context,requestId:'transition-fictional-submit',now:f.financialNow,environment:f.context.environment};
   return {...f,input,terms};
 }
@@ -48,6 +50,9 @@ void test('PAN transition changes only new transactions at the reviewed effectiv
     assert.equal((await requireSellerApi()).sellerId,f.sellerId);
     assert.equal((await requireSellerPage('/seller')).sellerId,f.sellerId);
     assert.equal(f.sqlite.prepare('SELECT status FROM seller_profiles WHERE id=?').get(f.sellerId)?.status,'approved');
+    assert.equal(f.sqlite.prepare('SELECT payout_account_reference FROM seller_profiles WHERE id=?').get(f.sellerId)?.payout_account_reference,f.input.payoutAccountReference);
+    assert.equal(f.sqlite.prepare('SELECT settlement_terms_reference FROM seller_profiles WHERE id=?').get(f.sellerId)?.settlement_terms_reference,`registered-seller-agreement:${f.terms.context}`);
+    assert.equal(f.sqlite.prepare("SELECT status FROM seller_documents WHERE id='transition-bank'").get()?.status,'verified');
     assert.equal(f.sqlite.prepare('SELECT commission_bps FROM seller_agreement_acceptance_history WHERE seller_id=?').get(f.sellerId)?.commission_bps,f.terms.basisPoints);
     assert.equal(await applyDueRouteTransitions(f.db,f.financialNow+60001,f.context.environment),0);
     assert.equal(JSON.stringify(f.sqlite.prepare('SELECT * FROM managed_commercial_snapshots ORDER BY id').all()),old);
@@ -61,7 +66,38 @@ void test('PAN transition changes only new transactions at the reviewed effectiv
     assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM managed_entitlements').get()?.n,1,'The new independent order must not create another managed earning');
     assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM managed_commercial_snapshots').get()?.n,1);
     assert.equal(f.sqlite.prepare('SELECT commission_bps FROM order_items WHERE order_id<>?').get(f.orderId)?.commission_bps,f.terms.basisPoints);
+    const independentOrder=String(f.sqlite.prepare('SELECT id FROM orders WHERE id<>?').get(f.orderId)?.id);
+    f.sqlite.prepare("UPDATE orders SET status='delivered',payment_status='paid',delivered_at=? WHERE id=?").run(f.financialNow+60004,independentOrder);
+    f.sqlite.prepare("UPDATE order_items SET fulfillment_status='delivered' WHERE order_id=?").run(independentOrder);
+    const maturity=f.financialNow+100*86400000;
+    await accrueExistingDeliveredEarnings(f.db,{actorId:'reviewer',requestId:'registered-delivery-accrual',now:maturity});
+    const independentPayout=await prepareSellerPayout(f.db,{sellerId:f.sellerId,actorId:'reviewer',actorRole:'super_admin',requestId:'registered-payment-preparation',note:'Verify the new registered seller receiving destination.',now:maturity});
+    assert.equal(f.sqlite.prepare('SELECT destination_reference FROM payouts WHERE id=?').get(independentPayout.id)?.destination_reference,f.input.payoutAccountReference);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM seller_ledger_entries WHERE order_item_id=?').get(f.itemId)?.n,0,'Managed sale must not enter independent seller payouts');
   } finally {f.dispose();}
+});
+void test('registered seller transition requires private receiving evidence before submission',async()=>{
+ const f=await fixture();
+ try {
+  await assert.rejects(submitRegisteredSellerTransition(f.db,{...f.input,evidenceReferences:['transition-registration','transition-pan']}),/bank|receiving/i);
+  assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM seller_route_transition_applications').get()?.n,0);
+ }finally{f.dispose();}
+});
+void test('a PAN transition preserves populated invoices refunds settlement entries and paid allocation histories',async()=>{
+ const f=await fixture();
+ try {
+  await issueManagedInvoiceGroups(f.db,{orderId:f.orderId,requestId:'history-invoice',now:f.financialNow});
+  await refund(f);
+  const payoutId=await prepareManagedPayout(f.db,{...f.context,requestId:'history-prepare'});
+  await transitionManagedPayout(f.db,{...f.context,payoutId,action:'mark_paid',requestId:'history-paid',providerReference:'SIM-POPULATED-HISTORY'});
+  const tables=['managed_commercial_snapshots','managed_entitlements','managed_settlement_entries','managed_invoice_groups','return_requests','refunds','managed_payouts','managed_payout_allocations'];
+  const before=new Map(tables.map(table=>[table,JSON.stringify(f.sqlite.prepare(`SELECT * FROM ${table}`).all())]));
+  for(const table of tables)assert.ok(Number(f.sqlite.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()?.n)>0,`${table} must be populated`);
+  const applicationId=await submitRegisteredSellerTransition(f.db,f.input);
+  await reviewRouteTransition(f.db,{applicationId,actorId:'reviewer',action:'approve',reason:'Review complete bank registration and tax evidence',effectiveAt:f.financialNow+1,requestId:'history-transition-review',now:f.financialNow,environment:f.context.environment});
+  assert.equal(await applyDueRouteTransitions(f.db,f.financialNow+1,f.context.environment),1);
+  for(const table of tables)assert.equal(JSON.stringify(f.sqlite.prepare(`SELECT * FROM ${table}`).all()),before.get(table),table);
+ }finally{f.dispose();}
 });
 void test('owned multipart transition validates private uploads, authorization, replay and form-publication races',async()=>{
   const f=await fixture(Date.now()-10*86400000);
@@ -76,9 +112,9 @@ void test('owned multipart transition validates private uploads, authorization, 
     function data(requestId='transition-http-submit',fileBody='%PDF-1.4\nSIMULATED private certificate\n%%EOF') {
       const body=new FormData();
       for(const [key,value] of Object.entries({requestId,formVersion:'1',action:'submit',legalName:f.input.legalName,registrationAuthority:f.input.registrationAuthority,
-        registrationNumber:f.input.registrationNumber,taxMode:'PAN',taxRegistrationNumber:f.input.taxRegistrationNumber,registeredTermsContext:f.terms.context,agreementVersion:f.terms.agreementVersion,agreementLanguage:'en',acceptedTerms:'yes'}))body.set(key,value);
+        registrationNumber:f.input.registrationNumber,taxMode:'PAN',taxRegistrationNumber:f.input.taxRegistrationNumber,payoutAccountReference:f.input.payoutAccountReference,registeredTermsContext:f.terms.context,agreementVersion:f.terms.agreementVersion,agreementLanguage:'en',acceptedTerms:'yes'}))body.set(key,value);
       body.set('businessRegistration',new File([fileBody],'SIMULATED-company-registration.pdf',{type:'application/pdf'}));
-      body.set('panCertificate',new File([fileBody],'SIMULATED-business-PAN.pdf',{type:'application/pdf'}));return body;
+      body.set('panCertificate',new File([fileBody],'SIMULATED-business-PAN.pdf',{type:'application/pdf'}));body.set('bankVerification',new File([fileBody],'SIMULATED-receiving-account.pdf',{type:'application/pdf'}));return body;
     }
     const send=(body:FormData,origin='http://localhost:3018')=>POST(new Request('http://localhost:3018/api/seller-applications/transition',{method:'POST',headers:{origin},body}));
     const profile=JSON.stringify(f.sqlite.prepare('SELECT * FROM seller_profiles WHERE id=?').get(f.sellerId));
@@ -94,7 +130,7 @@ void test('owned multipart transition validates private uploads, authorization, 
     const raced=await send(data('racing-publication'));
     assert.equal(raced.status,409,await raced.text());
     assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM seller_route_transition_applications').get()?.n,0);
-    assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM seller_documents WHERE id LIKE 'transition-%' AND id NOT IN ('transition-pan','transition-registration')").get()?.n,0);
+    assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM seller_documents WHERE id LIKE 'transition-%' AND id NOT IN ('transition-pan','transition-registration','transition-bank')").get()?.n,0);
     // The retained request uses its original publication. A new reviewed request uses v2.
     const fresh=data();fresh.set('formVersion','2');
     const response=await send(fresh);assert.equal(response.status,201,await response.text());

@@ -45,10 +45,12 @@ void test('the reviewed source inventory includes native commission and incentiv
     {path:'components/admin/incentive-reports.tsx',ids:['staff.loyalty-report-filter','staff.promo-report-filter']},
   ]);
   const originalSites = sites.filter((site) => !reviewedPaths.has(site.path)&&!workspacePaths.has(site.path));
-  assert.equal(originalSites.length, 83);
-  assert.equal(new Set(originalSites.map((site) => site.path)).size, 65);
-  assert.equal(sites.length, 83 + reviewedSites.length + workspaceSites.length);
-  assert.equal(new Set(sites.map((site) => site.path)).size, 65 + reviewedPaths.size + workspacePaths.size);
+  for(const path of ['components/admin/managed-settlement-controls.tsx','components/seller/managed-terms-acceptance.tsx','components/seller/registered-transition-form.tsx'])
+    assert.ok(originalSites.some(site=>site.path===path),`Reviewed company-store form is inventoried: ${path}`);
+  assert.equal(originalSites.length, 87);
+  assert.equal(new Set(originalSites.map((site) => site.path)).size, 68);
+  assert.equal(sites.length, 87 + reviewedSites.length + workspaceSites.length);
+  assert.equal(new Set(sites.map((site) => site.path)).size, 68 + reviewedPaths.size + workspacePaths.size);
   assert.deepEqual(await scanFormSites(root), []);
 });
 

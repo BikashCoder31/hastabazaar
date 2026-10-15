@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {addProductEvidenceSchema} from './helpers/product-evidence-schema';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 import test from 'node:test';
 import { resolve } from 'node:path';
@@ -120,6 +121,7 @@ void test('minimum price changes both published product results and count', asyn
         ('high','high','High',31000,'seller','category','published');
     `);
     const db = { prepare(sql: string) { return new Statement(sqlite.prepare(sql)); } } as unknown as D1Database;
+    addProductEvidenceSchema(sqlite);
     assert.equal(await countPublishedProducts(db, {}), 3);
     assert.equal(await countPublishedProducts(db, { minimumPricePaisa: 25075 }), 2);
     assert.deepEqual((await listPublishedProducts(db,

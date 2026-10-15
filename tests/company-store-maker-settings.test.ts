@@ -48,6 +48,7 @@ void test('future acceptance cannot change current earnings and exact retry cann
       language: 'en' as const, requestId: 'accept-future-terms', now: f.now + 1, form: acceptanceForm(f) };
     assert.equal(await getAcceptedManagedTerms(f.db, f.sellerId, start), null);
     const receipt = await acceptManagedTerms(f.db, input);
+    assert.equal((await getManagedTermsOffers(f.db,f.sellerId,f.now+2)).upcoming[0].accepted,true);
     assert.equal((await getAcceptedManagedTerms(f.db, f.sellerId, start - 1))?.retentionBps, 900);
     assert.equal((await getAcceptedManagedTerms(f.db, f.sellerId, start))?.retentionBps, 1200);
     assert.deepEqual(await acceptManagedTerms(f.db, { ...input, now: start + 1 }), receipt);
@@ -83,6 +84,22 @@ void test('cancelled offers and owner revocation cannot leave partial acceptance
     assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM form_answer_sets').get()?.n, 0);
     assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='managed_maker.terms_accepted'").get()?.n, 0);
   } finally { f.dispose(); }
+});
+
+for(const mode of ['disabled','suspended']) for(const race of [false,true])void test(`maker restriction ${mode} blocks renewed terms${race?' at commit':''}`,async()=>{
+  const f=await companyStoreMakerFixture();
+  try {
+    const offer=(await getManagedTermsOffers(f.db,f.sellerId,f.now)).current;
+    const input={sellerId:f.sellerId,actorId:f.actorId,offerId:offer.id,context:offer.context,language:'en' as const,requestId:'restricted-acceptance',now:f.now+1,form:acceptanceForm(f)};
+    const restrict=()=>{f.sqlite.prepare(`INSERT INTO seller_restrictions(seller_id,mode,suspended_until,obligation_mode,reason_code,private_reason,applied_by,applied_at,updated_at)
+      VALUES(?,?,?,'admin_review','test','Fictional restriction','reviewer',?,?)`).run(f.sellerId,mode,mode==='suspended'?f.now+86400000:null,f.now,f.now);};
+    if(race)f.setBeforeBatch(restrict);else restrict();
+    await assert.rejects(acceptManagedTerms(f.db,input),/owner|changed|eligible/i);
+    assert.equal(f.sqlite.prepare('SELECT mode FROM seller_restrictions WHERE seller_id=?').get(f.sellerId)?.mode,mode);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM managed_maker_application_details').get()?.n,1);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM form_answer_sets').get()?.n,0);
+    assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='managed_maker.terms_accepted'").get()?.n,0);
+  }finally{f.dispose();}
 });
 
 void test('cancelled future offer and rejected identity cannot be accepted', async () => {

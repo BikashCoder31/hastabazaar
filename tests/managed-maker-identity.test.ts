@@ -749,13 +749,13 @@ void test('managed government ID and optional personal PAN evidence stay private
       assert.ok(await getSellerDocumentForStaff(database,documentId,'super'));
     }
     const staffView=await getSellerApplicationForReview(database,'maker','staff');
-    assert.equal(staffView?.documents.length,1);assert.equal(staffView?.documentCount,1);
-    assert.equal(staffView?.documents[0]?.kind,'business_registration','Only the new company certificate is visible to ordinary staff');
+    assert.equal(staffView?.documents.length,2);assert.equal(staffView?.documentCount,2);
+    assert.deepEqual(staffView?.documents.map(document=>document.kind).sort(),['bank_verification','business_registration'],'Only new business and receiving certificates are visible to ordinary staff');
     assert.equal(JSON.stringify(staffView).includes('123456789'),false,'private filenames must not reach ordinary staff');
-    assert.equal((await getSellerApplicationForReview(database,'maker','super'))?.documents.length,6);
+    assert.equal((await getSellerApplicationForReview(database,'maker','super'))?.documents.length,7);
     sqlite.exec('DROP TRIGGER managed_maker_details_no_delete; DELETE FROM managed_maker_application_details;');
     await assert.rejects(getSellerDocumentForStaff(database,'original-pan','staff'),/Super Admin/i,'historical transition also protects legacy makers without new acceptance');
-    assert.equal((await getSellerApplicationForReview(database,'maker','staff'))?.documents.length,1);
+    assert.equal((await getSellerApplicationForReview(database,'maker','staff'))?.documents.length,2);
   }finally{sqlite.close();}
 });
 void test('originally registered seller certificates retain ordinary staff document and review access',async()=>{

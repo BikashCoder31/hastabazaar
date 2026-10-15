@@ -400,6 +400,8 @@ registerHooks({
         ),
         shortCircuit: true,
       };
+    // Pure action lookup is part of the receiving adapter, not a domain side effect.
+    if(specifier==='@/lib/managed-commerce/finance-contract')return nextResolve(specifier,context);
     const names = stubModules.get(specifier);
     if (names) {
       const source = [...names]

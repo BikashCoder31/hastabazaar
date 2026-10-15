@@ -187,7 +187,7 @@ void test('twelve warned reset branches refresh only the stale real catalog, pre
    :mode==='approve'||mode==='reject'?<CancellationReviewControl reviewId="review-one"/>
    :mode==='inventory'?<InventoryEditor productId="product-one" quantity={1} productName="Fictional Product"/>
    :mode==='invoice'?<InvoiceAdjustmentForm invoices={[{id:'invoice-one',invoiceNumber:'INV-1',issuerReference:'SIM-ISSUER',adjustmentCount:0}]} reasonCodes={['defect']}/>
-   :mode==='activation'?<ManagedMakerActivationForm sellerId="seller-one"/>
+   :mode==='activation'?<ManagedMakerActivationForm sellerId="seller-one" acceptedTerms={{detailId:'accepted-maker-detail',retentionBps:900,agreementVersion:'SIM-ACCEPTED'}}/>
    :mode==='parcel'?<ParcelControls orderId="order-one" parcels={[parcel]} records={[]} compensation={[]} actorId="staff-one" canPrepare={false}/>
    :<GovernanceConsole data={data} superAdmin={true} actorId="staff-one"/>;
   createRoot(document.getElementById('root')).render(element);

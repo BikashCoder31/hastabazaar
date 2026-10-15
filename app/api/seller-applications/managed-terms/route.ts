@@ -62,7 +62,7 @@ export async function POST(request: Request): Promise<Response> {
     const receipt = await acceptManagedTerms(db, { sellerId: participation.sellerId, actorId: owner.userId,
       offerId: raw.offerId, context: raw.context, language: 'en', requestId: raw.requestId, now: Date.now(),
       form: { versionId: form.versionId, answers: form.answers } });
-    return reply({ ok: true, ...receipt });
+    return reply({ ok: true, ...receipt,requestId:raw.requestId,sellerId:participation.sellerId,formVersion:raw.formVersion });
   } catch (error) {
     if (error instanceof CustomerAuthorizationError) return reply({ error: error.message }, error.status);
     if (error instanceof BodyTooLargeError) return reply({ error: error.message }, 413);

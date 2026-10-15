@@ -381,7 +381,8 @@ void test('managed supply and route-transition actions each keep context on thei
     const transitionSend=(contextValue:string,requestId='transition-one')=>{
       const data=new FormData();for(const [key,value] of Object.entries({action:'submit',legalName:prepared.legalName,registrationAuthority:prepared.registrationAuthority,registrationNumber:prepared.registrationNumber,
         taxMode:prepared.taxMode,taxRegistrationNumber:prepared.taxRegistrationNumber,registeredTermsContext:prepared.registeredTermsContext!,agreementVersion:prepared.agreementVersion,agreementLanguage:'en',acceptedTerms:'yes',
-        businessRegistrationId:prepared.evidenceReferences[0],panCertificateId:prepared.evidenceReferences[1],requestId,formVersion:'1','custom.context_note':contextValue}))data.set(key,value);
+        payoutAccountReference:prepared.payoutAccountReference!,businessRegistrationId:prepared.evidenceReferences.find(id=>id.endsWith('-business_registration'))!,
+        panCertificateId:prepared.evidenceReferences.find(id=>id.endsWith('-pan_certificate'))!,bankVerificationId:prepared.evidenceReferences.find(id=>id.endsWith('-bank_verification'))!,requestId,formVersion:'1','custom.context_note':contextValue}))data.set(key,value);
       return transitionPost(new Request('http://localhost:3000/api/seller-applications/transition',{method:'POST',headers:{origin:'http://localhost:3000'},body:data}));
     };
     assert.equal((await transitionSend('')).status,400);

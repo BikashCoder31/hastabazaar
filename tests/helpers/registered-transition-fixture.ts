@@ -24,12 +24,12 @@ export async function registeredTransitionFixtureInput(db:D1Database,input:Regis
   sqlite.prepare("INSERT OR IGNORE INTO user_roles(user_id,role,assigned_at) VALUES (?,'customer',?)").run(input.actorId,input.now);
   sqlite.prepare("UPDATE seller_profiles SET status=COALESCE(status,'approved') WHERE id=?").run(input.sellerId);
   const ids=[];
-  for(const kind of input.taxMode==='PAN'?['business_registration','pan_certificate']:input.taxMode==='VAT'?['business_registration','vat_certificate']:['business_registration','pan_certificate','vat_certificate']) {
+  for(const kind of ['bank_verification',...(input.taxMode==='PAN'?['business_registration','pan_certificate']:input.taxMode==='VAT'?['business_registration','vat_certificate']:['business_registration','pan_certificate','vat_certificate'])]) {
     const id=`fixture-${input.sellerId}-${kind}`;ids.push(id);
     sqlite.prepare(`INSERT OR IGNORE INTO seller_documents(id,seller_id,kind,object_key,original_name,mime_type,size_bytes,status,uploaded_at)
       VALUES(?,?,?,?,?,'application/pdf',100,'pending',?)`).run(id,input.sellerId,kind,`private/seller-documents/${input.sellerId}/${id}`,'SIMULATED-business-certificate.pdf',input.now);
   }
   const terms=await getRegisteredSellerTerms(db,input.now);
-  return {...input,evidenceReferences:ids,registeredTermsContext:terms.context,agreementVersion:terms.agreementVersion,agreementLanguage:'en' as const,agreementAcceptedAt:input.now};
+  return {...input,payoutAccountReference:'SIM-VERIFIED-REGISTERED-RECEIVING',evidenceReferences:ids,registeredTermsContext:terms.context,agreementVersion:terms.agreementVersion,agreementLanguage:'en' as const,agreementAcceptedAt:input.now};
 }
 export async function submitRegisteredTransitionFixture(db:D1Database,input:RegisteredTransitionInput){return submit(db,await registeredTransitionFixtureInput(db,input));}

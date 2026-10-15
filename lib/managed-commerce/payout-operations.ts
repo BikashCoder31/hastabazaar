@@ -5,6 +5,7 @@ import type { FormAnswerSnapshot } from '../forms/types';
 import { assertSimulationAllowed, SIMULATED_RECORD_LABEL, type RuntimeEnvironment } from '../staging/environment';
 import { ManagedSettlementError } from './settlement-errors';
 import { managedSettlementReadySql } from './settlement-readiness';
+import {managedRefundFactsColumns,managedRefundReconciled,managedRefundFactsGuard,type ManagedRefundFacts} from './refund-readiness';
 
 export type ManagedFinanceForm = { formId: string; versionId: string; answers: FormAnswerSnapshot };
 export type ManagedFinanceContext = {
@@ -99,13 +100,17 @@ async function atomic(db: D1Database, statements: D1PreparedStatement[]) {
   try { return await db.batch(statements); }
   catch { throw new ManagedSettlementError('The balance, case, receiving reference, authority or form changed. Reconcile or reload before retrying.'); }
 }
-type Position = { id: string; amount: number; version: number; ready: number };
+type Position = ManagedRefundFacts & { id: string; amount: number; version: number; ready: number };
 async function positions(db: D1Database, sellerId: string, now: number): Promise<Position[]> {
-  const result = await db.prepare(`SELECT e.id,e.version,${managedEntitlementNetSql()} AS amount,
+  const result = await db.prepare(`SELECT e.id,e.version,${managedEntitlementNetSql()} AS amount,${managedRefundFactsColumns()},
     CASE WHEN ${managedSettlementReadySql('e', now)} AND e.status IN ('eligible','part_paid','paid') AND e.eligible_at<=? THEN 1 ELSE 0 END AS ready
     FROM managed_entitlements e WHERE e.seller_id=? ORDER BY e.id`).bind(now, sellerId).all<Position>();
   for (const row of result.results) if (!Number.isSafeInteger(Number(row.amount))) throw new ManagedSettlementError('An earning amount needs financial review.');
-  return result.results.map(row => ({ ...row, amount: Number(row.amount) }));
+  return result.results.map(row => ({ ...row, amount: Number(row.amount),ready:row.ready&&managedRefundReconciled(row)?1:0 }));
+}
+
+export async function getManagedBlockedEarnings(db:D1Database,sellerId:string,now:number) {
+  return (await positions(db,sellerId,now)).filter(row=>row.amount!==0&&!row.ready);
 }
 
 export async function getManagedFinanceSummary(db: D1Database, sellerId: string, now = Date.now()): Promise<ManagedFinanceSummary> {
@@ -130,7 +135,7 @@ export async function getManagedFinanceSummary(db: D1Database, sellerId: string,
 }
 function positionGuards(db: D1Database, sellerId: string, selected: Position[], now: number) {
   return selected.flatMap(row => guard(db, `EXISTS(SELECT 1 FROM managed_entitlements e WHERE e.id=? AND e.seller_id=?
-    AND e.version=? AND (${managedEntitlementNetSql()})=? AND ${managedSettlementReadySql('e', now)}
+    AND e.version=? AND (${managedEntitlementNetSql()})=? AND ${managedSettlementReadySql('e', now)} AND ${managedRefundFactsGuard(row)}
     AND e.status IN ('eligible','part_paid','paid') AND e.eligible_at<=?)`, [row.id, sellerId, row.version, row.amount, now]));
 }
 
@@ -239,6 +244,10 @@ export async function transitionManagedPayout(db: D1Database, input: ManagedFina
     return current;
   });
   const currentBalance = await balance(db, row.sellerId);
+  const reservedIds = new Set(selected.map(entry=>entry.id));
+  if (all.reduce((sum,entry)=>sum+entry.amount,0)!==currentBalance || currentBalance<row.amount ||
+    all.some(entry=>entry.amount<0&&!reservedIds.has(entry.id)))
+    throw new ManagedSettlementError('A refund offset or the maker balance changed. Cancel the unpaid reservation and prepare the reconciled amount.');
   const stateGuards = guard(db, `EXISTS(SELECT 1 FROM managed_payouts WHERE id=? AND seller_id=? AND status=? AND updated_at=? AND amount_paisa=?)
     AND (${sellerBalanceSql})=? AND EXISTS(SELECT 1 FROM seller_participation_profiles WHERE seller_id=? AND payout_beneficiary_reference=?)`,
     [row.id, row.sellerId, required, row.updatedAt, row.amount, row.sellerId, row.sellerId, currentBalance, row.sellerId, row.destination]);
@@ -249,9 +258,19 @@ export async function transitionManagedPayout(db: D1Database, input: ManagedFina
       +(SELECT COUNT(DISTINCT x.entitlement_id) FROM managed_payout_entries pe JOIN managed_settlement_entries x ON x.id=pe.settlement_entry_id
         WHERE pe.payout_id=? AND NOT EXISTS(SELECT 1 FROM managed_payout_allocations a WHERE a.payout_id=pe.payout_id AND a.entitlement_id=x.entitlement_id)))=?`,
     [row.id, row.id, row.amount, row.id, row.id, selected.length]);
+  // Recheck every seller-wide debt, including an old paid sale refunded after
+  // preparation. A concurrent new earning can mask that debt in the total.
+  const offsetGuards = guard(db, `NOT EXISTS(SELECT 1 FROM managed_entitlements e WHERE e.seller_id=?
+    AND (${managedEntitlementNetSql()})<0
+    AND NOT EXISTS(SELECT 1 FROM managed_payout_allocations a WHERE a.payout_id=? AND a.entitlement_id=e.id AND a.disposition='reserved')
+    AND NOT EXISTS(SELECT 1 FROM managed_payout_entries pe JOIN managed_settlement_entries x ON x.id=pe.settlement_entry_id
+      WHERE pe.payout_id=? AND x.entitlement_id=e.id
+      AND NOT EXISTS(SELECT 1 FROM managed_payout_allocations a WHERE a.payout_id=pe.payout_id AND a.entitlement_id=e.id)))
+    AND COALESCE((SELECT SUM(${managedEntitlementNetSql()}) FROM managed_entitlements e WHERE e.seller_id=?),0)=(${sellerBalanceSql})`,
+    [row.sellerId,row.id,row.id,row.sellerId,row.sellerId,row.sellerId]);
   await atomic(db, [
     db.prepare('UPDATE managed_entitlements SET updated_at=updated_at WHERE seller_id=?').bind(row.sellerId),
-    ...authority.statements, ...formGuards(db, input), ...stateGuards, ...reservationGuards, ...positionGuards(db, row.sellerId, selected, input.now),
+    ...authority.statements, ...formGuards(db, input), ...stateGuards, ...reservationGuards, ...offsetGuards, ...positionGuards(db, row.sellerId, selected, input.now),
     db.prepare(`UPDATE managed_payouts SET status=?,approved_by=CASE WHEN ?='approved' THEN ? ELSE approved_by END,
       provider_reference=CASE WHEN ?='paid' THEN ? ELSE provider_reference END,paid_at=CASE WHEN ?='paid' THEN ? ELSE paid_at END,updated_at=? WHERE id=?`)
       .bind(next, next, input.actorId, next, provider, next, input.now, input.now, row.id),
@@ -292,14 +311,15 @@ export async function releaseManagedEligibility(db: D1Database, input: ManagedFi
   const intent = await digest(input, { sellerId: input.sellerId, action: 'release' }, reason);
   const previous = await replay(db, input, 'managed_settlement.eligibility_released', intent, 'seller', input.sellerId);
   if (previous) return { sellerId: input.sellerId, requestId: input.requestId, released: previous.released!, simulation: true as const };
-  const rows = await db.prepare(`SELECT e.id,e.version FROM managed_entitlements e WHERE e.seller_id=? AND e.status='held'
-    AND ${managedSettlementReadySql('e', input.now)}`).bind(input.sellerId).all<{ id: string; version: number }>();
+  const candidates = await db.prepare(`SELECT e.id,e.version,${managedRefundFactsColumns()} FROM managed_entitlements e WHERE e.seller_id=? AND e.status='held'
+    AND ${managedSettlementReadySql('e', input.now)}`).bind(input.sellerId).all<ManagedRefundFacts & { id: string; version: number }>();
+  const rows=candidates.results.filter(managedRefundReconciled);
   await atomic(db, [...authority.statements, ...formGuards(db, input),
-    ...rows.results.flatMap(row => guard(db, `EXISTS(SELECT 1 FROM managed_entitlements e WHERE e.id=? AND e.seller_id=?
-      AND e.status='held' AND e.version=? AND ${managedSettlementReadySql('e', input.now)})`, [row.id, input.sellerId, row.version])),
-    ...rows.results.map(row => db.prepare("UPDATE managed_entitlements SET status='eligible',eligible_at=hold_until,version=version+1,updated_at=? WHERE id=?").bind(input.now, row.id)),
-    audit(db, input, 'managed_settlement.eligibility_released', 'seller', input.sellerId, reason, { catalogDigest: intent, released: rows.results.length }),
+    ...rows.flatMap(row => guard(db, `EXISTS(SELECT 1 FROM managed_entitlements e WHERE e.id=? AND e.seller_id=?
+      AND e.status='held' AND e.version=? AND ${managedSettlementReadySql('e', input.now)} AND ${managedRefundFactsGuard(row)})`, [row.id, input.sellerId, row.version])),
+    ...rows.map(row => db.prepare("UPDATE managed_entitlements SET status='eligible',eligible_at=hold_until,version=version+1,updated_at=? WHERE id=?").bind(input.now, row.id)),
+    audit(db, input, 'managed_settlement.eligibility_released', 'seller', input.sellerId, reason, { catalogDigest: intent, released: rows.length }),
     ...answer(db, input, 'seller', input.sellerId),
   ]);
-  return { sellerId: input.sellerId, requestId: input.requestId, released: rows.results.length, simulation: true as const };
+  return { sellerId: input.sellerId, requestId: input.requestId, released: rows.length, simulation: true as const };
 }

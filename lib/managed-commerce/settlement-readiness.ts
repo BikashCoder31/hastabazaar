@@ -1,3 +1,4 @@
+import {managedRefundFactsColumns,managedRefundReconciled,type ManagedRefundFacts} from './refund-readiness';
 function alias(value: string) {
   if (!/^[a-z_]+$/.test(value)) throw new Error('Invalid settlement alias.');
   return value;
@@ -11,9 +12,7 @@ function cases(entitlement: string) {
         OR (c.order_item_id IS NULL AND c.seller_id=i.seller_id AND (c.order_id IS NULL OR NOT EXISTS(SELECT 1 FROM order_items attributed WHERE attributed.order_id=c.order_id AND attributed.seller_id=i.seller_id)))))`,
     refunds: `${target} AND EXISTS(SELECT 1 FROM refunds r LEFT JOIN return_requests rr ON rr.id=r.return_request_id
       WHERE r.order_id=i.order_id AND (rr.order_item_id=i.id OR r.return_request_id IS NULL OR rr.id IS NULL)
-        AND (r.status NOT IN ('paid','rejected','cancelled') OR (r.status='paid' AND r.commission_base_refunded_paisa>0 AND
-          (rr.id IS NULL OR NOT EXISTS(SELECT 1 FROM managed_settlement_entries x WHERE x.entitlement_id=${entitlement}.id
-            AND x.refund_id=r.id AND x.type='refund_adjustment')))))`,
+        AND (r.status NOT IN ('paid','rejected','cancelled') OR (r.status='paid' AND r.commission_base_refunded_paisa>0 AND rr.id IS NULL)))`,
   };
 }
 
@@ -34,20 +33,21 @@ export function managedSettlementReadySql(entitlement = 'e', now = Date.now()) {
 export interface ManagedSettlementBlocker { kind: string; message: string; href: string }
 export async function getManagedSettlementBlockers(db: D1Database, input: { sellerId: string; entitlementId: string; now: number }): Promise<ManagedSettlementBlocker[]> {
   const related = cases('e');
-  const row = await db.prepare(`SELECT e.earned_at AS earnedAt,e.hold_until AS holdUntil,e.dispute_hold_reason AS dispute,
+  const row = await db.prepare(`SELECT e.earned_at AS earnedAt,e.hold_until AS holdUntil,e.dispute_hold_reason AS dispute,${managedRefundFactsColumns()},
     CASE WHEN ${managedSettlementReadySql('e', input.now)} THEN 1 ELSE 0 END AS ready,
     EXISTS(${related.returns}) AS hasReturn,EXISTS(${related.complaints}) AS hasComplaint,EXISTS(${related.refunds}) AS hasRefund
     FROM managed_entitlements e WHERE e.id=? AND e.seller_id=?`).bind(input.entitlementId, input.sellerId)
-    .first<{ earnedAt: number | null; holdUntil: number | null; dispute: string | null; ready: number; hasReturn: number; hasComplaint: number; hasRefund: number }>();
+    .first<ManagedRefundFacts & { earnedAt: number | null; holdUntil: number | null; dispute: string | null; ready: number; hasReturn: number; hasComplaint: number; hasRefund: number }>();
   if (!row) return [{ kind: 'missing_evidence', message: 'The original managed earning evidence needs review.', href: '/admin/programs' }];
-  if (row.ready) return [];
+  const refundReady=managedRefundReconciled(row);
+  if (row.ready&&refundReady) return [];
   const blockers: ManagedSettlementBlocker[] = [];
   if (!row.earnedAt) blockers.push({ kind: 'not_earned', message: 'Delivery and completed customer payment must be recorded first.', href: '/admin/orders' });
   if (row.holdUntil === null || row.holdUntil > input.now) blockers.push({ kind: 'holding_period', message: 'The delivery holding period has not ended.', href: '/admin/programs' });
   if (row.dispute) blockers.push({ kind: 'recorded_hold', message: 'A recorded dispute hold needs review.', href: '/admin/programs' });
   if (row.hasReturn) blockers.push({ kind: 'return', message: 'A related return is still open.', href: '/admin/returns' });
   if (row.hasComplaint) blockers.push({ kind: 'complaint', message: 'A related complaint or its order attribution needs review.', href: '/admin/complaints' });
-  if (row.hasRefund) blockers.push({ kind: 'refund', message: 'A refund is unfinished or its maker adjustment needs reconciliation.', href: '/admin/returns' });
+  if (row.hasRefund||!refundReady) blockers.push({ kind: 'refund', message: 'A refund is unfinished or its maker adjustment needs reconciliation.', href: '/admin/returns' });
   if (!blockers.length) blockers.push({ kind: 'payment_evidence', message: 'The original delivery and payment facts need review.', href: '/admin/orders' });
   return blockers;
 }

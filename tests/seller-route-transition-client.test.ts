@@ -17,7 +17,7 @@ void test('owned transition form retains current-terms acceptance and required a
     await page.route('https://transition.test/**',async(route:any)=>{
       const url=new URL(route.request().url());
       if(url.pathname.startsWith('/api/forms/'))return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({config:{formId:'seller.managed-transition-request',version:reloaded?4:3,publishedAt:1,fields:[{id:'context_note',key:'context_note',type:'short_text',label:'Required review context',required:true,order:0,status:'active'}]}})});
-      if(url.pathname==='/api/seller-applications/transition'&&route.request().method()==='GET')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({sellerId:'maker',route:'managed_maker',stage:'active',terms:{context:reloaded?'new-context':'original-context',agreementVersion:'original-agreement',percent:reloaded?11:9,document:reloaded?'New agreement text':'Original English agreement text'},documents:[{id:'private-registration',kind:'business_registration',name:'Fictional registration.pdf',status:'pending'},{id:'private-pan',kind:'pan_certificate',name:'Fictional PAN.pdf',status:'pending'}],transitions:[]})});
+      if(url.pathname==='/api/seller-applications/transition'&&route.request().method()==='GET')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({sellerId:'maker',route:'managed_maker',stage:'active',terms:{context:reloaded?'new-context':'original-context',agreementVersion:'original-agreement',percent:reloaded?11:9,document:reloaded?'New agreement text':'Original English agreement text'},documents:[{id:'private-registration',kind:'business_registration',name:'Fictional registration.pdf',status:'pending'},{id:'private-pan',kind:'pan_certificate',name:'Fictional PAN.pdf',status:'pending'},{id:'private-bank',kind:'bank_verification',name:'Fictional bank.pdf',status:'pending'}],transitions:[]})});
       if(url.pathname==='/api/seller-applications/transition') {
         const request=new Request(url,{method:'POST',headers:{'content-type':route.request().headers()['content-type']},body:route.request().postDataBuffer()});
         const data=await request.formData();const entries=[] as [string,unknown][];
@@ -29,8 +29,8 @@ void test('owned transition form retains current-terms acceptance and required a
     async function mount(){await page.goto('https://transition.test/form');await page.addScriptTag({content:bundle.outputFiles[0].text});}
     await mount();
     const form=page.locator('form[data-form-id="seller.managed-transition-request"]');
-    for(const [name,value] of [['legalName','Fictional registered company'],['registrationAuthority','Fictional company office'],['registrationNumber','SIM-REG-123'],['taxRegistrationNumber','SIM-PAN-123']])await form.locator(`[name="${name}"]`).fill(value);
-    await form.locator('[name="businessRegistrationId"]').selectOption('private-registration');await form.locator('[name="panCertificateId"]').selectOption('private-pan');
+    for(const [name,value] of [['legalName','Fictional registered company'],['registrationAuthority','Fictional company office'],['registrationNumber','SIM-REG-123'],['taxRegistrationNumber','SIM-PAN-123'],['payoutAccountReference','SIM-REGISTERED-RECEIVING']])await form.locator(`[name="${name}"]`).fill(value);
+    await form.locator('[name="businessRegistrationId"]').selectOption('private-registration');await form.locator('[name="panCertificateId"]').selectOption('private-pan');await form.locator('[name="bankVerificationId"]').selectOption('private-bank');
     await form.getByLabel('I accept the displayed English seller agreement and commission terms',{exact:true}).check();
     await form.getByLabel('Required review context',{exact:false}).fill('Original private review context');
     await form.getByRole('button',{name:'Submit transition for review'}).click();

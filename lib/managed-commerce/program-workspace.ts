@@ -31,7 +31,7 @@ export interface RouteTransitionSummary {
   effectiveAt: number | null;
   reviewReason: string | null;
   createdAt: number;
-  acceptedTerms?: {commissionBps:number;agreementVersion:string;language:string;acceptedAt:number;document:string;evidence:readonly {id:string;kind:string}[]}|null;
+  acceptedTerms?: {commissionBps:number;agreementVersion:string;language:string;acceptedAt:number;document:string;evidence:readonly {id:string;kind:string}[];payoutAccountReference?:string;settlementTermsReference?:string}|null;
 }
 
 export interface ManagedProgramWorkspace {
@@ -96,7 +96,7 @@ export async function getManagedProgramWorkspace(
         const terms=JSON.parse(snapshotJson??'null') as NonNullable<RouteTransitionSummary['acceptedTerms']>|null;
         if(!terms||!Number.isSafeInteger(terms.commissionBps)||typeof terms.document!=='string'||!Array.isArray(terms.evidence))return {...row,acceptedTerms:null};
         return {...row,acceptedTerms:{commissionBps:terms.commissionBps,agreementVersion:terms.agreementVersion,language:terms.language,acceptedAt:terms.acceptedAt,
-          document:terms.document,evidence:terms.evidence.map(item=>({id:item.id,kind:item.kind}))}};
+            document:terms.document,evidence:terms.evidence.map(item=>({id:item.id,kind:item.kind})),payoutAccountReference:terms.payoutAccountReference,settlementTermsReference:terms.settlementTermsReference}};
       }catch{return {...row,acceptedTerms:null};}
     }),
   };

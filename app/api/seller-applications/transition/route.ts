@@ -26,9 +26,9 @@ export async function GET() {
   try {
     const user=await requireCustomerApi();const db=database();const profile=await ownedProfile(db,user.userId);
     const [terms,documents,transitions]=await Promise.all([getRegisteredSellerTerms(db),
-      db.prepare(`SELECT id,kind,original_name AS name,status FROM seller_documents WHERE seller_id=? AND kind IN ('business_registration','pan_certificate','vat_certificate') ORDER BY uploaded_at DESC,id`).bind(profile.sellerId).all(),
+      db.prepare(`SELECT id,kind,original_name AS name,status FROM seller_documents WHERE seller_id=? AND kind IN ('business_registration','pan_certificate','vat_certificate','bank_verification') ORDER BY uploaded_at DESC,id`).bind(profile.sellerId).all(),
       db.prepare(`SELECT id,status,version,legal_name AS legalName,registration_authority AS registrationAuthority,registration_number AS registrationNumber,
-        tax_mode AS taxMode,tax_registration_number AS taxRegistrationNumber,effective_at AS effectiveAt,review_reason AS reviewReason FROM seller_route_transition_applications WHERE seller_id=? ORDER BY created_at DESC,id LIMIT 50`).bind(profile.sellerId).all(),
+        tax_mode AS taxMode,tax_registration_number AS taxRegistrationNumber,json_extract(registered_terms_snapshot_json,'$.payoutAccountReference') AS payoutAccountReference,effective_at AS effectiveAt,review_reason AS reviewReason FROM seller_route_transition_applications WHERE seller_id=? ORDER BY created_at DESC,id LIMIT 50`).bind(profile.sellerId).all(),
     ]);
     return reply({...profile,terms,documents:documents.results,transitions:transitions.results});
   } catch(error) {return failure(error);}
@@ -47,7 +47,7 @@ export async function POST(request:Request) {
       if(key.startsWith('custom.'))continue;
       if(!registeredTransitionKeys.some(allowed=>allowed===key)||seen.has(key))throw new FormValidationError('invalid_answer','Unexpected or duplicate transition field.');
       seen.add(key);
-      if(value instanceof File&&!['businessRegistration','panCertificate','vatCertificate'].includes(key))throw new FormValidationError('invalid_answer','Unexpected file upload.');
+      if(value instanceof File&&!['businessRegistration','panCertificate','vatCertificate','bankVerification'].includes(key))throw new FormValidationError('invalid_answer','Unexpected file upload.');
     }
     const requestId=formText(data,'requestId');
     const action=formText(data,'action');
@@ -72,8 +72,8 @@ export async function POST(request:Request) {
     const taxMode=formText(data,'taxMode');
     if(!['PAN','VAT','BOTH'].includes(taxMode))throw new RangeError('Choose PAN, VAT or both.');
     const documents:SellerApplicationDocument[]=[];const references:string[]=[];
-    const requiredFiles=taxMode==='PAN'?['businessRegistration','panCertificate']:taxMode==='VAT'?['businessRegistration','vatCertificate']:['businessRegistration','panCertificate','vatCertificate'];
-    const kinds={businessRegistration:'business_registration',panCertificate:'pan_certificate',vatCertificate:'vat_certificate'} as const;
+    const requiredFiles=['bankVerification',...(taxMode==='PAN'?['businessRegistration','panCertificate']:taxMode==='VAT'?['businessRegistration','vatCertificate']:['businessRegistration','panCertificate','vatCertificate'])];
+    const kinds={businessRegistration:'business_registration',panCertificate:'pan_certificate',vatCertificate:'vat_certificate',bankVerification:'bank_verification'} as const;
     const uploads:{file:File;document:SellerApplicationDocument}[]=[];
     for(const [field,kind] of Object.entries(kinds)) {
       const file=data.get(field);const existing=formText(data,`${field}Id`);
@@ -85,10 +85,10 @@ export async function POST(request:Request) {
         const document={id,kind,objectKey:`private/seller-documents/${profile.sellerId}/${id}`,originalName:file.name.slice(0,180),mimeType:file.type,sizeBytes:file.size};
         documents.push(document);uploads.push({file,document});references.push(id);
       } else if(existing)references.push(existing);
-      else throw new RangeError(`Provide the required ${field==='businessRegistration'?'company registration':field==='panCertificate'?'PAN':'VAT'} certificate.`);
+      else throw new RangeError(`Provide the required ${field==='businessRegistration'?'company registration':field==='panCertificate'?'PAN':field==='bankVerification'?'receiving-account evidence':'VAT'} certificate.`);
     }
     const input={sellerId:profile.sellerId,actorId:user.userId,legalName:formText(data,'legalName'),registrationAuthority:formText(data,'registrationAuthority'),registrationNumber:formText(data,'registrationNumber'),
-      taxMode:taxMode as 'PAN'|'VAT'|'BOTH',taxRegistrationNumber:formText(data,'taxRegistrationNumber'),evidenceReferences:references,documents,agreementVersion:terms.agreementVersion,
+      taxMode:taxMode as 'PAN'|'VAT'|'BOTH',taxRegistrationNumber:formText(data,'taxRegistrationNumber'),payoutAccountReference:formText(data,'payoutAccountReference'),evidenceReferences:references,documents,agreementVersion:terms.agreementVersion,
       agreementLanguage:'en' as const,agreementAcceptedAt:now,registeredTermsContext:terms.context,requestId,now,environment,form:{requestId,versionId:form.versionId,answers:form.answers,digest:rawDigest}};
     await validateRegisteredTransitionInput(db,input);
     if(action==='resubmit'&&!await db.prepare("SELECT 1 FROM seller_route_transition_applications WHERE id=? AND seller_id=? AND requested_by=? AND version=? AND status='changes_requested'").bind(formText(data,'applicationId'),profile.sellerId,user.userId,Number(formText(data,'expectedVersion'))).first())throw new RouteTransitionError('Reload the requested corrections before uploading replacement certificates.');

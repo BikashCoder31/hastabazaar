@@ -3,6 +3,7 @@ import { buildFormAnswerInsert } from '../db/repositories/form-answers';
 import { digestFormRequest, FormRequestConflictError } from '../forms/submission';
 import type { FormAnswerSnapshot } from '../forms/types';
 import { managedMakerAgreementContext, managedMakerAgreementSnapshot } from '../sellers/managed-identity';
+import { makerOwnerPredicate } from './maker-authority';
 
 const accountKey = 'managed_maker_company_account';
 const retentionKey = 'managed_sale_linked_platform_retention_bps';
@@ -10,7 +11,7 @@ export const managedTermsFormId = 'seller.managed-terms-acceptance';
 type Agreement = ReturnType<typeof managedMakerAgreementSnapshot>;
 export type ManagedTermsOffer = Readonly<{
   id: string; context: string; snapshot: Agreement; retentionBps: number;
-  agreementVersion: string; language: 'en'; effectiveFrom: number;
+  agreementVersion: string; language: 'en'; effectiveFrom: number;accepted?:boolean;
   settingVersionIds: { account: string | null; retention: string | null };
 }>;
 export type AcceptedManagedTerms = ManagedTermsOffer & Readonly<{
@@ -52,7 +53,7 @@ async function offerAt(db: D1Database, at: number): Promise<ManagedTermsOffer> {
 }
 
 /** Commercial evidence only. Private government ID data never enters this projection. */
-export async function getManagedTermsOffers(db: D1Database, _sellerId: string, now: number) {
+export async function getManagedTermsOffers(db: D1Database, sellerId: string, now: number) {
   if (!Number.isSafeInteger(now) || now <= 0) throw new RangeError('A valid terms lookup time is required.');
   const current = await offerAt(db, now);
   const boundaries = await db.prepare(`SELECT DISTINCT effective_from AS at FROM business_setting_versions
@@ -64,13 +65,16 @@ export async function getManagedTermsOffers(db: D1Database, _sellerId: string, n
   let previous = current.id;
   for (const { at } of boundaries.results) {
     const offer = await offerAt(db, at);
-    if (offer.id !== previous) { upcoming.push({ ...offer, effectiveFrom: at }); previous = offer.id; }
+    if (offer.id !== previous) { upcoming.push({ ...offer, effectiveFrom: at,accepted:Boolean(await findAcceptedOffer(db,sellerId,offer,now)) }); previous = offer.id; }
   }
-  return { current, upcoming };
+  return { current:{...current,accepted:Boolean(await findAcceptedOffer(db,sellerId,current,now))}, upcoming };
 }
 
 export async function getAcceptedManagedTerms(db: D1Database, sellerId: string, now: number): Promise<AcceptedManagedTerms | null> {
   const offer = await offerAt(db, now);
+  return findAcceptedOffer(db,sellerId,offer,now);
+}
+async function findAcceptedOffer(db:D1Database,sellerId:string,offer:ManagedTermsOffer,now:number):Promise<AcceptedManagedTerms|null> {
   const rows = await db.prepare(`SELECT d.id,d.agreement_snapshot_json AS snapshotJson,
       d.agreement_accepted_by AS acceptedBy,d.agreement_accepted_at AS acceptedAt,
       d.agreement_language AS language,d.agreement_form_version_id AS formVersionId
@@ -112,17 +116,13 @@ type Acceptance = {
   sellerId: string; actorId: string; offerId: string; context: string; language: 'en'; requestId: string; now: number;
   form: { versionId: string; answers: FormAnswerSnapshot };
 };
-const ownerSql = `EXISTS(SELECT 1 FROM seller_profiles s JOIN users u ON u.id=s.user_id
-  JOIN seller_participation_profiles p ON p.seller_id=s.id
-  WHERE s.id=? AND u.id=? AND u.status='active' AND p.participation_route='managed_maker'
-    AND p.application_stage NOT IN ('rejected','suspended')
-    AND EXISTS(SELECT 1 FROM user_roles WHERE user_id=u.id AND role='customer'))`;
+const ownerSql = makerOwnerPredicate;
 
 export async function acceptManagedTerms(db: D1Database, input: Acceptance): Promise<{ detailId: string; offerId: string }> {
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{3,119}$/.test(input.requestId) || input.language !== 'en' ||
     input.form.answers.formId !== managedTermsFormId || !Number.isSafeInteger(input.now) || input.now <= 0)
     throw new FormRequestConflictError('Review and explicitly accept the displayed English terms with a valid request reference.');
-  if (!await db.prepare(`SELECT 1 WHERE ${ownerSql}`).bind(input.sellerId, input.actorId).first())
+  if (!await db.prepare(`SELECT 1 WHERE ${ownerSql}`).bind(input.sellerId, input.actorId, input.now).first())
     throw new FormRequestConflictError('An active, eligible maker owner is required.');
   const catalogDigest = await digestFormRequest({ sellerId: input.sellerId, offerId: input.offerId,
     context: input.context, language: input.language, versionId: input.form.versionId, answers: input.form.answers });
@@ -153,7 +153,7 @@ export async function acceptManagedTerms(db: D1Database, input: Acceptance): Pro
   const statements: D1PreparedStatement[] = [db.prepare(`INSERT INTO operation_transaction_guards(id,valid)
     SELECT ?,CASE WHEN ${ownerSql} AND EXISTS(SELECT 1 FROM seller_documents WHERE id=? AND seller_id=?
       AND status<>'rejected' AND object_key LIKE 'private/seller-documents/'||seller_id||'/%') THEN 1 ELSE 0 END`)
-    .bind(guardId, input.sellerId, input.actorId, evidence.documentId, input.sellerId)];
+    .bind(guardId, input.sellerId, input.actorId, input.now, evidence.documentId, input.sellerId)];
   for (const [key, versionId] of [[accountKey, offer.settingVersionIds.account], [retentionKey, offer.settingVersionIds.retention]]) {
     statements.push(db.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN
       COALESCE((SELECT id FROM business_setting_versions WHERE setting_key=? AND status='published'

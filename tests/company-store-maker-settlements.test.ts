@@ -6,9 +6,75 @@ import { earnedMaker, refund } from './helpers/company-store-financial-fixture';
 import { addCartItem } from '../lib/db/repositories/cart';
 import { createCodOrder } from '../lib/db/repositories/orders';
 
-import { accrueManagedEntitlements, prepareManagedPayout,
+import { accrueManagedEntitlements, applyManagedRefundAdjustment, prepareManagedPayout,
   transitionManagedPayout, cancelManagedPayout, getManagedFinanceSummary, releaseManagedEligibility } from '../lib/db/repositories/managed-settlements';
 import { getManagedSettlementBlockers } from '../lib/managed-commerce/settlement-readiness';
+
+void test('a zero-money cumulative refund is reconciled without a forbidden zero ledger entry',async()=>{
+ const f=await earnedMaker();
+ try {
+  await refund(f,5);
+  f.sqlite.prepare(`INSERT INTO return_requests(id,order_item_id,reason,detail,status,requested_at) VALUES('tiny-return',?,'Fictional tiny refund','Evidence','resolved',?)`).run(f.itemId,f.financialNow);
+  f.sqlite.prepare(`INSERT INTO refunds(id,order_id,return_request_id,status,amount_paisa,commission_base_refunded_paisa,reason,requested_at)
+   VALUES('tiny-refund',?,'tiny-return','paid',1,1,'Fictional rounding refund',?)`).run(f.orderId,f.financialNow);
+  await applyManagedRefundAdjustment(f.db,{entitlementId:f.entitlementId,refundId:'tiny-refund',refundedEligibleBasePaisa:1,actorId:'reviewer',reasonCode:'refund',requestId:'tiny-refund-adjustment',now:f.financialNow});
+  assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM managed_settlement_entries WHERE refund_id='tiny-refund'").get()?.n,0);
+  assert.deepEqual(await getManagedSettlementBlockers(f.db,{sellerId:f.sellerId,entitlementId:f.entitlementId,now:f.financialNow}),[]);
+  assert.equal((await getManagedFinanceSummary(f.db,f.sellerId,f.financialNow)).payablePaisa,90995);
+  const payoutId=await prepareManagedPayout(f.db,{...f.context,requestId:'tiny-reconciled-prepare'});
+  await transitionManagedPayout(f.db,{...f.context,payoutId,action:'mark_paid',requestId:'tiny-reconciled-paid',providerReference:'SIM-TINY-RECONCILED'});
+  assert.equal((await getManagedFinanceSummary(f.db,f.sellerId,f.financialNow)).balancePaisa,0);
+ }finally{f.dispose();}
+});
+
+for (const action of ['approve','mark_paid'] as const) for (const race of [false,true]) {
+  void test(`a refund on a previously paid sale blocks ${action} of another reservation${race?' in its commit race':''}`,async()=>{
+    const f=await earnedMaker();
+    try {
+      const first=await prepareManagedPayout(f.db,f.context);
+      await transitionManagedPayout(f.db,{...f.context,payoutId:first,action:'mark_paid',requestId:'original-sale-paid',providerReference:'SIM-ORIGINAL-PAID'});
+      await addCartItem(f.db,'later-cart','cup',1,f.financialNow+1);
+      await createCodOrder(f.db,'later-cart','later-receipt',{
+        customerEmail:'buyer@local.hastabazaar.test',customerPhone:'9811111111',customerAuthSubject:'buyer',locale:'en-NP',termsAccepted:true,idempotencyKey:'later-order',
+        address:{recipientName:'Fictional buyer',phone:'9811111111',province:'Bagmati',district:'Kathmandu',municipality:'Kathmandu',locality:'Fictional street'},
+      },f.financialNow+2,'buyer');
+      const secondOrder=String(f.sqlite.prepare('SELECT id FROM orders WHERE id<>?').get(f.orderId)?.id);
+      f.sqlite.prepare("UPDATE orders SET status='delivered',payment_status='paid',delivered_at=? WHERE id=?").run(f.financialNow+3,secondOrder);
+      f.sqlite.prepare("UPDATE order_items SET fulfillment_status='delivered' WHERE order_id=?").run(secondOrder);
+      const later=f.financialNow+8*86400000;
+      await accrueManagedEntitlements(f.db,{orderId:secondOrder,actorId:'reviewer',requestId:'later-earned',now:later});
+      if(action==='approve')f.sqlite.exec(`INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES('preparer','preparer@local.hastabazaar.test','Fictional preparer','active',1,1);
+        INSERT INTO user_roles(user_id,role,assigned_at) VALUES('preparer','admin',1);`);
+      const second=await prepareManagedPayout(f.db,{...f.context,actorId:action==='approve'?'preparer':'reviewer',requestId:'later-prepared',now:later,scheduledFor:later});
+      if(race)f.setBeforeBatch(async()=>{
+        // A same-size new earned sale masks the refund in the aggregate balance.
+        // The transaction must still see the unallocated negative old earning.
+        await refund(f,100000);
+        await addCartItem(f.db,'race-cart','cup',1,f.financialNow+1);
+        await createCodOrder(f.db,'race-cart','race-receipt',{
+          customerEmail:'buyer@local.hastabazaar.test',customerPhone:'9811111111',customerAuthSubject:'buyer',locale:'en-NP',termsAccepted:true,idempotencyKey:'race-order',
+          address:{recipientName:'Fictional buyer',phone:'9811111111',province:'Bagmati',district:'Kathmandu',municipality:'Kathmandu',locality:'Fictional street'},
+        },f.financialNow+2,'buyer');
+        const raceOrder=String(f.sqlite.prepare('SELECT id FROM orders WHERE id NOT IN (?,?)').get(f.orderId,secondOrder)?.id);
+        f.sqlite.prepare("UPDATE orders SET status='delivered',payment_status='paid',delivered_at=? WHERE id=?").run(f.financialNow+3,raceOrder);
+        f.sqlite.prepare("UPDATE order_items SET fulfillment_status='delivered' WHERE order_id=?").run(raceOrder);
+        await accrueManagedEntitlements(f.db,{orderId:raceOrder,actorId:'reviewer',requestId:'race-earned',now:later});
+      });else await refund(f);
+      await assert.rejects(transitionManagedPayout(f.db,{...f.context,payoutId:second,action,requestId:'stale-offset-transition',providerReference:'SIM-OVERPAYMENT-BLOCKED',now:later}),/refund|balance|reconcil/i);
+      assert.equal(f.sqlite.prepare('SELECT status FROM managed_payouts WHERE id=?').get(second)?.status,action==='approve'?'prepared':'approved');
+      assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE request_id='stale-offset-transition'").get()?.n,0);
+      assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM managed_payout_allocations WHERE payout_id=? AND disposition='paid'").get(second)?.n,0);
+      assert.equal((await getManagedFinanceSummary(f.db,f.sellerId,later)).balancePaisa,race?91000:63700);
+      await cancelManagedPayout(f.db,{...f.context,payoutId:second,requestId:'cancel-stale-offset',now:later});
+      const corrected=await prepareManagedPayout(f.db,{...f.context,requestId:'prepare-correct-offset',now:later,scheduledFor:later});
+      assert.equal(f.sqlite.prepare('SELECT amount_paisa FROM managed_payouts WHERE id=?').get(corrected)?.amount_paisa,race?91000:63700);
+      assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM managed_payout_allocations WHERE payout_id=? AND amount_paisa<0').get(corrected)?.n,1);
+      await transitionManagedPayout(f.db,{...f.context,payoutId:corrected,action:'mark_paid',requestId:'pay-correct-offset',providerReference:'SIM-CORRECT-OFFSET',now:later});
+      assert.equal((await getManagedFinanceSummary(f.db,f.sellerId,later)).balancePaisa,0);
+      assert.equal(f.sqlite.prepare('SELECT amount_paisa FROM managed_payouts WHERE id=?').get(first)?.amount_paisa,91000);
+    }finally{f.dispose();}
+  });
+}
 
 void test('refund racing preparation cannot reserve the previous amount', async () => {
   const f = await earnedMaker();

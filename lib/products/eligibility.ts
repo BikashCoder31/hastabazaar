@@ -1,3 +1,4 @@
+import {currentManagedSaleEvidence} from './managed-sale-evidence';
 // Internal SQL fragments only: aliases must be code-owned, never request data.
 export function publicProductEligibility(alias = 'products', now = Date.now()): string {
  if (!/^[a-z_]+$/.test(alias)) throw new Error('Invalid SQL alias');
@@ -15,7 +16,9 @@ export function publicProductEligibility(alias = 'products', now = Date.now()): 
       AND eligible_participation.invoice_issuer_reference IS NOT NULL
       AND eligible_participation.payout_beneficiary_reference IS NOT NULL
       AND eligible_participation.managed_agreement_version IS NOT NULL
-      AND eligible_participation.managed_agreement_accepted_at IS NOT NULL)
+      AND eligible_participation.managed_agreement_accepted_at IS NOT NULL
+      AND (eligible_participation.commercial_model<>'managed_sale_linked_percentage_v1'
+        OR EXISTS(SELECT 1 ${currentManagedSaleEvidence('eligible_seller.id','eligible_seller.user_id',now)})))
   )
  ) AND NOT EXISTS(SELECT 1 FROM seller_restrictions active_restriction
     WHERE active_restriction.seller_id=${alias}.seller_id AND (

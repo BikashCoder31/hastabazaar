@@ -8,7 +8,7 @@ import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 import { build } from 'esbuild';
-import { createElement, isValidElement, type ComponentType } from 'react';
+import { createElement, type ComponentType } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { FORM_REGISTRY, IMPLEMENTED_FORM_ADAPTERS } from '../lib/forms/registry';
@@ -27,7 +27,9 @@ declare global {
   var sellerCatalogActor: { sellerId: string; userId: string } | null;
   var sellerCatalogCustomer: { userId: string; email: string } | null;
   var sellerCatalogMedia: { stored: string[]; deleted: string[]; put(key: string): Promise<void>; delete(key: string): Promise<void> };
+  var sellerCatalogReact:typeof createElement;
 }
+globalThis.sellerCatalogReact=createElement;
 registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier === 'cloudflare:workers') return { url: 'data:text/javascript,export const env={get DB(){return globalThis.sellerCatalogDb},get MEDIA(){return globalThis.sellerCatalogMedia}}', shortCircuit: true };
   if (specifier === '@/lib/auth/seller') return { url: `data:text/javascript,
@@ -43,7 +45,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
     export async function requireCustomerPage(){if(!globalThis.sellerCatalogActor)throw new CustomerAuthorizationError('Authentication is required.',401);return globalThis.sellerCatalogActor}
     export async function getCustomerUser(){return globalThis.sellerCatalogCustomer ?? null}`, shortCircuit: true };
   if (specifier === 'next/navigation') return { url: 'data:text/javascript,export function notFound(){throw new Error("Not found")};export function redirect(){throw new Error("Redirect")};export function useRouter(){return {refresh(){}}}', shortCircuit: true };
-  if (specifier === 'next/link') return { url: 'data:text/javascript,export default function Link({children}){return children}', shortCircuit: true };
+  if (specifier === 'next/link') return { url: 'data:text/javascript,export default function Link(props){return globalThis.sellerCatalogReact("a",props,props.children)}', shortCircuit: true };
   if (specifier === '@/components/layout/site-header' || specifier === '@/components/layout/site-footer')
     return { url: 'data:text/javascript,export function SiteHeader(){return null};export function SiteFooter(){return null}', shortCircuit: true };
   return nextResolve(specifier, context);
@@ -868,7 +870,7 @@ void test('preapproval maker draft history is linked locally and shows archived 
       .run(JSON.stringify({ formId: 'seller.product-submission', fields: [{ ...field, status: 'archived' }] }));
     const application = await import('../app/sell/application/page');
     const applicationHtml = renderToStaticMarkup(await application.default({ searchParams: Promise.resolve({}) }));
-    assert.match(applicationHtml, /private draft · Answer history/);
+    assert.match(applicationHtml, /Answer history/);
     const history = await import('../app/sell/application/products/[id]/answers/page');
     const html = renderToStaticMarkup(await history.default({ params: Promise.resolve({ id: 'maker-draft-history' }),
       searchParams: Promise.resolve({}) }));
@@ -894,20 +896,13 @@ void test('applicant can reach older owned draft histories after 50 tied drafts 
     }
     insert.run('foreign-draft', 'other-seller', 'foreign-draft', 'foreign-draft', 'foreign-draft', 300);
     const page = await import('../app/sell/application/page');
-    const findLink = (node: unknown, label: string): string | null => {
-      if (Array.isArray(node)) return node.map((child) => findLink(child, label)).find((href) => href !== null) ?? null;
-      if (!isValidElement(node)) return null;
-      const props = node.props as { children?: unknown; href?: unknown };
-      if (props.children === label && typeof props.href === 'string') return props.href;
-      return findLink(props.children, label);
-    };
     const first = await page.default({ searchParams: Promise.resolve({ appAt: '100', appId: 'application-cursor',
       makerAt: '101', makerId: 'maker-cursor' }) });
     const firstHtml = renderToStaticMarkup(first);
-    assert.equal((firstHtml.match(/private draft · Answer history/g) ?? []).length, 50);
+    assert.equal((firstHtml.match(/Answer history/g) ?? []).length, 50);
     assert.match(firstHtml, /owned-draft-51/);
     assert.doesNotMatch(firstHtml, /owned-draft-01|foreign-draft/);
-    const href = findLink(first, 'Older drafts');
+    const href = firstHtml.match(/href="([^"]+)"[^>]*>Older products<\/a>/)?.[1].replaceAll('&amp;','&');
     assert.ok(href, 'older private drafts must remain navigable');
     const older = new URL(href, 'http://localhost:3000');
     assert.equal(older.searchParams.get('appId'), 'application-cursor');
@@ -917,7 +912,7 @@ void test('applicant can reach older owned draft histories after 50 tied drafts 
     assert.match(secondHtml, /owned-draft-01/);
     assert.match(secondHtml, /owned-draft-00/);
     assert.doesNotMatch(secondHtml, /owned-draft-51|foreign-draft/);
-    assert.equal(findLink(second, 'Older drafts'), null);
+    assert.doesNotMatch(secondHtml, />Older products<\/a>/);
     globalThis.sellerCatalogActor = { sellerId: 'other-seller', userId: 'other-user' };
     const foreignHtml = renderToStaticMarkup(await page.default({ searchParams: Promise.resolve({}) }));
     assert.match(foreignHtml, /foreign-draft/);

@@ -19,6 +19,7 @@ export async function companyStoreMakerFixture(now = makerNow) {
     publicCity: 'Kathmandu', businessDescription: 'Fictional handmade products.', productCategories: 'Clay work',
     experienceCraft: 'Clay work', experienceBand: 'less_than_one_year', applicationAcknowledgement: 'yes',
     ...managedIdentityFields(),
+    governmentIdDescription:'PRIVATE-GOVERNMENT-IDENTITY-QA-ONLY',
   })) form.set(key, value);
   const parsed = parseSellerApplication(form);
   assert.ok(parsed.input, parsed.errors.join('\n'));
