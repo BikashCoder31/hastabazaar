@@ -677,6 +677,17 @@ export async function authorizeFormAnswerRead(
     WHERE u.id=? AND u.status='active' AND r.role=? LIMIT 1`)
     .bind(viewer.id, viewer.role).first<{ valid: number }>();
   if (!identity) return false;
+  if (answerSet.formId === 'seller.managed-terms-acceptance') {
+    if (answerSet.subjectType !== 'seller') return false;
+    const parent = await db.prepare(`SELECT s.user_id AS ownerId FROM seller_profiles s
+      JOIN audit_logs a ON a.subject_type='seller' AND a.subject_id=s.id
+        AND a.actor_id=s.user_id AND a.action='managed_maker.terms_accepted' AND a.request_id=?
+      JOIN managed_maker_application_details d ON d.id=json_extract(a.next_json,'$.detailId')
+        AND d.seller_id=s.id AND d.agreement_accepted_by=s.user_id
+      WHERE s.id=? AND s.user_id=? LIMIT 1`)
+      .bind(answerSet.requestId, answerSet.subjectId, answerSet.actorId).first<{ ownerId: string }>();
+    return Boolean(parent && (viewer.id === parent.ownerId || viewer.role === 'super_admin'));
+  }
   if (viewer.role !== 'super_admin' && answerSet.formId === 'staff.exception-work') {
     const privateSource = await db.prepare(`SELECT 1 FROM exception_work_events e WHERE e.work_id=?
       AND (e.action LIKE 'rider_%' OR json_extract(CASE WHEN json_valid(e.payload_json) THEN e.payload_json ELSE '{}' END,'$.riderReportId') IS NOT NULL) LIMIT 1`)

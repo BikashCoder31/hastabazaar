@@ -29,6 +29,7 @@ export interface FormCatalogPresentation { readonly label: string; readonly cate
 const businessForms: Readonly<Record<string, FormCatalogPresentation>> = {
   'seller.application': { label: 'Seller application', category: 'Applications & business profiles' },
   'seller.maker-profile': { label: 'Managed Maker application profile', category: 'Applications & business profiles' },
+  'seller.managed-terms-acceptance': { label: 'Company-store terms acceptance', category: 'Applications & business profiles' },
   'seller.profile': { label: 'Seller business profile', category: 'Applications & business profiles' },
   'rider.application': { label: 'Rider application', category: 'Applications & business profiles' },
   'staff.seller-review-action': { label: 'Seller application review', category: 'Applications & business profiles' },

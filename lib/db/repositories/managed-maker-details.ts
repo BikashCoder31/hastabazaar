@@ -98,7 +98,7 @@ export async function buildManagedMakerDetailStatements(
         identity.managedAgreementVersion,
         options.now,
         options.actorId,
-        JSON.stringify(snapshot),
+        JSON.stringify({ ...snapshot, settingVersionIds: { account: account.versionId, retention: retention.versionId } }),
         options.now,
       ),
   ];

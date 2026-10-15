@@ -4,6 +4,7 @@ export interface FormGuide { title: string; purpose: string; preparation: string
 const guides: Readonly<Record<string, readonly [string, string, string]>> = {
   'seller.application': ['Apply to sell', 'Tell us about your business and the products you make.', 'Have your contact details, business or identity documents, and product information ready. Choose the type of seller that applies to you.'],
   'seller.maker-profile': ['Update your Managed Maker application', 'Add the details customers will see about you and your craft.', 'Have your public name, city, craft experience, and any social links ready.'],
+  'seller.managed-terms-acceptance': ['Review company-store selling terms', 'Accept the company identity and maker payment rate shown here.', 'Read the rate and Nepal-time start. Accepting future terms does not change today’s agreement.'],
   'seller.profile': ['Business details', 'Keep your shop information and contact details up to date.', 'Use the name customers know. Check your contact details before saving.'],
   'rider.application': ['Apply to become a delivery rider', 'Tell us who you are and where you can make deliveries.', 'Have your phone number and a clear photo of your identity document ready.'],
   'staff.seller-review-action': ['Review a seller application', 'Check the application and record your decision.', 'Read the application and documents first. Explain your decision so the seller knows what happens next.'],

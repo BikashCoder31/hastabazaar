@@ -51,6 +51,12 @@ const applicationStages = new Set<ParticipationApplicationStage>([
 ]);
 
 async function sellerAudienceAllowed(db: D1Database, userId: string, roles: ReadonlySet<string>, formId: string): Promise<boolean> {
+  if (formId === 'seller.managed-terms-acceptance') {
+    return roles.has('customer') && Boolean(await db.prepare(`SELECT 1 FROM seller_profiles s
+      JOIN seller_participation_profiles p ON p.seller_id=s.id WHERE s.user_id=?
+        AND p.participation_route='managed_maker' AND p.application_stage NOT IN ('rejected','suspended')`)
+      .bind(userId).first());
+  }
   if (formId === 'seller.maker-profile' || formId === 'seller.product-submission') {
     if (roles.has('customer')) {
       const participation = await db.prepare(`SELECT p.application_stage AS applicationStage
