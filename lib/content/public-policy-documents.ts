@@ -1,6 +1,8 @@
 import { companyPolicyIdentity } from './company-details';
+import { incentivePolicyDocuments } from './incentive-policy-documents';
 
 export const publicPolicyDocuments = {
+  ...incentivePolicyDocuments,
   terms: `# Terms & Conditions
 
 ${companyPolicyIdentity}
@@ -10,6 +12,8 @@ Welcome to HastaBazaar. These terms govern shopping, accounts and use of our mar
 ## Our marketplace
 
 HastaBazaar connects customers with independent sellers. Sellers are responsible for their products, listing information and fulfilment obligations. HastaBazaar manages the marketplace and supports order enquiries, complaints and resolutions. Our role as a marketplace does not remove our responsibilities to customers under law.
+
+The listing and order identify the seller of the goods. If a company-operated sale is offered, Hasta Bazaar Private Limited must be identified as the seller and is responsible for both the sale and its marketplace duties. A maker's identity does not replace the legal seller's identity. Approval of a Managed Maker application does not by itself activate a live selling arrangement.
 
 ## Accounts and acceptable use
 
@@ -37,6 +41,12 @@ An order that cannot be fulfilled because of unavailable stock, an uncorrectable
 
 Our Shipping & Delivery Policy and Return, Exchange, Cancellation & Refund Policy form part of your purchase terms. No seller-specific condition can reduce the protections in those policies or your legal rights.
 
+## Offers and shopping credit
+
+Daily rewards and shopping credit follow the [Rewards & Shopping Credit Terms](/rewards-terms). Promo codes follow the [Promo Code Terms](/promo-code-terms), referrals follow the [Referral Terms](/referral-terms), and gift codes follow the [Gift Card Terms](/gift-card-terms).
+
+Checkout shows the discount, shopping credit used, delivery charge and remaining payment. Shopping credit covers eligible products and cannot be withdrawn or transferred as money.
+
 ## Reviews and content
 
 Reviews must reflect genuine experiences. Fake reviews, undisclosed paid endorsements, threats and publication of another person's private information are prohibited. A review will not be removed solely because it is negative.
@@ -49,7 +59,11 @@ We may restrict an account or remove content to address fraud, safety risks, unl
 
 ## Complaints, legal rights and changes
 
-For assistance or complaints, email support@hastabazaar.com with your order or account details. You remain free to approach the competent consumer authority or court in Nepal.
+Our Customer Support and Grievances unit handles complaints through [Contact us](/contact-us), the order support facility or support@hastabazaar.com. Provide your order or account details and the issue. The unit's office address and current contact disclosures appear on the [Legal & Policies page](/legal#company-details).
+
+We register received complaints and provide immediate acknowledgement with a reference. We investigate and provide a written decision with reasons within 15 calendar days of receipt. We may request relevant evidence, but an unboxing video is not compulsory.
+
+Reply with your complaint reference to request a review. You remain free to approach the Department of Commerce, Supplies and Consumer Protection, another competent consumer authority or a court in Nepal. The complaint decision period does not extend an earlier refund or other legal deadline.
 
 Nepalese law governs these terms. Nothing here excludes a responsibility or remedy that cannot lawfully be excluded. Updated terms apply prospectively and do not reduce rights attached to an existing order. Material changes affecting an ongoing account will be communicated before taking effect.
 `,
@@ -107,6 +121,10 @@ Refunds are processed without undue delay and no later than 7 calendar days afte
 
 Refunds go to the original payment method where supported. For cash payments or a payment method that cannot receive a refund, we agree a bank transfer or another lawful monetary method with you. Store credit is provided only when you choose it.
 
+Where an order was partly paid with shopping credit, the credit used for the affected items is restored and the cash actually paid is refunded. A promo or referral discount is not refunded as cash or converted into wallet credit. Partial refunds use the order's recorded item allocations. Partial cancellations recalculate the remaining offer under its recorded rules; existing orders retain their original terms.
+
+Cancellation does not automatically reset a promo or referral usage limit. A redeemed gift code remains used; the attributable credit returns to the wallet instead. See the [Rewards & Shopping Credit Terms](/rewards-terms), [Promo Code Terms](/promo-code-terms) and [Gift Card Terms](/gift-card-terms).
+
 Your bank or payment provider controls when a processed refund appears in your account. We will provide confirmation and help investigate a missing refund. Customer refunds are not postponed while HastaBazaar recovers money from a seller or delivery provider.
 `,
   shipping: `# Shipping & Delivery Policy
@@ -126,6 +144,8 @@ Orders containing products from different sellers may arrive separately. Separat
 Preparation time and transport time are different. A made-to-order product's preparation period must be stated in its listing or agreed order details. Sellers must meet the preparation and dispatch commitments accepted with the order.
 
 Order and dispatch updates are sent through the contact details provided for the purchase. Tracking details are supplied where the delivery service provides them.
+
+For cash on delivery, pay only the recorded amount due after applicable discounts and shopping credit. No undisclosed charge may be added at handover. Prepaid delivery, delivery verification codes or inspection before payment apply only when specifically offered and explained before purchase. An estimated delivery date does not promise these services. Never share an account password or payment PIN with a delivery agent.
 
 ## Delivery information
 
@@ -163,15 +183,21 @@ Seller information includes business and contact details, registration or tax do
 
 Transaction information includes payment status, references, refunds and settlement records. Technical information associated with website use can include an IP address, browser information and security or activity logs. We limit collection to information needed for the stated purpose.
 
+Rewards and offer information includes check-in dates and amounts, cycle progress, missed-day and grace events, points conversions, promo and referral allocations, gift-code issuance and redemption, and wallet transactions. These records support accurate balances, usage limits, disputes and fraud prevention. Gift codes and verification documents are not public listing content.
+
 ## How information is used
 
 We use personal information to provide requested services, manage accounts, assess seller applications, process orders, arrange delivery, handle payments and refunds, respond to enquiries, prevent fraud and meet legal obligations.
+
+We also administer rewards and offers, explain balances, handle complaints and privacy requests, and maintain limited first-party traffic and recently viewed information when enabled. Traffic measurement respects Do Not Track and Global Privacy Control signals; it is not cross-site advertising.
 
 Information must not be reused for an unrelated purpose without an appropriate legal basis and any required consent. Marketing permission is separate from order and account communications. You can withdraw marketing permission by contacting support@hastabazaar.com.
 
 ## Sharing information
 
 Sellers receive the information needed to fulfil their orders and address relevant after-sales issues. Delivery and payment providers receive information necessary for their services. Providers supporting hosting, communications, security and administration must handle information only for authorised purposes and with appropriate protection.
+
+Providers may include our website host, configured email delivery service and the delivery or payment service used for your order. If you choose an offered Google sign-in option, Google handles its authentication process and shares the account information needed to sign you in. Ask support for the providers relevant to your transaction. We do not claim that all providers store information only in Nepal.
 
 Information may also be disclosed when required by law or necessary to respond to a lawful request from a competent authority. We do not sell personal information.
 
@@ -187,6 +213,8 @@ We restrict access to verification and settlement information to people who need
 
 Information is retained for the period needed to provide the service, maintain required transaction records, handle claims and meet legal retention duties. When no longer needed, it is deleted or anonymised, subject to lawful preservation requirements.
 
+Account closure may require removal or anonymisation of profile information while preserving order, invoice, refund, consent, rewards and fraud-investigation records that remain necessary for a documented legal or transaction purpose. We explain the reason and applicable retention requirement when responding to a deletion request. A deletion request does not erase outstanding wallet obligations or alter recorded financial transactions.
+
 We use reasonable access controls and organisational and technical safeguards to protect information. We do not promise that any online service is completely risk-free.
 
 Information processed through a service provider remains subject to the protections in this policy. Any transfer requiring notice, consent or another legal safeguard must satisfy that requirement before it takes place.
@@ -194,6 +222,8 @@ Information processed through a service provider remains subject to the protecti
 ## Your choices and requests
 
 Contact support@hastabazaar.com to request access, correction, account closure, deletion or withdrawal of consent. We may verify your identity before acting. We will explain when information must be retained or a request cannot lawfully be fulfilled.
+
+You can also use the available account privacy-request facility. Access requests can include your rewards, offer and wallet activity. Browser storage can be reviewed or cleared separately under the Cookie Policy. Privacy complaints follow the grievance process in the Terms & Conditions.
 
 Withdrawing optional consent does not affect an earlier lawful use. An account deletion request does not cancel a pending order, refund or legal recordkeeping obligation.
 
@@ -217,13 +247,28 @@ Cookies are small pieces of information stored by a browser. Similar technologie
 
 ## Necessary storage
 
-Storage that is strictly needed to provide a service you request supports functions such as account sessions, basket continuity, fraud prevention and remembering privacy choices. It must not be used as a way to introduce unrelated advertising tracking.
+Storage needed for a requested service supports sign-in, baskets, private order access, authentication and safe retries. It is not used to introduce unrelated advertising tracking.
+
+## Storage inventory
+
+| Storage name | Purpose | Duration |
+| --- | --- | --- |
+| hastabazaar_session | Signed-in account session | Up to 30 days |
+| hastabazaar_cart | Guest shopping basket | Up to 30 days |
+| hastabazaar_referral | Remember an invitation code for checkout | Up to 30 days; cleared after a successful order |
+| hastabazaar_receipt | Private access to a guest order | Up to 14 days |
+| hastabazaar_email_otp | Email verification attempt | Up to 10 minutes |
+| hastabazaar_password_reset | Password reset attempt | Up to 10 minutes |
+| hastabazaar_google_oauth | Offered Google sign-in verification | Up to 10 minutes |
+| hastabazaar_traffic | First-party visit measurement, when enabled | Configured retention period; normally 90 days |
+| hastabazaar.recently-viewed.v1 | Recently viewed products in browser local storage | Entries age out at the configured retention period, normally 90 days, when processed; stored data also remains subject to browser clearing |
+| Form and checkout attempt keys | Prevent duplicate submissions or rewards | Session storage, cleared after confirmed completion or a new attempt; the browser manages the tab session |
 
 ## Optional tracking
 
-Optional analytics or advertising technologies require a separate choice and any consent required by law before activation. Simply visiting the website does not count as agreement to optional tracking. Refusing it does not remove access to essential shopping functions.
+When enabled, first-party traffic measurement uses an opaque visitor identifier and respects Do Not Track and Global Privacy Control signals. It does not provide cross-site advertising profiles. Recently viewed products are stored on your device. You can clear or block this storage through your browser.
 
-Where optional technologies are offered, their purpose, provider and duration must be explained when the choice is presented. A materially different tracking purpose requires a new choice.
+Any additional optional analytics or advertising requires disclosure of its purpose, provider and duration and any consent required by law before activation. Simply visiting the site is not consent. Refusing optional tracking does not remove essential shopping functions. A materially different purpose requires a new choice where consent is required.
 
 ## Managing storage and preferences
 
@@ -268,6 +313,8 @@ Report a product concern to support@hastabazaar.com with the listing details, an
 We may pause or remove a listing, request documents, cancel affected orders or restrict a seller account while addressing a concern. Confirmed violations can lead to permanent removal, customer remedies and referral to the relevant authority.
 
 Sellers must cooperate with safety investigations, recalls and valid refund claims. They can request a review of a marketplace decision by providing relevant evidence to support.
+
+Customer safety complaints follow the grievance process in the Terms & Conditions. Reporting a listing does not require a purchase, and removal of a listing does not replace a remedy due for an affected order.
 `,
   'seller-agreement': `# Seller Marketplace Agreement
 
@@ -305,6 +352,8 @@ Commission is not charged on cancelled or unfulfilled sales. When an item paymen
 
 Fulfil accepted orders within the preparation and dispatch periods agreed with the customer. Package products safely and include the required invoice, receipt, labels and instructions.
 
+The legal seller must be correctly identified on the order and applicable invoice. Company PAN registration alone does not establish VAT registration or authorise charging VAT. An operational order statement is not a substitute for a legally required tax invoice. Product invoices and any invoice for HastaBazaar's commission must use the appropriate issuer and lawful tax treatment.
+
 Do not substitute products, alter an accepted price, misstate dispatch or delivery, or move a marketplace order off-platform to avoid commission. Notify HastaBazaar promptly when an order cannot be fulfilled or a delay arises.
 
 ## Returns, refunds and customer remedies
@@ -319,9 +368,17 @@ Cooperate with customer remedies without waiting for a separate dispute about re
 
 The payout method, settlement schedule and verified receiving account must be agreed in writing before seller activation. Settlement statements must identify the orders covered, sales proceeds, {{COMMISSION_PERCENT}}% commission, relevant taxes, refunds and any other authorised adjustment.
 
+The written settlement terms must also identify any minimum payout, delivery or return hold, reserve percentage, reserve duration and release conditions that apply. These must be disclosed before activation; a dashboard setting alone does not introduce a new contractual deduction. Each payout statement must explain the held and payable amounts and the orders or adjustments behind them.
+
 Amounts genuinely affected by a refund, payment reversal, fraud investigation or legal restriction can be held while the issue is resolved. We will explain the reason and amount, review the hold and release funds when the basis ends. Unrelated, undisputed funds remain payable on the agreed schedule.
 
 Deductions must be supported by an order record, an agreed charge or another lawful basis. Sellers may challenge an adjustment through support@hastabazaar.com and receive an explanation of the outcome.
+
+## Managed Maker arrangements
+
+Managed Maker participation requires its separate accepted program terms and completion of the required financial and operational review before live sales. The written arrangement must identify the legal seller, ownership and risk of goods, supply and quality responsibilities, product and commission invoicing, tax treatment, payment terms and responsibility for returns. Maker attribution alone does not establish who sells or invoices the product.
+
+Application approval or a local test account does not confirm that these live requirements have been completed. Existing accepted sale-linked earnings terms and recorded orders remain unchanged by this disclosure clarification.
 
 ## Customer information and content
 

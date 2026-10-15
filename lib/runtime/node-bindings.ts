@@ -73,6 +73,7 @@ export function translateSqliteSql(sql: string): string {
     )
     .replace(/lower\(hex\(randomblob\(16\)\)\)/gi, "LOWER(REPLACE(UUID(), '-', ''))")
     .replace(/'reward:'\s*\|\|\s*r\.order_id/g, "CONCAT('reward:', r.order_id)")
+    .replace(/\bdetail\s*\|\|\s*\?/gi, 'CONCAT(detail, ?)')
     .replace(/\bINSERT\s+OR\s+IGNORE\b/gi, 'INSERT IGNORE')
     .replace(/\s+COLLATE\s+NOCASE\b/gi, '')
     .replace(

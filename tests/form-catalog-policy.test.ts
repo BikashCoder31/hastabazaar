@@ -8,7 +8,7 @@ import { collectFormSites, scanFormSites } from './helpers/form-policy';
 
 const root = resolve(import.meta.dirname, '..');
 
-void test('the reviewed source inventory adds queue filters, incentive, COD confirmation and six secure logout sites to 83 forms in 65 files', async () => {
+void test('the reviewed source inventory includes native commission and incentive reports beside queue, COD and secure logout controls', async () => {
   const sites = await collectFormSites(root);
   const reviewedSites = [
     { path: 'app/account-access-denied/page.tsx', ordinal: 1, formId: 'identity.logout' },
@@ -36,11 +36,19 @@ void test('the reviewed source inventory adds queue filters, incentive, COD conf
       formId: site.formId, route: definition.route, mode: definition.mode,
     });
   }
-  const originalSites = sites.filter((site) => !reviewedPaths.has(site.path));
+  const workspacePaths = new Set(['components/admin/commission-report.tsx','components/admin/commission-settings.tsx','components/admin/incentive-reports.tsx']);
+  const workspaceSites = sites.filter(site=>workspacePaths.has(site.path));
+  assert.deepEqual(workspaceSites.map(site=>({path:site.path,ids:site.formIds})),[
+    {path:'components/admin/commission-report.tsx',ids:['staff.commission-report-filter']},
+    {path:'components/admin/commission-settings.tsx',ids:['staff.commission-schedule']},
+    {path:'components/admin/commission-settings.tsx',ids:['staff.commission-cancel']},
+    {path:'components/admin/incentive-reports.tsx',ids:['staff.loyalty-report-filter','staff.promo-report-filter']},
+  ]);
+  const originalSites = sites.filter((site) => !reviewedPaths.has(site.path)&&!workspacePaths.has(site.path));
   assert.equal(originalSites.length, 83);
   assert.equal(new Set(originalSites.map((site) => site.path)).size, 65);
-  assert.equal(sites.length, 83 + reviewedSites.length);
-  assert.equal(new Set(sites.map((site) => site.path)).size, 65 + reviewedPaths.size);
+  assert.equal(sites.length, 83 + reviewedSites.length + workspaceSites.length);
+  assert.equal(new Set(sites.map((site) => site.path)).size, 65 + reviewedPaths.size + workspacePaths.size);
   assert.deepEqual(await scanFormSites(root), []);
 });
 

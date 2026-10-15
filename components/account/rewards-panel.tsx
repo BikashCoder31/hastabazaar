@@ -12,10 +12,13 @@ import {
   AlertDialogFooter,
 } from '@/components/ui/alert-dialog';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
+import { WeeklyRewardCycle } from '@/components/account/weekly-reward-cycle';
 import { sessionAttemptKey } from '@/lib/forms/client-attempt';
 import { formatPaisaExact } from '@/lib/marketplace/money-display';
+import { nepalRewardDay } from '@/lib/incentives/loyalty-policy';
 import type {
   ClaimResult,
+  LoyaltyCycleProgress,
   RedemptionResult,
   RewardHistoryEntry,
   RewardsView,
@@ -44,21 +47,100 @@ const date = (value: number) =>
     timeStyle: 'short',
     timeZone: 'Asia/Kathmandu',
   }).format(value);
+function validLocalDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+    return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return (
+    Number.isFinite(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === value
+  );
+}
+function validCycle(value: unknown): value is LoyaltyCycleProgress {
+  return (
+    object(value) &&
+    integer(value.day, 1) &&
+    value.day <= 7 &&
+    integer(value.number, 1) &&
+    typeof value.graceUsed === 'boolean' &&
+    typeof value.graceApplied === 'boolean' &&
+    (!value.graceApplied || value.graceUsed) &&
+    [null, 'first_claim', 'missed_day', 'cycle_complete'].includes(
+      value.resetReason as string | null,
+    ) &&
+    (value.resetReason === null || value.day === 1) &&
+    (value.lastClaimDate === null || validLocalDate(value.lastClaimDate))
+  );
+}
+function validWeeklyPoints(value: unknown): value is readonly number[] {
+  return (
+    Array.isArray(value) &&
+    value.length === 7 &&
+    value.every(
+      (points: unknown, index) =>
+        integer(points, 1) && (index === 0 || points > value[index - 1]),
+    ) &&
+    integer(
+      value.reduce((total: number, points: number) => total + points, 0),
+      1,
+    )
+  );
+}
+function sameCycle(left: LoyaltyCycleProgress, right: LoyaltyCycleProgress) {
+  return (
+    left.day === right.day &&
+    left.number === right.number &&
+    left.graceUsed === right.graceUsed &&
+    left.graceApplied === right.graceApplied &&
+    left.resetReason === right.resetReason &&
+    left.lastClaimDate === right.lastClaimDate
+  );
+}
+function reconcilesClaim(result: ClaimResult, refreshed: RewardsView): boolean {
+  const recorded = refreshed.history.find(
+    (entry) =>
+      entry.kind === 'daily_claim' && entry.result.claimId === result.claimId,
+  );
+  if (recorded?.kind === 'daily_claim') {
+    const original = recorded.result;
+    if (
+      original.localDate !== result.localDate ||
+      original.awardedPoints !== result.awardedPoints ||
+      original.balancePoints !== result.balancePoints ||
+      Boolean(original.cycle) !== Boolean(result.cycle) ||
+      (original.cycle &&
+        result.cycle &&
+        !sameCycle(original.cycle, result.cycle))
+    )
+      return false;
+  }
+  // The refresh supplies the server calendar boundary; the browser clock cannot decide eligibility.
+  if (
+    result.cycle &&
+    refreshed.nextClaimAt > 0 &&
+    nepalRewardDay(refreshed.nextClaimAt - 1).localDate === result.localDate
+  ) {
+    return (
+      refreshed.claimedToday &&
+      refreshed.state.dailyPoints === result.awardedPoints &&
+      (refreshed.state.weeklyPoints === undefined
+        ? recorded?.kind === 'daily_claim'
+        : Boolean(refreshed.cycle && sameCycle(result.cycle, refreshed.cycle)))
+    );
+  }
+  return true;
+}
 function validClaim(value: unknown): value is ClaimResult {
   if (
     !object(value) ||
     !identifier(value.claimId) ||
-    typeof value.localDate !== 'string' ||
-    !/^\d{4}-\d{2}-\d{2}$/.test(value.localDate) ||
+    !validLocalDate(value.localDate) ||
+    (value.cycle !== undefined && !validCycle(value.cycle)) ||
     !integer(value.awardedPoints, 1) ||
     !integer(value.balancePoints)
   )
     return false;
-  const parsed = new Date(`${value.localDate}T00:00:00Z`);
-  return (
-    Number.isFinite(parsed.getTime()) &&
-    parsed.toISOString().slice(0, 10) === value.localDate
-  );
+  return true;
 }
 function validRedemption(value: unknown): value is RedemptionResult {
   return (
@@ -89,6 +171,7 @@ function validView(value: unknown): value is RewardsView {
     !integer(value.nextClaimAt) ||
     value.nextClaimAt > 253402300799999 ||
     !object(value.state) ||
+    (value.cycle !== undefined && !validCycle(value.cycle)) ||
     !Array.isArray(value.history) ||
     value.history.length > 50 ||
     !value.history.every(validHistory) ||
@@ -107,6 +190,12 @@ function validView(value: unknown): value is RewardsView {
     typeof s.enabled === 'boolean' &&
     typeof s.paused === 'boolean' &&
     integer(s.dailyPoints) &&
+    (s.weeklyPoints === undefined ||
+      (validWeeklyPoints(s.weeklyPoints) &&
+        validCycle(value.cycle) &&
+        (value.claimedToday ||
+          s.dailyPoints === s.weeklyPoints[value.cycle.day - 1]))) &&
+    (s.graceEnabled === undefined || typeof s.graceEnabled === 'boolean') &&
     integer(s.pointsPerBlock, 1) &&
     integer(s.creditPaisaPerBlock, 1) &&
     [
@@ -155,7 +244,7 @@ function creditFor(points: number, view: RewardsView): number | null {
   return credit <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(credit) : null;
 }
 const earningMessages = {
-  active: 'Claim your daily points. Each day follows Asia/Kathmandu time.',
+  active: 'Check in daily to earn points.',
   paused: 'Daily earning is paused. Your existing points remain redeemable.',
   disabled:
     'Daily earning is disabled. Your existing points remain redeemable.',
@@ -395,6 +484,8 @@ export function RewardsPanel({
         let refreshed: RewardsView;
         try {
           refreshed = await readRewards();
+          if (!reconcilesClaim(data, refreshed))
+            throw new Error('Conflicting claim status');
         } catch {
           throw new Error(
             'Your claim is confirmed, but the current daily status could not be refreshed. Retry the original claim or refresh rewards before starting a new claim.',
@@ -509,6 +600,10 @@ export function RewardsPanel({
   const exchangeReady =
     exchangeConfig.canSubmit && exchangeConfig.config?.fields.length === 0;
   const eligible = view.balancePoints >= view.state.pointsPerBlock;
+  const weeklyStartsNextClaim =
+    view.claimedToday &&
+    view.cycle?.resetReason === 'first_claim' &&
+    view.cycle.lastClaimDate === nepalRewardDay(view.nextClaimAt - 1).localDate;
   return (
     <div
       className="space-y-6"
@@ -565,25 +660,34 @@ export function RewardsPanel({
           }}
           className="space-y-4 rounded-2xl border bg-card p-5"
         >
-          <h2 className="font-heading text-2xl">Daily points</h2>
-      <FormGuide formId="account.daily-reward" />
-
-          <p>{earningMessages[view.state.status]}</p>
-          <p>{view.state.dailyPoints} points per daily claim.</p>
+          <h2 className="font-heading text-2xl">Daily check-in</h2>
+          <FormGuide formId="account.daily-reward" />
+          <Link href="/rewards-terms" className="inline-flex min-h-11 items-center text-sm font-semibold text-primary underline underline-offset-4">Rewards terms</Link>
+          {view.state.status !== 'active' || !view.state.weeklyPoints ? (
+            <p>{earningMessages[view.state.status]}</p>
+          ) : null}
+          {view.state.weeklyPoints && view.cycle ? (
+            <WeeklyRewardCycle
+              weeklyPoints={view.state.weeklyPoints}
+              cycle={view.cycle}
+              dailyPoints={view.state.dailyPoints}
+              claimedToday={view.claimedToday}
+              statusKnown={claimStatusKnown}
+              graceEnabled={view.state.graceEnabled === true}
+              startsNextClaim={weeklyStartsNextClaim}
+            />
+          ) : (
+            <p>{view.state.dailyPoints} points per daily claim.</p>
+          )}
           {!claimStatusKnown ? (
             <p>
               Current daily claim status is unavailable. Refresh rewards to
               check the server status.
             </p>
           ) : view.claimedToday ? (
-            <p>
-              You have claimed today. Next claim: {date(view.nextClaimAt)}{' '}
-              (Asia/Kathmandu).
-            </p>
+            <p>Next check-in: {date(view.nextClaimAt)} · Nepal time.</p>
           ) : (
-            <p>
-              Next daily boundary: {date(view.nextClaimAt)} (Asia/Kathmandu).
-            </p>
+            <p>Daily reset: {date(view.nextClaimAt)} · Nepal time.</p>
           )}
           {attempts.claim ? (
             <p>
@@ -611,10 +715,12 @@ export function RewardsPanel({
             }
           >
             {pending === 'claim'
-              ? 'Claiming…'
+              ? 'Checking in…'
               : attempts.claim
                 ? 'Retry original claim'
-                : 'Claim daily points'}
+                : claimStatusKnown && view.claimedToday
+                  ? 'Checked in'
+                  : 'Check in'}
           </Button>
           {attempts.claim || broken.claim ? (
             <Button

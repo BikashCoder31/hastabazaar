@@ -18,7 +18,12 @@ import {
   nepalRewardDay,
   loyaltyLiability,
   validateLoyaltyTerms,
+  validateWeeklyPoints,
 } from '../../incentives/loyalty-policy';
+import {
+  nextLoyaltyCycle,
+  type PreviousLoyaltyClaim,
+} from '../../incentives/loyalty-cycle';
 import { digestFormRequest } from '../../forms/submission';
 import { buildFormAnswerInsert } from './form-answers';
 const FORM = 'staff.loyalty-settings';
@@ -68,7 +73,12 @@ async function authority(
 async function staffAuthority(db: D1Database, actor: string, subject: string) {
   id(actor);
   id(subject);
-  if (!(await db.prepare(`SELECT 1 WHERE ${staffSql}`).bind(actor, subject).first()))
+  if (
+    !(await db
+      .prepare(`SELECT 1 WHERE ${staffSql}`)
+      .bind(actor, subject)
+      .first())
+  )
     throw new IncentiveError('unauthorized');
 }
 function actorLocks(db: D1Database, actor: string, role: string) {
@@ -106,6 +116,8 @@ interface Row {
   revision: number;
   enabled: number;
   daily_points: number;
+  weekly_points_json: string | null;
+  grace_enabled: number;
   points_per_block: number;
   credit_paisa_per_block: number;
   starts_at: number | null;
@@ -131,6 +143,14 @@ function decode(row: Row, today: number): LoyaltyState {
   const terms: LoyaltyTerms = {
     enabled: row.enabled === 1,
     dailyPoints: row.daily_points,
+    ...(row.weekly_points_json === null
+      ? {}
+      : {
+          weeklyPoints: validateWeeklyPoints(
+            JSON.parse(row.weekly_points_json),
+          ),
+          graceEnabled: row.grace_enabled === 1,
+        }),
     pointsPerBlock: row.points_per_block,
     creditPaisaPerBlock: row.credit_paisa_per_block,
     startsAt: row.starts_at,
@@ -344,6 +364,10 @@ async function mutate(
           draft_revision: revision,
           enabled: Number(terms.enabled),
           daily_points: terms.dailyPoints,
+          weekly_points_json: terms.weeklyPoints
+            ? JSON.stringify(terms.weeklyPoints)
+            : null,
+          grace_enabled: Number(terms.graceEnabled ?? false),
           points_per_block: terms.pointsPerBlock,
           credit_paisa_per_block: terms.creditPaisaPerBlock,
           starts_at: terms.startsAt,
@@ -380,7 +404,7 @@ async function mutate(
     statements.push(
       db
         .prepare(
-          'INSERT INTO loyalty_revisions(revision,enabled,daily_points,points_per_block,credit_paisa_per_block,starts_at,ends_at,daily_budget_points,lifetime_budget_points,created_by,request_id,reason,form_version_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+          'INSERT INTO loyalty_revisions(revision,enabled,daily_points,points_per_block,credit_paisa_per_block,starts_at,ends_at,daily_budget_points,lifetime_budget_points,created_by,request_id,reason,form_version_id,created_at,weekly_points_json,grace_enabled) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
         )
         .bind(
           revision,
@@ -397,6 +421,8 @@ async function mutate(
           c.reason.trim(),
           c.form.versionId,
           c.now,
+          terms.weeklyPoints ? JSON.stringify(terms.weeklyPoints) : null,
+          Number(terms.graceEnabled ?? false),
         ),
     );
   statements.push(
@@ -494,7 +520,12 @@ async function claimReplay(
   }
   return JSON.parse(row.response_json) as ClaimResult;
 }
-function eligibility(row: Row, input: ClaimInput, today: number) {
+function eligibility(
+  row: Row,
+  input: ClaimInput,
+  today: number,
+  award = row.daily_points,
+) {
   if (row.version !== input.expectedVersion) throw new IncentiveError('stale');
   if (
     row.paused ||
@@ -508,10 +539,31 @@ function eligibility(row: Row, input: ClaimInput, today: number) {
   if (
     row.daily_budget_points === null ||
     row.lifetime_budget_points === null ||
-    row.daily_points > row.daily_budget_points - today ||
-    row.daily_points > row.lifetime_budget_points - row.issued_points
+    award > row.daily_budget_points - today ||
+    award > row.lifetime_budget_points - row.issued_points
   )
     throw new IncentiveError('exhausted');
+}
+async function lastLoyaltyClaim(
+  db: D1Database,
+  userId: string,
+  throughDate?: string,
+): Promise<(PreviousLoyaltyClaim & { awardedPoints: number }) | null> {
+  const prior = await db
+    .prepare(
+      'SELECT local_date,response_json FROM loyalty_daily_claims WHERE user_id=?' +
+        (throughDate ? ' AND local_date<=?' : '') +
+        ' ORDER BY local_date DESC LIMIT 1',
+    )
+    .bind(...(throughDate ? [userId, throughDate] : [userId]))
+    .first<{ local_date: string; response_json: string }>();
+  if (!prior) return null;
+  const result = JSON.parse(prior.response_json) as ClaimResult;
+  return {
+    localDate: prior.local_date,
+    awardedPoints: result.awardedPoints,
+    ...(result.cycle ? { cycle: result.cycle } : {}),
+  };
 }
 export async function claimDailyPoints(
   db: D1Database,
@@ -543,7 +595,19 @@ export async function claimDailyPoints(
   )
     throw new IncentiveError('conflict');
   const row = await readRow(db);
-  eligibility(row, input, await todayIssued(db, input.now));
+  const weekly =
+    row.weekly_points_json === null
+      ? null
+      : validateWeeklyPoints(JSON.parse(row.weekly_points_json));
+  const cycle = weekly
+    ? nextLoyaltyCycle(
+        localDate,
+        await lastLoyaltyClaim(db, input.userId),
+        row.grace_enabled === 1,
+      )
+    : undefined;
+  const award = weekly ? weekly[cycle!.day - 1] : row.daily_points;
+  eligibility(row, input, await todayIssued(db, input.now), award);
   const balance =
     (
       await db
@@ -553,12 +617,13 @@ export async function claimDailyPoints(
         .bind(input.userId)
         .first<{ n: number }>()
     )?.n ?? 0;
-  loyaltyInteger(balance + row.daily_points, 1);
+  loyaltyInteger(balance + award, 1);
   const result: ClaimResult = {
     claimId: crypto.randomUUID(),
     localDate,
-    awardedPoints: row.daily_points,
-    balancePoints: balance + row.daily_points,
+    awardedPoints: award,
+    balancePoints: balance + award,
+    ...(cycle ? { cycle } : {}),
   };
   const formSql = `EXISTS(SELECT 1 FROM form_config_versions v WHERE v.id=? AND v.form_id='account.daily-reward' AND v.status='published' AND v.version=(SELECT MAX(version) FROM form_config_versions WHERE form_id=v.form_id AND status='published') AND json_extract(v.config_json,'$.formId')=v.form_id AND json_type(v.config_json,'$.fields')='array' AND json_array_length(v.config_json,'$.fields')=0)`;
   const statements = [
@@ -590,7 +655,7 @@ export async function claimDailyPoints(
     ),
     db
       .prepare(
-        'INSERT INTO loyalty_daily_claims(id,user_id,actor_id,request_id,payload_digest,revision,local_date,awarded_points,response_json,form_version_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO loyalty_daily_claims(id,user_id,actor_id,request_id,payload_digest,revision,local_date,awarded_points,response_json,form_version_id,created_at,cycle_day,cycle_number,grace_used,grace_applied,cycle_reset_reason) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       )
       .bind(
         result.claimId,
@@ -600,10 +665,15 @@ export async function claimDailyPoints(
         digest,
         row.revision,
         localDate,
-        row.daily_points,
+        award,
         JSON.stringify(result),
         input.formVersionId,
         input.now,
+        cycle?.day ?? null,
+        cycle?.number ?? null,
+        cycle ? Number(cycle.graceUsed) : null,
+        cycle ? Number(cycle.graceApplied) : null,
+        cycle?.resetReason ?? null,
       ),
     ...guard(db, customerSql, [input.userId, input.authSubject]),
   ];
@@ -622,18 +692,35 @@ export async function claimDailyPoints(
         .first()
     )
       throw new IncentiveError('conflict');
-    eligibility(await readRow(db), input, await todayIssued(db, input.now));
+    eligibility(
+      await readRow(db),
+      input,
+      await todayIssued(db, input.now),
+      award,
+    );
     throw new IncentiveError('stale');
   }
   return result;
 }
-function publicState(row: Row, now: number): CustomerLoyaltyState {
+function publicState(
+  row: Row,
+  now: number,
+  award = row.daily_points,
+): CustomerLoyaltyState {
   return {
     version: row.version,
     revision: row.current_revision,
     enabled: row.enabled === 1,
     paused: row.paused === 1,
-    dailyPoints: row.daily_points,
+    dailyPoints: award,
+    ...(row.weekly_points_json === null
+      ? {}
+      : {
+          weeklyPoints: validateWeeklyPoints(
+            JSON.parse(row.weekly_points_json),
+          ),
+          graceEnabled: row.grace_enabled === 1,
+        }),
     pointsPerBlock: row.locked_points_per_block ?? row.points_per_block,
     creditPaisaPerBlock:
       row.locked_credit_paisa_per_block ?? row.credit_paisa_per_block,
@@ -649,14 +736,19 @@ function publicState(row: Row, now: number): CustomerLoyaltyState {
             ? 'expired'
             : row.daily_budget_points === null ||
                 row.lifetime_budget_points === null ||
-                row.daily_points >
-                  row.daily_budget_points - row.issued_today_points ||
-                row.daily_points >
-                  row.lifetime_budget_points - row.issued_points
+                award > row.daily_budget_points - row.issued_today_points ||
+                award > row.lifetime_budget_points - row.issued_points
               ? 'exhausted'
               : 'active',
   };
 }
+/** Public legal summary: published rules only, with no draft or administrative totals. */
+export async function getPublishedLoyaltyTerms(db: D1Database, now: number) {
+  const row = await readRow(db, false, nepalRewardDay(now).localDate);
+  const { version: _configurationVersion, ...terms } = publicState(row, now);
+  return terms;
+}
+
 export async function getRewards(
   db: D1Database,
   userId: string,
@@ -712,6 +804,24 @@ export async function getRewards(
   ).results;
   const selected = rows.slice(0, limit),
     last = selected.at(-1);
+  const row = await readRow(db, false, day.localDate);
+  const previous = await lastLoyaltyClaim(db, userId, day.localDate);
+  const claimedToday = previous?.localDate === day.localDate;
+  const weekly =
+    row.weekly_points_json === null
+      ? null
+      : validateWeeklyPoints(JSON.parse(row.weekly_points_json));
+  const cycle = weekly
+    ? claimedToday && previous?.cycle
+      ? previous.cycle
+      : nextLoyaltyCycle(day.localDate, previous, row.grace_enabled === 1)
+    : undefined;
+  const award =
+    claimedToday && previous
+      ? previous.awardedPoints
+      : weekly
+        ? weekly[cycle!.day - 1]
+        : row.daily_points;
   return {
     balancePoints:
       (
@@ -731,14 +841,10 @@ export async function getRewards(
           .bind(userId)
           .first<{ n: number }>()
       )?.n ?? 0,
-    claimedToday: !!(await db
-      .prepare(
-        'SELECT 1 FROM loyalty_daily_claims WHERE user_id=? AND local_date=?',
-      )
-      .bind(userId, day.localDate)
-      .first()),
+    claimedToday,
+    ...(cycle ? { cycle } : {}),
     nextClaimAt: day.nextClaimAt,
-    state: publicState(await readRow(db, false, day.localDate), now),
+    state: publicState(row, now, award),
     history: selected.map(
       (row) =>
         ({

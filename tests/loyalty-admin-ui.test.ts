@@ -55,6 +55,25 @@ async function mounted(role = 'super_admin') {
     platform: 'browser',
     format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
+    plugins: [
+      {
+        name: 'loyalty-router-fixture',
+        setup(bundler) {
+          bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({
+            path: 'navigation',
+            namespace: 'loyalty-fixture',
+          }));
+          bundler.onLoad(
+            { filter: /^navigation$/, namespace: 'loyalty-fixture' },
+            () => ({
+              contents:
+                'export function useRouter(){return {refresh(){window.routerRefreshCount=(window.routerRefreshCount??0)+1}}}',
+              loader: 'js',
+            }),
+          );
+        },
+      },
+    ],
   });
   const browser = (await chromium.launch({
     headless: true,
@@ -156,6 +175,13 @@ async function mounted(role = 'super_admin') {
       { next, owner, hydrate },
     );
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    if (role === 'super_admin') {
+      await page
+        .getByText('Administrative details and recorded exposure', {
+          exact: true,
+        })
+        .click();
+    }
   }
   await reload();
   const form = () =>
@@ -219,6 +245,235 @@ async function finish(route: FixtureRoute, status: number, body: unknown) {
   });
 }
 
+void test('unsaved daily earning and forecast inputs update the estimate without submitting or changing the locked rate', async () => {
+  const h = await mounted();
+  try {
+    await h.form().getByLabel('Private context').waitFor();
+    const estimate = h.page.getByRole('region', {
+      name: 'Future earning cost',
+    });
+    await estimate.getByText('30,000', { exact: true }).waitFor();
+    await estimate.getByText(/3,000\.00/).waitFor();
+    await estimate.getByText('10 days per customer', { exact: true }).waitFor();
+    await h.form().getByLabel('Daily points').fill('20');
+    await estimate.getByText('60,000', { exact: true }).waitFor();
+    await estimate.getByText(/6,000\.00/).waitFor();
+    await estimate.getByText('5 days per customer', { exact: true }).waitFor();
+    await estimate.getByLabel('Expected daily participants').fill('50');
+    await estimate.getByLabel('Forecast days').fill('5');
+    await estimate.getByText('5,000', { exact: true }).waitFor();
+    await estimate.getByText(/500\.00/).waitFor();
+    assert.equal(
+      await h.form().getByLabel('Credit per block (NPR)').inputValue(),
+      '10.00',
+    );
+    assert.equal(
+      await h
+        .form()
+        .getByLabel('Credit per block (NPR)')
+        .getAttribute('readonly'),
+      '',
+    );
+    assert.equal(h.requests.length, 0);
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.browser.close();
+  }
+});
+
+void test('weekly admin controls switch legacy earning into editable defaults with grace off and verify the saved schedule', async () => {
+  const h = await mounted();
+  const weekly = {
+    ...terms,
+    dailyPoints: 5,
+    weeklyPoints: [5, 7, 9, 10, 11, 13, 17],
+    graceEnabled: true,
+  };
+  try {
+    await h.form().getByLabel('Private context').waitFor();
+    assert.equal(
+      await h.form().getByLabel('Earning schedule').inputValue(),
+      'fixed',
+    );
+    await h.form().getByLabel('Earning schedule').selectOption('weekly');
+    const estimate = h.page.getByRole('region', {
+      name: 'Future earning cost',
+    });
+    await estimate.getByText('29,200', { exact: true }).waitFor();
+    assert.equal(await h.form().getByLabel('Day 1 points').inputValue(), '5');
+    assert.equal(await h.form().getByLabel('Day 7 points').inputValue(), '15');
+    assert.equal(
+      await h
+        .form()
+        .getByLabel('Grace period')
+        .evaluate((element) => (element as HTMLInputElement).checked),
+      false,
+    );
+    await h.form().getByLabel('Day 7 points').fill('17');
+    await estimate.getByText('30,000', { exact: true }).waitFor();
+    await h.form().getByLabel('Grace period').check();
+    assert.equal(h.requests.length, 0);
+    await h.fillPrivate();
+    h.respond(200, {
+      ...state,
+      version: 4,
+      revision: 3,
+      draftRevision: 3,
+      terms: weekly,
+    });
+    await h.send();
+    await h.page
+      .getByText('Draft saved. Review and publish separately.', { exact: true })
+      .waitFor();
+    assert.deepEqual(h.requests[0].terms, weekly);
+    assert.equal(await h.form().getByLabel('Day 7 points').inputValue(), '17');
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.browser.close();
+  }
+});
+
+void test('weekly retained retries restore the original schedule and grace and reject changed intent', async () => {
+  const h = await mounted();
+  const weekly = {
+    ...terms,
+    dailyPoints: 5,
+    weeklyPoints: [5, 7, 9, 10, 11, 13, 15],
+    graceEnabled: true,
+  };
+  const weeklyState = { ...state, terms: weekly };
+  try {
+    await h.reload(weeklyState);
+    await h.form().getByLabel('Private context').waitFor();
+    await h.fillPrivate();
+    h.loseResponse();
+    await h.send();
+    await h.page.getByRole('alert').waitFor();
+    const original = h.requests[0];
+    await h.reload({
+      ...weeklyState,
+      version: 8,
+      revision: 4,
+      draftRevision: 4,
+      terms: {
+        ...weekly,
+        weeklyPoints: [5, 8, 10, 12, 14, 16, 18],
+        graceEnabled: false,
+      },
+    });
+    await h.form().getByLabel('Private context').waitFor();
+    assert.equal(await h.form().getByLabel('Day 7 points').inputValue(), '15');
+    assert.equal(
+      await h
+        .form()
+        .getByLabel('Grace period')
+        .evaluate((element) => (element as HTMLInputElement).checked),
+      true,
+    );
+    assert.equal(await h.form().getByLabel('Reason').inputValue(), '');
+    await h.fillPrivate();
+    await h.form().getByLabel('Day 7 points').fill('16');
+    await h.send();
+    await h.page
+      .getByText(/This operation differs from the prior attempt/)
+      .waitFor();
+    assert.equal(h.requests.length, 1);
+    await h.form().getByLabel('Day 7 points').fill('15');
+    await h.form().getByLabel('Grace period').click();
+    await h.send();
+    await h.page
+      .getByText(/This operation differs from the prior attempt/)
+      .waitFor();
+    assert.equal(h.requests.length, 1);
+    await h.form().getByLabel('Grace period').check();
+    h.respond(200, {
+      ...weeklyState,
+      version: 4,
+      revision: 3,
+      draftRevision: 3,
+    });
+    await h.send();
+    await h.page
+      .getByText('Draft saved. Review and publish separately.', { exact: true })
+      .waitFor();
+    assert.deepEqual(h.requests[1], original);
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.browser.close();
+  }
+});
+
+void test('weekly verified success rejects substituted schedule or grace and retains the operation', async (t) => {
+  const weekly = {
+    ...terms,
+    dailyPoints: 5,
+    weeklyPoints: [5, 7, 9, 10, 11, 13, 15],
+    graceEnabled: false,
+  };
+  for (const [name, changed] of [
+    [
+      'substituted weekly award',
+      { ...weekly, weeklyPoints: [5, 7, 9, 10, 11, 13, 16] },
+    ],
+    ['substituted grace setting', { ...weekly, graceEnabled: true }],
+  ] as const)
+    await t.test(name, async () => {
+      const h = await mounted();
+      try {
+        await h.reload({ ...state, terms: weekly });
+        await h.form().getByLabel('Private context').waitFor();
+        await h.fillPrivate();
+        h.respond(200, { ...state, version: 4, paused: true, terms: changed });
+        h.page.once('dialog', (dialog) => dialog.accept());
+        await h.send('Pause earning');
+        await h.page.getByText(/result could not be verified/).waitFor();
+        assert.equal(h.requests.length, 1);
+        assert.ok(
+          await h.page.evaluate(() =>
+            Object.keys(sessionStorage).some((key) => key.endsWith(':intent')),
+          ),
+        );
+      } finally {
+        await h.browser.close();
+      }
+    });
+});
+
+void test('weekly corrupt retained disabled defaults cannot bypass schedule validation', async () => {
+  const h = await mounted();
+  try {
+    await h.form().getByLabel('Private context').waitFor();
+    await h.fillPrivate();
+    h.loseResponse();
+    await h.send();
+    await h.page.getByRole('alert').waitFor();
+    await h.page.evaluate(() => {
+      const key = Object.keys(sessionStorage).find((key) =>
+        key.endsWith(':intent'),
+      )!;
+      const retained = JSON.parse(sessionStorage.getItem(key)!);
+      retained.expectedTerms = {
+        ...retained.expectedTerms,
+        enabled: false,
+        startsAt: null,
+        endsAt: null,
+        dailyBudgetPoints: null,
+        lifetimeBudgetPoints: null,
+        weeklyPoints: [5, 7],
+        graceEnabled: false,
+      };
+      sessionStorage.setItem(key, JSON.stringify(retained));
+    });
+    await h.reload();
+    await h.page.getByText(/prior operation metadata is invalid/).waitFor();
+    await h.fillPrivate();
+    await h.send();
+    assert.equal(h.requests.length, 1);
+  } finally {
+    await h.browser.close();
+  }
+});
+
 void test('mounted admin lifecycle exposes private accounting, finite terms, locked denomination and configured keyboard submission', async () => {
   const h = await mounted();
   try {
@@ -245,7 +500,7 @@ void test('mounted admin lifecycle exposes private accounting, finite terms, loc
     assert.equal(
       await h
         .form()
-        .getByLabel('Credit per block (paisa)')
+        .getByLabel('Credit per block (NPR)')
         .getAttribute('readonly'),
       '',
     );
@@ -277,6 +532,15 @@ void test('mounted admin lifecycle exposes private accounting, finite terms, loc
     );
     assert.equal(h.requests[0].expectedVersion, 3);
     assert.equal(h.requests[0].action, 'draft');
+    assert.deepEqual(h.requests[0].terms, { ...terms, dailyPoints: 11 });
+    assert.equal(
+      await h.page.evaluate(
+        () =>
+          (window as unknown as { routerRefreshCount: number })
+            .routerRefreshCount,
+      ),
+      1,
+    );
     assert.deepEqual(h.requests[0].customAnswers, [
       { fieldId: 'context_note', value: 'Private evidence' },
     ]);
@@ -284,6 +548,14 @@ void test('mounted admin lifecycle exposes private accounting, finite terms, loc
     h.page.once('dialog', (dialog) => dialog.dismiss());
     await h.send('Publish draft');
     assert.equal(h.requests.length, 1);
+    assert.equal(
+      await h.page.evaluate(
+        () =>
+          (window as unknown as { routerRefreshCount: number })
+            .routerRefreshCount,
+      ),
+      1,
+    );
     h.page.once('dialog', (dialog) => dialog.accept());
     h.respond(200, {
       ...state,
@@ -299,6 +571,14 @@ void test('mounted admin lifecycle exposes private accounting, finite terms, loc
       .waitFor();
     assert.equal(h.requests[1].action, 'publish');
     assert.equal(h.requests[1].terms, undefined);
+    assert.equal(
+      await h.page.evaluate(
+        () =>
+          (window as unknown as { routerRefreshCount: number })
+            .routerRefreshCount,
+      ),
+      2,
+    );
     await h.fillPrivate();
     h.page.once('dialog', (dialog) => dialog.accept());
     h.respond(200, {
@@ -317,6 +597,14 @@ void test('mounted admin lifecycle exposes private accounting, finite terms, loc
       })
       .waitFor();
     assert.equal(h.requests[2].action, 'pause');
+    assert.equal(
+      await h.page.evaluate(
+        () =>
+          (window as unknown as { routerRefreshCount: number })
+            .routerRefreshCount,
+      ),
+      3,
+    );
     assert.deepEqual(h.errors, []);
   } finally {
     await h.browser.close();
@@ -354,7 +642,10 @@ void test('mounted terms reject nonfinite budgets and reversed dates without sub
       true,
     );
     await h.form().getByLabel('Lifetime budget (points)').fill('1050');
-    await h.form().getByLabel('Earning end (UTC)').fill('1970-01-01T00:00');
+    await h
+      .form()
+      .getByLabel('Earning end (Nepal time)')
+      .fill('1970-01-01T05:45');
     await h.send();
     await h.page
       .getByRole('alert')
@@ -870,8 +1161,14 @@ void test('disabled initial revision zero accepts a finite first draft while ear
       true,
     );
     await h.fillPrivate();
-    await h.form().getByLabel('Earning start (UTC)').fill('2026-09-28T00:00');
-    await h.form().getByLabel('Earning end (UTC)').fill('2026-09-29T00:00');
+    await h
+      .form()
+      .getByLabel('Earning start (Nepal time)')
+      .fill('2026-09-28T05:45');
+    await h
+      .form()
+      .getByLabel('Earning end (Nepal time)')
+      .fill('2026-09-29T05:45');
     await h.form().getByLabel('Daily budget (points)').fill('100');
     await h.form().getByLabel('Lifetime budget (points)').fill('1050');
     const finite = {
@@ -931,8 +1228,8 @@ void test('true locked denomination stays distinct from an incompatible immutabl
       '100',
     );
     assert.equal(
-      await h.form().getByLabel('Credit per block (paisa)').inputValue(),
-      '1000',
+      await h.form().getByLabel('Credit per block (NPR)').inputValue(),
+      '10.00',
     );
     h.holdReads();
     await h.page
@@ -1007,8 +1304,8 @@ void test('uncertain pre-issuance draft preserves original denomination B throug
       '200',
     );
     assert.equal(
-      await h.form().getByLabel('Credit per block (paisa)').inputValue(),
-      '3000',
+      await h.form().getByLabel('Credit per block (NPR)').inputValue(),
+      '30.00',
     );
     await h.page
       .getByText(/Locked exchange denomination: 100 points/)
@@ -1028,8 +1325,8 @@ void test('uncertain pre-issuance draft preserves original denomination B throug
       '100',
     );
     assert.equal(
-      await h.form().getByLabel('Credit per block (paisa)').inputValue(),
-      '1000',
+      await h.form().getByLabel('Credit per block (NPR)').inputValue(),
+      '10.00',
     );
     assert.equal(
       await h.page.evaluate(

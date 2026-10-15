@@ -1,5 +1,6 @@
 'use client';
 import { FormGuide } from '@/components/forms/form-guide';
+import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
@@ -83,6 +84,7 @@ export function GiftCardForm({ issue = false }: { issue?: boolean }) {
           ? 'Choose the shopping-credit value. Anyone with the code can redeem it once while signed in. There is no expiry.'
           : 'Add shopping-only credit to your wallet. Gift cards can be redeemed once and do not expire. Credit cannot be deposited or withdrawn.'}
       </p>
+      <Link href="/gift-card-terms" className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-primary underline underline-offset-4">Gift card terms</Link>
       {result ? (
         <output className="mt-4 block space-y-3">
           <p>

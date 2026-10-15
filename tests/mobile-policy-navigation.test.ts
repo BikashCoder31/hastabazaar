@@ -322,7 +322,7 @@ void test('native policy disclosures work with keyboard, identify the current pa
           '[data-policy-navigation="mobile"] nav[aria-label="Legal policies"] a',
         )
         .count(),
-      7,
+      publicLegalPolicyNavigation.length + 1,
     );
     assert.equal(
       await h.page
@@ -411,6 +411,16 @@ void test('every policy keeps its canonical paragraphs, headings and lists, incl
         .split(/\r?\n\r?\n/)
         .map((part) => part.trim())
         .filter((part) => part && !part.startsWith('#'))) {
+        if (paragraph.startsWith('|')) {
+          const rows = paragraph.split(/\r?\n/).map((line) => line.trim().replace(/^\||\|$/g, '').split('|').map((cell) => cell.trim()))
+            .filter((cells) => !cells.every((cell) => /^:?-{3,}:?$/.test(cell)));
+          for (const [index, cells] of rows.entries()) {
+            for (const cell of cells) assert.ok(await h.page.locator('article table')
+              .getByRole(index === 0 ? 'columnheader' : 'cell', { name: cell, exact: true }).count() > 0,
+            `${policyKey}: retained table cell ${cell}`);
+          }
+          continue;
+        }
         const plain = paragraph
           .replace(/^[-*]\s+/gm, '')
           .replace(/^\d+\.\s+/gm, '')

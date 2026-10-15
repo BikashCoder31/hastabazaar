@@ -45,6 +45,8 @@ export function validateLoyaltyTerms(raw: LoyaltyTerms): LoyaltyTerms {
   const keys = [
     'enabled',
     'dailyPoints',
+    'weeklyPoints',
+    'graceEnabled',
     'pointsPerBlock',
     'creditPaisaPerBlock',
     'startsAt',
@@ -62,6 +64,15 @@ export function validateLoyaltyTerms(raw: LoyaltyTerms): LoyaltyTerms {
     typeof raw.enabled !== 'boolean'
   )
     throw new IncentiveError('invalid');
+  if (raw.graceEnabled !== undefined && typeof raw.graceEnabled !== 'boolean')
+    throw new IncentiveError('invalid');
+  const weekly =
+    raw.weeklyPoints === undefined
+      ? undefined
+      : validateWeeklyPoints(raw.weeklyPoints);
+  if (weekly && raw.dailyPoints !== weekly[0])
+    throw new IncentiveError('invalid');
+  if (!weekly && raw.graceEnabled === true) throw new IncentiveError('invalid');
   for (const key of [
     'dailyPoints',
     'pointsPerBlock',
@@ -74,8 +85,8 @@ export function validateLoyaltyTerms(raw: LoyaltyTerms): LoyaltyTerms {
   loyaltyInteger(raw.endsAt!, 1, MAX_TIME);
   if (
     raw.endsAt! <= raw.startsAt! ||
-    raw.dailyBudgetPoints! < raw.dailyPoints ||
-    raw.lifetimeBudgetPoints! < raw.dailyPoints
+    raw.dailyBudgetPoints! < (weekly?.[6] ?? raw.dailyPoints) ||
+    raw.lifetimeBudgetPoints! < (weekly?.[6] ?? raw.dailyPoints)
   )
     throw new IncentiveError('invalid');
   loyaltyLiability(
@@ -83,9 +94,33 @@ export function validateLoyaltyTerms(raw: LoyaltyTerms): LoyaltyTerms {
     raw.pointsPerBlock,
     raw.creditPaisaPerBlock,
   );
-  return Object.fromEntries(
-    keys.map((key) => [key, raw[key]]),
+  const normalized = Object.fromEntries(
+    keys
+      .filter((key) => key !== 'weeklyPoints' && key !== 'graceEnabled')
+      .map((key) => [key, raw[key]]),
   ) as unknown as LoyaltyTerms;
+  return weekly
+    ? {
+        ...normalized,
+        weeklyPoints: weekly,
+        graceEnabled: raw.graceEnabled ?? false,
+      }
+    : normalized;
+}
+
+export function validateWeeklyPoints(value: readonly number[]): number[] {
+  if (!Array.isArray(value) || value.length !== 7)
+    throw new IncentiveError('invalid');
+  let total = BigInt(0);
+  for (let index = 0; index < 7; index++) {
+    loyaltyInteger(value[index], 1);
+    if (index > 0 && value[index] <= value[index - 1])
+      throw new IncentiveError('invalid');
+    total += BigInt(value[index]);
+  }
+  if (total > BigInt(Number.MAX_SAFE_INTEGER))
+    throw new IncentiveError('invalid');
+  return [...value];
 }
 
 /** Exact positive whole blocks; BigInt prevents money multiplication from rounding. */

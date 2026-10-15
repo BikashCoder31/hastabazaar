@@ -1957,7 +1957,7 @@ export async function advanceReturnAsAdmin(
              WHEN (SELECT COALESCE(commission_base_paisa,
                     line_total_paisa - seller_discount_paisa)
                    FROM order_items WHERE id = ?) = 0 THEN 0
-             ELSE (
+             ELSE FLOOR(
                (2 * (SELECT commission_paisa FROM order_items WHERE id = ?) *
                  (SELECT COALESCE(SUM(r.commission_base_refunded_paisa), 0)
                   FROM refunds r

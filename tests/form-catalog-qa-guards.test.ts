@@ -8,7 +8,7 @@ import { assertApprovedFormCatalogCheckout, assertUnusedProfileQaRun, assertPubl
 const approved=resolve(fileURLToPath(new URL('../', import.meta.url)));
 void test('mutating catalog QA refuses an original or copied checkout even if cwd matches it', () => {
   assert.doesNotThrow(()=>assertApprovedFormCatalogCheckout(approved,approved));
-  for(const other of ['C:/Users/abinash/Desktop/Hatskala','C:/temporary/copied-Hatskala']) {
+  for(const other of [resolve(approved,'rejected-checkout'),resolve(approved,'copied-checkout')]) {
     assert.throws(()=>assertApprovedFormCatalogCheckout(other,other),/approved isolated checkout/);
     assert.throws(()=>assertApprovedFormCatalogCheckout(approved,other),/approved isolated checkout/);
   }

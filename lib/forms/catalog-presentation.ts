@@ -10,6 +10,7 @@ const universalFormIds: ReadonlySet<string> = new Set([
   'rider.code-verify', 'staff.homepage-hero-manager', 'staff.homepage-occasion-manager',
   'staff.homepage-visibility', 'staff.business-settings-manager', 'staff.delivery-rate',
   'staff.promo-code', 'staff.loyalty-settings', 'staff.referral-settings',
+  'staff.commission-schedule', 'staff.commission-cancel',
 ]);
 
 export function isFormCatalogEditable(form: FormDefinition): boolean {

@@ -1927,6 +1927,9 @@ void test('checkout retains accepted terms and issues immutable order and COD do
       returns: publicLegalPolicies.returns.sha256,
       shipping: publicLegalPolicies.shipping.sha256,
       privacy: publicLegalPolicies.privacy.sha256,
+      'rewards-terms': publicLegalPolicies['rewards-terms'].sha256,
+      'promo-code-terms': publicLegalPolicies['promo-code-terms'].sha256,
+      'gift-card-terms': publicLegalPolicies['gift-card-terms'].sha256,
     });
     assert.equal(receipt?.termsAcceptedAt, now);
     assert.equal(receipt?.items[0]?.fulfillmentStatus, 'confirmed');

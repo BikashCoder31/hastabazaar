@@ -1,5 +1,6 @@
 import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import { env } from 'cloudflare:workers';
+import Link from 'next/link';
 
 import {
   BusinessSettingsManager,
@@ -20,7 +21,7 @@ export default async function BusinessSettingsPage({searchParams}: {searchParams
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const now = new Date().getTime();
   const initialSettings = await Promise.all(
-    businessSettingDefinitions.filter(definition => staff.role === 'super_admin' || !definition.affectedSurfaces.some(surface => surface === 'rider')).map(async (definition) => ({
+    businessSettingDefinitions.filter(definition => definition.key !== 'independent_seller_commission_bps' && (staff.role === 'super_admin' || !definition.affectedSurfaces.some(surface => surface === 'rider'))).map(async (definition) => ({
       key: definition.key,
       label: definition.label,
       description: definition.description,
@@ -48,6 +49,7 @@ export default async function BusinessSettingsPage({searchParams}: {searchParams
           effective date. Financial and contractual notice periods still apply.
         </p>
       </div>
+      <Link href="/admin/commission" className="inline-flex min-h-11 items-center text-sm font-semibold text-primary underline">Manage commission rates and earnings</Link>
       <StaffFormHistoryLinks entries={[{kind:'business-settings',label:'Business setting answers'},
         {kind:'homepage-hero-settings',label:'Homepage hero answers'},{kind:'homepage-occasion-settings',label:'Homepage occasion answers'}]} />
       <BusinessSettingsManager

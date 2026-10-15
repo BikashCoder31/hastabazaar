@@ -721,6 +721,11 @@ void test('gift form renders a required custom field and submits its versioned a
     `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'navigation-stub', setup(bundler) {
+      bundler.onResolve({ filter: /^next\/link$/ }, () => ({ path: 'link', namespace: 'gift-link-shim' }));
+      bundler.onLoad({ filter: /.*/, namespace: 'gift-link-shim' }, () => ({
+        contents: 'import React from "react"; export default function Link(props){return React.createElement("a", {href:props.href}, props.children)}',
+        loader: 'js', resolveDir: process.cwd(),
+      }));
       bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'next/navigation', namespace: 'next-shim' }));
       bundler.onLoad({ filter: /.*/, namespace: 'next-shim' }, () => ({
         contents: 'export function useRouter(){return {refresh(){}}}', loader: 'js',
@@ -783,6 +788,11 @@ void test('invalid gift code stays correctable after a domain 409', async () => 
     `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'navigation-stub', setup(bundler) {
+      bundler.onResolve({ filter: /^next\/link$/ }, () => ({ path: 'link', namespace: 'gift-link-shim' }));
+      bundler.onLoad({ filter: /.*/, namespace: 'gift-link-shim' }, () => ({
+        contents: 'import React from "react"; export default function Link(props){return React.createElement("a", {href:props.href}, props.children)}',
+        loader: 'js', resolveDir: process.cwd(),
+      }));
       bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'next/navigation', namespace: 'next-shim' }));
       bundler.onLoad({ filter: /.*/, namespace: 'next-shim' }, () => ({
         contents: 'export function useRouter(){return {refresh(){}}}', loader: 'js',

@@ -6,6 +6,7 @@ import {
   getLegalPolicyDocument,
   publicLegalPolicies,
   publicLegalPolicySummaries,
+  LEGAL_POLICY_DATE_LABEL,
   type PublicLegalPolicyKey,
 } from '@/lib/content/legal-policies';
 import { LegalPolicyNavigation } from './legal-policy-navigation';
@@ -254,8 +255,8 @@ export function LegalDocumentContent({ markdown }: { markdown: string }) {
               key={`${block.id}-${index}`}
               className={
                 block.level === 2
-                  ? 'scroll-mt-36 border-t pt-9 font-heading text-2xl sm:text-3xl'
-                  : 'scroll-mt-36 pt-3 text-xl font-bold'
+                  ? 'scroll-mt-48 border-t pt-9 font-heading text-2xl sm:text-3xl'
+                  : 'scroll-mt-48 pt-3 text-xl font-bold'
               }
             >
               {inline(block.text)}
@@ -336,9 +337,11 @@ export function LegalDocumentContent({ markdown }: { markdown: string }) {
 export function LegalPolicyPage({
   policyKey,
   document,
+  currentDetails,
 }: {
   policyKey: PublicLegalPolicyKey;
   document?: string;
+  currentDetails?: ReactNode;
 }) {
   const policy = publicLegalPolicies[policyKey];
   const summary = publicLegalPolicySummaries[policyKey];
@@ -361,6 +364,12 @@ export function LegalPolicyPage({
             <p className="mt-3 max-w-3xl text-base leading-7 text-muted-foreground sm:mt-4 sm:text-lg sm:leading-8">
               {policy.description}
             </p>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Updated and effective {LEGAL_POLICY_DATE_LABEL} · Nepal time ·{' '}
+              <Link href={`/legal/history?policy=${policyKey}`} className="font-semibold text-primary underline underline-offset-4">
+                Previous wording
+              </Link>
+            </p>
             {summary ? (
               <section
                 aria-labelledby="policy-key-answer-title"
@@ -379,10 +388,11 @@ export function LegalPolicyPage({
                 </a>
               </section>
             ) : null}
+            {currentDetails ? <div className="mt-6 max-w-3xl">{currentDetails}</div> : null}
           </div>
         </div>
         <div className="shell grid gap-5 py-5 sm:gap-8 sm:py-8 lg:grid-cols-[17rem_minmax(0,1fr)] lg:gap-12 lg:py-12 print:block">
-          <aside className="min-w-0 lg:sticky lg:top-32 lg:max-h-[calc(100vh-9rem)] lg:self-start lg:overflow-y-auto print:hidden">
+          <aside className="min-w-0 lg:sticky lg:top-48 lg:max-h-[calc(100vh-14rem)] lg:self-start lg:overflow-y-auto print:hidden">
             <LegalPolicyNavigation
               policyKey={policyKey}
               headings={headings.map((heading) => ({

@@ -28,16 +28,16 @@ export default async function ReferralTerms() {
         {!c.enabled ? (
           <p className="mt-4 font-semibold">This offer is currently paused.</p>
         ) : null}
-        <div className="mt-6 flex gap-4">
+        <div className="mt-6 flex flex-wrap items-center gap-3">
           <Link
             href="/shop"
-            className="rounded-full bg-primary px-6 py-3 font-semibold text-primary-foreground"
+            className="inline-flex min-h-11 items-center justify-center rounded-full bg-primary px-6 py-3 text-center font-semibold text-primary-foreground"
           >
             Explore the marketplace
           </Link>
           <Link
             href="/login?return_to=%2Fcheckout"
-            className="rounded-full border px-6 py-3 font-semibold"
+            className="inline-flex min-h-11 items-center justify-center rounded-full border px-6 py-3 text-center font-semibold"
           >
             Sign in
           </Link>
@@ -79,6 +79,7 @@ export default async function ReferralTerms() {
           </li>
         </ul>
         <p className="mt-6">
+          <Link href="/rewards-terms" className="mr-5 inline-flex min-h-11 items-center font-semibold text-primary underline">Rewards & shopping credit terms</Link>
           <Link href="/account/referrals" className="mr-5 inline-flex min-h-11 items-center font-semibold text-primary underline">Get my referral link →</Link>
           Need help?{' '}
           <Link href="/help" className="text-primary underline">

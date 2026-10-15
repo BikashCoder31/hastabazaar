@@ -60,6 +60,7 @@ const recentlyViewedSql = await readFile(
   'utf8',
 );
 const managedMakerIdentitySql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-managed-maker-identity.sql'), 'utf8');
+const commissionWorkspaceSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-commission-workspace.sql'), 'utf8');
 const managedFixedSupplySql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-managed-fixed-supply.sql'),
   'utf8',
@@ -437,6 +438,7 @@ output.push(
   '',
   managedFixedSupplySql.trim(),
   managedMakerIdentitySql.trim(),
+  commissionWorkspaceSql.trim(),
   '',
   formCatalogSql.trim(),
   categoryImagesSql.trim(),
@@ -565,6 +567,10 @@ const resetTables = [
   'staff_permission_profiles',
   'staff_permission_guards',
   'wallet_entries',
+  'commission_rate_acceptances',
+  'commission_rate_cancellations',
+  'commission_rate_changes',
+  'commission_control',
   'loyalty_points_entries',
   'loyalty_redemptions',
   'loyalty_daily_claims',

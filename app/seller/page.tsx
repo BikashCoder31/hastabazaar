@@ -24,6 +24,7 @@ import { requireSellerPage } from '@/lib/auth/seller';
 import { requireDatabase } from '@/lib/db/d1';
 import { getSellerProductStats } from '@/lib/db/repositories/products';
 import { getRegisteredSellerTerms, sellerAcceptedCommissionVersion } from '@/lib/db/repositories/marketplace-settings';
+import { getSellerCommissionTerms } from '@/lib/db/repositories/commission-rates';
 import { listOrdersForSeller } from '@/lib/db/repositories/orders';
 import { getSellerFinanceSummary } from '@/lib/db/repositories/payouts';
 import { getSellerWorkSummary } from '@/lib/db/repositories/seller-workspace';
@@ -35,13 +36,14 @@ export const dynamic = 'force-dynamic';
 export default async function SellerDashboardPage() {
   const seller = await requireSellerPage('/seller');
   const db = requireDatabase(env as unknown as { DB?: D1Database });
-  const [products, work, finance, orders, commission, managedProgram] = await Promise.all([
+  const [products, work, finance, orders, commission, managedProgram, appliedCommission] = await Promise.all([
     getSellerProductStats(db, seller.sellerId),
     getSellerWorkSummary(db, seller.sellerId),
     getSellerFinanceSummary(db, seller.sellerId),
     listOrdersForSeller(db, seller.sellerId, 4),
     getRegisteredSellerTerms(db),
     getManagedProgramWorkspace(db, seller.sellerId),
+    getSellerCommissionTerms(db, seller.sellerId),
   ]);
   const currentCommissionAccepted = await sellerAcceptedCommissionVersion(db,seller.sellerId,commission.versionId);
   return (
@@ -52,7 +54,7 @@ export default async function SellerDashboardPage() {
         description="Prepare your orders, manage listings, and keep track of earnings."
       />
       {seller.sellerAgreementVersion !== SELLER_AGREEMENT_VERSION || !currentCommissionAccepted ? (
-        <SellerAgreementAcceptance commissionPercent={commission.percent} termsContext={commission.context} />
+        <SellerAgreementAcceptance commissionPercent={commission.basisPoints / 100} termsContext={commission.context} />
       ) : null}
       <SellerManagedProgramWorkspace workspace={managedProgram} sellerId={seller.sellerId} />
       <p className="flex flex-wrap gap-4 text-sm">
@@ -183,7 +185,7 @@ export default async function SellerDashboardPage() {
         />
         <SellerMetric
           label="Marketplace commission"
-          value={`${commission.percent}%`}
+          value={`${appliedCommission.basisPoints / 100}%`}
           detail="Current rate for new orders"
           icon={Percent}
           href="/seller/finance"

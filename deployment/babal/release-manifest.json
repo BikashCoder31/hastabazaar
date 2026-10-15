@@ -63,7 +63,7 @@
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "20c97e8eaaba5e117d2f1107f355765e53b8fd472c57e02c498e1ef18955d61d",
+      "sha256": "a87f50c4e718323290c73f37cfab8d0bccf7a85a05fbc265bf62cecc58065cd2",
       "usage": "empty-database-only"
     },
     {
@@ -93,12 +93,12 @@
     },
     {
       "path": "deployment/babal/mariadb-product-deletions.sql",
-      "sha256": "9e5d64d84e6c81dda84efee0153855dfa2477797d0ef2217115fce3fdc25f9e1",
+      "sha256": "2695ab2436ac26fd575d0a70c05dfc4230074e9946d3a82ba7e6dcc78f0a4ab1",
       "usage": "additive-maintenance"
     },
     {
       "path": "deployment/babal/mariadb-delivery-locations.sql",
-      "sha256": "2f7f89328697f4b44aca2a207e6280ee5869fcb355229bd83ca5a1504f46bb4d",
+      "sha256": "5059b15ae1ebb4afad4d43159565ba862235db5caede56bd611e57a7aeffb587",
       "usage": "additive-maintenance"
     },
     {
@@ -113,7 +113,7 @@
     },
     {
       "path": "deployment/babal/mariadb-parcel-operations.sql",
-      "sha256": "a0f11cb3711cddbed9cbb1208eadc3b41db67d55e9c0aa45839857bb9494b3b1",
+      "sha256": "2e9ca3fa8fa59c2815ddd3a6a7e4fd012f041c256712246bd193b2a09b34cca4",
       "usage": "additive-maintenance"
     },
     {
@@ -143,7 +143,7 @@
     },
     {
       "path": "deployment/babal/mariadb-guest-business-notifications.sql",
-      "sha256": "11a18094e64b07fe72bb7e6976c962ecabfb1edddf4e0c5417edf7ea0910243e",
+      "sha256": "0e3caa91f8ee449b77229ae88be10fbe62aaa1e5e31a56104e5f07e50cd471b3",
       "usage": "additive-maintenance"
     },
     {
@@ -298,7 +298,7 @@
     },
     {
       "path": "deployment/babal/mariadb-loyalty-points.sql",
-      "sha256": "b09b46d46a3ccf7b7b64c53421e49003a5316591ce92f133acb1ab44e3683d52",
+      "sha256": "b3c026e07e6ce33ada8768c6bc2fad0a2f645cb02b7a3aaf288917c0d4dec076",
       "usage": "additive-maintenance"
     },
     {
@@ -308,7 +308,12 @@
     },
     {
       "path": "deployment/babal/mariadb-managed-maker-identity.sql",
-      "sha256": "3f9e56149870d232262d3b0f030cf557f79e1cae08e5a7ba53d930c138828623",
+      "sha256": "f4ece5b7ee1c5135c76635026781eaf2b797b24faceb8d38011bb50d695fa17b",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-commission-workspace.sql",
+      "sha256": "5cdd67c13f5abcd93c611c7fdc0ffea3d66dbb3d7fbbe49209c2a40381c0c960",
       "usage": "additive-maintenance"
     }
   ],
@@ -1669,6 +1674,33 @@
       "personal_pan",
       "seller_id"
     ],
+    "commission_control": [
+      "id",
+      "revision"
+    ],
+    "commission_rate_changes": [
+      "agreement_version",
+      "basis_points",
+      "created_at",
+      "created_by",
+      "effective_at",
+      "id",
+      "reason",
+      "terms_text"
+    ],
+    "commission_rate_cancellations": [
+      "cancelled_at",
+      "cancelled_by",
+      "rate_id",
+      "reason",
+      "request_id"
+    ],
+    "commission_rate_acceptances": [
+      "accepted_at",
+      "actor_id",
+      "rate_id",
+      "seller_id"
+    ],
     "form_config_versions": [
       "config_json",
       "created_at",
@@ -1853,7 +1885,8 @@
       "reason",
       "request_id",
       "revision",
-      "starts_at"
+      "starts_at",
+      "weekly_points_json"
     ],
     "loyalty_accounts": [
       "balance_points",
@@ -1864,6 +1897,7 @@
       "actor_id",
       "awarded_points",
       "created_at",
+      "cycle_day",
       "form_version_id",
       "id",
       "local_date",
@@ -2251,6 +2285,8 @@
     "loyalty_config_no_replace": [],
     "loyalty_revisions_no_replace": [],
     "wallet_entries_no_replace": [],
+    "loyalty_weekly_revision_guard": [],
+    "loyalty_weekly_claim_guard": [],
     "payouts_single_sa_insert": [],
     "payouts_single_sa_update": [],
     "refunds_single_sa_insert": [],

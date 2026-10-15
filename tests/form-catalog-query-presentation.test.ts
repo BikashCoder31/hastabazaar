@@ -39,6 +39,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
     '@/lib/db/repositories/business-settings': 'export async function getEffectiveBusinessSetting(){return {value:[]}};export async function listBusinessSettingHistory(){return []}',
     '@/lib/db/repositories/homepage-hero': 'export async function listHomepageHeroMediaForAdmin(){return []}',
     '@/lib/db/repositories/admin-workspace': 'export async function getAdminWorkSummary(){return {sellers:0,products:0,readyOrders:0,returns:0,complaints:0,payoutRequests:0}}',
+    '@/lib/db/repositories/admin-marketplace-summary': 'export async function getSuperAdminMarketplaceSummary(){return null}',
     '@/lib/db/repositories/business-activity': `export async function listBusinessActivity(){return []};export function auditDestination(){return null};
       export async function getRecordedProgress(){return {from:1720000000000,to:1720100000000,groups:[],events:[]}}`,
   };

@@ -1,4 +1,4 @@
-import { companyDetails, companyPanDisplay } from '@/lib/content/company-details';
+import { companyDetails, companyPanDisplay, companyPublicContacts } from '@/lib/content/company-details';
 
 export function CompanyDisclosure() {
   const details = [
@@ -9,10 +9,15 @@ export function CompanyDisclosure() {
     ['Registered office', companyDetails.registeredOffice],
     ['Business model', 'Intermediary marketplace connecting customers with independent sellers'],
     ['PAN', companyPanDisplay],
+    ['Customer-support phone', companyPublicContacts.supportPhone || 'Not yet confirmed'],
+    ['Grievance unit', companyPublicContacts.grievanceUnit],
+    ['Grievance office', companyPublicContacts.grievanceAddress],
+    ['Grievance phone', companyPublicContacts.grievancePhone || 'Not yet confirmed'],
+    ['E-commerce listing number', companyPublicContacts.ecommerceListingNumber || 'Not yet confirmed'],
   ];
 
   return (
-    <section id="company-details" className="scroll-mt-36 rounded-2xl border p-5 sm:p-6">
+    <section id="company-details" className="scroll-mt-48 rounded-2xl border p-5 sm:p-6">
       <h2 className="font-heading text-2xl">Company details</h2>
       <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
         {details.map(([label, value]) => (
@@ -22,7 +27,7 @@ export function CompanyDisclosure() {
           </div>
         ))}
         <div>
-          <dt className="font-semibold">Customer support</dt>
+          <dt className="font-semibold">Support, complaints and privacy requests</dt>
           <dd className="mt-1 break-words leading-6">
             <a className="text-primary underline underline-offset-4" href={`mailto:${companyDetails.supportEmail}`}>
               {companyDetails.supportEmail}
@@ -30,6 +35,10 @@ export function CompanyDisclosure() {
           </dd>
         </div>
       </dl>
+      <p className="mt-5 text-sm leading-6 text-muted-foreground">
+        Complaints receive an acknowledgement and reference, with a written decision within 15 calendar days.
+        PAN registration does not establish VAT registration.
+      </p>
     </section>
   );
 }

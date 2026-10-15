@@ -136,6 +136,28 @@ async function readLocalCheckout(projectRoot, cwd) {
   return checkout;
 }
 
+export function inspectLocalFeatureSchema(sqlite) {
+  const required = {
+    commission_control: ['id', 'revision'],
+    commission_rate_changes: ['id', 'basis_points', 'effective_at', 'agreement_version', 'terms_text', 'reason', 'created_by', 'created_at'],
+    commission_rate_cancellations: ['rate_id', 'request_id', 'reason', 'cancelled_by', 'cancelled_at'],
+    commission_rate_acceptances: ['rate_id', 'seller_id', 'actor_id', 'accepted_at'],
+    loyalty_revisions: ['weekly_points_json', 'grace_enabled'],
+    loyalty_daily_claims: ['cycle_day', 'cycle_number', 'grace_used', 'grace_applied', 'cycle_reset_reason'],
+  };
+  const missing = [];
+  for (const [table, columns] of Object.entries(required)) {
+    const actual = sqlite.prepare(`PRAGMA table_info("${table}")`).all().map(row => row.name);
+    if (!actual.length) missing.push(table);
+    else for (const column of columns) if (!actual.includes(column)) missing.push(`${table}.${column}`);
+  }
+  for (const name of ['loyalty_latest_claims', 'loyalty_weekly_revision_guard', 'loyalty_weekly_claim_guard']) {
+    if (!sqlite.prepare('SELECT 1 FROM sqlite_master WHERE name=?').get(name)) missing.push(name);
+  }
+  if (!missing.includes('commission_control') && !sqlite.prepare("SELECT 1 FROM commission_control WHERE id='default'").get()) missing.push('commission_control.default');
+  return { ready: missing.length === 0, missing };
+}
+
 export async function checkLocalData(projectRoot, environment) {
   const { assertDisposableStagingContext, readAndVerifyStagingMarker, resolveDisposableStagingPaths } = await import('./staging/guards.mjs');
   assertDisposableStagingContext(environment);
@@ -152,6 +174,8 @@ export async function checkLocalData(projectRoot, environment) {
     const { inspectFormPreviewReadiness } = await import('./staging/form-preview-readiness.mjs');
     const sqlite = new DatabaseSync(databasePath, { readOnly: true });
     try {
+      const features = inspectLocalFeatureSchema(sqlite);
+      if (!features.ready) throw new Error(`Approved feature storage is incomplete: ${features.missing.join(', ')}. Review the Commission and weekly loyalty upgrades separately.`);
       const readiness = inspectFormPreviewReadiness(sqlite);
       if (!readiness.ready) {
         throw new Error(`Local forms/sign-in data is incomplete: ${readiness.readyForms}/${readiness.requiredForms} forms ready. ${readiness.errors.join(' ')}`);

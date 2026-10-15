@@ -6,6 +6,7 @@ import {prepareFirstCodReview} from '@/lib/orders/first-cod-review';
 import { promoQuoteIntent } from '@/lib/incentives/quote-intent';
 import { allocatePromoDiscount } from '@/lib/incentives/promo-policy';
 import { getDeliveryRates, rateVersionGuard } from './delivery-rates';
+import { getSellerCommissionTerms, commissionCheckoutGuards } from './commission-rates';
 import { buildFormAnswerInsert } from './form-answers';
 import { assertCommerceFormReplay, type CommerceForm } from './commerce-form-replay';
 import { getCommissionSetting, sellerAcceptedCommissionVersion } from './marketplace-settings';
@@ -20,7 +21,6 @@ import {
   allocatePlatformDiscountPaisa,
   calculateCommissionBasePaisa,
   calculateSellerCommissionPaisa,
-  COMMISSION_RULE_VERSION,
 } from '@/lib/marketplace/policy';
 import {
   CUSTOMER_POLICY_VERSION,
@@ -130,6 +130,9 @@ function checkoutTermsSnapshot(sellerCommissionBps: number): Record<string, unkn
       returns: publicLegalPolicies.returns.sha256,
       shipping: publicLegalPolicies.shipping.sha256,
       privacy: publicLegalPolicies.privacy.sha256,
+      'rewards-terms': publicLegalPolicies['rewards-terms'].sha256,
+      'promo-code-terms': publicLegalPolicies['promo-code-terms'].sha256,
+      'gift-card-terms': publicLegalPolicies['gift-card-terms'].sha256,
     },
     language: 'English',
     sellerCommissionBps,
@@ -316,6 +319,7 @@ export async function createCodOrder(
   const rates = await getDeliveryRates(database);
   const commissionSetting = await getCommissionSetting(database, now);
   const sellerCommissionBps = commissionSetting.basisPoints;
+  const sellerCommissionTerms = Object.fromEntries(await Promise.all([...new Set(items.filter(item => item.participationRoute !== 'managed_maker').map(item => item.sellerId))].map(async sellerId => [sellerId, await getSellerCommissionTerms(database, sellerId, now)] as const)));
   if (commissionSetting.versionId) {
     for (const sellerId of new Set(items.filter((item)=>item.participationRoute!=='managed_maker').map((item)=>item.sellerId))) {
       if (!await sellerAcceptedCommissionVersion(database,sellerId,commissionSetting.versionId)) {
@@ -385,7 +389,7 @@ export async function createCodOrder(
     ? crypto.randomUUID()
     : input.selectedAddressId ?? null;
   const number = orderNumber(now);
-  const termsSnapshot = { ...checkoutTermsSnapshot(sellerCommissionBps), deliveryRate: delivery };
+  const termsSnapshot = { ...checkoutTermsSnapshot(sellerCommissionBps), sellerCommissionTerms, deliveryRate: delivery };
   const platformDiscounts = allocatePlatformDiscountPaisa(
     items.map((item) => ({
       key: item.id,
@@ -602,6 +606,7 @@ export async function createCodOrder(
   }
 
   for (const item of items) {
+    const commission = sellerCommissionTerms[item.sellerId];
     const orderItemId = crypto.randomUUID();
     const lineTotalPaisa = item.pricePaisa * item.quantity;
     const sellerDiscountPaisa = 0;
@@ -637,10 +642,10 @@ export async function createCodOrder(
           sellerDiscountPaisa,
           platformDiscountPaisa,
           commissionBasePaisa,
-          managed ? `managed-${item.commercialModel ?? 'unconfigured'}` : (commissionSetting.versionId ?? COMMISSION_RULE_VERSION),
+          managed ? `managed-${item.commercialModel ?? 'unconfigured'}` : commission.version,
           managed ? item.managedAgreementVersion : item.sellerAgreementVersion,
-          managed ? 0 : sellerCommissionBps,
-          managed ? 0 : calculateSellerCommissionPaisa(commissionBasePaisa, sellerCommissionBps),
+          managed ? 0 : commission.basisPoints,
+          managed ? 0 : calculateSellerCommissionPaisa(commissionBasePaisa, commission.basisPoints),
           lineTotalPaisa,
           item.returnEligible,
           item.madeToOrder,
@@ -704,6 +709,7 @@ export async function createCodOrder(
   if(promo && customerId) statements.push(...await preparePromoConsumption(database,{userId:customerId,orderId:id,requestId:input.idempotencyKey,quote:promo,now,payloadDigest:intentDigest,response:{...checkoutResult}}));
 
   statements.push(
+    ...commissionCheckoutGuards(database, Object.values(sellerCommissionTerms)),
     database
       .prepare(
         `INSERT INTO order_policy_acceptances (

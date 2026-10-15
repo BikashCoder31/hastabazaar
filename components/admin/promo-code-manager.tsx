@@ -2,6 +2,7 @@
 
 import { FormGuide } from '@/components/forms/form-guide';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,6 +22,16 @@ import {
   calculatePromoDiscount,
   normalizePromoCode,
 } from '@/lib/incentives/promo-policy';
+import {
+  incentiveMoney as money,
+  incentiveDate as date,
+  moneyInput,
+  nepalDateTimeInput,
+  nprToPaisa,
+  parseNepalDateTime,
+  percentageToBps,
+} from '@/lib/incentives/presentation';
+import { PromoCodeCostPreview } from '@/components/admin/promo-code-cost-preview';
 import type {
   PromoCampaignPage,
   PromoRedemptionPage,
@@ -44,15 +55,6 @@ const baseKeys = [
   'budgetPaisa',
   'reason',
 ];
-const money = (paisa: number) =>
-  new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR' }).format(
-    paisa / 100,
-  );
-const date = (value: number) =>
-  new Date(value).toLocaleString('en-NP', { timeZone: 'Asia/Kathmandu' });
-function dateInput(value: number) {
-  return new Date(value).toISOString().slice(0, -1);
-}
 function textValue(data: FormData, key: string) {
   const value = data.get(key);
   if (typeof value !== 'string') throw new Error('Enter ' + key + '.');
@@ -68,29 +70,50 @@ function integer(data: FormData, key: string, minimum = 0) {
     throw new Error('Enter a finite safe integer for ' + key + '.');
   return Number(raw);
 }
-function readTerms(data: FormData): PromoTerms {
+function readTerms(
+  data: FormData,
+  preview = false,
+  original?: PromoTerms,
+): PromoTerms {
+  function timestamp(key: 'startsAt' | 'endsAt') {
+    const value = textValue(data, key);
+    return original && value === nepalDateTimeInput(original[key])
+      ? original[key]
+      : parseNepalDateTime(value);
+  }
   const common = {
-    code: normalizePromoCode(textValue(data, 'code')),
-    label: textValue(data, 'label').trim(),
-    minimumSubtotalPaisa: integer(data, 'minimumSubtotalPaisa'),
-    startsAt: Date.parse(textValue(data, 'startsAt') + 'Z'),
-    endsAt: Date.parse(textValue(data, 'endsAt') + 'Z'),
-    totalUseLimit: integer(data, 'totalUseLimit', 1),
-    perCustomerUseLimit: integer(data, 'perCustomerUseLimit', 1),
-    budgetPaisa: integer(data, 'budgetPaisa', 1),
+    code: preview ? 'PREVIEW' : normalizePromoCode(textValue(data, 'code')),
+    label: preview ? 'Cost preview' : textValue(data, 'label').trim(),
+    minimumSubtotalPaisa: nprToPaisa(
+      textValue(data, 'minimumSubtotalPaisa'),
+      'the minimum products subtotal',
+    ),
+    startsAt: preview ? 0 : timestamp('startsAt'),
+    endsAt: preview ? 1 : timestamp('endsAt'),
+    totalUseLimit: preview ? 1 : integer(data, 'totalUseLimit', 1),
+    perCustomerUseLimit: preview ? 1 : integer(data, 'perCustomerUseLimit', 1),
+    budgetPaisa: preview
+      ? Number.MAX_SAFE_INTEGER
+      : nprToPaisa(textValue(data, 'budgetPaisa'), 'the lifetime budget'),
   };
   const terms: PromoTerms =
     data.get('kind') === 'percentage'
       ? {
           ...common,
           kind: 'percentage',
-          percentBps: integer(data, 'percentBps', 1),
-          maxDiscountPaisa: integer(data, 'maxDiscountPaisa', 1),
+          percentBps: percentageToBps(textValue(data, 'percentBps')),
+          maxDiscountPaisa: nprToPaisa(
+            textValue(data, 'maxDiscountPaisa'),
+            'the maximum discount',
+          ),
         }
       : {
           ...common,
           kind: 'fixed',
-          fixedPaisa: integer(data, 'fixedPaisa', 1),
+          fixedPaisa: nprToPaisa(
+            textValue(data, 'fixedPaisa'),
+            'the fixed discount',
+          ),
         };
   try {
     calculatePromoDiscount(terms, 0);
@@ -147,23 +170,44 @@ function validState(value: unknown): value is PromoState {
     (s.publishedRevision === null || Number.isSafeInteger(s.publishedRevision))
   );
 }
+function campaignStatus(state: PromoState) {
+  return state.paused
+    ? 'Paused'
+    : state.publishedRevision
+      ? 'Published'
+      : 'Draft only';
+}
+function discountSummary(terms: PromoTerms) {
+  return terms.kind === 'fixed'
+    ? money(terms.fixedPaisa) + ' off'
+    : moneyInput(terms.percentBps) +
+        '% off, up to ' +
+        money(terms.maxDiscountPaisa);
+}
 
 /** Keep the authorized child unmounted so its configuration hook cannot fetch for ordinary admins. */
 export function PromoCodeManager(props: {
   role: string;
   initialPage: PromoCampaignPage;
+  defaultCommissionBps?: number;
 }) {
   return props.role === 'super_admin' ? (
-    <AuthorizedPromoCodeManager initialPage={props.initialPage} />
+    <AuthorizedPromoCodeManager
+      initialPage={props.initialPage}
+      defaultCommissionBps={props.defaultCommissionBps ?? 900}
+    />
   ) : (
     <p role="alert">Super Admin access is required.</p>
   );
 }
 function AuthorizedPromoCodeManager({
   initialPage,
+  defaultCommissionBps,
 }: {
   initialPage: PromoCampaignPage;
+  defaultCommissionBps: number;
 }) {
+  const router = useRouter();
   const published = usePublishedFormConfig('staff.promo-code');
   const [campaigns, setCampaigns] = useState(initialPage.campaigns);
   const [nextCursor, setNextCursor] = useState(initialPage.nextCursor);
@@ -174,6 +218,11 @@ function AuthorizedPromoCodeManager({
   const [kind, setKind] = useState<'fixed' | 'percentage'>(
     selected?.terms.kind ?? 'fixed',
   );
+  const [campaignSearch, setCampaignSearch] = useState('');
+  const [previewTerms, setPreviewTerms] = useState<PromoTerms | null>(
+    selected?.terms ?? null,
+  );
+  const [previewError, setPreviewError] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [pending, setPending] = useState(false);
@@ -210,6 +259,8 @@ function AuthorizedPromoCodeManager({
     readGeneration.current++;
     setSelected(next);
     setKind(next?.terms.kind ?? 'fixed');
+    setPreviewTerms(next?.terms ?? null);
+    setPreviewError('');
     setEditorGeneration((v) => v + 1);
     setHistory(null);
     setHistoryLoading(false);
@@ -245,7 +296,9 @@ function AuthorizedPromoCodeManager({
       const body = {
         action,
         ...(selected ? { campaignId: selected.campaignId } : {}),
-        ...(action === 'draft' ? { terms: readTerms(data) } : {}),
+        ...(action === 'draft'
+          ? { terms: readTerms(data, false, selected?.terms) }
+          : {}),
         expectedVersion: attempt.expectedVersion - 1,
         requestId: attempt.requestId,
         reason,
@@ -310,6 +363,8 @@ function AuthorizedPromoCodeManager({
         ]);
         setSelected(result);
         setKind(result.terms.kind);
+        setPreviewTerms(result.terms);
+        setPreviewError('');
         setEditorGeneration((v) => v + 1);
         setHistory(null);
         setNotice(
@@ -319,6 +374,7 @@ function AuthorizedPromoCodeManager({
               ? 'Campaign published.'
               : 'Campaign paused.',
         );
+        router.refresh();
       } finally {
         pendingRef.current = false;
         setPending(false);
@@ -346,6 +402,11 @@ function AuthorizedPromoCodeManager({
         if (token !== readGeneration.current) return;
         if (!response.ok || !validState(result))
           throw new Error('Latest campaign could not be loaded.');
+        setCampaigns((current) =>
+          current.map((campaign) =>
+            campaign.campaignId === result.campaignId ? result : campaign,
+          ),
+        );
         choose(result);
       }
     } catch (reason) {
@@ -433,68 +494,183 @@ function AuthorizedPromoCodeManager({
     }
   }
   const terms = selected?.terms;
+  const query = campaignSearch.trim().toLowerCase();
+  const visibleCampaigns = campaigns.filter(
+    (campaign) =>
+      !query ||
+      [
+        campaign.terms.code,
+        campaign.terms.label,
+        campaignStatus(campaign),
+      ].some((value) => value.toLowerCase().includes(query)),
+  );
   return (
     <div className="grid min-w-0 gap-6">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-0 flex-1">
-          <Label htmlFor="promo-campaign">Campaign</Label>
-          <select
-            id="promo-campaign"
-            className="mt-2 w-full rounded-md border p-2"
-            disabled={pending}
-            value={selected?.campaignId ?? ''}
-            onChange={(e) =>
-              choose(
-                campaigns.find((s) => s.campaignId === e.target.value) ?? null,
-              )
-            }
-          >
-            <option value="">New campaign</option>
-            {campaigns.map((s) => (
-              <option key={s.campaignId} value={s.campaignId}>
-                {s.terms.code} · {s.terms.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={pending}
-          onClick={() => choose(null)}
-        >
-          New campaign
-        </Button>
-        {nextCursor ? (
+      <section
+        aria-label="Campaign management"
+        className="min-w-0 space-y-4 rounded-xl border p-4 sm:p-6"
+      >
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0 flex-1 space-y-2">
+            <h2 className="font-semibold">Campaigns</h2>
+            <Label htmlFor="promo-campaign-search">
+              Search loaded campaigns
+            </Label>
+            <Input
+              id="promo-campaign-search"
+              type="search"
+              value={campaignSearch}
+              placeholder="Search code, label or status"
+              onChange={(event) => setCampaignSearch(event.target.value)}
+            />
+          </div>
           <Button
             type="button"
+            variant="outline"
             disabled={pending}
-            onClick={() => void moreCampaigns()}
+            onClick={() => choose(null)}
           >
-            More campaigns
+            New campaign
           </Button>
+        </div>
+        <div className="min-w-0 overflow-x-auto">
+          <table
+            aria-label="Loaded campaigns"
+            className="w-full text-left text-sm"
+          >
+            <thead className="border-b text-xs text-muted-foreground">
+              <tr>
+                <th scope="col" className="p-3">
+                  Campaign
+                </th>
+                <th scope="col" className="p-3">
+                  Status
+                </th>
+                <th scope="col" className="p-3">
+                  Displayed rules
+                </th>
+                <th scope="col" className="p-3">
+                  Lifetime use
+                </th>
+                <th scope="col" className="p-3">
+                  Lifetime spend
+                </th>
+                <th scope="col" className="p-3">
+                  Manage
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleCampaigns.map((campaign) => (
+                <tr
+                  key={campaign.campaignId}
+                  className={
+                    'border-b align-top ' +
+                    (selected?.campaignId === campaign.campaignId
+                      ? 'bg-muted/40'
+                      : '')
+                  }
+                >
+                  <th scope="row" className="p-3 font-normal">
+                    <span className="block font-semibold">
+                      {campaign.terms.code}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {campaign.terms.label}
+                    </span>
+                  </th>
+                  <td className="p-3">
+                    <span className="inline-flex rounded-full border px-2 py-1 text-xs">
+                      {campaignStatus(campaign)}
+                    </span>
+                    {campaign.draftRevision && campaign.publishedRevision ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Draft available
+                      </p>
+                    ) : null}
+                  </td>
+                  <td className="p-3">
+                    <p>{discountSummary(campaign.terms)}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {campaign.draftRevision
+                        ? 'Draft rules'
+                        : 'Published rules'}{' '}
+                      · revision {campaign.revision}
+                    </p>
+                  </td>
+                  <td className="p-3 tabular-nums">{campaign.usedCount}</td>
+                  <td className="whitespace-nowrap p-3 tabular-nums">
+                    {money(campaign.spentPaisa)}
+                  </td>
+                  <td className="p-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={pending}
+                      aria-label={'Manage ' + campaign.terms.code}
+                      aria-pressed={
+                        selected?.campaignId === campaign.campaignId
+                      }
+                      onClick={() => choose(campaign)}
+                    >
+                      {selected?.campaignId === campaign.campaignId
+                        ? 'Selected'
+                        : 'Open'}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!visibleCampaigns.length ? (
+          <p className="text-sm text-muted-foreground">
+            {campaigns.length
+              ? 'No loaded campaigns match this search.'
+              : 'No campaigns yet. Create a draft to get started.'}
+          </p>
         ) : null}
-      </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            {visibleCampaigns.length} shown · {campaigns.length} loaded. Search
+            applies to loaded campaigns.
+          </p>
+          {nextCursor ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={pending}
+              onClick={() => void moreCampaigns()}
+            >
+              More campaigns
+            </Button>
+          ) : null}
+        </div>
+      </section>
       {selected ? (
         <section
           className="grid gap-2 rounded-xl border p-4 text-sm"
           aria-label="Campaign state"
         >
+          <h2 className="font-semibold">
+            {terms?.code} · {terms?.label}
+          </h2>
           <p>Administrative version: {selected.version}</p>
           <p>Live financial revision: {selected.publishedRevision ?? 'None'}</p>
           <p>Draft financial revision: {selected.draftRevision ?? 'None'}</p>
+          <p>Status: {campaignStatus(selected)}</p>
           <p>
-            Status:{' '}
-            {selected.paused
-              ? 'Paused'
-              : selected.publishedRevision
-                ? 'Published'
-                : 'Draft only'}
+            Lifetime use: {selected.usedCount}; lifetime spend:{' '}
+            {money(selected.spentPaisa)}.
           </p>
-          <p>
-            Lifetime use: {selected.usedCount} / {terms?.totalUseLimit};
-            lifetime spend: {money(selected.spentPaisa)} /{' '}
+          <p className="rounded-lg bg-muted/40 p-3">
+            {selected.draftRevision ? 'Draft rules' : 'Published rules'}{' '}
+            displayed: {terms ? discountSummary(terms) : null}; total use limit{' '}
+            {terms?.totalUseLimit}; lifetime budget{' '}
             {money(terms?.budgetPaisa ?? 0)}.
+            {selected.draftRevision && selected.publishedRevision
+              ? ' New orders continue to use the published revision until you publish this draft.'
+              : null}
           </p>
           <p>
             Highest customer use: {selected.maximumCustomerUsedCount}. Displayed
@@ -518,6 +694,17 @@ function AuthorizedPromoCodeManager({
         ref={formRef}
         data-form-id="staff.promo-code"
         onSubmit={submit}
+        onChange={(event) => {
+          try {
+            setPreviewTerms(readTerms(new FormData(event.currentTarget), true));
+            setPreviewError('');
+          } catch {
+            setPreviewTerms(null);
+            setPreviewError(
+              'Enter a valid discount, maximum discount if needed, and minimum products subtotal to see the illustration.',
+            );
+          }
+        }}
         className="min-w-0 space-y-5 rounded-xl border p-4 sm:p-6"
       >
       <FormGuide formId="staff.promo-code" />
@@ -527,7 +714,9 @@ function AuthorizedPromoCodeManager({
           className="grid min-w-0 gap-4 sm:grid-cols-2"
           key={subject + ':' + editorGeneration}
         >
-          <legend className="mb-3 font-semibold">Draft financial terms</legend>
+          <legend className="mb-3 font-semibold">
+            {selected ? 'Edit campaign draft' : 'Create campaign draft'}
+          </legend>
           <Control
             name="code"
             label="Code"
@@ -553,18 +742,21 @@ function AuthorizedPromoCodeManager({
                 setKind(e.target.value as 'fixed' | 'percentage')
               }
             >
-              <option value="fixed">Fixed</option>
-              <option value="percentage">Percentage</option>
+              <option value="fixed">Fixed NPR amount</option>
+              <option value="percentage">Percentage discount</option>
             </select>
           </div>
           {kind === 'fixed' ? (
             <Control
               name="fixedPaisa"
-              label="Fixed discount (paisa)"
-              type="number"
-              min={1}
+              label="Fixed discount (NPR)"
+              type="text"
+              inputMode="decimal"
+              pattern="[0-9]+([.][0-9]{1,2})?"
               defaultValue={
-                terms?.kind === 'fixed' ? terms.fixedPaisa : undefined
+                terms?.kind === 'fixed'
+                  ? moneyInput(terms.fixedPaisa)
+                  : undefined
               }
               required
             />
@@ -572,23 +764,26 @@ function AuthorizedPromoCodeManager({
             <>
               <Control
                 name="percentBps"
-                label="Percentage (basis points)"
-                type="number"
-                min={1}
-                max={10000}
+                label="Discount percentage (%)"
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9]+([.][0-9]{1,2})?"
                 defaultValue={
-                  terms?.kind === 'percentage' ? terms.percentBps : undefined
+                  terms?.kind === 'percentage'
+                    ? moneyInput(terms.percentBps)
+                    : undefined
                 }
                 required
               />
               <Control
                 name="maxDiscountPaisa"
-                label="Maximum discount (paisa)"
-                type="number"
-                min={1}
+                label="Maximum discount (NPR)"
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9]+([.][0-9]{1,2})?"
                 defaultValue={
                   terms?.kind === 'percentage'
-                    ? terms.maxDiscountPaisa
+                    ? moneyInput(terms.maxDiscountPaisa)
                     : undefined
                 }
                 required
@@ -597,24 +792,27 @@ function AuthorizedPromoCodeManager({
           )}
           <Control
             name="minimumSubtotalPaisa"
-            label="Minimum products subtotal (paisa)"
-            type="number"
-            min={0}
-            defaultValue={terms?.minimumSubtotalPaisa ?? 0}
+            label="Minimum products subtotal (NPR)"
+            type="text"
+            inputMode="decimal"
+            pattern="[0-9]+([.][0-9]{1,2})?"
+            defaultValue={moneyInput(terms?.minimumSubtotalPaisa ?? 0)}
             required
           />
           <Control
             name="startsAt"
-            label="Starts at"
+            label="Starts at (Nepal time)"
             type="datetime-local"
-            defaultValue={terms ? dateInput(terms.startsAt) : undefined}
+            defaultValue={
+              terms ? nepalDateTimeInput(terms.startsAt) : undefined
+            }
             required
           />
           <Control
             name="endsAt"
-            label="Ends at"
+            label="Ends at (Nepal time)"
             type="datetime-local"
-            defaultValue={terms ? dateInput(terms.endsAt) : undefined}
+            defaultValue={terms ? nepalDateTimeInput(terms.endsAt) : undefined}
             required
           />
           <Control
@@ -635,18 +833,26 @@ function AuthorizedPromoCodeManager({
           />
           <Control
             name="budgetPaisa"
-            label="Lifetime budget (paisa)"
-            type="number"
-            min={1}
-            defaultValue={terms?.budgetPaisa}
+            label="Lifetime budget (NPR)"
+            type="text"
+            inputMode="decimal"
+            pattern="[0-9]+([.][0-9]{1,2})?"
+            defaultValue={terms ? moneyInput(terms.budgetPaisa) : undefined}
             required
           />
         </fieldset>
         <p className="text-xs text-muted-foreground">
-          Dates above are UTC. 100 paisa = NPR 1; 100 basis points = 1%. Every
-          campaign must have an end, finite usage limits and a lifetime budget.
-          Saving a draft preserves live financial terms until publication.
+          Enter NPR and percentages with up to two decimal places. Dates use
+          Nepal time (Asia/Kathmandu). Every campaign must have an end, finite
+          usage limits and a lifetime budget. Saving a draft preserves live
+          financial terms until publication.
         </p>
+        <PromoCodeCostPreview
+          terms={previewTerms}
+          error={previewError}
+          defaultCommissionBps={defaultCommissionBps}
+          disabled={pending}
+        />
         <Control
           name="reason"
           label="Reason"
@@ -674,6 +880,13 @@ function AuthorizedPromoCodeManager({
               Pause campaign
             </option>
           </select>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {action === 'draft'
+              ? 'Save your edits as a draft, then publish them separately.'
+              : action === 'publish'
+                ? 'Publish the saved draft revision for new orders. Unsaved edits above are not included.'
+                : 'Pause the published campaign for new orders. Unsaved edits above are not included.'}
+          </p>
         </div>
         {error ? (
           <p
@@ -771,6 +984,9 @@ function AuthorizedPromoCodeManager({
               ))}
             </ul>
           ) : null}
+          <p className="text-xs text-muted-foreground">
+            All usage times are shown in Nepal time (Asia/Kathmandu).
+          </p>
           {history && !history.redemptions.length ? (
             <p>No campaign usage recorded.</p>
           ) : null}
@@ -794,7 +1010,7 @@ function Control({
           props.type === 'number'
             ? 1
             : props.type === 'datetime-local'
-              ? 0.001
+              ? 60
               : undefined
         }
         max={props.type === 'number' ? Number.MAX_SAFE_INTEGER : undefined}

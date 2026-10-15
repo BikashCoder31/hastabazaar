@@ -21,7 +21,7 @@ import {
   listPayoutRequests,
 } from '@/lib/db/repositories/payouts';
 import { PayoutRequestForm } from '@/components/seller/payout-request-form';
-import { getCommissionSetting } from '@/lib/db/repositories/marketplace-settings';
+import { getSellerCommissionTerms } from '@/lib/db/repositories/commission-rates';
 
 export const dynamic = 'force-dynamic';
 const money = (paisa: number) =>
@@ -43,7 +43,7 @@ export default async function SellerFinancePage() {
       listSellerLedger(database, seller.sellerId),
       listSellerPayouts(database, seller.sellerId),
       listPayoutRequests(database, seller.sellerId),
-      getCommissionSetting(database),
+      getSellerCommissionTerms(database, seller.sellerId),
     ]);
   const cards = [
     {
@@ -72,7 +72,7 @@ export default async function SellerFinancePage() {
           remain visible as immutable entries.
         </p>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
-          HastaBazaar charges a {commissionSetting.percent}% commission on the product selling value after
+          HastaBazaar charges a {commissionSetting.basisPoints / 100}% commission on the product selling value after
           seller-funded discounts, excluding separately stated product taxes and
           delivery charges. Discounts funded entirely by HastaBazaar do not
           reduce the seller&apos;s agreed product value. Taxes legally chargeable on
@@ -139,7 +139,7 @@ export default async function SellerFinancePage() {
         <CardContent className="grid gap-4 text-sm sm:grid-cols-4">
           <div>
             <p className="text-muted-foreground">
-              Commission (current rate {commissionSetting.percent}%)
+              Commission (current rate {commissionSetting.basisPoints / 100}%)
             </p>
             <p className="mt-1 font-semibold">
               {money(Math.abs(summary.commissionPaisa))}

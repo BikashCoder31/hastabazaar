@@ -887,6 +887,7 @@ function CheckoutPromoControl({ subtotalPaisa, referralCode, onQuote, onPending,
   {published.message?<p role="alert">{published.message}<Button type="button" onClick={published.refresh}>Refresh promo form</Button></p>:null}
   {quote?<p className="text-xs">Minimum products: {money(quote.minimumSubtotalPaisa)}. Ends {new Date(quote.expiresAt).toLocaleString('en-NP',{timeZone:'Asia/Kathmandu'})}. Live revision {quote.revision}.</p>:null}
   <p className="text-xs text-muted-foreground">Promo and referral discounts cannot be combined.{referralCode.trim()&&quote?' Your promo is selected; the referral code will not be submitted.':''} Delivery remains payable. Apply again to review updated terms.</p>
+  <Link href="/promo-code-terms" className="inline-flex min-h-11 items-center text-sm font-semibold text-primary underline underline-offset-4">Promo code terms</Link>
  </div>;
 }
 

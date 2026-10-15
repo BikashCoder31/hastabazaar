@@ -105,6 +105,13 @@ function configuredAnswers(form: FormData, config: PublishedFormConfig, feedback
 }
 
 async function deliver(db: D1Database, job: FeedbackDeliveryJob): Promise<Response> {
+  const response = await deliverResult(db, job);
+  const result = await response.json() as Record<string, unknown>;
+  // Registration is confirmed independently of SMTP delivery. Exact retries retain this reference.
+  return json({ ...result, registered: true, reference: job.id }, response.status);
+}
+
+async function deliverResult(db: D1Database, job: FeedbackDeliveryJob): Promise<Response> {
   if (job.status === 'sent') return json({ ok: true }, 200);
   // A sending lease is never reclaimed: the mail transport could already have accepted it.
   if (job.status === 'sending') return uncertainDelivery();

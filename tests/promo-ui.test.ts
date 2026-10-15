@@ -493,8 +493,8 @@ void test('finite admin controls, published/draft/version counters and privacy-s
     for (const label of [
       'Total use limit',
       'Per customer use limit',
-      'Lifetime budget (paisa)',
-      'Ends at',
+      'Lifetime budget (NPR)',
+      'Ends at (Nepal time)',
     ])
       assert.equal(await h.page.getByLabel(label).getAttribute('required'), '');
     await h.page.getByText(/Cancellation and refunds do not restore/).waitFor();
