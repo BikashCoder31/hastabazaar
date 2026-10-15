@@ -264,6 +264,7 @@ export default async function OrderReceiptPage({
                         </strong>
                         <span className="text-muted-foreground">
                           Sold by {item.sellerName}
+                          {item.makerName ? <span className="block text-xs">Made by {item.makerName}{item.legalSellerName ? ` · Company seller: ${item.legalSellerName}` : ''}</span> : null}
                         </span>
                         <span className="mt-2 block">
                           <OrderStatusBadge

@@ -10,6 +10,7 @@ import { resolveRuntimeEnvironment } from '@/lib/staging/environment';
 import { isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
+import { getManagedActivationEvidence } from '@/lib/managed-commerce/accepted-terms';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,12 +41,22 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     validatedVersionId = form.versionId;
     // Acceptance time is server-owned; the immutable audit time is reused for exact retries.
     const now = Date.now();
+    const accepted = model === 'managed_sale_linked_percentage_v1'
+      ? await getManagedActivationEvidence(database, id, value('acceptedManagedDetailId')) : null;
+    if (model === 'managed_sale_linked_percentage_v1' && !accepted)
+      return Response.json({ error: 'Current accepted maker terms are required. Reload the maker review.' }, { status: 409 });
+    if (accepted && [['legalSellerReference', accepted.entityReference], ['invoiceIssuerReference', accepted.entityReference],
+      ['agreementVersion', accepted.agreementVersion], ['agreementLanguage', accepted.language]].some(([key, expected]) =>
+        body[key] !== undefined && body[key] !== null && body[key] !== expected))
+      return Response.json({ error: 'Staff cannot replace the maker’s accepted company identity or agreement.' }, { status: 409 });
     await activateManagedMakerForSimulation(database, {
       sellerId: id, actorId: actor.id, model,
-      legalSellerReference: value('legalSellerReference'), invoiceIssuerReference: value('invoiceIssuerReference'),
-      payoutBeneficiaryReference: value('payoutBeneficiaryReference'), agreementVersion: value('agreementVersion'),
-      agreementLanguage: body.agreementLanguage === 'ne' ? 'ne' : 'en',
-      agreementAcceptedAt: now,
+      legalSellerReference: accepted?.entityReference ?? value('legalSellerReference'),
+      invoiceIssuerReference: accepted?.entityReference ?? value('invoiceIssuerReference'),
+      payoutBeneficiaryReference: value('payoutBeneficiaryReference'), agreementVersion: accepted?.agreementVersion ?? value('agreementVersion'),
+      agreementLanguage: accepted?.language ?? (body.agreementLanguage === 'ne' ? 'ne' : 'en'),
+      agreementAcceptedAt: accepted?.acceptedAt ?? now,
+      acceptedManagedDetailId: accepted?.detailId,
       requestId, now, environment,
       form:{requestId,versionId:form.versionId,answers:form.answers},
     });

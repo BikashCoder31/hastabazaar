@@ -51,6 +51,9 @@ interface CartData {
     sellerId: string;
     nameEn: string;
     tradingName: string;
+    participationRoute?: string;
+    storeName?: string | null;
+    legalSellerName?: string | null;
     pricePaisa: number;
     quantity: number;
     preparationDays: number;
@@ -653,6 +656,7 @@ export function CheckoutForm({
                 </strong>
                 <span className="text-muted-foreground">
                   {item.tradingName}
+                  {item.participationRoute === 'managed_maker' ? <span className="block text-xs">Made by this maker · Sold by {item.storeName ?? 'company store — terms review pending'}</span> : null}
                 </span>
               </span>
               <span className="shrink-0 whitespace-nowrap font-semibold">

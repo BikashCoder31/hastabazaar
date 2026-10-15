@@ -32,6 +32,8 @@ import { getCart, getCartId } from './cart';
 import { quoteOrderCredit } from './wallet';
 import { getEffectiveBusinessSetting } from './business-settings';
 import { buildManagedCommercialSnapshot } from '@/lib/managed-commerce/snapshots';
+import { acceptedManagedTermsGuards, getAcceptedManagedTerms, type AcceptedManagedTerms } from '@/lib/managed-commerce/accepted-terms';
+import type { PublicSellingIdentity } from '../../products/selling-identity';
 import type { ManagedMakerCommercialModel } from '@/lib/configuration/types';
 import {
   readDeliveryPricingSnapshot,
@@ -345,6 +347,12 @@ export async function createCodOrder(
       !item.managedAgreementVersion || !item.managedAgreementLanguage || !item.managedAgreementAcceptedAt
     ))
   )) throw new CheckoutConflictError('A Managed Maker item is not active under the configured simulated program.');
+  const acceptedManaged = new Map<string, AcceptedManagedTerms>();
+  for (const sellerId of new Set(items.filter(item => item.commercialModel === 'managed_sale_linked_percentage_v1').map(item => item.sellerId))) {
+    const accepted = await getAcceptedManagedTerms(database, sellerId, now);
+    if (!accepted) throw new CheckoutConflictError('A maker must accept the current company-store terms before a new order.');
+    acceptedManaged.set(sellerId, accepted);
+  }
   if (input.deliveryRateVersion && input.deliveryRateVersion !== rates.version)
     throw new CheckoutConflictError(
       'Delivery rates changed. Reload checkout to review the current total.',
@@ -413,7 +421,7 @@ export async function createCodOrder(
     paymentStatus: 'pending',
     items: items.map((item) => ({
       productName: publicProductName(item.nameEn),
-      sellerName: item.tradingName,
+      sellerName: acceptedManaged.get(item.sellerId)?.snapshot.companyAccount.storeName ?? item.tradingName,
       sku: item.sku,
       unitPricePaisa: item.pricePaisa,
       quantity: item.quantity,
@@ -425,11 +433,30 @@ export async function createCodOrder(
     taxTotalPaisa: 0,
     grandTotalPaisa,
   };
+  const managedCheckoutGuards: D1PreparedStatement[] = [];
+  if (hasManagedItems) {
+    for (const setting of [managedProgram, managedModel, managedRetention, managedHold]) {
+      if (!setting) continue;
+      managedCheckoutGuards.push(...checkedCheckoutGuard(database, `COALESCE((SELECT id FROM business_setting_versions
+        WHERE setting_key=? AND status='published' AND effective_from<=? AND (effective_until IS NULL OR effective_until>?)
+        ORDER BY effective_from DESC,version DESC LIMIT 1),'')=?`, [setting.key, now, now, setting.versionId ?? '']));
+    }
+    for (const item of items.filter(item => item.participationRoute === 'managed_maker')) {
+      managedCheckoutGuards.push(...checkedCheckoutGuard(database, `EXISTS(SELECT 1 FROM seller_participation_profiles
+        WHERE seller_id=? AND participation_route='managed_maker' AND application_stage='active' AND commercial_model=?
+          AND legal_seller_reference=? AND invoice_issuer_reference=? AND payout_beneficiary_reference=?
+          AND managed_agreement_version=? AND managed_agreement_language=? AND managed_agreement_accepted_at=?)`,
+        [item.sellerId, item.commercialModel, item.legalSellerReference, item.invoiceIssuerReference, item.payoutBeneficiaryReference,
+          item.managedAgreementVersion, item.managedAgreementLanguage, item.managedAgreementAcceptedAt]));
+    }
+  }
   const statements: D1PreparedStatement[] = [
+    ...managedCheckoutGuards,
     database.prepare(
       "UPDATE delivery_rate_current SET version_id=version_id WHERE id='default'",
     ),
     ...rateVersionGuard(database, rates.version),
+    ...[...acceptedManaged.values()].flatMap(terms => acceptedManagedTermsGuards(database, terms, now)),
     database
       .prepare(
         `INSERT INTO orders (
@@ -634,7 +661,7 @@ export async function createCodOrder(
           id,
           item.productId,
           item.sellerId,
-          item.tradingName,
+          acceptedManaged.get(item.sellerId)?.snapshot.companyAccount.storeName ?? item.tradingName,
           publicProductName(item.nameEn),
           item.sku,
           item.pricePaisa,
@@ -654,16 +681,17 @@ export async function createCodOrder(
         ),
     );
     if (managed) {
+      const accepted = acceptedManaged.get(item.sellerId);
       const snapshot = buildManagedCommercialSnapshot({
         sellerId: item.sellerId,
         commercialModel: item.commercialModel!,
-        legalSellerReference: item.legalSellerReference!,
-        invoiceIssuerReference: item.invoiceIssuerReference!,
+        legalSellerReference: accepted?.snapshot.companyAccount.entityReference ?? item.legalSellerReference!,
+        invoiceIssuerReference: accepted?.snapshot.companyAccount.entityReference ?? item.invoiceIssuerReference!,
         payoutBeneficiaryReference: item.payoutBeneficiaryReference!,
-        agreementVersion: item.managedAgreementVersion!,
-        agreementLanguage: item.managedAgreementLanguage!,
+        agreementVersion: accepted?.agreementVersion ?? item.managedAgreementVersion!,
+        agreementLanguage: accepted?.language ?? item.managedAgreementLanguage!,
         termsSettingVersionId: item.commercialModel === 'managed_sale_linked_percentage_v1'
-          ? managedRetention!.versionId
+          ? accepted!.settingVersionIds.retention
           : managedModel!.versionId,
         deliveryHoldDays: managedHold!.value,
         holdSettingVersionId: managedHold!.versionId,
@@ -671,8 +699,12 @@ export async function createCodOrder(
         makerFundedDiscountPaisa: sellerDiscountPaisa,
         platformFundedDiscountPaisa: platformDiscountPaisa,
         platformRetentionBps: item.commercialModel === 'managed_sale_linked_percentage_v1'
-          ? managedRetention!.value
+          ? accepted!.retentionBps
           : 0,
+        acceptedManagedDetailId: accepted?.detailId ?? null,
+        makerName: item.tradingName,
+        storeName: accepted?.snapshot.companyAccount.storeName ?? null,
+        legalSellerName: accepted?.snapshot.company.legalName ?? null,
       });
       const snapshotId = crypto.randomUUID();
       statements.push(
@@ -683,8 +715,9 @@ export async function createCodOrder(
           hold_setting_version_id,product_value_paisa,
           maker_funded_discount_paisa,platform_funded_discount_paisa,eligible_base_paisa,
           platform_retention_bps,platform_retained_paisa,maker_entitlement_paisa,
-          agreed_supplier_amount_paisa,simulation_label,created_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+          agreed_supplier_amount_paisa,simulation_label,created_at,accepted_managed_detail_id,
+          maker_name_snapshot,company_store_name_snapshot,company_legal_name_snapshot
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
           snapshotId, orderItemId, snapshot.sellerId, snapshot.participationRoute,
           snapshot.commercialModel, snapshot.legalSellerReference, snapshot.invoiceIssuerReference,
           snapshot.payoutBeneficiaryReference, snapshot.agreementVersion, snapshot.agreementLanguage,
@@ -692,7 +725,8 @@ export async function createCodOrder(
           snapshot.productValuePaisa, snapshot.makerFundedDiscountPaisa,
           snapshot.platformFundedDiscountPaisa, snapshot.eligibleBasePaisa, snapshot.platformRetentionBps,
           snapshot.platformRetainedPaisa, snapshot.makerEntitlementPaisa,
-          snapshot.agreedSupplierAmountPaisa, snapshot.simulationLabel, now,
+          snapshot.agreedSupplierAmountPaisa, snapshot.simulationLabel, now, snapshot.acceptedManagedDetailId,
+          snapshot.makerName, snapshot.storeName, snapshot.legalSellerName,
         ),
       );
       if (snapshot.commercialModel === 'managed_sale_linked_percentage_v1') statements.push(
@@ -889,7 +923,7 @@ export async function createCodOrder(
   return checkoutResult;
 }
 
-export interface OrderReceiptItem {
+export interface OrderReceiptItem extends Partial<PublicSellingIdentity> {
   id: string;
   productName: string;
   sellerName: string;
@@ -1019,6 +1053,9 @@ export async function getOrderReceipt(
       .prepare(
         `SELECT order_items.id, order_items.product_name_snapshot AS productName,
         order_items.seller_name_snapshot AS sellerName,
+        (SELECT maker_name_snapshot FROM managed_commercial_snapshots WHERE order_item_id=order_items.id) AS makerName,
+        (SELECT company_store_name_snapshot FROM managed_commercial_snapshots WHERE order_item_id=order_items.id) AS storeName,
+        (SELECT company_legal_name_snapshot FROM managed_commercial_snapshots WHERE order_item_id=order_items.id) AS legalSellerName,
         order_items.unit_price_paisa AS unitPricePaisa, order_items.quantity,
         order_items.line_total_paisa AS lineTotalPaisa,
         order_items.return_eligible_snapshot AS returnEligible,

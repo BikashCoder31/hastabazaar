@@ -345,7 +345,7 @@ const STAFF_OPERATION_KEYS = Object.freeze({
   'staff.product-classification': ['productId', 'categoryId', 'occasionIds', 'idempotencyKey', 'requestId', 'formVersion', 'customAnswers'],
   'staff.exception-work': ['action', 'id', 'version', 'job', 'jobId', 'kind', 'cash', 'cashRecordId', 'owner', 'ownerId', 'next', 'nextAction', 'note', 'resolve', 'evidence', 'sourceReviewed', 'obligationsReviewed', 'followupComplete', 'requestId', 'formVersion', 'customAnswers'],
   'staff.invoice-adjustment': ['invoiceId', 'kind', 'amount', 'amountPaisa', 'reasonCode', 'note', 'requestId', 'formVersion', 'customAnswers'],
-  'staff.managed-maker-activation': ['sellerId', 'model', 'legalSellerReference', 'invoiceIssuerReference', 'payoutBeneficiaryReference', 'agreementVersion', 'agreementLanguage', 'agreementAcceptedAt', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.managed-maker-activation': ['sellerId', 'model', 'legalSellerReference', 'invoiceIssuerReference', 'payoutBeneficiaryReference', 'agreementVersion', 'agreementLanguage', 'agreementAcceptedAt', 'acceptedManagedDetailId', 'requestId', 'formVersion', 'customAnswers'],
   'staff.managed-supply-decision': ['action', 'recordId', 'decision', 'quantityAccepted', 'possessionStatus', 'qualityStatus', 'ownershipRecordStatus', 'riskRecordStatus', 'evidenceReference', 'reason', 'requestId', 'formVersion', 'customAnswers'],
   'staff.managed-adjustment': ['action', 'recordId', 'kind', 'amountNpr', 'amountPaisa', 'reason', 'requestId', 'formVersion', 'customAnswers'],
   'staff.managed-payment-preparation': ['action', 'recordId', 'destinationReference', 'requestId', 'formVersion', 'customAnswers'],

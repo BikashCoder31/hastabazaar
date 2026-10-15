@@ -4,7 +4,7 @@ import { managedIdentityDocument, managedIdentityFields } from './managed-identi
 import { parseSellerApplication } from '../../lib/sellers/application';
 import { createSellerApplication } from '../../lib/db/repositories/seller-applications';
 
-export const makerNow = 1_800_000_000_000;
+export const makerNow = Date.now() - 60_000;
 export async function companyStoreMakerFixture() {
   const fixture = await incentiveReportDatabase();
   const { sqlite, db } = fixture;

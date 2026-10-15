@@ -53,6 +53,8 @@ export function inspectReadinessUpgrade(sqlite, actorId) {
   const expected = [
     ['managed_maker_application_details', 'agreement_language'], ['managed_maker_application_details', 'agreement_form_version_id'],
     ['seller_participation_profiles', 'accepted_managed_detail_id'], ['managed_commercial_snapshots', 'accepted_managed_detail_id'],
+    ['managed_commercial_snapshots', 'maker_name_snapshot'], ['managed_commercial_snapshots', 'company_store_name_snapshot'],
+    ['managed_commercial_snapshots', 'company_legal_name_snapshot'],
     ['seller_route_transition_applications', 'registered_terms_snapshot_json'],
   ].map(([table, column]) => sqlite.prepare(`PRAGMA table_info(${quote(table)})`).all().some(row => row.name === column));
   if ((upgraded || hasAllocations || expected.some(Boolean)) && !(hasAllocations && expected.every(Boolean)))

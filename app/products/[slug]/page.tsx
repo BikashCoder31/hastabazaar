@@ -151,7 +151,7 @@ export default async function ProductPage({
                 className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
               >
                 <Store className="size-4" />
-                By {product.tradingName}
+                {product.participationRoute === 'managed_maker' ? 'Made by' : 'By'} {product.tradingName}
               </Link>
               {reviews.length ? (
                 <Link
@@ -201,15 +201,16 @@ export default async function ProductPage({
             </p>
             <dl className="mt-6 grid gap-5 rounded-2xl border bg-card p-5 text-base sm:grid-cols-2">
               <div>
-                <dt className="font-semibold">{product.producer ? 'Maker or brand' : 'Seller'}</dt>
+                <dt className="font-semibold">{product.participationRoute === 'managed_maker' ? 'Maker and company seller' : product.producer ? 'Maker or brand' : 'Seller'}</dt>
                 <dd className="mt-1 text-muted-foreground">
-                  {product.producer ? product.producer + ' · sold by ' : 'Sold by '}
+                  {product.participationRoute === 'managed_maker' ? 'Made by ' : product.producer ? product.producer + ' · sold by ' : 'Sold by '}
                   <Link
                     href={`/makers/${product.sellerId}`}
                     className="font-semibold text-primary hover:underline"
                   >
                     {product.tradingName}
                   </Link>
+                  {product.participationRoute === 'managed_maker' ? <span className="mt-2 block">Sold by {product.storeName ?? 'company store — terms review pending'}{product.legalSellerName ? ` · ${product.legalSellerName}` : ''}</span> : null}
                 </dd>
               </div>
               <div>

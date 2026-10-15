@@ -13,6 +13,7 @@ import { issueManagedInvoiceAdjustment } from '../lib/db/repositories/managed-do
 import { SIMULATED_RECORD_LABEL } from '../lib/staging/environment';
 import { resolveRuntimeEnvironment } from '../lib/staging/environment';
 import { activateManagedMakerForSimulation } from '../lib/managed-commerce/activation';
+import { addActivationContractEvidence } from './helpers/activation-contract-fixture';
 import { operateParcel } from '../lib/operations/parcels';
 import { processPayoutRequest } from '../lib/db/repositories/payouts';
 import { operateDataRightsRequest } from '../lib/db/repositories/operations';
@@ -69,7 +70,7 @@ declare global {
 }
 registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier === 'cloudflare:workers') return { url: 'data:text/javascript,export const env={get DB(){return globalThis.staffCatalogDb},HASTABAZAAR_RUNTIME_ENV:"test",APP_ORIGIN:"http://localhost:3000"}', shortCircuit: true };
-  if (specifier === '@/lib/db/repositories/business-settings') return { url: 'data:text/javascript,export async function getEffectiveBusinessSetting(database,key){return {value:key==="managed_adjustment_reason_codes"?["correction"]:key==="managed_maker_active_model"?"managed_sale_linked_percentage_v1":"activation_enabled"}}', shortCircuit: true };
+  if (specifier === '@/lib/db/repositories/business-settings') return { url: 'data:text/javascript,export async function getEffectiveBusinessSetting(database,key){return {key,versionId:key+"-v1",value:key==="managed_adjustment_reason_codes"?["correction"]:key==="managed_maker_active_model"?"managed_sale_linked_percentage_v1":"activation_enabled"}}', shortCircuit: true };
   if (specifier === '@/lib/auth/staff') return { url: `data:text/javascript,
     export class StaffAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}}
     export async function requireStaffApi(){if(!globalThis.staffCatalogActor)throw new StaffAuthorizationError('Staff access required.',403);return globalThis.staffCatalogActor}`, shortCircuit: true };
@@ -152,6 +153,7 @@ function fixture(fields: unknown[] = [{ id: 'context_note', key: 'context_note',
     sqlite.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
       VALUES (?, ?,1,1,'published',?,'Fixture','admin',1,'admin',1,'admin',1,?)`)
       .run(`${formId}-v1`, formId, JSON.stringify({ formId, fields }), `seed-${formId}`);
+  addActivationContractEvidence(sqlite);
   const database = new Database(sqlite) as unknown as D1Database;
   globalThis.staffCatalogDb = database;
   globalThis.staffCatalogActor = { id: 'admin', role: 'super_admin' };
@@ -550,8 +552,8 @@ void test('managed-maker activation stores one contextual answer only for a succ
   const { sqlite, database } = fixture();
   try {
     const options = { sellerId: 'seller-one', actorId: 'admin', model: 'managed_sale_linked_percentage_v1' as const,
-      legalSellerReference: 'SIM-LEGAL', invoiceIssuerReference: 'SIM-ISSUER',
-      payoutBeneficiaryReference: 'SIM-PAYOUT', agreementVersion: 'SIM-AGREEMENT', agreementLanguage: 'en' as const,
+      legalSellerReference: 'hastabazaar-company-406171-83-84', invoiceIssuerReference: 'hastabazaar-company-406171-83-84',
+      payoutBeneficiaryReference: 'SIM-PAYOUT', acceptedManagedDetailId: 'activation-accepted-detail', agreementVersion: 'managed-maker-sale-linked-2026-10-13-v1', agreementLanguage: 'en' as const,
       agreementAcceptedAt: 100, requestId: 'maker-activation-one', now: 200,
       environment: resolveRuntimeEnvironment({ runtimeEnvironment: 'test' }),
       form: answer('staff.managed-maker-activation', 'maker-activation-one') };
@@ -571,8 +573,8 @@ void test('managed-maker stage race rolls back activation audit and answer', asy
   const { sqlite, database } = fixture();
   try {
     const options = { sellerId: 'seller-one', actorId: 'admin', model: 'managed_sale_linked_percentage_v1' as const,
-      legalSellerReference: 'SIM-LEGAL', invoiceIssuerReference: 'SIM-ISSUER',
-      payoutBeneficiaryReference: 'SIM-PAYOUT', agreementVersion: 'SIM-AGREEMENT', agreementLanguage: 'en' as const,
+      legalSellerReference: 'hastabazaar-company-406171-83-84', invoiceIssuerReference: 'hastabazaar-company-406171-83-84',
+      payoutBeneficiaryReference: 'SIM-PAYOUT', acceptedManagedDetailId: 'activation-accepted-detail', agreementVersion: 'managed-maker-sale-linked-2026-10-13-v1', agreementLanguage: 'en' as const,
       agreementAcceptedAt: 100, requestId: 'maker-activation-race', now: 200,
       environment: resolveRuntimeEnvironment({ runtimeEnvironment: 'test' }),
       form: answer('staff.managed-maker-activation', 'maker-activation-race') };
@@ -588,9 +590,9 @@ void test('managed-maker route validates published context without accepting pro
   try {
     const { POST } = await import('../app/api/admin/managed-makers/[id]/activate/route');
     const target = { params: Promise.resolve({ id: 'seller-one' }) };
-    const body = { model: 'managed_sale_linked_percentage_v1', legalSellerReference: 'SIM-LEGAL',
-      invoiceIssuerReference: 'SIM-ISSUER', payoutBeneficiaryReference: 'SIM-PAYOUT',
-      agreementVersion: 'SIM-AGREEMENT', agreementLanguage: 'en', agreementAcceptedAt: 100,
+    const body = { model: 'managed_sale_linked_percentage_v1', legalSellerReference: 'hastabazaar-company-406171-83-84',
+      invoiceIssuerReference: 'hastabazaar-company-406171-83-84', payoutBeneficiaryReference: 'SIM-PAYOUT',
+      acceptedManagedDetailId: 'activation-accepted-detail', agreementVersion: 'managed-maker-sale-linked-2026-10-13-v1', agreementLanguage: 'en', agreementAcceptedAt: 100,
       requestId: 'maker-route-one', formVersion: 1, customAnswers: [{fieldId:'context_note',value:'Reviewed activation terms'}] };
     const request = (value: unknown) => new Request('http://localhost:3000/api/admin/managed-makers/seller-one/activate', {
       method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' }, body: JSON.stringify(value),
@@ -837,8 +839,8 @@ void test('every staff operation route reports a commit-time publication race as
     { id: 'staff.managed-maker-activation', setup: fixture,
       run: async () => (await import('../app/api/admin/managed-makers/[id]/activate/route')).POST(
         request('/api/admin/managed-makers/seller-one/activate', { model: 'managed_sale_linked_percentage_v1',
-          legalSellerReference: 'SIM-LEGAL', invoiceIssuerReference: 'SIM-ISSUER', payoutBeneficiaryReference: 'SIM-PAYOUT',
-          agreementVersion: 'SIM-AGREEMENT', agreementLanguage: 'en', requestId: 'race-maker',
+          legalSellerReference: 'hastabazaar-company-406171-83-84', invoiceIssuerReference: 'hastabazaar-company-406171-83-84', payoutBeneficiaryReference: 'SIM-PAYOUT',
+          acceptedManagedDetailId: 'activation-accepted-detail', agreementVersion: 'managed-maker-sale-linked-2026-10-13-v1', agreementLanguage: 'en', requestId: 'race-maker',
           formVersion: 1, customAnswers }), { params: Promise.resolve({ id: 'seller-one' }) }) },
     { id: 'staff.parcel-control', setup: fixture,
       run: async () => (await import('../app/api/admin/orders/[id]/parcels/route')).POST(
@@ -925,7 +927,7 @@ void test('mounted staff marketplace, parcel, and payout forms send published co
         <ExceptionWorkForm jobs={[{id:'job-one',status:'delivery_failed'}]} owners={[]} finance={false} />
         <InvoiceAdjustmentForm invoices={[{id:'invoice-one',invoiceNumber:'SIM-INV-1',issuerReference:'SIM-ISSUER',adjustmentCount:0}]}
           reasonCodes={['correction']} />
-        <ManagedMakerActivationForm sellerId="seller-one" />
+        <ManagedMakerActivationForm sellerId="seller-one" acceptedTerms={{detailId:'activation-accepted-detail',retentionBps:900,agreementVersion:'managed-maker-sale-linked-2026-10-13-v1'}} />
         <ParcelControls orderId="order-one" actorId="admin" canPrepare={false} records={[]} compensation={[]}
           parcels={[{id:'job-one',orderId:'order-one',sellerId:'seller-one',sellerName:'Maker',status:'pickup_requested',
             codDuePaisa:1000,collectedPaisa:0,remittedPaisa:0,version:0,method:'courier',riderUserId:null,
@@ -1037,6 +1039,7 @@ void test('mounted staff marketplace, parcel, and payout forms send published co
     assert.equal(invoiceBodies[0].formVersion, 1);
     assert.deepEqual(invoiceBodies[0].customAnswers, [{ fieldId: 'context_note', value: 'Reviewed financial evidence' }]);
     const activation = page.locator('form[data-form-id="staff.managed-maker-activation"]');
+    await activation.getByLabel('Reviewed receiving reference for this local simulation').fill('SIM-REVIEWED-RECEIVING');
     assert.equal(await activation.count(), 1);
     await activation.getByLabel('Staff context').fill('Reviewed fictional agreement');
     await activation.getByRole('button', { name: 'Activate simulated route' }).click();

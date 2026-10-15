@@ -4,6 +4,7 @@ import { businessNotificationStatements } from '../../operations/business-notifi
 import type { FeaturedProduct } from '@/lib/catalog/featured-products';
 import { createProductSku } from '@/lib/products/submission';
 import { publicProductEligibility } from '@/lib/products/eligibility';
+import { publicSellingIdentityColumns, type PublicSellingIdentity } from '../../products/selling-identity';
 import { productTransitions } from '@/lib/marketplace/workflows';
 import type { ProductStatus } from '@/lib/marketplace/types';
 import type {
@@ -1355,7 +1356,7 @@ export async function reviewProduct(
   return transition.to;
 }
 
-export interface PublicProductRow {
+export interface PublicProductRow extends Partial<PublicSellingIdentity> {
   id: string;
   sellerId: string;
   slug: string;
@@ -1402,7 +1403,7 @@ export interface PublicCatalogueFilters {
   sort?: 'newest' | 'price-low' | 'price-high' | 'name';
 }
 
-interface HomepageProductQueryRow {
+interface HomepageProductQueryRow extends Partial<PublicSellingIdentity> {
   slug: string;
   name: string;
   pricePaisa: number;
@@ -1464,6 +1465,7 @@ function homepageProduct(
     image: `/api/product-media/${row.mediaId}`,
     imageAlt: publicProductName(row.name),
     tradingName: row.tradingName,
+    makerName: row.makerName, storeName: row.storeName, legalSellerName: row.legalSellerName, participationRoute: row.participationRoute,
     label,
   };
 }
@@ -1482,7 +1484,7 @@ export async function listHomepagePromotedProducts(
   homepageLimit(limit);
   const result = await database
     .prepare(
-      `SELECT products.slug, products.name_en AS name, products.price_paisa AS pricePaisa, products.compare_at_price_paisa AS compareAtPricePaisa,
+      `SELECT ${publicSellingIdentityColumns()}, products.slug, products.name_en AS name, products.price_paisa AS pricePaisa, products.compare_at_price_paisa AS compareAtPricePaisa,
       categories.name_en AS category, seller_profiles.trading_name AS tradingName,
       homepage_media.id AS mediaId
      FROM promotions
@@ -1498,7 +1500,7 @@ export async function listHomepagePromotedProducts(
      )
      WHERE promotions.status = 'active' AND promotions.placement = 'homepage'
        AND promotions.starts_at <= ? AND promotions.ends_at > ?
-       AND ${publicProductEligibility()} AND seller_profiles.status = 'approved'
+       AND ${publicProductEligibility()}
        AND categories.is_active = 1 AND products.inventory_quantity > 0
        AND NOT EXISTS (
          SELECT 1 FROM homepage_product_controls
@@ -1533,7 +1535,7 @@ export async function listActiveHomepagePromotions(
        INNER JOIN categories ON categories.id = products.category_id
        WHERE promotions.status = 'active' AND promotions.placement = 'homepage'
          AND promotions.starts_at <= ? AND promotions.ends_at > ?
-         AND ${publicProductEligibility()} AND seller_profiles.status = 'approved'
+         AND ${publicProductEligibility()}
          AND categories.is_active = 1 AND products.inventory_quantity > 0
          AND NOT EXISTS (
            SELECT 1 FROM homepage_product_controls
@@ -1567,7 +1569,7 @@ export async function listHomepageLatestProducts(
   homepageLimit(limit);
   const result = await database
     .prepare(
-      `SELECT products.slug, products.name_en AS name,
+      `SELECT ${publicSellingIdentityColumns()}, products.slug, products.name_en AS name,
         products.price_paisa AS pricePaisa,
         products.compare_at_price_paisa AS compareAtPricePaisa,
         categories.name_en AS category, seller_profiles.trading_name AS tradingName,
@@ -1581,7 +1583,7 @@ export async function listHomepageLatestProducts(
            AND candidate_media.mime_type LIKE 'image/%'
          ORDER BY candidate_media.sort_order ASC, candidate_media.id ASC LIMIT 1
        )
-       WHERE ${publicProductEligibility()} AND seller_profiles.status = 'approved'
+       WHERE ${publicProductEligibility()}
          AND categories.is_active = 1 AND products.inventory_quantity > 0
          AND products.published_at IS NOT NULL
          AND NOT EXISTS (
@@ -1609,7 +1611,7 @@ export async function listHomepageTopProducts(
   const since = now - windowDays * 86_400_000;
   const result = await database
     .prepare(
-      `SELECT products.slug, products.name_en AS name,
+      `SELECT ${publicSellingIdentityColumns()}, products.slug, products.name_en AS name,
         products.price_paisa AS pricePaisa,
         products.compare_at_price_paisa AS compareAtPricePaisa,
         categories.name_en AS category, seller_profiles.trading_name AS tradingName,
@@ -1629,7 +1631,7 @@ export async function listHomepageTopProducts(
        WHERE orders.status = 'delivered' AND orders.delivered_at IS NOT NULL
          AND orders.delivered_at >= ? AND orders.delivered_at <= ?
          AND order_items.fulfillment_status = 'delivered'
-         AND ${publicProductEligibility()} AND seller_profiles.status = 'approved'
+         AND ${publicProductEligibility()}
          AND categories.is_active = 1 AND products.inventory_quantity > 0
          AND NOT EXISTS (
            SELECT 1 FROM homepage_product_controls
@@ -1924,7 +1926,6 @@ export async function listPublishedProducts(
   if (!orderBy) throw new RangeError('Catalogue sort is invalid.');
   const conditions = [
     `${publicProductEligibility()}`,
-    `seller_profiles.status = 'approved'`,
     `categories.is_active = 1`,
   ];
   const bindings: Array<string | number> = [];
@@ -1984,7 +1985,7 @@ export async function listPublishedProducts(
   if (sort === 'newest') bindings.push(Date.now(), Date.now());
   const result = await database
     .prepare(
-      `SELECT products.id, products.slug, products.name_en AS nameEn,
+      `SELECT ${publicSellingIdentityColumns()}, products.id, products.slug, products.name_en AS nameEn,
         products.seller_id AS sellerId,
         products.name_ne AS nameNe, products.description_en AS descriptionEn,
         products.price_paisa AS pricePaisa,
@@ -2025,7 +2026,6 @@ export async function countPublishedProducts(
 ): Promise<number> {
   const conditions = [
     `${publicProductEligibility()}`,
-    `seller_profiles.status = 'approved'`,
     `categories.is_active = 1`,
   ];
   const bindings: Array<string | number> = [];
@@ -2078,10 +2078,10 @@ export async function countPublishedProducts(
 export async function getPublishedProductBySlug(
   database: D1Database,
   slug: string,
-): Promise<(PublicProductRow & { media: readonly ProductMediaRow[] }) | null> {
+): Promise<(PublicProductRow & PublicSellingIdentity & { media: readonly ProductMediaRow[] }) | null> {
   const product = await database
     .prepare(
-      `SELECT products.id, products.slug, products.name_en AS nameEn,
+      `SELECT ${publicSellingIdentityColumns()}, products.id, products.slug, products.name_en AS nameEn,
         products.seller_id AS sellerId,
         products.name_ne AS nameNe, products.description_en AS descriptionEn,
         products.price_paisa AS pricePaisa,
@@ -2111,7 +2111,7 @@ export async function getPublishedProductBySlug(
        WHERE products.slug = ? AND ${publicProductEligibility()} LIMIT 1`,
     )
     .bind(slug)
-    .first<PublicProductRow>();
+    .first<PublicProductRow & PublicSellingIdentity>();
   if (!product) return null;
   const media = await database
     .prepare(

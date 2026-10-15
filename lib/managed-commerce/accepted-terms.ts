@@ -17,6 +17,28 @@ export type AcceptedManagedTerms = ManagedTermsOffer & Readonly<{
   detailId: string; sellerId: string; acceptedBy: string; acceptedAt: number; formVersionId: string | null;
 }>;
 
+/** Native transaction guards for activation and new sales; historical snapshots never change. */
+export function acceptedManagedTermsGuards(db: D1Database, terms: AcceptedManagedTerms, now: number) {
+  const id = crypto.randomUUID();
+  const statements = [db.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN EXISTS(
+    SELECT 1 FROM managed_maker_application_details d JOIN seller_profiles s ON s.id=d.seller_id
+    JOIN users u ON u.id=s.user_id JOIN seller_documents document ON document.id=d.identity_document_id
+    WHERE d.id=? AND d.seller_id=? AND d.agreement_accepted_by=s.user_id AND u.status='active'
+      AND d.agreement_accepted_at<=? AND document.seller_id=s.id AND document.status<>'rejected'
+      AND NOT EXISTS(SELECT 1 FROM seller_restrictions r WHERE r.seller_id=s.id
+        AND (r.mode='disabled' OR (r.mode='suspended' AND r.suspended_until>?)))) THEN 1 ELSE 0 END`)
+    .bind(id, terms.detailId, terms.sellerId, now, now), db.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(id)];
+  for (const [key, versionId] of [[accountKey, terms.settingVersionIds.account], [retentionKey, terms.settingVersionIds.retention]]) {
+    const sourceId = `${id}:${key}`;
+    statements.push(db.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN
+      COALESCE((SELECT id FROM business_setting_versions WHERE setting_key=? AND status='published'
+        AND effective_from<=? AND (effective_until IS NULL OR effective_until>?) ORDER BY effective_from DESC,version DESC LIMIT 1),'')=?
+      THEN 1 ELSE 0 END`).bind(sourceId, key, now, now, versionId ?? ''),
+      db.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(sourceId));
+  }
+  return statements;
+}
+
 async function offerAt(db: D1Database, at: number): Promise<ManagedTermsOffer> {
   const [account, retention] = await Promise.all([
     getEffectiveBusinessSetting(db, accountKey, at), getEffectiveBusinessSetting(db, retentionKey, at),
@@ -74,7 +96,19 @@ export async function getAcceptedManagedTerms(db: D1Database, sellerId: string, 
   return null;
 }
 
+/** A retained activation retry can use immutable evidence after settings change. */
+export async function getManagedActivationEvidence(db: D1Database, sellerId: string, detailId: string) {
+  const row = await db.prepare(`SELECT agreement_snapshot_json AS snapshotJson,agreement_version AS agreementVersion,
+    agreement_accepted_at AS acceptedAt FROM managed_maker_application_details WHERE id=? AND seller_id=?`)
+    .bind(detailId, sellerId).first<{ snapshotJson: string; agreementVersion: string; acceptedAt: number }>();
+  if (!row) return null;
+  const snapshot = JSON.parse(row.snapshotJson) as Agreement;
+  return { detailId, entityReference: snapshot.companyAccount.entityReference, agreementVersion: row.agreementVersion,
+    acceptedAt: row.acceptedAt, language: 'en' as const };
+}
+
 type Acceptance = {
+  // Only the server adapter supplies the validated publication snapshot.
   sellerId: string; actorId: string; offerId: string; context: string; language: 'en'; requestId: string; now: number;
   form: { versionId: string; answers: FormAnswerSnapshot };
 };

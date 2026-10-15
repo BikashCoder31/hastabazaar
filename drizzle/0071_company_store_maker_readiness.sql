@@ -3,6 +3,9 @@ ALTER TABLE managed_maker_application_details ADD COLUMN agreement_language TEXT
 ALTER TABLE managed_maker_application_details ADD COLUMN agreement_form_version_id TEXT REFERENCES form_config_versions(id);
 ALTER TABLE seller_participation_profiles ADD COLUMN accepted_managed_detail_id TEXT REFERENCES managed_maker_application_details(id);
 ALTER TABLE managed_commercial_snapshots ADD COLUMN accepted_managed_detail_id TEXT REFERENCES managed_maker_application_details(id);
+ALTER TABLE managed_commercial_snapshots ADD COLUMN maker_name_snapshot TEXT;
+ALTER TABLE managed_commercial_snapshots ADD COLUMN company_store_name_snapshot TEXT;
+ALTER TABLE managed_commercial_snapshots ADD COLUMN company_legal_name_snapshot TEXT;
 ALTER TABLE seller_route_transition_applications ADD COLUMN registered_terms_snapshot_json TEXT CHECK(registered_terms_snapshot_json IS NULL OR json_valid(registered_terms_snapshot_json));
 
 CREATE TABLE managed_payout_allocations (

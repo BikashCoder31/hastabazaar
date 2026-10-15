@@ -1,5 +1,6 @@
 import { publicProductEligibility } from '@/lib/products/eligibility';
 import { publicProductName } from '@/lib/products/truthful-presentation';
+import { publicSellingIdentityColumns, type PublicSellingIdentity } from '../../products/selling-identity';
 const CART_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_ITEM_QUANTITY = 10;
 const MAX_CART_LINES = 20;
@@ -10,7 +11,7 @@ interface CartRow {
   id: string;
 }
 
-export interface CartItemRow {
+export interface CartItemRow extends Partial<PublicSellingIdentity> {
   id: string;
   productId: string;
   sellerId: string;
@@ -67,7 +68,7 @@ export async function getCart(database: D1Database, tokenHash: string): Promise<
   if (!cart) return { items: [], itemSubtotalPaisa: 0, itemCount: 0, hasUnavailableItems: false };
   const result = await database
     .prepare(
-      `SELECT cart_items.id, cart_items.product_id AS productId,
+      `SELECT ${publicSellingIdentityColumns()}, cart_items.id, cart_items.product_id AS productId,
         products.seller_id AS sellerId,
         products.slug, products.name_en AS nameEn, products.name_ne AS nameNe,
         seller_profiles.trading_name AS tradingName,

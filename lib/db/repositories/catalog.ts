@@ -1,5 +1,6 @@
 import { publicProductEligibility } from '@/lib/products/eligibility';
-export interface PublicProductRow {
+import { publicSellingIdentityColumns, type PublicSellingIdentity } from '../../products/selling-identity';
+export interface PublicProductRow extends Partial<PublicSellingIdentity> {
   id: string;
   slug: string;
   nameEn: string;
@@ -27,7 +28,7 @@ export async function listPublishedProducts(
 
   const result = await database
     .prepare(
-      `SELECT
+      `SELECT ${publicSellingIdentityColumns()},
         products.id,
         products.slug,
         products.name_en AS nameEn,
@@ -45,12 +46,11 @@ export async function listPublishedProducts(
       INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
       INNER JOIN categories ON categories.id = products.category_id
       WHERE products.status = ? AND ${publicProductEligibility()}
-        AND seller_profiles.status = ?
         AND categories.is_active = 1
       ORDER BY products.published_at DESC, products.id ASC
       LIMIT ?`,
     )
-    .bind('published', 'approved', limit)
+    .bind('published', limit)
     .all<PublicProductRow>();
 
   return result.results;

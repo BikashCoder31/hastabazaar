@@ -17,6 +17,7 @@ import {
 
 import { SellerReviewActions } from '@/components/admin/seller-review-actions';
 import { ManagedMakerActivationForm } from '@/components/admin/managed-maker-activation-form';
+import { getAcceptedManagedTerms } from '@/lib/managed-commerce/accepted-terms';
 import { ManagedProgramReview } from '@/components/admin/managed-program-review';
 import { SellerGovernanceActions } from '@/components/admin/seller-governance-actions';
 import { StatusBadge } from '@/components/admin/status-badge';
@@ -79,6 +80,8 @@ export default async function SellerApplicationPage({
     ? await Promise.all([getManagedMakerDetailsForReview(database,id,staff.id),getManagedMakerApplicationTerms(database)]) : [null,null];
   const governance = await getSellerGovernance(database, id);
   const managedProgram = await getManagedProgramWorkspace(database, id);
+  const acceptedManagedTerms = application.participationRoute === 'managed_maker'
+    ? await getAcceptedManagedTerms(database, id, Date.now()) : null;
 
   return (
     <div className="space-y-7">
@@ -392,7 +395,7 @@ export default async function SellerApplicationPage({
                 applicationStage={application.applicationStage}
               />
               {application.participationRoute === 'managed_maker' && application.applicationStage === 'approved_for_activation' ? (
-                <div className="mt-5"><ManagedMakerActivationForm sellerId={application.id} companyAccount={managedTerms?.account}/></div>
+                <div className="mt-5"><ManagedMakerActivationForm sellerId={application.id} companyAccount={managedTerms?.account} acceptedTerms={acceptedManagedTerms ? { detailId: acceptedManagedTerms.detailId, retentionBps: acceptedManagedTerms.retentionBps, agreementVersion: acceptedManagedTerms.agreementVersion } : null}/></div>
               ) : null}
             </CardContent>
           </Card>
