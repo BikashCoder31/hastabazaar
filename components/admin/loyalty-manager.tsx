@@ -32,6 +32,7 @@ import {
   validateWeeklyPoints,
 } from '@/lib/incentives/loyalty-policy';
 import { incentiveMoney as money } from '@/lib/incentives/presentation';
+import {isLoyaltySettingsAction,type LoyaltySettingsAction} from '@/lib/forms/incentive-workspace-contracts';
 import type {
   LoyaltyState,
   LoyaltyTerms,
@@ -76,8 +77,9 @@ const baseKeys = [
   'lifetimeBudgetPoints',
   'reason',
 ];
-type Action = 'draft' | 'publish' | 'pause';
-interface Attempt {
+type Action = LoyaltySettingsAction;
+type ScheduleMetadata=Pick<LoyaltyState,'scheduledRevision'|'scheduledFor'|'scheduledTerms'|'scheduledUnpause'|'scheduleBlockedReason'>;
+interface Attempt extends ScheduleMetadata {
   action: Action;
   expectedVersion: number;
   formVersion: number;
@@ -88,6 +90,7 @@ interface Attempt {
   originalConfig: PublishedFormConfig;
   sourceRevision: number;
   publishedRevision: number;
+  publishedTerms:LoyaltyTerms;
   paused: boolean;
   digest: string;
 }
@@ -161,6 +164,15 @@ function sameTerms(a: LoyaltyTerms, b: LoyaltyTerms) {
     )
   );
 }
+function validSchedule(value:ScheduleMetadata) {
+  if(typeof value.scheduledUnpause!=='boolean'||!(value.scheduleBlockedReason===null||typeof value.scheduleBlockedReason==='string'&&value.scheduleBlockedReason.length>0&&value.scheduleBlockedReason.length<=1000))return false;
+  return value.scheduledRevision===null ? value.scheduledFor===null&&value.scheduledTerms===null&&!value.scheduledUnpause&&value.scheduleBlockedReason===null :
+    integer(value.scheduledRevision,1)&&integer(value.scheduledFor)&&value.scheduledTerms!==null&&validTerms(value.scheduledTerms)&&value.scheduledTerms.startsAt===value.scheduledFor;
+}
+function samePending(a:ScheduleMetadata,b:ScheduleMetadata,unpause=b.scheduledUnpause) {
+  return a.scheduledRevision===b.scheduledRevision&&a.scheduledFor===b.scheduledFor&&a.scheduledUnpause===unpause&&a.scheduleBlockedReason===b.scheduleBlockedReason&&
+    (a.scheduledTerms===null||b.scheduledTerms===null?a.scheduledTerms===b.scheduledTerms:sameTerms(a.scheduledTerms,b.scheduledTerms));
+}
 function validDenomination(value: unknown): value is LoyaltyDenomination {
   if (!value || typeof value !== 'object') return false;
   const rate = value as LoyaltyDenomination;
@@ -222,7 +234,8 @@ function validState(value: unknown): value is LoyaltyState {
     !integer(t.creditPaisaPerBlock, 1)
   )
     return false;
-  if (!validTermsSnapshot(t)) return false;
+  if (!validTermsSnapshot(t)||!validTermsSnapshot(s.publishedTerms)||!validSchedule(s)||
+    s.draftRevision===null&&!sameTerms(t,s.publishedTerms)||s.scheduledRevision!==null&&[s.draftRevision,s.publishedRevision].includes(s.scheduledRevision)) return false;
   if (
     !integer(s.version, 1) ||
     ![s.revision, s.publishedRevision].every((v) => integer(v)) ||
@@ -338,6 +351,7 @@ function loadAttempt(key: string): Attempt | null {
           'originalConfig',
           'sourceRevision',
           'publishedRevision',
+          'publishedTerms','scheduledRevision','scheduledFor','scheduledTerms','scheduledUnpause','scheduleBlockedReason',
           'paused',
           'digest',
         ].includes(key),
@@ -352,13 +366,14 @@ function loadAttempt(key: string): Attempt | null {
       String(a.expectedVersion) ||
     !integer(a.sourceRevision) ||
     !integer(a.publishedRevision) ||
+    !validSchedule(a)||!validTermsSnapshot(a.publishedTerms)||
     typeof a.paused !== 'boolean' ||
     !(
       a.expectedLockedDenomination === null ||
       validDenomination(a.expectedLockedDenomination)
     ) ||
     !validTermsSnapshot(a.expectedTerms) ||
-    !['draft', 'publish', 'pause'].includes(a.action) ||
+    !isLoyaltySettingsAction(a.action) ||
     !integer(a.expectedVersion, 1) ||
     !integer(a.formVersion, 1) ||
     !(a.draftRevision === null || integer(a.draftRevision, 1)) ||
@@ -456,7 +471,7 @@ function AuthorizedLoyaltyManager({
     const button = (event.nativeEvent as SubmitEvent)
       .submitter as HTMLButtonElement | null;
     const action = button?.value as Action;
-    if (!['draft', 'publish', 'pause'].includes(action)) return;
+    if (!isLoyaltySettingsAction(action)) return;
     const form = event.currentTarget;
     setError('');
     setNotice('');
@@ -502,6 +517,12 @@ function AuthorizedLoyaltyManager({
           : state.lockedDenomination,
         sourceRevision: prior?.sourceRevision ?? state.revision,
         publishedRevision: prior?.publishedRevision ?? state.publishedRevision,
+        publishedTerms:prior?.publishedTerms??state.publishedTerms,
+        scheduledRevision:prior?prior.scheduledRevision:state.scheduledRevision,
+        scheduledFor:prior?prior.scheduledFor:state.scheduledFor,
+        scheduledTerms:prior?prior.scheduledTerms:state.scheduledTerms,
+        scheduledUnpause:prior?prior.scheduledUnpause:state.scheduledUnpause,
+        scheduleBlockedReason:prior?prior.scheduleBlockedReason:state.scheduleBlockedReason,
         paused: prior ? prior.paused : state.paused,
       };
       const body = {
@@ -516,7 +537,7 @@ function AuthorizedLoyaltyManager({
         ),
         formVersion: metadata.formVersion,
       };
-      const digest = await digestFormRequest(body);
+      const digest = await digestFormRequest({body,source:{...metadata,ownerId}});
       if (!alive.current) return;
       if (prior && prior.digest !== digest)
         throw new Error(
@@ -526,7 +547,8 @@ function AuthorizedLoyaltyManager({
         action !== 'draft' &&
         !window.confirm(
           action === 'publish'
-            ? 'Publish the saved immutable draft for new daily earning?'
+            ? 'Publish the saved immutable draft? A future start keeps current rules until its Nepal-time start. Publishing does not include unsaved edits.'
+            :action==='cancel_schedule'?'Cancel the scheduled change? Current rules will keep their existing pause, dates and limits. Existing points remain redeemable.'
             : 'Pause new daily earning? Existing points remain redeemable.',
         )
       )
@@ -582,19 +604,23 @@ function AuthorizedLoyaltyManager({
         (action === 'draft' &&
           (result.draftRevision === null ||
             !sameTerms(result.terms, financial!) ||
+            !sameTerms(result.publishedTerms,metadata.publishedTerms)||!samePending(result,metadata)||
             result.publishedRevision !== metadata.publishedRevision ||
             result.paused !== metadata.paused)) ||
         (action === 'publish' &&
           (result.draftRevision !== null ||
-            result.paused ||
-            result.publishedRevision !== metadata.draftRevision ||
-            !sameTerms(result.terms, metadata.expectedTerms))) ||
+            !(result.scheduledRevision===null ? !result.paused&&result.publishedRevision===metadata.draftRevision&&sameTerms(result.terms,metadata.expectedTerms)&&sameTerms(result.publishedTerms,metadata.expectedTerms) :
+              result.scheduledRevision===metadata.draftRevision&&result.scheduledFor===metadata.expectedTerms.startsAt&&result.scheduledUnpause&&result.scheduleBlockedReason===null&&
+              result.paused===metadata.paused&&result.publishedRevision===metadata.publishedRevision&&sameTerms(result.publishedTerms,metadata.publishedTerms)&&
+              sameTerms(result.terms,metadata.publishedTerms)&&result.scheduledTerms!==null&&sameTerms(result.scheduledTerms,metadata.expectedTerms)))) ||
         (action === 'pause' &&
           (!result.paused ||
             result.revision !== metadata.sourceRevision ||
             result.publishedRevision !== metadata.publishedRevision ||
             result.draftRevision !== metadata.draftRevision ||
-            !sameTerms(result.terms, metadata.expectedTerms)))
+            !sameTerms(result.terms, metadata.expectedTerms)||!sameTerms(result.publishedTerms,metadata.publishedTerms)||!samePending(result,metadata,false)))||
+        (action==='cancel_schedule'&&(result.scheduledRevision!==null||result.revision!==metadata.sourceRevision||result.publishedRevision!==metadata.publishedRevision||
+          result.draftRevision!==metadata.draftRevision||result.paused!==metadata.paused||!sameTerms(result.terms,metadata.expectedTerms)||!sameTerms(result.publishedTerms,metadata.publishedTerms)))
       )
         throw new Error(
           'The loyalty result could not be verified. Retry the same attempt to check its result.',
@@ -610,8 +636,8 @@ function AuthorizedLoyaltyManager({
         action === 'draft'
           ? 'Draft saved. Review and publish separately.'
           : action === 'publish'
-            ? 'Earning terms published.'
-            : 'Earning paused. Existing points remain redeemable.',
+            ? result.scheduledRevision===null?'Earning terms published.':'New earning rules are scheduled. Current rules keep their existing pause, dates and limits until the Nepal-time start.'
+            :action==='cancel_schedule'?'Scheduled change cancelled. Current rules keep their existing pause, dates and limits.':'Earning paused. Existing points remain redeemable.',
       );
       router.refresh();
     } catch (reason) {
@@ -708,10 +734,17 @@ function AuthorizedLoyaltyManager({
           </Button>
         </div>
         <p className="text-muted-foreground">
-          Saving a draft does not change live earning. Publishing activates the
-          saved draft and unpauses earning. Unsaved edits below are included
-          only when you save a new draft.
+          Saving a draft keeps current earning unchanged. Publishing a future
+          start schedules the saved rules; current rules keep their existing pause,
+          dates and limits until that Nepal-time start. Unsaved edits are included only in a new saved draft.
         </p>
+        {state.scheduledRevision!==null&&state.scheduledTerms?<section aria-label="Scheduled loyalty change" className="space-y-2 rounded-lg border p-4">
+          <h3 className="font-semibold">Scheduled earning rules · revision {state.scheduledRevision}</h3>
+          <p>Starts {new Date(state.scheduledFor!).toLocaleString('en-GB',{timeZone:'Asia/Kathmandu'})} Nepal time.</p>
+          <p>{state.scheduledTerms.weeklyPoints?`Day 1–7: ${state.scheduledTerms.weeklyPoints.join(', ')} points`:`${state.scheduledTerms.dailyPoints} points per daily claim`} · {state.scheduledTerms.enabled?'Earning enabled in these rules':'Earning disabled in these rules'}.</p>
+          <p>{state.scheduledUnpause?'The scheduled rules may unpause earning at their start. Pause earning now to keep them paused.':'A later pause keeps the scheduled rules paused at their start.'}</p>
+          {state.scheduleBlockedReason?<p role="alert">{state.scheduleBlockedReason}</p>:null}
+        </section>:null}
         <details
           open={unsupportedExposure}
           className="rounded-lg border bg-muted/20 p-3"
@@ -723,6 +756,7 @@ function AuthorizedLoyaltyManager({
             <p>Administrative version: {state.version}</p>
             <p>Live financial revision: {state.publishedRevision}</p>
             <p>Draft financial revision: {state.draftRevision ?? 'None'}</p>
+            <p>Scheduled financial revision: {state.scheduledRevision??'None'}</p>
             <p>
               Status: {state.paused ? 'Earning paused' : 'Earning unpaused'}.
               Displayed terms: revision {state.revision} (
@@ -886,6 +920,7 @@ function AuthorizedLoyaltyManager({
               pending ||
               !published.canSubmit ||
               ((state.draftRevision === null ||
+                state.scheduledRevision!==null ||
                 incompatibleDraft ||
                 unsupportedExposure) &&
                 attempt?.action !== 'publish')
@@ -893,6 +928,7 @@ function AuthorizedLoyaltyManager({
           >
             Publish draft
           </Button>
+          {state.scheduledRevision!==null||attempt?.action==='cancel_schedule'?<Button type="submit" name="action" value="cancel_schedule" variant="outline" disabled={pending||!published.canSubmit}>Cancel scheduled change</Button>:null}
           <Button
             type="submit"
             name="action"

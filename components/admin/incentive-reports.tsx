@@ -134,7 +134,7 @@ export function LoyaltyReportOverview({
 }) {
   const t = report.totals,
     terms = report.liveTerms;
-  const status = !terms.enabled
+  const status = terms.scheduleBlockedReason ? 'Earning needs review' : !terms.enabled
     ? 'Earning is paused'
     : terms.paused
       ? 'Earning is paused'
@@ -192,6 +192,7 @@ export function LoyaltyReportOverview({
       />
       <div className="rounded-2xl border bg-card p-5 text-sm leading-6">
         <p className="font-semibold">{status}</p>
+        {terms.scheduleBlockedReason?<p role="alert">{terms.scheduleBlockedReason}</p>:null}
         <p>
           {terms.weeklyPoints
             ? 'Published seven-day rewards'

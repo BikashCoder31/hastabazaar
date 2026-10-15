@@ -617,11 +617,14 @@ for (const budget of ['dailyBudgetPoints', 'lifetimeBudgetPoints'] as const)
       );
       assert.equal(
         (await r.getRewards(f.db, 'other', NOW)).state.status,
-        'scheduled',
+        'disabled',
+        'The current disabled rules stay in force until the new scheduled start',
       );
+      assert.equal(scheduledLive.scheduledRevision,scheduled.draftRevision);
+      const cancelled=await r.cancelScheduledLoyalty(f.db,ctx('cancel-headroom-schedule',scheduledLive.version));
       const expired = await r.saveLoyaltyDraft(
         f.db,
-        ctx('expired-headroom', scheduledLive.version),
+        ctx('expired-headroom', cancelled.version),
         { ...TERMS, [budget]: 10, endsAt: NOW + 1 },
       );
       await r.publishLoyalty(f.db, ctx('publish-expired', expired.version));

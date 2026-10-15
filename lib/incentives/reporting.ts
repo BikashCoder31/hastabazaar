@@ -182,6 +182,7 @@ export interface LoyaltyAdminReport {
     outstandingPoints: number;
   };
   liveTerms: {
+    scheduleBlockedReason?:string|null;
     dailyPoints: number;
     weeklyPoints?: readonly number[];
     graceEnabled?: boolean;

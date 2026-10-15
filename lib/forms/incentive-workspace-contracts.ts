@@ -1,4 +1,7 @@
 import type { FormDefinition, FormMode } from './types';
+export const LOYALTY_SETTINGS_ACTIONS=['draft','publish','pause','cancel_schedule'] as const;
+export type LoyaltySettingsAction=typeof LOYALTY_SETTINGS_ACTIONS[number];
+export function isLoyaltySettingsAction(value:unknown):value is LoyaltySettingsAction{return LOYALTY_SETTINGS_ACTIONS.some(action=>action===value);}
 
 function nativeForm(
   id: string,

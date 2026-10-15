@@ -143,6 +143,7 @@ export function inspectLocalFeatureSchema(sqlite) {
     commission_rate_cancellations: ['rate_id', 'request_id', 'reason', 'cancelled_by', 'cancelled_at'],
     commission_rate_acceptances: ['rate_id', 'seller_id', 'actor_id', 'accepted_at'],
     loyalty_revisions: ['weekly_points_json', 'grace_enabled'],
+    loyalty_config:['scheduled_revision','scheduled_for','scheduled_unpause'],
     loyalty_daily_claims: ['cycle_day', 'cycle_number', 'grace_used', 'grace_applied', 'cycle_reset_reason'],
     managed_maker_application_details: ['agreement_language', 'agreement_form_version_id'],
     seller_participation_profiles: ['accepted_managed_detail_id'],
@@ -156,7 +157,7 @@ export function inspectLocalFeatureSchema(sqlite) {
     if (!actual.length) missing.push(table);
     else for (const column of columns) if (!actual.includes(column)) missing.push(`${table}.${column}`);
   }
-  for (const name of ['loyalty_latest_claims', 'loyalty_weekly_revision_guard', 'loyalty_weekly_claim_guard',
+  for (const name of ['loyalty_latest_claims', 'loyalty_weekly_revision_guard', 'loyalty_weekly_claim_guard','loyalty_schedule_insert_guard','loyalty_schedule_update_guard','loyalty_schedule_claim_guard',
     'managed_allocation_one_reservation', 'managed_allocation_preserve_identity', 'managed_allocation_no_delete',
     'managed_payout_preserve_identity', 'managed_payout_no_delete', 'managed_payout_preserve_terminal',
     'managed_legacy_payout_link_no_update', 'managed_legacy_payout_link_no_delete']) {

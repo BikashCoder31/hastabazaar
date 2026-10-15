@@ -112,6 +112,7 @@ export interface CustomerLoyaltyState {
     | 'expired'
     | 'paused'
     | 'disabled'
+    | 'review_required'
     | 'exhausted';
 }
 export interface LoyaltyDenomination {
@@ -122,6 +123,11 @@ export interface LoyaltyState {
   readonly revision: number;
   readonly publishedRevision: number;
   readonly draftRevision: number | null;
+  readonly scheduledRevision: number | null;
+  readonly scheduledFor: number | null;
+  readonly scheduledTerms: LoyaltyTerms | null;
+  readonly scheduledUnpause: boolean;
+  readonly scheduleBlockedReason: string | null;
   readonly paused: boolean;
   readonly creditedPaisa: number;
   readonly liability: LoyaltyLiability;
@@ -129,6 +135,7 @@ export interface LoyaltyState {
   readonly maximumLiability: LoyaltyLiability | null;
   readonly version: number;
   readonly terms: LoyaltyTerms;
+  readonly publishedTerms: LoyaltyTerms;
   readonly rateLocked: boolean;
   readonly lockedDenomination: LoyaltyDenomination | null;
   readonly issuedPoints: number;

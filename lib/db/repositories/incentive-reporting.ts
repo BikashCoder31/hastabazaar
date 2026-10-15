@@ -1,4 +1,5 @@
 import { IncentiveError } from '../../incentives/types';
+import {getLoyaltyState} from './loyalty';
 import { nepalRewardDay } from '../../incentives/loyalty-policy';
 import { incentiveDate, incentiveMoney } from '../../incentives/presentation';
 import {
@@ -121,6 +122,10 @@ const stateFields: ChangeField[] = [
   ['revision', 'Revision', textValue],
   ['publishedRevision', 'Published revision', textValue],
   ['draftRevision', 'Draft revision', textValue],
+  ['scheduledRevision','Scheduled revision',textValue],
+  ['scheduledFor','Scheduled start · Nepal time',dateValue],
+  ['scheduledUnpause','Scheduled activation may unpause earning',boolValue],
+  ['scheduleBlockedReason','Scheduled change needs review',textValue],
   ['usedCount', 'Uses consumed', textValue],
   ['spentPaisa', 'Discount consumed', moneyValue],
   ['issuedPoints', 'Points issued', pointValue],
@@ -219,7 +224,7 @@ async function history(
       .bind(kind, window.fromAt, window.toAt)
       .first<{ n: number }>(),
     db
-      .prepare(`SELECT l.id,l.action,COALESCE(u.display_name,'Staff member') AS actorName,l.reason,l.created_at AS createdAt,
+      .prepare(`SELECT l.id,l.action,COALESCE(u.display_name,CASE WHEN l.action='loyalty.schedule_activated' THEN 'Automatic scheduled change' ELSE 'Staff member' END) AS actorName,l.reason,l.created_at AS createdAt,
       c.code,r.label,l.previous_json AS previousJson,l.next_json AS nextJson
       FROM audit_logs l LEFT JOIN users u ON u.id=l.actor_id
       LEFT JOIN promo_campaigns c ON l.subject_type='promo_campaign' AND c.id=l.subject_id
@@ -345,6 +350,7 @@ export async function getPromoAdminReport(
 }
 
 interface LoyaltyLiveRow {
+  scheduleBlockedReason:string|null;
   revision: number;
   enabled: number;
   paused: number;
@@ -431,16 +437,13 @@ export async function getLoyaltyAdminReport(
     customers,
     audit,
   ] = await Promise.all([
-    db
-      .prepare(`SELECT c.current_revision AS revision,r.enabled,c.paused,r.daily_points AS dailyPoints,
-      r.weekly_points_json AS weeklyPointsJson,r.grace_enabled AS graceEnabled,
-      COALESCE(c.locked_points_per_block,r.points_per_block) AS pointsPerBlock,
-      COALESCE(c.locked_credit_paisa_per_block,r.credit_paisa_per_block) AS creditPaisaPerBlock,
-      r.daily_budget_points AS dailyBudgetPoints,r.lifetime_budget_points AS lifetimeBudgetPoints,
-      r.starts_at AS startsAt,r.ends_at AS endsAt,c.issued_points AS issuedPoints,
-      c.redeemed_points AS redeemedPoints,c.credited_paisa AS creditedPaisa
-      FROM loyalty_config c JOIN loyalty_revisions r ON r.revision=c.current_revision WHERE c.id='default'`)
-      .first<LoyaltyLiveRow>(),
+    getLoyaltyState(db,actor.id,now,actor.authSubject,{publishedOnly:true}).then((state):LoyaltyLiveRow=>({
+      revision:state.publishedRevision,enabled:Number(state.terms.enabled),paused:Number(state.paused),dailyPoints:state.terms.dailyPoints,
+      weeklyPointsJson:state.terms.weeklyPoints?JSON.stringify(state.terms.weeklyPoints):null,graceEnabled:Number(state.terms.graceEnabled??false),
+      pointsPerBlock:state.lockedDenomination?.pointsPerBlock??state.terms.pointsPerBlock,creditPaisaPerBlock:state.lockedDenomination?.creditPaisaPerBlock??state.terms.creditPaisaPerBlock,
+      dailyBudgetPoints:state.terms.dailyBudgetPoints,lifetimeBudgetPoints:state.terms.lifetimeBudgetPoints,startsAt:state.terms.startsAt,endsAt:state.terms.endsAt,
+      issuedPoints:state.issuedPoints,redeemedPoints:state.redeemedPoints,creditedPaisa:state.creditedPaisa,scheduleBlockedReason:state.scheduleBlockedReason,
+    })),
     db
       .prepare(`SELECT (SELECT COUNT(*) FROM loyalty_accounts) AS customers,
       (SELECT COUNT(DISTINCT user_id) FROM loyalty_daily_claims WHERE local_date=?) AS claimedToday,

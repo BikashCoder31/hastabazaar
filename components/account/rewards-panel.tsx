@@ -205,6 +205,7 @@ function validView(value: unknown): value is RewardsView {
       'paused',
       'disabled',
       'exhausted',
+      'review_required',
     ].includes(String(s.status)) &&
     [s.startsAt, s.endsAt].every(
       (v) => v === null || (integer(v) && v <= 253402300799999),
@@ -244,6 +245,7 @@ function creditFor(points: number, view: RewardsView): number | null {
   return credit <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(credit) : null;
 }
 const earningMessages = {
+  review_required:'New earning is paused while reward rules are reviewed. Your existing points remain redeemable.',
   active: 'Check in daily to earn points.',
   paused: 'Daily earning is paused. Your existing points remain redeemable.',
   disabled:

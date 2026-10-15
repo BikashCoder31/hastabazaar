@@ -8,11 +8,13 @@ import { consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 import { validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
+import {isLoyaltySettingsAction} from '@/lib/forms/incentive-workspace-contracts';
 import { IncentiveError, type LoyaltyTerms, type LoyaltyMutationContext } from '@/lib/incentives/types';
 import {
   saveLoyaltyDraft,
   publishLoyalty,
   pauseLoyalty,
+  cancelScheduledLoyalty,
   getLoyaltyState,
 } from '@/lib/db/repositories/loyalty';
 export const dynamic = 'force-dynamic';
@@ -84,7 +86,7 @@ export async function POST(request: Request) {
           ].includes(key),
       ) ||
       typeof body.action !== 'string' ||
-      !['draft', 'publish', 'pause'].includes(body.action) ||
+      !isLoyaltySettingsAction(body.action) ||
       typeof body.requestId !== 'string' ||
       !/^[a-zA-Z0-9_-]{1,100}$/.test(body.requestId) ||
       typeof body.reason !== 'string' ||
@@ -129,7 +131,7 @@ export async function POST(request: Request) {
         ? await saveLoyaltyDraft(db, context, body.terms as LoyaltyTerms)
         : body.action === 'publish'
           ? await publishLoyalty(db, context)
-          : await pauseLoyalty(db, context),
+          : body.action==='cancel_schedule'?await cancelScheduledLoyalty(db,context):await pauseLoyalty(db, context),
     );
   } catch (error) {
     return failure(error);

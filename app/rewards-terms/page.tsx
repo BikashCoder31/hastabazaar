@@ -14,6 +14,7 @@ export const metadata = {
 };
 
 const availability = {
+  review_required:'New earning is paused while reward rules are reviewed',
   active: 'Available', paused: 'Paused', disabled: 'Disabled',
   scheduled: 'Not yet started', expired: 'Earning period ended', exhausted: 'Rewards currently unavailable',
 };

@@ -23,6 +23,8 @@ const state: LoyaltyState = {
   revision: 2,
   draftRevision: 2,
   publishedRevision: 1,
+  publishedTerms:terms,
+  scheduledRevision:null,scheduledFor:null,scheduledTerms:null,scheduledUnpause:false,scheduleBlockedReason:null,
   paused: false,
   terms,
   rateLocked: true,
@@ -39,6 +41,26 @@ const state: LoyaltyState = {
     remainingPoints: 50,
   },
 };
+void test('scheduled publication retains exact pending metadata through reload and rejects a substituted receipt',async()=>{
+  const h=await mounted();
+  const startsAt=Date.now()+86400000;
+  const future={...terms,dailyPoints:5,weeklyPoints:[5,7,9,10,11,13,15],graceEnabled:false,startsAt};
+  const queued:LoyaltyState={...state,version:4,revision:1,draftRevision:null,scheduledRevision:2,scheduledFor:startsAt,scheduledTerms:future,scheduledUnpause:true,terms,publishedTerms:terms};
+  try {
+    await h.reload({...state,terms:future});await h.form().getByLabel('Private context').waitFor();await h.fillPrivate();h.loseResponse();h.page.once('dialog',dialog=>dialog.accept());await h.send('Publish draft');await h.page.getByRole('alert').waitFor();
+    const original=h.requests[0];
+    await h.reload(queued);await h.form().getByLabel('Private context').waitFor();await h.fillPrivate();
+    h.respond(200,{...queued,scheduledFor:startsAt+60000});h.page.once('dialog',dialog=>dialog.accept());await h.send('Publish draft');await h.page.getByText(/result could not be verified/).waitFor();
+    assert.deepEqual(h.requests[1],original);
+    h.respond(200,queued);h.page.once('dialog',dialog=>dialog.accept());await h.send('Publish draft');await h.page.getByText(/New earning rules are scheduled/).waitFor();
+    assert.deepEqual(h.requests[2],original);
+    assert.equal(await h.form().getByRole('button',{name:'Publish draft',exact:true}).isEnabled(),false);
+    await h.page.getByRole('region',{name:'Scheduled loyalty change'}).waitFor();
+    await h.fillPrivate();h.respond(200,{...queued,version:5,scheduledUnpause:false,paused:true});h.page.once('dialog',dialog=>dialog.accept());await h.send('Pause earning');await h.page.getByText('Earning paused. Existing points remain redeemable.',{exact:true}).waitFor();
+    await h.fillPrivate();h.respond(200,{...queued,version:6,paused:true,scheduledRevision:null,scheduledFor:null,scheduledTerms:null,scheduledUnpause:false});h.page.once('dialog',dialog=>dialog.accept());await h.send('Cancel scheduled change');await h.page.getByText(/Scheduled change cancelled/).waitFor();
+    assert.equal(h.requests[4].action,'cancel_schedule');assert.deepEqual(h.errors,[]);
+  }finally{await h.browser.close();}
+});
 async function mounted(role = 'super_admin') {
   const { chromium } = await import(
     process.env.PLAYWRIGHT_MODULE ??
@@ -564,6 +586,7 @@ void test('mounted admin lifecycle exposes private accounting, finite terms, loc
       publishedRevision: 3,
       draftRevision: null,
       terms: { ...terms, dailyPoints: 11 },
+      publishedTerms:{...terms,dailyPoints:11},
     });
     await h.send('Publish draft');
     await h.page
@@ -589,6 +612,7 @@ void test('mounted admin lifecycle exposes private accounting, finite terms, loc
       draftRevision: null,
       paused: true,
       terms: { ...terms, dailyPoints: 11 },
+      publishedTerms:{...terms,dailyPoints:11},
     });
     await h.send('Pause earning');
     await h.page

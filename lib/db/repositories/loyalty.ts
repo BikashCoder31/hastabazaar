@@ -26,6 +26,7 @@ import {
 } from '../../incentives/loyalty-cycle';
 import { digestFormRequest } from '../../forms/submission';
 import { buildFormAnswerInsert } from './form-answers';
+import {resolveEffectiveLoyaltyState,type LoyaltyPromotion} from '../../incentives/loyalty-effective-state';
 const FORM = 'staff.loyalty-settings';
 const authoritySql =
   "EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=? AND u.status='active' AND r.role=?)";
@@ -107,6 +108,12 @@ interface Row {
   version: number;
   current_revision: number;
   draft_revision: number | null;
+  scheduled_revision:number|null;
+  scheduled_for:number|null;
+  scheduled_unpause:number;
+  scheduled_terms?:LoyaltyTerms|null;
+  published_terms?:LoyaltyTerms;
+  schedule_blocked_reason?:string|null;
   paused: number;
   issued_points: number;
   redeemed_points: number;
@@ -139,8 +146,8 @@ async function readRow(
   if (!row) throw new IncentiveError('unavailable');
   return row;
 }
-function decode(row: Row, today: number): LoyaltyState {
-  const terms: LoyaltyTerms = {
+function rowTerms(row:Row):LoyaltyTerms {
+  return {
     enabled: row.enabled === 1,
     dailyPoints: row.daily_points,
     ...(row.weekly_points_json === null
@@ -158,6 +165,9 @@ function decode(row: Row, today: number): LoyaltyState {
     dailyBudgetPoints: row.daily_budget_points,
     lifetimeBudgetPoints: row.lifetime_budget_points,
   };
+}
+function decode(row: Row, today: number): LoyaltyState {
+  const terms=rowTerms(row);
   const lockedDenomination: LoyaltyDenomination | null =
     row.issued_points > 0
       ? {
@@ -182,8 +192,14 @@ function decode(row: Row, today: number): LoyaltyState {
     revision: row.revision,
     publishedRevision: row.current_revision,
     draftRevision: row.draft_revision,
+    scheduledRevision:row.scheduled_revision,
+    scheduledFor:row.scheduled_for,
+    scheduledTerms:row.scheduled_terms??null,
+    scheduledUnpause:row.scheduled_unpause===1,
+    scheduleBlockedReason:row.schedule_blocked_reason??null,
     paused: row.paused === 1,
     terms,
+    publishedTerms:row.published_terms??terms,
     rateLocked: row.issued_points > 0,
     lockedDenomination,
     issuedPoints: row.issued_points,
@@ -219,14 +235,55 @@ async function todayIssued(db: D1Database, now: number) {
     )?.n ?? 0
   );
 }
+async function effectiveRow(db:D1Database,now:number,draft=false) {
+  const stored=await readRow(db,false,nepalRewardDay(now).localDate);
+  const scheduled=stored.scheduled_revision===null?null:await db.prepare(`SELECT r.* FROM loyalty_revisions r WHERE r.revision=?`).bind(stored.scheduled_revision).first<Row & {request_id:string}>();
+  const publication=scheduled?await db.prepare(`SELECT request_id AS requestId FROM audit_logs WHERE action='loyalty.publish'
+    AND subject_type='loyalty_config' AND subject_id='default' AND json_extract(next_json,'$.response.scheduledRevision')=?
+    AND json_extract(next_json,'$.response.scheduledFor')=? ORDER BY created_at DESC,id DESC LIMIT 1`).bind(stored.scheduled_revision,stored.scheduled_for).first<{requestId:string}>():null;
+  const maxDay=(await db.prepare('SELECT COALESCE(MAX(issued_points),0) n FROM loyalty_day_issuance').first<{n:number}>())!.n;
+  let resolved=resolveEffectiveLoyaltyState({version:stored.version,currentRevision:stored.current_revision,currentTerms:rowTerms(stored),paused:stored.paused===1,
+    scheduledRevision:stored.scheduled_revision,scheduledFor:stored.scheduled_for,scheduledTerms:scheduled?rowTerms(scheduled):null,scheduledUnpause:stored.scheduled_unpause===1,
+    issuedPoints:stored.issued_points,maximumIssuedDayPoints:maxDay,lockedDenomination:stored.issued_points>0?{pointsPerBlock:stored.locked_points_per_block!,creditPaisaPerBlock:stored.locked_credit_paisa_per_block!}:null},now);
+  if(resolved.promotion&&!publication)resolved={...resolved,version:stored.version,revision:stored.current_revision,terms:rowTerms(stored),paused:stored.paused===1,
+    scheduledRevision:stored.scheduled_revision,scheduledFor:stored.scheduled_for,scheduledTerms:scheduled?rowTerms(scheduled):null,scheduledUnpause:stored.scheduled_unpause===1,
+    scheduleBlockedReason:'The original scheduled publication needs review. Cancel this change and publish a new reviewed draft.',promotion:null};
+  let row:Row={...stored,...(resolved.promotion?scheduled:{}),version:resolved.version,current_revision:resolved.revision,revision:resolved.revision,
+    paused:Number(resolved.paused),scheduled_revision:resolved.scheduledRevision,scheduled_for:resolved.scheduledFor,scheduled_unpause:Number(resolved.scheduledUnpause),
+    scheduled_terms:resolved.scheduledTerms,schedule_blocked_reason:resolved.scheduleBlockedReason};
+  row.published_terms=rowTerms(row);
+  const current=row;
+  if(draft&&stored.draft_revision!==null){const selected=await readRow(db,true);row={...row,...revisionFields(rowTerms(selected)),revision:selected.revision};}
+  return {row,current,stored,promotion:resolved.promotion,maxDay,publicationRequestId:publication?.requestId??null};
+}
+function revisionFields(terms:LoyaltyTerms) {
+  return {enabled:Number(terms.enabled),daily_points:terms.dailyPoints,weekly_points_json:terms.weeklyPoints?JSON.stringify(terms.weeklyPoints):null,
+    grace_enabled:Number(terms.graceEnabled??false),points_per_block:terms.pointsPerBlock,credit_paisa_per_block:terms.creditPaisaPerBlock,starts_at:terms.startsAt,
+    ends_at:terms.endsAt,daily_budget_points:terms.dailyBudgetPoints,lifetime_budget_points:terms.lifetimeBudgetPoints};
+}
+function promotionStatements(db:D1Database,state:Awaited<ReturnType<typeof effectiveRow>>,now:number) {
+  const promotion:LoyaltyPromotion|null=state.promotion;if(!promotion)return [];
+  return [...guard(db,`EXISTS(SELECT 1 FROM loyalty_config WHERE id='default' AND version=? AND current_revision=? AND scheduled_revision=? AND scheduled_for=?
+    AND scheduled_unpause=? AND issued_points=? AND redeemed_points=? AND credited_paisa=?
+    AND COALESCE((SELECT MAX(issued_points) FROM loyalty_day_issuance),0)=?) AND EXISTS(SELECT 1 FROM audit_logs WHERE request_id=? AND action='loyalty.publish'
+      AND subject_type='loyalty_config' AND subject_id='default' AND json_extract(next_json,'$.response.scheduledRevision')=? AND json_extract(next_json,'$.response.scheduledFor')=?)`,[promotion.fromVersion,promotion.fromRevision,promotion.revision,promotion.scheduledFor,
+      Number(promotion.unpause),state.stored.issued_points,state.stored.redeemed_points,state.stored.credited_paisa,state.maxDay,state.publicationRequestId,promotion.revision,promotion.scheduledFor]),
+    db.prepare(`UPDATE loyalty_config SET current_revision=?,version=?,paused=?,scheduled_revision=NULL,scheduled_for=NULL,scheduled_unpause=0 WHERE id='default' AND version=?`)
+      .bind(promotion.revision,promotion.toVersion,Number(!promotion.unpause),promotion.fromVersion),
+    db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,created_at)
+      VALUES (?,NULL,'loyalty.schedule_activated','loyalty_config','default','Scheduled loyalty rules became effective',?,?,?,?)`)
+      .bind(crypto.randomUUID(),JSON.stringify({revision:promotion.fromRevision,version:promotion.fromVersion}),JSON.stringify({revision:promotion.revision,version:promotion.toVersion,
+        scheduledFor:promotion.scheduledFor,unpause:promotion.unpause,publicationRequestId:state.publicationRequestId}),`loyalty-schedule-activate:${promotion.revision}`,now)];
+}
 export async function getLoyaltyState(
   db: D1Database,
   actorId: string,
   now: number,
   authSubject: string,
+  options:{publishedOnly?:boolean} = {},
 ): Promise<LoyaltyState> {
   await staffAuthority(db, actorId, authSubject);
-  const state = decode(await readRow(db, true), await todayIssued(db, now));
+  const state = decode((await effectiveRow(db,now,!options.publishedOnly)).row, await todayIssued(db, now));
   await staffAuthority(db, actorId, authSubject);
   return state;
 }
@@ -304,7 +361,7 @@ async function adminReplay(
 async function mutate(
   db: D1Database,
   c: LoyaltyMutationContext,
-  action: 'draft' | 'publish' | 'pause',
+  action: 'draft' | 'publish' | 'pause' | 'cancel_schedule',
   raw?: LoyaltyTerms,
 ): Promise<LoyaltyState> {
   context(c);
@@ -321,9 +378,11 @@ async function mutate(
   });
   const original = await adminReplay(db, c, digest);
   if (original) return original;
-  const row = await readRow(db, true),
+  const effective=await effectiveRow(db,c.now,true),row=effective.row,
     before = decode(row, await todayIssued(db, c.now));
   if (row.version !== c.expectedVersion) throw new IncentiveError('stale');
+  if(action==='cancel_schedule'&&(effective.promotion||row.scheduled_revision===null))throw new IncentiveError('conflict');
+  if(action==='publish'&&row.scheduled_revision!==null)throw new IncentiveError('conflict');
   if (action === 'publish' && row.draft_revision === null)
     throw new IncentiveError('invalid');
   if (
@@ -333,11 +392,11 @@ async function mutate(
       row.credit_paisa_per_block !== row.locked_credit_paisa_per_block)
   )
     throw new IncentiveError('invalid');
-  const maxDay = (await db
-    .prepare(
-      'SELECT COALESCE(MAX(issued_points),0) n FROM loyalty_day_issuance',
-    )
-    .first<{ n: number }>())!.n;
+  const maxDay=effective.maxDay;
+  if(action==='publish') {
+    validateLoyaltyTerms(rowTerms(row));
+    if(row.lifetime_budget_points!<row.issued_points||row.daily_budget_points!<maxDay)throw new IncentiveError('invalid');
+  }
   if (
     terms &&
     ((row.issued_points > 0 &&
@@ -355,6 +414,7 @@ async function mutate(
         .first<{ n: number }>())!.n + 1
     : row.revision;
   loyaltyInteger(revision);
+  const publishFuture=action==='publish'&&row.starts_at!==null&&row.starts_at>c.now;
   const nextRow: Row = {
     ...row,
     version,
@@ -376,20 +436,26 @@ async function mutate(
           lifetime_budget_points: terms.lifetimeBudgetPoints,
         }
       : action === 'publish'
-        ? {
+        ? publishFuture ? {
+            ...revisionFields(rowTerms(effective.current)),revision:row.current_revision,draft_revision:null,
+            scheduled_revision:row.draft_revision!,scheduled_for:row.starts_at,scheduled_unpause:1,scheduled_terms:rowTerms(row),schedule_blocked_reason:null,
+          } : {
             current_revision: row.draft_revision!,
             draft_revision: null,
             paused: 0,
+            published_terms:rowTerms(row),
           }
-        : { paused: 1 }),
+        : action==='pause'?{ paused: 1,scheduled_unpause:0 }:{scheduled_revision:null,scheduled_for:null,scheduled_unpause:0,scheduled_terms:null,schedule_blocked_reason:null}),
   };
   const next = decode(nextRow, before.issuedTodayPoints);
   const statements = [
     ...actorLocks(db, c.actorId, 'super_admin'),
     db.prepare("UPDATE loyalty_config SET version=version WHERE id='default'"),
+    ...promotionStatements(db,effective,c.now),
     ...guard(
       db,
-      `${staffSql} AND EXISTS(SELECT 1 FROM loyalty_config WHERE id='default' AND version=? AND issued_points=? AND redeemed_points=? AND credited_paisa=?)`,
+      `${staffSql} AND EXISTS(SELECT 1 FROM loyalty_config WHERE id='default' AND version=? AND issued_points=? AND redeemed_points=? AND credited_paisa=?
+        AND current_revision=? AND draft_revision IS ? AND scheduled_revision IS ? AND scheduled_for IS ? AND scheduled_unpause=?)`,
       [
         c.actorId,
         c.authSubject,
@@ -397,6 +463,7 @@ async function mutate(
         row.issued_points,
         row.redeemed_points,
         row.credited_paisa,
+        row.current_revision,row.draft_revision,row.scheduled_revision,row.scheduled_for,row.scheduled_unpause,
       ],
     ),
   ];
@@ -428,13 +495,14 @@ async function mutate(
   statements.push(
     db
       .prepare(
-        "UPDATE loyalty_config SET version=?,current_revision=?,draft_revision=?,paused=? WHERE id='default' AND version=?",
+        "UPDATE loyalty_config SET version=?,current_revision=?,draft_revision=?,paused=?,scheduled_revision=?,scheduled_for=?,scheduled_unpause=? WHERE id='default' AND version=?",
       )
       .bind(
         version,
         nextRow.current_revision,
         nextRow.draft_revision,
         nextRow.paused,
+        nextRow.scheduled_revision,nextRow.scheduled_for,nextRow.scheduled_unpause,
         c.expectedVersion,
       ),
     ...guard(
@@ -492,6 +560,7 @@ export const publishLoyalty = (db: D1Database, c: LoyaltyMutationContext) =>
   mutate(db, c, 'publish');
 export const pauseLoyalty = (db: D1Database, c: LoyaltyMutationContext) =>
   mutate(db, c, 'pause');
+export const cancelScheduledLoyalty=(db:D1Database,c:LoyaltyMutationContext)=>mutate(db,c,'cancel_schedule');
 async function claimReplay(
   db: D1Database,
   input: ClaimInput,
@@ -527,6 +596,7 @@ function eligibility(
   award = row.daily_points,
 ) {
   if (row.version !== input.expectedVersion) throw new IncentiveError('stale');
+  if(row.schedule_blocked_reason)throw new IncentiveError('unavailable');
   if (
     row.paused ||
     row.enabled !== 1 ||
@@ -594,7 +664,7 @@ export async function claimDailyPoints(
       .first()
   )
     throw new IncentiveError('conflict');
-  const row = await readRow(db);
+  const effective=await effectiveRow(db,input.now),row=effective.row;
   const weekly =
     row.weekly_points_json === null
       ? null
@@ -640,6 +710,7 @@ export async function claimDailyPoints(
       )
       .bind(input.userId),
     db.prepare("UPDATE loyalty_config SET version=version WHERE id='default'"),
+    ...promotionStatements(db,effective,input.now),
     ...guard(
       db,
       `${customerSql} AND EXISTS(SELECT 1 FROM loyalty_config WHERE id='default' AND version=? AND current_revision=? AND paused=0) AND EXISTS(SELECT 1 FROM loyalty_accounts WHERE user_id=? AND balance_points=?) AND ${formSql}`,
@@ -693,7 +764,7 @@ export async function claimDailyPoints(
     )
       throw new IncentiveError('conflict');
     eligibility(
-      await readRow(db),
+      (await effectiveRow(db,input.now)).row,
       input,
       await todayIssued(db, input.now),
       award,
@@ -726,7 +797,7 @@ function publicState(
       row.locked_credit_paisa_per_block ?? row.credit_paisa_per_block,
     startsAt: row.starts_at,
     endsAt: row.ends_at,
-    status: row.paused
+    status: row.schedule_blocked_reason ? 'review_required' : row.paused
       ? 'paused'
       : row.enabled !== 1
         ? 'disabled'
@@ -744,7 +815,7 @@ function publicState(
 }
 /** Public legal summary: published rules only, with no draft or administrative totals. */
 export async function getPublishedLoyaltyTerms(db: D1Database, now: number) {
-  const row = await readRow(db, false, nepalRewardDay(now).localDate);
+  const row = (await effectiveRow(db,now)).row;
   const { version: _configurationVersion, ...terms } = publicState(row, now);
   return terms;
 }
@@ -804,7 +875,7 @@ export async function getRewards(
   ).results;
   const selected = rows.slice(0, limit),
     last = selected.at(-1);
-  const row = await readRow(db, false, day.localDate);
+  const row = (await effectiveRow(db,now)).row;
   const previous = await lastLoyaltyClaim(db, userId, day.localDate);
   const claimedToday = previous?.localDate === day.localDate;
   const weekly =
@@ -959,7 +1030,7 @@ export async function redeemPoints(
   });
   const prior = await redemptionReplay(db, input, digest);
   if (prior) return prior;
-  const row = await readRow(db),
+  const effective=await effectiveRow(db,input.now),row=effective.row,
     balances = await redemptionBalances(db, input.userId);
   const credit = redemptionEligibility(row, input, balances);
   const result: RedemptionResult = {
@@ -993,6 +1064,7 @@ export async function redeemPoints(
       )
       .bind(input.userId),
     db.prepare("UPDATE loyalty_config SET version=version WHERE id='default'"),
+    ...promotionStatements(db,effective,input.now),
     ...guard(
       db,
       `${customerSql} AND EXISTS(SELECT 1 FROM loyalty_config c JOIN loyalty_revisions r ON r.revision=c.current_revision WHERE c.id='default' AND c.version=? AND c.current_revision=? AND COALESCE(c.locked_points_per_block,r.points_per_block)=? AND COALESCE(c.locked_credit_paisa_per_block,r.credit_paisa_per_block)=?) AND EXISTS(SELECT 1 FROM loyalty_accounts WHERE user_id=? AND balance_points=?) AND EXISTS(SELECT 1 FROM wallet_accounts WHERE user_id=? AND balance_paisa=?) AND ${formSql}`,
@@ -1036,7 +1108,7 @@ export async function redeemPoints(
     const retry = await redemptionReplay(db, input, digest);
     if (retry) return retry;
     redemptionEligibility(
-      await readRow(db),
+      (await effectiveRow(db,input.now)).row,
       input,
       await redemptionBalances(db, input.userId),
     );
