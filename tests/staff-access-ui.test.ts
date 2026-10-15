@@ -480,10 +480,27 @@ void test('staff access editor uses real mounted drafts and protected history', 
                   requestId: 'original-request',
                   beforePermissions: ['order.manage'],
                   afterPermissions: ['support.manage'],
-                  requestedPermissions: null,
+                  requestedPermissions: ['support.manage'],
                   changes: {
                     added: ['support.manage'],
                     removed: ['order.manage'],
+                    unchanged: [],
+                  },
+                },
+                {
+                  ...common,
+                  id: 'direct',
+                  action: 'staff.permissions.applied',
+                  outcome: 'applied',
+                  reason: 'Cover product review',
+                  requestId: 'direct-request',
+                  formHistoryKind: 'staff-permission-proposal',
+                  beforePermissions: [],
+                  afterPermissions: ['product.review'],
+                  requestedPermissions: ['product.review'],
+                  changes: {
+                    added: ['product.review'],
+                    removed: [],
                     unchanged: [],
                   },
                 },
@@ -511,8 +528,8 @@ void test('staff access editor uses real mounted drafts and protected history', 
                   reason: 'Older change',
                   requestId: null,
                   beforePermissions: null,
-                  afterPermissions: [],
-                  requestedPermissions: null,
+                  afterPermissions: ['support.manage'],
+                  requestedPermissions: ['support.manage'],
                   changes: null,
                 },
               ],
@@ -543,6 +560,14 @@ void test('staff access editor uses real mounted drafts and protected history', 
             await applied.innerText(),
             /Added[\s\S]*Help customers[\s\S]*Removed[\s\S]*Manage orders and shipping/,
           );
+          assert.doesNotMatch(await applied.innerText(), /not applied/i);
+          assert.doesNotMatch(
+            await history
+              .locator('article')
+              .filter({ hasText: 'Cover product review' })
+              .innerText(),
+            /not applied/i,
+          );
           assert.match(
             (await applied.getByRole('link').getAttribute('href')) ?? '',
             /id=original-request/,
@@ -555,6 +580,17 @@ void test('staff access editor uses real mounted drafts and protected history', 
             .locator('article')
             .filter({ hasText: 'Publishing not needed' });
           assert.match(await rejected.innerText(), /No access was changed/);
+          assert.match(
+            await rejected.innerText(),
+            /Requested, not applied: Publish products/,
+          );
+          assert.doesNotMatch(
+            await history
+              .locator('article')
+              .filter({ hasText: 'Older change' })
+              .innerText(),
+            /not applied/i,
+          );
           assert.doesNotMatch(
             await rejected.innerText(),
             /Added.*Publish products/,

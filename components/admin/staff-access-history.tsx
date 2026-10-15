@@ -210,7 +210,7 @@ export function StaffAccessHistory({
                 This record does not show which rights changed.
               </p>
             ) : null}
-            {entry?.requestedPermissions ? (
+            {entry?.outcome === 'rejected' && entry.requestedPermissions ? (
               <p className="text-sm text-muted-foreground">
                 Requested, not applied: {rightsText(entry.requestedPermissions)}
               </p>
