@@ -35,3 +35,9 @@ Use the existing draft/preview/publish/history controls. Do not add a parallel p
 - Browser: actual local D1 draft save and publish; catalog search plus audience filter; empty-state reset; publication status and last editor; live seller application defaults, help, and conditional questions. Desktop 1536px and phone 390px; no horizontal overflow on catalog or seller application.
 - Read-only review findings corrected: form-aware identifier classification, consistent preview/live legacy labels, category-specific naming, and required-email feedback guidance.
 - No new schema or live deployment. Local preview uses a fresh isolated database with fictional accounts.
+
+## Local preview follow-up
+
+The first handover prepared the 61 editable catalog forms but omitted the separate sign-in schema prerequisite and 24 required feature-managed form baselines. Page-only HTTP checks did not detect settings fetched later by the browser. Both local prerequisites were repaired through the existing guarded setup tools with recovery snapshots. All original 61 configuration rows were checked against the recovery snapshot and remain unchanged.
+
+The new `npm run staging:forms:check` command checks sign-in schema plus valid published settings for all 85 required forms, including the protected cash-on-delivery confirmation. Regression tests reproduce the complete-catalog/missing-feature-forms gap. The 53 existing setup/staff tests and three new check tests pass. Staff access settings were also checked through the live local APIs and the browser JSON parser. No invitation was sent and no staff access was changed.

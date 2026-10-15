@@ -16,6 +16,7 @@
     "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
     "test:returns": "tsx --test tests/returns-complaints.test.ts",
     "staging:verify": "tsx scripts/staging/verify-environment.mjs",
+    "staging:forms:check": "tsx scripts/staging/form-preview-readiness.mjs",
     "staging:seed": "tsx scripts/staging/seed-fictional-fixtures.mjs",
     "staging:demo": "tsx scripts/staging/run-managed-maker-demo.mjs",
     "staging:reset": "tsx scripts/staging/reset-disposable-data.mjs",

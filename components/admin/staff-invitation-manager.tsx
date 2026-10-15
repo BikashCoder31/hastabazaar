@@ -120,7 +120,7 @@ export function StaffInvitationManager({
       >
       <FormGuide formId="staff.staff-invitation" />
 
-<p className="text-xs text-muted-foreground">* Required field</p>
+<p className="col-span-full text-xs text-muted-foreground">* Required field</p>
 
         <div className="space-y-2">
           <Label htmlFor="staff-email">Staff email <span aria-hidden="true">*</span></Label>
@@ -148,13 +148,17 @@ export function StaffInvitationManager({
             <option value="super_admin">Super Admin</option>
           </select>
         </div>
-        <Link href="/admin/staff-form-history?kind=staff-invitation" className="block text-sm underline">View invitation form history</Link>
-        {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={invitationBaseKeys} /> : null}
-        {!catalog.canSubmit ? <p role="alert" className="text-sm text-destructive">{catalog.message || 'Loading form configuration…'}</p> : null}
-        <Button type="submit" disabled={busy || !catalog.canSubmit}>
-          <ShieldPlus />
-          {busy ? 'Saving…' : 'Review invitation'}
-        </Button>
+        <div className="flex items-end lg:justify-end">
+          <Button type="submit" disabled={busy || !catalog.canSubmit}>
+            <ShieldPlus />
+            {busy ? 'Saving…' : 'Review invitation'}
+          </Button>
+        </div>
+        <div className="col-span-full space-y-3">
+          <Link href="/admin/staff-form-history?kind=staff-invitation" className="block text-sm underline">View invitation form history</Link>
+          {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={invitationBaseKeys} /> : null}
+          {!catalog.canSubmit ? <p role="alert" className="text-sm text-destructive">{catalog.message || 'Loading form configuration…'}</p> : null}
+        </div>
       </form>
 
       {message ? (
