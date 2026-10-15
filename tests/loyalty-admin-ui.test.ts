@@ -41,6 +41,41 @@ const state: LoyaltyState = {
     remainingPoints: 50,
   },
 };
+void test('required private form answers are checked before retaining or sending a new draft',async()=>{
+  const h=await mounted();
+  try {
+    await h.form().getByLabel('Private context').waitFor();await h.form().getByLabel('Reason').fill('A reviewed draft reason');
+    await h.send();assert.equal(h.requests.length,0);
+    assert.equal(await h.page.evaluate(()=>Object.keys(sessionStorage).filter(key=>key.includes('staff.loyalty-settings:staff-a:settings')).length),0);
+    await h.page.getByRole('alert').getByText(/required form answers/).waitFor();
+  }finally{await h.browser.close();}
+});
+void test('initial weekly setup names missing fields and keeps unsaved saved and scheduled rules separate',async()=>{
+  const h=await mounted();
+  const defaults={...terms,enabled:false,startsAt:null,endsAt:null,dailyBudgetPoints:null,lifetimeBudgetPoints:null};
+  const initial:LoyaltyState={...state,version:1,revision:0,publishedRevision:0,draftRevision:null,paused:true,terms:defaults,publishedTerms:defaults,rateLocked:false,lockedDenomination:null,
+    issuedPoints:0,redeemedPoints:0,outstandingPoints:0,issuedTodayPoints:0,creditedPaisa:0,liability:{wholeBlocks:0,creditPaisa:0,remainingPoints:0},maximumLiability:null};
+  const weekly={...terms,enabled:true,dailyPoints:5,weeklyPoints:[5,7,9,10,11,13,15],graceEnabled:false,startsAt:Date.parse('2026-10-20T03:15:00Z'),endsAt:Date.parse('2026-10-27T03:15:00Z'),dailyBudgetPoints:15,lifetimeBudgetPoints:150};
+  try {
+    await h.reload(initial);await h.form().getByLabel('Private context').waitFor();
+    assert.equal(await h.form().getByLabel('Earning schedule').inputValue(),'weekly');
+    for(let day=0;day<7;day++)assert.equal(await h.form().getByLabel(`Day ${day+1} points`,{exact:true}).inputValue(),String(weekly.weeklyPoints[day]));
+    assert.equal(await h.form().getByLabel('Grace period',{exact:true}).isChecked(),false);
+    for(const label of ['Earning start (Nepal time)','Earning end (Nepal time)','Daily points limit','Total points limit'])assert.equal(await h.form().getByLabel(label,{exact:true}).getAttribute('aria-invalid'),'true');
+    await h.fillPrivate();await h.send();assert.equal(h.requests.length,0);
+    await h.form().getByLabel('Earning start (Nepal time)',{exact:true}).fill('2026-10-20T09:00');await h.form().getByLabel('Earning end (Nepal time)',{exact:true}).fill('2026-10-27T09:00');
+    await h.form().getByLabel('Daily points limit',{exact:true}).fill('15');await h.form().getByLabel('Total points limit',{exact:true}).fill('150');await h.form().getByLabel('Enable daily earning when published',{exact:true}).check();
+    await h.page.getByText(/The earning details are ready for a draft/).waitFor();assert.equal(h.requests.length,0);
+    h.respond(200,{...initial,version:2,revision:1,draftRevision:1,terms:weekly,maximumLiability:{wholeBlocks:1,creditPaisa:1000,remainingPoints:50}});
+    await h.send();await h.page.getByRole('region',{name:'Saved loyalty draft'}).waitFor();assert.equal(h.requests.length,1);assert.deepEqual(h.requests[0].terms,weekly);
+    await h.page.getByText('Earning paused',{exact:true}).waitFor();
+    await h.form().getByLabel('Day 1 points',{exact:true}).fill('6');await h.page.getByText(/Unsaved changes: use Save draft/).waitFor();
+    await h.fillPrivate();h.respond(200,{...initial,version:3,scheduledRevision:1,scheduledFor:weekly.startsAt,scheduledTerms:weekly,scheduledUnpause:true});h.page.once('dialog',dialog=>dialog.accept());
+    await h.send('Publish draft');await h.page.getByRole('region',{name:'Scheduled loyalty change'}).waitFor();
+    assert.equal(h.requests.length,2);assert.equal(h.requests[1].terms,undefined);await h.page.getByText(/Day 1–7: 5, 7, 9, 10, 11, 13, 15 points/).waitFor();
+    assert.deepEqual(h.errors,[]);
+  }finally{await h.browser.close();}
+});
 void test('scheduled publication retains exact pending metadata through reload and rejects a substituted receipt',async()=>{
   const h=await mounted();
   const startsAt=Date.now()+86400000;
@@ -277,7 +312,7 @@ void test('unsaved daily earning and forecast inputs update the estimate without
     await estimate.getByText('30,000', { exact: true }).waitFor();
     await estimate.getByText(/3,000\.00/).waitFor();
     await estimate.getByText('10 days per customer', { exact: true }).waitFor();
-    await h.form().getByLabel('Daily points').fill('20');
+    await h.form().getByLabel('Daily points', { exact: true }).fill('20');
     await estimate.getByText('60,000', { exact: true }).waitFor();
     await estimate.getByText(/6,000\.00/).waitFor();
     await estimate.getByText('5 days per customer', { exact: true }).waitFor();
@@ -527,7 +562,7 @@ void test('mounted admin lifecycle exposes private accounting, finite terms, loc
       '',
     );
     await h.fillPrivate();
-    await h.form().getByLabel('Daily points').fill('11');
+    await h.form().getByLabel('Daily points', { exact: true }).fill('11');
     h.respond(200, {
       ...state,
       version: 4,
@@ -651,7 +686,7 @@ void test('mounted terms reject nonfinite budgets and reversed dates without sub
     await h.fillPrivate();
     await h
       .form()
-      .getByLabel('Lifetime budget (points)')
+      .getByLabel('Total points limit')
       .fill('100000000000000000000');
     await h.send();
     await h.page
@@ -665,7 +700,7 @@ void test('mounted terms reject nonfinite budgets and reversed dates without sub
         .evaluate((el) => document.activeElement === el),
       true,
     );
-    await h.form().getByLabel('Lifetime budget (points)').fill('1050');
+    await h.form().getByLabel('Total points limit').fill('1050');
     await h
       .form()
       .getByLabel('Earning end (Nepal time)')
@@ -686,7 +721,7 @@ void test('uncertain draft retries restore exact owner-scoped terms and versions
   try {
     await h.form().getByLabel('Private context').waitFor();
     await h.fillPrivate();
-    await h.form().getByLabel('Daily points').fill('11');
+    await h.form().getByLabel('Daily points', { exact: true }).fill('11');
     h.loseResponse();
     await h.send();
     await h.page.getByRole('alert').waitFor();
@@ -707,7 +742,7 @@ void test('uncertain draft retries restore exact owner-scoped terms and versions
       paused: true,
     });
     await h.form().getByLabel('Private context').waitFor();
-    assert.equal(await h.form().getByLabel('Daily points').inputValue(), '11');
+    assert.equal(await h.form().getByLabel('Daily points', { exact: true }).inputValue(), '11');
     await h.fillPrivate();
     h.respond(409, { error: 'Updated form', code: 'stale_version' });
     await h.send();
@@ -1044,7 +1079,7 @@ void test('retained settings hydrate with the server snapshot before restoring o
   try {
     await h.form().getByLabel('Private context').waitFor();
     await h.fillPrivate();
-    await h.form().getByLabel('Daily points').fill('11');
+    await h.form().getByLabel('Daily points', { exact: true }).fill('11');
     h.loseResponse();
     await h.send();
     await h.page.getByRole('alert').waitFor();
@@ -1063,7 +1098,7 @@ void test('retained settings hydrate with the server snapshot before restoring o
     await h.page
       .getByText(/Retained draft attempt at administrative version 3/)
       .waitFor();
-    assert.equal(await h.form().getByLabel('Daily points').inputValue(), '11');
+    assert.equal(await h.form().getByLabel('Daily points', { exact: true }).inputValue(), '11');
     assert.deepEqual(
       await h.page.evaluate(
         () =>
@@ -1193,11 +1228,14 @@ void test('disabled initial revision zero accepts a finite first draft while ear
       .form()
       .getByLabel('Earning end (Nepal time)')
       .fill('2026-09-29T05:45');
-    await h.form().getByLabel('Daily budget (points)').fill('100');
-    await h.form().getByLabel('Lifetime budget (points)').fill('1050');
+    await h.form().getByLabel('Daily points limit').fill('100');
+    await h.form().getByLabel('Total points limit').fill('1050');
     const finite = {
       ...terms,
       enabled: false,
+      dailyPoints: 5,
+      weeklyPoints: [5, 7, 9, 10, 11, 13, 15],
+      graceEnabled: false,
       startsAt: Date.parse('2026-09-28T00:00Z'),
       endsAt: Date.parse('2026-09-29T00:00Z'),
     };
@@ -1404,7 +1442,7 @@ void test('finite incompatible draft exposure overflow remains readable and requ
       .getByText(/budget exposure|supported integer/i)
       .waitFor();
     assert.equal(h.requests.length, 0);
-    await h.form().getByLabel('Lifetime budget (points)').fill('1050');
+    await h.form().getByLabel('Total points limit').fill('1050');
     h.respond(200, { ...state, version: 9, revision: 3, draftRevision: 3 });
     await h.send();
     await h.page

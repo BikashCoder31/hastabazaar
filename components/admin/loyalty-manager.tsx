@@ -33,6 +33,7 @@ import {
 } from '@/lib/incentives/loyalty-policy';
 import { incentiveMoney as money } from '@/lib/incentives/presentation';
 import {isLoyaltySettingsAction,type LoyaltySettingsAction} from '@/lib/forms/incentive-workspace-contracts';
+import type {LoyaltySetupAssessment} from '@/lib/incentives/loyalty-setup';
 import type {
   LoyaltyState,
   LoyaltyTerms,
@@ -385,6 +386,15 @@ function loadAttempt(key: string): Attempt | null {
     );
   return a;
 }
+function LoyaltyRuleReview({terms}:{terms:LoyaltyTerms}) {
+  const date=(value:number|null)=>value===null?'Not set':new Date(value).toLocaleString('en-GB',{timeZone:'Asia/Kathmandu'});
+  return <div className="space-y-2 text-sm">
+    <p>{terms.weeklyPoints?`Day 1–7: ${terms.weeklyPoints.join(', ')} points`:`Fixed daily award: ${terms.dailyPoints} points`} · {terms.weeklyPoints?terms.graceEnabled?'Grace on':'Grace off':''}</p>
+    <p>{terms.pointsPerBlock} points = {money(terms.creditPaisaPerBlock)}. {terms.enabled?'Earning is enabled in these saved rules.':'Earning is disabled in these saved rules.'}</p>
+    <p>Start: {date(terms.startsAt)} · End: {date(terms.endsAt)} · Nepal time</p>
+    <p>Shared daily points limit: {terms.dailyBudgetPoints??'Not set'} · Shared total points limit: {terms.lifetimeBudgetPoints??'Not set'}</p>
+  </div>;
+}
 
 /** Only the server supplies the owner scope. It is never sent as mutation authority. */
 export function LoyaltyManager(props: {
@@ -417,6 +427,7 @@ function AuthorizedLoyaltyManager({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [setup,setSetup]=useState<LoyaltySetupAssessment|null>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const pendingRef = useRef(false);
   const generation = useRef(0);
@@ -457,6 +468,7 @@ function AuthorizedLoyaltyManager({
     locked !== null &&
     !sameDenomination(state.terms, locked);
   const terms = attempt?.terms ?? { ...state.terms, ...locked };
+  const initialWeekly=!attempt&&state.publishedRevision===0&&state.draftRevision===null&&state.scheduledRevision===null&&state.issuedPoints===0;
   const displayConfig = attempt?.originalConfig ?? published.config;
   const unsupportedExposure =
     state.maximumLiability === null &&
@@ -492,6 +504,8 @@ function AuthorizedLoyaltyManager({
       const reason = value(data, 'reason').trim();
       if (!reason || reason.length > 1000)
         throw new Error('Enter a reason of at most 1000 characters.');
+      for(const control of form.querySelectorAll('[name^="custom."]'))if((control instanceof HTMLInputElement||control instanceof HTMLSelectElement||control instanceof HTMLTextAreaElement)&&!control.reportValidity())
+        throw new Error('Complete the required form answers before submitting this operation.');
       const configured = readConfiguredSubmission(
         form,
         prior?.originalConfig ?? published.config,
@@ -499,6 +513,7 @@ function AuthorizedLoyaltyManager({
       );
       const financial =
         action === 'draft' ? readTerms(data, prior?.terms ?? terms) : null;
+      if(financial&&!prior&&financial.lifetimeBudgetPoints!<state.issuedPoints)throw new Error(`The total points limit cannot be below ${state.issuedPoints} points already issued.`);
       if (financial && !prior && locked && !sameDenomination(financial, locked))
         throw new Error(
           'The exchange denomination is locked after first issuance.',
@@ -798,6 +813,10 @@ function AuthorizedLoyaltyManager({
             {money(locked.creditPaisaPerBlock)}.
           </p>
         ) : null}
+        {state.draftRevision!==null?<section aria-label="Saved loyalty draft" className="space-y-3 rounded-lg border p-4">
+          <h3 className="font-semibold">Saved draft · revision {state.draftRevision}</h3><LoyaltyRuleReview terms={state.terms}/>
+          <p className="text-sm text-muted-foreground">Publish draft uses these saved rules. Unsaved editor changes are not included.</p>
+        </section>:null}
         {state.draftRevision !== null ? (
           <p>
             Saved draft denomination: {state.terms.pointsPerBlock} points for{' '}
@@ -834,12 +853,20 @@ function AuthorizedLoyaltyManager({
         </p>
       </section>
       <form
+        id="loyalty-form"
         data-form-id="staff.loyalty-settings"
         onSubmit={submit}
         noValidate
         className="min-w-0 space-y-5 rounded-xl border p-4 sm:p-6"
       >
         <FormGuide formId="staff.loyalty-settings" />
+        <section aria-label="Loyalty setup steps" className="space-y-3 rounded-lg border bg-muted/20 p-4 text-sm">
+          <h3 className="font-semibold">Prepare now, start when you are ready</h3>
+          <ol className="list-decimal space-y-1 pl-5"><li>Fill the start, end and shared points limits below.</li><li>To allow earning after publication, select Enable daily earning when published.</li><li>Add a reason and any required form answers, then Save draft.</li><li>Review the saved draft, then Publish draft. A future start keeps current rules until that Nepal-time date.</li></ol>
+          <p className="font-medium">{setup?.ready?'The earning details are ready for a draft. Saving still keeps current earning unchanged.':'Complete the highlighted details before saving a draft.'}</p>
+          {setup&&!setup.ready?<ul className="list-disc space-y-1 pl-5">{Object.entries(setup.issues).map(([field,issue])=><li key={field}><a className="underline" href={`#loyalty-${field.startsWith('weeklyPoints.')?`weeklyPoints-${Number(field.split('.')[1])+1}`:field}`}>{issue}</a></li>)}</ul>:null}
+          {setup?.terms&&!sameTerms(setup.terms,state.terms)?<p>Unsaved changes: use Save draft to record this setup.</p>:null}
+        </section>
         <LoyaltyTermsEditor
           key={editor + String(snapshot)}
           terms={terms}
@@ -847,6 +874,8 @@ function AuthorizedLoyaltyManager({
           rateLocked={state.rateLocked}
           issuedPoints={state.issuedPoints}
           disabled={pending}
+          preferWeekly={initialWeekly}
+          onReadinessChange={setSetup}
         />
         <fieldset disabled={pending} className="space-y-4 border-t pt-5">
           <legend className="sr-only">Change review</legend>
@@ -902,6 +931,7 @@ function AuthorizedLoyaltyManager({
             details are below.
           </p>
         ) : null}
+        {attempt?.action==='publish'?<details className="rounded-lg border p-4 text-sm"><summary className="cursor-pointer font-medium">Original saved rules for this retained publication</summary><div className="mt-3"><LoyaltyRuleReview terms={attempt.expectedTerms}/></div></details>:null}
         <div className="flex flex-wrap gap-3 border-t pt-5">
           <Button
             type="submit"

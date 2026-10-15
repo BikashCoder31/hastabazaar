@@ -198,7 +198,8 @@ void test('Unpublished loyalty defaults are described as paused saved settings, 
     createElement(h.LoyaltyReportOverview, { report }),
   );
   assert.match(html, /Earning is paused/);
-  assert.match(html, /Saved schedule: fixed daily rewards/);
+  assert.match(html, /No loyalty earning schedule is published/);
+  assert.doesNotMatch(html,/Saved schedule: fixed daily rewards|10 points per claim/);
   assert.match(html, /No reward rules have been published yet/);
   assert.match(html, /save a draft and publish it/);
   assert.doesNotMatch(

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect,useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -10,161 +10,15 @@ import {
 import {
   incentiveMoney,
   loyaltyCostPreview,
-  moneyInput,
-  nepalDateTimeInput,
   nprToPaisa,
-  parseNepalDateTime,
 } from '@/lib/incentives/presentation';
-import {
-  loyaltyLiability,
-  validateLoyaltyTerms,
-  validateWeeklyPoints,
-} from '@/lib/incentives/loyalty-policy';
 import type { LoyaltyDenomination, LoyaltyTerms } from '@/lib/incentives/types';
 
-interface LoyaltyEditorValues {
-  enabled: boolean;
-  rewardMode: 'fixed' | 'weekly';
-  weeklyPoints: readonly string[];
-  graceEnabled: boolean;
-  dailyPoints: string;
-  pointsPerBlock: string;
-  creditPaisaPerBlock: string;
-  startsAt: string;
-  endsAt: string;
-  dailyBudgetPoints: string;
-  lifetimeBudgetPoints: string;
-}
-type ControlName = Exclude<
-  keyof LoyaltyEditorValues,
-  'enabled' | 'rewardMode' | 'weeklyPoints' | 'graceEnabled'
->;
-
-const points = (value: number) => new Intl.NumberFormat('en-NP').format(value);
-const defaultWeeklyPoints = ['5', '7', '9', '10', '11', '13', '15'];
-
-export function loyaltyEditorValues(terms: LoyaltyTerms): LoyaltyEditorValues {
-  return {
-    enabled: terms.enabled,
-    rewardMode: terms.weeklyPoints === undefined ? 'fixed' : 'weekly',
-    weeklyPoints:
-      terms.weeklyPoints === undefined
-        ? defaultWeeklyPoints
-        : terms.weeklyPoints.map(String),
-    graceEnabled: terms.graceEnabled ?? false,
-    dailyPoints: String(terms.dailyPoints),
-    pointsPerBlock: String(terms.pointsPerBlock),
-    creditPaisaPerBlock: moneyInput(terms.creditPaisaPerBlock),
-    startsAt: terms.startsAt === null ? '' : nepalDateTimeInput(terms.startsAt),
-    endsAt: terms.endsAt === null ? '' : nepalDateTimeInput(terms.endsAt),
-    dailyBudgetPoints:
-      terms.dailyBudgetPoints === null ? '' : String(terms.dailyBudgetPoints),
-    lifetimeBudgetPoints:
-      terms.lifetimeBudgetPoints === null
-        ? ''
-        : String(terms.lifetimeBudgetPoints),
-  };
-}
-
-function positive(raw: string, label: string) {
-  if (!/^[1-9]\d*$/.test(raw) || !Number.isSafeInteger(Number(raw))) {
-    throw new Error('Enter a finite safe positive integer for ' + label + '.');
-  }
-  return Number(raw);
-}
-
-function value(data: FormData, name: string) {
-  const entry = data.get(name);
-  if (typeof entry !== 'string') throw new Error('Enter ' + name + '.');
-  return entry;
-}
-
-/** Unchanged minute controls preserve the exact timestamp of an immutable retry. */
-function readDate(raw: string, original: number | null) {
-  return original !== null && raw === nepalDateTimeInput(original)
-    ? original
-    : parseNepalDateTime(raw);
-}
-
-/** Display values become financial units only at the draft submission boundary. */
-export function readTerms(
-  data: FormData,
-  original: LoyaltyTerms,
-): LoyaltyTerms {
-  const mode =
-    data.get('rewardMode') ??
-    (original.weeklyPoints === undefined ? 'fixed' : 'weekly');
-  if (mode !== 'fixed' && mode !== 'weekly')
-    throw new Error('Choose a valid earning schedule.');
-  const weeklyPoints =
-    mode === 'weekly'
-      ? readWeeklyPoints(data.getAll('weeklyPoints'))
-      : undefined;
-  const terms: LoyaltyTerms = {
-    enabled: data.get('enabled') === 'on',
-    dailyPoints:
-      weeklyPoints?.[0] ?? positive(value(data, 'dailyPoints'), 'dailyPoints'),
-    ...(weeklyPoints
-      ? { weeklyPoints, graceEnabled: data.get('graceEnabled') === 'on' }
-      : {}),
-    ...(mode === 'fixed' &&
-    original.weeklyPoints === undefined &&
-    original.graceEnabled !== undefined
-      ? { graceEnabled: false }
-      : {}),
-    pointsPerBlock: positive(value(data, 'pointsPerBlock'), 'pointsPerBlock'),
-    creditPaisaPerBlock: nprToPaisa(
-      value(data, 'creditPaisaPerBlock'),
-      'credit per block in NPR',
-    ),
-    startsAt: readDate(value(data, 'startsAt'), original.startsAt),
-    endsAt: readDate(value(data, 'endsAt'), original.endsAt),
-    dailyBudgetPoints: positive(
-      value(data, 'dailyBudgetPoints'),
-      'dailyBudgetPoints',
-    ),
-    lifetimeBudgetPoints: positive(
-      value(data, 'lifetimeBudgetPoints'),
-      'lifetimeBudgetPoints',
-    ),
-  };
-  try {
-    loyaltyLiability(
-      terms.lifetimeBudgetPoints!,
-      terms.pointsPerBlock,
-      terms.creditPaisaPerBlock,
-    );
-  } catch {
-    throw new Error(
-      'Lifetime budget exposure exceeds the supported integer range. Reduce the lifetime point budget.',
-    );
-  }
-  try {
-    validateLoyaltyTerms(terms);
-  } catch {
-    throw new Error(
-      'Review finite dates, budgets and point awards. The earning end must follow the start; each budget must cover the largest daily award.',
-    );
-  }
-  return terms;
-}
-
-function readWeeklyPoints(values: readonly FormDataEntryValue[]) {
-  if (values.length !== 7)
-    throw new Error('Enter exactly seven weekly point awards.');
-  const schedule = values.map((raw, index) => {
-    if (typeof raw !== 'string')
-      throw new Error(`Enter Day ${index + 1} points.`);
-    return positive(raw, `Day ${index + 1} points`);
-  });
-  try {
-    return validateWeeklyPoints(schedule);
-  } catch {
-    throw new Error(
-      'Weekly point awards must strictly increase each day and have a safe total.',
-    );
-  }
-}
+import { loyaltyEditorValues,readTerms,assessLoyaltySetup,loyaltyPositiveInput as positive,loyaltyWeeklyInput as readWeeklyPoints,type LoyaltySetupFields,type LoyaltySetupAssessment } from '@/lib/incentives/loyalty-setup';
+export {loyaltyEditorValues,readTerms};
+type LoyaltyEditorValues=LoyaltySetupFields;
+type ControlName=Exclude<keyof LoyaltyEditorValues,'enabled'|'rewardMode'|'weeklyPoints'|'graceEnabled'>;
+const points=(value:number)=>new Intl.NumberFormat('en-NP').format(value);
 
 /** This projection reads unsaved controls; it cannot issue or redeem points. */
 export function loyaltyDraftPreview(
@@ -237,14 +91,22 @@ export function LoyaltyTermsEditor({
   rateLocked,
   issuedPoints,
   disabled,
+  preferWeekly=false,
+  onReadinessChange,
 }: {
   terms: LoyaltyTerms;
   locked: LoyaltyDenomination | null;
   rateLocked: boolean;
   issuedPoints: number;
   disabled: boolean;
+  preferWeekly?:boolean;
+  onReadinessChange?:(assessment:LoyaltySetupAssessment)=>void;
 }) {
-  const [values, setValues] = useState(() => loyaltyEditorValues(terms));
+  const [values, setValues] = useState(() => loyaltyEditorValues(terms,preferWeekly));
+  let readiness=assessLoyaltySetup(values,terms);
+  if(readiness.terms&&readiness.terms.lifetimeBudgetPoints!<issuedPoints)readiness={ready:false,terms:null,issues:{lifetimeBudgetPoints:`The total points limit cannot be below ${issuedPoints} points already issued.`}};
+  const readinessJson=JSON.stringify(readiness);
+  useEffect(()=>{onReadinessChange?.(JSON.parse(readinessJson) as LoyaltySetupAssessment);},[onReadinessChange,readinessJson]);
   const [participants, setParticipants] = useState('100');
   const [days, setDays] = useState('30');
   let preview: ReturnType<typeof loyaltyDraftPreview> | null = null;
@@ -274,12 +136,14 @@ export function LoyaltyTermsEditor({
           Set the earning schedule, exchange value, earning window and point
           budgets. Saving creates a draft for a separate publication.
         </p>
+        {preferWeekly?<p className="rounded-lg border bg-muted/30 p-3 text-sm">Approved starting weekly points: 5, 7, 9, 10, 11, 13 and 15. These starting values are not saved yet. The setup starts with grace off. Editing these fields does not start earning.</p>:null}
         <label
           aria-label="Enable daily earning when published"
           className="flex items-start gap-3 rounded-xl border bg-muted/30 p-4 text-sm"
         >
           <input
             type="checkbox"
+            id="loyalty-enabled"
             name="enabled"
             checked={values.enabled}
             onChange={(event) =>
@@ -330,7 +194,7 @@ export function LoyaltyTermsEditor({
           </p>
         </div>
         {values.rewardMode === 'weekly' ? (
-          <div className="space-y-4 rounded-xl border bg-muted/20 p-4">
+          <div id="loyalty-weeklyPoints" className="space-y-4 rounded-xl border bg-muted/20 p-4">
             <p className="text-sm text-muted-foreground">
               Each successful daily claim advances one day. After Day 7, the
               next claim starts again at Day 1.
@@ -348,6 +212,8 @@ export function LoyaltyTermsEditor({
                     min="1"
                     step="1"
                     required
+                    aria-invalid={Boolean(readiness.issues[`weeklyPoints.${index}`]||readiness.issues.weeklyPoints)}
+                    aria-describedby={readiness.issues[`weeklyPoints.${index}`]?`loyalty-weeklyPoints-${index+1}-error`:readiness.issues.weeklyPoints?'loyalty-weeklyPoints-error':undefined}
                     value={award}
                     onChange={(event) => {
                       const next = event.target.value;
@@ -360,9 +226,11 @@ export function LoyaltyTermsEditor({
                     }}
                     className="mt-2 h-10 w-full"
                   />
+                  {readiness.issues[`weeklyPoints.${index}`]?<p id={`loyalty-weeklyPoints-${index+1}-error`} className="mt-1 text-xs text-destructive">{readiness.issues[`weeklyPoints.${index}`]}</p>:null}
                 </div>
               ))}
             </div>
+            {readiness.issues.weeklyPoints?<p id="loyalty-weeklyPoints-error" className="text-sm text-destructive">{readiness.issues.weeklyPoints}</p>:null}
             <p className="text-xs text-muted-foreground">
               Use positive whole points that strictly increase from Day 1
               through Day 7.
@@ -402,6 +270,7 @@ export function LoyaltyTermsEditor({
             value={values.dailyPoints}
             onChange={change}
             hint="Points earned by one customer per daily claim."
+            error={readiness.issues.dailyPoints}
           />
         )}
         <div className="grid min-w-0 gap-4 sm:grid-cols-2">
@@ -411,6 +280,7 @@ export function LoyaltyTermsEditor({
             value={values.pointsPerBlock}
             onChange={change}
             readOnly={rateLocked}
+            error={readiness.issues.pointsPerBlock}
             hint={
               rateLocked
                 ? 'Locked after the first points were issued.'
@@ -424,6 +294,7 @@ export function LoyaltyTermsEditor({
             onChange={change}
             readOnly={rateLocked}
             money
+            error={readiness.issues.creditPaisaPerBlock}
             hint={
               rateLocked
                 ? 'The original exchange value is locked.'
@@ -443,6 +314,7 @@ export function LoyaltyTermsEditor({
               value={values.startsAt}
               onChange={change}
               date
+              error={readiness.issues.startsAt}
             />
             <Control
               name="endsAt"
@@ -450,25 +322,28 @@ export function LoyaltyTermsEditor({
               value={values.endsAt}
               onChange={change}
               date
+              error={readiness.issues.endsAt}
             />
           </div>
         </div>
         <div className="space-y-3 border-t pt-4">
-          <p className="text-sm font-semibold">Point budgets</p>
+          <p className="text-sm font-semibold">Shared points limits</p>
           <div className="grid min-w-0 gap-4 sm:grid-cols-2">
             <Control
               name="dailyBudgetPoints"
-              label="Daily budget (points)"
+              label="Daily points limit"
               value={values.dailyBudgetPoints}
               onChange={change}
-              hint="Maximum points issued in one Nepal calendar day."
+              hint="Shared across all customers in one Nepal calendar day. It must cover the largest daily award."
+              error={readiness.issues.dailyBudgetPoints}
             />
             <Control
               name="lifetimeBudgetPoints"
-              label="Lifetime budget (points)"
+              label="Total points limit"
               value={values.lifetimeBudgetPoints}
               onChange={change}
-              hint="Total earning limit, including points already issued."
+              hint="Shared across all customers for the whole program, including points already issued. It must cover the largest daily award."
+              error={readiness.issues.lifetimeBudgetPoints}
             />
           </div>
         </div>
@@ -630,6 +505,7 @@ function Control({
   money = false,
   readOnly = false,
   hint,
+  error,
 }: {
   name: ControlName;
   label: string;
@@ -639,6 +515,7 @@ function Control({
   money?: boolean;
   readOnly?: boolean;
   hint?: string;
+  error?:string;
 }) {
   return (
     <div className="min-w-0">
@@ -654,9 +531,11 @@ function Control({
         onChange={(event) => onChange(name, event.target.value)}
         readOnly={readOnly}
         required
-        aria-describedby={hint ? 'loyalty-' + name + '-hint' : undefined}
+        aria-invalid={Boolean(error)}
+        aria-describedby={[hint?'loyalty-'+name+'-hint':'',error?'loyalty-'+name+'-error':''].filter(Boolean).join(' ')||undefined}
         className="mt-2 h-10 w-full read-only:bg-muted/60"
       />
+      {error?<p id={'loyalty-'+name+'-error'} className="mt-1 text-xs text-destructive">{error}</p>:null}
       {hint ? (
         <p
           id={'loyalty-' + name + '-hint'}

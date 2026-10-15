@@ -8,14 +8,14 @@ export interface FixtureRoute {
 export interface FixtureLocator {
  locator(selector: string): FixtureLocator;
  getByPlaceholder(name: string | RegExp): FixtureLocator;
- getByLabel(name: string | RegExp): FixtureLocator;
+ getByLabel(name: string | RegExp, options?: {exact?: boolean}): FixtureLocator;
  getByRole(role: string, options?: {name?: string | RegExp; exact?: boolean}): FixtureLocator;
  getByText(text: string | RegExp, options?: {exact?: boolean}): FixtureLocator;
  first(): FixtureLocator; last(): FixtureLocator; nth(index: number): FixtureLocator;
  fill(value: string, options?: {timeout?: number}): Promise<void>; click(options?: {timeout?: number}): Promise<void>; check(): Promise<void>;
  selectOption(value: string): Promise<unknown>; press(key: string): Promise<void>;
  waitFor(options?: {timeout?: number; state?: 'visible'|'hidden'|'attached'|'detached'}): Promise<void>;
- count(): Promise<number>; isEnabled(): Promise<boolean>; isDisabled(): Promise<boolean>; isVisible(): Promise<boolean>;
+ count(): Promise<number>; isEnabled(): Promise<boolean>; isDisabled(): Promise<boolean>; isVisible(): Promise<boolean>; isChecked(): Promise<boolean>;
  getAttribute(name: string): Promise<string|null>; textContent(): Promise<string|null>; inputValue(): Promise<string>;
  evaluate<R>(fn: (element: HTMLElement) => R): Promise<Awaited<R>>;
 }

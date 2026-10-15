@@ -194,9 +194,11 @@ export function LoyaltyReportOverview({
         <p className="font-semibold">{status}</p>
         {terms.scheduleBlockedReason?<p role="alert">{terms.scheduleBlockedReason}</p>:null}
         <p>
-          {terms.weeklyPoints
-            ? 'Published seven-day rewards'
-            : `Saved schedule: fixed daily rewards · ${number(terms.dailyPoints)} points per claim`}{' '}
+          {terms.revision === 0
+            ? 'No loyalty earning schedule is published.'
+            : terms.weeklyPoints
+              ? 'Published seven-day rewards'
+              : `Published fixed daily rewards · ${number(terms.dailyPoints)} points per claim`}{' '}
           · {number(terms.pointsPerBlock)} points ={' '}
           {incentiveMoney(terms.creditPaisaPerBlock)}
         </p>
@@ -245,7 +247,7 @@ export function LoyaltyReportOverview({
         </p>
         <p className="mt-2 text-xs text-muted-foreground">
           {terms.revision === 0
-            ? 'No reward rules have been published yet. These are the saved starting settings.'
+            ? 'No reward rules have been published yet. Complete the setup below when you are ready.'
             : 'These are the last published reward rules.'}{' '}
           To activate the weekly schedule or other changes, save a draft and
           publish it. Selecting a schedule in the editor only updates the

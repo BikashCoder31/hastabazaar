@@ -34,16 +34,16 @@ export default async function Page() {
   return <LegalPolicyPage policyKey="rewards-terms" currentDetails={
     <section id="current-rewards" className="scroll-mt-48 rounded-2xl border bg-secondary/30 p-5 sm:p-6">
       <h2 className="font-heading text-2xl">{terms.revision === 0 ? 'Rewards are not active yet' : 'Current published rewards'}</h2>
-      <p className="mt-2 text-sm text-muted-foreground">{terms.revision === 0 ? 'No reward rules have been published yet. The starting settings below are not an active earning offer.' : `Revision ${terms.revision} · ${availability[terms.status]}`} · Nepal time</p>
-      {terms.weeklyPoints ? <ol className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <p className="mt-2 text-sm text-muted-foreground">{terms.revision === 0 ? 'No reward rules have been published yet. Rewards will be shown here after publication.' : `Revision ${terms.revision} · ${availability[terms.status]}`} · Nepal time</p>
+      {terms.revision > 0 && (terms.weeklyPoints ? <ol className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {terms.weeklyPoints.map((points, index) => <li key={index} className="rounded-xl border bg-card p-3">
           <span className="block text-sm text-muted-foreground">Day {index + 1}</span>
           <strong className="mt-1 block">{points} points</strong>
         </li>)}
-      </ol> : <p className="mt-4">{terms.dailyPoints} points per daily check-in.</p>}
+      </ol> : <p className="mt-4">{terms.dailyPoints} points per daily check-in.</p>)}
       <dl className="mt-5 grid gap-4 text-sm sm:grid-cols-2">
-        <div><dt className="font-semibold">Grace</dt><dd className="mt-1">{!terms.weeklyPoints ? 'Not applicable to fixed daily rewards' : terms.graceEnabled ? 'On · one missed day per cycle' : 'Off · a missed day resets to Day 1'}</dd></div>
-        <div><dt className="font-semibold">Conversion</dt><dd className="mt-1">{terms.pointsPerBlock} points = {formatPaisaExact(terms.creditPaisaPerBlock)} shopping credit</dd></div>
+        <div><dt className="font-semibold">Grace</dt><dd className="mt-1">{terms.revision === 0 ? 'No published schedule' : !terms.weeklyPoints ? 'Not applicable to fixed daily rewards' : terms.graceEnabled ? 'On · one missed day per cycle' : 'Off · a missed day resets to Day 1'}</dd></div>
+        <div><dt className="font-semibold">{terms.revision === 0 ? 'Starting conversion' : 'Conversion'}</dt><dd className="mt-1">{terms.pointsPerBlock} points = {formatPaisaExact(terms.creditPaisaPerBlock)} shopping credit</dd></div>
         <div><dt className="font-semibold">Earning starts</dt><dd className="mt-1">{terms.startsAt === null ? 'No start date set' : date(terms.startsAt)}</dd></div>
         <div><dt className="font-semibold">Earning ends</dt><dd className="mt-1">{terms.endsAt === null ? 'No end date set' : date(terms.endsAt)}</dd></div>
       </dl>
