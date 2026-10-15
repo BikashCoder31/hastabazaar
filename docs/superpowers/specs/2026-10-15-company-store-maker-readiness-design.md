@@ -6,7 +6,7 @@ On 2026-10-15 the user approved completing the existing company-store maker flow
 
 The intended users are new makers without a business PAN, their customers, and the Super Admin operating the company store. Success means a new maker can complete the whole local journey through normal UI, with truthful readiness messages and correct ownership, company identity and financial records. Passing calculation tests alone is insufficient.
 
-This specification is awaiting the user's written-spec review. Product implementation has not started.
+The user approved this written specification on 2026-10-15, then confirmed the change-handling requirements below. Product implementation has not started.
 
 ## Project and data constraints
 
@@ -58,6 +58,7 @@ Use the existing application workspace for maker operations, with clearly scoped
 - Use one route-aware eligibility policy consistently for homepage collections, search, catalogue filters/counts, maker storefronts, detail, cart and checkout.
 - Snapshots on new orders and documents preserve the company as selling party/invoice issuer and preserve maker attribution, the accepted agreement, the accepted 900-basis-point rate, discount funding, holding-period policy and simulation status.
 - Existing order and agreement snapshots are immutable. Later settings changes require a new accepted agreement for future orders and cannot rewrite earlier transactions.
+- Keep managed-maker retention settings separate from independent Registered Seller commission schedules. A change to one must not silently alter the other route.
 - Company operations handle customer fulfilment and returns through authorized staff workflows. Makers see the information needed for their own products and earnings; this does not grant unrestricted customer or other-maker data access.
 - Local documents clearly remain simulated and are not presented as approved tax invoices.
 
@@ -72,6 +73,7 @@ Use the existing application workspace for maker operations, with clearly scoped
 - Add Super Admin-only preparation, approval and simulated payment-recording controls using existing capability and transaction-guard patterns. Preserve applicable existing action separation and independent-review rules.
 - Before each financial transition, recheck current authority, maker/account readiness, authoritative delivery/payment facts, dispute/return state, original terms, cumulative refunds and unreserved payable balance inside the transaction.
 - Payout preparation and refunds must use compatible locking/guard rules so an interleaved refund cannot reserve the earlier amount. Duplicate and changed-intent retries must have safe, explicit outcomes.
+- An unpaid payment blocked by a later adjustment can be cancelled with recorded reservation release and prepared again for the correct net amount. Never delete payment history, cancel a paid record as though no payment occurred, or double-count a post-payment refund against later earnings.
 - Payment recording requires a simulation reference. This request does not execute a live transfer or connect an external payment provider.
 - History records the actor, reason, before/after state, request ID, form version and result. Failures roll back domain, audit and form-answer writes together.
 
@@ -84,6 +86,15 @@ Use the existing application workspace for maker operations, with clearly scoped
 - Keep the existing fixed-price route and its records intact; no automatic model switch for existing makers.
 - Keep this page, private review and financial mutation controls Super Admin-only on both pages and server actions. A hidden navigation link is not authorization.
 - Desktop and small-screen views must remain readable, keyboard accessible and free from horizontal page overflow.
+
+## Approved future changes and PAN transition
+
+- The user explicitly confirmed that both future settings changes and a maker obtaining PAN and moving to the Registered Seller route must work.
+- Future company/retention changes take effect through versioned settings and explicit renewed maker acceptance. Show pending terms, the effective time and the next action. Do not apply an unaccepted rate to new orders.
+- A maker may submit private registration/PAN evidence and accept the current Registered Seller agreement/commission terms from their own application workspace. Requested corrections can be resubmitted with recorded history.
+- An independent Super Admin reviews the transition and records an effective time. Before that time the maker remains on the managed route. At that time an authorized, idempotent operation atomically applies the reviewed legal/tax details, approved seller status, seller role and exact accepted commercial terms.
+- Do not alter Registered Seller authorization to accommodate incomplete transitions. Reject missing, unowned or rejected evidence and stale commercial acceptance. If required terms change before application, require renewed acceptance/review instead of silently substituting the new fee.
+- Keep product IDs and every earlier managed order, invoice, refund, dispute, entitlement, payout and supplier obligation. Earlier managed financial work remains visible after transition; only new independent transactions use the Registered Seller route and its accepted commission.
 
 ## Loyalty preparation and later activation
 
@@ -98,6 +109,11 @@ Use the existing application workspace for maker operations, with clearly scoped
 - Later activation is deliberate: fill valid dates/limits/reason, check `Enable daily earning when published`, save a draft, review that saved draft, then publish it. Checking the box or saving alone does not start earning. A future start time remains scheduled until that time.
 - Publish uses the verified saved draft, not unsaved edits. Disabled terms do not allow earning. Pausing stops new earning while preserving earned points and permitted redemption.
 - Explain that resuming after pause currently requires saving and publishing enabled terms. Do not add an implicit resume side effect to a checkbox.
+- The user explicitly chose continuity for future loyalty changes: current rules keep running until the new rules' scheduled Nepal-time start. This requires real pending-revision support; setting a future start on an immediately replaced revision is insufficient.
+- Support one pending published revision separately from the current rules and editable draft. Show all three states clearly. An authorized cancellation before its start preserves current rules; replacing it requires cancellation and a newly saved/published draft, retaining history.
+- Scheduling an enabled future revision records deliberate activation intent for that time. It does not resume paused current rules early. A later Pause overrides that scheduled activation intent, so scheduled rules cannot silently resume earning after the operator pauses it.
+- At the due time, recheck consumed limits and the permanently locked conversion. If the scheduled revision has become incompatible, stop new earning with a clear review-required state; do not rewrite points, change their conversion, or keep issuing under obsolete rules. Redemption of already earned points remains available under its existing rules.
+- Reads remain read-only. Effective scheduled state must agree between page/report reads and transactionally guarded claims/publications, including requests spanning the exact change boundary.
 
 ## Verification and acceptance
 
@@ -115,5 +131,7 @@ Required acceptance cases:
 8. In the active Chrome preview, loyalty remains paused with no publication and no claims. Verify readiness/help and weekly defaults without changing existing records.
 9. Normal Chrome desktop and a small viewport cover keyboard input, links, loading, validation, errors and saved-state reload. Keep an inventory separating Passed, Failed and Not tested.
 10. Verify the canonical server and active data preservation before/after, report exact reproduction steps for remaining issues, and leave the relevant Super Admin pages open with copyable local URLs.
+11. Review and apply a genuine PAN transition at its effective boundary, then open the normal Registered Seller workspace and place a new independent order. Compare earlier managed financial rows and snapshots byte-for-byte and verify outstanding records remain actionable.
+12. Change managed retention and independent commission separately, exercise stale and renewed acceptance, and verify historical terms remain intact. For loyalty, test current rules before a scheduled boundary, new rules at the boundary, cancellation, pause after scheduling, duplicate same-day claims, and incompatible limits/denomination becoming blocked without losing points.
 
 Live tax/commercial approval, native production database acceptance and real email/payment delivery are separate checks and must not be claimed from this local acceptance.
