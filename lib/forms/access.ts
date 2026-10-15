@@ -107,7 +107,7 @@ export async function formAnswerOwnerId(db: D1Database, answer: Pick<StoredFormA
   }
   if (answer.subjectType === 'seller_route_transition') {
     const row = await db.prepare(`SELECT s.user_id AS userId FROM seller_route_transition_applications transition
-      JOIN seller_profiles s ON s.id=transition.seller_id WHERE transition.id=? AND s.status='approved' LIMIT 1`)
+      JOIN seller_profiles s ON s.id=transition.seller_id JOIN users u ON u.id=s.user_id WHERE transition.id=? AND u.status='active' LIMIT 1`)
       .bind(answer.subjectId).first<{ userId: string }>();
     return row?.userId ?? null;
   }
@@ -488,10 +488,10 @@ async function staffActionGrant(db: D1Database, viewer: FormAnswerViewer,
         ON audit.subject_type='seller_route_transition' AND audit.subject_id=parent.id
           AND audit.actor_id=? AND audit.request_id=?
           AND audit.action IN ('seller_route_transition.scheduled','seller_route_transition.rejected',
-            'seller_route_transition.changes_requested')
+            'seller_route_transition.changes_requested','seller_route_transition.apply_requested')
           AND json_type(audit.next_json,'$.catalogDigest')='text'
-        WHERE parent.id=? AND parent.decision_request_id=? AND parent.reviewed_by=? LIMIT 1`;
-      values = [actorId, requestId, subjectId, requestId, actorId];
+        WHERE parent.id=? LIMIT 1`;
+      values = [actorId, requestId, subjectId];
       break;
     case 'staff.parcel-control':
       if (subjectType !== 'shipping_job') return false;

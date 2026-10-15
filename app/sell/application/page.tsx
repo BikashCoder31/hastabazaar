@@ -3,6 +3,7 @@ import { getAcceptedManagedTerms, getManagedTermsOffers } from '@/lib/managed-co
 import { getManagedMakerAuthority } from '@/lib/managed-commerce/maker-authority';
 import { MakerProductWorkspace } from '@/components/seller/maker-product-workspace';
 import { ManagedTermsAcceptance } from '@/components/seller/managed-terms-acceptance';
+import { RegisteredTransitionForm } from '@/components/seller/registered-transition-form';
 import type { Metadata } from 'next';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
@@ -83,7 +84,7 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
     getAcceptedManagedTerms(database, profile.sellerId, Number(clock?.now ?? 0)),
   ]) : [null, null];
   const managedTerms = profile.participationRoute === 'managed_maker' && profile.applicationStage === 'changes_requested' ? await getManagedMakerApplicationTerms(database) : undefined;
-  const finance = profile.participationRoute === 'managed_maker'
+  const finance = profile.participationRoute === 'managed_maker' || Boolean(await database.prepare('SELECT 1 FROM managed_entitlements WHERE seller_id=? LIMIT 1').bind(profile.sellerId).first())
     ? await getManagedFinanceSummary(database, profile.sellerId)
     : null;
   const draftCursor = historyCursor(query?.draftAt, query?.draftId);
@@ -119,6 +120,7 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
     {capabilities.editProfile && (profile.participationRoute !== 'managed_maker' || makerCanWrite) ? <section><h2 className="font-heading text-2xl">Shared maker profile</h2><MakerApplicationProfileForm profile={profile} managedTerms={managedTerms} /></section> : null}
     {offers && makerCanWrite ? <><ManagedTermsAcceptance sellerId={profile.sellerId} offer={offers.current} future={false} alreadyAccepted={Boolean(accepted)} />
       {offers.upcoming.map(offer => <ManagedTermsAcceptance key={offer.id} sellerId={profile.sellerId} offer={offer} future alreadyAccepted={false} />)}</> : null}
+    {profile.applicationStage==='active' ? <RegisteredTransitionForm sellerId={profile.sellerId} ownerId={customer.userId}/> : null}
     <section className="space-y-4" aria-label="Application answer history">
       <h2 className="font-heading text-2xl">Application answer history</h2>
       {applications.answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)}

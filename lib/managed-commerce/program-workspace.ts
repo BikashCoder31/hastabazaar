@@ -31,6 +31,7 @@ export interface RouteTransitionSummary {
   effectiveAt: number | null;
   reviewReason: string | null;
   createdAt: number;
+  acceptedTerms?: {commissionBps:number;agreementVersion:string;language:string;acceptedAt:number;document:string;evidence:readonly {id:string;kind:string}[]}|null;
 }
 
 export interface ManagedProgramWorkspace {
@@ -79,10 +80,10 @@ export async function getManagedProgramWorkspace(
       FROM managed_supply_records supply JOIN products ON products.id=supply.product_id
       LEFT JOIN managed_supplier_obligations obligation ON obligation.id=supply.id
       WHERE supply.seller_id=? ORDER BY supply.created_at DESC,supply.id`).bind(sellerId).all<ManagedSupplySummary>(),
-    database.prepare(`SELECT id,status,legal_name AS legalName,tax_mode AS taxMode,
+    database.prepare(`SELECT id,status,legal_name AS legalName,tax_mode AS taxMode,registered_terms_snapshot_json AS snapshotJson,
       effective_at AS effectiveAt,review_reason AS reviewReason,created_at AS createdAt
       FROM seller_route_transition_applications WHERE seller_id=?
-      ORDER BY created_at DESC,id`).bind(sellerId).all<RouteTransitionSummary>(),
+      ORDER BY created_at DESC,id`).bind(sellerId).all<RouteTransitionSummary & {snapshotJson:string|null}>(),
   ]);
   return {
     participationRoute: participation?.participationRoute ?? null,
@@ -90,6 +91,13 @@ export async function getManagedProgramWorkspace(
     commercialModel: participation?.commercialModel ?? null,
     products: products.results,
     supplies: supplies.results,
-    transitions: transitions.results,
+    transitions: transitions.results.map(({snapshotJson,...row})=>{
+      try {
+        const terms=JSON.parse(snapshotJson??'null') as NonNullable<RouteTransitionSummary['acceptedTerms']>|null;
+        if(!terms||!Number.isSafeInteger(terms.commissionBps)||typeof terms.document!=='string'||!Array.isArray(terms.evidence))return {...row,acceptedTerms:null};
+        return {...row,acceptedTerms:{commissionBps:terms.commissionBps,agreementVersion:terms.agreementVersion,language:terms.language,acceptedAt:terms.acceptedAt,
+          document:terms.document,evidence:terms.evidence.map(item=>({id:item.id,kind:item.kind}))}};
+      }catch{return {...row,acceptedTerms:null};}
+    }),
   };
 }

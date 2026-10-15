@@ -51,6 +51,9 @@ const applicationStages = new Set<ParticipationApplicationStage>([
 ]);
 
 async function sellerAudienceAllowed(db: D1Database, userId: string, roles: ReadonlySet<string>, formId: string): Promise<boolean> {
+  if (formId === 'seller.managed-transition-request') return roles.has('customer') && Boolean(await db.prepare(`SELECT 1 FROM seller_profiles s
+    JOIN seller_participation_profiles p ON p.seller_id=s.id WHERE s.user_id=? AND p.participation_route='managed_maker' AND p.application_stage='active'
+      AND NOT EXISTS(SELECT 1 FROM seller_restrictions r WHERE r.seller_id=s.id AND (r.mode='disabled' OR (r.mode='suspended' AND r.suspended_until>?)))`).bind(userId,Date.now()).first());
   if (formId === 'seller.managed-terms-acceptance') {
     return roles.has('customer') && Boolean(await db.prepare(`SELECT 1 FROM seller_profiles s
       JOIN seller_participation_profiles p ON p.seller_id=s.id WHERE s.user_id=?

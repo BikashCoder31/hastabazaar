@@ -26,9 +26,9 @@ void test('reply and managed attempts survive lost success, reject changed repla
     bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'seller-operation-fixture-boundaries', setup(bundler) {
-      bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'fixture' }));
-      bundler.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
-        contents: 'export function useRouter(){return {refresh(){}}}', loader: 'js',
+      bundler.onResolve({ filter: /^next\/(navigation|link)$/ }, args => ({ path: args.path, namespace: 'fixture' }));
+      bundler.onLoad({ filter: /.*/, namespace: 'fixture' }, args => ({
+        contents: args.path.endsWith('/navigation') ? 'export function useRouter(){return {refresh(){}}}' : 'import React from "react";export default function Link(props){return React.createElement("a",props,props.children)}', loader: 'js',resolveDir:process.cwd(),
       }));
     } }],
   });
@@ -65,7 +65,6 @@ void test('reply and managed attempts survive lost success, reject changed repla
     for (const [kind, formId] of [
       ['reply', 'seller.review-reply'],
       ['supply', 'seller.managed-supply-proposal'],
-      ['transition', 'seller.managed-transition-request'],
     ] as const) {
       const selector = `[data-form-id="${formId}"]`;
       const storageKey = `hastabazaar:profile-attempt:${formId}:${kind === 'reply' ? 'seller-one:review-one' : 'seller-one'}`;
@@ -82,14 +81,6 @@ void test('reply and managed attempts survive lost success, reject changed repla
           await page.locator(`${selector} input[name="agreedUnitNpr"]`).fill('500');
           await page.locator(`${selector} input[name="agreementVersion"]`).fill('SIM-FIXED-V1');
           await page.locator(`${selector} input[name="payoutBeneficiaryReference"]`).fill('SIM-MAKER-ACCOUNT');
-        }
-        if (kind === 'transition') {
-          await page.getByText('Request a change to Registered Seller', { exact: true }).click();
-          for (const [name, value] of [['legalName', 'Registered Fictional Maker'], ['registrationAuthority', 'Cottage Office'],
-            ['registrationNumber', 'REG-TEST'], ['taxRegistrationNumber', 'PAN-TEST'],
-            ['agreementVersion', 'SIM-REGISTERED-V1']] as const)
-            await page.locator(`${selector} input[name="${name}"]`).fill(value);
-          await page.locator(`${selector} textarea[name="evidenceReferences"]`).fill('private-document-one');
         }
       };
       const submit = async () => page.evaluate((target: string) =>
@@ -118,7 +109,6 @@ void test('reply and managed attempts survive lost success, reject changed repla
       await mount();
       if (kind === 'reply') await page.locator(`${selector} textarea`).fill('Changed fictional reply text.');
       else if (kind === 'supply') await page.locator(`${selector} input[name="quantity"]`).fill('3');
-      else await page.locator(`${selector} textarea[name="evidenceReferences"]`).fill('different-private-document');
       await submit();
       await page.waitForFunction(() => document.body.textContent?.includes('different content'));
       assert.equal(String(requests[1].requestId ?? requests[1].idempotencyKey), original);

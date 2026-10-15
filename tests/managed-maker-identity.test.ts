@@ -1,4 +1,5 @@
-import { submitRegisteredSellerTransition, reviewRouteTransition, applyDueRouteTransitions } from '../lib/managed-commerce/route-transition';
+import { registerTransitionFixture,submitRegisteredTransitionFixture as submitRegisteredSellerTransition } from './helpers/registered-transition-fixture';
+import { reviewRouteTransition, applyDueRouteTransitions } from '../lib/managed-commerce/route-transition';
 import { resolveRuntimeEnvironment } from '../lib/staging/environment';
 import { createHash } from 'node:crypto';
 import { managedMakerAgreementSnapshot } from '../lib/sellers/managed-identity';
@@ -153,10 +154,9 @@ async function fixture() {
   sqlite.exec(`INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES
     ('super','super@example.test','Super','active',1,1),('staff','staff@example.test','Staff','active',1,1);
     INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('super','super_admin',1),('staff','admin',1);`);
-  return {
-    sqlite,
-    database: new TestDatabase(sqlite) as unknown as D1Database,
-  };
+  const database=new TestDatabase(sqlite) as unknown as D1Database;
+  registerTransitionFixture(database,sqlite);
+  return {sqlite,database};
 }
 async function application(database: D1Database, sellerId = 'maker') {
   const parsed = parseSellerApplication(managedMakerForm());
@@ -749,12 +749,13 @@ void test('managed government ID and optional personal PAN evidence stay private
       assert.ok(await getSellerDocumentForStaff(database,documentId,'super'));
     }
     const staffView=await getSellerApplicationForReview(database,'maker','staff');
-    assert.equal(staffView?.documents.length,0);assert.equal(staffView?.documentCount,0);
+    assert.equal(staffView?.documents.length,1);assert.equal(staffView?.documentCount,1);
+    assert.equal(staffView?.documents[0]?.kind,'business_registration','Only the new company certificate is visible to ordinary staff');
     assert.equal(JSON.stringify(staffView).includes('123456789'),false,'private filenames must not reach ordinary staff');
-    assert.equal((await getSellerApplicationForReview(database,'maker','super'))?.documents.length,4);
+    assert.equal((await getSellerApplicationForReview(database,'maker','super'))?.documents.length,6);
     sqlite.exec('DROP TRIGGER managed_maker_details_no_delete; DELETE FROM managed_maker_application_details;');
     await assert.rejects(getSellerDocumentForStaff(database,'original-pan','staff'),/Super Admin/i,'historical transition also protects legacy makers without new acceptance');
-    assert.equal((await getSellerApplicationForReview(database,'maker','staff'))?.documents.length,0);
+    assert.equal((await getSellerApplicationForReview(database,'maker','staff'))?.documents.length,1);
   }finally{sqlite.close();}
 });
 void test('originally registered seller certificates retain ordinary staff document and review access',async()=>{

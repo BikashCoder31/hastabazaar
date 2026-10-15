@@ -75,7 +75,7 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
   'seller.shipping-action': { formId: 'seller.shipping-action', route: '/api/seller/shipping/:id', mode: 'operation' },
   'seller.managed-terms-acceptance': { formId: 'seller.managed-terms-acceptance', route: '/api/seller-applications/managed-terms', mode: 'operation' },
   'seller.managed-supply-proposal': { formId: 'seller.managed-supply-proposal', route: '/api/seller/managed-program', mode: 'operation' },
-  'seller.managed-transition-request': { formId: 'seller.managed-transition-request', route: '/api/seller/managed-program', mode: 'operation' },
+  'seller.managed-transition-request': { formId: 'seller.managed-transition-request', route: '/api/seller-applications/transition', mode: 'operation' },
   'seller.payout-request': { formId: 'seller.payout-request', route: '/api/seller/payout-requests', mode: 'transaction' },
   'seller.review-reply': { formId: 'seller.review-reply', route: '/api/seller/reviews/:id/reply', mode: 'collection' },
   'rider.application': { formId: 'rider.application', route: '/api/rider/application', mode: 'collection' },
@@ -187,7 +187,7 @@ rider.remittance|rider|operation|/api/rider/remittances|amount
 seller.inventory|seller|operation|/api/seller/products/:id/inventory|quantity
 seller.maker-profile|seller|collection|/api/seller-applications/profile|legalName
 seller.managed-supply-proposal|seller|operation|/api/seller/managed-program|quantity
-seller.managed-transition-request|seller|operation|/api/seller/managed-program|reason
+seller.managed-transition-request|seller|operation|/api/seller-applications/transition|reason
 seller.managed-terms-acceptance|seller|operation|/api/seller-applications/managed-terms|offerId
 seller.payout-request|seller|transaction|/api/seller/payout-requests|amount
 seller.product-submission|seller|collection|/api/seller/products|title
@@ -555,7 +555,7 @@ function sellerOperationDefinition(id: 'seller.shipping-request' | 'seller.shipp
     'seller.shipping-request': ['orderId', 'direction', 'note', 'requestId', 'sellerId', 'formVersion', 'customAnswers'],
     'seller.shipping-action': ['action', 'jobId', 'note', 'requestId', 'sellerId', 'formVersion', 'customAnswers'],
     'seller.managed-supply-proposal': ['action', 'productId', 'quantity', 'agreedUnitNpr', 'agreedUnitPaisa', 'agreementVersion', 'agreementLanguage', 'payoutBeneficiaryReference', 'requestId', 'sellerId', 'formVersion', 'customAnswers'],
-    'seller.managed-transition-request': ['action', 'legalName', 'registrationAuthority', 'registrationNumber', 'taxMode', 'taxRegistrationNumber', 'evidenceReferences', 'agreementVersion', 'agreementLanguage', 'requestId', 'sellerId', 'formVersion', 'customAnswers'],
+    'seller.managed-transition-request': ['action', 'applicationId','expectedVersion','legalName', 'registrationAuthority', 'registrationNumber', 'taxMode', 'taxRegistrationNumber', 'evidenceReferences', 'agreementVersion', 'agreementLanguage', 'registeredTermsContext','acceptedTerms','businessRegistration','panCertificate','vatCertificate','businessRegistrationId','panCertificateId','vatCertificateId','requestId', 'sellerId', 'formVersion', 'customAnswers'],
     'seller.managed-terms-acceptance': ['offerId', 'context', 'language', 'accepted', 'requestId', 'sellerId', 'formVersion', 'customAnswers'],
     'seller.payout-request': ['amount', 'availablePaisa', 'note', 'requestId', 'sellerId', 'formVersion', 'customAnswers'],
     'seller.review-reply': ['reviewId', 'body', 'version', 'idempotencyKey', 'sellerId', 'formVersion', 'customAnswers'],

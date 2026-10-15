@@ -36,6 +36,7 @@ function fixture() {
     CREATE TABLE user_roles (user_id TEXT, role TEXT);
     CREATE TABLE staff_permission_profiles(user_id TEXT,permissions_json TEXT,version INTEGER,updated_by TEXT,updated_at INTEGER);
     CREATE TABLE seller_profiles (id TEXT PRIMARY KEY, user_id TEXT, status TEXT,seller_agreement_version TEXT,seller_agreement_accepted_at INTEGER,updated_at INTEGER);
+    CREATE TABLE seller_participation_profiles(seller_id TEXT PRIMARY KEY);
     CREATE TABLE audit_logs (id TEXT PRIMARY KEY,actor_id TEXT,action TEXT,subject_type TEXT,subject_id TEXT,reason TEXT,previous_json TEXT,next_json TEXT,request_id TEXT,ip_hash TEXT,created_at INTEGER);
     CREATE TABLE business_setting_versions (id TEXT PRIMARY KEY,setting_key TEXT,version INTEGER,value_json TEXT,status TEXT,revision INTEGER,change_control TEXT,effective_from INTEGER,effective_until INTEGER,reason TEXT,created_by TEXT,created_at INTEGER,submitted_by TEXT,submitted_at INTEGER,approved_by TEXT,approved_at INTEGER,published_by TEXT,published_at INTEGER,decision_note TEXT,supersedes_id TEXT,last_request_id TEXT);
     CREATE TABLE operation_transaction_guards (id TEXT PRIMARY KEY, valid INTEGER CHECK(valid=1));

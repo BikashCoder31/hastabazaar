@@ -6,7 +6,7 @@ import { requireDatabase } from '@/lib/db/d1';
 import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { addFixedSupplyAdjustment, decideFixedSupplyRecord, FixedSupplyError, prepareFixedSupplierPayment, transitionFixedSupplierPayment } from '@/lib/managed-commerce/fixed-supply';
-import { reviewRouteTransition, RouteTransitionError } from '@/lib/managed-commerce/route-transition';
+import { reviewRouteTransition, applyReviewedRouteTransition, RouteTransitionError } from '@/lib/managed-commerce/route-transition';
 import { resolveRuntimeEnvironment } from '@/lib/staging/environment';
 import { FormRequestConflictError, isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
@@ -50,7 +50,7 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
   else if(body.action==='add_adjustment')formId='staff.managed-adjustment';
   else if(body.action==='prepare_payment')formId='staff.managed-payment-preparation';
   else if(body.action==='approve_payment'||body.action==='mark_payment_paid')formId='staff.managed-payment-action';
-  else if(body.action==='review_transition')formId='staff.managed-transition-decision';
+  else if(body.action==='review_transition'||body.action==='apply_due_transition')formId='staff.managed-transition-decision';
   else return reply({error:'Select a supported program-review action.'},400);
   const form=await validateSellerFormSubmission(database,formId,body.formVersion,body.customAnswers,requestId);
   validatedFormId=formId;validatedVersionId=form.versionId;
@@ -71,6 +71,11 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
    if(!allowed(body,['paymentId'])||typeof body.paymentId!=='string')return reply({error:'Invalid supplier payment action.'},400);
    if(!await database.prepare('SELECT 1 FROM managed_supplier_payments p JOIN managed_supplier_obligations o ON o.id=p.obligation_id WHERE p.id=? AND o.seller_id=?').bind(body.paymentId,sellerId).first())return reply({error:'Supplier payment was not found for this seller.'},404);
    await transitionFixedSupplierPayment(database,{paymentId:body.paymentId,actorId:actor.id,action:body.action==='approve_payment'?'approve':'mark_paid',requestId,now,environment,form:contextForm});
+  }else if(body.action==='apply_due_transition'){
+   if(actor.role!=='super_admin')return reply({error:'Super Admin access is required.'},403);
+   if(!allowed(body,['applicationId','reason'])||typeof body.applicationId!=='string'||typeof body.reason!=='string')return reply({error:'Invalid transition processing request.'},400);
+   if(!await database.prepare('SELECT 1 FROM seller_route_transition_applications WHERE id=? AND seller_id=?').bind(body.applicationId,sellerId).first())return reply({error:'Transition not found for this maker.'},404);
+   await applyReviewedRouteTransition(database,{applicationId:body.applicationId,actorId:actor.id,reason:body.reason,requestId,now,environment,form:contextForm});
   }else if(body.action==='review_transition'){
    if(!allowed(body,['applicationId','decision','reason','effectiveLocal','effectiveAt'])||typeof body.applicationId!=='string'||!['approve','reject','request_changes'].includes(String(body.decision))||typeof body.reason!=='string'||body.decision==='approve'&&(typeof body.effectiveAt!=='number'||!Number.isSafeInteger(body.effectiveAt)))return reply({error:'Invalid transition decision.'},400);
    if(!await database.prepare('SELECT 1 FROM seller_route_transition_applications WHERE id=? AND seller_id=?').bind(body.applicationId,sellerId).first())return reply({error:'Route transition was not found for this seller.'},404);

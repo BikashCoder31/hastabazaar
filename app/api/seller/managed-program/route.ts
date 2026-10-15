@@ -6,7 +6,7 @@ import { requireDatabase } from '@/lib/db/d1';
 import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { createFixedSupplyRecord, FixedSupplyError } from '@/lib/managed-commerce/fixed-supply';
-import { RouteTransitionError, submitRegisteredSellerTransition } from '@/lib/managed-commerce/route-transition';
+import { RouteTransitionError } from '@/lib/managed-commerce/route-transition';
 import { resolveRuntimeEnvironment } from '@/lib/staging/environment';
 import { FormRequestConflictError, validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
@@ -14,7 +14,6 @@ import { FormValidationError } from '@/lib/forms/validation';
 
 export const dynamic = 'force-dynamic';
 const reply = (body: unknown, status = 200) => Response.json(body,{status,headers:{'cache-control':'no-store'}});
-const value = (body:Record<string,unknown>,key:string) => typeof body[key]==='string' ? body[key] as string : '';
 
 export async function POST(request:Request){
   if(!isTrustedMutationRequest(request))return reply({error:'Cross-site requests are not allowed.'},403);
@@ -39,15 +38,7 @@ export async function POST(request:Request){
       const id=await createFixedSupplyRecord(database,{sellerId:seller.sellerId,productId:body.productId,quantity:body.quantity,agreedUnitPaisa:body.agreedUnitPaisa,createdBy:seller.userId,agreementVersion:body.agreementVersion,agreementLanguage:body.agreementLanguage as 'en'|'ne',payoutBeneficiaryReference:body.payoutBeneficiaryReference,requestId,now,environment,form:{requestId,versionId:form.versionId,answers:form.answers}});
       return reply({ok:true,id,simulation:true});
     }
-    if(body.action==='request_registered_transition'){
-      if (Object.keys(body).some((key)=>!['action','legalName','registrationAuthority','registrationNumber','taxMode','taxRegistrationNumber','evidenceReferences','agreementVersion','agreementLanguage','requestId','formVersion','customAnswers'].includes(key)) ||
-        !['PAN','VAT','BOTH'].includes(String(body.taxMode)) || !['en','ne'].includes(String(body.agreementLanguage)))
-        return reply({error:'Invalid route-transition request.'},400);
-      const evidence=Array.isArray(body.evidenceReferences)?body.evidenceReferences.filter((item):item is string=>typeof item==='string'):value(body,'evidenceReferences').split('\n').map(item=>item.trim()).filter(Boolean);
-      const form=await validateSellerFormSubmission(database,'seller.managed-transition-request',body.formVersion,body.customAnswers,requestId);
-      const id=await submitRegisteredSellerTransition(database,{sellerId:seller.sellerId,actorId:seller.userId,legalName:value(body,'legalName'),registrationAuthority:value(body,'registrationAuthority'),registrationNumber:value(body,'registrationNumber'),taxMode:body.taxMode as 'PAN'|'VAT'|'BOTH',taxRegistrationNumber:value(body,'taxRegistrationNumber'),evidenceReferences:evidence,agreementVersion:value(body,'agreementVersion'),agreementLanguage:body.agreementLanguage as 'en'|'ne',agreementAcceptedAt:now,requestId,now,environment,form:{requestId,versionId:form.versionId,answers:form.answers}});
-      return reply({ok:true,id,simulation:true});
-    }
+    if(body.action==='request_registered_transition')return reply({error:'Use the private registration and seller-terms form at /sell/application#registered-transition.'},400);
     return reply({error:'Select a supported Managed Maker action.'},400);
   }catch(error){
     if(error instanceof SellerAuthorizationError)return reply({error:error.message},error.status);

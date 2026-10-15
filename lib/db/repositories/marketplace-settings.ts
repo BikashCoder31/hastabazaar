@@ -43,7 +43,7 @@ export async function getRegisteredSellerTerms(database: D1Database, now=Date.no
   return {...setting,document,context,agreementVersion:SELLER_AGREEMENT_VERSION};
 }
 export type RegisteredSellerTerms = Awaited<ReturnType<typeof getRegisteredSellerTerms>>;
-export async function prepareSellerCommissionAcceptance(database: D1Database, options: {sellerId:string;actorId:string;context:string;requestId:string;now:number;language?:'en'|'ne';mode?:'application'|'approved_seller'}) {
+export async function prepareSellerCommissionAcceptance(database: D1Database, options: {sellerId:string;actorId:string;context:string;requestId:string;now:number;language?:'en'|'ne';mode?:'application'|'approved_seller'|'managed_transition';transitionId?:string;acceptedAt?:number}) {
   const terms=await getRegisteredSellerTerms(database,options.now);
   if (options.context!==terms.context) throw new SellerCommissionTermsChangedError('Seller commission terms have changed. Reload and review the current terms before accepting.');
   const guardId=crypto.randomUUID();
@@ -55,9 +55,14 @@ export async function prepareSellerCommissionAcceptance(database: D1Database, op
           (?='approved_seller' AND s.status='approved' AND EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='seller'))
           OR (?='application' AND s.status='submitted' AND EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='customer')
             AND EXISTS(SELECT 1 FROM audit_logs a WHERE a.actor_id=u.id AND a.subject_type='user' AND a.subject_id=u.id AND a.action='seller.registration.started'))
-        )) THEN 1 ELSE 0 END`).bind(guardId,options.now,options.now,terms.versionId??'',options.actorId,options.sellerId,options.mode??'approved_seller',options.mode??'approved_seller'),
+          ${options.mode==='managed_transition'?`OR (?='managed_transition' AND s.status='approved' AND EXISTS(SELECT 1 FROM seller_route_transition_applications t
+            JOIN seller_participation_profiles p ON p.seller_id=t.seller_id WHERE t.id=? AND t.seller_id=s.id AND t.requested_by=u.id
+              AND t.status='applied' AND t.applied_at=? AND t.reviewed_by<>u.id AND p.participation_route='registered_seller'
+              AND json_extract(t.registered_terms_snapshot_json,'$.context')=?
+              AND json_extract(t.registered_terms_snapshot_json,'$.acceptedAt')=?))`:''}
+        )) THEN 1 ELSE 0 END`).bind(guardId,options.now,options.now,terms.versionId??'',options.actorId,options.sellerId,options.mode??'approved_seller',options.mode??'approved_seller',...(options.mode==='managed_transition'?[options.mode,options.transitionId??'',options.now,options.context,options.acceptedAt??options.now]:[])),
     database.prepare(`INSERT INTO seller_agreement_acceptance_history(id,seller_id,agreement_version,language_presented,commission_setting_version_id,commission_bps,acceptance_request_id,accepted_by,accepted_at,simulation_label)
-      VALUES (?,?,?,?,?,?,?,?,?,NULL)`).bind(crypto.randomUUID(),options.sellerId,terms.agreementVersion,options.language??'en',terms.versionId,terms.basisPoints,options.requestId,options.actorId,options.now),
+      VALUES (?,?,?,?,?,?,?,?,?,?)`).bind(crypto.randomUUID(),options.sellerId,terms.agreementVersion,options.language??'en',terms.versionId,terms.basisPoints,options.requestId,options.actorId,options.mode==='managed_transition'?(options.acceptedAt??options.now):options.now,options.mode==='managed_transition'?'SIMULATED — NOT VALID FOR PRODUCTION':null),
     database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(guardId),
   ]};
 }
