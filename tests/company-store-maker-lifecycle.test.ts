@@ -15,7 +15,7 @@ import { createCodOrder } from '../lib/db/repositories/orders';
 import { seedCheckoutBuyer } from './helpers/checkout-contact';
 import { issueManagedInvoiceGroups } from '../lib/db/repositories/managed-documents';
 
-test('new no-PAN maker reaches review activation publication and checkout', async () => {
+void test('new no-PAN maker reaches review activation publication and checkout', async () => {
   const f = await readyMaker();
   try {
     await activateManagedMakerForSimulation(f.db, f.activation);
@@ -68,7 +68,7 @@ test('new no-PAN maker reaches review activation publication and checkout', asyn
   } finally { f.dispose(); }
 });
 
-test('activation cannot substitute staff company or agreement references for maker acceptance', async () => {
+void test('activation cannot substitute staff company or agreement references for maker acceptance', async () => {
   const f = await readyMaker();
   try {
     await assert.rejects(activateManagedMakerForSimulation(f.db, { ...f.activation,
@@ -77,7 +77,7 @@ test('activation cannot substitute staff company or agreement references for mak
   } finally { f.dispose(); }
 });
 
-test('program closure racing checkout leaves no order, entitlement or commercial snapshot', async () => {
+void test('program closure racing checkout leaves no order, entitlement or commercial snapshot', async () => {
   const f = await readyMaker();
   try {
     await activateManagedMakerForSimulation(f.db, f.activation);

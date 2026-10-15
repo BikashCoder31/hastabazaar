@@ -21,7 +21,7 @@ async function productFixture() {
   return { ...f, options };
 }
 
-test('maker product writes recheck owner stage and restrictions at commit', async () => {
+void test('maker product writes recheck owner stage and restrictions at commit', async () => {
   const f = await productFixture();
   try {
     await assert.rejects(createProductSubmission(f.db, { ...f.options, actorId: 'reviewer' }), /maker|owner|authority/i);
@@ -33,7 +33,7 @@ test('maker product writes recheck owner stage and restrictions at commit', asyn
   } finally { f.dispose(); }
 });
 
-test('maker can submit draft and resubmit requested product corrections', async () => {
+void test('maker can submit draft and resubmit requested product corrections', async () => {
   const f = await productFixture();
   try {
     await createProductSubmission(f.db, f.options);
@@ -54,7 +54,7 @@ test('maker can submit draft and resubmit requested product corrections', async 
   } finally { f.dispose(); }
 });
 
-test('maker revision rejects a new restriction or inactive catalogue without partial changes', async () => {
+void test('maker revision rejects a new restriction or inactive catalogue without partial changes', async () => {
   const f = await productFixture();
   try {
     await createProductSubmission(f.db, f.options);

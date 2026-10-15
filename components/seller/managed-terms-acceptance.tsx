@@ -50,6 +50,6 @@ export function ManagedTermsAcceptance({ sellerId, offer, future, alreadyAccepte
       {catalog.status !== 'ready' ? <p role="alert">{catalog.message || 'Loading the terms form…'}</p> : null}
       <Button type="submit" disabled={busy || !catalog.canSubmit}>{busy ? 'Saving acceptance…' : 'Accept these terms'}</Button>
     </form>}
-    {message ? <p role="status">{message}</p> : null}
+    {message ? <output className="block">{message}</output> : null}
   </section>;
 }

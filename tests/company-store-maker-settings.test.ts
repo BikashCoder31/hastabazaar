@@ -20,7 +20,7 @@ function acceptanceForm(f: Fixture) {
   return { versionId: 'terms-form-v1', answers: { formId: managedTermsFormId, version: 1, answers: [] } };
 }
 
-test('current and upcoming offers require explicit exact owner acceptance', async () => {
+void test('current and upcoming offers require explicit exact owner acceptance', async () => {
   const f = await companyStoreMakerFixture();
   try {
     const offers = await getManagedTermsOffers(f.db, f.sellerId, f.now);
@@ -35,7 +35,7 @@ test('current and upcoming offers require explicit exact owner acceptance', asyn
   } finally { f.dispose(); }
 });
 
-test('future acceptance cannot change current earnings and exact retry cannot accept twice', async () => {
+void test('future acceptance cannot change current earnings and exact retry cannot accept twice', async () => {
   const f = await companyStoreMakerFixture();
   try {
     const start = f.now + 3_600_000;
@@ -58,7 +58,7 @@ test('future acceptance cannot change current earnings and exact retry cannot ac
   } finally { f.dispose(); }
 });
 
-test('managed retention is independent of Registered Seller Commission', async () => {
+void test('managed retention is independent of Registered Seller Commission', async () => {
   const f = await companyStoreMakerFixture();
   try {
     const independentStart = f.now + 16 * 86_400_000;
@@ -70,7 +70,7 @@ test('managed retention is independent of Registered Seller Commission', async (
   } finally { f.dispose(); }
 });
 
-test('cancelled offers and owner revocation cannot leave partial acceptance evidence', async () => {
+void test('cancelled offers and owner revocation cannot leave partial acceptance evidence', async () => {
   const f = await companyStoreMakerFixture();
   try {
     await publishRate(f, 1200, f.now + 60_000);
@@ -85,7 +85,7 @@ test('cancelled offers and owner revocation cannot leave partial acceptance evid
   } finally { f.dispose(); }
 });
 
-test('cancelled future offer and rejected identity cannot be accepted', async () => {
+void test('cancelled future offer and rejected identity cannot be accepted', async () => {
   const f = await companyStoreMakerFixture();
   try {
     const settingId = await publishRate(f, 1200, f.now + 60_000);

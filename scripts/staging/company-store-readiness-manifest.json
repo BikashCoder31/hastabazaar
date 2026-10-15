@@ -1,6 +1,14 @@
 {
-  "migration": "0071_company_store_maker_readiness.sql",
-  "sqlSha256": "e355fff952e05a0bd814a5415521eec3767e8da47cbde133791d4bd6a7383cd7",
+  "migrations": [
+    {
+      "name": "0071_company_store_maker_readiness.sql",
+      "sqlSha256": "e355fff952e05a0bd814a5415521eec3767e8da47cbde133791d4bd6a7383cd7"
+    },
+    {
+      "name": "0072_loyalty_scheduled_changes.sql",
+      "sqlSha256": "0c84de7b308f56330900364438e86df3aa4308930e246338cb73cf7cbb9466e5"
+    }
+  ],
   "forms": [
     "seller.managed-terms-acceptance",
     "staff.managed-eligibility-release",

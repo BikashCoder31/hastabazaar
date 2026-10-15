@@ -28,7 +28,7 @@ function request(body: unknown, origin = 'http://localhost:3018') {
 }
 const target = { params: Promise.resolve({ id: 'maker' }) };
 
-test('sale-linked actions require current Super Admin authority and exact published form', async () => {
+void test('sale-linked actions require current Super Admin authority and exact published form', async () => {
   const f = await fixture();
   try {
     const { POST } = await import('../app/api/admin/managed-program/[id]/route');
@@ -50,7 +50,7 @@ test('sale-linked actions require current Super Admin authority and exact publis
   } finally { f.dispose(); }
 });
 
-test('sale-linked payment action stores private history and rejects a foreign maker route', async () => {
+void test('sale-linked payment action stores private history and rejects a foreign maker route', async () => {
   const f = await fixture();
   try {
     const { POST } = await import('../app/api/admin/managed-program/[id]/route');
@@ -72,7 +72,7 @@ test('sale-linked payment action stores private history and rejects a foreign ma
   } finally { f.dispose(); }
 });
 
-test('stale forms, malformed bodies and publication races leave no financial answer or payment', async () => {
+void test('stale forms, malformed bodies and publication races leave no financial answer or payment', async () => {
   const f = await fixture();
   try {
     const { POST } = await import('../app/api/admin/managed-program/[id]/route');

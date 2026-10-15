@@ -32,6 +32,10 @@ import { getManagedProgramWorkspace } from '@/lib/managed-commerce/program-works
 
 export const dynamic = 'force-dynamic';
 
+function readAcceptedManagedTerms(database: D1Database, sellerId: string) {
+  return getAcceptedManagedTerms(database, sellerId, Date.now());
+}
+
 const dateTimeFormatter = new Intl.DateTimeFormat('en-NP', {
   dateStyle: 'medium',
   timeStyle: 'short',
@@ -81,7 +85,7 @@ export default async function SellerApplicationPage({
   const governance = await getSellerGovernance(database, id);
   const managedProgram = await getManagedProgramWorkspace(database, id);
   const acceptedManagedTerms = application.participationRoute === 'managed_maker'
-    ? await getAcceptedManagedTerms(database, id, Date.now()) : null;
+    ? await readAcceptedManagedTerms(database, id) : null;
 
   return (
     <div className="space-y-7">

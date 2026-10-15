@@ -15,6 +15,10 @@ import { getManagedMakerAuthority } from '@/lib/managed-commerce/maker-authority
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Prepare product draft', robots: { index: false, follow: false } };
 
+function readMakerAuthority(database: D1Database, actorId: string) {
+  return getManagedMakerAuthority(database, actorId, Date.now());
+}
+
 export default async function ApplicantProductDraftPage() {
   const customer = await requireCustomerPage('/sell/application/products/new');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
@@ -22,7 +26,7 @@ export default async function ApplicantProductDraftPage() {
   if (!profile) redirect('/sell');
   if (!applicationCapabilities(profile.applicationStage, 'applications_only').prepareProductDrafts) redirect('/sell/application');
   if (profile.participationRoute === 'managed_maker') {
-    try { await getManagedMakerAuthority(database, customer.userId, Date.now()); }
+    try { await readMakerAuthority(database, customer.userId); }
     catch { redirect('/sell/application'); }
   }
   const [categories, occasions, materialSuggestions] = await Promise.all([listActiveCategories(database), listActiveOccasions(database),getProductMaterialSuggestions(database)]);

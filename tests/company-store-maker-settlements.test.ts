@@ -10,7 +10,7 @@ import { accrueManagedEntitlements, prepareManagedPayout,
   transitionManagedPayout, cancelManagedPayout, getManagedFinanceSummary, releaseManagedEligibility } from '../lib/db/repositories/managed-settlements';
 import { getManagedSettlementBlockers } from '../lib/managed-commerce/settlement-readiness';
 
-test('refund racing preparation cannot reserve the previous amount', async () => {
+void test('refund racing preparation cannot reserve the previous amount', async () => {
   const f = await earnedMaker();
   try {
     f.setBeforeBatch(() => refund(f));
@@ -21,7 +21,7 @@ test('refund racing preparation cannot reserve the previous amount', async () =>
   } finally { f.dispose(); }
 });
 
-test('cancel unpaid reservation permits correct re-preparation without deleting history', async () => {
+void test('cancel unpaid reservation permits correct re-preparation without deleting history', async () => {
   const f = await earnedMaker();
   try {
     const first = await prepareManagedPayout(f.db, f.context);
@@ -44,7 +44,7 @@ test('cancel unpaid reservation permits correct re-preparation without deleting 
   } finally { f.dispose(); }
 });
 
-test('release respects an open return and payment rechecks authority at commit', async () => {
+void test('release respects an open return and payment rechecks authority at commit', async () => {
   const f = await earnedMaker(false);
   try {
     f.sqlite.prepare(`INSERT INTO return_requests(id,order_item_id,reason,detail,status,requested_at) VALUES('held-return',?,'Fictional return','Review this item','requested',?)`).run(f.itemId, f.now);
@@ -59,7 +59,7 @@ test('release respects an open return and payment rechecks authority at commit',
   } finally { f.dispose(); }
 });
 
-test('open item and order-wide cases block payment preparation', async () => {
+void test('open item and order-wide cases block payment preparation', async () => {
   const f = await earnedMaker();
   try {
     f.sqlite.prepare(`INSERT INTO complaints(id,reference_number,order_id,category,subject,detail,status,created_at,updated_at)
@@ -69,7 +69,7 @@ test('open item and order-wide cases block payment preparation', async () => {
   } finally { f.dispose(); }
 });
 
-test('prepared payment is blocked by a later refund and changed retry intent', async () => {
+void test('prepared payment is blocked by a later refund and changed retry intent', async () => {
   const f = await earnedMaker();
   try {
     const payoutId = await prepareManagedPayout(f.db, f.context);
@@ -82,7 +82,7 @@ test('prepared payment is blocked by a later refund and changed retry intent', a
   } finally { f.dispose(); }
 });
 
-test('post-payment refund offsets a later entitlement once', async () => {
+void test('post-payment refund offsets a later entitlement once', async () => {
   const f = await earnedMaker();
   try {
     const first = await prepareManagedPayout(f.db, f.context);
@@ -111,7 +111,7 @@ test('post-payment refund offsets a later entitlement once', async () => {
   } finally { f.dispose(); }
 });
 
-test('cancelling a legacy reservation preserves its permanent entry links', async () => {
+void test('cancelling a legacy reservation preserves its permanent entry links', async () => {
   const f = await earnedMaker();
   try {
     f.sqlite.prepare(`INSERT INTO managed_payouts(id,seller_id,payout_number,amount_paisa,status,destination_reference,simulation_label,
@@ -127,7 +127,7 @@ test('cancelling a legacy reservation preserves its permanent entry links', asyn
   } finally { f.dispose(); }
 });
 
-test('new cases block approval and payment until their recorded resolution', async () => {
+void test('new cases block approval and payment until their recorded resolution', async () => {
   const f = await earnedMaker();
   try {
     f.sqlite.exec(`INSERT INTO users(id,email,display_name,status,created_at,updated_at)
@@ -157,7 +157,7 @@ test('new cases block approval and payment until their recorded resolution', asy
   } finally { f.dispose(); }
 });
 
-test('unpaid or undelivered sales earn zero and a full refund leaves no rounding residue', async () => {
+void test('unpaid or undelivered sales earn zero and a full refund leaves no rounding residue', async () => {
   const f = await earnedMaker('calculated');
   try {
     f.sqlite.prepare("UPDATE orders SET status='delivered',delivered_at=? WHERE id=?").run(f.now + 7, f.orderId);
@@ -177,7 +177,7 @@ test('unpaid or undelivered sales earn zero and a full refund leaves no rounding
   } finally { f.dispose(); }
 });
 
-test('unattributed seller complaint or paid order-wide refund requires review', async () => {
+void test('unattributed seller complaint or paid order-wide refund requires review', async () => {
   const f = await earnedMaker();
   try {
     f.sqlite.prepare(`INSERT INTO complaints(id,reference_number,seller_id,category,subject,detail,status,created_at,updated_at)
@@ -192,7 +192,7 @@ test('unattributed seller complaint or paid order-wide refund requires review', 
   } finally { f.dispose(); }
 });
 
-test('payment preparation cannot silently replace the operator balance preview', async () => {
+void test('payment preparation cannot silently replace the operator balance preview', async () => {
   const f = await earnedMaker();
   try {
     await assert.rejects(prepareManagedPayout(f.db, { ...f.context, expectedAmountPaisa: 90000 }), /preview|balance|changed/i);
