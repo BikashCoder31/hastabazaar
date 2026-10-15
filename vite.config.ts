@@ -105,6 +105,13 @@ export default defineConfig(async ({ command }) => {
   return {
     css: { postcss: { plugins: [tailwindcss()] } },
     server: localDecoder ? { host: '127.0.0.1', port: Number(new URL(process.env.APP_ORIGIN!).port || '80'), strictPort: true }
+      : command === 'serve' && process.env.HASTABAZAAR_RUNTIME_ENV === 'local_staging'
+      ? {
+          host: new URL(process.env.APP_ORIGIN!).hostname,
+          port: Number(new URL(process.env.APP_ORIGIN!).port || '80'),
+          strictPort: true,
+          ...(isCodexSeatbeltSandbox ? { watch: { useFsEvents: false, usePolling: true } } : {}),
+        }
       : isCodexSeatbeltSandbox
       ? { watch: { useFsEvents: false, usePolling: true } }
       : undefined,

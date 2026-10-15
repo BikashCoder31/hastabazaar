@@ -6,7 +6,8 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vinext dev",
+    "dev": "node --import tsx scripts/start-local.mjs",
+    "local:check": "node --import tsx scripts/start-local.mjs --check",
     "build": "vinext build",
     "build:babal": "node scripts/build-babal.mjs",
     "package:babal:ci": "node scripts/package-babal-ci.mjs",

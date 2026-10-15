@@ -4,45 +4,37 @@ A clean, non-WordPress foundation for the Hastabazaar handmade marketplace.
 
 ## Development
 
+The active local project is `C:/Users/abinash/Desktop/Hatskala`.
+Open a terminal in that folder, or double-click `START-HASTABAZAAR.cmd`.
+The Desktop project already has its local data. For normal startup, use:
+
 ```powershell
-npm ci
-$env:HASTABAZAAR_RUNTIME_ENV = 'local_staging'
-$env:HASTABAZAAR_MAIL_MODE = 'capture'
-$env:HASTABAZAAR_PAYMENT_MODE = 'simulated'
-$env:HASTABAZAAR_RECIPIENT_DOMAIN = 'local.hastabazaar.test'
-$env:APP_ORIGIN = 'http://127.0.0.1:4317'
-$env:CHECKOUT_CONTACT_POLICY = 'email_only'
-npm run staging:verify -- --initialize
-npm run dev -- --hostname 127.0.0.1 --port 4317
+npm run local:check
+npm run dev
 ```
 
 Use a clean shell without production database, SMTP, Cloudflare, or object-storage
-credentials. The guarded setup targets this checkout's `.staging` directory.
-The initial verification may report that the server is not running; start it,
-then use a second shell with the same environment variables:
+credentials. The launcher checks the project folder, approved Git baseline,
+local settings, and existing `.staging` data before starting at
+`http://localhost:3018`. It stops if the port is occupied or data is missing.
+It never creates an empty database, restores a backup, seeds records, or applies
+migrations. See [LOCAL-START.md](LOCAL-START.md) for help with a stopped launch.
 
-```powershell
-npm run staging:seed
-npx tsx scripts/staging/hosted-auth-readiness.mjs --apply --confirm-local-hosted-auth-schema=HASTABAZAAR-LOCAL-STAGING
-npm run staging:verify
-Invoke-RestMethod "$env:APP_ORIGIN/health"
-```
-
-Seeding applies the tracked SQLite migrations, creates fictional roles, and
-publishes missing editable form configurations through the audited admin APIs.
-It also initializes the 24 protected identity and feature-managed baselines
-with existing Super Admin authority, an atomic audit trail and a coherent local
-backup. Existing publications and drafts are preserved; draft-only history blocks
-initialization. For an existing fixture, inspect with
-`npx tsx scripts/staging/identity-form-readiness.mjs --plan` and apply only missing
-baselines with the same command using `--apply`. The auth prerequisite helper backs up
-the local database before creating missing runtime auth tables; it creates no
-auth records. `/health` should report `marketplaceReady: true`.
-
-Open `http://127.0.0.1:4317/local-testing` to choose a fictional role. The switcher
+Open `http://localhost:3018/local-testing` to choose a fictional role. The switcher
 is unavailable in production builds. Live providers remain unconfigured;
 the contact form therefore shows a retryable delivery failure in this D1 preview.
-Local fixture setup does not certify an empty MariaDB production installation.
+The readiness check verifies form settings and the sign-in database structure;
+it does not verify live email, payment, or MariaDB production services.
+
+ZIP files in `C:/Users/abinash/Desktop/Hatskala-backups` are recovery archives,
+not working projects. Do not extract them over this project or launch an old
+worktree to get around a failed check. Git keeps the normal project history.
+
+Creating a new test environment, restoring data, applying migrations, or testing
+the local media decoder is a separate reviewed setup task. The existing guarded
+scripts under `scripts/staging/` are not normal launch steps. Their checkout and
+data protections remain in force. Do not run reset or seed commands to repair a
+missing-data error without reviewing the intended source and destination.
 
 SMS verification is temporarily dormant until a provider is selected. Explicit
 `CHECKOUT_CONTACT_POLICY=email_only` keeps email ownership verification required
@@ -52,11 +44,6 @@ the SMS adapter and delivery are configured and verified to restore phone OTP;
 an absent or unknown value retains the stricter email-and-phone requirement.
 The production Node runtime reads this setting from its environment; a local
 preview forwards only the explicit email-only setting, never provider secrets.
-
-To exercise real photo uploads in the local Cloudflare preview, set
-`$env:HASTABAZAAR_LOCAL_RIDER_DECODER='1'` before starting the dev server.
-The decoder is restricted to its own marked checkout and guarded loopback
-transport. Remove that variable before building; builds reject the local decoder.
 
 Source and build checks:
 
