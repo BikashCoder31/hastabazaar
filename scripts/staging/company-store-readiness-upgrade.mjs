@@ -24,10 +24,14 @@ export async function readReadinessManifest(root) {
 
 export function existingRecordSnapshot(sqlite) {
   return sqlite.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
-    .filter(({ name }) => name !== '_cf_METADATA').map(({ name }) => ({ table: name,
-      columns: sqlite.prepare(`PRAGMA table_info(${quote(name)})`).all().map(column => column.name),
-      rows: sqlite.prepare(`SELECT * FROM ${quote(name)}`).all().map(row => ({ ...row })),
-    }));
+    .filter(({ name }) => name !== '_cf_METADATA').map(({ name }) => {
+      // table_info omits generated columns that SELECT * includes. Select the
+      // same visible columns explicitly on both sides, including generated values.
+      const columns = sqlite.prepare(`PRAGMA table_xinfo(${quote(name)})`).all()
+        .filter(column => column.hidden !== 1).map(column => column.name);
+      return { table: name, columns,
+        rows: sqlite.prepare(`SELECT ${columns.map(quote).join(',')} FROM ${quote(name)}`).all().map(row => ({ ...row })) };
+    });
 }
 
 export function assertExistingRecordsPreserved(sqlite, snapshot) {

@@ -5,7 +5,7 @@ import { parseSellerApplication } from '../../lib/sellers/application';
 import { createSellerApplication } from '../../lib/db/repositories/seller-applications';
 
 export const makerNow = Date.now() - 60_000;
-export async function companyStoreMakerFixture() {
+export async function companyStoreMakerFixture(now = makerNow) {
   const fixture = await incentiveReportDatabase();
   const { sqlite, db } = fixture;
   sqlite.exec(`INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES
@@ -23,12 +23,12 @@ export async function companyStoreMakerFixture() {
   const parsed = parseSellerApplication(form);
   assert.ok(parsed.input, parsed.errors.join('\n'));
   await createSellerApplication(db, { sellerId: 'maker', userId: 'maker-user', input: parsed.input,
-    applicationReference: 'APP-FICTIONAL-MAKER', documents: [managedIdentityDocument('maker')], now: makerNow });
+    applicationReference: 'APP-FICTIONAL-MAKER', documents: [managedIdentityDocument('maker')], now });
   let beforeBatch: (() => void | Promise<void>) | undefined;
   const guardedDb = { prepare: db.prepare.bind(db), async batch(statements: D1PreparedStatement[]) {
     const callback = beforeBatch; beforeBatch = undefined; await callback?.();
     return db.batch(statements);
   } } as D1Database;
-  return { ...fixture, db: guardedDb, sellerId: 'maker', actorId: 'maker-user', now: makerNow,
+  return { ...fixture, db: guardedDb, sellerId: 'maker', actorId: 'maker-user', now,
     setBeforeBatch(callback: () => void | Promise<void>) { beforeBatch = callback; } };
 }

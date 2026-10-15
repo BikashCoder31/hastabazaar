@@ -10,10 +10,13 @@ import { businessSettingDefinitions } from '@/lib/configuration/definitions';
 import { BusinessSettingsManager, type BusinessSettingsAdminItem } from '@/components/admin/business-settings-manager';
 import { getProgramManagementWorkspace } from '@/lib/managed-commerce/program-management';
 import { resolveRuntimeEnvironment } from '@/lib/staging/environment';
+import { ProgramReadinessChecklist } from '@/components/admin/program-readiness-checklist';
+import { ManagedSettlementControls } from '@/components/admin/managed-settlement-controls';
+import { getManagedFinanceWorkspace, type ManagedFinanceWorkspace } from '@/lib/managed-commerce/finance-workspace';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ProgramsPage() {
+export default async function ProgramsPage({searchParams = Promise.resolve({})}: {searchParams?:Promise<{financeAfter?:string}>} = {}) {
   const staff = await requireStaffPage('/admin/programs', 'business_settings.view');
   if (staff.role !== 'super_admin') redirect('/staff-access-denied');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
@@ -37,6 +40,11 @@ export default async function ProgramsPage() {
   ]);
   const workspace = await getProgramManagementWorkspace(database, { actorId: staff.id,
     environment, programMode: programMode.value, activeModel: activeModel.value });
+  const params = await searchParams;
+  let finance: ManagedFinanceWorkspace;
+  try { finance = await getManagedFinanceWorkspace(database,{actorId:staff.id,now,after:params.financeAfter}); }
+  catch { finance = {makers:[],nextCursor:null,error:'Maker payment details are unavailable. Reload the page or review local readiness before taking action.'}; }
+  const company = initialSettings.find(item=>item.key === 'managed_maker_company_account')?.effective.value as {entityReference?:string;storeName?:string} | undefined;
 
   return (
     <div className="space-y-6">
@@ -49,6 +57,11 @@ export default async function ProgramsPage() {
           are independently ready.
         </p>
       </div>
+      <ProgramReadinessChecklist companyReady={Boolean(company?.entityReference && company.storeName)}
+        simulation={Boolean(bindings.HASTABAZAAR_RUNTIME_ENV?.trim()) && environment.simulationAllowed}
+        activation={programMode.value === 'activation_enabled' && Boolean(activeModel.value)} makers={workspace.totals.makers}
+        approvedProducts={workspace.totals.approvedProducts} publishedProducts={workspace.totals.publishedProducts}
+        payablePaisa={finance.error ? 0 : finance.makers.reduce((total,maker)=>total+maker.summary.payablePaisa,0)} />
       <ProgramManagement
         programMode={programMode.value}
         activeModel={activeModel.value}
@@ -58,6 +71,8 @@ export default async function ProgramsPage() {
         platformRetentionBps={retention.value}
         workspace={workspace}
       />
+      <ManagedSettlementControls ownerId={staff.id} workspace={finance} asOf={now}
+        simulationAllowed={Boolean(bindings.HASTABAZAAR_RUNTIME_ENV?.trim()) && environment.simulationAllowed} />
       <section id="program-settings" className="min-w-0 space-y-4 scroll-mt-6">
         <div><h2 className="font-heading text-2xl">Program settings</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">Review current values, save or schedule a change, and inspect its history. Model and activation changes follow the environment’s existing readiness checks.</p></div>
         <BusinessSettingsManager initialSettings={initialSettings as readonly BusinessSettingsAdminItem[]} asOf={now} />

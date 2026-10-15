@@ -21,10 +21,12 @@ export function managedSettlementReadySql(entitlement = 'e', now = Date.now()) {
   alias(entitlement);
   if (!Number.isSafeInteger(now) || now < 0) throw new RangeError('Invalid settlement time.');
   const related = cases(entitlement);
-  return `${entitlement}.earned_at IS NOT NULL AND ${entitlement}.hold_until<=${now}
+  return `${entitlement}.earned_at IS NOT NULL AND ${entitlement}.earned_at<=${now} AND ${entitlement}.hold_until<=${now}
     AND ${entitlement}.dispute_hold_reason IS NULL
     AND EXISTS(SELECT 1 FROM managed_commercial_snapshots s JOIN order_items i ON i.id=s.order_item_id JOIN orders o ON o.id=i.order_id
-      WHERE s.id=${entitlement}.snapshot_id AND o.delivered_at IS NOT NULL
+      WHERE s.id=${entitlement}.snapshot_id AND o.delivered_at IS NOT NULL AND o.delivered_at<=${now}
+        AND ${entitlement}.hold_until>=${entitlement}.earned_at+s.delivery_hold_days*86400000
+        AND o.status IN ('delivered','return_requested','return_in_transit','returned','refunded')
         AND i.fulfillment_status IN ('delivered','returned','refunded') AND o.payment_status IN ('paid','part_refunded','refunded'))
     AND NOT EXISTS(${related.returns}) AND NOT EXISTS(${related.complaints}) AND NOT EXISTS(${related.refunds})`;
 }

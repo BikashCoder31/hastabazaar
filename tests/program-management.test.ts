@@ -171,7 +171,7 @@ void test('retained supplier records render for registered sellers even without 
 void test('activation model options refer to the configured rate rather than a fixed percentage', async () => {
   const { ManagedMakerActivationForm } = await import('../components/admin/managed-maker-activation-form');
   const html = renderToStaticMarkup(React.createElement(ManagedMakerActivationForm, { sellerId: 'fixed' }));
-  assert.match(html, /configured rate applies/);
+  assert.match(html, /accepted rate applies/);
   assert.doesNotMatch(html, /9%|91%/);
 });
 

@@ -40,7 +40,7 @@ export function ProgramManagement({
     <div className="min-w-0 space-y-6">
       <nav aria-label="Program workspace" className="flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium text-primary">
         <Link href="#maker-applications">Maker applications</Link><Link href="#program-products">Product readiness</Link>
-        <Link href="#program-operations">Supply &amp; payments</Link><Link href="#program-settings">Program settings</Link>
+        <Link href="#program-operations">Supply &amp; payments</Link><Link href="#maker-payments">Sale-linked payments</Link><Link href="#program-settings">Program settings</Link>
         <Link href="/admin/staff-form-history?kind=managed-maker-activation">Activation history</Link>
       </nav>
       <Card id="program-readiness" className="border-amber-300/60 bg-amber-50/50 dark:bg-amber-950/10">

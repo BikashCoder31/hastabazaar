@@ -144,6 +144,11 @@ export function inspectLocalFeatureSchema(sqlite) {
     commission_rate_acceptances: ['rate_id', 'seller_id', 'actor_id', 'accepted_at'],
     loyalty_revisions: ['weekly_points_json', 'grace_enabled'],
     loyalty_daily_claims: ['cycle_day', 'cycle_number', 'grace_used', 'grace_applied', 'cycle_reset_reason'],
+    managed_maker_application_details: ['agreement_language', 'agreement_form_version_id'],
+    seller_participation_profiles: ['accepted_managed_detail_id'],
+    managed_commercial_snapshots: ['accepted_managed_detail_id', 'maker_name_snapshot', 'company_store_name_snapshot', 'company_legal_name_snapshot'],
+    seller_route_transition_applications: ['registered_terms_snapshot_json'],
+    managed_payout_allocations: ['payout_id', 'entitlement_id', 'amount_paisa', 'disposition', 'terminal_at', 'request_id', 'actor_id'],
   };
   const missing = [];
   for (const [table, columns] of Object.entries(required)) {
@@ -151,7 +156,10 @@ export function inspectLocalFeatureSchema(sqlite) {
     if (!actual.length) missing.push(table);
     else for (const column of columns) if (!actual.includes(column)) missing.push(`${table}.${column}`);
   }
-  for (const name of ['loyalty_latest_claims', 'loyalty_weekly_revision_guard', 'loyalty_weekly_claim_guard']) {
+  for (const name of ['loyalty_latest_claims', 'loyalty_weekly_revision_guard', 'loyalty_weekly_claim_guard',
+    'managed_allocation_one_reservation', 'managed_allocation_preserve_identity', 'managed_allocation_no_delete',
+    'managed_payout_preserve_identity', 'managed_payout_no_delete', 'managed_payout_preserve_terminal',
+    'managed_legacy_payout_link_no_update', 'managed_legacy_payout_link_no_delete']) {
     if (!sqlite.prepare('SELECT 1 FROM sqlite_master WHERE name=?').get(name)) missing.push(name);
   }
   if (!missing.includes('commission_control') && !sqlite.prepare("SELECT 1 FROM commission_control WHERE id='default'").get()) missing.push('commission_control.default');
@@ -175,7 +183,7 @@ export async function checkLocalData(projectRoot, environment) {
     const sqlite = new DatabaseSync(databasePath, { readOnly: true });
     try {
       const features = inspectLocalFeatureSchema(sqlite);
-      if (!features.ready) throw new Error(`Approved feature storage is incomplete: ${features.missing.join(', ')}. Review the Commission and weekly loyalty upgrades separately.`);
+      if (!features.ready) throw new Error(`Approved feature storage is incomplete: ${features.missing.join(', ')}. Review the required local upgrades separately.`);
       const readiness = inspectFormPreviewReadiness(sqlite);
       if (!readiness.ready) {
         throw new Error(`Local forms/sign-in data is incomplete: ${readiness.readyForms}/${readiness.requiredForms} forms ready. ${readiness.errors.join(' ')}`);

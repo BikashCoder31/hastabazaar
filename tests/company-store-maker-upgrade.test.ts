@@ -3,6 +3,7 @@ import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { earnedMaker } from './helpers/company-store-financial-fixture';
 import { applyReadinessUpgrade, assertExistingRecordsPreserved, existingRecordSnapshot,
   inspectReadinessUpgrade, readReadinessManifest } from '../scripts/staging/company-store-readiness-upgrade.mjs';
 
@@ -52,4 +53,15 @@ test('upgrade rejects an ordinary Admin and existing unpublished configuration w
     assert.throws(() => applyReadinessUpgrade(sqlite, manifest, 'existing-super', 100), /unpublished draft/);
     assert.deepEqual(existingRecordSnapshot(sqlite), draftBefore);
   } finally { sqlite.close(); }
+});
+
+test('form initialization preserves populated orders including generated columns', async () => {
+  const f = await earnedMaker();
+  try {
+    const before = existingRecordSnapshot(f.sqlite);
+    assert.deepEqual(applyReadinessUpgrade(f.sqlite, await readReadinessManifest(process.cwd()), 'reviewer', f.financialNow),
+      { migrations: 0, forms: 4, audits: 4 });
+    assertExistingRecordsPreserved(f.sqlite, before);
+    assert.equal(f.sqlite.prepare('SELECT discount_source FROM order_items').get()?.discount_source, 'none');
+  } finally { f.dispose(); }
 });

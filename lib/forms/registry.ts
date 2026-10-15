@@ -92,6 +92,9 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
   'staff.managed-adjustment': { formId: 'staff.managed-adjustment', route: '/api/admin/managed-program/:id', mode: 'operation' },
   'staff.managed-payment-preparation': { formId: 'staff.managed-payment-preparation', route: '/api/admin/managed-program/:id', mode: 'operation' },
   'staff.managed-payment-action': { formId: 'staff.managed-payment-action', route: '/api/admin/managed-program/:id', mode: 'operation' },
+  'staff.managed-eligibility-release': { formId: 'staff.managed-eligibility-release', route: '/api/admin/managed-program/:id', mode: 'operation' },
+  'staff.managed-payout-preparation': { formId: 'staff.managed-payout-preparation', route: '/api/admin/managed-program/:id', mode: 'operation' },
+  'staff.managed-payout-action': { formId: 'staff.managed-payout-action', route: '/api/admin/managed-program/:id', mode: 'operation' },
   'staff.managed-transition-decision': { formId: 'staff.managed-transition-decision', route: '/api/admin/managed-program/:id', mode: 'operation' },
   'staff.parcel-control': { formId: 'staff.parcel-control', route: '/api/admin/orders/:id/parcels', mode: 'operation' },
   'staff.payout-request-action': { formId: 'staff.payout-request-action', route: '/api/admin/payout-requests/:id', mode: 'operation' },
@@ -150,6 +153,9 @@ staff.managed-supply-decision|staff|operation|/api/admin/managed-program/:id|dec
 staff.managed-adjustment|staff|operation|/api/admin/managed-program/:id|amountNpr
 staff.managed-payment-preparation|staff|operation|/api/admin/managed-program/:id|destinationReference
 staff.managed-payment-action|super_admin|operation|/api/admin/managed-program/:id|action
+staff.managed-eligibility-release|super_admin|operation|/api/admin/managed-program/:id|reason
+staff.managed-payout-preparation|super_admin|operation|/api/admin/managed-program/:id|reason
+staff.managed-payout-action|super_admin|operation|/api/admin/managed-program/:id|reason
 staff.managed-transition-decision|staff|operation|/api/admin/managed-program/:id|decision
 staff.parcel-control|staff|operation|/api/admin/orders/:id/parcels|action
 staff.payout-1|staff|operation|/api/admin/payouts|amount
@@ -350,6 +356,9 @@ const STAFF_OPERATION_KEYS = Object.freeze({
   'staff.managed-adjustment': ['action', 'recordId', 'kind', 'amountNpr', 'amountPaisa', 'reason', 'requestId', 'formVersion', 'customAnswers'],
   'staff.managed-payment-preparation': ['action', 'recordId', 'destinationReference', 'requestId', 'formVersion', 'customAnswers'],
   'staff.managed-payment-action': ['action', 'paymentId', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.managed-eligibility-release': ['action', 'sellerId', 'actorId', 'reason', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.managed-payout-preparation': ['action', 'sellerId', 'actorId', 'reason', 'destinationReference', 'scheduledFor', 'expectedAmountPaisa', 'expectedSnapshot', 'amountPaisa', 'balancePaisa', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.managed-payout-action': ['action', 'sellerId', 'actorId', 'payoutId', 'expectedStatus', 'providerReference', 'amountPaisa', 'reason', 'requestId', 'formVersion', 'customAnswers'],
   'staff.managed-transition-decision': ['action', 'applicationId', 'decision', 'effectiveLocal', 'effectiveAt', 'reason', 'requestId', 'formVersion', 'customAnswers'],
   'staff.parcel-control': ['orderId', 'jobId', 'version', 'action', 'note', 'method', 'riderEmail', 'courierName', 'trackingCode', 'trackingUrl', 'reference', 'amount', 'amountPaisa', 'cashRecordId', 'riderReportId', 'requestId', 'formVersion', 'customAnswers'],
   'staff.payout-request-action': ['payoutRequestId', 'action', 'note', 'requestId', 'formVersion', 'customAnswers'],

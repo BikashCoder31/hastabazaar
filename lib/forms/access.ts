@@ -419,6 +419,21 @@ async function staffActionGrant(db: D1Database, viewer: FormAnswerViewer,
         WHERE parent.id=? LIMIT 1`;
       values = [actorId, requestId, subjectId];
       break;
+    case 'staff.managed-eligibility-release':
+    case 'staff.managed-payout-preparation':
+    case 'staff.managed-payout-action': {
+        const release = formId === 'staff.managed-eligibility-release';
+        if (subjectType !== (release ? 'seller' : 'managed_payout')) return false;
+        permission = formId === 'staff.managed-payout-action' ? 'payout.approve' : 'payout.prepare'; superAdminOnly = true;
+        const actions = release ? "'managed_settlement.eligibility_released'"
+          : formId === 'staff.managed-payout-preparation' ? "'managed_payout.prepared'"
+          : "'managed_payout.approved','managed_payout.paid','managed_payout.cancelled'";
+        parentSql = `SELECT 1 FROM ${release ? 'seller_profiles' : 'managed_payouts'} parent JOIN audit_logs audit
+          ON audit.subject_type=? AND audit.subject_id=parent.id AND audit.actor_id=? AND audit.request_id=?
+          AND audit.action IN (${actions}) AND json_type(audit.next_json,'$.catalogDigest')='text' WHERE parent.id=? LIMIT 1`;
+        values = [subjectType, actorId, requestId, subjectId];
+        break;
+    }
     case 'staff.managed-supply-decision':
       if (subjectType !== 'managed_supply') return false;
       permission = 'seller.application.review'; superAdminOnly = true;

@@ -6,8 +6,8 @@ import { reviewSellerApplication } from '../../lib/db/repositories/seller-applic
 import { createBusinessSettingDraft, publishBusinessSettingDraft } from '../../lib/db/repositories/business-settings';
 import { getAcceptedManagedTerms } from '../../lib/managed-commerce/accepted-terms';
 import { resolveRuntimeEnvironment } from '../../lib/staging/environment';
-export async function readyMaker() {
-  const f = await companyStoreMakerFixture();
+export async function readyMaker(now?: number) {
+  const f = await companyStoreMakerFixture(now);
   for (const [key, value] of [['managed_maker_program_mode', 'activation_enabled'],
     ['managed_maker_active_model', 'managed_sale_linked_percentage_v1']] as const) {
     const draft = await createBusinessSettingDraft(f.db, { key, value, actorId: 'reviewer', reason: 'Isolated company-store journey', requestId: `draft:${key}`, now: f.now });

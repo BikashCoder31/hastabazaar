@@ -6,8 +6,8 @@ import { addCartItem } from '../../lib/db/repositories/cart';
 import { createCodOrder } from '../../lib/db/repositories/orders';
 import { seedCheckoutBuyer } from './checkout-contact';
 import { accrueManagedEntitlements, applyManagedRefundAdjustment } from '../../lib/db/repositories/managed-settlements';
-export async function earnedMaker(mature: boolean | 'calculated' = true) {
-  const f = await readyMaker();
+export async function earnedMaker(mature: boolean | 'calculated' = true, now?: number) {
+  const f = await readyMaker(now);
   await activateManagedMakerForSimulation(f.db, f.activation);
   await reviewProduct(f.db, { productId: 'cup', actorId: 'reviewer', action: 'publish', reason: 'Publish isolated settlement product', requestId: 'settlement-product', now: f.now + 4 });
   await addCartItem(f.db, 'settlement-cart', 'cup', 1, f.now + 5);
