@@ -1,3 +1,4 @@
+import { publicTrackingReferenceSql } from '../../riders/public-tracking';
 import { getFirstCodReview } from '../../orders/first-cod-review';
 export interface OrderTracking {
   orderNumber: string;
@@ -20,7 +21,7 @@ export async function findOrderTracking(
   const order = await db
     .prepare(`SELECT o.id,o.order_number AS orderNumber,o.status,o.payment_status AS paymentStatus,
  o.placed_at AS placedAt,o.delivered_at AS deliveredAt,o.updated_at AS updatedAt,
- s.tracking_code AS trackingCode,s.estimated_min_days AS estimatedMinDays,s.estimated_max_days AS estimatedMaxDays
+ ${publicTrackingReferenceSql('o.id', 's.tracking_code')} AS trackingCode,s.estimated_min_days AS estimatedMinDays,s.estimated_max_days AS estimatedMaxDays
  FROM orders o INNER JOIN shipments s ON s.order_id=o.id
  WHERE o.order_number=? AND lower(o.customer_email)=? LIMIT 1`)
     .bind(orderNumber.trim().toUpperCase(), email.trim().toLowerCase())

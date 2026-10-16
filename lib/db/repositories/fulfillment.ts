@@ -1,3 +1,4 @@
+import { publicTrackingReferenceSql } from '../../riders/public-tracking';
 import { assertFirstCodFulfillmentAllowed } from '../../orders/first-cod-review';
 import {
   cancellationChoices,
@@ -18,6 +19,7 @@ import {
 import { buildFormAnswerInsert } from './form-answers';
 import { digestFormRequest } from '@/lib/forms/submission';
 import type { FormAnswerSnapshot } from '@/lib/forms/types';
+import { companyDetails } from '@/lib/content/company-details';
 
 export type ItemFulfillmentStatus =
   | 'confirmed'
@@ -123,7 +125,7 @@ async function loadOrderBase(
           orders.payment_mode AS paymentMode, orders.payment_status AS paymentStatus,
           orders.placed_at AS placedAt, orders.delivered_at AS deliveredAt,
           orders.cancelled_at AS cancelledAt, shipments.id AS shipmentId,
-          shipments.status AS shipmentStatus, shipments.tracking_code AS trackingCode,
+          shipments.status AS shipmentStatus, ${publicTrackingReferenceSql('orders.id', 'shipments.tracking_code')} AS trackingCode,
           shipments.estimated_min_days AS estimatedMinDays,
           shipments.estimated_max_days AS estimatedMaxDays
          FROM orders INNER JOIN shipments ON shipments.order_id = orders.id
@@ -294,7 +296,78 @@ const sellerActions: Record<
   },
 };
 
-export async function transitionSellerFulfillment(
+type PreparationInput = {
+  orderId: string; sellerId: string; actorId: string; action: SellerFulfillmentAction;
+  note: string; requestId: string; now: number;
+};
+
+export async function transitionSellerFulfillment(database: D1Database, options: PreparationInput): Promise<void> {
+  return transitionPreparation(database, options);
+}
+
+/** Historical commercial snapshots, not the maker's current route, determine company responsibility. */
+export async function listCompanyPreparationGroups(database: D1Database, orderId: string) {
+  const rows = await database.prepare(`SELECT i.seller_id AS sellerId,MIN(i.fulfillment_status) AS status,
+    MIN(COALESCE(m.maker_name_snapshot,i.seller_name_snapshot)) AS makerName
+    FROM order_items i LEFT JOIN managed_commercial_snapshots m ON m.order_item_id=i.id AND m.seller_id=i.seller_id
+    WHERE i.order_id=? GROUP BY i.seller_id
+    HAVING COUNT(*)=COUNT(m.id) AND COUNT(DISTINCT i.fulfillment_status)=1
+      AND MIN(i.fulfillment_status) IN ('confirmed','packing')
+      AND MIN(m.legal_seller_reference)=? AND MAX(m.legal_seller_reference)=?
+      AND MIN(m.invoice_issuer_reference)=? AND MAX(m.invoice_issuer_reference)=?`)
+    .bind(orderId,...Array(4).fill(companyDetails.entityReference)).all<{sellerId:string;status:string;makerName:string}>();
+  return rows.results;
+}
+
+export async function transitionCompanyPreparation(database: D1Database, options: PreparationInput & {
+  form: { requestId: string; versionId: string; answers: FormAnswerSnapshot };
+}): Promise<void> {
+  const authority = await staffMutationGuard(database,options.actorId,'order.manage',FulfillmentConflictError,'super_admin');
+  if (!['start_packing','ready_for_pickup'].includes(options.action) || options.note.trim().length<8 || options.note.trim().length>500 ||
+      !/^[a-zA-Z0-9:_-]{1,100}$/.test(options.requestId) || options.form.requestId!==options.requestId)
+    throw new FulfillmentConflictError('Review the company preparation action, note and request reference.');
+  const catalogDigest = await digestFormRequest({orderId:options.orderId,sellerId:options.sellerId,actorId:options.actorId,
+    action:options.action,note:options.note.trim(),versionId:options.form.versionId,answers:options.form.answers});
+  const action=`order.company.${options.action}`;
+  const prior=await database.prepare(`SELECT a.actor_id AS actorId,a.action,a.subject_type AS subjectType,a.subject_id AS subjectId,
+    a.next_json AS nextJson,f.actor_id AS answerActor,f.config_version_id AS versionId,f.subject_type AS answerType,f.subject_id AS answerId
+    FROM audit_logs a LEFT JOIN form_answer_sets f ON f.form_id='staff.order-fulfillment' AND f.request_id=a.request_id
+    WHERE a.request_id=? LIMIT 1`).bind(options.requestId).first<{
+      actorId:string;action:string;subjectType:string;subjectId:string;nextJson:string;answerActor:string;versionId:string;answerType:string;answerId:string}>();
+  if(prior) {
+    let digest:unknown;try{digest=JSON.parse(prior.nextJson).catalogDigest;}catch{/* conflict below */}
+    if(prior.actorId!==options.actorId||prior.action!==action||prior.subjectType!=='order'||prior.subjectId!==options.orderId||
+      prior.answerActor!==options.actorId||prior.versionId!==options.form.versionId||prior.answerType!=='order'||prior.answerId!==options.orderId||digest!==catalogDigest)
+      throw new FulfillmentConflictError('Request reference already used for different company preparation content.');
+    return;
+  }
+  if(!(await listCompanyPreparationGroups(database,options.orderId)).some(group=>group.sellerId===options.sellerId))
+    throw new FulfillmentConflictError('Only matching company-store items can be prepared here.');
+  const guardId=crypto.randomUUID();
+  const guards=[...authority.statements,
+    database.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN
+      EXISTS(SELECT 1 FROM orders WHERE id=? AND operation_request_id=?)
+      AND EXISTS(SELECT 1 FROM order_items WHERE order_id=? AND seller_id=?)
+      AND NOT EXISTS(SELECT 1 FROM order_items i WHERE i.order_id=? AND i.seller_id=? AND NOT EXISTS(
+        SELECT 1 FROM managed_commercial_snapshots m WHERE m.order_item_id=i.id AND m.seller_id=i.seller_id
+          AND m.participation_route='managed_maker' AND m.legal_seller_reference=? AND m.invoice_issuer_reference=?))
+      AND NOT EXISTS(SELECT 1 FROM first_cod_reviews WHERE order_id=? AND status<>'confirmed')
+      AND NOT EXISTS(SELECT 1 FROM seller_restrictions WHERE seller_id=? AND obligation_mode<>'allow_existing'
+        AND (mode='disabled' OR (mode='suspended' AND suspended_until>?))) THEN 1 ELSE 0 END`)
+      .bind(guardId,options.orderId,options.requestId,options.orderId,options.sellerId,options.orderId,options.sellerId,
+        companyDetails.entityReference,companyDetails.entityReference,options.orderId,options.sellerId,options.now),
+    database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(guardId),
+    buildFormAnswerInsert(database,{formId:'staff.order-fulfillment',requestId:options.requestId,versionId:options.form.versionId,
+      subjectType:'order',subjectId:options.orderId,actorId:options.actorId,answers:options.form.answers,now:options.now})];
+  try { await transitionPreparation(database,options,{guards,action,catalogDigest}); }
+  catch(error) {
+    if(error instanceof Error && /constraint|guard|invalid_form|awaits staff confirmation/i.test(error.message))
+      throw new FulfillmentConflictError('Company items, form or staff authority changed. Refresh the order before retrying.');
+    throw error;
+  }
+}
+
+async function transitionPreparation(
   database: D1Database,
   options: {
     orderId: string;
@@ -305,6 +378,7 @@ export async function transitionSellerFulfillment(
     requestId: string;
     now: number;
   },
+  company?: { guards: readonly D1PreparedStatement[]; action: string; catalogDigest: string },
 ): Promise<void> {
   await assertFirstCodFulfillmentAllowed(
     database,
@@ -435,11 +509,11 @@ export async function transitionSellerFulfillment(
       .bind(
         crypto.randomUUID(),
         options.actorId,
-        `order.seller.${options.action}`,
+        company?.action ?? `order.seller.${options.action}`,
         options.orderId,
         note,
         JSON.stringify({ itemStatus: transition.from }),
-        JSON.stringify({ itemStatus: transition.to }),
+        JSON.stringify({ itemStatus: transition.to, ...(company ? { sellerId: options.sellerId, catalogDigest: company.catalogDigest } : {}) }),
         options.requestId,
         options.now,
         options.orderId,
@@ -454,6 +528,7 @@ export async function transitionSellerFulfillment(
           now: options.now,
         })
       : []),
+    ...(company?.guards ?? []),
   ]);
   if ((results[0].meta.changes ?? 0) !== 1) {
     throw new FulfillmentConflictError(

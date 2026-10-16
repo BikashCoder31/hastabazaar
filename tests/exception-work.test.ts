@@ -127,3 +127,15 @@ void test('empty corrupted permission profile denies exception actor, owner and 
  await assert.rejects(()=>createExceptionWork(f.db,{...base,ownerId:'finance'}));
  }finally{f.sqlite.close();}
 });
+
+void test('rider-linked exception history remains available only to current Super Admins',async()=>{
+ const {exceptionHistory}=await import('../lib/operations/exception-work');
+ const f=await fixture();try{
+  const id=await createExceptionWork(f.db,base);
+  f.sqlite.prepare("INSERT INTO exception_work_events(id,work_id,actor_id,action,next_action,note,evidence,payload_json,created_at) VALUES (?,?,'super','rider_report_linked','Review delivery progress.','Private rider report.','private-report',?,1500)").run('rider-linked',id,JSON.stringify({riderReportId:'private-report'}));
+  assert.deepEqual(await exceptionHistory(f.db,'admin',id),[]);
+  assert.ok((await exceptionHistory(f.db,'super',id)).some(row=>row.evidence==='private-report'));
+  f.sqlite.exec("DELETE FROM user_roles WHERE user_id='super';INSERT INTO user_roles VALUES ('super','admin')");
+  assert.deepEqual(await exceptionHistory(f.db,'super',id),[]);
+ }finally{f.sqlite.close();}
+});

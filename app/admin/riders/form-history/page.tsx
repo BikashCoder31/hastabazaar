@@ -21,7 +21,7 @@ export default async function StaffRiderFormHistoryPage({ searchParams }: {
   if (!kind) notFound();
   const staff = await requireStaffPage('/admin/riders/form-history',
     kind === 'remittance' ? 'payout.prepare' : 'order.manage');
-  if (kind === 'application' && staff.role !== 'super_admin') notFound();
+  if (staff.role !== 'super_admin') notFound();
   const spec = riderHistoryKinds[kind];
   const db = requireDatabase(env as unknown as { DB?: D1Database });
   const base = `/admin/riders/form-history?kind=${kind}`;

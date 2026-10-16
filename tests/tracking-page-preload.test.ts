@@ -218,6 +218,9 @@ void test('real tracking route finds a fictional order without exposing identity
     sqlite.exec(`CREATE TABLE orders(id TEXT,order_number TEXT,status TEXT,payment_status TEXT,
       placed_at INTEGER,delivered_at INTEGER,updated_at INTEGER,customer_email TEXT);
       CREATE TABLE shipments(order_id TEXT,tracking_code TEXT,estimated_min_days INTEGER,estimated_max_days INTEGER);
+      CREATE TABLE delivery_assignments(order_id TEXT,method TEXT,rider_user_id TEXT);
+      CREATE TABLE shipping_jobs(id TEXT,order_id TEXT);
+      CREATE TABLE shipping_parcels(shipping_job_id TEXT,method TEXT,rider_user_id TEXT);
       CREATE TABLE order_status_events(order_id TEXT,to_status TEXT,created_at INTEGER);
       CREATE TABLE first_cod_reviews(order_id TEXT PRIMARY KEY,customer_id TEXT,total_paisa INTEGER,status TEXT,
         created_at INTEGER,confirmed_by TEXT,confirmed_at INTEGER,reason TEXT,request_id TEXT);
@@ -241,6 +244,13 @@ void test('real tracking route finds a fictional order without exposing identity
     };
     assert.equal(knownBody.tracking.orderNumber, 'HK-FICTIONAL');
     assert.equal(knownBody.tracking.trackingCode, 'FICTIONAL-DELIVERY');
+    sqlite.exec("INSERT INTO delivery_assignments VALUES ('fictional','own_rider','private-rider')");
+    const privateResponse = await POST(request('qa@example.invalid'));
+    assert.equal(privateResponse.status, 200);
+    const privateBody = (await privateResponse.json()) as { tracking: { trackingCode: string | null; status: string } };
+    assert.equal(privateBody.tracking.trackingCode, null);
+    assert.equal(privateBody.tracking.status, 'confirmed');
+    assert.doesNotMatch(JSON.stringify(privateBody), /FICTIONAL-DELIVERY|private-rider/);
     assert.doesNotMatch(
       JSON.stringify(knownBody),
       /qa@example|customer|address|"id"/i,

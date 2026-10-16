@@ -159,6 +159,15 @@ void test('MariaDB adapter removes the single-backslash LIKE escape emitted by S
   );
 });
 
+void test('MariaDB customer replies append the existing detail instead of numeric coercion', () => {
+  for (const table of ['complaints', 'return_requests']) {
+    assert.equal(
+      translateSqliteSql(`UPDATE ${table} SET detail = detail || ? WHERE id = ?`),
+      `UPDATE ${table} SET detail = CONCAT(detail, ?) WHERE id = ?`,
+    );
+  }
+});
+
 void test('MariaDB adapter preserves the database clock in integer milliseconds', () => {
   for (const sql of [
     "SELECT unixepoch('now') * 1000 AS now",

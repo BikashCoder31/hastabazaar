@@ -1,3 +1,4 @@
+import { FormGuide } from '@/components/forms/form-guide';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
@@ -47,6 +48,8 @@ export default async function LoginPage({
         {!passwordConfig && !emailRequestConfig ? <p role="alert" className="mt-5 text-sm text-destructive">Sign-in forms are temporarily unavailable. Please try again later.</p> : null}
         {passwordConfig ? <>
         <form data-form-id="identity.login-password" action="/api/auth/login" method="post" className="mt-6 space-y-4">
+      <FormGuide formId="identity.login-password" />
+
 <p className="text-xs text-muted-foreground">* Required field</p>
 
           <input type="hidden" name="return_to" value={returnTo} />
@@ -64,6 +67,8 @@ export default async function LoginPage({
           <span className="h-px flex-1 bg-border" />
         </div> : null}
         {emailRequestConfig ? <form data-form-id="identity.email-code-request" action="/api/auth/email-code/request" method="post" className="space-y-4">
+      <FormGuide formId="identity.email-code-request" />
+
 <p className="text-xs text-muted-foreground">* Required field</p>
 
           <input type="hidden" name="return_to" value={returnTo} />

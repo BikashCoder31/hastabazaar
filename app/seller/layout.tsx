@@ -5,6 +5,10 @@ import { signOutPath } from '@/app/auth';
 import { BrandWordmark } from '@/components/layout/brand-wordmark';
 import { SellerNavigation } from '@/components/seller/seller-navigation';
 import { requireSellerPage } from '@/lib/auth/seller';
+import { env } from 'cloudflare:workers';
+import { requireDatabase } from '@/lib/db/d1';
+import { getSellerCommissionNotices } from '@/lib/db/repositories/commission-rates';
+import { CommissionFeeNotice } from '@/components/seller/commission-fee-notice';
 import { mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
 
 export const dynamic = 'force-dynamic';
@@ -13,6 +17,9 @@ export default async function SellerLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const seller = await requireSellerPage('/seller');
+  const database = requireDatabase(env as unknown as { DB?: D1Database });
+  const participation = await database.prepare('SELECT participation_route AS route FROM seller_participation_profiles WHERE seller_id=?').bind(seller.sellerId).first<{route:string}>();
+  const notices = participation?.route === 'managed_maker' ? [] : await getSellerCommissionNotices(database, seller.sellerId);
   return (
     <div className="min-h-screen bg-secondary/35">
       <a
@@ -73,6 +80,7 @@ export default async function SellerLayout({
           />
         </aside>
         <main tabIndex={-1} id="main-content" className="min-w-0 pb-10">
+          {notices.map(notice => <CommissionFeeNotice key={notice.id} notice={notice} agreementAccepted={seller.sellerAgreementVersion === notice.agreementVersion} />)}
           {children}
         </main>
       </div>

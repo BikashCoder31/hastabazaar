@@ -45,7 +45,7 @@ void test('hosted auth prerequisite rejects every nonlocal context before a data
     { SMTP_HOST: 'external.example' }, { CLOUDFLARE_API_TOKEN: 'forbidden' },
     { HASTABAZAAR_STAGING_ROOT: '../outside' }])
     assert.throws(() => assertHostedAuthReadinessContext(project, project, { ...environment, ...changes }));
-  for (const other of ['C:/Users/abinash/Desktop/Hatskala', join(project, 'copied-project')])
+  for (const other of [join(recovery, 'rejected-checkout'), join(project, 'copied-project')])
     assert.throws(() => assertHostedAuthReadinessContext(other, other, environment), /approved isolated checkout/);
 });
 

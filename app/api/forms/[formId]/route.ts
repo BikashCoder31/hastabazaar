@@ -1,3 +1,5 @@
+import { isRiderPortalEnabled } from '@/lib/riders/availability';
+import { getSellerTermsViewer } from '@/lib/auth/seller-commercial-access';
 import { env } from 'cloudflare:workers';
 import { getAuthenticatedUser } from '@/app/auth';
 import { requireDatabase } from '@/lib/db/d1';
@@ -28,13 +30,15 @@ const STAFF_FORM_PERMISSIONS: Readonly<Partial<Record<string, Permission>>> = {
   'staff.privacy-action': 'support.manage',
   'staff.product-classification': 'catalog.manage',
   'staff.recorded-progress-filter': 'audit_log.view',
-  'staff.rider-control-1': 'order.manage',
   'staff.delivery-assignment': 'order.manage',
   'shipping.console-action-staff': 'order.manage',
   'staff.return-case-action': 'refund.approve.standard',
   'staff.complaint-case-action': 'support.manage',
   'staff.cancellation-review': 'order.manage',
   'staff.seller-review-action': 'seller.application.review',
+  'staff.seller-registry-filter': 'seller.application.review',
+  'staff.order-queue-filter': 'order.manage',
+  'staff.order-email-filter': 'order.manage',
   'staff.order-fulfillment': 'order.manage',
   'staff.first-cod-confirmation': 'order.manage',
   'staff.review-moderation': 'product.review',
@@ -47,6 +51,15 @@ const applicationStages = new Set<ParticipationApplicationStage>([
 ]);
 
 async function sellerAudienceAllowed(db: D1Database, userId: string, roles: ReadonlySet<string>, formId: string): Promise<boolean> {
+  if (formId === 'seller.managed-transition-request') return roles.has('customer') && Boolean(await db.prepare(`SELECT 1 FROM seller_profiles s
+    JOIN seller_participation_profiles p ON p.seller_id=s.id WHERE s.user_id=? AND p.participation_route='managed_maker' AND p.application_stage='active'
+      AND NOT EXISTS(SELECT 1 FROM seller_restrictions r WHERE r.seller_id=s.id AND (r.mode='disabled' OR (r.mode='suspended' AND r.suspended_until>?)))`).bind(userId,Date.now()).first());
+  if (formId === 'seller.managed-terms-acceptance') {
+    return roles.has('customer') && Boolean(await db.prepare(`SELECT 1 FROM seller_profiles s
+      JOIN seller_participation_profiles p ON p.seller_id=s.id WHERE s.user_id=?
+        AND p.participation_route='managed_maker' AND p.application_stage NOT IN ('rejected','suspended')`)
+      .bind(userId).first());
+  }
   if (formId === 'seller.maker-profile' || formId === 'seller.product-submission') {
     if (roles.has('customer')) {
       const participation = await db.prepare(`SELECT p.application_stage AS applicationStage
@@ -76,7 +89,8 @@ async function riderAudienceAllowed(db: D1Database, userId: string, roles: Reado
 }
 
 async function audienceAllowed(audience: FormAudience, formId: string): Promise<boolean> {
-  if (audience === 'public' || formId === 'seller.application') return true;
+  if (formId === 'seller.application') return Boolean(await getSellerTermsViewer());
+  if (audience === 'public') return true;
   try {
     const identity = await getAuthenticatedUser();
     if (!identity) return false;
@@ -105,6 +119,7 @@ export async function GET(_request: Request, context: { params: Promise<{ formId
   const { formId } = await context.params;
   const definition = Object.hasOwn(FORM_REGISTRY, formId) ? FORM_REGISTRY[formId] : null;
   if (!definition) return missing();
+  if (definition.audience === 'rider' && !isRiderPortalEnabled()) return missing();
   if (!await audienceAllowed(definition.audience, formId)) return missing();
   try {
     const db = requireDatabase(env as unknown as { DB?: D1Database });

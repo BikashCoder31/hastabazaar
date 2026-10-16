@@ -1,4 +1,5 @@
-export type FeaturedProduct = {
+import type { PublicSellingIdentity } from '../products/selling-identity';
+export type FeaturedProduct = Partial<PublicSellingIdentity> & {
   slug: string;
   name: string;
   price: string;

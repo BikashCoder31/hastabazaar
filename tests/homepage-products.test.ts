@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {addProductEvidenceSchema} from './helpers/product-evidence-schema';
 import { readFile } from 'node:fs/promises';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import test from 'node:test';
@@ -295,7 +296,7 @@ function homepageFixture() {
   );
 
   return {
-    database: new HomepageDatabase(sqlite) as unknown as D1Database,
+    database: (addProductEvidenceSchema(sqlite), new HomepageDatabase(sqlite)) as unknown as D1Database,
     sqlite,
     now,
   };

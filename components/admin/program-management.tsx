@@ -1,3 +1,4 @@
+import { DEFAULT_PLATFORM_SHARE_BPS } from '@/lib/configuration/commission-defaults';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import type { RuntimeEnvironment } from '@/lib/staging/environment';
@@ -21,7 +22,7 @@ export function ProgramManagement({
   capabilities,
   environment,
   environmentVerified = Boolean(environment),
-  platformRetentionBps = 900,
+  platformRetentionBps = DEFAULT_PLATFORM_SHARE_BPS,
   workspace,
 }: {
   programMode: ManagedMakerProgramMode;
@@ -39,7 +40,7 @@ export function ProgramManagement({
     <div className="min-w-0 space-y-6">
       <nav aria-label="Program workspace" className="flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium text-primary">
         <Link href="#maker-applications">Maker applications</Link><Link href="#program-products">Product readiness</Link>
-        <Link href="#program-operations">Supply &amp; payments</Link><Link href="#program-settings">Program settings</Link>
+        <Link href="#program-operations">Supply &amp; payments</Link><Link href="#maker-payments">Sale-linked payments</Link><Link href="#program-settings">Program settings</Link>
         <Link href="/admin/staff-form-history?kind=managed-maker-activation">Activation history</Link>
       </nav>
       <Card id="program-readiness" className="border-amber-300/60 bg-amber-50/50 dark:bg-amber-950/10">
@@ -115,7 +116,7 @@ export function ProgramManagement({
           <div className="grid gap-3 lg:grid-cols-2">{workspace.makers.filter((maker) => maker.proposedSupplies || maker.paymentActions || maker.pendingTransitions).map((maker) => <div key={maker.id} className="min-w-0 rounded-lg border p-4"><p className="break-words font-medium">{maker.name}</p><p className="mt-1 text-sm text-muted-foreground">{maker.proposedSupplies} supply proposals · {maker.paymentActions} payment actions · {maker.pendingTransitions} transitions</p><Link href={`/admin/sellers/${encodeURIComponent(maker.id)}#managed-program-records`} className="mt-3 inline-block text-sm font-medium text-primary underline-offset-4 hover:underline">Review supply, payments &amp; transitions</Link></div>)}</div>
           {!totals?.proposedSupplies && !totals?.paymentActions && !totals?.pendingTransitions ? <p className="text-sm text-muted-foreground">No supply, supplier payment or transition actions are waiting.</p> : <Link href="/admin/sellers" className="text-sm text-primary underline">Open all makers for remaining records</Link>}
           {workspace.legacyMakers.length ? <div className="space-y-3"><h3 className="font-semibold">Records retained after route transition</h3><p className="text-sm text-muted-foreground">Up to 50 former Managed Makers with outstanding records. Their financial history continues under its recorded terms.</p>{workspace.legacyMakers.map((maker) => <div key={maker.id} className="min-w-0 rounded-lg border p-4"><p className="break-words font-medium">{maker.name}</p><p className="mt-1 text-sm text-muted-foreground">{maker.paymentActions} supplier payment actions · {maker.earnedEntitlements + maker.eligibleEntitlements} settlement records · {maker.pendingPayouts} simulated payouts</p><Link href={`/admin/sellers/${encodeURIComponent(maker.id)}#managed-program-records`} className="mt-2 inline-block text-sm text-primary underline">Review retained program records</Link></div>)}</div> : null}
-          <div className="rounded-lg bg-muted p-4 text-sm leading-6"><p className="font-medium">Sale-linked settlement records</p><p>{totals?.earnedEntitlements} earned · {totals?.eligibleEntitlements} eligible or partly paid · {totals?.pendingPayouts} pending simulated payouts.</p><p className="mt-2 text-muted-foreground">These records are shown for review. Managed sale-linked payout controls are not available in this workspace.</p><Link href="/admin/orders" className="mt-2 inline-block text-primary underline">Review delivered-and-paid order conditions</Link></div>
+          <div className="rounded-lg bg-muted p-4 text-sm leading-6"><p className="font-medium">Sale-linked settlement records</p><p>{totals?.earnedEntitlements} earned · {totals?.eligibleEntitlements} eligible or partly paid · {totals?.pendingPayouts} pending simulated payouts.</p><p className="mt-2 text-muted-foreground">Review eligibility, payment reservations and simulated payouts in Program Management.</p><Link href="/admin/programs#maker-payments" className="mt-2 inline-block text-primary underline">Open sale-linked maker payments</Link><Link href="/admin/orders" className="mt-2 block text-primary underline">Review delivered-and-paid order conditions</Link></div>
           <Link href="/admin/staff-form-history?kind=managed-supply-decision" className="inline-block text-sm text-primary underline">View recorded supply decisions</Link>
         </CardContent></Card>
       </> : null}

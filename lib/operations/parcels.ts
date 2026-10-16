@@ -484,6 +484,11 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
     .bind(o.jobId)
     .first<Parcel>();
   if (!p) throw new ParcelConflictError('Parcel not found.');
+  const riderInput = o.method === 'own_rider' || Boolean(o.riderEmail) || Boolean(o.riderReportId);
+  const privateAuthoritySql = "EXISTS(SELECT 1 FROM users privacy_user JOIN user_roles privacy_role ON privacy_role.user_id=privacy_user.id WHERE privacy_user.id=? AND privacy_user.status='active' AND privacy_role.role='super_admin') OR (?=0 AND NOT EXISTS(SELECT 1 FROM shipping_parcels privacy_parcel WHERE privacy_parcel.shipping_job_id=? AND (privacy_parcel.method='own_rider' OR privacy_parcel.rider_user_id IS NOT NULL)))";
+  const privateAuthorityValues = [o.actorId, riderInput ? 1 : 0, o.jobId];
+  if (!await db.prepare('SELECT 1 WHERE ' + privateAuthoritySql).bind(...privateAuthorityValues).first())
+    throw new ParcelConflictError('Super Admin access is required.');
   if(replay) {
     // These operations originally return before the managed post-commit hooks.
     if(o.action==='record_cost' || o.action==='cancel')return;
@@ -506,6 +511,7 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       [p.orderId, o.action],
     ),
     ...assertion(db, staffSql, [o.actorId]),
+    ...assertion(db, '(' + privateAuthoritySql + ')', privateAuthorityValues),
     db
       .prepare(
         'UPDATE shipping_parcels SET version=version+1,operation_request_id=? WHERE shipping_job_id=? AND version=?',
@@ -598,7 +604,7 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       requestId: o.requestId,
       note: o.note,
       now: o.now,
-      parcelContext: { jobId: o.jobId, payload, ...(form ? { form } : {}) },
+      parcelContext: { jobId: o.jobId, payload, riderPrivacyRequired: true, ...(form ? { form } : {}) },
     });
     return;
   }
@@ -1240,26 +1246,21 @@ export async function riderCompensationEntries(
       }>()
   ).results;
 }
-export function customerParcel(p: Parcel, now = Date.now()) {
-  const fresh =
-    p.method === 'own_rider' &&
-    p.status === 'dispatched' &&
-    p.positionAt !== null &&
-    now >= p.positionAt &&
-    now - p.positionAt <= 120000;
+export function customerParcel(p: Parcel, _now = Date.now()) {
+  const courier = p.method === 'courier';
   return {
     id: p.id,
     sellerName: p.sellerName,
     status: p.status,
-    method: p.method,
-    courierName: p.courierName,
-    trackingCode: p.trackingCode,
-    trackingUrl: p.trackingUrl,
+    method: p.method === 'own_rider' ? 'delivery' : p.method,
+    courierName: courier ? p.courierName : null,
+    trackingCode: courier ? p.trackingCode : null,
+    trackingUrl: courier ? p.trackingUrl : null,
     codDuePaisa: p.codDuePaisa,
     collectedPaisa: p.collectedPaisa,
-    latitude: fresh ? p.latitude : null,
-    longitude: fresh ? p.longitude : null,
-    accuracy: fresh ? p.accuracy : null,
+    latitude: null,
+    longitude: null,
+    accuracy: null,
   };
 }
 export async function shareParcelLocation(

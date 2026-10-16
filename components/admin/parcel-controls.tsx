@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 import { useRef, useState, useSyncExternalStore, type SyntheticEvent } from 'react';
 import { useRouter } from 'next/navigation';
@@ -312,6 +313,8 @@ function ParcelForm({
       onSubmit={(e) => void submit(e)}
       className="grid gap-3 sm:grid-cols-2"
     >
+      <FormGuide formId="staff.parcel-control" />
+
       <p className="text-xs text-muted-foreground">* Required field</p>
       <label htmlFor={field('action')}>
         Action
@@ -351,12 +354,12 @@ function ParcelForm({
               id={field('method')}
               className="mt-1 block w-full rounded border bg-background p-2"
             >
-              <option value="own_rider">Own rider</option>
+              {isSuperAdmin ? <option value="own_rider">Own rider</option> : null}
               <option value="courier">Courier</option>
             </select>
           </label>
           {[
-            ['riderEmail', 'Registered rider email'],
+            ...(isSuperAdmin ? [['riderEmail', 'Registered rider email']] : []),
             ['courierName', 'Courier company'],
             ['trackingCode', 'Tracking / handover reference'],
             ['trackingUrl', 'Optional HTTPS tracking link'],
@@ -387,8 +390,7 @@ function ParcelForm({
               required
             />
           </label>
-          <label htmlFor={field('reference')}>
-            Evidence reference <span aria-hidden="true">*</span>
+          <label htmlFor={field('reference')}>Supporting document or reference <span aria-hidden="true">*</span>
             <input
               className="mt-1 block w-full rounded border p-2"
               id={field('reference')}
@@ -412,7 +414,7 @@ function ParcelForm({
         />
       </label>
       {catalog.config ? <div className="sm:col-span-2"><ConfiguredFields config={catalog.config} baseKeys={BASE_KEYS} /></div> : null}
-      {!catalog.canSubmit ? <output className="sm:col-span-2 text-sm">{catalog.message || 'Form configuration is loading.'}</output> : null}
+      {!catalog.canSubmit ? <output aria-live="polite" className="sm:col-span-2 text-sm">{catalog.message || 'Form configuration is loading.'}</output> : null}
       {attemptPresent ? <p className="sm:col-span-2 text-xs text-muted-foreground">A prior parcel action may have succeeded. Retry only identical details, or check the parcel before starting a new attempt.</p> : null}
       {attemptPresent ? <button type="button" disabled={busy} className="rounded border p-2 text-sm"
         onClick={() => { if (window.confirm('A parcel action may already have succeeded. Check the parcel first. Start a new request reference?')) {

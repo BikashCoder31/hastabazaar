@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 
@@ -269,6 +270,8 @@ export function HomepageOccasionManager({
   return (
     <form ref={formRef} data-form-id="staff.homepage-occasion-manager" id="occasion-slides"
       className="space-y-6 border-t pt-8" onSubmit={(event) => event.preventDefault()}>
+      <FormGuide formId="staff.homepage-occasion-manager" />
+
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="eyebrow">Customer homepage</p>
@@ -393,7 +396,7 @@ export function HomepageOccasionManager({
         </CardHeader>
         <CardContent className="space-y-4">
           {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={['occasions']} /> : null}
-          {!catalog.canSubmit ? <output className="block text-sm">{catalog.message || 'Loading form configuration…'}</output> : null}
+          {!catalog.canSubmit ? <output aria-live="polite" className="block text-sm">{catalog.message || 'Loading form configuration…'}</output> : null}
           <div className="space-y-2">
             <Label htmlFor="occasion-change-reason">
               Reason and expected impact
@@ -417,7 +420,7 @@ export function HomepageOccasionManager({
             />
           </div>
           {message ? (
-            <output className="block text-sm font-medium">{message}</output>
+            <output aria-live="polite" className="block text-sm font-medium">{message}</output>
           ) : null}
           {failedAttemptKey ? <Button type="button" variant="outline" disabled={busy}
             onClick={() => {

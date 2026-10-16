@@ -1,6 +1,7 @@
+import { DEFAULT_PLATFORM_SHARE_BPS } from '../configuration/commission-defaults';
 import type { EffectivePolicy, MarketplacePolicy } from './types';
 
-export const CURRENT_SELLER_COMMISSION_BPS = 900;
+export const CURRENT_SELLER_COMMISSION_BPS = DEFAULT_PLATFORM_SHARE_BPS;
 export const COMMISSION_BPS_DENOMINATOR = 10_000;
 export const COMMISSION_RULE_VERSION = 'commission-9pct-v1';
 

@@ -1,5 +1,7 @@
 # Program Management local acceptance — 2026-09-29
 
+Update — 2026-10-16: the approved additive upgrade is applied and the current company-store flow has normal Chrome evidence, including no-PAN onboarding, separate review/activation/publication, company packing/readiness, simulated delivered/paid sale, 9%/91% earnings held for the unchanged delivery period, and later PAN transition. See [the current verification report](2026-10-16-company-store-readiness-verification.md) for Passed/Failed/Not tested, preservation and remaining limits. All333 original rows are preserved. Loyalty remains paused/unpublished. The dated results below describe the earlier version and must not be used as latest acceptance evidence.
+
 Scope: `/admin/programs`, Super Admin, both existing Managed Maker commercial models. Local testing only.
 
 ## Confirmed issues and fixes

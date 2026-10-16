@@ -2,7 +2,9 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowUpRight, ShieldCheck } from 'lucide-react';
 import { signOutPath } from '@/app/auth';
+import { AdminTaskContext } from '@/components/admin/admin-task-context';
 import { AdminNavigation } from '@/components/admin/admin-navigation';
+import { AdminWorkspaceReady } from '@/components/admin/admin-workspace-ready';
 import { BrandWordmark } from '@/components/layout/brand-wordmark';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
@@ -70,16 +72,19 @@ export default async function AdminLayout({
         </div>
       </header>
       <div className="shell grid items-start gap-6 py-6 xl:grid-cols-[15.5rem_minmax(0,1fr)] xl:gap-8 xl:py-8">
-        <aside className="min-w-0 xl:sticky xl:top-28">
-          <AdminNavigation role={staff.role} permissions={staff.permissions} />
-        </aside>
-        <main
-          tabIndex={-1}
-          id="main-content"
-          className="admin-workspace min-w-0 pb-10"
-        >
-          {children}
-        </main>
+        <AdminWorkspaceReady>
+          <aside className="min-w-0 xl:sticky xl:top-28">
+            <AdminNavigation role={staff.role} permissions={staff.permissions} />
+          </aside>
+          <main
+            tabIndex={-1}
+            id="main-content"
+            className="admin-workspace min-w-0 pb-10"
+          >
+            <AdminTaskContext role={staff.role} permissions={staff.permissions} />
+            {children}
+          </main>
+        </AdminWorkspaceReady>
       </div>
     </div>
   );

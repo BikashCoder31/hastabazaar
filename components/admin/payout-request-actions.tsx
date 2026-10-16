@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 import { useEffect, useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -50,6 +51,8 @@ export function PayoutRequestActions({ id, role = 'admin' }: { id: string; role?
       }}
       className="mt-4"
     >
+      <FormGuide formId="staff.payout-request-action" />
+
       <Link className="text-sm underline" href={`/admin/staff-form-history?kind=payout-request-action&id=${encodeURIComponent(id)}`}>View payout request form history</Link>
       <fieldset
         disabled={pending||!catalog.canSubmit}
@@ -78,7 +81,7 @@ export function PayoutRequestActions({ id, role = 'admin' }: { id: string; role?
           />
         </div>
         {catalog.config?<div className="md:col-span-3"><ConfiguredFields config={catalog.config} baseKeys={BASE_KEYS}/></div>:null}
-        {!catalog.canSubmit?<output className="md:col-span-3 text-sm">{catalog.message||'Form configuration is loading.'}</output>:null}
+        {!catalog.canSubmit?<output aria-live="polite" className="md:col-span-3 text-sm">{catalog.message||'Form configuration is loading.'}</output>:null}
         <Button type="submit" variant="outline" disabled={pending}>
           {pending ? 'Saving…' : 'Save decision'}
         </Button>

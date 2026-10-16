@@ -32,6 +32,7 @@ function fixture(){
     INSERT INTO order_items VALUES ('item-a','order','Clay cup','CLAY-1',1,100000,100000),('item-b','order','Clay plate','CLAY-2',2,50000,100000),('item-c','order','Woven bag','WEAVE-1',1,80000,80000);
     INSERT INTO managed_commercial_snapshots VALUES ('snap-a','item-a','SIM-ISSUER-A','SIM-SELLER-A','SIM-AGREEMENT-A'),('snap-b','item-b','SIM-ISSUER-A','SIM-SELLER-A','SIM-AGREEMENT-A'),('snap-c','item-c','SIM-ISSUER-B','SIM-SELLER-B','SIM-AGREEMENT-B');
   `);
+  sqlite.exec('ALTER TABLE managed_commercial_snapshots ADD COLUMN accepted_managed_detail_id TEXT; ALTER TABLE managed_commercial_snapshots ADD COLUMN maker_name_snapshot TEXT');
   const db={prepare(sql:string){let values:SQLInputValue[]=[];const statement=sqlite.prepare(sql);return{bind(...next:SQLInputValue[]){values=next;return this;},async first<T>(){return (statement.get(...values) as T|undefined)??null;},async all<T>(){return{results:statement.all(...values) as T[]};},async run(){return{meta:{changes:Number(statement.run(...values).changes)}};}};},async batch(statements:{run():Promise<{meta:{changes:number}}> }[]){const results=[];for(const statement of statements)results.push(await statement.run());return results;}} as unknown as D1Database;
   return{sqlite,db};
 }

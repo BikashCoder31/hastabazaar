@@ -1,6 +1,9 @@
+import { sellerQueueStatuses, orderQueueStatuses, emailQueueStatuses, emailQueueStatusLabels } from '../admin/queue-filters';
 import { INCENTIVE_FORM_CONTRACTS } from '../incentives/forms';
+import { INCENTIVE_WORKSPACE_FORM_CONTRACTS } from './incentive-workspace-contracts';
 import type { BaseFieldCapability, FormAudience, FormCapabilities, FormDefinition, FormId, FormMode } from './types';
 import { feedbackTopics } from '../feedback/customer-feedback';
+import { baseFieldCopy } from './plain-language';
 
 export interface ImplementedFormAdapter {
   readonly formId: FormId;
@@ -10,6 +13,7 @@ export interface ImplementedFormAdapter {
 
 // Integrations add an entry here only when their server adapter exists and is tested.
 export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormAdapter>> = Object.freeze({
+  ...Object.fromEntries(Object.values(INCENTIVE_WORKSPACE_FORM_CONTRACTS).map(definition=>[definition.id,{formId:definition.id,route:definition.route,mode:definition.mode}])),
   'staff.loyalty-settings': { formId: 'staff.loyalty-settings', route: '/api/admin/loyalty', mode: 'operation' },
   'account.points-redemption': { formId: 'account.points-redemption', route: '/api/account/rewards/redeem', mode: 'transaction' },
   'account.daily-reward': { formId: 'account.daily-reward', route: '/api/account/rewards/claim', mode: 'transaction' },
@@ -34,6 +38,9 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
   'catalog.filters': { formId: 'catalog.filters', route: '/shop', mode: 'query' },
   'commerce.order-tracking': { formId: 'commerce.order-tracking', route: '/api/orders/track', mode: 'query' },
   'seller.product-filter': { formId: 'seller.product-filter', route: '/seller/products', mode: 'query' },
+  'staff.seller-registry-filter': { formId: 'staff.seller-registry-filter', route: '/admin/sellers', mode: 'query' },
+  'staff.order-queue-filter': { formId: 'staff.order-queue-filter', route: '/admin/orders', mode: 'query' },
+  'staff.order-email-filter': { formId: 'staff.order-email-filter', route: '/admin/order-emails', mode: 'query' },
   'staff.homepage-filter': { formId: 'staff.homepage-filter', route: '/admin/homepage', mode: 'query' },
   'staff.activity-filter': { formId: 'staff.activity-filter', route: '/admin/activity', mode: 'query' },
   'staff.recorded-progress-filter': { formId: 'staff.recorded-progress-filter', route: '/admin/progress', mode: 'query' },
@@ -66,8 +73,9 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
   'seller.inventory': { formId: 'seller.inventory', route: '/api/seller/products/:id/inventory', mode: 'operation' },
   'seller.shipping-request': { formId: 'seller.shipping-request', route: '/api/seller/shipping', mode: 'operation' },
   'seller.shipping-action': { formId: 'seller.shipping-action', route: '/api/seller/shipping/:id', mode: 'operation' },
+  'seller.managed-terms-acceptance': { formId: 'seller.managed-terms-acceptance', route: '/api/seller-applications/managed-terms', mode: 'operation' },
   'seller.managed-supply-proposal': { formId: 'seller.managed-supply-proposal', route: '/api/seller/managed-program', mode: 'operation' },
-  'seller.managed-transition-request': { formId: 'seller.managed-transition-request', route: '/api/seller/managed-program', mode: 'operation' },
+  'seller.managed-transition-request': { formId: 'seller.managed-transition-request', route: '/api/seller-applications/transition', mode: 'operation' },
   'seller.payout-request': { formId: 'seller.payout-request', route: '/api/seller/payout-requests', mode: 'transaction' },
   'seller.review-reply': { formId: 'seller.review-reply', route: '/api/seller/reviews/:id/reply', mode: 'collection' },
   'rider.application': { formId: 'rider.application', route: '/api/rider/application', mode: 'collection' },
@@ -84,6 +92,9 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
   'staff.managed-adjustment': { formId: 'staff.managed-adjustment', route: '/api/admin/managed-program/:id', mode: 'operation' },
   'staff.managed-payment-preparation': { formId: 'staff.managed-payment-preparation', route: '/api/admin/managed-program/:id', mode: 'operation' },
   'staff.managed-payment-action': { formId: 'staff.managed-payment-action', route: '/api/admin/managed-program/:id', mode: 'operation' },
+  'staff.managed-eligibility-release': { formId: 'staff.managed-eligibility-release', route: '/api/admin/managed-program/:id', mode: 'operation' },
+  'staff.managed-payout-preparation': { formId: 'staff.managed-payout-preparation', route: '/api/admin/managed-program/:id', mode: 'operation' },
+  'staff.managed-payout-action': { formId: 'staff.managed-payout-action', route: '/api/admin/managed-program/:id', mode: 'operation' },
   'staff.managed-transition-decision': { formId: 'staff.managed-transition-decision', route: '/api/admin/managed-program/:id', mode: 'operation' },
   'staff.parcel-control': { formId: 'staff.parcel-control', route: '/api/admin/orders/:id/parcels', mode: 'operation' },
   'staff.payout-request-action': { formId: 'staff.payout-request-action', route: '/api/admin/payout-requests/:id', mode: 'operation' },
@@ -111,6 +122,9 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
 // A pending adapter is deliberately not a live configuration adapter.
 const SOURCE_ROWS = `
 staff.activity-filter|staff|query|/admin/activity|action
+staff.seller-registry-filter|staff|query|/admin/sellers|query
+staff.order-queue-filter|staff|query|/admin/orders|query
+staff.order-email-filter|staff|query|/admin/order-emails|query
 staff.homepage-filter|staff|query|/admin/homepage|query
 identity.password-reset-request|public|identity|/api/auth/password-reset/request|email
 identity.password-reset-complete|public|identity|/api/auth/password-reset/complete|token
@@ -139,6 +153,9 @@ staff.managed-supply-decision|staff|operation|/api/admin/managed-program/:id|dec
 staff.managed-adjustment|staff|operation|/api/admin/managed-program/:id|amountNpr
 staff.managed-payment-preparation|staff|operation|/api/admin/managed-program/:id|destinationReference
 staff.managed-payment-action|super_admin|operation|/api/admin/managed-program/:id|action
+staff.managed-eligibility-release|super_admin|operation|/api/admin/managed-program/:id|reason
+staff.managed-payout-preparation|super_admin|operation|/api/admin/managed-program/:id|reason
+staff.managed-payout-action|super_admin|operation|/api/admin/managed-program/:id|reason
 staff.managed-transition-decision|staff|operation|/api/admin/managed-program/:id|decision
 staff.parcel-control|staff|operation|/api/admin/orders/:id/parcels|action
 staff.payout-1|staff|operation|/api/admin/payouts|amount
@@ -170,7 +187,8 @@ rider.remittance|rider|operation|/api/rider/remittances|amount
 seller.inventory|seller|operation|/api/seller/products/:id/inventory|quantity
 seller.maker-profile|seller|collection|/api/seller-applications/profile|legalName
 seller.managed-supply-proposal|seller|operation|/api/seller/managed-program|quantity
-seller.managed-transition-request|seller|operation|/api/seller/managed-program|reason
+seller.managed-transition-request|seller|operation|/api/seller-applications/transition|reason
+seller.managed-terms-acceptance|seller|operation|/api/seller-applications/managed-terms|offerId
 seller.payout-request|seller|transaction|/api/seller/payout-requests|amount
 seller.product-submission|seller|collection|/api/seller/products|title
 seller.review-reply|seller|collection|/api/seller/reviews/:id/reply|reply
@@ -285,6 +303,9 @@ const QUERY_FIELDS = {
   'catalog.filters': [['q', 'short_text'], ['sort', 'single_choice'], ['category', 'short_text'], ['occasion', 'short_text']],
   'commerce.order-tracking': [['orderNumber', 'short_text'], ['email', 'email']],
   'seller.product-filter': [['q', 'short_text']],
+  'staff.seller-registry-filter': [['q', 'short_text'], ['status', 'single_choice']],
+  'staff.order-queue-filter': [['q', 'short_text'], ['status', 'single_choice']],
+  'staff.order-email-filter': [['q', 'short_text'], ['status', 'single_choice']],
   'staff.homepage-filter': [['q', 'short_text'], ['visibility', 'single_choice']],
   'staff.activity-filter': [['action', 'short_text'], ['actor', 'short_text'], ['type', 'short_text'], ['from', 'date'], ['to', 'date']],
   'staff.recorded-progress-filter': [['from', 'date'], ['to', 'date'], ['action', 'short_text']],
@@ -305,11 +326,12 @@ function queryDefinition(id: QueryFormId | 'system.local-testing-role'): FormDef
     capability: 'display_editable' as const, required: id === 'commerce.order-tracking', status: 'active' as const,
     explanation: 'Only labels, help text and placeholders may change; existing keys, types, requiredness, choices and rendered order are fixed.',
     ...(key === 'sort' ? { choices: [{ value: 'newest', label: 'Newest' }, { value: 'price-low', label: 'Price: low to high' },
-      { value: 'price-high', label: 'Price: high to low' }, { value: 'name', label: 'Name' }] } : key === 'visibility'
+      { value: 'price-high', label: 'Price: high to low' }, { value: 'name', label: 'Name' }] } : key === 'status' ? { choices: [{value:'all',label:'All statuses'}, ...(id === 'staff.seller-registry-filter' ? sellerQueueStatuses : id === 'staff.order-email-filter' ? emailQueueStatuses : orderQueueStatuses).map(value=>({value,label:id === 'staff.order-email-filter' ? emailQueueStatusLabels[value] : value.replaceAll('_',' ')}))] } : key === 'visibility'
       ? { choices: [{ value: 'all', label: 'All products' }, { value: 'visible', label: 'Homepage eligible' }, { value: 'hidden', label: 'Hidden from homepage' }] } : {}),
   }));
-  const protectedKeys = ['query', 'status', 'actorId', 'customerId', 'sellerId', 'orderId', 'order_number',
-    'formVersion', 'customAnswers', 'requestId', ...(id === 'staff.recorded-progress-filter' ? ['actor', 'type'] : [])];
+  const protectedKeys = ['query', ...(id === 'staff.seller-registry-filter' || id === 'staff.order-queue-filter' || id === 'staff.order-email-filter' ? [] : ['status']), 'actorId', 'customerId', 'sellerId', 'orderId', 'order_number',
+    'formVersion', 'customAnswers', 'requestId', ...(id === 'staff.recorded-progress-filter' ? ['actor', 'type'] : []),
+    ...(id === 'staff.activity-filter' || id === 'staff.recorded-progress-filter' ? ['calendar'] : [])];
   return Object.freeze({ id, audience, mode, route, adapterId: id,
     baseFields: Object.freeze([...fields, ...protectedKeys.map(protect)]),
     capabilities: Object.freeze({ explanation: id === 'catalog.filters'
@@ -329,11 +351,14 @@ const STAFF_OPERATION_KEYS = Object.freeze({
   'staff.product-classification': ['productId', 'categoryId', 'occasionIds', 'idempotencyKey', 'requestId', 'formVersion', 'customAnswers'],
   'staff.exception-work': ['action', 'id', 'version', 'job', 'jobId', 'kind', 'cash', 'cashRecordId', 'owner', 'ownerId', 'next', 'nextAction', 'note', 'resolve', 'evidence', 'sourceReviewed', 'obligationsReviewed', 'followupComplete', 'requestId', 'formVersion', 'customAnswers'],
   'staff.invoice-adjustment': ['invoiceId', 'kind', 'amount', 'amountPaisa', 'reasonCode', 'note', 'requestId', 'formVersion', 'customAnswers'],
-  'staff.managed-maker-activation': ['sellerId', 'model', 'legalSellerReference', 'invoiceIssuerReference', 'payoutBeneficiaryReference', 'agreementVersion', 'agreementLanguage', 'agreementAcceptedAt', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.managed-maker-activation': ['sellerId', 'model', 'legalSellerReference', 'invoiceIssuerReference', 'payoutBeneficiaryReference', 'agreementVersion', 'agreementLanguage', 'agreementAcceptedAt', 'acceptedManagedDetailId', 'requestId', 'formVersion', 'customAnswers'],
   'staff.managed-supply-decision': ['action', 'recordId', 'decision', 'quantityAccepted', 'possessionStatus', 'qualityStatus', 'ownershipRecordStatus', 'riskRecordStatus', 'evidenceReference', 'reason', 'requestId', 'formVersion', 'customAnswers'],
   'staff.managed-adjustment': ['action', 'recordId', 'kind', 'amountNpr', 'amountPaisa', 'reason', 'requestId', 'formVersion', 'customAnswers'],
   'staff.managed-payment-preparation': ['action', 'recordId', 'destinationReference', 'requestId', 'formVersion', 'customAnswers'],
   'staff.managed-payment-action': ['action', 'paymentId', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.managed-eligibility-release': ['action', 'sellerId', 'actorId', 'reason', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.managed-payout-preparation': ['action', 'sellerId', 'actorId', 'reason', 'destinationReference', 'scheduledFor', 'expectedAmountPaisa', 'expectedSnapshot', 'amountPaisa', 'balancePaisa', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.managed-payout-action': ['action', 'sellerId', 'actorId', 'payoutId', 'expectedStatus', 'providerReference', 'amountPaisa', 'reason', 'requestId', 'formVersion', 'customAnswers'],
   'staff.managed-transition-decision': ['action', 'applicationId', 'decision', 'effectiveLocal', 'effectiveAt', 'reason', 'requestId', 'formVersion', 'customAnswers'],
   'staff.parcel-control': ['orderId', 'jobId', 'version', 'action', 'note', 'method', 'riderEmail', 'courierName', 'trackingCode', 'trackingUrl', 'reference', 'amount', 'amountPaisa', 'cashRecordId', 'riderReportId', 'requestId', 'formVersion', 'customAnswers'],
   'staff.payout-request-action': ['payoutRequestId', 'action', 'note', 'requestId', 'formVersion', 'customAnswers'],
@@ -473,7 +498,7 @@ function sellerDefinition(id: 'seller.application' | 'seller.maker-profile' | 's
     fields = [displayField('tradingName', 'short_text', true), displayField('businessDescription', 'long_text', true),
       ...['legalName', 'representativeName', 'email', 'phone', 'applicantType', 'taxMode', 'taxRegistrationNumber',
         'registrationNumber', 'registrationAuthority', 'document', 'profileImage', 'makerVideo', 'applicationAcknowledgement', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'personalPanCertificate',
-        'participationRoute', 'website', 'hasBusinessTaxRegistration', 'taxStatus', 'acceptedTerms',
+        'participationRoute', 'website', 'hasBusinessTaxRegistration', 'taxStatus', 'sellerAgreementContext', 'acceptedTerms',
         'province', 'district', 'municipality', 'ward', 'locality', 'publicCity', 'productCategories',
         'experienceCraft', 'experienceBand', 'facebookUrl', 'instagramUrl', 'linkedinUrl', 'tiktokUrl',
         'xUrl', 'youtubeUrl', 'representativeIdentity', 'bankVerification', 'businessRegistration',
@@ -521,7 +546,7 @@ function sellerDefinition(id: 'seller.application' | 'seller.maker-profile' | 's
 }
 
 function sellerOperationDefinition(id: 'seller.shipping-request' | 'seller.shipping-action' |
-  'seller.managed-supply-proposal' | 'seller.managed-transition-request' |
+  'seller.managed-supply-proposal' | 'seller.managed-transition-request' | 'seller.managed-terms-acceptance' |
   'seller.payout-request' | 'seller.review-reply'): FormDefinition {
   const source = SOURCE_ROWS.split('\n').find((row) => row.startsWith(`${id}|`));
   if (!source) throw new Error(`Missing source definition: ${id}`);
@@ -530,7 +555,8 @@ function sellerOperationDefinition(id: 'seller.shipping-request' | 'seller.shipp
     'seller.shipping-request': ['orderId', 'direction', 'note', 'requestId', 'sellerId', 'formVersion', 'customAnswers'],
     'seller.shipping-action': ['action', 'jobId', 'note', 'requestId', 'sellerId', 'formVersion', 'customAnswers'],
     'seller.managed-supply-proposal': ['action', 'productId', 'quantity', 'agreedUnitNpr', 'agreedUnitPaisa', 'agreementVersion', 'agreementLanguage', 'payoutBeneficiaryReference', 'requestId', 'sellerId', 'formVersion', 'customAnswers'],
-    'seller.managed-transition-request': ['action', 'legalName', 'registrationAuthority', 'registrationNumber', 'taxMode', 'taxRegistrationNumber', 'evidenceReferences', 'agreementVersion', 'agreementLanguage', 'requestId', 'sellerId', 'formVersion', 'customAnswers'],
+    'seller.managed-transition-request': ['action', 'applicationId','expectedVersion','legalName', 'registrationAuthority', 'registrationNumber', 'taxMode', 'taxRegistrationNumber', 'evidenceReferences', 'agreementVersion', 'agreementLanguage', 'registeredTermsContext','acceptedTerms','payoutAccountReference','businessRegistration','panCertificate','vatCertificate','bankVerification','businessRegistrationId','panCertificateId','vatCertificateId','bankVerificationId','requestId', 'sellerId', 'formVersion', 'customAnswers'],
+    'seller.managed-terms-acceptance': ['offerId', 'context', 'language', 'accepted', 'requestId', 'sellerId', 'formVersion', 'customAnswers'],
     'seller.payout-request': ['amount', 'availablePaisa', 'note', 'requestId', 'sellerId', 'formVersion', 'customAnswers'],
     'seller.review-reply': ['reviewId', 'body', 'version', 'idempotencyKey', 'sellerId', 'formVersion', 'customAnswers'],
   };
@@ -639,7 +665,7 @@ const FIRST_COD_CONFIRMATION_DEFINITION = Object.freeze({
 } satisfies FormDefinition);
 
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
-  Object.assign({ 'staff.first-cod-confirmation': FIRST_COD_CONFIRMATION_DEFINITION, 'account.points-redemption': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.points-redemption'], adapterId: 'account.points-redemption' }), 'staff.loyalty-settings': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.loyalty-settings'], adapterId: 'staff.loyalty-settings' }), 'account.daily-reward': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.daily-reward'], adapterId: 'account.daily-reward' }), 'commerce.promo-quote': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['commerce.promo-quote'], adapterId: 'commerce.promo-quote' }), 'staff.promo-code': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.promo-code'], adapterId: 'staff.promo-code' }) }, Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
+  Object.assign({ ...INCENTIVE_WORKSPACE_FORM_CONTRACTS, 'staff.first-cod-confirmation': FIRST_COD_CONFIRMATION_DEFINITION, 'account.points-redemption': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.points-redemption'], adapterId: 'account.points-redemption' }), 'staff.loyalty-settings': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.loyalty-settings'], adapterId: 'staff.loyalty-settings' }), 'account.daily-reward': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.daily-reward'], adapterId: 'account.daily-reward' }), 'commerce.promo-quote': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['commerce.promo-quote'], adapterId: 'commerce.promo-quote' }), 'staff.promo-code': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.promo-code'], adapterId: 'staff.promo-code' }) }, Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
     const item = Object.hasOwn(PROGRAMMATIC_KEYS, row.split('|')[0])
       ? programmaticDefinition(row.split('|')[0] as ProgrammaticFormId)
       : Object.hasOwn(QUERY_FIELDS, row.split('|')[0]) || row.startsWith('system.local-testing-role|')
@@ -668,6 +694,7 @@ export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.fr
       : row.startsWith('seller.shipping-action|') ? sellerOperationDefinition('seller.shipping-action')
       : row.startsWith('seller.managed-supply-proposal|') ? sellerOperationDefinition('seller.managed-supply-proposal')
       : row.startsWith('seller.managed-transition-request|') ? sellerOperationDefinition('seller.managed-transition-request')
+      : row.startsWith('seller.managed-terms-acceptance|') ? sellerOperationDefinition('seller.managed-terms-acceptance')
       : row.startsWith('seller.payout-request|') ? sellerOperationDefinition('seller.payout-request')
       : row.startsWith('seller.review-reply|') ? sellerOperationDefinition('seller.review-reply')
       : row.startsWith('rider.application|') ? riderDeliveryDefinition('rider.application')
@@ -694,6 +721,8 @@ export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.fr
         customFieldTypes: Object.freeze(['short_text', 'long_text', 'number', 'date', 'single_choice', 'multiple_choice', 'checkbox', 'email', 'phone'] as const), answerBehavior: 'record' }),
       adapterId: 'account.profile',
     } satisfies FormDefinition) : definition(row);
-    return [item.id, item];
+    return [item.id, Object.freeze({ ...item, baseFields: Object.freeze(item.baseFields.map(field => Object.freeze({
+      ...field, label: field.label === field.key ? baseFieldCopy(item.id, field.key).label : field.label,
+    }))) })];
   }))),
 );

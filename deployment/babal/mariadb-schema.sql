@@ -1826,6 +1826,49 @@ BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Managed Maker agreement eviden
 CREATE TRIGGER IF NOT EXISTS managed_maker_details_no_delete BEFORE DELETE ON managed_maker_application_details FOR EACH ROW
 BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Managed Maker agreement evidence is immutable'; END$$
 DELIMITER ;
+-- Apply after mariadb-policy-commission-9-percent.sql, before deploying the
+-- Commission workspace. Historical order and ledger snapshots are untouched.
+CREATE TABLE IF NOT EXISTS commission_control (
+  id VARCHAR(191) PRIMARY KEY NOT NULL,
+  revision BIGINT NOT NULL DEFAULT 0 CHECK (revision >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+INSERT IGNORE INTO commission_control(id, revision) VALUES ('default', 0);
+
+CREATE TABLE IF NOT EXISTS commission_rate_changes (
+  id VARCHAR(191) PRIMARY KEY NOT NULL,
+  basis_points BIGINT NOT NULL CHECK (basis_points BETWEEN 0 AND 10000),
+  effective_at BIGINT NOT NULL,
+  agreement_version LONGTEXT NOT NULL,
+  terms_text LONGTEXT NOT NULL,
+  reason LONGTEXT NOT NULL,
+  created_by VARCHAR(191) NOT NULL,
+  created_at BIGINT NOT NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id),
+  CHECK (effective_at >= created_at + 1296000000),
+  INDEX idx_commission_rates_effective (effective_at, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS commission_rate_cancellations (
+  rate_id VARCHAR(191) PRIMARY KEY NOT NULL,
+  request_id VARCHAR(191) NOT NULL UNIQUE,
+  reason LONGTEXT NOT NULL,
+  cancelled_by VARCHAR(191) NOT NULL,
+  cancelled_at BIGINT NOT NULL,
+  FOREIGN KEY (rate_id) REFERENCES commission_rate_changes(id),
+  FOREIGN KEY (cancelled_by) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS commission_rate_acceptances (
+  rate_id VARCHAR(191) NOT NULL,
+  seller_id VARCHAR(191) NOT NULL,
+  actor_id VARCHAR(191) NOT NULL,
+  accepted_at BIGINT NOT NULL,
+  PRIMARY KEY (rate_id, seller_id),
+  FOREIGN KEY (rate_id) REFERENCES commission_rate_changes(id),
+  FOREIGN KEY (seller_id) REFERENCES seller_profiles(id),
+  FOREIGN KEY (actor_id) REFERENCES users(id),
+  INDEX idx_commission_acceptances_seller (seller_id, rate_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Additive form catalog. Published rows are frozen; restore publishes a new version.
 -- Catalog-owned identifiers use NO PAD binary collation to match D1 TEXT equality.
@@ -2730,6 +2773,178 @@ DELIMITER ;
 DROP TRIGGER IF EXISTS wallet_entries_no_replace;
 DELIMITER $$
 CREATE TRIGGER wallet_entries_no_replace BEFORE INSERT ON wallet_entries FOR EACH ROW BEGIN IF EXISTS(SELECT 1 FROM wallet_entries WHERE id=NEW.id OR (NEW.gift_card_id IS NOT NULL AND BINARY gift_card_id=BINARY NEW.gift_card_id) OR (NEW.loyalty_redemption_id IS NOT NULL AND BINARY loyalty_redemption_id=BINARY NEW.loyalty_redemption_id)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='financial_history_immutable'; END IF; END$$
+DELIMITER ;
+
+-- Weekly loyalty cycle extension
+-- Additive and repeatable: legacy revisions/claims retain NULL cycle metadata.
+ALTER TABLE loyalty_revisions ADD COLUMN IF NOT EXISTS weekly_points_json LONGTEXT NULL CHECK(weekly_points_json IS NULL OR JSON_VALID(weekly_points_json)), ADD COLUMN IF NOT EXISTS grace_enabled BIGINT NOT NULL DEFAULT 0 CHECK(grace_enabled IN (0,1));
+ALTER TABLE loyalty_daily_claims ADD COLUMN IF NOT EXISTS cycle_day BIGINT NULL CHECK(cycle_day IS NULL OR cycle_day BETWEEN 1 AND 7),
+ ADD COLUMN IF NOT EXISTS cycle_number BIGINT NULL CHECK(cycle_number IS NULL OR cycle_number BETWEEN 1 AND 9007199254740991),
+ ADD COLUMN IF NOT EXISTS grace_used BIGINT NULL CHECK(grace_used IS NULL OR grace_used IN (0,1)),
+ ADD COLUMN IF NOT EXISTS grace_applied BIGINT NULL CHECK(grace_applied IS NULL OR grace_applied IN (0,1)),
+ ADD COLUMN IF NOT EXISTS cycle_reset_reason VARCHAR(32) COLLATE utf8mb4_bin NULL CHECK(cycle_reset_reason IS NULL OR BINARY cycle_reset_reason IN ('first_claim','missed_day','cycle_complete'));
+CREATE INDEX IF NOT EXISTS idx_loyalty_claims_calendar ON loyalty_daily_claims(user_id,local_date);
+CREATE OR REPLACE VIEW loyalty_latest_claims AS SELECT d.* FROM loyalty_daily_claims d WHERE NOT EXISTS(SELECT 1 FROM loyalty_daily_claims newer WHERE BINARY newer.user_id=BINARY d.user_id AND newer.local_date>d.local_date);
+
+DROP TRIGGER IF EXISTS loyalty_weekly_revision_guard;
+DELIMITER $$
+CREATE TRIGGER loyalty_weekly_revision_guard BEFORE INSERT ON loyalty_revisions FOR EACH ROW BEGIN
+ DECLARE day_index INT DEFAULT 0;
+ DECLARE prior_points DECIMAL(30,0) DEFAULT 0;
+ DECLARE next_points DECIMAL(30,0);
+ DECLARE cycle_total DECIMAL(40,0) DEFAULT 0;
+ IF NEW.weekly_points_json IS NULL THEN
+  IF NEW.grace_enabled<>0 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='loyalty_weekly_terms_invalid'; END IF;
+ ELSE
+  IF JSON_VALID(NEW.weekly_points_json)<>1 OR NOT(JSON_TYPE(NEW.weekly_points_json)<=>'ARRAY') OR JSON_LENGTH(NEW.weekly_points_json)<>7 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='loyalty_weekly_terms_invalid'; END IF;
+  WHILE day_index<7 DO
+   IF NOT(JSON_TYPE(JSON_EXTRACT(NEW.weekly_points_json,CONCAT('$[',day_index,']')))<=>'INTEGER') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='loyalty_weekly_terms_invalid'; END IF;
+   SET next_points=CAST(JSON_UNQUOTE(JSON_EXTRACT(NEW.weekly_points_json,CONCAT('$[',day_index,']'))) AS DECIMAL(30,0));
+   IF next_points<=prior_points OR next_points>9007199254740991 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='loyalty_weekly_terms_invalid'; END IF;
+   IF day_index=0 AND NEW.daily_points<>next_points THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='loyalty_weekly_terms_invalid'; END IF;
+   SET cycle_total=cycle_total+next_points;
+   SET prior_points=next_points;
+   SET day_index=day_index+1;
+  END WHILE;
+  IF cycle_total>9007199254740991 OR NEW.daily_budget_points IS NULL OR NEW.daily_budget_points<prior_points OR NEW.lifetime_budget_points IS NULL OR NEW.lifetime_budget_points<prior_points THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='loyalty_weekly_terms_invalid'; END IF;
+ END IF;
+END$$
+DELIMITER ;
+
+DROP TRIGGER IF EXISTS loyalty_claim_guard;
+DELIMITER $$
+CREATE TRIGGER loyalty_claim_guard BEFORE INSERT ON loyalty_daily_claims FOR EACH ROW BEGIN IF NEW.local_date<>DATE_FORMAT(TIMESTAMPADD(SECOND, NEW.created_at DIV 1000+20700, '1970-01-01'),'%Y-%m-%d')
+ OR NOT EXISTS(SELECT 1 FROM loyalty_config c JOIN loyalty_revisions r ON r.revision=c.current_revision JOIN users u ON BINARY u.id=BINARY NEW.user_id JOIN loyalty_accounts a ON a.user_id=u.id
+ WHERE c.paused=0 AND r.enabled=1 AND r.revision=NEW.revision AND u.status='active' AND EXISTS(SELECT 1 FROM user_roles WHERE user_id=u.id AND role='customer')
+ AND NEW.created_at>=r.starts_at AND NEW.created_at<r.ends_at AND NEW.awarded_points=CASE WHEN r.weekly_points_json IS NULL THEN r.daily_points ELSE CAST(JSON_UNQUOTE(JSON_EXTRACT(r.weekly_points_json,CONCAT('$[',NEW.cycle_day-1,']'))) AS UNSIGNED) END
+ AND NEW.awarded_points<=r.lifetime_budget_points-c.issued_points
+ AND NEW.awarded_points<=r.daily_budget_points-COALESCE((SELECT issued_points FROM loyalty_day_issuance WHERE local_date=NEW.local_date),0)
+ AND NEW.awarded_points<=9007199254740991-a.balance_points)
+ OR NOT(BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.response_json,'$.claimId')) <=> BINARY NEW.id) OR NOT(BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.response_json,'$.localDate')) <=> BINARY NEW.local_date)
+ OR NOT(BINARY JSON_TYPE(JSON_EXTRACT(NEW.response_json,'$.awardedPoints')) <=> BINARY 'INTEGER') OR NOT(BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.response_json,'$.awardedPoints')) <=> BINARY NEW.awarded_points)
+ OR NOT(BINARY JSON_TYPE(JSON_EXTRACT(NEW.response_json,'$.balancePoints')) <=> BINARY 'INTEGER') OR NOT(BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.response_json,'$.balancePoints')) <=> BINARY (SELECT balance_points+NEW.awarded_points FROM loyalty_accounts WHERE BINARY user_id=BINARY NEW.user_id)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='loyalty_claim_unavailable'; END IF; END$$
+DELIMITER ;
+
+DROP TRIGGER IF EXISTS loyalty_weekly_claim_guard;
+DELIMITER $$
+CREATE TRIGGER loyalty_weekly_claim_guard BEFORE INSERT ON loyalty_daily_claims FOR EACH ROW BEGIN IF NOT EXISTS(
+ SELECT 1 FROM loyalty_config c JOIN loyalty_revisions r ON r.revision=c.current_revision LEFT JOIN loyalty_latest_claims p ON BINARY p.user_id=BINARY NEW.user_id
+ WHERE c.id='default' AND r.revision=NEW.revision AND (
+  (r.weekly_points_json IS NULL AND NEW.cycle_day IS NULL AND NEW.cycle_number IS NULL AND NEW.grace_used IS NULL AND NEW.grace_applied IS NULL AND NEW.cycle_reset_reason IS NULL AND JSON_TYPE(JSON_EXTRACT(NEW.response_json,'$.cycle')) IS NULL)
+  OR (r.weekly_points_json IS NOT NULL AND (p.local_date IS NULL OR NEW.local_date>p.local_date)
+   AND NEW.cycle_day=CASE WHEN ((DATEDIFF(NEW.local_date,p.local_date)=1 AND p.cycle_day<7) OR (DATEDIFF(NEW.local_date,p.local_date)=2 AND r.grace_enabled=1 AND p.grace_used=0 AND p.cycle_day<7)) THEN p.cycle_day+1 ELSE 1 END
+   AND NEW.cycle_number=CASE WHEN p.cycle_day IS NULL THEN 1 WHEN ((DATEDIFF(NEW.local_date,p.local_date)=1 AND p.cycle_day<7) OR (DATEDIFF(NEW.local_date,p.local_date)=2 AND r.grace_enabled=1 AND p.grace_used=0 AND p.cycle_day<7)) THEN p.cycle_number ELSE p.cycle_number+1 END
+   AND NEW.grace_used=CASE WHEN (DATEDIFF(NEW.local_date,p.local_date)=2 AND r.grace_enabled=1 AND p.grace_used=0 AND p.cycle_day<7) THEN 1 WHEN (DATEDIFF(NEW.local_date,p.local_date)=1 AND p.cycle_day<7) THEN p.grace_used ELSE 0 END
+   AND NEW.grace_applied=CASE WHEN (DATEDIFF(NEW.local_date,p.local_date)=2 AND r.grace_enabled=1 AND p.grace_used=0 AND p.cycle_day<7) THEN 1 ELSE 0 END
+   AND (BINARY NEW.cycle_reset_reason <=> BINARY CASE WHEN p.cycle_day IS NULL THEN 'first_claim' WHEN ((DATEDIFF(NEW.local_date,p.local_date)=1 AND p.cycle_day<7) OR (DATEDIFF(NEW.local_date,p.local_date)=2 AND r.grace_enabled=1 AND p.grace_used=0 AND p.cycle_day<7)) THEN NULL WHEN DATEDIFF(NEW.local_date,p.local_date)=1 AND p.cycle_day=7 THEN 'cycle_complete' ELSE 'missed_day' END)
+   AND JSON_TYPE(JSON_EXTRACT(NEW.response_json,'$.cycle'))='OBJECT'
+   AND JSON_TYPE(JSON_EXTRACT(NEW.response_json,'$.cycle.day'))='INTEGER' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(NEW.response_json,'$.cycle.day')) AS UNSIGNED)=NEW.cycle_day
+   AND JSON_TYPE(JSON_EXTRACT(NEW.response_json,'$.cycle.number'))='INTEGER' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(NEW.response_json,'$.cycle.number')) AS UNSIGNED)=NEW.cycle_number
+   AND JSON_TYPE(JSON_EXTRACT(NEW.response_json,'$.cycle.graceUsed'))='BOOLEAN' AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.response_json,'$.cycle.graceUsed'))=BINARY IF(NEW.grace_used=1,'true','false')
+   AND JSON_TYPE(JSON_EXTRACT(NEW.response_json,'$.cycle.graceApplied'))='BOOLEAN' AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.response_json,'$.cycle.graceApplied'))=BINARY IF(NEW.grace_applied=1,'true','false')
+   AND JSON_TYPE(JSON_EXTRACT(NEW.response_json,'$.cycle.resetReason')) IN ('NULL','STRING') AND (BINARY (CASE WHEN JSON_TYPE(JSON_EXTRACT(NEW.response_json,'$.cycle.resetReason'))='NULL' THEN NULL ELSE JSON_UNQUOTE(JSON_EXTRACT(NEW.response_json,'$.cycle.resetReason')) END) <=> BINARY NEW.cycle_reset_reason)
+   AND JSON_TYPE(JSON_EXTRACT(NEW.response_json,'$.cycle.lastClaimDate')) IN ('NULL','STRING') AND (BINARY (CASE WHEN JSON_TYPE(JSON_EXTRACT(NEW.response_json,'$.cycle.lastClaimDate'))='NULL' THEN NULL ELSE JSON_UNQUOTE(JSON_EXTRACT(NEW.response_json,'$.cycle.lastClaimDate')) END) <=> BINARY p.local_date)
+  )
+ )) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='loyalty_weekly_claim_invalid'; END IF; END$$
+DELIMITER ;
+-- Additive 0071 companion. Requires form catalog, maker identity and managed commerce.
+-- Never infer or backfill acceptance, commercial snapshots or payment allocations.
+ALTER TABLE managed_maker_application_details ADD COLUMN IF NOT EXISTS agreement_language VARCHAR(8) NULL CHECK(agreement_language IS NULL OR BINARY agreement_language IN ('en','ne'));
+ALTER TABLE managed_maker_application_details ADD COLUMN IF NOT EXISTS agreement_form_version_id VARCHAR(191) COLLATE utf8mb4_nopad_bin NULL,
+ ADD FOREIGN KEY IF NOT EXISTS managed_detail_form_version_fk (agreement_form_version_id) REFERENCES form_config_versions(id);
+ALTER TABLE seller_participation_profiles ADD COLUMN IF NOT EXISTS accepted_managed_detail_id VARCHAR(191) NULL,
+ ADD FOREIGN KEY IF NOT EXISTS participation_accepted_detail_fk (accepted_managed_detail_id) REFERENCES managed_maker_application_details(id);
+ALTER TABLE managed_commercial_snapshots ADD COLUMN IF NOT EXISTS accepted_managed_detail_id VARCHAR(191) NULL,
+ ADD COLUMN IF NOT EXISTS maker_name_snapshot TEXT NULL,
+ ADD COLUMN IF NOT EXISTS company_store_name_snapshot TEXT NULL,
+ ADD COLUMN IF NOT EXISTS company_legal_name_snapshot TEXT NULL,
+ ADD FOREIGN KEY IF NOT EXISTS commercial_accepted_detail_fk (accepted_managed_detail_id) REFERENCES managed_maker_application_details(id);
+ALTER TABLE seller_route_transition_applications ADD COLUMN IF NOT EXISTS registered_terms_snapshot_json LONGTEXT NULL CHECK(registered_terms_snapshot_json IS NULL OR JSON_VALID(registered_terms_snapshot_json));
+
+CREATE TABLE IF NOT EXISTS managed_payout_allocations (
+ payout_id VARCHAR(191) NOT NULL,
+ entitlement_id VARCHAR(191) NOT NULL,
+ amount_paisa BIGINT NOT NULL CHECK(amount_paisa<>0),
+ disposition VARCHAR(16) COLLATE utf8mb4_bin NOT NULL CHECK(BINARY disposition IN ('reserved','released','paid')),
+ created_at BIGINT NOT NULL,
+ terminal_at BIGINT NULL,
+ request_id VARCHAR(191) NOT NULL,
+ actor_id VARCHAR(191) NOT NULL,
+ -- Match the parent entitlement ID collation: FK-equivalent case/space variants
+ -- must reserve the same parent rather than evade the unique key.
+ reserved_entitlement_key VARCHAR(191) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS (CASE WHEN BINARY disposition='reserved' THEN entitlement_id ELSE NULL END) STORED,
+ PRIMARY KEY(payout_id,entitlement_id),
+ UNIQUE KEY managed_allocation_one_reservation(reserved_entitlement_key),
+ FOREIGN KEY(payout_id) REFERENCES managed_payouts(id) ON DELETE RESTRICT,
+ FOREIGN KEY(entitlement_id) REFERENCES managed_entitlements(id) ON DELETE RESTRICT,
+ FOREIGN KEY(actor_id) REFERENCES users(id) ON DELETE RESTRICT,
+ CONSTRAINT managed_allocation_terminal_shape CHECK((BINARY disposition='reserved' AND terminal_at IS NULL) OR (BINARY disposition<>'reserved' AND terminal_at IS NOT NULL))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+DELIMITER $$
+CREATE TRIGGER IF NOT EXISTS managed_allocation_preserve_identity BEFORE UPDATE ON managed_payout_allocations FOR EACH ROW
+BEGIN
+ IF NOT(BINARY NEW.payout_id<=>BINARY OLD.payout_id) OR NOT(BINARY NEW.entitlement_id<=>BINARY OLD.entitlement_id)
+ OR NOT(NEW.amount_paisa<=>OLD.amount_paisa) OR NOT(NEW.created_at<=>OLD.created_at)
+ OR NOT(BINARY NEW.request_id<=>BINARY OLD.request_id) OR NOT(BINARY NEW.actor_id<=>BINARY OLD.actor_id)
+ OR BINARY OLD.disposition<>'reserved' OR BINARY NEW.disposition NOT IN ('released','paid')
+ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Managed allocation history is immutable'; END IF;
+END$$
+CREATE TRIGGER IF NOT EXISTS managed_allocation_no_delete BEFORE DELETE ON managed_payout_allocations FOR EACH ROW
+BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Managed allocation history is permanent'; END$$
+CREATE TRIGGER IF NOT EXISTS managed_payout_preserve_identity BEFORE UPDATE ON managed_payouts FOR EACH ROW
+BEGIN
+ IF NOT(BINARY NEW.id<=>BINARY OLD.id) OR NOT(BINARY NEW.seller_id<=>BINARY OLD.seller_id) OR NOT(NEW.amount_paisa<=>OLD.amount_paisa)
+ OR NOT(BINARY NEW.destination_reference<=>BINARY OLD.destination_reference) OR NOT(BINARY NEW.request_id<=>BINARY OLD.request_id)
+ OR NOT(BINARY NEW.prepared_by<=>BINARY OLD.prepared_by) OR NOT(NEW.created_at<=>OLD.created_at)
+ OR NOT(NEW.scheduled_for<=>OLD.scheduled_for) OR NOT(BINARY NEW.payout_number<=>BINARY OLD.payout_number)
+ OR NOT(BINARY NEW.simulation_label<=>BINARY OLD.simulation_label)
+ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Managed payment identity and amount are immutable'; END IF;
+END$$
+CREATE TRIGGER IF NOT EXISTS managed_payout_no_delete BEFORE DELETE ON managed_payouts FOR EACH ROW
+BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Managed payment history is permanent'; END$$
+CREATE TRIGGER IF NOT EXISTS managed_payout_preserve_terminal BEFORE UPDATE ON managed_payouts FOR EACH ROW
+BEGIN
+ IF BINARY OLD.status IN ('paid','rejected','reversed') AND (NOT(BINARY NEW.status<=>BINARY OLD.status)
+ OR NOT(BINARY NEW.approved_by<=>BINARY OLD.approved_by) OR NOT(BINARY NEW.provider_reference<=>BINARY OLD.provider_reference) OR NOT(NEW.paid_at<=>OLD.paid_at))
+ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Terminal managed payment evidence is immutable'; END IF;
+END$$
+CREATE TRIGGER IF NOT EXISTS managed_legacy_payout_link_no_update BEFORE UPDATE ON managed_payout_entries FOR EACH ROW
+BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Legacy managed payment links are immutable'; END$$
+CREATE TRIGGER IF NOT EXISTS managed_legacy_payout_link_no_delete BEFORE DELETE ON managed_payout_entries FOR EACH ROW
+BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Legacy managed payment links are permanent'; END$$
+DELIMITER ;
+-- Additive 0072 companion. Requires the current weekly loyalty companion.
+-- Existing rules, drafts, pause state, points and financial records stay intact.
+ALTER TABLE loyalty_config ADD COLUMN IF NOT EXISTS scheduled_revision BIGINT NULL,
+ ADD COLUMN IF NOT EXISTS scheduled_for BIGINT NULL,
+ ADD COLUMN IF NOT EXISTS scheduled_unpause BIGINT NOT NULL DEFAULT 0 CHECK(scheduled_unpause IN (0,1)),
+ ADD FOREIGN KEY IF NOT EXISTS loyalty_scheduled_revision_fk (scheduled_revision) REFERENCES loyalty_revisions(revision);
+
+DELIMITER $$
+CREATE TRIGGER IF NOT EXISTS loyalty_schedule_insert_guard BEFORE INSERT ON loyalty_config FOR EACH ROW
+BEGIN
+ IF (NEW.scheduled_revision IS NULL)<>(NEW.scheduled_for IS NULL)
+ OR (NEW.scheduled_revision IS NULL AND NEW.scheduled_unpause<>0)
+ OR (NEW.scheduled_revision IS NOT NULL AND (NEW.scheduled_for<0
+ OR NEW.scheduled_revision=NEW.current_revision OR NEW.scheduled_revision=NEW.draft_revision
+ OR NOT EXISTS(SELECT 1 FROM loyalty_revisions r WHERE r.revision=NEW.scheduled_revision AND r.starts_at=NEW.scheduled_for)))
+ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid scheduled loyalty rules'; END IF;
+END$$
+CREATE TRIGGER IF NOT EXISTS loyalty_schedule_update_guard BEFORE UPDATE ON loyalty_config FOR EACH ROW
+BEGIN
+ IF (NEW.scheduled_revision IS NULL)<>(NEW.scheduled_for IS NULL)
+ OR (NEW.scheduled_revision IS NULL AND NEW.scheduled_unpause<>0)
+ OR (NEW.scheduled_revision IS NOT NULL AND (NEW.scheduled_for<0
+ OR NEW.scheduled_revision=NEW.current_revision OR NEW.scheduled_revision=NEW.draft_revision
+ OR NOT EXISTS(SELECT 1 FROM loyalty_revisions r WHERE r.revision=NEW.scheduled_revision AND r.starts_at=NEW.scheduled_for)))
+ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid scheduled loyalty rules'; END IF;
+END$$
+CREATE TRIGGER IF NOT EXISTS loyalty_schedule_claim_guard BEFORE INSERT ON loyalty_daily_claims FOR EACH ROW
+BEGIN
+ IF EXISTS(SELECT 1 FROM loyalty_config WHERE BINARY id='default' AND scheduled_revision IS NOT NULL AND scheduled_for<=NEW.created_at)
+ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='loyalty_scheduled_rules_due'; END IF;
+END$$
 DELIMITER ;
 
 -- Babal.Host password authentication and server-side sessions.

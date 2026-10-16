@@ -4,6 +4,7 @@ import { businessNotificationStatements } from '../../operations/business-notifi
 import type { FeaturedProduct } from '@/lib/catalog/featured-products';
 import { createProductSku } from '@/lib/products/submission';
 import { publicProductEligibility } from '@/lib/products/eligibility';
+import { publicSellingIdentityColumns, type PublicSellingIdentity } from '../../products/selling-identity';
 import { productTransitions } from '@/lib/marketplace/workflows';
 import type { ProductStatus } from '@/lib/marketplace/types';
 import type {
@@ -14,8 +15,22 @@ import { buildFormAnswerInsert } from './form-answers';
 import type { FormAnswerSnapshot } from '@/lib/forms/types';
 import { digestFormRequest, formRequestReplay } from '@/lib/forms/submission';
 import { staffMutationGuard } from './staff-mutation-guard';
+import { getManagedMakerAuthority, makerMutationGuards, ManagedMakerAuthorizationError } from '../../managed-commerce/maker-authority';
 
 type SellerProductFormLink = { requestId: string; versionId: string; answers: FormAnswerSnapshot; digest?: string };
+
+function makerProductGuards(db: D1Database, options: { sellerId: string; actorId: string; now: number;
+  productId: string; input: ProductSubmissionInput }) {
+  const id = crypto.randomUUID();
+  const occasions = [...new Set(options.input.occasionIds)];
+  return [...makerMutationGuards(db, options),
+    db.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN
+      EXISTS(SELECT 1 FROM categories WHERE id=? AND is_active=1)
+      AND (SELECT COUNT(*) FROM occasions WHERE id IN (${occasions.map(() => '?').join(',') || 'NULL'}) AND is_active=1)=?
+      AND NOT EXISTS(SELECT 1 FROM product_deletions WHERE product_id=?) THEN 1 ELSE 0 END`)
+      .bind(id, options.input.categoryId, ...occasions, occasions.length, options.productId),
+    db.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(id)];
+}
 
 export interface CategoryRow {
   id: string;
@@ -105,6 +120,10 @@ export async function areActiveOccasions(
 }
 
 export async function createProductSubmission(database: D1Database, options: Parameters<typeof insertProductSubmission>[1]): Promise<string> {
+  if (options.workspaceMode === 'maker') {
+    const maker = await getManagedMakerAuthority(database, options.actorId, options.now);
+    if (maker.sellerId !== options.sellerId) throw new ManagedMakerAuthorizationError();
+  }
   const action = options.intent === 'draft' ? 'product.draft.created' : 'product.submitted';
   const catalogDigest = options.form ? options.form.digest ?? await digestFormRequest({ sellerId: options.sellerId,
     intent: options.intent ?? 'submit', input: options.input, images: options.images,
@@ -142,13 +161,17 @@ async function insertProductSubmission(
     input: ProductSubmissionInput;
     images: readonly ProductImageUpload[];
     intent?: 'draft' | 'submit';
+    workspaceMode?: 'seller' | 'maker';
     now: number;
     form?: SellerProductFormLink;
   },
 ): Promise<void> {
   const { productId, sellerId, actorId, slug, input, images, now } = options;
   const productStatus = options.intent === 'draft' ? 'draft' : 'submitted';
+  if (options.workspaceMode === 'maker' && images.some(media => !media.objectKey.startsWith(`private/product-media/${sellerId}/${productId}/`)))
+    throw new ManagedMakerAuthorizationError('Product media must belong to this maker and product.');
   const statements: D1PreparedStatement[] = [
+    ...(options.workspaceMode === 'maker' ? makerProductGuards(database, options) : []),
     ...(options.form ? [database.prepare(`SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
       THEN 1 ELSE json_extract('invalid', '$') END`).bind(options.form.requestId)] : []),
     database
@@ -496,10 +519,17 @@ export async function reviseAndResubmitProduct(
     expectedStatus?: ProductStatus;
     previousInventory: number;
     expectedReviewRequestId?: string | null;
+    workspaceMode?: 'seller' | 'maker';
     now: number;
     form?: SellerProductFormLink;
   },
 ): Promise<'applied' | 'replayed'> {
+  if (options.workspaceMode === 'maker') {
+    const maker = await getManagedMakerAuthority(database, options.actorId, options.now);
+    if (maker.sellerId !== options.sellerId || options.images.some(media =>
+      !media.objectKey.startsWith(`private/product-media/${options.sellerId}/${options.productId}/`)))
+      throw new ManagedMakerAuthorizationError('Product ownership or media ownership could not be verified.');
+  }
   const catalogDigest = options.form ? options.form.digest ?? await digestFormRequest({
     productId: options.productId, sellerId: options.sellerId, input: options.input,
     images: options.images, removedMediaIds: options.removedMediaIds ?? [],
@@ -706,6 +736,7 @@ export async function reviseAndResubmitProduct(
     );
   }
 
+  if (options.workspaceMode === 'maker') statements.push(...makerProductGuards(database, options));
   statements.push(...await businessNotificationStatements(database,{eventId:mutationId,sourceType:'product',sourceId:options.productId,status:'submitted',reviewRequestId:mutationId,actorId:options.actorId,now:options.now,kind:'submitted'}));
   if (options.form) statements.push(
     database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM products WHERE id=? AND seller_id=? AND review_request_id=?)
@@ -1325,7 +1356,7 @@ export async function reviewProduct(
   return transition.to;
 }
 
-export interface PublicProductRow {
+export interface PublicProductRow extends Partial<PublicSellingIdentity> {
   id: string;
   sellerId: string;
   slug: string;
@@ -1372,7 +1403,7 @@ export interface PublicCatalogueFilters {
   sort?: 'newest' | 'price-low' | 'price-high' | 'name';
 }
 
-interface HomepageProductQueryRow {
+interface HomepageProductQueryRow extends Partial<PublicSellingIdentity> {
   slug: string;
   name: string;
   pricePaisa: number;
@@ -1434,6 +1465,7 @@ function homepageProduct(
     image: `/api/product-media/${row.mediaId}`,
     imageAlt: publicProductName(row.name),
     tradingName: row.tradingName,
+    makerName: row.makerName, storeName: row.storeName, legalSellerName: row.legalSellerName, participationRoute: row.participationRoute,
     label,
   };
 }
@@ -1452,7 +1484,7 @@ export async function listHomepagePromotedProducts(
   homepageLimit(limit);
   const result = await database
     .prepare(
-      `SELECT products.slug, products.name_en AS name, products.price_paisa AS pricePaisa, products.compare_at_price_paisa AS compareAtPricePaisa,
+      `SELECT ${publicSellingIdentityColumns()}, products.slug, products.name_en AS name, products.price_paisa AS pricePaisa, products.compare_at_price_paisa AS compareAtPricePaisa,
       categories.name_en AS category, seller_profiles.trading_name AS tradingName,
       homepage_media.id AS mediaId
      FROM promotions
@@ -1468,7 +1500,7 @@ export async function listHomepagePromotedProducts(
      )
      WHERE promotions.status = 'active' AND promotions.placement = 'homepage'
        AND promotions.starts_at <= ? AND promotions.ends_at > ?
-       AND ${publicProductEligibility()} AND seller_profiles.status = 'approved'
+       AND ${publicProductEligibility()}
        AND categories.is_active = 1 AND products.inventory_quantity > 0
        AND NOT EXISTS (
          SELECT 1 FROM homepage_product_controls
@@ -1503,7 +1535,7 @@ export async function listActiveHomepagePromotions(
        INNER JOIN categories ON categories.id = products.category_id
        WHERE promotions.status = 'active' AND promotions.placement = 'homepage'
          AND promotions.starts_at <= ? AND promotions.ends_at > ?
-         AND ${publicProductEligibility()} AND seller_profiles.status = 'approved'
+         AND ${publicProductEligibility()}
          AND categories.is_active = 1 AND products.inventory_quantity > 0
          AND NOT EXISTS (
            SELECT 1 FROM homepage_product_controls
@@ -1537,7 +1569,7 @@ export async function listHomepageLatestProducts(
   homepageLimit(limit);
   const result = await database
     .prepare(
-      `SELECT products.slug, products.name_en AS name,
+      `SELECT ${publicSellingIdentityColumns()}, products.slug, products.name_en AS name,
         products.price_paisa AS pricePaisa,
         products.compare_at_price_paisa AS compareAtPricePaisa,
         categories.name_en AS category, seller_profiles.trading_name AS tradingName,
@@ -1551,7 +1583,7 @@ export async function listHomepageLatestProducts(
            AND candidate_media.mime_type LIKE 'image/%'
          ORDER BY candidate_media.sort_order ASC, candidate_media.id ASC LIMIT 1
        )
-       WHERE ${publicProductEligibility()} AND seller_profiles.status = 'approved'
+       WHERE ${publicProductEligibility()}
          AND categories.is_active = 1 AND products.inventory_quantity > 0
          AND products.published_at IS NOT NULL
          AND NOT EXISTS (
@@ -1579,7 +1611,7 @@ export async function listHomepageTopProducts(
   const since = now - windowDays * 86_400_000;
   const result = await database
     .prepare(
-      `SELECT products.slug, products.name_en AS name,
+      `SELECT ${publicSellingIdentityColumns()}, products.slug, products.name_en AS name,
         products.price_paisa AS pricePaisa,
         products.compare_at_price_paisa AS compareAtPricePaisa,
         categories.name_en AS category, seller_profiles.trading_name AS tradingName,
@@ -1599,7 +1631,7 @@ export async function listHomepageTopProducts(
        WHERE orders.status = 'delivered' AND orders.delivered_at IS NOT NULL
          AND orders.delivered_at >= ? AND orders.delivered_at <= ?
          AND order_items.fulfillment_status = 'delivered'
-         AND ${publicProductEligibility()} AND seller_profiles.status = 'approved'
+         AND ${publicProductEligibility()}
          AND categories.is_active = 1 AND products.inventory_quantity > 0
          AND NOT EXISTS (
            SELECT 1 FROM homepage_product_controls
@@ -1894,7 +1926,6 @@ export async function listPublishedProducts(
   if (!orderBy) throw new RangeError('Catalogue sort is invalid.');
   const conditions = [
     `${publicProductEligibility()}`,
-    `seller_profiles.status = 'approved'`,
     `categories.is_active = 1`,
   ];
   const bindings: Array<string | number> = [];
@@ -1954,7 +1985,7 @@ export async function listPublishedProducts(
   if (sort === 'newest') bindings.push(Date.now(), Date.now());
   const result = await database
     .prepare(
-      `SELECT products.id, products.slug, products.name_en AS nameEn,
+      `SELECT ${publicSellingIdentityColumns()}, products.id, products.slug, products.name_en AS nameEn,
         products.seller_id AS sellerId,
         products.name_ne AS nameNe, products.description_en AS descriptionEn,
         products.price_paisa AS pricePaisa,
@@ -1995,7 +2026,6 @@ export async function countPublishedProducts(
 ): Promise<number> {
   const conditions = [
     `${publicProductEligibility()}`,
-    `seller_profiles.status = 'approved'`,
     `categories.is_active = 1`,
   ];
   const bindings: Array<string | number> = [];
@@ -2048,10 +2078,10 @@ export async function countPublishedProducts(
 export async function getPublishedProductBySlug(
   database: D1Database,
   slug: string,
-): Promise<(PublicProductRow & { media: readonly ProductMediaRow[] }) | null> {
+): Promise<(PublicProductRow & PublicSellingIdentity & { media: readonly ProductMediaRow[] }) | null> {
   const product = await database
     .prepare(
-      `SELECT products.id, products.slug, products.name_en AS nameEn,
+      `SELECT ${publicSellingIdentityColumns()}, products.id, products.slug, products.name_en AS nameEn,
         products.seller_id AS sellerId,
         products.name_ne AS nameNe, products.description_en AS descriptionEn,
         products.price_paisa AS pricePaisa,
@@ -2081,7 +2111,7 @@ export async function getPublishedProductBySlug(
        WHERE products.slug = ? AND ${publicProductEligibility()} LIMIT 1`,
     )
     .bind(slug)
-    .first<PublicProductRow>();
+    .first<PublicProductRow & PublicSellingIdentity>();
   if (!product) return null;
   const media = await database
     .prepare(

@@ -37,7 +37,7 @@ export function BusinessEmailProcessor() {
       <Button disabled={busy} onClick={process}>
         {busy ? 'Processing…' : 'Attempt up to 6 business emails'}
       </Button>
-      <output className="block text-sm">{message}</output>
+      <output aria-live="polite" className="block text-sm">{message}</output>
     </div>
   );
 }

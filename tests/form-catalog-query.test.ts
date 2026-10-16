@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {addProductEvidenceSchema} from './helpers/product-evidence-schema';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 import test from 'node:test';
 import { resolve } from 'node:path';
@@ -120,6 +121,7 @@ void test('minimum price changes both published product results and count', asyn
         ('high','high','High',31000,'seller','category','published');
     `);
     const db = { prepare(sql: string) { return new Statement(sqlite.prepare(sql)); } } as unknown as D1Database;
+    addProductEvidenceSchema(sqlite);
     assert.equal(await countPublishedProducts(db, {}), 3);
     assert.equal(await countPublishedProducts(db, { minimumPricePaisa: 25075 }), 2);
     assert.deepEqual((await listPublishedProducts(db,
@@ -145,6 +147,9 @@ void test('tracking lookup denies an order when the checkout email does not matc
     sqlite.exec(`CREATE TABLE orders(id TEXT,order_number TEXT,status TEXT,payment_status TEXT,
       placed_at INTEGER,delivered_at INTEGER,updated_at INTEGER,customer_email TEXT);
       CREATE TABLE shipments(order_id TEXT,tracking_code TEXT,estimated_min_days INTEGER,estimated_max_days INTEGER);
+      CREATE TABLE delivery_assignments(order_id TEXT,method TEXT,rider_user_id TEXT);
+      CREATE TABLE shipping_jobs(id TEXT,order_id TEXT);
+      CREATE TABLE shipping_parcels(shipping_job_id TEXT,method TEXT,rider_user_id TEXT);
       CREATE TABLE order_status_events(order_id TEXT,to_status TEXT,created_at INTEGER);
       CREATE TABLE first_cod_reviews(order_id TEXT PRIMARY KEY,customer_id TEXT,total_paisa INTEGER,status TEXT,
         created_at INTEGER,confirmed_by TEXT,confirmed_at INTEGER,reason TEXT,request_id TEXT);
@@ -154,6 +159,9 @@ void test('tracking lookup denies an order when the checkout email does not matc
     assert.equal(await findOrderTracking(db, 'HK-PRIVATE', 'stranger@example.test'), null);
     assert.equal((await findOrderTracking(db, 'HK-PRIVATE', 'owner@example.test'))?.trackingCode,
       'SECRET-TRACKING');
+    sqlite.exec("INSERT INTO delivery_assignments VALUES ('private','own_rider','private-rider')");
+    assert.equal((await findOrderTracking(db, 'HK-PRIVATE', 'owner@example.test'))?.trackingCode, null);
+    assert.equal(await findOrderTracking(db, 'HK-PRIVATE', 'stranger@example.test'), null);
   } finally { sqlite.close(); }
 });
 

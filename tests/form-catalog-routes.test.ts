@@ -1,3 +1,5 @@
+import './helpers/rider-enabled-fixture';
+import { startSellerRegistration } from '../lib/db/repositories/seller-commercial-access';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { registerHooks } from 'node:module';
@@ -17,7 +19,8 @@ registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier === 'cloudflare:workers') return { url: 'data:text/javascript,export const env = {get DB(){return globalThis.formCatalogRouteDb}}', shortCircuit: true };
     if (specifier === '@/lib/auth/staff') return { url: `data:text/javascript,export class StaffAuthorizationError extends Error { constructor(message,status){super(message);this.status=status} }; export async function requireStaffApi(){const a=globalThis.formCatalogRouteActor;if(!a)throw new StaffAuthorizationError('Authentication is required.',401);if(a.role!=='super_admin')throw new StaffAuthorizationError('Staff access is not permitted.',403);return a}`, shortCircuit: true };
-    if (specifier === '@/app/auth') return { url: 'data:text/javascript,export async function getAuthenticatedUser(){const a=globalThis.formCatalogRouteActor;return a?{userId:a.id+"-subject"}:null}', shortCircuit: true };
+    if (specifier === '@/app/auth') return { url: 'data:text/javascript,export async function getAuthenticatedUser(){const a=globalThis.formCatalogRouteActor;return a?{userId:a.id+"-subject"}:null};export async function requireAuthenticatedUser(){const user=await getAuthenticatedUser();if(!user)throw new Error("Sign in required");return user}', shortCircuit: true };
+    if (specifier === 'next/navigation') return {url:'data:text/javascript,export function redirect(path){throw new Error("REDIRECT:"+path)}',shortCircuit:true};
     return nextResolve(specifier, context);
   },
 });
@@ -50,6 +53,7 @@ async function fixture() {
     CREATE TABLE seller_profiles(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,status TEXT NOT NULL);
     CREATE TABLE seller_participation_profiles(seller_id TEXT PRIMARY KEY,application_stage TEXT NOT NULL);
     CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY,status TEXT NOT NULL);
+    CREATE TABLE operation_transaction_guards(id TEXT PRIMARY KEY,valid INTEGER CHECK(valid=1));
     CREATE TABLE audit_logs(id TEXT PRIMARY KEY, actor_id TEXT, action TEXT, subject_type TEXT,
       subject_id TEXT, reason TEXT, previous_json TEXT, next_json TEXT, request_id TEXT,
       ip_hash TEXT, created_at INTEGER);
@@ -272,17 +276,17 @@ void test('every staff form keeps its page or receiver permission, including ret
       'staff.managed-payment-preparation', 'staff.managed-transition-decision',
       'staff.parcel-control', 'staff.payout-1', 'staff.payout-request-action',
       'staff.privacy-action', 'staff.product-classification', 'staff.recorded-progress-filter',
-      'staff.rider-control-1', 'staff.delivery-assignment', 'shipping.console-action-staff',
+      'staff.delivery-assignment', 'shipping.console-action-staff',
       'staff.return-case-action', 'staff.complaint-case-action', 'staff.cancellation-review',
       'staff.seller-review-action', 'staff.order-fulfillment', 'staff.first-cod-confirmation', 'staff.review-moderation',
-      'staff.product-review',
+      'staff.product-review', 'staff.seller-registry-filter', 'staff.order-queue-filter', 'staff.order-email-filter',
     ];
     const superAdminForms = [
       'staff.activity-filter', 'staff.homepage-filter', 'staff.delivery-rate',
       'staff.governance-incident-create', 'staff.governance-incident-update',
       'staff.governance-backup-verify', 'staff.invoice-adjustment',
       'staff.managed-maker-activation', 'staff.managed-adjustment', 'staff.payout-2',
-      'staff.referral-settings', 'staff.rider-control-2', 'commerce.gift-card-issue',
+      'staff.referral-settings', 'staff.rider-control-1', 'staff.rider-control-2', 'commerce.gift-card-issue',
       'staff.homepage-visibility', 'staff.seller-governance',
     ];
     const registered = Object.values(FORM_REGISTRY).filter((form) => form.audience === 'staff').map((form) => form.id).sort();
@@ -303,7 +307,7 @@ void test('every staff form keeps its page or receiver permission, including ret
   } finally { sqlite.close(); }
 });
 
-void test('application configs follow guest, customer, and pending participant flows without opening operations', async () => {
+void test('application configs require explicit seller start and retain pending participant access without opening operations', async () => {
   const sqlite = await fixture();
   try {
     for (const formId of ['seller.application', 'seller.maker-profile', 'seller.product-submission',
@@ -314,14 +318,18 @@ void test('application configs follow guest, customer, and pending participant f
     const publicRoute = await import('../app/api/forms/[formId]/route');
     const status = async (formId: string) => (await publicRoute.GET(request(`/api/forms/${formId}`), { params: Promise.resolve({ formId }) })).status;
     globalThis.formCatalogRouteActor = null;
-    assert.equal(await status('seller.application'), 200);
+    assert.equal(await status('seller.application'), 404);
     assert.equal(await status('rider.application'), 404);
     actor('customer', 'customer');
+    assert.equal(await status('seller.application'),404);
+    await startSellerRegistration(globalThis.formCatalogRouteDb,{userId:'customer',requestId:'catalog-start',now:100});
+    assert.equal(await status('seller.application'),200);
     assert.equal(await status('rider.application'), 200);
     assert.equal(await status('seller.maker-profile'), 404);
     assert.equal(await status('seller.product-submission'), 404);
     assert.equal(await status('rider.report'), 404);
     actor('pending', 'customer');
+    assert.equal(await status('seller.application'),200);
     assert.equal(await status('seller.maker-profile'), 200);
     assert.equal(await status('seller.product-submission'), 200);
     assert.equal(await status('seller.product-filter'), 404);
@@ -448,7 +456,7 @@ void test('catalog simplification lists business forms with friendly names and e
       'rider.application', 'rider.report', 'seller.managed-supply-proposal', 'seller.payout-request',
       'staff.catalog', 'staff.product-classification', 'staff.rider-control-1', 'staff.rider-control-2',
       'commerce.gift-card-issue', 'staff.governance-rule-create']) assert.ok(byId.has(id), id);
-    assert.equal(byId.get('seller.application')?.presentation.label, 'Seller application');
+    assert.equal(byId.get('seller.application')?.presentation.label, 'Apply to sell');
     assert.equal(byId.get('seller.application')?.presentation.category, 'Applications & business profiles');
     assert.equal(byId.get('seller.application')?.publishedVersion, 1);
     assert.equal(count(sqlite, 'form_config_versions'), 2);

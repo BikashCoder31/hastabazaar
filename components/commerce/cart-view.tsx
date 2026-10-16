@@ -27,6 +27,9 @@ interface CartItem {
   slug: string;
   nameEn: string;
   tradingName: string;
+  participationRoute?: string;
+  storeName?: string | null;
+  legalSellerName?: string | null;
   pricePaisa: number;
   quantity: number;
   inventoryQuantity: number;
@@ -173,6 +176,7 @@ export function CartView() {
               <div>
                 <p className="text-sm font-semibold text-primary">
                   {item.tradingName}
+                  {item.participationRoute === 'managed_maker' ? <span className="block text-xs">Made by this maker · Sold by {item.storeName ?? 'company store — terms review pending'}</span> : null}
                 </p>
                 <Link
                   href={`/products/${item.slug}`}

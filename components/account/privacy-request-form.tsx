@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ConfiguredFields, focusConfiguredField } from '@/components/forms/configured-fields';
@@ -75,6 +76,8 @@ export function PrivacyRequestForm() {
       onChange={() => { if (!busy) requestId.current = null; }}
       className="customer-form space-y-4 rounded-2xl border bg-card p-6"
     >
+      <FormGuide formId="account.privacy-request" />
+
 <p className="text-xs text-muted-foreground">* Required field</p>
 
       <h2 className="font-heading text-2xl">New privacy request</h2>

@@ -79,7 +79,9 @@ void test('customer, seller, and staff navigation wrap labels instead of truncat
     seller,
     /grid-cols-1 gap-1 min-\[380px\]:grid-cols-2 sm:grid-cols-3/,
   );
-  assert.match(admin, /grid-cols-1 gap-1 min-\[360px\]:grid-cols-2 sm:flex/);
+  // The searchable staff menu now collapses on mobile; labels must still wrap.
+  assert.match(admin, /className="min-w-0 whitespace-normal"/);
+  assert.doesNotMatch(admin, /className="[^"]*\btruncate\b[^"]*"/);
 });
 
 // Complete header geometry and search interaction are exercised against the

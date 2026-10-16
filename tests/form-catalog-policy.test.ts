@@ -8,11 +8,15 @@ import { collectFormSites, scanFormSites } from './helpers/form-policy';
 
 const root = resolve(import.meta.dirname, '..');
 
-void test('the reviewed source inventory adds incentive, COD confirmation and six secure logout sites to 83 forms in 65 files', async () => {
+void test('the reviewed source inventory includes native commission and incentive reports beside queue, COD and secure logout controls', async () => {
   const sites = await collectFormSites(root);
   const reviewedSites = [
     { path: 'app/account-access-denied/page.tsx', ordinal: 1, formId: 'identity.logout' },
     { path: 'app/admin/layout.tsx', ordinal: 1, formId: 'identity.logout' },
+    { path: 'app/admin/order-emails/page.tsx', ordinal: 1, formId: 'staff.order-email-filter' },
+    { path: 'app/admin/orders/page.tsx', ordinal: 1, formId: 'staff.order-queue-filter' },
+    { path: 'app/admin/referrals/page.tsx', ordinal: 1, formId: 'staff.referral-report-filter' },
+    { path: 'app/admin/sellers/page.tsx', ordinal: 1, formId: 'staff.seller-registry-filter' },
     { path: 'app/seller-access-denied/page.tsx', ordinal: 1, formId: 'identity.logout' },
     { path: 'app/seller/layout.tsx', ordinal: 1, formId: 'identity.logout' },
     { path: 'app/staff-access-denied/page.tsx', ordinal: 1, formId: 'identity.logout' },
@@ -33,11 +37,21 @@ void test('the reviewed source inventory adds incentive, COD confirmation and si
       formId: site.formId, route: definition.route, mode: definition.mode,
     });
   }
-  const originalSites = sites.filter((site) => !reviewedPaths.has(site.path));
-  assert.equal(originalSites.length, 83);
-  assert.equal(new Set(originalSites.map((site) => site.path)).size, 65);
-  assert.equal(sites.length, 83 + reviewedSites.length);
-  assert.equal(new Set(sites.map((site) => site.path)).size, 65 + reviewedPaths.size);
+  const workspacePaths = new Set(['components/admin/commission-report.tsx','components/admin/commission-settings.tsx','components/admin/incentive-reports.tsx']);
+  const workspaceSites = sites.filter(site=>workspacePaths.has(site.path));
+  assert.deepEqual(workspaceSites.map(site=>({path:site.path,ids:site.formIds})),[
+    {path:'components/admin/commission-report.tsx',ids:['staff.commission-report-filter']},
+    {path:'components/admin/commission-settings.tsx',ids:['staff.commission-schedule']},
+    {path:'components/admin/commission-settings.tsx',ids:['staff.commission-cancel']},
+    {path:'components/admin/incentive-reports.tsx',ids:['staff.loyalty-report-filter','staff.promo-report-filter']},
+  ]);
+  const originalSites = sites.filter((site) => !reviewedPaths.has(site.path)&&!workspacePaths.has(site.path));
+  for(const path of ['components/admin/managed-settlement-controls.tsx','components/seller/managed-terms-acceptance.tsx','components/seller/registered-transition-form.tsx'])
+    assert.ok(originalSites.some(site=>site.path===path),`Reviewed company-store form is inventoried: ${path}`);
+  assert.equal(originalSites.length, 87);
+  assert.equal(new Set(originalSites.map((site) => site.path)).size, 68);
+  assert.equal(sites.length, 87 + reviewedSites.length + workspaceSites.length);
+  assert.equal(new Set(sites.map((site) => site.path)).size, 68 + reviewedPaths.size + workspacePaths.size);
   assert.deepEqual(await scanFormSites(root), []);
 });
 

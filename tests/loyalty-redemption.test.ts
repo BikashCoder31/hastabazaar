@@ -303,7 +303,8 @@ for (const scenario of [
       }
       assert.equal(
         (await r.getRewards(f.db, 'customer', NOW)).state.status,
-        scenario,
+        scenario==='scheduled'?'exhausted':scenario,
+        'A pending change preserves the exhausted current rules and earned-point redemption',
       );
       assert.equal(
         (await redeem(f.db, input('redeem', 200, version))).creditPaisa,

@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff } from 'lucide-react';
@@ -139,6 +140,8 @@ export function HomepageVisibilityControl({
       <AlertDialog open={open} onOpenChange={(value) => !pending && setOpen(value)}>
         <AlertDialogContent>
           <form ref={formRef} data-form-id={FORM_ID} className="space-y-4" onSubmit={(event) => event.preventDefault()}>
+      <FormGuide formId={FORM_ID} />
+
           <AlertDialogHeader>
             <AlertDialogTitle>
               {nextHidden ? 'Hide' : 'Show'} {productName} on the homepage?

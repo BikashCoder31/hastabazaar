@@ -8,6 +8,7 @@ import {
   publicLegalPolicies,
   publicLegalPolicyNavigation,
   SELLER_AGREEMENT_VERSION,
+  getArchivedLegalPolicy,
 } from '../lib/content/legal-policies';
 
 void test('company identity disclosure does not require existing sellers to reaccept', () => {
@@ -27,14 +28,13 @@ const expected = {
   'seller-agreement': '3bbe5e4b2775ea265ddeffdcd7360a7e7977737b5ac826b3c8c01be55d2ff96d',
 } as const;
 
-void test('all seven canonical policy bodies match the supplied normalized hashes', () => {
-  assert.deepEqual(Object.keys(publicLegalPolicies), Object.keys(expected));
-  for (const key of Object.keys(expected) as Array<keyof typeof expected>) {
-    const body = getLegalPolicyDocument(key)
+void test('all current canonical policy bodies match their recorded normalized hashes', () => {
+  assert.deepEqual(Object.keys(publicLegalPolicies), [...Object.keys(expected), 'rewards-terms', 'promo-code-terms', 'gift-card-terms']);
+  for (const key of Object.keys(publicLegalPolicies) as Array<keyof typeof publicLegalPolicies>) {
+    const body = getLegalPolicyDocument(key, key === 'seller-agreement' ? 900 : undefined)
       .replace(/\r\n/g, '\n')
       .replace(/\s+$/, '') + '\n';
-    assert.equal(createHash('sha256').update(body).digest('hex'), expected[key], key);
-    assert.equal(publicLegalPolicies[key].sha256, expected[key]);
+    assert.equal(createHash('sha256').update(body).digest('hex'), key === 'seller-agreement' ? publicLegalPolicies[key].baselineSha256 : publicLegalPolicies[key].sha256, key);
     assert.doesNotMatch(
       body,
       /Version 3|preparation status|registration pending|draft for|\[DD\/MM\/YYYY\]|sha256_body_utf8_lf/i,
@@ -42,10 +42,18 @@ void test('all seven canonical policy bodies match the supplied normalized hashe
   }
 });
 
-void test('legal hub and navigation expose the eight canonical public routes and exact hub copy', () => {
+void test('the previous seven documents remain retrievable by their exact recorded hashes', () => {
+  for (const [key, hash] of Object.entries(expected)) {
+    const previous = getArchivedLegalPolicy(hash);
+    assert.equal(previous?.key, key);
+    assert.equal(createHash('sha256').update(previous!.body).digest('hex'), hash);
+  }
+});
+
+void test('customer policy navigation excludes seller commercial terms and preserves hub copy', () => {
   assert.deepEqual(
     publicLegalPolicyNavigation.map(({ href }) => href),
-    ['/terms', '/returns', '/shipping', '/privacy', '/cookies', '/prohibited-products', '/seller-agreement'],
+    ['/terms', '/returns', '/shipping', '/privacy', '/cookies', '/prohibited-products', '/rewards-terms', '/promo-code-terms', '/gift-card-terms'],
   );
   const hub = readFileSync('app/legal/page.tsx', 'utf8');
   assert.match(hub, />\s*Legal & Policies\s*</);
@@ -65,7 +73,8 @@ void test('connected acceptance surfaces use the current policy wording and link
   assert.match(checkout, /href="\/terms"/);
   assert.doesNotMatch(checkout, /accept the Version 3/);
   const seller = readFileSync('components/seller/seller-application-form.tsx', 'utf8');
-  assert.match(seller, /9% commission on completed, paid product sales/);
+  assert.match(seller, /registeredTerms\?\.percent/);
+  assert.doesNotMatch(seller, /9% commission/);
   assert.match(seller, /href="\/seller-agreement"/);
   assert.match(seller, /href="\/prohibited-products"/);
   assert.match(seller, /href="\/privacy"/);

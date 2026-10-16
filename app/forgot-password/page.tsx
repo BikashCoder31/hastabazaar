@@ -1,3 +1,4 @@
+import { FormGuide } from '@/components/forms/form-guide';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
@@ -41,6 +42,8 @@ export default async function ForgotPassword({
           method="post"
           className="mt-6 space-y-5"
         >
+      <FormGuide formId="identity.password-reset-request" />
+
 <p className="text-xs text-muted-foreground">* Required field</p>
 
           <input type="hidden" name="return_to" value={back} />

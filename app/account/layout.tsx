@@ -1,3 +1,4 @@
+import { isRiderPortalEnabled } from '@/lib/riders/availability';
 import { getSellerUser } from '@/lib/auth/seller';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
@@ -20,7 +21,9 @@ export default async function AccountLayout({
   const customer = await requireCustomerPage('/account');
   const [seller, rider] = await Promise.all([
     getSellerUser(),
-    riderProfile(requireDatabase(env as unknown as { DB?: D1Database }), customer.userId),
+    isRiderPortalEnabled()
+      ? riderProfile(requireDatabase(env as unknown as { DB?: D1Database }), customer.userId)
+      : Promise.resolve(null),
   ]);
   return (
     <div className="min-h-screen bg-secondary/35">
@@ -41,7 +44,7 @@ export default async function AccountLayout({
         <div className="grid items-start gap-6 lg:grid-cols-[15.5rem_minmax(0,1fr)] lg:gap-8">
           <aside className="min-w-0 lg:sticky lg:top-40">
             {seller ? <Link href="/seller" className="mb-3 flex min-h-11 items-center justify-center rounded-xl border bg-card px-4 py-3 text-sm font-semibold text-primary">Switch to seller dashboard</Link> : null}
-            {!seller || rider ? <Link href="/rider" className="mb-3 flex min-h-11 items-center justify-center rounded-xl border bg-card px-4 py-3 text-sm font-semibold text-primary">{rider ? rider.status === 'approved' ? 'Rider dashboard' : 'Rider application status' : 'Rider dashboard / apply'}</Link> : null}
+            {isRiderPortalEnabled() && (!seller || rider) ? <Link href="/rider" className="mb-3 flex min-h-11 items-center justify-center rounded-xl border bg-card px-4 py-3 text-sm font-semibold text-primary">{rider ? rider.status === 'approved' ? 'Rider dashboard' : 'Rider application status' : 'Rider dashboard / apply'}</Link> : null}
             <AccountNavigation
               displayName={customer.displayName}
               email={customer.email}

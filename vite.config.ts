@@ -74,6 +74,9 @@ export default defineConfig(async ({ command }) => {
   const localDecoder = localDecoderOptIn
     ? await (await import('./scripts/staging/rider-media-plugin')).localRiderMediaPlugin(process.env, process.cwd())
     : null;
+  const localProductMedia = !localDecoder && command === 'serve' && process.env.HASTABAZAAR_RUNTIME_ENV === 'local_staging'
+    ? await (await import('./scripts/staging/product-watermark-plugin')).localProductMediaPlugin(process.env, process.cwd(), command)
+    : null;
   const isBabalBuild = process.env.DEPLOY_TARGET === 'babal';
   if (isBabalBuild) {
     return {
@@ -105,11 +108,19 @@ export default defineConfig(async ({ command }) => {
   return {
     css: { postcss: { plugins: [tailwindcss()] } },
     server: localDecoder ? { host: '127.0.0.1', port: Number(new URL(process.env.APP_ORIGIN!).port || '80'), strictPort: true }
+      : command === 'serve' && process.env.HASTABAZAAR_RUNTIME_ENV === 'local_staging'
+      ? {
+          host: new URL(process.env.APP_ORIGIN!).hostname,
+          port: Number(new URL(process.env.APP_ORIGIN!).port || '80'),
+          strictPort: true,
+          ...(isCodexSeatbeltSandbox ? { watch: { useFsEvents: false, usePolling: true } } : {}),
+        }
       : isCodexSeatbeltSandbox
       ? { watch: { useFsEvents: false, usePolling: true } }
       : undefined,
     plugins: [
       ...(localDecoder ? [localDecoder] : []),
+      ...(localProductMedia ? [localProductMedia] : []),
       vinext(),
       sites(),
       cloudflare({

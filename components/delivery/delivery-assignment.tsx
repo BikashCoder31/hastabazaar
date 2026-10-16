@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useState, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { sendJson } from '@/lib/http/client-request';
@@ -12,10 +13,10 @@ import type { DeliveryInfo } from '@/lib/delivery/repository';
 const baseKeys = ['method', 'riderEmail', 'courierName', 'trackingUrl',
   'trackingReference', 'orderId', 'requestId', 'formVersion', 'customAnswers'];
 
-export function DeliveryAssignment({ orderId, current, riderEmail }: {
-  orderId: string; current: DeliveryInfo | null; riderEmail?: string;
+export function DeliveryAssignment({ orderId, current, riderEmail, isSuperAdmin = false }: {
+  orderId: string; current: DeliveryInfo | null; riderEmail?: string; isSuperAdmin?: boolean;
 }) {
-  const [method, setMethod] = useState(current?.method ?? 'own_rider');
+  const [method, setMethod] = useState(isSuperAdmin && current?.method === 'own_rider' ? 'own_rider' : 'courier');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
@@ -45,12 +46,14 @@ export function DeliveryAssignment({ orderId, current, riderEmail }: {
     <h2 className="font-semibold">Delivery assignment</h2>
     <p className="text-sm">One consolidated delivery per order. Assignment does not dispatch the order or change its delivery charge.</p>
     <form data-form-id="staff.delivery-assignment" onSubmit={save} className="space-y-3">
+      <FormGuide formId="staff.delivery-assignment" />
+
       <label className="block">Delivery method
         <select className="mt-1 block w-full rounded border p-2" value={method} onChange={(event) => setMethod(event.target.value)}>
-          <option value="own_rider">Own rider</option><option value="courier">Courier company</option>
+          {isSuperAdmin ? <option value="own_rider">Own rider</option> : null}<option value="courier">Courier company</option>
         </select>
       </label>
-      {method === 'own_rider' ? <label className="block">Rider account email
+      {isSuperAdmin && method === 'own_rider' ? <label className="block">Rider account email
         <input name="riderEmail" type="email" required defaultValue={riderEmail ?? ''} className="block w-full rounded border p-2" />
         <span className="text-sm">Rider must have a registered account. They open /rider after signing in. Saving reassigns this order to that account.</span>
       </label> : <>

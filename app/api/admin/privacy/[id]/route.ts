@@ -79,6 +79,11 @@ export async function POST(
         collectFormAnswersForPrivacy(db, requestRow.customerId),
         collectIncentivePrivacyData(db, requestRow.customerId),
       ]);
+      if (staff.role !== 'super_admin' && answers.some(answer =>
+        answer.formId.startsWith('rider.') || answer.subjectType.startsWith('rider') ||
+        answer.formId === 'rider.remittance'))
+        return Response.json({ error: 'Super Admin must handle access exports containing rider records.' },
+          { status: 403, headers: { 'Cache-Control': 'no-store' } });
       const incentiveRecordCount = Object.values(incentives).reduce((total, rows) => total + rows.length, 0);
       const permissionProfile = staff.role === 'admin'
         ? await db.prepare(`SELECT permissions_json AS permissionsJson,version

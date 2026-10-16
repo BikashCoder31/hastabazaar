@@ -18,6 +18,8 @@ export function ConfirmOperation({
   pending,
   error,
   onConfirm,
+  confirmLabel = 'Confirm decision',
+  disabled = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -26,6 +28,8 @@ export function ConfirmOperation({
   pending: boolean;
   error?: string;
   onConfirm: () => void;
+  confirmLabel?: string;
+  disabled?: boolean;
 }) {
   return (
     <AlertDialog
@@ -46,8 +50,8 @@ export function ConfirmOperation({
         ) : null}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>Go back</AlertDialogCancel>
-          <AlertDialogAction disabled={pending} onClick={onConfirm}>
-            {pending ? 'Saving…' : 'Confirm decision'}
+          <AlertDialogAction disabled={pending || disabled} onClick={onConfirm}>
+            {pending ? 'Saving…' : confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

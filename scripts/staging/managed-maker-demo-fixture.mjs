@@ -9,7 +9,7 @@ import {
   prepareManagedPayout,
   transitionManagedPayout,
 } from '../../lib/db/repositories/managed-settlements.ts';
-import { SIMULATED_RECORD_LABEL } from '../../lib/staging/environment.ts';
+import { resolveRuntimeEnvironment, SIMULATED_RECORD_LABEL } from '../../lib/staging/environment.ts';
 import { SQLiteD1Database } from './sqlite-d1.mjs';
 
 const ids = Object.freeze({
@@ -76,6 +76,19 @@ async function applyManagedCommerceMigration(sqlite) {
   for (const statement of source.split('--> statement-breakpoint')) {
     if (statement.trim()) sqlite.exec(statement);
   }
+  const readiness = await readFile(new URL('../../drizzle/0071_company_store_maker_readiness.sql', import.meta.url), 'utf8');
+  const allocations = readiness.indexOf('CREATE TABLE managed_payout_allocations');
+  if (allocations < 0) throw new Error('Managed allocation migration is unavailable.');
+  sqlite.exec(readiness.slice(allocations));
+  sqlite.exec(`ALTER TABLE managed_commercial_snapshots ADD COLUMN accepted_managed_detail_id TEXT;
+    ALTER TABLE managed_commercial_snapshots ADD COLUMN maker_name_snapshot TEXT;
+    ALTER TABLE seller_participation_profiles ADD COLUMN seller_id TEXT;
+    ALTER TABLE seller_participation_profiles ADD COLUMN payout_beneficiary_reference TEXT;
+    ALTER TABLE order_items ADD COLUMN seller_id TEXT;
+    ALTER TABLE return_requests ADD COLUMN status TEXT NOT NULL DEFAULT 'resolved';
+    ALTER TABLE refunds ADD COLUMN order_id TEXT;
+    ALTER TABLE refunds ADD COLUMN amount_paisa INTEGER NOT NULL DEFAULT 0;
+    CREATE TABLE complaints(id TEXT PRIMARY KEY,order_id TEXT,order_item_id TEXT,seller_id TEXT,status TEXT);`);
 }
 
 function recordJourneyEvents(sqlite, now) {
@@ -107,6 +120,7 @@ export async function runManagedMakerDemo() {
   const database = new SQLiteD1Database();
   const { sqlite } = database;
   const now = Date.UTC(2026, 8, 21, 6, 0, 0);
+  const environment = resolveRuntimeEnvironment({ runtimeEnvironment: 'test', nodeEnvironment: process.env.NODE_ENV });
   try {
     initializeBaseSchema(sqlite);
     await applyManagedCommerceMigration(sqlite);
@@ -126,11 +140,14 @@ export async function runManagedMakerDemo() {
         '${ids.order}','SIM-M2-1000','customer@local.hastabazaar.test','${ids.makerUser}',
         'simulated-receipt-token','delivered','paid','NPR',${now}
       );
-      INSERT INTO order_items VALUES (
+      INSERT INTO order_items(id,order_id,product_name_snapshot,sku_snapshot,quantity,unit_price_paisa,line_total_paisa,fulfillment_status) VALUES (
         '${ids.orderItem}','${ids.order}','SIMULATED Mithila Clay Cup','SIM-CLAY-001',1,
         100000,100000,'delivered'
       );
     `);
+    sqlite.prepare('UPDATE seller_participation_profiles SET seller_id=?,payout_beneficiary_reference=? WHERE id=?')
+      .run(ids.seller, 'SIMULATED-RECEIVING-ACCOUNT', ids.seller);
+    sqlite.prepare('UPDATE order_items SET seller_id=? WHERE id=?').run(ids.seller, ids.orderItem);
 
     const snapshot = buildManagedCommercialSnapshot({
       sellerId: ids.seller,
@@ -197,6 +214,7 @@ export async function runManagedMakerDemo() {
       cutoffLocalTime: '17:00',
     });
     const payoutId = await prepareManagedPayout(database, {
+      environment,
       sellerId: ids.seller,
       actorId: ids.financePreparer,
       destinationReference: 'SIMULATED-RECEIVING-ACCOUNT',
@@ -205,6 +223,7 @@ export async function runManagedMakerDemo() {
       scheduledFor,
     });
     await transitionManagedPayout(database, {
+      environment,
       payoutId,
       actorId: ids.financeApprover,
       action: 'approve',
@@ -212,22 +231,24 @@ export async function runManagedMakerDemo() {
       now: now + 50,
     });
     await transitionManagedPayout(database, {
+      environment,
       payoutId,
       actorId: ids.financeApprover,
       action: 'mark_paid',
       requestId: 'demo:payout:paid',
       providerReference: 'SIMULATED-PAYOUT-REFERENCE',
-      now: now + 60,
+      now: Math.max(scheduledFor, now + 60),
     });
     await transitionManagedPayout(database, {
+      environment,
       payoutId,
       actorId: ids.financeApprover,
       action: 'mark_paid',
       requestId: 'demo:payout:paid',
       providerReference: 'SIMULATED-PAYOUT-REFERENCE',
-      now: now + 61,
+      now: Math.max(scheduledFor, now + 61),
     });
-    const financeAfterPayout = await getManagedFinanceSummary(database, ids.seller, now + 70);
+    const financeAfterPayout = await getManagedFinanceSummary(database, ids.seller, Math.max(scheduledFor, now + 70));
     const payout = sqlite.prepare('SELECT payout_number,amount_paisa,status,simulation_label FROM managed_payouts WHERE id=?').get(payoutId);
     const invoice = sqlite.prepare('SELECT invoice_number,status,simulation_label FROM managed_invoice_groups WHERE order_id=?').get(ids.order);
     if (!payout || !invoice) throw new Error('The simulated payout and invoice evidence must exist.');

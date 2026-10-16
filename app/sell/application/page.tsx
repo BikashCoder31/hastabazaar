@@ -1,4 +1,10 @@
 import { getManagedMakerApplicationTerms } from '@/lib/db/repositories/managed-maker-details';
+import { getAcceptedManagedTerms, getManagedTermsOffers } from '@/lib/managed-commerce/accepted-terms';
+import { getManagedMakerAuthority } from '@/lib/managed-commerce/maker-authority';
+import { MakerProductWorkspace } from '@/components/seller/maker-product-workspace';
+import { ManagedTermsAcceptance } from '@/components/seller/managed-terms-acceptance';
+import { ManagedTermsRecovery } from '@/components/seller/managed-terms-recovery';
+import { RegisteredTransitionForm } from '@/components/seller/registered-transition-form';
 import type { Metadata } from 'next';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
@@ -69,18 +75,27 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
   const clock = await database.prepare("SELECT unixepoch('now') * 1000 AS now").first<{ now: number }>();
   const program = await getEffectiveBusinessSetting(database, 'managed_maker_program_mode', Number(clock?.now ?? 0));
   const capabilities = applicationCapabilities(profile.applicationStage, program.value);
+  let makerCanWrite = false;
+  if (profile.participationRoute === 'managed_maker') {
+    try { await getManagedMakerAuthority(database, customer.userId, Number(clock?.now ?? 0)); makerCanWrite = true; }
+    catch { /* Restricted makers retain read-only history. */ }
+  }
+  const [offers, accepted] = profile.participationRoute === 'managed_maker' ? await Promise.all([
+    getManagedTermsOffers(database, profile.sellerId, Number(clock?.now ?? 0)),
+    getAcceptedManagedTerms(database, profile.sellerId, Number(clock?.now ?? 0)),
+  ]) : [null, null];
   const managedTerms = profile.participationRoute === 'managed_maker' && profile.applicationStage === 'changes_requested' ? await getManagedMakerApplicationTerms(database) : undefined;
-  const finance = profile.participationRoute === 'managed_maker'
+  const finance = profile.participationRoute === 'managed_maker' || Boolean(await database.prepare('SELECT 1 FROM managed_entitlements WHERE seller_id=? LIMIT 1').bind(profile.sellerId).first())
     ? await getManagedFinanceSummary(database, profile.sellerId)
     : null;
   const draftCursor = historyCursor(query?.draftAt, query?.draftId);
   const draftRows = (await database.prepare(
-    `SELECT id, name_en AS nameEn, updated_at AS updatedAt FROM products
-     WHERE seller_id = ? AND status = 'draft'
+    `SELECT id, name_en AS nameEn, status, updated_at AS updatedAt FROM products
+     WHERE seller_id = ? AND NOT EXISTS(SELECT 1 FROM product_deletions WHERE product_id=products.id)
      ${draftCursor ? 'AND (updated_at < ? OR (updated_at = ? AND id < ?))' : ''}
      ORDER BY updated_at DESC, id DESC LIMIT 51`,
   ).bind(profile.sellerId, ...(draftCursor ? [draftCursor.createdAt, draftCursor.createdAt, draftCursor.id] : []))
-    .all<{ id: string; nameEn: string; updatedAt: number }>()).results;
+    .all<{ id: string; nameEn: string; status: string; updatedAt: number }>()).results;
   const drafts = draftRows.slice(0, 50);
   const nextDraft = draftRows.length > 50 ? drafts[49] : null;
   const nextDraftLink = (() => {
@@ -98,12 +113,16 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
     <section className="grid gap-4 md:grid-cols-3">
       <StatusCard title="Program readiness" state={program.value.replaceAll('_',' ')} body={program.value === 'applications_only' ? 'Profiles, review progress, and private product drafts are available. Selling and live commercial agreements remain disabled.' : 'The implemented simulated route is available only in guarded local staging; production remains blocked.'} />
       <StatusCard title="Maker readiness" state={profile.applicationStage.replaceAll('_', ' ')} body={`Responsible: ${responsible}. Next: ${nextAction}`} />
-      <StatusCard title="Product readiness" state="Drafts only" body="Each product needs separate review. Drafts are not customer-visible and cannot accept orders." />
+      <StatusCard title="Product readiness" state="Separate product review" body="Drafts stay private. Submit a complete product for review; staff publish only after maker and product approval." />
     </section>
-    {finance ? <section className="rounded-2xl border bg-card p-6"><h2 className="font-heading text-2xl">Managed Maker settlement</h2><p className="mt-2 text-sm text-muted-foreground">Simulated amounts keep calculated, earned, held, eligible, and paid states separate. Rider cash reconciliation is tracked elsewhere.</p><dl className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">{[
+    {finance ? <section className="rounded-2xl border bg-card p-6"><h2 className="font-heading text-2xl">Managed Maker settlement</h2><p className="mt-2 text-sm text-muted-foreground">Simulated amounts keep calculated, earned, held, eligible, and paid states separate. Delivery cash reconciliation is tracked separately.</p><dl className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">{[
       ['Calculated',finance.calculatedPaisa],['Earned',finance.earnedPaisa],['Held',finance.heldPaisa],['Eligible',finance.eligiblePaisa],['Paid',finance.paidPaisa],
     ].map(([label,value])=><div key={String(label)}><dt className="text-xs uppercase text-muted-foreground">{label}</dt><dd className="mt-1 font-semibold">NPR {(Number(value)/100).toFixed(2)}</dd></div>)}</dl></section> : null}
-    {capabilities.editProfile ? <section><h2 className="font-heading text-2xl">Shared maker profile</h2><MakerApplicationProfileForm profile={profile} managedTerms={managedTerms} /></section> : null}
+    {capabilities.editProfile && (profile.participationRoute !== 'managed_maker' || makerCanWrite) ? <section><h2 className="font-heading text-2xl">Shared maker profile</h2><MakerApplicationProfileForm profile={profile} managedTerms={managedTerms} /></section> : null}
+    {offers && makerCanWrite ? <><ManagedTermsAcceptance key={`${customer.userId}:${profile.sellerId}:${offers.current.id}`} ownerId={customer.userId} sellerId={profile.sellerId} offer={offers.current} future={false} alreadyAccepted={Boolean(accepted)} />
+      {offers.upcoming.map(offer => <ManagedTermsAcceptance key={offer.id} ownerId={customer.userId} sellerId={profile.sellerId} offer={offer} future alreadyAccepted={Boolean(offer.accepted)} />)}</> : null}
+    {offers&&makerCanWrite?<ManagedTermsRecovery ownerId={customer.userId} sellerId={profile.sellerId} visibleOfferIds={[offers.current.id,...offers.upcoming.map(offer=>offer.id)]}/>:null}
+    {profile.applicationStage==='active' ? <RegisteredTransitionForm sellerId={profile.sellerId} ownerId={customer.userId}/> : null}
     <section className="space-y-4" aria-label="Application answer history">
       <h2 className="font-heading text-2xl">Application answer history</h2>
       {applications.answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)}
@@ -116,7 +135,7 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
       {!makerProfiles.answers.length ? <p>No saved maker profile answers yet.</p> : null}
       {makerProfiles.nextCursor ? <Link className="section-link" href={nextHistory('maker', makerProfiles.nextCursor)!}>Next 50 profile edits</Link> : null}
     </section>
-    <section className="rounded-2xl border bg-card p-6"><div className="flex flex-wrap items-center justify-between gap-4"><div><h2 className="font-heading text-2xl">Private product drafts</h2><p className="mt-2 text-sm text-muted-foreground">Product materials and origin stories remain attached to each product. Nothing here is published.</p></div>{capabilities.prepareProductDrafts ? <Link className="rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground" href="/sell/application/products/new">Prepare a product draft</Link> : null}</div>{drafts.length ? <ul className="mt-5 divide-y">{drafts.map((draft) => <li className="py-3" key={draft.id}>{draft.nameEn} · private draft · <Link className="section-link" href={`/sell/application/products/${encodeURIComponent(draft.id)}/answers`}>Answer history</Link></li>)}</ul> : <p className="mt-5 text-sm text-muted-foreground">No product drafts yet.</p>}{nextDraftLink ? <Link className="section-link mt-4 inline-block" href={nextDraftLink}>Older drafts</Link> : null}</section>
+    <MakerProductWorkspace products={drafts} canWrite={profile.participationRoute === 'managed_maker' ? makerCanWrite : capabilities.prepareProductDrafts} nextUrl={nextDraftLink} />
   </main><SiteFooter /></div>;
 }
 

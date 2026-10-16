@@ -1,3 +1,4 @@
+import { FormGuide } from '@/components/forms/form-guide';
 import { SignupPasswordFields } from '@/components/auth/signup-password-fields';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { env } from 'cloudflare:workers';
@@ -39,6 +40,8 @@ export default async function RegisterPage({
         <p className="mt-2 text-sm leading-6 text-muted-foreground">Save favourites, track orders, and shop from Nepalese makers.</p>
         {error ? <p className="mt-5 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</p> : null}
         <form data-form-id="identity.register" action="/api/auth/register" method="post" className="mt-6 space-y-4">
+      <FormGuide formId="identity.register" />
+
           <p className="text-xs text-muted-foreground">* Required field</p>
           <input type="hidden" name="return_to" value={returnTo} />
           <label className="block text-sm font-medium">Full name *<input required name="display_name" autoComplete="name" minLength={2} maxLength={100} className="mt-2 w-full rounded-xl border bg-background px-4 py-3 outline-none focus:ring-2 focus:ring-primary" /></label>

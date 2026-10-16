@@ -107,7 +107,7 @@ export async function formAnswerOwnerId(db: D1Database, answer: Pick<StoredFormA
   }
   if (answer.subjectType === 'seller_route_transition') {
     const row = await db.prepare(`SELECT s.user_id AS userId FROM seller_route_transition_applications transition
-      JOIN seller_profiles s ON s.id=transition.seller_id WHERE transition.id=? AND s.status='approved' LIMIT 1`)
+      JOIN seller_profiles s ON s.id=transition.seller_id JOIN users u ON u.id=s.user_id WHERE transition.id=? AND u.status='active' LIMIT 1`)
       .bind(answer.subjectId).first<{ userId: string }>();
     return row?.userId ?? null;
   }
@@ -277,7 +277,7 @@ async function programmaticStaffGrant(db: D1Database, viewer: FormAnswerViewer, 
       permission = 'order.manage';
       sql = `SELECT a.action,a.next_json AS nextJson FROM orders p JOIN audit_logs a
         ON a.request_id=? AND a.actor_id=? AND a.subject_type='order' AND a.subject_id=p.id
-        AND a.action IN ('order.dispatch','order.deliver') WHERE p.id=? LIMIT 1`;
+        AND a.action IN ('order.dispatch','order.deliver','order.company.start_packing','order.company.ready_for_pickup') WHERE p.id=? LIMIT 1`;
       break;
     case 'staff.seller-review-action':
       if (subjectType !== 'seller') return false;
@@ -336,6 +336,7 @@ async function programmaticStaffGrant(db: D1Database, viewer: FormAnswerViewer, 
         audit.createdBy !== actorId || context.supersedesId !== audit.supersedesId || !isDigest(context.requestDigest))) return false;
   } else {
     if (!isDigest(context.catalogDigest)) return false;
+    if(formId==='staff.order-fulfillment' && audit.action.startsWith('order.company.')) superAdminOnly=true;
     if (formId === 'staff.product-review') {
       if (audit.action === 'product.published') permission = 'product.publish';
       if (audit.action === 'product.unpublished') superAdminOnly = true;
@@ -419,6 +420,21 @@ async function staffActionGrant(db: D1Database, viewer: FormAnswerViewer,
         WHERE parent.id=? LIMIT 1`;
       values = [actorId, requestId, subjectId];
       break;
+    case 'staff.managed-eligibility-release':
+    case 'staff.managed-payout-preparation':
+    case 'staff.managed-payout-action': {
+        const release = formId === 'staff.managed-eligibility-release';
+        if (subjectType !== (release ? 'seller' : 'managed_payout')) return false;
+        permission = formId === 'staff.managed-payout-action' ? 'payout.approve' : 'payout.prepare'; superAdminOnly = true;
+        const actions = release ? "'managed_settlement.eligibility_released'"
+          : formId === 'staff.managed-payout-preparation' ? "'managed_payout.prepared'"
+          : "'managed_payout.approved','managed_payout.paid','managed_payout.cancelled'";
+        parentSql = `SELECT 1 FROM ${release ? 'seller_profiles' : 'managed_payouts'} parent JOIN audit_logs audit
+          ON audit.subject_type=? AND audit.subject_id=parent.id AND audit.actor_id=? AND audit.request_id=?
+          AND audit.action IN (${actions}) AND json_type(audit.next_json,'$.catalogDigest')='text' WHERE parent.id=? LIMIT 1`;
+        values = [subjectType, actorId, requestId, subjectId];
+        break;
+    }
     case 'staff.managed-supply-decision':
       if (subjectType !== 'managed_supply') return false;
       permission = 'seller.application.review'; superAdminOnly = true;
@@ -473,10 +489,10 @@ async function staffActionGrant(db: D1Database, viewer: FormAnswerViewer,
         ON audit.subject_type='seller_route_transition' AND audit.subject_id=parent.id
           AND audit.actor_id=? AND audit.request_id=?
           AND audit.action IN ('seller_route_transition.scheduled','seller_route_transition.rejected',
-            'seller_route_transition.changes_requested')
+            'seller_route_transition.changes_requested','seller_route_transition.apply_requested')
           AND json_type(audit.next_json,'$.catalogDigest')='text'
-        WHERE parent.id=? AND parent.decision_request_id=? AND parent.reviewed_by=? LIMIT 1`;
-      values = [actorId, requestId, subjectId, requestId, actorId];
+        WHERE parent.id=? LIMIT 1`;
+      values = [actorId, requestId, subjectId];
       break;
     case 'staff.parcel-control':
       if (subjectType !== 'shipping_job') return false;
@@ -668,11 +684,50 @@ export async function authorizeFormAnswerRead(
   viewer: FormAnswerViewer,
   answerSet: AnswerLink,
 ): Promise<boolean> {
+  if ((answerSet.formId.startsWith('rider.') || answerSet.formId.startsWith('staff.rider-') ||
+      ['rider', 'rider_application', 'rider_report', 'rider_event', 'rider_policy'].includes(answerSet.subjectType) ||
+      (answerSet.formId === 'rider.remittance' && answerSet.subjectType === 'parcel_cash_record')) &&
+      viewer.role !== 'super_admin') return false;
   if (!viewer.id || !['customer', 'seller', 'rider', 'admin', 'super_admin'].includes(viewer.role)) return false;
   const identity = await db.prepare(`SELECT 1 AS valid FROM users u JOIN user_roles r ON r.user_id=u.id
     WHERE u.id=? AND u.status='active' AND r.role=? LIMIT 1`)
     .bind(viewer.id, viewer.role).first<{ valid: number }>();
   if (!identity) return false;
+  if (answerSet.formId === 'seller.managed-terms-acceptance') {
+    if (answerSet.subjectType !== 'seller') return false;
+    const parent = await db.prepare(`SELECT s.user_id AS ownerId FROM seller_profiles s
+      JOIN audit_logs a ON a.subject_type='seller' AND a.subject_id=s.id
+        AND a.actor_id=s.user_id AND a.action='managed_maker.terms_accepted' AND a.request_id=?
+      JOIN managed_maker_application_details d ON d.id=json_extract(a.next_json,'$.detailId')
+        AND d.seller_id=s.id AND d.agreement_accepted_by=s.user_id
+      WHERE s.id=? AND s.user_id=? LIMIT 1`)
+      .bind(answerSet.requestId, answerSet.subjectId, answerSet.actorId).first<{ ownerId: string }>();
+    return Boolean(parent && (viewer.id === parent.ownerId || viewer.role === 'super_admin'));
+  }
+  if (viewer.role !== 'super_admin' && answerSet.formId === 'staff.exception-work') {
+    const privateSource = await db.prepare(`SELECT 1 FROM exception_work_events e WHERE e.work_id=?
+      AND (e.action LIKE 'rider_%' OR json_extract(CASE WHEN json_valid(e.payload_json) THEN e.payload_json ELSE '{}' END,'$.riderReportId') IS NOT NULL) LIMIT 1`)
+      .bind(answerSet.subjectId).first();
+    if (privateSource) return false;
+  }
+  if (viewer.role !== 'super_admin' && ['staff.parcel-control', 'staff.delivery-assignment'].includes(answerSet.formId)) {
+    if (viewer.role !== 'admin') return false;
+    // Historical assignment context stays private after a courier reassignment.
+    const privateHistory = answerSet.formId === 'staff.parcel-control'
+      ? await db.prepare(`SELECT 1 WHERE
+          EXISTS(SELECT 1 FROM shipping_parcels p WHERE p.shipping_job_id=? AND (p.method='own_rider' OR p.rider_user_id IS NOT NULL))
+          OR EXISTS(SELECT 1 FROM parcel_operation_events e WHERE e.shipping_job_id=? AND
+            (NOT json_valid(e.payload_json) OR json_extract(e.payload_json,'$.method')='own_rider'
+              OR COALESCE(json_extract(e.payload_json,'$.riderEmail'),'')<>''
+              OR COALESCE(json_extract(e.payload_json,'$.riderReportId'),'')<>''))`)
+          .bind(answerSet.subjectId, answerSet.subjectId).first()
+      : await db.prepare(`SELECT 1 FROM audit_logs a WHERE a.subject_type='order' AND a.subject_id=?
+          AND a.action='delivery.assigned' AND (NOT json_valid(a.next_json)
+            OR json_extract(a.next_json,'$.method')='own_rider'
+            OR json_extract(a.next_json,'$.riderId') IS NOT NULL) LIMIT 1`)
+          .bind(answerSet.subjectId).first();
+    if (privateHistory) return false;
+  }
   if (answerSet.formId === 'commerce.order-cancellation') {
     const parent = await cancellationAnswerOrder(db, answerSet);
     if (!parent) return false;

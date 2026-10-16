@@ -6,12 +6,13 @@ import { build } from 'esbuild';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { registerHooks } from 'node:module';
+import { addActivationContractEvidence } from './helpers/activation-contract-fixture';
 
 declare global { var financialRetryDb: D1Database }
 registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier === 'cloudflare:workers') return { url: `data:text/javascript,export const env={get DB(){return globalThis.financialRetryDb},HASTABAZAAR_RUNTIME_ENV:'test',APP_ORIGIN:'http://localhost:3000'}`, shortCircuit: true };
   if (specifier === '@/lib/db/repositories/business-settings') return { url: `data:text/javascript,
-    export async function getEffectiveBusinessSetting(db,key){return {value:key==='managed_maker_active_model'?'managed_sale_linked_percentage_v1':'activation_enabled'}}`, shortCircuit: true };
+    export async function getEffectiveBusinessSetting(db,key){return {key,versionId:key+"-v1",value:key==='managed_maker_active_model'?'managed_sale_linked_percentage_v1':'activation_enabled'}}`, shortCircuit: true };
   if (specifier === '@/lib/auth/staff') return { url: `data:text/javascript,
     export class StaffAuthorizationError extends Error {constructor(message,status){super(message);this.status=status}}
     export async function requireStaffApi(){return {id:'admin',role:'super_admin'}}`, shortCircuit: true };
@@ -61,6 +62,7 @@ function activationFixture() {
     reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
     VALUES ('managed-v1','staff.managed-maker-activation',1,1,'published',?,'Fixture','admin',1,'admin',1,'admin',1,'seed-managed')`)
     .run(JSON.stringify({ formId: 'staff.managed-maker-activation', fields: [] }));
+  addActivationContractEvidence(sqlite);
   const database = new Database(sqlite) as unknown as D1Database;
   globalThis.financialRetryDb = database;
   return { sqlite, database };
@@ -72,8 +74,8 @@ void test('managed activation exact retry uses original server consent time, whi
     const { activateManagedMakerForSimulation } = await import('../lib/managed-commerce/activation');
     const { resolveRuntimeEnvironment } = await import('../lib/staging/environment');
     const options = { sellerId: 'seller-one', actorId: 'admin', model: 'managed_sale_linked_percentage_v1' as const,
-      legalSellerReference: 'SIM-LEGAL', invoiceIssuerReference: 'SIM-ISSUER',
-      payoutBeneficiaryReference: 'SIM-PAYOUT', agreementVersion: 'SIM-AGREEMENT', agreementLanguage: 'en' as const,
+      legalSellerReference: 'hastabazaar-company-406171-83-84', invoiceIssuerReference: 'hastabazaar-company-406171-83-84',
+      payoutBeneficiaryReference: 'SIM-PAYOUT', acceptedManagedDetailId: 'activation-accepted-detail', agreementVersion: 'managed-maker-sale-linked-2026-10-13-v1', agreementLanguage: 'en' as const,
       agreementAcceptedAt: 100, requestId: 'managed-retry-one', now: 200,
       environment: resolveRuntimeEnvironment({ runtimeEnvironment: 'test' }),
       form: { requestId: 'managed-retry-one', versionId: 'managed-v1',
@@ -98,9 +100,9 @@ void test('managed activation route ignores client timestamps and replays after 
     const { POST } = await import('../app/api/admin/managed-makers/[id]/activate/route');
     const path = 'http://localhost:3000/api/admin/managed-makers/seller-one/activate';
     const target = { params: Promise.resolve({ id: 'seller-one' }) };
-    const body = { model: 'managed_sale_linked_percentage_v1', legalSellerReference: 'SIM-LEGAL',
-      invoiceIssuerReference: 'SIM-ISSUER', payoutBeneficiaryReference: 'SIM-PAYOUT',
-      agreementVersion: 'SIM-AGREEMENT', agreementLanguage: 'en', agreementAcceptedAt: -1,
+    const body = { model: 'managed_sale_linked_percentage_v1', legalSellerReference: 'hastabazaar-company-406171-83-84',
+      invoiceIssuerReference: 'hastabazaar-company-406171-83-84', payoutBeneficiaryReference: 'SIM-PAYOUT',
+      acceptedManagedDetailId: 'activation-accepted-detail', agreementVersion: 'managed-maker-sale-linked-2026-10-13-v1', agreementLanguage: 'en', agreementAcceptedAt: -1,
       requestId: 'managed-route-retry', formVersion: 1, customAnswers: [] };
     const request = (value: unknown) => new Request(path, { method: 'POST',
       headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' },
@@ -127,7 +129,7 @@ void test('mounted financial staff forms retain opaque attempt IDs after uncerta
     import {ParcelControls} from './components/admin/parcel-controls';
     createRoot(document.getElementById('root')).render(<>
       <InvoiceAdjustmentForm invoices={[{id:'invoice-one',invoiceNumber:'SIM-INV',issuerReference:'SIM-ISSUER',adjustmentCount:0}]} reasonCodes={['correction']} />
-      <ManagedMakerActivationForm sellerId="seller-one" />
+      <ManagedMakerActivationForm sellerId="seller-one" acceptedTerms={{detailId:'activation-accepted-detail',retentionBps:900,agreementVersion:'managed-maker-sale-linked-2026-10-13-v1'}} />
       <ParcelControls orderId="order-one" actorId="admin" canPrepare={false} records={[]} compensation={[]}
         parcels={[{id:'job-one',orderId:'order-one',sellerId:'seller-one',sellerName:'Maker',status:'pickup_requested',
           codDuePaisa:1000,collectedPaisa:0,remittedPaisa:0,version:0,method:'courier',riderUserId:null,
@@ -195,11 +197,13 @@ void test('mounted financial staff forms retain opaque attempt IDs after uncerta
     assert.equal(bodies[0].length, 3);
     assert.notEqual(bodies[0][2].requestId, bodies[0][0].requestId);
     const maker = page.locator('form[data-form-id="staff.managed-maker-activation"]');
+    await maker.getByLabel('Reviewed receiving reference for this local simulation').fill('SIM-REVIEWED-RECEIVING');
     await maker.getByLabel('Staff context').fill('Fictional agreement context');
     await maker.getByRole('button', { name: 'Activate simulated route' }).click();
     await maker.getByText('Uncertain fixture response').waitFor();
     await page.reload(); await page.addScriptTag({ content: bundle.outputFiles[0].text });
     const makerRetry = page.locator('form[data-form-id="staff.managed-maker-activation"]');
+    await makerRetry.getByLabel('Reviewed receiving reference for this local simulation').fill('SIM-REVIEWED-RECEIVING');
     await makerRetry.getByLabel('Staff context').fill('Fictional agreement context');
     await makerRetry.getByRole('button', { name: 'Activate simulated route' }).click();
     await makerRetry.getByText('Uncertain fixture response').waitFor();
@@ -246,6 +250,7 @@ void test('mounted financial staff forms retain opaque attempt IDs after uncerta
     await page.waitForFunction((id:string) => !Object.values(sessionStorage).includes(id),
       String(bodies[2][2].requestId));
     const makerAgain = page.locator('form[data-form-id="staff.managed-maker-activation"]');
+    await makerAgain.getByLabel('Reviewed receiving reference for this local simulation').fill('SIM-REVIEWED-RECEIVING');
     await makerAgain.getByLabel('Staff context').fill('Fictional agreement context');
     await ambiguous(1, makerAgain, 'Activate simulated route');
     confirmedBodies[1] = '{"ok":true,"simulation":true}';

@@ -1,3 +1,5 @@
+import { sellerQueueWhere, type AdminQueueFilters } from '../../admin/queue-filters';
+import { buildSellerCommissionAcceptanceStatements } from './marketplace-settings';
 import { buildManagedMakerDetailStatements, requireManagedMakerSuperAdmin, ManagedMakerAuthorityError } from './managed-maker-details';
 import { validateManagedMakerIdentity, MANAGED_MAKER_AGREEMENT_VERSION } from '../../sellers/managed-identity';
 import { businessNotificationStatements } from '../../operations/business-notifications';
@@ -27,6 +29,7 @@ type SellerFormLink = { requestId: string; versionId: string; answers: FormAnswe
 interface CreateSellerApplicationOptions {
   userId: string;
   existingAccount?: boolean;
+  registeredAgreementContext?: string;
   sellerId: string;
   applicationReference: string;
   input: SellerApplicationInput;
@@ -214,6 +217,10 @@ export async function createSellerApplication(
           now,
         ),
     );
+  }
+
+  if (input.participationRoute === 'registered_seller' && options.registeredAgreementContext) {
+    statements.push(...await buildSellerCommissionAcceptanceStatements(database,{sellerId,actorId:userId,mode:'application',context:options.registeredAgreementContext,requestId:options.form?.requestId ?? sellerId,now}));
   }
 
   if (managedIdentity) statements.push(...await buildManagedMakerDetailStatements(database, { sellerId, actorId: userId,
@@ -554,20 +561,23 @@ export interface SellerRegistryCounts {
 
 export async function getSellerRegistryCounts(
   database: D1Database,
+  filters: AdminQueueFilters = {},
 ): Promise<SellerRegistryCounts> {
+  const where = sellerQueueWhere(filters);
   const row = await database
     .prepare(
       `SELECT
         COUNT(*) AS total,
-        SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft,
-        SUM(CASE WHEN status = 'submitted' THEN 1 ELSE 0 END) AS submitted,
-        SUM(CASE WHEN status = 'under_review' THEN 1 ELSE 0 END) AS underReview,
-        SUM(CASE WHEN status = 'needs_changes' THEN 1 ELSE 0 END) AS needsChanges,
-        SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved,
-        SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
-        SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END) AS suspended
-       FROM seller_profiles`,
+        SUM(CASE WHEN seller_profiles.status = 'draft' THEN 1 ELSE 0 END) AS draft,
+        SUM(CASE WHEN seller_profiles.status = 'submitted' THEN 1 ELSE 0 END) AS submitted,
+        SUM(CASE WHEN seller_profiles.status = 'under_review' THEN 1 ELSE 0 END) AS underReview,
+        SUM(CASE WHEN seller_profiles.status = 'needs_changes' THEN 1 ELSE 0 END) AS needsChanges,
+        SUM(CASE WHEN seller_profiles.status = 'approved' THEN 1 ELSE 0 END) AS approved,
+        SUM(CASE WHEN seller_profiles.status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
+        SUM(CASE WHEN seller_profiles.status = 'suspended' THEN 1 ELSE 0 END) AS suspended
+       FROM seller_profiles INNER JOIN users AS owner ON owner.id = seller_profiles.user_id ${where.sql}`,
     )
+    .bind(...where.values)
     .first<Partial<SellerRegistryCounts>>();
 
   return {
@@ -586,7 +596,9 @@ export async function listSellerRegistry(
   database: D1Database,
   page = 1,
   pageSize = 50,
+  filters: AdminQueueFilters = {},
 ): Promise<readonly SellerRegistryRow[]> {
+  const where = sellerQueueWhere(filters);
   if (!Number.isInteger(page) || page < 1) {
     throw new RangeError('Seller registry page must be a positive integer.');
   }
@@ -627,10 +639,11 @@ export async function listSellerRegistry(
        FROM seller_profiles
        INNER JOIN users AS owner ON owner.id = seller_profiles.user_id
        LEFT JOIN seller_participation_profiles participation ON participation.seller_id = seller_profiles.id
+       ${where.sql}
        ORDER BY seller_profiles.created_at DESC, seller_profiles.id
        LIMIT ? OFFSET ?`,
     )
-    .bind(pageSize, (page - 1) * pageSize)
+    .bind(...where.values, pageSize, (page - 1) * pageSize)
     .all<SellerRegistryRow>();
 
   return result.results;

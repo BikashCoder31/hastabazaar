@@ -43,6 +43,29 @@ const redemption = {
   balancePoints: 100,
   walletBalancePaisa: 6000,
 };
+const weekly: RewardsView = {
+  ...initial,
+  state: {
+    ...initial.state,
+    dailyPoints: 9,
+    weeklyPoints: [5, 7, 9, 10, 11, 13, 15],
+    graceEnabled: false,
+  },
+  cycle: {
+    day: 3,
+    number: 2,
+    graceUsed: false,
+    graceApplied: false,
+    resetReason: null,
+    lastClaimDate: '2026-09-27',
+  },
+};
+const weeklyClaim = {
+  ...claim,
+  awardedPoints: 9,
+  balancePoints: 209,
+  cycle: weekly.cycle,
+};
 
 type Page = FixturePage & {
   setDefaultTimeout(ms: number): void;
@@ -229,14 +252,14 @@ async function mounted(
 async function claimOnce(h: Awaited<ReturnType<typeof mounted>>) {
   await h.page
     .getByRole('button', {
-      name: /^(Claim daily points|Retry original claim)$/,
+      name: /^(Check in|Retry original claim)$/,
     })
     .click();
   await h.page.waitForFunction(
     () =>
       document.querySelector(
         'form[data-form-id="account.daily-reward"] button[type="submit"]',
-      )?.textContent !== 'Claiming…',
+      )?.textContent !== 'Checking in…',
   );
 }
 async function review(h: Awaited<ReturnType<typeof mounted>>, points = '100') {
@@ -270,7 +293,7 @@ void test('paused earning leaves existing points redeemable', async () => {
   try {
     assert.equal(
       await h.page
-        .getByRole('button', { name: 'Claim daily points', exact: true })
+        .getByRole('button', { name: /^(Check in|Checked in)$/ })
         .isDisabled(),
       true,
     );
@@ -295,9 +318,16 @@ void test('paused earning leaves existing points redeemable', async () => {
 void test('mounted daily claim by keyboard updates balance and focused errors retain attempt', async () => {
   const h = await mounted();
   try {
-    await h.page.evaluate(() => { document.body.dataset.rewardNotifications = '0'; window.addEventListener('hastabazaar:rewards-updated', () => { document.body.dataset.rewardNotifications = String(Number(document.body.dataset.rewardNotifications) + 1); }); });
+    await h.page.evaluate(() => {
+      document.body.dataset.rewardNotifications = '0';
+      window.addEventListener('hastabazaar:rewards-updated', () => {
+        document.body.dataset.rewardNotifications = String(
+          Number(document.body.dataset.rewardNotifications) + 1,
+        );
+      });
+    });
     const button = h.page.getByRole('button', {
-      name: 'Claim daily points',
+      name: 'Check in',
       exact: true,
     });
     await button.press('Space');
@@ -309,7 +339,10 @@ void test('mounted daily claim by keyboard updates balance and focused errors re
       await h.page.evaluate(() => document.activeElement?.getAttribute('role')),
       'alert',
     );
-    assert.equal(await h.page.evaluate(() => document.body.dataset.rewardNotifications), '0');
+    assert.equal(
+      await h.page.evaluate(() => document.body.dataset.rewardNotifications),
+      '0',
+    );
     const original = h.requests[0].body;
     assert.deepEqual(Object.keys(original).sort(), [
       'customAnswers',
@@ -325,7 +358,10 @@ void test('mounted daily claim by keyboard updates balance and focused errors re
       .getByText(/10 points claimed/)
       .waitFor();
     await h.page.getByText('210 points', { exact: true }).waitFor();
-    assert.equal(await h.page.evaluate(() => document.body.dataset.rewardNotifications), '1');
+    assert.equal(
+      await h.page.evaluate(() => document.body.dataset.rewardNotifications),
+      '1',
+    );
     assert.deepEqual(h.requests[1].body, original);
     assert.equal(await h.page.evaluate(() => sessionStorage.length), 0);
     assert.deepEqual(h.errors, []);
@@ -621,7 +657,7 @@ void test('storage write failure and corrupt retained metadata fail closed witho
       .waitFor();
     assert.equal(
       await corrupt.page
-        .getByRole('button', { name: 'Claim daily points', exact: true })
+        .getByRole('button', { name: /^(Check in|Checked in)$/ })
         .isDisabled(),
       true,
     );
@@ -854,11 +890,11 @@ void test('successful current-server-day claim ignores a spoofed future browser 
       .waitFor();
     assert.equal(
       await h.page
-        .getByRole('button', { name: 'Claim daily points', exact: true })
+        .getByRole('button', { name: /^(Check in|Checked in)$/ })
         .isDisabled(),
       true,
     );
-    await h.page.getByText(/You have claimed today/).waitFor();
+    await h.page.getByText(/Next check-in:/).waitFor();
     await h.page
       .getByText('Daily claim: +10 points', { exact: true })
       .waitFor();
@@ -891,7 +927,7 @@ void test('old exact claim replay on a later server day permits a new claim desp
     assert.deepEqual(h.requests[1].body, original);
     assert.equal(
       await h.page
-        .getByRole('button', { name: 'Claim daily points', exact: true })
+        .getByRole('button', { name: /^(Check in|Checked in)$/ })
         .isDisabled(),
       false,
     );
@@ -911,7 +947,7 @@ void test('old exact claim replay on a later server day permits a new claim desp
     assert.notEqual(h.requests[2].body.requestId, original.requestId);
     assert.equal(
       await h.page
-        .getByRole('button', { name: 'Claim daily points', exact: true })
+        .getByRole('button', { name: /^(Check in|Checked in)$/ })
         .isDisabled(),
       true,
     );
@@ -926,13 +962,13 @@ void test('claim response crossing server midnight refreshes the new day rather 
   try {
     h.holdPost();
     await h.page
-      .getByRole('button', { name: 'Claim daily points', exact: true })
+      .getByRole('button', { name: /^(Check in|Checked in)$/ })
       .click();
     await h.page.waitForFunction(
       () =>
         document.querySelector(
           'form[data-form-id="account.daily-reward"] button[type="submit"]',
-        )?.textContent === 'Claiming…',
+        )?.textContent === 'Checking in…',
     );
     h.setView({
       ...initial,
@@ -952,16 +988,16 @@ void test('claim response crossing server midnight refreshes the new day rather 
       () =>
         document.querySelector(
           'form[data-form-id="account.daily-reward"] button[type="submit"]',
-        )?.textContent !== 'Claiming…',
+        )?.textContent !== 'Checking in…',
     );
     assert.equal(
       await h.page
-        .getByRole('button', { name: 'Claim daily points', exact: true })
+        .getByRole('button', { name: /^(Check in|Checked in)$/ })
         .isDisabled(),
       false,
     );
-    assert.equal(await h.page.getByText(/Next daily boundary:/).count(), 1);
-    assert.equal(await h.page.getByText(/You have claimed today/).count(), 0);
+    assert.equal(await h.page.getByText(/Daily reset:/).count(), 1);
+    assert.equal(await h.page.getByText(/Next check-in:/).count(), 0);
     assert.equal(h.requests.length, 1);
   } finally {
     await h.browser.close();
@@ -978,7 +1014,7 @@ void test('unverified post-claim status fails closed until an authoritative refr
       h.holdReads();
       h.respond(200, claim);
       await h.page
-        .getByRole('button', { name: 'Claim daily points', exact: true })
+        .getByRole('button', { name: /^(Check in|Checked in)$/ })
         .click();
       await h.page
         .getByRole('status')
@@ -986,7 +1022,7 @@ void test('unverified post-claim status fails closed until an authoritative refr
         .waitFor();
       assert.equal(
         await h.page
-          .getByRole('button', { name: /^(Claiming…|Claim daily points)$/ })
+          .getByRole('button', { name: /^(Checking in…|Check in)$/ })
           .isDisabled(),
         true,
       );
@@ -1006,7 +1042,7 @@ void test('unverified post-claim status fails closed until an authoritative refr
         .waitFor();
       assert.equal(
         await h.page
-          .getByRole('button', { name: 'Claim daily points', exact: true })
+          .getByRole('button', { name: /^(Check in|Checked in)$/ })
           .count(),
         0,
       );
@@ -1016,7 +1052,7 @@ void test('unverified post-claim status fails closed until an authoritative refr
           .isDisabled(),
         false,
       );
-      assert.equal(await h.page.getByText(/You have claimed today/).count(), 0);
+      assert.equal(await h.page.getByText(/Next check-in:/).count(), 0);
       const original = h.requests[0].body;
       assert.equal(
         await h.page.evaluate(() => sessionStorage.length),
@@ -1028,12 +1064,12 @@ void test('unverified post-claim status fails closed until an authoritative refr
       await h.page
         .getByRole('button', { name: 'Refresh rewards', exact: true })
         .click();
-      await h.page.getByText(/You have claimed today/).waitFor();
+      await h.page.getByText(/Next check-in:/).waitFor();
       await claimOnce(h);
       assert.deepEqual(h.requests[1].body, original);
       assert.equal(
         await h.page
-          .getByRole('button', { name: 'Claim daily points', exact: true })
+          .getByRole('button', { name: /^(Check in|Checked in)$/ })
           .isDisabled(),
         true,
       );
@@ -1043,5 +1079,461 @@ void test('unverified post-claim status fails closed until an authoritative refr
     } finally {
       await h.browser.close();
     }
+  }
+});
+
+void test('weekly schedule exposes seven accessible cards and the server projected claim amount', async () => {
+  const h = await mounted(weekly);
+  try {
+    const schedule = h.page.getByRole('list', {
+      name: '7-day reward schedule',
+    });
+    assert.equal(await schedule.count(), 1);
+    assert.equal(await schedule.getByRole('listitem').count(), 7);
+    assert.equal(
+      await schedule.locator('[aria-current="step"]').textContent(),
+      'Day 39 pointsToday',
+    );
+    await h.page.getByText('70 points in 7 days', { exact: true }).waitFor();
+    await h.page.getByText('Day 3 of 7', { exact: true }).waitFor();
+    assert.equal(await h.page.locator('form').count(), 2);
+    await h.page.getByText('200 points', { exact: true }).waitFor();
+    await h.page.getByText('NPR 50.00', { exact: true }).waitFor();
+    assert.equal(h.requests.length, 0);
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.browser.close();
+  }
+});
+
+void test('weekly missed-day reset and optional one-day grace explain preserved balances', async () => {
+  const h = await mounted({
+    ...weekly,
+    state: { ...weekly.state, dailyPoints: 5 },
+    cycle: { ...weekly.cycle!, day: 1, resetReason: 'missed_day' },
+  });
+  try {
+    assert.equal(
+      await h.page.getByRole('list', { name: '7-day reward schedule' }).count(),
+      1,
+    );
+    await h.page.getByText(/Restarted at Day 1 after a missed day/).waitFor();
+    h.setView({
+      ...weekly,
+      state: { ...weekly.state, graceEnabled: true },
+      cycle: { ...weekly.cycle!, graceUsed: true, graceApplied: true },
+    });
+    await h.page
+      .getByRole('button', { name: 'Refresh rewards', exact: true })
+      .click();
+    await h.page.getByText(/Grace day used. Your streak continues./).waitFor();
+    await h.page.getByText(/Another missed day resets to Day 1./).waitFor();
+    await h.page.getByText('200 points', { exact: true }).waitFor();
+    await h.page.getByText('NPR 50.00', { exact: true }).waitFor();
+    assert.equal(h.requests.length, 0);
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.browser.close();
+  }
+});
+
+void test('weekly claim success reconciles the recorded day and balance without using the browser clock', async () => {
+  const h = await mounted(weekly);
+  try {
+    await h.page.evaluate(() => {
+      Date.now = () => Date.parse('2026-10-30T12:00:00Z');
+    });
+    h.setView({
+      ...weekly,
+      claimedToday: true,
+      balancePoints: 209,
+      history: [
+        {
+          kind: 'daily_claim',
+          createdAt: Date.parse('2026-09-28T12:00:00Z'),
+          result: weeklyClaim,
+        },
+      ],
+    });
+    h.respond(200, weeklyClaim);
+    await claimOnce(h);
+    assert.equal(
+      await h.page.getByRole('list', { name: '7-day reward schedule' }).count(),
+      1,
+    );
+    assert.equal(
+      await h.page.locator('[aria-current="step"]').textContent(),
+      'Day 39 pointsClaimed today',
+    );
+    await h.page.getByText('209 points', { exact: true }).waitFor();
+    assert.equal(
+      await h.page
+        .getByRole('button', { name: /^(Check in|Checked in)$/ })
+        .isDisabled(),
+      true,
+    );
+    assert.equal(await h.page.evaluate(() => sessionStorage.length), 0);
+    assert.deepEqual(Object.keys(h.requests[0].body).sort(), [
+      'customAnswers',
+      'expectedVersion',
+      'formVersion',
+      'requestId',
+    ]);
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.browser.close();
+  }
+});
+
+void test('weekly Day 7 completion previews the repeating Day 1 while an old replay uses the later server projection', async () => {
+  const daySeven: RewardsView = {
+    ...weekly,
+    claimedToday: true,
+    state: { ...weekly.state, dailyPoints: 15 },
+    cycle: { ...weekly.cycle!, day: 7 },
+  };
+  const h = await mounted(daySeven);
+  try {
+    assert.equal(
+      await h.page.getByRole('list', { name: '7-day reward schedule' }).count(),
+      1,
+    );
+    await h.page
+      .getByText('Next check-in: Day 1 · 5 points.', { exact: true })
+      .waitFor();
+    h.setView({
+      ...weekly,
+      state: { ...weekly.state, dailyPoints: 5 },
+      cycle: {
+        ...weekly.cycle!,
+        day: 1,
+        number: 3,
+        resetReason: 'cycle_complete',
+      },
+    });
+    await h.page
+      .getByRole('button', { name: 'Refresh rewards', exact: true })
+      .click();
+    await h.page.getByText('Day 1 of 7', { exact: true }).waitFor();
+    h.loseResponse();
+    await claimOnce(h);
+    const original = h.requests[0].body;
+    h.setView({
+      ...weekly,
+      balancePoints: 300,
+      nextClaimAt: Date.parse('2026-09-30T18:15:00Z'),
+      state: { ...weekly.state, dailyPoints: 10 },
+      cycle: {
+        ...weekly.cycle!,
+        day: 4,
+        number: 3,
+        lastClaimDate: '2026-09-29',
+      },
+    });
+    await h.reload();
+    h.respond(200, weeklyClaim);
+    await claimOnce(h);
+    await h.page.getByText('Day 4 of 7', { exact: true }).waitFor();
+    await h.page.getByText('300 points', { exact: true }).waitFor();
+    assert.deepEqual(h.requests[1].body, original);
+    assert.equal(
+      await h.page
+        .getByRole('button', { name: /^(Check in|Checked in)$/ })
+        .isDisabled(),
+      false,
+    );
+    assert.equal(await h.page.evaluate(() => sessionStorage.length), 0);
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.browser.close();
+  }
+});
+
+void test('weekly malformed claim cycle retains the exact original attempt and confirmed balances', async () => {
+  const h = await mounted(weekly);
+  try {
+    h.respond(200, { ...weeklyClaim, cycle: { ...weekly.cycle, day: 8 } });
+    await claimOnce(h);
+    assert.equal(await h.page.getByRole('alert').count(), 1);
+    await h.page
+      .getByRole('alert')
+      .getByText(/claim response could not be verified/)
+      .waitFor();
+    const original = h.requests[0].body;
+    await h.page.getByText('200 points', { exact: true }).waitFor();
+    assert.equal(await h.page.evaluate(() => sessionStorage.length), 1);
+    h.setView({ ...weekly, claimedToday: true, balancePoints: 209 });
+    h.respond(200, weeklyClaim);
+    await claimOnce(h);
+    assert.deepEqual(h.requests[1].body, original);
+    assert.equal(await h.page.evaluate(() => sessionStorage.length), 0);
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.browser.close();
+  }
+});
+
+void test('weekly malformed refreshed schedule or cycle fails closed while keeping confirmed points and wallet', async () => {
+  const h = await mounted(weekly);
+  try {
+    h.setView({
+      ...weekly,
+      claimedToday: true,
+      balancePoints: 209,
+      state: { ...weekly.state, weeklyPoints: [5, 7, 9, 10, 11, 13] },
+    });
+    h.respond(200, weeklyClaim);
+    await claimOnce(h);
+    assert.equal(await h.page.getByRole('alert').count(), 1);
+    await h.page.getByText('209 points', { exact: true }).waitFor();
+    await h.page.getByText('NPR 50.00', { exact: true }).waitFor();
+    assert.equal(await h.page.evaluate(() => sessionStorage.length), 1);
+    assert.equal(await h.page.locator('[aria-current="step"]').count(), 0);
+    h.setView({
+      ...weekly,
+      cycle: { ...weekly.cycle!, lastClaimDate: '2026-02-30' },
+    });
+    await h.page
+      .getByRole('button', { name: 'Refresh rewards', exact: true })
+      .click();
+    await h.page
+      .getByRole('alert')
+      .getByText(/Rewards could not be loaded/)
+      .waitFor();
+    assert.equal(
+      await h.page
+        .getByRole('button', { name: 'Retry original claim', exact: true })
+        .isDisabled(),
+      false,
+    );
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.browser.close();
+  }
+});
+
+void test('weekly conflicting same-day refreshed cycle retains recovery instead of displaying an incorrect award day', async () => {
+  const h = await mounted(weekly);
+  try {
+    h.setView({
+      ...weekly,
+      claimedToday: true,
+      balancePoints: 209,
+      cycle: { ...weekly.cycle!, day: 4 },
+      history: [
+        {
+          kind: 'daily_claim',
+          createdAt: Date.parse('2026-09-28T12:00:00Z'),
+          result: weeklyClaim,
+        },
+      ],
+    });
+    h.respond(200, weeklyClaim);
+    await claimOnce(h);
+    assert.equal(await h.page.getByRole('alert').count(), 1);
+    await h.page
+      .getByRole('alert')
+      .getByText(/claim is confirmed.*daily status could not be refreshed/)
+      .waitFor();
+    await h.page.getByText('209 points', { exact: true }).waitFor();
+    assert.equal(await h.page.locator('[aria-current="step"]').count(), 0);
+    assert.equal(await h.page.evaluate(() => sessionStorage.length), 1);
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.browser.close();
+  }
+});
+
+void test('weekly schedule publication preserves the recorded today award while showing future amounts', async () => {
+  const h = await mounted({
+    ...weekly,
+    claimedToday: true,
+    balancePoints: 209,
+    state: { ...weekly.state, weeklyPoints: [6, 8, 11, 12, 13, 14, 16] },
+    history: [
+      {
+        kind: 'daily_claim',
+        createdAt: Date.parse('2026-09-28T12:00:00Z'),
+        result: weeklyClaim,
+      },
+    ],
+  });
+  try {
+    assert.equal(
+      await h.page.locator('[aria-current="step"]').textContent(),
+      'Day 39 pointsClaimed today',
+    );
+    await h.page.getByText('80 points in 7 days', { exact: true }).waitFor();
+    await h.page.getByText('16 points', { exact: true }).waitFor();
+    assert.equal(h.requests.length, 0);
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.browser.close();
+  }
+});
+
+void test('weekly activation after a fixed reward keeps Day 1 as the next claim without relabeling earned points', async () => {
+  const h = await mounted({
+    ...weekly,
+    claimedToday: true,
+    balancePoints: 210,
+    state: { ...weekly.state, dailyPoints: 10 },
+    cycle: {
+      ...weekly.cycle!,
+      day: 1,
+      number: 1,
+      resetReason: 'first_claim',
+      lastClaimDate: '2026-09-28',
+    },
+    history: [
+      {
+        kind: 'daily_claim',
+        createdAt: Date.parse('2026-09-28T12:00:00Z'),
+        result: claim,
+      },
+    ],
+  });
+  try {
+    assert.equal(
+      await h.page.locator('[aria-current="step"]').textContent(),
+      'Day 15 pointsNext claim',
+    );
+    await h.page
+      .getByText(
+        '10 points collected today. New rewards start at your next check-in.',
+        {
+          exact: true,
+        },
+      )
+      .waitFor();
+    assert.equal(
+      await h.page
+        .getByRole('button', { name: /^(Check in|Checked in)$/ })
+        .isDisabled(),
+      true,
+    );
+    await h.page.getByText('210 points', { exact: true }).waitFor();
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.browser.close();
+  }
+});
+
+void test('weekly conflicting next-claim amount fails refresh validation without changing the displayed cycle', async () => {
+  const h = await mounted(weekly);
+  try {
+    h.setView({ ...weekly, state: { ...weekly.state, dailyPoints: 15 } });
+    await h.page
+      .getByRole('button', { name: 'Refresh rewards', exact: true })
+      .click();
+    await h.page.waitForFunction(
+      () => document.querySelector('[data-reading="false"]') !== null,
+    );
+    assert.equal(await h.page.getByRole('alert').count(), 1);
+    assert.equal(
+      await h.page.locator('[aria-current="step"]').textContent(),
+      'Day 39 pointsToday',
+    );
+    await h.page.getByText('200 points', { exact: true }).waitFor();
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.browser.close();
+  }
+});
+
+void test('weekly-to-fixed same-day lost-response replay recovers the exact claim from authoritative history', async () => {
+  const firstDay: RewardsView = {
+    ...weekly,
+    state: { ...weekly.state, dailyPoints: 5 },
+    cycle: {
+      ...weekly.cycle!,
+      day: 1,
+      number: 1,
+      resetReason: 'first_claim',
+      lastClaimDate: null,
+    },
+  };
+  const originalResult = {
+    ...weeklyClaim,
+    awardedPoints: 5,
+    balancePoints: 205,
+    cycle: firstDay.cycle,
+  };
+  const h = await mounted(firstDay);
+  try {
+    h.loseResponse();
+    await claimOnce(h);
+    await h.page.getByRole('alert').waitFor();
+    const original = h.requests[0].body;
+    h.setView({
+      ...initial,
+      claimedToday: true,
+      balancePoints: 205,
+      state: { ...initial.state, dailyPoints: 5, version: 4, revision: 2 },
+      history: [
+        {
+          kind: 'daily_claim',
+          createdAt: Date.parse('2026-09-28T12:00:00Z'),
+          result: originalResult,
+        },
+      ],
+    });
+    await h.reload();
+    h.respond(200, originalResult);
+    await claimOnce(h);
+    assert.deepEqual(h.requests[1].body, original);
+    assert.equal(await h.page.getByRole('alert').count(), 0);
+    assert.equal(await h.page.evaluate(() => sessionStorage.length), 0);
+    await h.page.getByText('205 points', { exact: true }).waitFor();
+    await h.page.getByText('NPR 50.00', { exact: true }).waitFor();
+    assert.equal(
+      await h.page.getByRole('list', { name: '7-day reward schedule' }).count(),
+      0,
+    );
+    assert.equal(
+      await h.page
+        .getByRole('button', { name: /^(Check in|Checked in)$/ })
+        .isDisabled(),
+      true,
+    );
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.browser.close();
+  }
+});
+
+void test('weekly-to-fixed same-day replay retains recovery when authoritative history is missing or conflicts', async () => {
+  const h = await mounted(weekly);
+  try {
+    const fixedView: RewardsView = {
+      ...initial,
+      claimedToday: true,
+      balancePoints: 209,
+      state: { ...initial.state, dailyPoints: 9 },
+    };
+    h.setView(fixedView);
+    h.respond(200, weeklyClaim);
+    await claimOnce(h);
+    const original = h.requests[0].body;
+    assert.equal(await h.page.getByRole('alert').count(), 1);
+    assert.equal(await h.page.evaluate(() => sessionStorage.length), 1);
+    h.setView({
+      ...fixedView,
+      history: [
+        {
+          kind: 'daily_claim',
+          createdAt: Date.parse('2026-09-28T12:00:00Z'),
+          result: { ...weeklyClaim, balancePoints: 208 },
+        },
+      ],
+    });
+    await claimOnce(h);
+    assert.deepEqual(h.requests[1].body, original);
+    assert.equal(await h.page.getByRole('alert').count(), 1);
+    assert.equal(await h.page.evaluate(() => sessionStorage.length), 1);
+    await h.page.getByText('209 points', { exact: true }).waitFor();
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.browser.close();
   }
 });

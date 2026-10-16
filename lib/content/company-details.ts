@@ -10,13 +10,22 @@ export const companyDetails = {
   registeredOffice:
     'Birgunj Metropolitan City, Ward 11, Parsa, Madhesh Province, Nepal',
   supportEmail: 'support@hastabazaar.com',
-  // Replace the empty string with the issued company PAN, then rebuild/deploy.
   // PAN issuance does not establish VAT registration.
-  pan: '',
+  pan: '624749646',
 };
 
 export const companyPanDisplay = companyDetails.pan.trim() || 'Registration in progress';
 
-export const companyPolicyIdentity = `HastaBazaar is operated by ${companyDetails.legalName} (${companyDetails.nepaliName}), incorporated in Nepal under the Companies Act, 2063 and registered with the ${companyDetails.registeringAuthority} under registration number ${companyDetails.registrationNumber}. Registered office: ${companyDetails.registeredOffice}.
+// Public contact disclosures stay separate from recorded commercial identity snapshots.
+export const companyPublicContacts = {
+  supportPhone: '',
+  grievanceUnit: 'Customer Support and Grievances',
+  grievanceEmail: companyDetails.supportEmail,
+  grievancePhone: '',
+  grievanceAddress: companyDetails.registeredOffice,
+  ecommerceListingNumber: '',
+};
+
+export const companyPolicyIdentity = `HastaBazaar is operated by ${companyDetails.legalName} (${companyDetails.nepaliName}), incorporated in Nepal under the Companies Act, 2063 and registered with the ${companyDetails.registeringAuthority} under registration number ${companyDetails.registrationNumber}. Company PAN: ${companyPanDisplay}. Registered office: ${companyDetails.registeredOffice}.
 
 References to “HastaBazaar”, “we”, “us” and “our” in this policy mean ${companyDetails.legalName}, unless the context states otherwise. Current company and PAN details are available on our [Legal & Policies page](/legal#company-details).`;

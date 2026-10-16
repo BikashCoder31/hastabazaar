@@ -1,6 +1,19 @@
+import { isRiderPortalEnabled } from '@/lib/riders/availability';
 import type { ElementType, ReactNode } from 'react';
-import { FileCheck2, HandHeart, Heart, ShieldCheck, Sprout, Store, UserRound } from 'lucide-react';
-import { SELLER_REGISTRATION_HERO_SLIDE, presentHomepageHeroSlide, type HomepageHeroSlide } from '@/lib/homepage/hero-slides';
+import {
+  FileCheck2,
+  HandHeart,
+  Heart,
+  ShieldCheck,
+  Sprout,
+  Store,
+  UserRound,
+} from 'lucide-react';
+import {
+  SELLER_REGISTRATION_HERO_SLIDE,
+  presentHomepageHeroSlide,
+  type HomepageHeroSlide,
+} from '@/lib/homepage/hero-slides';
 
 const principles = [
   { icon: HandHeart, label: 'Product details' },
@@ -32,6 +45,9 @@ export function HomepageHeroCopy({
   }>;
 }) {
   const slide = presentHomepageHeroSlide(storedSlide);
+  const riderPortalEnabled = isRiderPortalEnabled();
+  const actionVisible = (href: string) =>
+    preview || riderPortalEnabled || !/^\/rider(?:[/?#]|$)/.test(href);
   const sellerSlide = slide.id === SELLER_REGISTRATION_HERO_SLIDE.id;
   const benefits = sellerSlide ? sellerPrinciples : principles;
   const Heading = preview ? 'h3' : 'h2';
@@ -66,17 +82,21 @@ export function HomepageHeroCopy({
           {slide.body}
         </p>
         <div className="homepage-hero-actions">
-          {preview ? (
-            <span className={primaryClass}>{primary}</span>
-          ) : (
-            <LinkComponent
-              href={slide.primaryActionHref}
-              className={primaryClass}
-            >
-              {primary}
-            </LinkComponent>
-          )}
-          {slide.secondaryActionLabel && slide.secondaryActionHref ? (
+          {actionVisible(slide.primaryActionHref) ? (
+            preview ? (
+              <span className={primaryClass}>{primary}</span>
+            ) : (
+              <LinkComponent
+                href={slide.primaryActionHref}
+                className={primaryClass}
+              >
+                {primary}
+              </LinkComponent>
+            )
+          ) : null}
+          {slide.secondaryActionLabel &&
+          slide.secondaryActionHref &&
+          actionVisible(slide.secondaryActionHref) ? (
             preview ? (
               <span className={secondaryClass}>
                 {slide.secondaryActionLabel}
@@ -93,7 +113,9 @@ export function HomepageHeroCopy({
         </div>
         <div
           className="homepage-hero-benefits text-[#344255]"
-          aria-label={sellerSlide ? "Getting started as a seller" : "Why shop with us"}
+          aria-label={
+            sellerSlide ? 'Getting started as a seller' : 'Why shop with us'
+          }
         >
           {benefits.map(({ icon: Icon, label }) => (
             <div key={label} className="flex min-w-0 items-center gap-2">

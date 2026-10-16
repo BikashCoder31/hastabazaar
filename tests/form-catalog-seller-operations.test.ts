@@ -1,3 +1,4 @@
+import { registerTransitionFixture,registeredTransitionFixtureInput,submitRegisteredTransitionFixture as submitRegisteredSellerTransition } from './helpers/registered-transition-fixture';
 import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
 import { registerHooks } from 'node:module';
@@ -16,7 +17,7 @@ import { createShippingJob, operateShippingJob } from '../lib/db/repositories/op
 import { requestSellerPayout } from '../lib/db/repositories/payouts';
 import { saveSellerReply } from '../lib/db/repositories/review-extras';
 import { createFixedSupplyRecord } from '../lib/managed-commerce/fixed-supply';
-import { submitRegisteredSellerTransition } from '../lib/managed-commerce/route-transition';
+
 import { resolveRuntimeEnvironment } from '../lib/staging/environment';
 import { authorizeFormAnswerRead, formAnswerOwnerId } from '../lib/forms/access';
 import { collectFormAnswersForPrivacy } from '../lib/forms/privacy';
@@ -28,6 +29,7 @@ declare global {
 }
 globalThis.sellerOperationCreateElement = createElement;
 registerHooks({ resolve(specifier, context, nextResolve) {
+  if(specifier==='@/lib/auth/customer')return {url:`data:text/javascript,export class CustomerAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}};export async function requireCustomerApi(){if(!globalThis.sellerOperationActor)throw new CustomerAuthorizationError('Sign in.',401);return globalThis.sellerOperationActor}`,shortCircuit:true};
   if (specifier === 'cloudflare:workers') return { url: 'data:text/javascript,export const env={get DB(){return globalThis.sellerOperationDb},HASTABAZAAR_RUNTIME_ENV:"local_staging",APP_ORIGIN:"http://localhost:3000"}', shortCircuit: true };
   if (specifier === '@/lib/auth/seller') return { url: `data:text/javascript,
     export class SellerAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}}
@@ -42,7 +44,7 @@ const operations = [
   ['seller.shipping-request', '/api/seller/shipping', 'operation', ['orderId', 'direction', 'requestId']],
   ['seller.shipping-action', '/api/seller/shipping/:id', 'operation', ['action', 'jobId', 'requestId']],
   ['seller.managed-supply-proposal', '/api/seller/managed-program', 'operation', ['productId', 'quantity', 'agreedUnitPaisa', 'requestId']],
-  ['seller.managed-transition-request', '/api/seller/managed-program', 'operation', ['taxMode', 'evidenceReferences', 'requestId']],
+  ['seller.managed-transition-request', '/api/seller-applications/transition', 'operation', ['taxMode', 'evidenceReferences', 'requestId']],
   ['seller.payout-request', '/api/seller/payout-requests', 'transaction', ['amount', 'requestId']],
   ['seller.review-reply', '/api/seller/reviews/:id/reply', 'collection', ['reviewId', 'version', 'idempotencyKey']],
 ] as const;
@@ -119,6 +121,7 @@ async function fixture() {
       .run(item, order, product, seller, seller, product, product, now);
   }
   const db = new Database(sqlite);
+  registerTransitionFixture(db as unknown as D1Database,sqlite);
   globalThis.sellerOperationDb = db as unknown as D1Database;
   globalThis.sellerOperationActor = { sellerId: 'seller-one', userId: 'seller-user' };
   return { sqlite, db, database: db as unknown as D1Database };
@@ -371,14 +374,26 @@ void test('managed supply and route-transition actions each keep context on thei
       agreementVersion: 'SIM-REGISTERED-V1', agreementLanguage: 'ne', requestId: 'transition-one',
       formVersion: 1, customAnswers: custom() };
     assert.equal((await send({ ...transition, requestId: 'transition-missing', customAnswers: [] })).status, 400);
-    assert.equal((await send(transition)).status, 200);
+    assert.equal((await send(transition)).status,400,'The old free-text route must direct makers to private certificates and current terms');
+    const prepared=await registeredTransitionFixtureInput(database,{...transition,sellerId:'seller-one',actorId:'seller-user',taxMode:'PAN',agreementLanguage:'en',agreementAcceptedAt:100,
+      now:100,environment:resolveRuntimeEnvironment({runtimeEnvironment:'local_staging',appOrigin:'http://localhost:3000'})});
+    const {POST:transitionPost}=await import('../app/api/seller-applications/transition/route');
+    const transitionSend=(contextValue:string,requestId='transition-one')=>{
+      const data=new FormData();for(const [key,value] of Object.entries({action:'submit',legalName:prepared.legalName,registrationAuthority:prepared.registrationAuthority,registrationNumber:prepared.registrationNumber,
+        taxMode:prepared.taxMode,taxRegistrationNumber:prepared.taxRegistrationNumber,registeredTermsContext:prepared.registeredTermsContext!,agreementVersion:prepared.agreementVersion,agreementLanguage:'en',acceptedTerms:'yes',
+        payoutAccountReference:prepared.payoutAccountReference!,businessRegistrationId:prepared.evidenceReferences.find(id=>id.endsWith('-business_registration'))!,
+        panCertificateId:prepared.evidenceReferences.find(id=>id.endsWith('-pan_certificate'))!,bankVerificationId:prepared.evidenceReferences.find(id=>id.endsWith('-bank_verification'))!,requestId,formVersion:'1','custom.context_note':contextValue}))data.set(key,value);
+      return transitionPost(new Request('http://localhost:3000/api/seller-applications/transition',{method:'POST',headers:{origin:'http://localhost:3000'},body:data}));
+    };
+    assert.equal((await transitionSend('')).status,400);
+    assert.equal((await transitionSend('Fictional context')).status,201);
     const application = sqlite.prepare("SELECT id FROM seller_route_transition_applications WHERE request_id='transition-one'").get() as { id: string };
     assert.equal((await listFormAnswersForSubject(database, 'seller_route_transition', application.id)).length, 1);
-    assert.equal((await send(transition)).status, 200);
-    assert.equal((await send({ ...transition, evidenceReferences: ['different-private-document'] })).status, 409);
+    assert.equal((await transitionSend('Fictional context')).status,200);
+    assert.equal((await transitionSend('Changed context')).status,409);
     globalThis.sellerOperationActor = { sellerId: 'seller-two', userId: 'other-user' };
     assert.equal((await send(proposal)).status, 409);
-    assert.equal((await send(transition)).status, 409);
+    assert.equal((await transitionSend('Fictional context')).status,403);
   } finally { sqlite.close(); }
 });
 
@@ -387,6 +402,8 @@ async function renderSellerOperation(entry: string, exported: string, props: Rec
     external: ['react', 'react/*', 'react-dom', 'react-dom/*'], plugins: [{ name: 'seller-operation-client-boundaries', setup(b) {
       b.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'seller-operation' }));
       b.onLoad({ filter: /^navigation$/, namespace: 'seller-operation' }, () => ({ contents: 'exports.useRouter=()=>({refresh(){}});', loader: 'js' }));
+      b.onResolve({filter:/^next\/link$/},()=>({path:'link',namespace:'seller-operation'}));
+      b.onLoad({filter:/^link$/,namespace:'seller-operation'},()=>({contents:'const React=require("react");module.exports=(props)=>React.createElement("a",props,props.children)',loader:'js'}));
       b.onResolve({ filter: /^@\/components\/forms\/form-config-client$/ }, () => ({ path: 'config', namespace: 'seller-operation' }));
       b.onLoad({ filter: /^config$/, namespace: 'seller-operation' }, () => ({ contents: `exports.usePublishedFormConfig=(id)=>({config:{formId:id,version:3,publishedAt:1,fields:${JSON.stringify([context])}},status:'ready',canSubmit:true,message:'',refresh(){},handleSubmissionResponse(){return true}});`, loader: 'js' }));
     } }],
@@ -397,7 +414,7 @@ async function renderSellerOperation(entry: string, exported: string, props: Rec
   return renderToStaticMarkup(createElement(rendered.exports[exported], props));
 }
 
-void test('all six seller operation forms render their own published required context and version', async () => {
+void test('five synchronous seller operation forms render context and link to the owned transition workspace', async () => {
   const shipping = await renderSellerOperation('components/seller/shipping-workspace.tsx', 'SellerShippingWorkspace', {
     sellerId: 'seller-one',
     orders: [{ id: 'order-one', orderNumber: 'Fictional Order' }], jobs: [{ id: 'job-one', orderNumber: 'Fictional Order',
@@ -418,7 +435,7 @@ void test('all six seller operation forms render their own published required co
   });
   for (const [formId, html] of [
     ['seller.shipping-request', shipping], ['seller.shipping-action', shipping],
-    ['seller.managed-supply-proposal', managed], ['seller.managed-transition-request', managed],
+    ['seller.managed-supply-proposal', managed],
     ['seller.payout-request', payout], ['seller.review-reply', reply],
   ]) {
     const form = (html.match(/<form\b[^>]*>[\s\S]*?<\/form>/g) ?? []).find((part) => part.includes(`data-form-id="${formId}"`));
@@ -428,6 +445,7 @@ void test('all six seller operation forms render their own published required co
     const control = (form.match(/<input\b[^>]*>/g) ?? []).find((tag) => tag.includes('name="custom.context_note"'));
     assert.match(control ?? '', /\brequired(?:=|\s|>)/, `${formId}: required answer missing`);
   }
+  assert.match(managed,/href="\/sell\/application#registered-transition"/);
 });
 
 void test('seller action answers resolve ownership from six parent records and enter privacy export', async () => {

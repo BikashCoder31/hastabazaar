@@ -97,7 +97,7 @@ void test('all five managed decisions preserve opaque attempts across lost repli
         assert.equal(await form.count(), 1, formId);
         await form.getByLabel('Staff context').fill('SIMULATED first context');
         if (action === 'decide_supply') {
-          await form.getByLabel('Evidence reference').fill('SIM-EVIDENCE');
+          await form.getByLabel('Supporting document or reference').fill('SIM-EVIDENCE');
           await form.getByLabel('Decision reason').fill('SIMULATED decision reason');
         } else if (action === 'add_adjustment') {
           await form.locator('[name="amountNpr"]').fill('10');
@@ -122,7 +122,7 @@ void test('all five managed decisions preserve opaque attempts across lost repli
           `${formId}: reload must expose the pending attempt`);
         await form.getByLabel('Staff context').fill('SIMULATED changed context');
         if (action === 'decide_supply') {
-          await form.getByLabel('Evidence reference').fill('SIM-EVIDENCE');
+          await form.getByLabel('Supporting document or reference').fill('SIM-EVIDENCE');
           await form.getByLabel('Decision reason').fill('SIMULATED decision reason');
         } else if (action === 'add_adjustment') {
           await form.locator('[name="amountNpr"]').fill('10');

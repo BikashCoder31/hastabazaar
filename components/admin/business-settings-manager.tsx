@@ -1,11 +1,13 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import { companyDetails, companyPanDisplay } from '@/lib/content/company-details';
 
 import type { ProductWatermarkPolicy } from '@/lib/products/watermark-policy';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
+import { SettingValuePreview } from '@/components/admin/setting-value-preview';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -16,6 +18,7 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Field, FieldLabel } from '@/components/ui/field';
 import {
   NativeSelect,
   NativeSelectOption,
@@ -165,17 +168,30 @@ function versionPresentation(
   return 'Current';
 }
 
+const settingGroups = ['Company & programs','Seller fees','Payouts','Delivery','Products','Customer experience'];
+function settingGroup(key:BusinessSettingKey) {
+ if (key === 'managed_maker_company_account' || key.startsWith('managed_') && key !== 'managed_sale_linked_platform_retention_bps') return 'Company & programs';
+ if (key.includes('commission') || key.includes('retention_bps') || key === 'new_seller_reserve_bps') return 'Seller fees';
+ if (key.startsWith('payout_') || key.includes('payout_minimum') || key === 'seller_delivery_hold_days') return 'Payouts';
+ if (key.startsWith('rider_') || key.startsWith('open_box_')) return 'Delivery';
+ if (key.startsWith('product_')) return 'Products';
+ return 'Customer experience';
+}
+const affectedAreaLabels:Record<string,string> = { maker_onboarding:'Maker registration',admin_review:'Seller review',managed_makers:'Managed Makers',seller:'Sellers',maker:'Makers',orders:'Orders',settlements:'Payouts and settlements',product_photos:'Product photos',seller_preview:'Seller product previews',catalogue:'Product catalogue',products:'Products',checkout:'Checkout',rider:'Private rider operations',finance:'Finance records',assignments:'Delivery assignments',remittance:'Remittance records',returns:'Returns',homepage:'Homepage',shop:'Shop',analytics:'Analytics',account:'Customer accounts' };
+
 export function BusinessSettingsManager({
   initialSettings,
   asOf,
+  initialKey,
 }: {
+  initialKey?: BusinessSettingKey;
   initialSettings: readonly BusinessSettingsAdminItem[];
   asOf: number;
 }) {
   const [settings] = useState(() => initialSettings.filter((item) =>
     item.key !== 'homepage_hero_slides' && item.key !== 'homepage_occasion_slides'));
   const [selectedKey, setSelectedKey] = useState<BusinessSettingKey>(
-    settings[0]?.key ?? 'official_social_links',
+    settings.some(item => item.key === initialKey) ? initialKey! : settings[0]?.key ?? 'official_social_links',
   );
   const selected = useMemo(
     () => settings.find((item) => item.key === selectedKey) ?? settings[0],
@@ -187,11 +203,25 @@ export function BusinessSettingsManager({
   const [reason, setReason] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState('');
   const [message, setMessage] = useState('');
+  const [query, setQuery] = useState('');
+  const [hasError, setHasError] = useState(false);
   const [busy, setBusy] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const latestAttemptKey = useRef<string | null>(null);
   const [failedAttemptKey, setFailedAttemptKey] = useState<string | null>(null);
   const catalog = usePublishedFormConfig('staff.business-settings-manager');
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const raw = window.sessionStorage.getItem('admin-setting-feedback');
+        if (!raw) return;
+        const saved = JSON.parse(raw) as {key?:unknown;message?:unknown};
+        window.sessionStorage.removeItem('admin-setting-feedback');
+        if (saved.key === selectedKey && typeof saved.message === 'string') setMessage(saved.message);
+      } catch { /* The authoritative history still confirms the result. */ }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [selectedKey]);
 
   if (!selected) {
     return (
@@ -201,17 +231,28 @@ export function BusinessSettingsManager({
     );
   }
 
+  let valueError = '';
+  try { validateBusinessSettingValue(selected.key, parseEditorValue(selected.key, editorValue)); }
+  catch (cause) { valueError = cause instanceof Error ? cause.message : 'Review the proposed value.'; }
+  const visibleSettings = settings.filter(item => query.trim().toLowerCase().split(/\s+/).filter(Boolean).every(term => (item.label+' '+item.description+' '+settingGroup(item.key)).toLowerCase().includes(term)));
   const drafts = selected.history.filter((item) => item.status === 'draft');
   const scheduled = selected.history.filter(
     (item) => item.status === 'published' && (item.effectiveFrom ?? 0) > asOf,
   );
 
   function selectKey(key: BusinessSettingKey) {
+    if (busy || key === selected.key) return;
+    const dirty = JSON.stringify(editorValue) !== JSON.stringify(editorValueFor(selected.effective.value)) || reason.trim() !== '' || effectiveFrom !== '';
+    if (dirty && !window.confirm('You have unsaved setting changes. Discard them and open another setting?')) return;
+    window.history.replaceState(null, '', '/admin/business-settings?setting='+encodeURIComponent(key));
+    setEffectiveFrom('');
+    setHasError(false);
     const next = settings.find((item) => item.key === key);
     setSelectedKey(key);
     setEditorValue(editorValueFor(next?.effective.value));
     setReason('');
     setMessage('');
+    setHasError(false);
     setFailedAttemptKey(null);
   }
 
@@ -253,6 +294,7 @@ export function BusinessSettingsManager({
   async function saveSetting(action: 'save' | 'draft') {
     setBusy(true);
     setMessage('');
+    setHasError(false);
     setFailedAttemptKey(null);
     latestAttemptKey.current = null;
     try {
@@ -272,9 +314,12 @@ export function BusinessSettingsManager({
       const result = (await response.json().catch(() => null)) as SettingsResponse | null;
       verifyResponse(response, result, action, 'Setting could not be saved.');
       if (latestAttemptKey.current) clearSessionAttempt(latestAttemptKey.current);
-      setMessage(action === 'save' ? 'Changes saved. Refreshing the authoritative history…' : 'Draft saved. Refreshing the authoritative history…');
+      const savedMessage = action === 'draft' ? 'Draft saved. It has not changed the active setting.' : (typeof result?.version?.effectiveFrom === 'number' && typeof result.version.publishedAt === 'number' && result.version.effectiveFrom > result.version.publishedAt ? 'Change scheduled. The current value stays active until its effective date.' : 'Changes saved and published. Review the current value and history below.');
+      setMessage(savedMessage);
+      try { window.sessionStorage.setItem('admin-setting-feedback', JSON.stringify({key:selected.key,message:savedMessage})); } catch { /* Reload the authoritative record even when storage is unavailable. */ }
       window.location.reload();
     } catch (error) {
+      setHasError(true);
       setFailedAttemptKey(latestAttemptKey.current);
       setMessage(
         error instanceof Error ? error.message : 'Setting could not be saved.',
@@ -290,6 +335,7 @@ export function BusinessSettingsManager({
   ) {
     setBusy(true);
     setMessage('');
+    setHasError(false);
     setFailedAttemptKey(null);
     latestAttemptKey.current = null;
     try {
@@ -315,6 +361,7 @@ export function BusinessSettingsManager({
       setMessage('Change recorded. Refreshing the authoritative history…');
       window.location.reload();
     } catch (error) {
+      setHasError(true);
       setFailedAttemptKey(latestAttemptKey.current);
       setMessage(
         error instanceof Error
@@ -330,26 +377,27 @@ export function BusinessSettingsManager({
     <form ref={formRef} data-form-id="staff.business-settings-manager"
       className="grid gap-6 xl:grid-cols-[18rem_minmax(0,1fr)]"
       onSubmit={(event) => event.preventDefault()}>
+      <FormGuide formId="staff.business-settings-manager" />
+
+      <fieldset disabled={busy} className="contents">
       <Card className="h-fit">
         <CardHeader>
-          <CardTitle>Configuration inventory</CardTitle>
+<CardTitle>Find a setting</CardTitle>
           <CardDescription>
-            One authoritative setting registry. Unknown keys and unsupported
-            workflow models are rejected server-side.
+            Search by task, then review the current value before making a change.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-2">
-          {settings.map((setting) => (
-            <Button
-              key={setting.key}
-              type="button"
-              variant={setting.key === selected.key ? 'secondary' : 'ghost'}
-              className="h-auto w-full justify-start whitespace-normal px-3 py-2 text-left"
-              onClick={() => selectKey(setting.key)}
-            >
-              {setting.label}
-            </Button>
-          ))}
+        <CardContent className="flex flex-col gap-4">
+          <Field><FieldLabel htmlFor="setting-search">Search settings</FieldLabel><Input id="setting-search" type="search" value={query} maxLength={120} placeholder="Commission, company, payouts…" onChange={event=>setQuery(event.target.value)} /></Field>
+          <output aria-live="polite" className="text-xs text-muted-foreground">{visibleSettings.length} settings found</output>
+          <section aria-label="Available settings" className="max-h-80 space-y-4 overflow-y-auto xl:max-h-none xl:overflow-visible">
+          {settingGroups.map(group => {
+            const items=visibleSettings.filter(item => settingGroup(item.key)===group);
+            return items.length ? <section key={group} className="flex flex-col gap-1"><h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group}</h2>{items.map(setting => <Button key={setting.key} type="button" aria-pressed={setting.key===selected.key} variant={setting.key===selected.key?'secondary':'ghost'} className="h-auto min-h-11 w-full justify-start whitespace-normal px-3 py-2 text-left" onClick={()=>selectKey(setting.key)}>{setting.label}</Button>)}</section> : null;
+          })}
+          </section>
+          {!visibleSettings.length ? <p className="text-sm text-muted-foreground">No settings match. Try another word or clear the search.</p> : null}
+          {query ? <Button type="button" variant="outline" onClick={()=>setQuery('')}>Clear search</Button> : null}
         </CardContent>
       </Card>
 
@@ -384,25 +432,29 @@ export function BusinessSettingsManager({
           </CardHeader>
           <CardContent className="space-y-5">
             {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={['setting']} /> : null}
-            {!catalog.canSubmit ? <output className="block text-sm">{catalog.message || 'Loading form configuration…'}</output> : null}
+            {!catalog.canSubmit ? <output aria-live="polite" className="block text-sm">{catalog.message || 'Loading form configuration…'}</output> : null}
             <SettingValueEditor
               settingKey={selected.key}
               value={editorValue}
               onChange={setEditorValue}
             />
             <div className="space-y-2">
-              <Label htmlFor="setting-reason">Reason and expected impact</Label>
+              <Label htmlFor="setting-reason">Reason and expected impact *</Label>
               <Textarea
                 id="setting-reason"
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
                 placeholder="Explain the business reason, affected users, and reversal plan."
                 maxLength={1000}
+                minLength={8}
+                required
+                aria-describedby="setting-reason-help"
               />
+              <p id="setting-reason-help" className="text-xs text-muted-foreground">Use at least 8 characters to explain why this change is needed.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="setting-effective-from">
-                Effective date for publication
+                Effective date for publication (your local time)
               </Label>
               <Input
                 id="setting-effective-from"
@@ -416,21 +468,19 @@ export function BusinessSettingsManager({
                 {' '}Leave the date blank to apply changes now. Independent seller commission changes require at least 15 calendar days notice and renewed acceptance.
               </p>
             </div>
-            <div className="rounded-xl border bg-muted/40 p-4">
-              <p className="text-sm font-semibold">Preview</p>
-              <p className="mt-1 text-lg font-medium">
-                {displayValue(
-                  selected.key,
-                  parseEditorValue(selected.key, editorValue),
-                )}
-              </p>
+            <section aria-label="Setting change preview" className="rounded-xl border bg-muted/40 p-4">
+              <h3 className="text-sm font-semibold">Change preview</h3>
+              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                <div className="min-w-0"><h4 className="mb-2 text-sm font-semibold">Current value</h4><SettingValuePreview value={selected.effective.value} summary={displayValue(selected.key, selected.effective.value)} /></div>
+                <div className="min-w-0"><h4 className="mb-2 text-sm font-semibold">Proposed value</h4><SettingValuePreview value={parseEditorValue(selected.key, editorValue)} summary={displayValue(selected.key, parseEditorValue(selected.key, editorValue))} /></div>
+              </div>
               <p className="mt-3 text-sm font-semibold">Affected areas</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {selected.affectedSurfaces.join(', ')}
-              </p>
-            </div>
-            {message ? (
-              <output className="block text-sm font-medium">{message}</output>
+              <p className="mt-1 text-sm text-muted-foreground">{selected.affectedSurfaces.map(area=>affectedAreaLabels[area]??area.replaceAll('_',' ')).join(', ')}</p>
+            </section>
+            {valueError ? <p role="alert" className="text-sm text-destructive">{valueError}</p> : null}
+            {catalog.canSubmit && reason.trim().length < 8 ? <p className="text-sm text-muted-foreground">Add a reason to enable saving.</p> : null}
+            {message || busy ? (
+              <output aria-live="polite" role={hasError ? 'alert' : 'status'} className="block text-sm font-medium">{busy ? 'Saving setting…' : message}</output>
             ) : null}
             {failedAttemptKey ? <Button type="button" variant="outline" disabled={busy}
               onClick={() => {
@@ -440,21 +490,23 @@ export function BusinessSettingsManager({
                 setFailedAttemptKey(null);
                 setMessage('New attempt ready. Review the latest history before submitting again.');
               }}>Start a new attempt</Button> : null}
+            <div className="flex flex-wrap gap-2">
             <Button
               type="button"
-              disabled={busy || !catalog.canSubmit || reason.trim().length < 8}
+              disabled={busy || !catalog.canSubmit || reason.trim().length < 8 || Boolean(valueError)}
               onClick={() => saveSetting('save')}
             >
-              {effectiveFrom ? 'Save and schedule' : 'Save changes'}
+              {busy ? 'Saving…' : effectiveFrom ? 'Save and schedule' : 'Save changes'}
             </Button>
             <Button
               type="button"
               variant="outline"
-              disabled={busy || !catalog.canSubmit || reason.trim().length < 8}
+              disabled={busy || !catalog.canSubmit || reason.trim().length < 8 || Boolean(valueError)}
               onClick={() => saveSetting('draft')}
             >
               Save draft
             </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -488,7 +540,7 @@ export function BusinessSettingsManager({
                         <Button
                           size="sm"
                           type="button"
-                          disabled={busy || !catalog.canSubmit || reason.trim().length < 8}
+                          disabled={busy || !catalog.canSubmit || reason.trim().length < 8 || Boolean(valueError)}
                           onClick={() =>
                             changeVersion(
                               version,
@@ -544,6 +596,7 @@ export function BusinessSettingsManager({
           </CardContent>
         </Card>
       </div>
+      </fieldset>
     </form>
   );
 }
@@ -573,7 +626,7 @@ function SettingValueEditor({
       <div className="space-y-2">
         <Label htmlFor="setting-value">
           {settingKey.endsWith('_bps')
-            ? 'Basis points (900 = 9%)'
+            ? 'Basis points (100 = 1%)'
             : 'Numeric value'}
         </Label>
         <Input

@@ -1,3 +1,5 @@
+import { isRiderPortalEnabled } from '@/lib/riders/availability';
+import { riderPortalHoldResponse } from '@/lib/riders/portal-hold';
 import {env} from 'cloudflare:workers';
 import {requireCustomerApi,CustomerAuthorizationError} from '@/lib/auth/customer';
 import {requireDatabase} from '@/lib/db/d1';
@@ -5,6 +7,7 @@ import {updateRiderLocation,DeliveryError} from '@/lib/delivery/repository';
 import {isTrustedMutationRequest} from '@/lib/http/request-security';
 import {consumePublicRequestRateLimit as consumeRequestRateLimit,rateLimitJson} from '@/lib/http/rate-limit';
 export async function POST(request:Request,context:{params:Promise<{id:string}>}){
+  if (!isRiderPortalEnabled()) return riderPortalHoldResponse();
  if(!isTrustedMutationRequest(request))return Response.json({error:'Cross-site request rejected.'},{status:403});
  try{const rider=await requireCustomerApi();const db=requireDatabase(env as unknown as {DB?:D1Database});const {id}=await context.params;const body=await request.json() as {location?:unknown};
  const rate=await consumeRequestRateLimit(db,request,{scope:'rider-position:'+rider.userId,limit:20,windowMs:60000});if(!rate.allowed)return rateLimitJson(rate);

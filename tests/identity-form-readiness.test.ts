@@ -120,6 +120,8 @@ void test('identity readiness rejects nonlocal runtime context before opening a 
     { DB_HOST: 'remote.example.test' }, { HASTABAZAAR_PAYMENT_MODE: 'live' }]) {
     await assert.rejects(runIdentityFormReadiness(project, project, { ...environment, ...change }, '--apply'));
   }
-  await assert.rejects(runIdentityFormReadiness('C:/Users/abinash/Desktop/Hatskala',
-    'C:/Users/abinash/Desktop/Hatskala', environment, '--apply'), /approved isolated checkout/);
+  const rejected = await mkdtemp(join(tmpdir(), 'hb-rejected-checkout-'));
+  try {
+    await assert.rejects(runIdentityFormReadiness(rejected, rejected, environment, '--apply'), /approved isolated checkout/);
+  } finally { await rm(rejected, { recursive: true, force: true }); }
 });

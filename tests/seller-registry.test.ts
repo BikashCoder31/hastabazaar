@@ -45,6 +45,7 @@ function fixture() {
       id TEXT PRIMARY KEY,
       display_name TEXT NOT NULL,
       email TEXT NOT NULL,
+      phone TEXT,
       status TEXT NOT NULL
     );
     CREATE TABLE seller_profiles (
@@ -80,10 +81,10 @@ function fixture() {
     CREATE TABLE order_items (id TEXT PRIMARY KEY, order_id TEXT NOT NULL, seller_id TEXT NOT NULL);
 
     INSERT INTO users VALUES
-      ('user-submitted', 'Submitted Owner', 'submitted@example.test', 'active'),
-      ('user-approved', 'Approved Owner', 'approved@example.test', 'active'),
-      ('user-rejected', 'Rejected Owner', 'rejected@example.test', 'disabled'),
-      ('user-suspended', 'Suspended Owner', 'suspended@example.test', 'active');
+      ('user-submitted', 'Submitted Owner', 'submitted@example.test', '9812345678', 'active'),
+      ('user-approved', 'Approved Owner', 'approved@example.test', '9810000000', 'active'),
+      ('user-rejected', 'Rejected Owner', 'rejected@example.test', '9810000000', 'disabled'),
+      ('user-suspended', 'Suspended Owner', 'suspended@example.test', '9810000000', 'active');
     INSERT INTO seller_profiles VALUES
       ('seller-submitted', 'user-submitted', 'HB-S-1', 'Submitted Legal', 'Submitted Shop', 'Submitted Owner', 'submitted@shop.test', '9800000001', 'Kathmandu', 'PAN', 'individual', 'submitted', NULL, 100, 100),
       ('seller-approved', 'user-approved', 'HB-S-2', 'Approved Legal', 'Approved Shop', 'Approved Owner', 'approved@shop.test', '9800000002', 'Lalitpur', 'VAT', 'company', 'approved', 250, 200, 250),
@@ -161,4 +162,32 @@ void test('seller registry rejects invalid pagination', async () => {
   } finally {
     setup.dispose();
   }
+});
+
+void test('registry search finds an older record before pagination and matches references', async () => {
+ const setup=fixture();
+ try {
+  assert.deepEqual((await listSellerRegistry(setup.database,1,1,{q:'  submitted shop  '})).map(s=>s.id),['seller-submitted']);
+  assert.deepEqual((await listSellerRegistry(setup.database,1,50,{q:'HB-S-2',status:'approved'})).map(s=>s.id),['seller-approved']);
+ } finally {setup.dispose();}
+});
+void test('registry totals and rows use the same status and literal search across pages', async () => {
+ const setup=fixture();
+ try {
+  assert.equal((await getSellerRegistryCounts(setup.database,{q:'SHOP',status:'approved'})).total,1);
+  assert.deepEqual((await listSellerRegistry(setup.database,1,1,{status:'awaiting_review'})).map(s=>s.id),['seller-submitted']);
+  for(const q of ["' OR 1=1 --",'%','_']) {
+   assert.equal((await getSellerRegistryCounts(setup.database,{q})).total,0);
+   assert.deepEqual(await listSellerRegistry(setup.database,1,50,{q}),[]);
+  }
+ } finally {setup.dispose();}
+});
+
+void test('seller search includes the account owner phone separately from shop support phone',async()=>{
+ const setup=fixture();
+ try {
+  assert.deepEqual((await listSellerRegistry(setup.database,1,1,{q:'9812345678'})).map(row=>row.id),['seller-submitted']);
+  assert.equal((await getSellerRegistryCounts(setup.database,{q:'9812345678'})).total,1);
+  assert.deepEqual((await listSellerRegistry(setup.database,1,1,{q:'9800000001'})).map(row=>row.id),['seller-submitted']);
+ }finally{setup.dispose();}
 });

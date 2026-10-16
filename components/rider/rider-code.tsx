@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import { useState } from 'react';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
@@ -146,6 +147,8 @@ export function RiderCodeVerification({
         <output className="mt-2 block">{message}</output>
       ) : (
         <form data-form-id="rider.code-verify" className="mt-3 flex flex-wrap items-end gap-3" onSubmit={verify}>
+      <FormGuide formId="rider.code-verify" />
+
           <label className="text-sm">
             Six-digit code<span aria-hidden="true"> *</span>
             <input

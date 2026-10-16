@@ -12,7 +12,6 @@ export const PUBLIC_PAGES = [
   '/terms',
   '/cookies',
   '/prohibited-products',
-  '/seller-agreement',
   '/help',
 ];
 export function isDiscoverablePath(path: string): boolean {

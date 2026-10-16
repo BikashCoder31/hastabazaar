@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -28,6 +29,7 @@ export function FooterFeedbackForm() {
     message: '',
   });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [reference, setReference] = useState('');
   const formRef = useRef<HTMLFormElement>(null);
   useEffect(() => {
     const fieldId = Object.keys(fieldErrors)[0];
@@ -37,6 +39,7 @@ export function FooterFeedbackForm() {
     if (!window.confirm('Have you contacted support to check your earlier message? Starting a new message may create a duplicate.')) return;
     clearFeedbackAttemptId('public.footer-feedback');
     setState({ kind: 'idle', message: '' });
+    setReference('');
     setFieldErrors({});
     form.reset();
   }
@@ -49,6 +52,7 @@ export function FooterFeedbackForm() {
     if (busy) return;
     const form = event.currentTarget;
     setBusy(true);
+    setReference('');
     setState({ kind: 'idle', message: '' });
     setFieldErrors({});
 
@@ -66,8 +70,12 @@ export function FooterFeedbackForm() {
         error?: string;
         fieldId?: string;
         code?: string;
+        registered?: boolean;
+        reference?: string;
       } | null;
       catalog.handleSubmissionResponse(response, result?.code);
+      if (result?.registered === true && typeof result.reference === 'string' &&
+        /^[a-zA-Z0-9._:-]{1,100}$/.test(result.reference)) setReference(result.reference);
       if (result?.fieldId) setFieldErrors({ [result.fieldId]: result.error || 'Invalid answer.' });
       if (!response.ok || !result?.ok) {
         throw new Error(
@@ -114,6 +122,8 @@ export function FooterFeedbackForm() {
 
         <form ref={formRef} data-form-id="public.footer-feedback" onSubmit={submit}
           className="grid gap-4 sm:grid-cols-2">
+      <FormGuide formId="public.footer-feedback" />
+
           <input type="hidden" name="pagePath" value={pathname || '/'} />
           <input type="hidden" name="kind" value="footer" />
           <div
@@ -250,6 +260,7 @@ export function FooterFeedbackForm() {
             >
               {state.message}
             </output>
+            {reference ? <output aria-live="polite" className="break-all text-sm text-white/80">Your message is registered. Reference: {reference}.</output> : null}
           </div>
         </form>
       </div>

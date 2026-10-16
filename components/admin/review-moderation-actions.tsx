@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import { useId, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -67,7 +68,9 @@ export function ReviewModerationActions({
       </p>
     );
   return (
-    <form ref={formRef} data-form-id="staff.review-moderation" className="mt-4" onSubmit={(event) => event.preventDefault()}><fieldset disabled={pending || !catalog.canSubmit}>
+    <form ref={formRef} data-form-id="staff.review-moderation" className="mt-4" onSubmit={(event) => event.preventDefault()}>
+      <FormGuide formId="staff.review-moderation" />
+<fieldset disabled={pending || !catalog.canSubmit}>
       <Label htmlFor={fieldId}>Moderation note</Label>
       <Input
         id={fieldId}

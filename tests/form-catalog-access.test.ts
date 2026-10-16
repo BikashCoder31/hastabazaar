@@ -218,7 +218,7 @@ void test('answer read grants exact owner and denies other customers, sellers, a
     assert.equal(await authorizeFormAnswerRead(db, { id: 'owner', role: 'customer' }, seller), false);
     assert.equal(await authorizeFormAnswerRead(db, { id: 'seller', role: 'seller' }, seller), true);
     assert.equal(await authorizeFormAnswerRead(db, { id: 'seller', role: 'seller' }, rider), false);
-    assert.equal(await authorizeFormAnswerRead(db, { id: 'rider', role: 'rider' }, rider), true);
+    assert.equal(await authorizeFormAnswerRead(db, { id: 'rider', role: 'rider' }, rider), false);
     assert.equal(await authorizeFormAnswerRead(db, { id: 'rider', role: 'rider' }, seller), false);
   } finally { sqlite.close(); }
 });

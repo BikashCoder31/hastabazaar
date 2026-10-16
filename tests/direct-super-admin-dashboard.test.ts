@@ -10,6 +10,7 @@ registerHooks({resolve(specifier,context,nextResolve){
   '@/lib/auth/staff': 'export async function requireStaffPage(){return {id:"fixture",displayName:"Fictional",role:globalThis.dashboardRole}}',
   '@/lib/db/d1': 'export function requireDatabase(){return {}}',
   '@/lib/db/repositories/admin-workspace': 'export async function getAdminWorkSummary(){return {sellers:0,products:0,readyOrders:0,returns:0,complaints:0,payoutRequests:0,approvals:globalThis.dashboardRole==="super_admin"?{payouts:1,highValueRefunds:1,promotions:1}:null}}',
+  '@/lib/db/repositories/admin-marketplace-summary': 'export async function getSuperAdminMarketplaceSummary(){return null}',
  };
  if(stubs[specifier])return {url:'data:text/javascript,'+encodeURIComponent(stubs[specifier]),shortCircuit:true};
  return nextResolve(specifier,context);

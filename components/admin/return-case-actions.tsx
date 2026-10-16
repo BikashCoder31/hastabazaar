@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useRouter } from 'next/navigation';
 import { cloneElement, useId, useRef, useState } from 'react';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
@@ -123,6 +124,8 @@ export function ReturnCaseActions(props: Props) {
   return (
     <form ref={formRef} data-form-id="staff.return-case-action" className="space-y-5"
       onSubmit={(event) => event.preventDefault()}>
+      <FormGuide formId="staff.return-case-action" />
+
       {reviewable ? (
         <>
           <Field label="Decision">

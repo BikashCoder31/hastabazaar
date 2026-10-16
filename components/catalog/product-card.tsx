@@ -49,9 +49,10 @@ export function ProductCard({
         </h3>
         {product.tradingName ? (
           <p className="mt-1 truncate text-sm text-muted-foreground">
-            By {product.tradingName}
+            {product.participationRoute === 'managed_maker' ? 'Made by' : 'By'} {product.tradingName}
           </p>
         ) : null}
+        {product.participationRoute === 'managed_maker' ? <p className="mt-1 text-xs text-muted-foreground">Sold by {product.storeName ?? 'company store — terms review pending'}</p> : null}
         <p className="mt-2 flex items-center justify-between gap-2 text-sm font-semibold text-primary">
           NPR {product.price}
           <ArrowUpRight className="size-4 shrink-0" />

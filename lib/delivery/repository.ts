@@ -32,6 +32,19 @@ export interface DeliveryInfo {
   positionAt: number | null;
   orderStatus: string;
 }
+/** Safe order tracking for customer, seller and non-Super Admin responses. */
+export function publicDelivery(delivery: DeliveryInfo | null): DeliveryInfo | null {
+  if (!delivery) return null;
+  const courier = delivery.method === 'courier';
+  return {
+    method: delivery.method === 'own_rider' ? 'delivery' : delivery.method,
+    courierName: courier ? delivery.courierName : null,
+    trackingUrl: courier ? delivery.trackingUrl : null,
+    trackingReference: courier ? delivery.trackingReference : null,
+    latitude: null, longitude: null, accuracy: null, positionAt: null,
+    orderStatus: delivery.orderStatus,
+  };
+}
 export async function getDelivery(
   db: D1Database,
   orderId: string,
@@ -79,6 +92,10 @@ export async function assignDelivery(
   const authority = o.form
     ? await staffMutationGuard(db, o.actorId, 'order.manage', DeliveryError)
     : null;
+  const privateAuthoritySql = "EXISTS(SELECT 1 FROM users privacy_user JOIN user_roles privacy_role ON privacy_role.user_id=privacy_user.id WHERE privacy_user.id=? AND privacy_user.status='active' AND privacy_role.role='super_admin') OR NOT EXISTS(SELECT 1 FROM delivery_assignments private_delivery WHERE private_delivery.order_id=? AND (private_delivery.method='own_rider' OR private_delivery.rider_user_id IS NOT NULL))";
+  const privateAuthorityValues = [o.actorId, o.orderId];
+  if (!await db.prepare('SELECT 1 WHERE ' + privateAuthoritySql).bind(...privateAuthorityValues).first())
+    throw new DeliveryError('Super Admin access is required.');
   await assertFirstCodFulfillmentAllowed(db, o.orderId, DeliveryError);
   if (o.form) {
     if (!o.requestId || o.requestId !== o.form.requestId)
@@ -181,6 +198,7 @@ export async function assignDelivery(
   const results = await db.batch([
     ...(authority?.statements ?? []),
     ...checks,
+    ...deliveryGuard(db, '(' + privateAuthoritySql + ')', privateAuthorityValues),
     db
       .prepare(
         "DELETE FROM delivery_assignments WHERE order_id=? AND EXISTS(SELECT 1 FROM orders WHERE id=? AND status IN ('confirmed','packing','ready_for_pickup','dispatched'))",
@@ -251,7 +269,7 @@ export async function assignDelivery(
       : []),
   ]);
   if (
-    results[(authority?.statements.length ?? 0) + checks.length + 1].meta
+    results[(authority?.statements.length ?? 0) + checks.length + 3].meta
       .changes !== 1
   )
     throw new DeliveryError('Order changed. Refresh and try again.');

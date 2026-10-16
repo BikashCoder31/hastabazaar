@@ -1901,3 +1901,30 @@
     animation-iteration-count: 1 !important;
   }
 }
+
+/* Image-only motion is scoped to the homepage's explicit parallax wrappers. */
+.homepage-parallax-frame,
+.homepage-parallax-image {
+  position: absolute;
+  inset: 0;
+}
+
+.homepage-parallax-frame {
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .homepage-parallax-frame[data-parallax-active='true'] > .homepage-parallax-image {
+    inset: -18px 0;
+    transform: translate3d(0, var(--parallax-offset, 0px), 0);
+    will-change: transform;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .homepage-parallax-image {
+    inset: 0;
+    transform: none !important;
+    will-change: auto;
+  }
+}

@@ -1,3 +1,4 @@
+import { ParallaxImage } from './parallax-image';
 import Image from 'next/image';
 import { mediaFrameClass, mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
 import styles from './craft-details.module.css';
@@ -24,14 +25,16 @@ export function CraftDetails() {
       <div className={styles.layout}>
         <figure className={styles.figure}>
           <div data-media-frame="cover" className={mediaFrameClass('cover', `aspect-[16/11] ${styles.media}`)}>
-            <Image
-              data-media-mode="cover"
-              src="/homepage/nepali-maker-workshop.webp"
-              alt="Hands painting a geometric pattern onto a terracotta vase"
-              fill
-              sizes={mediaSizes.editorial}
-              className={mediaObjectClass('cover')}
-            />
+            <ParallaxImage kind="maker" maxOffset={12}>
+              <Image
+                data-media-mode="cover"
+                src="/homepage/nepali-maker-workshop.webp"
+                alt="Hands painting a geometric pattern onto a terracotta vase"
+                fill
+                sizes={mediaSizes.editorial}
+                className={mediaObjectClass('cover')}
+              />
+            </ParallaxImage>
           </div>
           <figcaption className={styles.caption}>Craft inspiration. Check each listing for product and seller details.</figcaption>
         </figure>

@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useRouter } from 'next/navigation';
 import { useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -83,6 +84,8 @@ export function SellerCaseResponseForm({
   }
   return (
     <form data-form-id={kind === 'return' ? 'seller.case-return-response' : 'seller.case-complaint-response'} onSubmit={submit} className="seller-form space-y-4">
+      <FormGuide formId={kind === 'return' ? 'seller.case-return-response' : 'seller.case-complaint-response'} />
+
       {kind === 'return' ? (
         <div className="space-y-2">
           <Label htmlFor={inputId + '-recommendation'}>Recommendation</Label>

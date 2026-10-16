@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
 import type { FixtureBrowser, FixturePage } from './helpers/browser-fixture-types';
+import {stubFixtureLink} from './helpers/browser-fixture-link';
 
 const supplyId = 'seller.managed-supply-proposal';
 const transitionId = 'seller.managed-transition-request';
@@ -33,6 +34,7 @@ void test('managed workspace mounts configuration only for eligible sellers and 
     bundle: true, platform: 'browser', format: 'iife', write: false,
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'navigation-fixture', setup(builder) {
+      stubFixtureLink(builder);
       builder.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'fixture' }));
       builder.onLoad({ filter: /^navigation$/, namespace: 'fixture' }, () => ({ loader: 'js',
         contents: 'export function useRouter(){return {refresh(){window.__refreshes=(window.__refreshes||0)+1}}}' }));
@@ -74,10 +76,9 @@ void test('managed workspace mounts configuration only for eligible sellers and 
     await render('managed_maker');
     const supply = page.locator(`form[data-form-id="${supplyId}"]`);
     await supply.getByLabel('Supply context').waitFor({ state: 'visible' });
-    await page.getByText('Apply to transition to Registered Seller', { exact: true }).click();
     const transition = page.locator(`form[data-form-id="${transitionId}"]`);
-    await transition.getByLabel('Transition context').waitFor({ state: 'visible' });
-    assert.deepEqual((await reads()).toSorted(), [`/api/forms/${supplyId}`, `/api/forms/${transitionId}`].toSorted());
+    assert.equal(await transition.count(),0,'Only the owned multipart registration workspace may submit a transition');
+    assert.deepEqual(await reads(), [`/api/forms/${supplyId}`]);
     await supply.locator('[name="productId"]').selectOption('product-one');
     await supply.getByLabel('Quantity offered').fill('2');
     await supply.getByLabel('Agreed unit supplier price (NPR)').fill('125');
@@ -98,33 +99,14 @@ void test('managed workspace mounts configuration only for eligible sellers and 
     assert.deepEqual(bodies[0].customAnswers, [{ fieldId: 'context_note', value: 'SIMULATED supply answer' }]);
     assert.match(String(bodies[0].requestId), /^[0-9a-f-]{36}$/i);
 
-    await transition.getByLabel('Registered legal name').fill('SIMULATED registered maker');
-    await transition.getByLabel('Registration authority').fill('SIM-AUTHORITY');
-    await transition.getByLabel('Registration number').fill('SIM-REGISTRATION');
-    await transition.getByLabel('Applicable PAN/VAT identifier').fill('SIM-TAX');
-    await transition.getByLabel('Simulated agreement version').fill('SIM-AGREEMENT');
-    await transition.getByLabel('Private evidence references, one per line').fill('SIM-EVIDENCE');
-    assert.equal(await transition.getByRole('button', { name: 'Submit simulated transition application' }).getAttribute('type'), 'submit', 'Managed transition action must submit its real form');
-    await transition.getByRole('button', { name: 'Submit simulated transition application' }).click();
-    assert.equal(bodies.length, 1, 'The published required transition answer blocks submission');
-    assert.equal(await transition.getByLabel('Transition context').evaluate(element => element === document.activeElement), true);
-    await transition.getByLabel('Transition context').fill('SIMULATED transition answer');
-    await transition.getByRole('button', { name: 'Submit simulated transition application' }).click();
-    await page.waitForFunction(() => (window as unknown as { __refreshes?: number }).__refreshes === 2);
-    assert.equal(bodies.length, 2);
-    assert.equal(bodies[1].action, 'request_registered_transition');
-    assert.equal(bodies[1].formVersion, 7);
-    assert.equal(bodies[1].legalName, 'SIMULATED registered maker');
-    assert.equal(bodies[1].evidenceReferences, 'SIM-EVIDENCE');
-    assert.deepEqual(bodies[1].customAnswers, [{ fieldId: 'context_note', value: 'SIMULATED transition answer' }]);
-    assert.match(String(bodies[1].requestId), /^[0-9a-f-]{36}$/i);
-    assert.notEqual(bodies[1].requestId, bodies[0].requestId);
+    assert.equal(await page.getByRole('link',{name:'Review registration documents and request a Registered Seller transition'}).getAttribute('href'),'/sell/application#registered-transition');
+    assert.equal(bodies.length,1,'The replaced free-text transition form cannot create a duplicate request');
 
     await render('registered_seller');
     assert.equal(await page.locator('form').count(), 0);
-    assert.equal((await reads()).length, 2, 'A completed transition must unmount hooks without another fetch');
+    assert.equal((await reads()).length, 1, 'A completed transition must unmount hooks without another fetch');
     await render('managed_maker');
     await page.locator(`form[data-form-id="${supplyId}"]`).getByLabel('Supply context').waitFor({ state: 'visible' });
-    assert.equal((await reads()).length, 4, 'Becoming eligible again mounts fresh hooks without changing hook order');
+    assert.equal((await reads()).length, 2, 'Becoming eligible again mounts fresh hooks without changing hook order');
   } finally { await page.close(); await browser.close(); }
 });

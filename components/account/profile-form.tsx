@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { Check } from 'lucide-react';
@@ -104,6 +105,8 @@ export function ProfileForm(props: {
   ].sort((left, right) => left.order - right.order) : [];
 
   return <form data-form-id="account.profile" onSubmit={submit} className="customer-form mt-6 grid min-w-0 gap-5 sm:grid-cols-2">
+      <FormGuide formId="account.profile" />
+
     <p className="text-xs text-muted-foreground sm:col-span-2">* Required field</p>
     {config ? <input type="hidden" name="formVersion" value={config.version} /> : null}
     {config ? ordered.map((item) => <div key={item.id} className={`min-w-0 ${item.id === 'displayName' || item.id === 'phone' ? '' : 'sm:col-span-2'}`}>{item.control}</div>) : <>

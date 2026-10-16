@@ -1,9 +1,15 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  LoyaltyTermsEditor,
+  readTerms,
+} from '@/components/admin/loyalty-terms-editor';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import {
   parsePublishedFormConfig,
@@ -23,7 +29,11 @@ import {
 import {
   loyaltyLiability,
   validateLoyaltyTerms,
+  validateWeeklyPoints,
 } from '@/lib/incentives/loyalty-policy';
+import { incentiveMoney as money } from '@/lib/incentives/presentation';
+import {isLoyaltySettingsAction,type LoyaltySettingsAction} from '@/lib/forms/incentive-workspace-contracts';
+import type {LoyaltySetupAssessment} from '@/lib/incentives/loyalty-setup';
 import type {
   LoyaltyState,
   LoyaltyTerms,
@@ -57,6 +67,9 @@ function notifyAttempt() {
 const baseKeys = [
   'enabled',
   'dailyPoints',
+  'rewardMode',
+  'weeklyPoints',
+  'graceEnabled',
   'pointsPerBlock',
   'creditPaisaPerBlock',
   'startsAt',
@@ -65,8 +78,9 @@ const baseKeys = [
   'lifetimeBudgetPoints',
   'reason',
 ];
-type Action = 'draft' | 'publish' | 'pause';
-interface Attempt {
+type Action = LoyaltySettingsAction;
+type ScheduleMetadata=Pick<LoyaltyState,'scheduledRevision'|'scheduledFor'|'scheduledTerms'|'scheduledUnpause'|'scheduleBlockedReason'>;
+interface Attempt extends ScheduleMetadata {
   action: Action;
   expectedVersion: number;
   formVersion: number;
@@ -77,13 +91,10 @@ interface Attempt {
   originalConfig: PublishedFormConfig;
   sourceRevision: number;
   publishedRevision: number;
+  publishedTerms:LoyaltyTerms;
   paused: boolean;
   digest: string;
 }
-const money = (paisa: number) =>
-  new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR' }).format(
-    paisa / 100,
-  );
 const integer = (value: unknown, min = 0): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= min;
 function validTerms(value: LoyaltyTerms): boolean {
@@ -94,19 +105,74 @@ function validTerms(value: LoyaltyTerms): boolean {
     return false;
   }
 }
+function validTermsSnapshot(value: unknown): value is LoyaltyTerms {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const terms = value as LoyaltyTerms;
+  if (validTerms(terms)) return true;
+  if (
+    terms.enabled !== false ||
+    ![
+      terms.startsAt,
+      terms.endsAt,
+      terms.dailyBudgetPoints,
+      terms.lifetimeBudgetPoints,
+    ].every((item) => item === null)
+  )
+    return false;
+  // Disabled initial defaults have no earning window or budgets. Validate the
+  // same award schema with a minimal finite window rather than bypassing it.
+  try {
+    const largestAward =
+      terms.weeklyPoints === undefined
+        ? terms.dailyPoints
+        : validateWeeklyPoints(terms.weeklyPoints)[6];
+    validateLoyaltyTerms({
+      ...terms,
+      startsAt: 0,
+      endsAt: 1,
+      dailyBudgetPoints: largestAward,
+      lifetimeBudgetPoints: largestAward,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 function sameTerms(a: LoyaltyTerms, b: LoyaltyTerms) {
-  return [
-    'enabled',
-    'dailyPoints',
-    'pointsPerBlock',
-    'creditPaisaPerBlock',
-    'startsAt',
-    'endsAt',
-    'dailyBudgetPoints',
-    'lifetimeBudgetPoints',
-  ].every(
-    (key) => a[key as keyof LoyaltyTerms] === b[key as keyof LoyaltyTerms],
+  const sameSchedule =
+    a.weeklyPoints === undefined
+      ? b.weeklyPoints === undefined
+      : Array.isArray(a.weeklyPoints) &&
+        Array.isArray(b.weeklyPoints) &&
+        a.weeklyPoints.length === b.weeklyPoints.length &&
+        a.weeklyPoints.every(
+          (award, index) => award === b.weeklyPoints![index],
+        );
+  return (
+    sameSchedule &&
+    [
+      'enabled',
+      'dailyPoints',
+      'graceEnabled',
+      'pointsPerBlock',
+      'creditPaisaPerBlock',
+      'startsAt',
+      'endsAt',
+      'dailyBudgetPoints',
+      'lifetimeBudgetPoints',
+    ].every(
+      (key) => a[key as keyof LoyaltyTerms] === b[key as keyof LoyaltyTerms],
+    )
   );
+}
+function validSchedule(value:ScheduleMetadata) {
+  if(typeof value.scheduledUnpause!=='boolean'||!(value.scheduleBlockedReason===null||typeof value.scheduleBlockedReason==='string'&&value.scheduleBlockedReason.length>0&&value.scheduleBlockedReason.length<=1000))return false;
+  return value.scheduledRevision===null ? value.scheduledFor===null&&value.scheduledTerms===null&&!value.scheduledUnpause&&value.scheduleBlockedReason===null :
+    integer(value.scheduledRevision,1)&&integer(value.scheduledFor)&&value.scheduledTerms!==null&&validTerms(value.scheduledTerms)&&value.scheduledTerms.startsAt===value.scheduledFor;
+}
+function samePending(a:ScheduleMetadata,b:ScheduleMetadata,unpause=b.scheduledUnpause) {
+  return a.scheduledRevision===b.scheduledRevision&&a.scheduledFor===b.scheduledFor&&a.scheduledUnpause===unpause&&a.scheduleBlockedReason===b.scheduleBlockedReason&&
+    (a.scheduledTerms===null||b.scheduledTerms===null?a.scheduledTerms===b.scheduledTerms:sameTerms(a.scheduledTerms,b.scheduledTerms));
 }
 function validDenomination(value: unknown): value is LoyaltyDenomination {
   if (!value || typeof value !== 'object') return false;
@@ -169,12 +235,8 @@ function validState(value: unknown): value is LoyaltyState {
     !integer(t.creditPaisaPerBlock, 1)
   )
     return false;
-  const unconfigured =
-    !t.enabled &&
-    [t.startsAt, t.endsAt, t.dailyBudgetPoints, t.lifetimeBudgetPoints].every(
-      (v) => v === null,
-    );
-  if (!unconfigured && !validTerms(t)) return false;
+  if (!validTermsSnapshot(t)||!validTermsSnapshot(s.publishedTerms)||!validSchedule(s)||
+    s.draftRevision===null&&!sameTerms(t,s.publishedTerms)||s.scheduledRevision!==null&&[s.draftRevision,s.publishedRevision].includes(s.scheduledRevision)) return false;
   if (
     !integer(s.version, 1) ||
     ![s.revision, s.publishedRevision].every((v) => integer(v)) ||
@@ -254,43 +316,6 @@ function value(data: FormData, name: string) {
   if (typeof entry !== 'string') throw new Error('Enter ' + name + '.');
   return entry;
 }
-function positive(data: FormData, name: string) {
-  const raw = value(data, name);
-  if (!/^[1-9]\d*$/.test(raw) || !integer(Number(raw), 1))
-    throw new Error('Enter a finite safe positive integer for ' + name + '.');
-  return Number(raw);
-}
-function readTerms(data: FormData): LoyaltyTerms {
-  const terms: LoyaltyTerms = {
-    enabled: data.get('enabled') === 'on',
-    dailyPoints: positive(data, 'dailyPoints'),
-    pointsPerBlock: positive(data, 'pointsPerBlock'),
-    creditPaisaPerBlock: positive(data, 'creditPaisaPerBlock'),
-    startsAt: Date.parse(value(data, 'startsAt') + 'Z'),
-    endsAt: Date.parse(value(data, 'endsAt') + 'Z'),
-    dailyBudgetPoints: positive(data, 'dailyBudgetPoints'),
-    lifetimeBudgetPoints: positive(data, 'lifetimeBudgetPoints'),
-  };
-  try {
-    loyaltyLiability(
-      terms.lifetimeBudgetPoints!,
-      terms.pointsPerBlock,
-      terms.creditPaisaPerBlock,
-    );
-  } catch {
-    throw new Error(
-      'Lifetime budget exposure exceeds the supported integer range. Reduce the lifetime point budget.',
-    );
-  }
-  if (!validTerms(terms))
-    throw new Error(
-      'Review finite dates and budgets. The earning end must follow the start; each budget must cover a daily award.',
-    );
-  return terms;
-}
-function dateInput(value: number | null) {
-  return value === null ? '' : new Date(value).toISOString().slice(0, -1);
-}
 function loadAttempt(key: string): Attempt | null {
   const raw = sessionStorage.getItem(key + ':intent');
   if (!raw) {
@@ -327,6 +352,7 @@ function loadAttempt(key: string): Attempt | null {
           'originalConfig',
           'sourceRevision',
           'publishedRevision',
+          'publishedTerms','scheduledRevision','scheduledFor','scheduledTerms','scheduledUnpause','scheduleBlockedReason',
           'paused',
           'digest',
         ].includes(key),
@@ -341,23 +367,14 @@ function loadAttempt(key: string): Attempt | null {
       String(a.expectedVersion) ||
     !integer(a.sourceRevision) ||
     !integer(a.publishedRevision) ||
+    !validSchedule(a)||!validTermsSnapshot(a.publishedTerms)||
     typeof a.paused !== 'boolean' ||
     !(
       a.expectedLockedDenomination === null ||
       validDenomination(a.expectedLockedDenomination)
     ) ||
-    !a.expectedTerms ||
-    (!validTerms(a.expectedTerms) &&
-      !(
-        a.expectedTerms.enabled === false &&
-        [
-          a.expectedTerms.startsAt,
-          a.expectedTerms.endsAt,
-          a.expectedTerms.dailyBudgetPoints,
-          a.expectedTerms.lifetimeBudgetPoints,
-        ].every((v) => v === null)
-      )) ||
-    !['draft', 'publish', 'pause'].includes(a.action) ||
+    !validTermsSnapshot(a.expectedTerms) ||
+    !isLoyaltySettingsAction(a.action) ||
     !integer(a.expectedVersion, 1) ||
     !integer(a.formVersion, 1) ||
     !(a.draftRevision === null || integer(a.draftRevision, 1)) ||
@@ -368,6 +385,15 @@ function loadAttempt(key: string): Attempt | null {
       'The prior operation metadata is invalid. Check its result, then explicitly start a new attempt.',
     );
   return a;
+}
+function LoyaltyRuleReview({terms}:{terms:LoyaltyTerms}) {
+  const date=(value:number|null)=>value===null?'Not set':new Date(value).toLocaleString('en-GB',{timeZone:'Asia/Kathmandu'});
+  return <div className="space-y-2 text-sm">
+    <p>{terms.weeklyPoints?`Day 1–7: ${terms.weeklyPoints.join(', ')} points`:`Fixed daily award: ${terms.dailyPoints} points`} · {terms.weeklyPoints?terms.graceEnabled?'Grace on':'Grace off':''}</p>
+    <p>{terms.pointsPerBlock} points = {money(terms.creditPaisaPerBlock)}. {terms.enabled?'Earning is enabled in these saved rules.':'Earning is disabled in these saved rules.'}</p>
+    <p>Start: {date(terms.startsAt)} · End: {date(terms.endsAt)} · Nepal time</p>
+    <p>Shared daily points limit: {terms.dailyBudgetPoints??'Not set'} · Shared total points limit: {terms.lifetimeBudgetPoints??'Not set'}</p>
+  </div>;
 }
 
 /** Only the server supplies the owner scope. It is never sent as mutation authority. */
@@ -393,6 +419,7 @@ function AuthorizedLoyaltyManager({
   ownerId: string;
   initialState: LoyaltyState;
 }) {
+  const router = useRouter();
   const published = usePublishedFormConfig(formId);
   const [state, setState] = useState(initialState);
   const [editor, setEditor] = useState(0);
@@ -400,6 +427,7 @@ function AuthorizedLoyaltyManager({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [setup,setSetup]=useState<LoyaltySetupAssessment|null>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const pendingRef = useRef(false);
   const generation = useRef(0);
@@ -440,6 +468,7 @@ function AuthorizedLoyaltyManager({
     locked !== null &&
     !sameDenomination(state.terms, locked);
   const terms = attempt?.terms ?? { ...state.terms, ...locked };
+  const initialWeekly=!attempt&&state.publishedRevision===0&&state.draftRevision===null&&state.scheduledRevision===null&&state.issuedPoints===0;
   const displayConfig = attempt?.originalConfig ?? published.config;
   const unsupportedExposure =
     state.maximumLiability === null &&
@@ -454,7 +483,7 @@ function AuthorizedLoyaltyManager({
     const button = (event.nativeEvent as SubmitEvent)
       .submitter as HTMLButtonElement | null;
     const action = button?.value as Action;
-    if (!['draft', 'publish', 'pause'].includes(action)) return;
+    if (!isLoyaltySettingsAction(action)) return;
     const form = event.currentTarget;
     setError('');
     setNotice('');
@@ -475,12 +504,16 @@ function AuthorizedLoyaltyManager({
       const reason = value(data, 'reason').trim();
       if (!reason || reason.length > 1000)
         throw new Error('Enter a reason of at most 1000 characters.');
+      for(const control of form.querySelectorAll('[name^="custom."]'))if((control instanceof HTMLInputElement||control instanceof HTMLSelectElement||control instanceof HTMLTextAreaElement)&&!control.reportValidity())
+        throw new Error('Complete the required form answers before submitting this operation.');
       const configured = readConfiguredSubmission(
         form,
         prior?.originalConfig ?? published.config,
         baseKeys,
       );
-      const financial = action === 'draft' ? readTerms(data) : null;
+      const financial =
+        action === 'draft' ? readTerms(data, prior?.terms ?? terms) : null;
+      if(financial&&!prior&&financial.lifetimeBudgetPoints!<state.issuedPoints)throw new Error(`The total points limit cannot be below ${state.issuedPoints} points already issued.`);
       if (financial && !prior && locked && !sameDenomination(financial, locked))
         throw new Error(
           'The exchange denomination is locked after first issuance.',
@@ -499,6 +532,12 @@ function AuthorizedLoyaltyManager({
           : state.lockedDenomination,
         sourceRevision: prior?.sourceRevision ?? state.revision,
         publishedRevision: prior?.publishedRevision ?? state.publishedRevision,
+        publishedTerms:prior?.publishedTerms??state.publishedTerms,
+        scheduledRevision:prior?prior.scheduledRevision:state.scheduledRevision,
+        scheduledFor:prior?prior.scheduledFor:state.scheduledFor,
+        scheduledTerms:prior?prior.scheduledTerms:state.scheduledTerms,
+        scheduledUnpause:prior?prior.scheduledUnpause:state.scheduledUnpause,
+        scheduleBlockedReason:prior?prior.scheduleBlockedReason:state.scheduleBlockedReason,
         paused: prior ? prior.paused : state.paused,
       };
       const body = {
@@ -513,7 +552,7 @@ function AuthorizedLoyaltyManager({
         ),
         formVersion: metadata.formVersion,
       };
-      const digest = await digestFormRequest(body);
+      const digest = await digestFormRequest({body,source:{...metadata,ownerId}});
       if (!alive.current) return;
       if (prior && prior.digest !== digest)
         throw new Error(
@@ -523,7 +562,8 @@ function AuthorizedLoyaltyManager({
         action !== 'draft' &&
         !window.confirm(
           action === 'publish'
-            ? 'Publish the saved immutable draft for new daily earning?'
+            ? 'Publish the saved immutable draft? A future start keeps current rules until its Nepal-time start. Publishing does not include unsaved edits.'
+            :action==='cancel_schedule'?'Cancel the scheduled change? Current rules will keep their existing pause, dates and limits. Existing points remain redeemable.'
             : 'Pause new daily earning? Existing points remain redeemable.',
         )
       )
@@ -579,19 +619,23 @@ function AuthorizedLoyaltyManager({
         (action === 'draft' &&
           (result.draftRevision === null ||
             !sameTerms(result.terms, financial!) ||
+            !sameTerms(result.publishedTerms,metadata.publishedTerms)||!samePending(result,metadata)||
             result.publishedRevision !== metadata.publishedRevision ||
             result.paused !== metadata.paused)) ||
         (action === 'publish' &&
           (result.draftRevision !== null ||
-            result.paused ||
-            result.publishedRevision !== metadata.draftRevision ||
-            !sameTerms(result.terms, metadata.expectedTerms))) ||
+            !(result.scheduledRevision===null ? !result.paused&&result.publishedRevision===metadata.draftRevision&&sameTerms(result.terms,metadata.expectedTerms)&&sameTerms(result.publishedTerms,metadata.expectedTerms) :
+              result.scheduledRevision===metadata.draftRevision&&result.scheduledFor===metadata.expectedTerms.startsAt&&result.scheduledUnpause&&result.scheduleBlockedReason===null&&
+              result.paused===metadata.paused&&result.publishedRevision===metadata.publishedRevision&&sameTerms(result.publishedTerms,metadata.publishedTerms)&&
+              sameTerms(result.terms,metadata.publishedTerms)&&result.scheduledTerms!==null&&sameTerms(result.scheduledTerms,metadata.expectedTerms)))) ||
         (action === 'pause' &&
           (!result.paused ||
             result.revision !== metadata.sourceRevision ||
             result.publishedRevision !== metadata.publishedRevision ||
             result.draftRevision !== metadata.draftRevision ||
-            !sameTerms(result.terms, metadata.expectedTerms)))
+            !sameTerms(result.terms, metadata.expectedTerms)||!sameTerms(result.publishedTerms,metadata.publishedTerms)||!samePending(result,metadata,false)))||
+        (action==='cancel_schedule'&&(result.scheduledRevision!==null||result.revision!==metadata.sourceRevision||result.publishedRevision!==metadata.publishedRevision||
+          result.draftRevision!==metadata.draftRevision||result.paused!==metadata.paused||!sameTerms(result.terms,metadata.expectedTerms)||!sameTerms(result.publishedTerms,metadata.publishedTerms)))
       )
         throw new Error(
           'The loyalty result could not be verified. Retry the same attempt to check its result.',
@@ -607,9 +651,10 @@ function AuthorizedLoyaltyManager({
         action === 'draft'
           ? 'Draft saved. Review and publish separately.'
           : action === 'publish'
-            ? 'Earning terms published.'
-            : 'Earning paused. Existing points remain redeemable.',
+            ? result.scheduledRevision===null?'Earning terms published.':'New earning rules are scheduled. Current rules keep their existing pause, dates and limits until the Nepal-time start.'
+            :action==='cancel_schedule'?'Scheduled change cancelled. Current rules keep their existing pause, dates and limits.':'Earning paused. Existing points remain redeemable.',
       );
+      router.refresh();
     } catch (reason) {
       if (alive.current)
         setError(
@@ -674,52 +719,104 @@ function AuthorizedLoyaltyManager({
     <div className="grid min-w-0 gap-6">
       <section
         aria-label="Loyalty state"
-        className="grid min-w-0 gap-2 rounded-xl border p-4 text-sm"
+        className="grid min-w-0 gap-4 rounded-xl border bg-background p-4 text-sm sm:p-5"
       >
-        <p>Administrative version: {state.version}</p>
-        <p>Live financial revision: {state.publishedRevision}</p>
-        <p>Draft financial revision: {state.draftRevision ?? 'None'}</p>
-        <p>
-          Status: {state.paused ? 'Earning paused' : 'Earning unpaused'}.
-          Displayed terms: revision {state.revision} (
-          {state.draftRevision === null ? 'live' : 'draft'}).
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold">Daily loyalty controls</h2>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <span className="rounded-full border bg-muted/40 px-3 py-1 text-xs font-medium">
+                {state.paused
+                  ? 'Earning paused'
+                  : state.publishedRevision === 0
+                    ? 'Not published'
+                    : 'Earning unpaused'}
+              </span>
+              <span className="rounded-full border px-3 py-1 text-xs font-medium">
+                {state.draftRevision === null
+                  ? 'No saved draft'
+                  : 'Saved draft awaiting publication'}
+              </span>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            onClick={() => void refresh()}
+          >
+            {loading ? 'Loading latest settings…' : 'Review latest settings'}
+          </Button>
+        </div>
+        <p className="text-muted-foreground">
+          Saving a draft keeps current earning unchanged. Publishing a future
+          start schedules the saved rules; current rules keep their existing pause,
+          dates and limits until that Nepal-time start. Unsaved edits are included only in a new saved draft.
         </p>
-        <p>
-          Saving a draft does not change live earning. Publishing activates the
-          saved draft and unpauses earning.
-        </p>
-        <p>
-          Issued: {state.issuedPoints} points. Redeemed: {state.redeemedPoints}{' '}
-          points. Outstanding: {state.outstandingPoints} points.
-        </p>
-        <p>
-          Issued today (Asia/Kathmandu): {state.issuedTodayPoints} points.
-          Credited: {money(state.creditedPaisa)}.
-        </p>
-        <p>
-          Outstanding liability: {state.liability.wholeBlocks} whole blocks,{' '}
-          {money(state.liability.creditPaisa)},{' '}
-          {state.liability.remainingPoints} remaining points.
-        </p>
-        <p>
-          Maximum budget exposure:{' '}
-          {state.maximumLiability
-            ? `${state.maximumLiability.wholeBlocks} whole blocks, ${money(state.maximumLiability.creditPaisa)}, ${state.maximumLiability.remainingPoints} remaining points.`
-            : unsupportedExposure
-              ? 'Unsupported at the locked denomination. Reduce the draft lifetime budget and save corrected terms before publishing.'
-              : 'No finite earning budget configured.'}
-        </p>
-        <p>
-          Exposure uses the displayed{' '}
-          {state.draftRevision === null ? 'live' : 'draft'} lifetime point
-          budget and {locked ? 'locked' : 'displayed'} exchange denomination.
-        </p>
+        {state.scheduledRevision!==null&&state.scheduledTerms?<section aria-label="Scheduled loyalty change" className="space-y-2 rounded-lg border p-4">
+          <h3 className="font-semibold">Scheduled earning rules · revision {state.scheduledRevision}</h3>
+          <p>Starts {new Date(state.scheduledFor!).toLocaleString('en-GB',{timeZone:'Asia/Kathmandu'})} Nepal time.</p>
+          <p>{state.scheduledTerms.weeklyPoints?`Day 1–7: ${state.scheduledTerms.weeklyPoints.join(', ')} points`:`${state.scheduledTerms.dailyPoints} points per daily claim`} · {state.scheduledTerms.enabled?'Earning enabled in these rules':'Earning disabled in these rules'}.</p>
+          <p>{state.scheduledUnpause?'The scheduled rules may unpause earning at their start. Pause earning now to keep them paused.':'A later pause keeps the scheduled rules paused at their start.'}</p>
+          {state.scheduleBlockedReason?<p role="alert">{state.scheduleBlockedReason}</p>:null}
+        </section>:null}
+        <details
+          open={unsupportedExposure}
+          className="rounded-lg border bg-muted/20 p-3"
+        >
+          <summary className="cursor-pointer font-medium">
+            Administrative details and recorded exposure
+          </summary>
+          <div className="mt-3 grid gap-2 text-muted-foreground">
+            <p>Administrative version: {state.version}</p>
+            <p>Live financial revision: {state.publishedRevision}</p>
+            <p>Draft financial revision: {state.draftRevision ?? 'None'}</p>
+            <p>Scheduled financial revision: {state.scheduledRevision??'None'}</p>
+            <p>
+              Status: {state.paused ? 'Earning paused' : 'Earning unpaused'}.
+              Displayed terms: revision {state.revision} (
+              {state.draftRevision === null ? 'live' : 'draft'}).
+            </p>
+            <p>
+              Issued: {state.issuedPoints} points. Redeemed:{' '}
+              {state.redeemedPoints} points. Outstanding:{' '}
+              {state.outstandingPoints} points.
+            </p>
+            <p>
+              Issued today (Asia/Kathmandu): {state.issuedTodayPoints} points.
+              Credited: {money(state.creditedPaisa)}.
+            </p>
+            <p>
+              Outstanding liability: {state.liability.wholeBlocks} whole blocks,{' '}
+              {money(state.liability.creditPaisa)},{' '}
+              {state.liability.remainingPoints} remaining points.
+            </p>
+            <p>
+              Maximum budget exposure:{' '}
+              {state.maximumLiability
+                ? `${state.maximumLiability.wholeBlocks} whole blocks, ${money(state.maximumLiability.creditPaisa)}, ${state.maximumLiability.remainingPoints} remaining points.`
+                : unsupportedExposure
+                  ? 'Unsupported at the locked denomination. Reduce the draft lifetime budget and save corrected terms before publishing.'
+                  : 'No finite earning budget configured.'}
+            </p>
+            <p>
+              Exposure uses the displayed{' '}
+              {state.draftRevision === null ? 'live' : 'draft'} lifetime point
+              budget and {locked ? 'locked' : 'displayed'} exchange
+              denomination.
+            </p>
+          </div>
+        </details>
         {locked ? (
-          <p>
+          <p className="font-medium">
             Locked exchange denomination: {locked.pointsPerBlock} points for{' '}
             {money(locked.creditPaisaPerBlock)}.
           </p>
         ) : null}
+        {state.draftRevision!==null?<section aria-label="Saved loyalty draft" className="space-y-3 rounded-lg border p-4">
+          <h3 className="font-semibold">Saved draft · revision {state.draftRevision}</h3><LoyaltyRuleReview terms={state.terms}/>
+          <p className="text-sm text-muted-foreground">Publish draft uses these saved rules. Unsaved editor changes are not included.</p>
+        </section>:null}
         {state.draftRevision !== null ? (
           <p>
             Saved draft denomination: {state.terms.pointsPerBlock} points for{' '}
@@ -727,7 +824,10 @@ function AuthorizedLoyaltyManager({
           </p>
         ) : null}
         {incompatibleDraft ? (
-          <output className="block text-sm">
+          <output
+            aria-live="polite"
+            className="block rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
+          >
             The saved draft differs from the locked denomination. Save a
             corrected draft before publishing. New draft rate controls use the
             locked denomination; saving creates a new revision.
@@ -736,96 +836,64 @@ function AuthorizedLoyaltyManager({
         {attempt?.terms &&
         locked &&
         !sameDenomination(attempt.terms, locked) ? (
-          <output className="block text-sm">
+          <output
+            aria-live="polite"
+            className="block rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
+          >
             This retained attempt keeps its original denomination to recover its
             saved result. A new draft must use the locked denomination.
           </output>
         ) : null}
-        <p>
+        <p className="rounded-lg bg-muted/40 p-3 text-muted-foreground">
           {state.rateLocked
             ? 'Exchange denomination locked after first issuance.'
             : 'Exchange denomination locks on first issuance.'}{' '}
           Points and redeemed credit do not expire. Pausing earning preserves
           redemption.
         </p>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={pending}
-          onClick={() => void refresh()}
-        >
-          {loading ? 'Loading latest settings…' : 'Review latest settings'}
-        </Button>
       </section>
       <form
+        id="loyalty-form"
         data-form-id="staff.loyalty-settings"
         onSubmit={submit}
         noValidate
         className="min-w-0 space-y-5 rounded-xl border p-4 sm:p-6"
       >
-        <fieldset
-          disabled={pending}
+        <FormGuide formId="staff.loyalty-settings" />
+        <section aria-label="Loyalty setup steps" className="space-y-3 rounded-lg border bg-muted/20 p-4 text-sm">
+          <h3 className="font-semibold">Prepare now, start when you are ready</h3>
+          <ol className="list-decimal space-y-1 pl-5"><li>Fill the start, end and shared points limits below.</li><li>To allow earning after publication, select Enable daily earning when published.</li><li>Add a reason and any required form answers, then Save draft.</li><li>Review the saved draft, then Publish draft. A future start keeps current rules until that Nepal-time date.</li></ol>
+          <p className="font-medium">{setup?.ready?'The earning details are ready for a draft. Saving still keeps current earning unchanged.':'Complete the highlighted details before saving a draft.'}</p>
+          {setup&&!setup.ready?<ul className="list-disc space-y-1 pl-5">{Object.entries(setup.issues).map(([field,issue])=><li key={field}><a className="underline" href={`#loyalty-${field.startsWith('weeklyPoints.')?`weeklyPoints-${Number(field.split('.')[1])+1}`:field}`}>{issue}</a></li>)}</ul>:null}
+          {setup?.terms&&!sameTerms(setup.terms,state.terms)?<p>Unsaved changes: use Save draft to record this setup.</p>:null}
+        </section>
+        <LoyaltyTermsEditor
           key={editor + String(snapshot)}
-          className="grid min-w-0 gap-4 sm:grid-cols-2"
-        >
-          <legend className="mb-3 font-semibold">Draft earning terms</legend>
-          <label className="flex items-center gap-2 sm:col-span-2">
-            <input
-              type="checkbox"
-              name="enabled"
-              defaultChecked={terms.enabled}
-            />
-            Enable daily earning when published
-          </label>
-          <Control
-            name="dailyPoints"
-            label="Daily points"
-            value={terms.dailyPoints}
-          />
-          <Control
-            name="pointsPerBlock"
-            label="Points per block"
-            value={terms.pointsPerBlock}
-            readOnly={state.rateLocked}
-          />
-          <Control
-            name="creditPaisaPerBlock"
-            label="Credit per block (paisa)"
-            value={terms.creditPaisaPerBlock}
-            readOnly={state.rateLocked}
-          />
-          <Control
-            name="startsAt"
-            label="Earning start (UTC)"
-            value={dateInput(terms.startsAt)}
-            date
-          />
-          <Control
-            name="endsAt"
-            label="Earning end (UTC)"
-            value={dateInput(terms.endsAt)}
-            date
-          />
-          <Control
-            name="dailyBudgetPoints"
-            label="Daily budget (points)"
-            value={terms.dailyBudgetPoints ?? ''}
-          />
-          <Control
-            name="lifetimeBudgetPoints"
-            label="Lifetime budget (points)"
-            value={terms.lifetimeBudgetPoints ?? ''}
-          />
-        </fieldset>
-        <fieldset disabled={pending} className="space-y-4">
+          terms={terms}
+          locked={locked}
+          rateLocked={state.rateLocked}
+          issuedPoints={state.issuedPoints}
+          disabled={pending}
+          preferWeekly={initialWeekly}
+          onReadinessChange={setSetup}
+        />
+        <fieldset disabled={pending} className="space-y-4 border-t pt-5">
+          <legend className="sr-only">Change review</legend>
           <div>
             <Label htmlFor="loyalty-reason">Reason</Label>
+            <p
+              id="loyalty-reason-hint"
+              className="mt-1 text-sm text-muted-foreground"
+            >
+              Explain this change for the administrative record.
+            </p>
             <Input
               id="loyalty-reason"
               name="reason"
-              className="mt-2"
+              className="mt-2 h-10"
               required
               maxLength={1000}
+              aria-describedby="loyalty-reason-hint"
             />
           </div>
           {displayConfig ? (
@@ -836,17 +904,11 @@ function AuthorizedLoyaltyManager({
             />
           ) : null}
           {published.message ? (
-            <output className="block">{published.message}</output>
+            <output aria-live="polite" className="block">
+              {published.message}
+            </output>
           ) : null}
         </fieldset>
-        {attempt ? (
-          <output className="block text-sm">
-            Retained {attempt.action} attempt at administrative version{' '}
-            {attempt.expectedVersion}, form version {attempt.formVersion}.
-            Re-enter the original private reason and answers to retry. Review
-            its result before starting a new attempt.
-          </output>
-        ) : null}
         {error || recoveryError ? (
           <p
             ref={errorRef}
@@ -857,8 +919,20 @@ function AuthorizedLoyaltyManager({
             {error || recoveryError}
           </p>
         ) : null}
-        {notice ? <output className="block text-sm">{notice}</output> : null}
-        <div className="flex flex-wrap gap-3">
+        {notice ? (
+          <output aria-live="polite" className="block text-sm">
+            {notice}
+          </output>
+        ) : null}
+        {attempt ? (
+          <p className="rounded-lg border bg-muted/30 p-3 text-sm">
+            A previous {attempt.action} attempt is retained. Re-enter the
+            original private reason and answers to retry safely. Recovery
+            details are below.
+          </p>
+        ) : null}
+        {attempt?.action==='publish'?<details className="rounded-lg border p-4 text-sm"><summary className="cursor-pointer font-medium">Original saved rules for this retained publication</summary><div className="mt-3"><LoyaltyRuleReview terms={attempt.expectedTerms}/></div></details>:null}
+        <div className="flex flex-wrap gap-3 border-t pt-5">
           <Button
             type="submit"
             name="action"
@@ -876,6 +950,7 @@ function AuthorizedLoyaltyManager({
               pending ||
               !published.canSubmit ||
               ((state.draftRevision === null ||
+                state.scheduledRevision!==null ||
                 incompatibleDraft ||
                 unsupportedExposure) &&
                 attempt?.action !== 'publish')
@@ -883,6 +958,7 @@ function AuthorizedLoyaltyManager({
           >
             Publish draft
           </Button>
+          {state.scheduledRevision!==null||attempt?.action==='cancel_schedule'?<Button type="submit" name="action" value="cancel_schedule" variant="outline" disabled={pending||!published.canSubmit}>Cancel scheduled change</Button>:null}
           <Button
             type="submit"
             name="action"
@@ -892,54 +968,55 @@ function AuthorizedLoyaltyManager({
           >
             Pause earning
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={pending}
-            onClick={reset}
-          >
-            Start a new attempt
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={pending}
-            onClick={published.refresh}
-          >
-            Refresh form
-          </Button>
         </div>
+        <details
+          open={Boolean(attempt) || Boolean(recoveryError)}
+          className="rounded-lg border p-4 text-sm"
+        >
+          <summary className="cursor-pointer font-medium">
+            Form and attempt recovery
+          </summary>
+          <div className="mt-3 space-y-3 text-muted-foreground">
+            {attempt ? (
+              <output aria-live="polite" className="block">
+                Retained {attempt.action} attempt at administrative version{' '}
+                {attempt.expectedVersion}, form version {attempt.formVersion}.
+                Re-enter the original private reason and answers to retry.
+                Review its result before starting a new attempt.
+              </output>
+            ) : (
+              <p>
+                Refresh the form to load its latest published questions. After
+                an uncertain response, review the result before explicitly
+                starting a new attempt.
+              </p>
+            )}
+            <p>
+              Starting a new attempt clears the saved request reference. The
+              prior operation may already have succeeded; a new request can
+              duplicate an operation.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={pending}
+                onClick={reset}
+              >
+                Start a new attempt
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={pending}
+                onClick={published.refresh}
+              >
+                Refresh form
+              </Button>
+            </div>
+          </div>
+        </details>
       </form>
-    </div>
-  );
-}
-function Control({
-  name,
-  label,
-  value,
-  date = false,
-  readOnly = false,
-}: {
-  name: string;
-  label: string;
-  value: string | number;
-  date?: boolean;
-  readOnly?: boolean;
-}) {
-  return (
-    <div className="min-w-0">
-      <Label htmlFor={'loyalty-' + name}>{label}</Label>
-      <Input
-        id={'loyalty-' + name}
-        name={name}
-        type={date ? 'datetime-local' : 'number'}
-        step={date ? '0.001' : '1'}
-        min={date ? undefined : 1}
-        defaultValue={value}
-        readOnly={readOnly}
-        required
-        className="mt-2 w-full"
-      />
     </div>
   );
 }

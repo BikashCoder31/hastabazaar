@@ -1,0 +1,144 @@
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import mysql from 'mysql2/promise';
+import { inspectReadiness } from '../lib/operations/readiness.ts';
+import { stagingNativeUpgrade } from './staging-native-upgrade.mjs';
+
+// This command has no database-target arguments. It creates its own isolated
+// container and new databases; it never resets, seeds or connects to saved data.
+const project = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+assert.equal(resolve(process.cwd()), project);
+assert.equal(process.argv.length, 2);
+const docker = process.platform === 'win32' ? 'C:/Program Files/Docker/Docker/resources/bin/docker.exe' : 'docker';
+const context = JSON.parse(execFileSync(docker, ['context','inspect'], {encoding:'utf8'}))[0];
+assert.match(context.Endpoints.docker.Host, /^(npipe|unix):\/\//);
+const run = Date.now().toString();
+const workspace = resolve(project,'.superpowers/sdd/2026-10-16-staging-native-compatibility');
+await mkdir(workspace, {recursive:true});
+const name = 'hastabazaar-native-' + run;
+const password = randomBytes(32).toString('hex');
+const token = randomBytes(24).toString('hex');
+const envFile = resolve(workspace, '.env.native-' + run);
+const marker = resolve(workspace, '.native-' + run + '.json');
+await writeFile(envFile, 'MARIADB_ROOT_PASSWORD=' + password + '\nMARIADB_ROOT_HOST=%\n', {mode:0o600});
+const id = execFileSync(docker, ['run','-d','--name',name,'--label','codex.scope=staging-native-compatibility',
+  '-p','127.0.0.1:13329:3306','--env-file',envFile,'mariadb:10.11'], {encoding:'utf8'}).trim();
+const owned = () => {
+  const actual = JSON.parse(execFileSync(docker,['inspect',name],{encoding:'utf8'}))[0];
+  assert.equal(actual.Id,id); assert.equal(actual.Config.Image,'mariadb:10.11');
+  assert.equal(actual.Config.Labels['codex.scope'],'staging-native-compatibility');
+  assert.deepEqual(actual.HostConfig.PortBindings['3306/tcp'],[{HostIp:'127.0.0.1',HostPort:'13329'}]);
+  assert.equal(actual.Mounts.some(m => m.Type==='bind'),false);
+};
+owned();
+await writeFile(marker, JSON.stringify({id,name,password,token,host:'127.0.0.1',port:13329,database:'native_'+run+'_fresh'}), {mode:0o600});
+let connection;
+const observations=[];
+let activeFile='', activeStatement='';
+function statements(sql) {
+  let delimiter=';', buffer=''; const result=[];
+  for(const line of sql.split(/\r?\n/)){
+    const directive=/^\s*DELIMITER\s+(\S+)\s*$/i.exec(line);
+    if(directive){assert.ok(!buffer.trim()||buffer.trim().split('\n').every(l=>!l.trim()||l.trim().startsWith('--')));delimiter=directive[1];continue;}
+    buffer+=line+'\n';
+    if(buffer.trimEnd().endsWith(delimiter)){result.push(buffer.trimEnd().slice(0,-delimiter.length));buffer='';}
+  }
+  assert.ok(!buffer.trim()||buffer.trim().split('\n').every(l=>!l.trim()||l.trim().startsWith('--')));
+  return result.filter(s=>s.trim());
+}
+async function load(path, override){
+  activeFile=path;
+  for(const sql of statements(override??await readFile(resolve(project,path),'utf8'))){
+    activeStatement=sql.replace(/^\s*--[^\n]*(\n|$)/gm,'').trim().slice(0,130);
+    await connection.query(sql);
+  }
+}
+async function create(label){
+  const database='native_'+run+'_'+label;
+  assert.match(database,/^native_\d+_[a-z]+$/);
+  await connection.query('CREATE DATABASE `'+database+'` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci');
+  await connection.query('USE `'+database+'`');
+  return database;
+}
+async function check(label,fn){await fn();observations.push({label,status:'PASS'});console.log('PASS: '+label);}
+try {
+  for(let attempt=0;attempt<60;attempt++){
+    try{connection=await mysql.createConnection({host:'127.0.0.1',port:13329,user:'root',password});break;}
+    catch{await new Promise(resolve=>setTimeout(resolve,1000));}
+  }
+  assert.ok(connection,'Isolated MariaDB did not become ready');
+  assert.match((await connection.query('SELECT VERSION() v'))[0][0].v,/^10\.11\./);
+  const manifest=JSON.parse(await readFile(resolve(project,'deployment/babal/release-manifest.json'),'utf8'));
+  const upgrade=await stagingNativeUpgrade(project);
+  await writeFile(resolve(workspace,'staging-upgrade.sql'),upgrade.sql);
+  await writeFile(resolve(workspace,'staging-upgrade-inventory.json'),JSON.stringify({sha256:upgrade.sha256,sources:upgrade.steps.map(({name,sourceSha256})=>({name,sourceSha256}))},null,2));
+  const schema=await readFile(resolve(project,'deployment/babal/mariadb-schema.sql'),'utf8');
+  const adapter={dialect:'mariadb',prepare(sql){return{async all(){const [results]=await connection.query(sql);return{results};}};}};
+  const companions=['mariadb-company-store-maker-readiness.sql','mariadb-loyalty-scheduled-changes.sql'];
+  await create('fresh');
+  await check('fresh bootstrap and maintained companion sequence',async()=>{
+    await load('deployment/babal/mariadb-schema.sql');
+    for(const migration of manifest.migrations.filter(m=>m.usage==='additive-maintenance'))await load(migration.path);
+    assert.deepEqual(await inspectReadiness(adapter),{ready:true,missing:[]});
+  });
+  await check('real native repository and financial guard tests',async()=>{
+    execFileSync(process.execPath,['--import','tsx','--test','--test-concurrency=1','tests/staging-native-runtime.test.ts'],{
+      cwd:project,stdio:'inherit',env:{...process.env,HATSKALA_STAGING_NATIVE:'1',HATSKALA_NATIVE_MARKER:marker,HATSKALA_NATIVE_TOKEN:token,
+        HASTABAZAAR_RUNTIME_ENV:'local_staging',DB_HOST:'127.0.0.1',DB_PORT:'13329',DB_NAME:'native_'+run+'_fresh',DB_USER:'root',DB_PASSWORD:password},
+    });
+  });
+  await create('legacy');
+  await check('populated pre-weekly schema upgrades conserve every original value',async()=>{
+    const loyalty=(await readFile(resolve(project,'deployment/babal/mariadb-loyalty-points.sql'),'utf8')).replace(/\r\n/g,'\n');
+    assert.equal(loyalty.split('-- Weekly loyalty cycle extension').length,2);
+    // SQL contains $' sequences; use a callback so replacement strings cannot
+    // reinterpret them as JavaScript replacement patterns.
+    let legacy=schema.replace(loyalty.trim(),()=>loyalty.split('-- Weekly loyalty cycle extension')[0].trim());
+    for(const companion of companions)legacy=legacy.replace((await readFile(resolve(project,'deployment/babal',companion),'utf8')).replace(/\r\n/g,'\n').trim(),'');
+    assert.notEqual(legacy,schema);
+    await load('fixture-pre-weekly-bootstrap',legacy);
+    // Only the four companions under test are missing from this newly empty fixture.
+    for(const migration of manifest.migrations.filter(m=>m.usage==='additive-maintenance'&&!companions.some(n=>m.path.endsWith(n))&&!m.path.endsWith('mariadb-loyalty-points.sql')))await load(migration.path);
+    // Earlier wallet companions replace their kind CHECK. Restore the actual
+    // pre-weekly loyalty base last, as the old hosted release does.
+    await load('fixture-pre-weekly-loyalty',loyalty.split('-- Weekly loyalty cycle extension')[0]);
+    await connection.query("INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('historic','historic@example.test','Fictional historical user',17,17)");
+    await connection.query("INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,request_id,created_at) VALUES('historic-audit','historic','fictional.history','user','historic','historic',17)");
+    // Copy only synthetic records made by the fresh runtime tests, using the
+    // old schema's columns. Real FK and history triggers stay enabled.
+    for(const table of ['users','user_roles','form_config_versions','wallet_accounts','seller_profiles','seller_documents',
+      'seller_participation_profiles','managed_maker_application_details','categories','products','orders','order_items',
+      'managed_commercial_snapshots','managed_entitlements','managed_payouts']){
+      const columns=(await connection.query('SHOW COLUMNS FROM `'+table+'`'))[0].filter(c=>!String(c.Extra).includes('GENERATED')).map(c=>'`'+c.Field+'`').join(',');
+      const keys=(await connection.query('SHOW INDEX FROM `'+table+'` WHERE Key_name=\'PRIMARY\''))[0].sort((a,b)=>a.Seq_in_index-b.Seq_in_index).map(row=>row.Column_name);
+      assert.ok(keys.length,table+' primary identity');
+      const absent=keys.map(column=>'dst.`'+column+'`<=>src.`'+column+'`').join(' AND ');
+      await connection.query('INSERT INTO `'+table+'`('+columns+') SELECT '+columns.split(',').map(c=>'src.'+c).join(',')+' FROM `native_'+run+'_fresh`.`'+table+'` src WHERE NOT EXISTS(SELECT 1 FROM `'+table+'` dst WHERE '+absent+')');
+    }
+    await connection.query("INSERT INTO managed_settlement_entries(id,entitlement_id,type,amount_paisa,metadata_json,reason_code,request_id,created_by,created_at) VALUES('historic-settlement','entitlement','earned',9100,'{}','fictional','historic-settlement','super',1)");
+    await connection.query("INSERT INTO managed_payout_entries(payout_id,settlement_entry_id) VALUES('payout-two','historic-settlement')");
+    await connection.query("INSERT INTO loyalty_revisions(revision,enabled,daily_points,points_per_block,credit_paisa_per_block,starts_at,ends_at,daily_budget_points,lifetime_budget_points,created_by,request_id,reason,form_version_id,created_at) VALUES(1,1,100,100,1000,0,253402300799999,1000,10000,'super','historic-live','Fictional historical live','staff.loyalty-settings-v1',1),(2,0,7,100,1000,NULL,NULL,NULL,NULL,'super','historic-draft','Fictional historical draft','staff.loyalty-settings-v1',2)");
+    await connection.query("UPDATE loyalty_config SET current_revision=1,draft_revision=2,paused=0");
+    await connection.query("INSERT INTO loyalty_accounts(user_id,created_at) VALUES('customer',1)");
+    await connection.query("INSERT INTO loyalty_daily_claims(id,user_id,actor_id,request_id,payload_digest,revision,local_date,awarded_points,response_json,form_version_id,created_at) VALUES('historic-claim','customer','customer','historic-claim',?,1,'2026-09-28',100,?,'account.daily-reward-v1',?)",['a'.repeat(64),JSON.stringify({claimId:'historic-claim',localDate:'2026-09-28',awardedPoints:100,balancePoints:100}),Date.parse('2026-09-28T12:00:00Z')]);
+    await connection.query("UPDATE loyalty_config SET paused=1,version=7");
+    await connection.query("INSERT INTO loyalty_redemptions(id,user_id,actor_id,request_id,payload_digest,revision,points,credit_paisa,response_json,form_version_id,created_at) VALUES('historic-redemption','customer','customer','historic-redemption',?,1,100,1000,?,'account.points-redemption-v1',?)",['b'.repeat(64),JSON.stringify({redemptionId:'historic-redemption',points:100,creditPaisa:1000,balancePoints:0,walletBalancePaisa:1000}),Date.parse('2026-09-28T12:00:01Z')]);
+    const before={};
+    const tables=(await connection.query('SELECT TABLE_NAME n FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE=\'BASE TABLE\''))[0];
+    for(const {n} of tables){const [rows]=await connection.query('SELECT * FROM `'+n+'` ORDER BY 1');before[n]={rows,columns:(await connection.query('SHOW COLUMNS FROM `'+n+'`'))[0].map(c=>c.Field)};}
+    const preserved=async()=>{for(const [table,{rows,columns}]of Object.entries(before))assert.deepEqual((await connection.query('SELECT '+columns.map(c=>'`'+c+'`').join(',')+' FROM `'+table+'` ORDER BY 1'))[0],rows,table);};
+    for(let repeat=0;repeat<2;repeat++)for(const step of upgrade.steps){await load('reviewed-staging-delta/'+step.name,step.sql);await preserved();}
+    assert.deepEqual(await inspectReadiness(adapter),{ready:true,missing:[]});
+    assert.deepEqual((await connection.query('SELECT scheduled_revision,scheduled_for,scheduled_unpause,paused,current_revision,draft_revision,issued_points,redeemed_points,credited_paisa FROM loyalty_config'))[0][0],{scheduled_revision:null,scheduled_for:null,scheduled_unpause:0,paused:1,current_revision:1,draft_revision:2,issued_points:100,redeemed_points:100,credited_paisa:1000});
+    for(const table of ['seller_participation_profiles','managed_commercial_snapshots'])assert.equal((await connection.query('SELECT COUNT(*) n FROM '+table+' WHERE accepted_managed_detail_id IS NOT NULL'))[0][0].n,0);
+  });
+}catch(error){
+  console.error(JSON.stringify({status:'FAIL',file:activeFile,statement:activeStatement,message:String(error.message).replaceAll(password,'[redacted]').slice(0,1800)}));process.exitCode=1;
+}finally{
+  await connection?.end();owned();execFileSync(docker,['stop',name],{stdio:'pipe'});
+  await writeFile(resolve(workspace,'native-'+run+'-results.json'),JSON.stringify({observations,container:name,databasesPreserved:true,stopped:true},null,2));
+}

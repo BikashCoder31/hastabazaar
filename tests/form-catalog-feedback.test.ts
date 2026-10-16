@@ -117,11 +117,17 @@ void test('contact send atomically stores one answer and one sent job; exact ret
   try {
     seed(sqlite, 'public.contact', 1);
     const { POST } = await import('../app/api/feedback/route');
-    assert.equal((await POST(request('contact-one'))).status, 200);
+    const acknowledgement = await POST(request('contact-one'));
+    assert.equal(acknowledgement.status, 200);
+    const first = await acknowledgement.json() as { registered?: boolean; reference?: string };
+    assert.equal(first.registered, true);
+    assert.equal(first.reference, (sqlite.prepare('SELECT id FROM feedback_delivery_jobs').get() as { id: string }).id);
     assert.equal(count(sqlite, 'feedback_delivery_jobs'), 1);
     assert.equal(count(sqlite, 'form_answer_sets'), 1);
     assert.equal(globalThis.feedbackCatalogMail.sent.length, 1);
-    assert.equal((await POST(request('contact-one'))).status, 200);
+    const retry = await POST(request('contact-one'));
+    assert.equal(retry.status, 200);
+    assert.equal((await retry.json() as { reference?: string }).reference, first.reference);
     assert.equal(globalThis.feedbackCatalogMail.sent.length, 1);
     assert.equal(count(sqlite, 'form_answer_sets'), 1);
   } finally { sqlite.close(); }
@@ -135,7 +141,11 @@ void test('rejected send is not success; same request retries without another an
     globalThis.feedbackCatalogMail.configured = false;
     const retryable = await POST(request('retry-one'));
     assert.equal(retryable.status, 503);
-    assert.equal(((await retryable.json()) as { code?: string }).code, 'delivery_retryable');
+    const saved = await retryable.json() as { code?: string; registered?: boolean; reference?: string; ok?: boolean };
+    assert.equal(saved.code, 'delivery_retryable');
+    assert.equal(saved.registered, true);
+    assert.equal(saved.reference, (sqlite.prepare('SELECT id FROM feedback_delivery_jobs').get() as { id: string }).id);
+    assert.notEqual(saved.ok, true);
     assert.equal(count(sqlite, 'feedback_delivery_jobs'), 1);
     assert.equal(count(sqlite, 'form_answer_sets'), 1);
     globalThis.feedbackCatalogMail.configured = true;

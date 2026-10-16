@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 import {ContactVerificationPanel} from '@/components/account/contact-verification';
 import type {CheckoutContactPolicy, ContactVerificationStatus} from '@/lib/auth/contact-verification';
@@ -50,6 +51,9 @@ interface CartData {
     sellerId: string;
     nameEn: string;
     tradingName: string;
+    participationRoute?: string;
+    storeName?: string | null;
+    legalSellerName?: string | null;
     pricePaisa: number;
     quantity: number;
     preparationDays: number;
@@ -358,6 +362,8 @@ export function CheckoutForm({
       onSubmit={submit}
       className="customer-form grid gap-8 lg:grid-cols-[minmax(0,1fr)_23rem]"
     >
+      <FormGuide formId="commerce.checkout" />
+
       <div className="space-y-6">
         <ContactVerificationPanel key={`${customerId??'guest'}:${customerEmail??''}:${customerPhone??''}`}
           ownerKey={customerId} initialStatus={contactStatus} onStatusChange={setCurrentContacts}
@@ -650,6 +656,7 @@ export function CheckoutForm({
                 </strong>
                 <span className="text-muted-foreground">
                   {item.tradingName}
+                  {item.participationRoute === 'managed_maker' ? <span className="block text-xs">Made by this maker · Sold by {item.storeName ?? 'company store — terms review pending'}</span> : null}
                 </span>
               </span>
               <span className="shrink-0 whitespace-nowrap font-semibold">
@@ -884,6 +891,7 @@ function CheckoutPromoControl({ subtotalPaisa, referralCode, onQuote, onPending,
   {published.message?<p role="alert">{published.message}<Button type="button" onClick={published.refresh}>Refresh promo form</Button></p>:null}
   {quote?<p className="text-xs">Minimum products: {money(quote.minimumSubtotalPaisa)}. Ends {new Date(quote.expiresAt).toLocaleString('en-NP',{timeZone:'Asia/Kathmandu'})}. Live revision {quote.revision}.</p>:null}
   <p className="text-xs text-muted-foreground">Promo and referral discounts cannot be combined.{referralCode.trim()&&quote?' Your promo is selected; the referral code will not be submitted.':''} Delivery remains payable. Apply again to review updated terms.</p>
+  <Link href="/promo-code-terms" className="inline-flex min-h-11 items-center text-sm font-semibold text-primary underline underline-offset-4">Promo code terms</Link>
  </div>;
 }
 

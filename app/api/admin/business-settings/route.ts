@@ -40,11 +40,11 @@ async function requestBody(request: Request): Promise<Record<string, unknown>> {
 
 export async function GET(): Promise<Response> {
   try {
-    await requireStaffApi('business_settings.view');
+    const staff = await requireStaffApi('business_settings.view');
     const database = requireDatabase(env as unknown as { DB?: D1Database });
     const now = Date.now();
     const settings = await Promise.all(
-      businessSettingDefinitions.map(async (definition) => ({
+      businessSettingDefinitions.filter(definition => staff.role === 'super_admin' || !definition.affectedSurfaces.some(surface => surface === 'rider')).map(async (definition) => ({
         key: definition.key,
         label: definition.label,
         description: definition.description,

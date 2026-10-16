@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 import { useState } from 'react';
 import { feedbackTopics } from '@/lib/feedback/customer-feedback';
@@ -55,8 +56,13 @@ export function CustomerContactForm({
         error?: string;
         fieldId?: string;
         code?: string;
+        registered?: boolean;
+        reference?: string;
       } | null;
       catalog.handleSubmissionResponse(response, result?.code);
+      const reference = result?.registered === true && typeof result.reference === 'string' &&
+        /^[a-zA-Z0-9._:-]{1,100}$/.test(result.reference) ? result.reference : null;
+      if (reference) setMessage(`Your message is registered. Reference: ${reference}.`);
       if (result?.fieldId) setFieldErrors({ [result.fieldId]: result.error || 'Invalid answer.' });
       if (!response.ok || !result?.ok)
         throw new Error(result?.error || uncertainDeliveryMessage);
@@ -64,8 +70,8 @@ export function CustomerContactForm({
       clearFeedbackAttemptId(formId);
       setMessage(
         kind === 'feedback'
-          ? 'Thank you for your feedback. We appreciate you taking the time to help us improve.'
-          : 'Thank you. Your message has been sent to the HastaBazaar support team.',
+          ? `Thank you for your feedback.${reference ? ` Reference: ${reference}.` : ''}`
+          : `Thank you. Your message has been sent to the HastaBazaar support team.${reference ? ` Reference: ${reference}.` : ''}`,
       );
     } catch (caught) {
       setError(
@@ -83,6 +89,8 @@ export function CustomerContactForm({
       onSubmit={submit}
       className="grid min-w-0 grid-cols-1 gap-5 rounded-3xl border bg-card p-6 shadow-sm sm:grid-cols-2 sm:p-8"
     >
+      <FormGuide formId={kind === 'feedback' ? 'public.feedback' : 'public.contact'} />
+
       <input
         type="hidden"
         name="pagePath"

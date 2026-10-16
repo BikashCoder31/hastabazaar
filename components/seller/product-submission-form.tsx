@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { productDiscountLabel } from '@/lib/products/discount';
 import Link from 'next/link';
@@ -406,16 +407,22 @@ export function ProductSubmissionForm({
   initial,
   mode = 'submit',
   materialSuggestions = [],
+  workspaceMode = 'seller',
+  returnUrl,
+  submitUrl,
 }: {
   categories: readonly CategoryRow[];
   occasions: readonly OccasionRow[];
   initial?: SellerProductRevision;
   mode?: 'submit' | 'draft';
   materialSuggestions?: readonly string[];
+  workspaceMode?: 'seller' | 'maker';
+  returnUrl?: string;
+  submitUrl?: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const attemptId = useRef('');
-  const attemptContext = initial ? `revision:${initial.id}` : mode === 'draft' ? 'new-draft' : 'new-submit';
+  const attemptContext = (workspaceMode === 'maker' ? 'maker:' : '') + (initial ? `revision:${initial.id}` : mode === 'draft' ? 'new-draft' : 'new-submit');
   const attemptStorageKey = `hastabazaar:product-attempt:${attemptContext}`;
   const catalog = usePublishedFormConfig('seller.product-submission');
   const [state, setState] = useState<SubmissionState>({ status: 'idle' });
@@ -556,9 +563,9 @@ export function ProductSubmissionForm({
       setHasPendingAttempt(true);
       payload.set('requestId', attemptId.current);
       const response = await fetch(
-        initial
+        submitUrl ?? (initial
           ? `/api/seller/products/${encodeURIComponent(initial.id)}`
-          : mode === 'draft' ? '/api/seller/products?intent=draft' : '/api/seller/products',
+          : mode === 'draft' ? '/api/seller/products?intent=draft' : '/api/seller/products'),
         {
           method: initial ? 'PATCH' : 'POST',
           body: payload,
@@ -619,14 +626,14 @@ export function ProductSubmissionForm({
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link
-            href={mode === 'draft' ? '/sell/application' : '/seller/products'}
+            href={returnUrl ?? (mode === 'draft' ? '/sell/application' : '/seller/products')}
             className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
           >
             {mode === 'draft' ? 'Back to application' : 'View my products'}
           </Link>
           <Link
             className={buttonVariants({ variant: 'outline' })}
-            href={mode === 'draft' ? '/sell/application/products/new' : '/seller/products/new'}
+            href={workspaceMode === 'maker' || mode === 'draft' ? '/sell/application/products/new' : '/seller/products/new'}
             onClick={() => {
               if (!isRevision) setState({ status: 'idle' });
             }}
@@ -645,6 +652,8 @@ export function ProductSubmissionForm({
       onSubmit={submit}
       className="seller-form space-y-9 rounded-2xl border bg-card p-6 shadow-sm sm:p-8"
     >
+      <FormGuide formId="seller.product-submission" />
+
       {initial ? (
         <input
           type="hidden"

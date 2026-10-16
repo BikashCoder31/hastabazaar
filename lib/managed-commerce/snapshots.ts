@@ -21,6 +21,10 @@ export interface ManagedCommercialTerms {
   platformFundedDiscountPaisa: number;
   platformRetentionBps: number;
   agreedSupplierAmountPaisa?: number | null;
+  acceptedManagedDetailId?: string | null;
+  makerName?: string | null;
+  storeName?: string | null;
+  legalSellerName?: string | null;
 }
 
 function reference(label: string, value: string): string {
@@ -48,6 +52,10 @@ export function buildManagedCommercialSnapshot(input: ManagedCommercialTerms) {
     makerFundedDiscountPaisa: input.makerFundedDiscountPaisa,
     platformFundedDiscountPaisa: input.platformFundedDiscountPaisa,
     simulationLabel: SIMULATED_RECORD_LABEL,
+    acceptedManagedDetailId: input.acceptedManagedDetailId ?? null,
+    makerName: input.makerName ?? null,
+    storeName: input.storeName ?? null,
+    legalSellerName: input.legalSellerName ?? null,
   };
   if (input.commercialModel === 'managed_fixed_supplier_price_v1') {
     // Customer resale does not create or change a supplier obligation. Fixed

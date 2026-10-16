@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useRouter } from 'next/navigation';
 import { useState, useRef } from 'react';
 
@@ -102,6 +103,8 @@ export function ReviewForm({
       }}
       className="customer-form mt-5 grid gap-4 rounded-2xl border bg-card p-5"
     >
+      <FormGuide formId="account.review" />
+
 <p className="text-xs text-muted-foreground">* Required field</p>
 
       <p className="text-sm text-muted-foreground">

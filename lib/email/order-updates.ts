@@ -1,5 +1,11 @@
+import { publicTrackingReferenceSql } from '../riders/public-tracking';
 import { orderProgress } from '../orders/progress';
 import { emailRetryDelayMs, maximumEmailAttempts } from './retry-policy';
+import {
+  manualOrderEmailBatchSize,
+  orderEmailMaxAgeMs,
+  orderEmailSkipReason,
+} from './order-update-policy';
 export interface OrderEmailData {
   firstCodPending?: boolean | number;
   orderNumber: string;
@@ -114,16 +120,34 @@ export async function deliverOrderEmails(
   } = {},
 ) {
   const now = options.now ?? Date.now();
-  const limit = Math.max(1, Math.min(options.limit ?? 6, 20));
+  const limit = Math.max(
+    1,
+    Math.min(options.limit ?? manualOrderEmailBatchSize, 20),
+  );
+  // Retain the outcome without claiming a send attempt. Active senders own their lease.
+  // Clean even exhausted/future retries, so stale records cannot block useful work.
+  const skipped = await db
+    .prepare(
+      `UPDATE order_email_jobs SET failure_code=CASE WHEN EXISTS
+      (SELECT 1 FROM orders o WHERE o.id=order_email_jobs.order_id AND o.status<>order_email_jobs.order_status)
+      THEN 'obsolete_order_state' ELSE 'expired_order_update' END,
+      status='cancelled',lease_until=0,claim_token=NULL
+      WHERE status IN ('queued','retry','sending') AND lease_until<=?
+      AND (created_at<=? OR EXISTS
+        (SELECT 1 FROM orders o WHERE o.id=order_email_jobs.order_id AND o.status<>order_email_jobs.order_status))`,
+    )
+    .bind(now, now - orderEmailMaxAgeMs)
+    .run();
   const jobs = await db
     .prepare(`SELECT j.id,j.attempts FROM order_email_jobs j INNER JOIN orders o ON o.id=j.order_id
  WHERE j.status IN ('queued','retry','sending') AND j.next_attempt_at<=? AND j.lease_until<=?
- AND j.attempts<?
+ AND j.attempts<? AND j.created_at>? AND o.status=j.order_status
  AND (? IS NULL OR o.id=?) AND (? IS NULL OR o.order_number=?) ORDER BY j.created_at,j.id LIMIT ?`)
     .bind(
       now,
       now,
       maximumEmailAttempts,
+      now - orderEmailMaxAgeMs,
       options.orderId ?? null,
       options.orderId ?? null,
       options.orderNumber ?? null,
@@ -133,13 +157,14 @@ export async function deliverOrderEmails(
     .all<{ id: string; attempts: number }>();
   let sent = 0,
     failed = 0,
-    cancelled = 0;
+    cancelled = Number(skipped.meta.changes ?? 0);
   for (const job of jobs.results) {
     const claim = crypto.randomUUID();
     const claimedAt = options.now ?? Date.now();
     const claimed = await db
       .prepare(`UPDATE order_email_jobs SET status='sending',claim_token=?,lease_until=?,attempts=attempts+1
-   WHERE id=? AND status IN ('queued','retry','sending') AND attempts<? AND next_attempt_at<=? AND lease_until<=?`)
+   WHERE id=? AND status IN ('queued','retry','sending') AND attempts<? AND next_attempt_at<=? AND lease_until<=?
+      AND created_at>? AND EXISTS(SELECT 1 FROM orders o WHERE o.id=order_email_jobs.order_id AND o.status=order_email_jobs.order_status)`)
       .bind(
         claim,
         claimedAt + 15 * 60000,
@@ -147,6 +172,7 @@ export async function deliverOrderEmails(
         maximumEmailAttempts,
         claimedAt,
         claimedAt,
+        claimedAt - orderEmailMaxAgeMs,
       )
       .run();
     if (!claimed.meta.changes) continue;
@@ -155,18 +181,24 @@ export async function deliverOrderEmails(
         .prepare(`SELECT o.order_number AS orderNumber,o.customer_email AS email,o.status AS currentStatus,EXISTS(SELECT 1 FROM first_cod_reviews r WHERE r.order_id=o.id AND r.status='pending') AS firstCodPending,
     j.order_status AS eventStatus,j.attempts,j.created_at AS occurredAt,COALESCE(o.current_total_paisa,o.grand_total_paisa) AS cashPaisa,
     CASE WHEN EXISTS(SELECT 1 FROM shipping_jobs pj JOIN shipping_parcels pp ON pp.shipping_job_id=pj.id WHERE pj.order_id=o.id) THEN (SELECT SUM(pp.collected_paisa) FROM shipping_jobs pj JOIN shipping_parcels pp ON pp.shipping_job_id=pj.id WHERE pj.order_id=o.id) ELSE NULL END AS collectedPaisa,
-    COALESCE(o.current_wallet_paisa,o.wallet_credit_paisa) AS walletPaisa,o.current_referral_discount_paisa AS discountPaisa,CASE WHEN o.current_discount_paisa IS NULL THEN o.promo_discount_paisa ELSE o.current_promo_discount_paisa END AS promoPaisa,o.promo_label AS promoLabel,o.promo_revision AS promoRevision,s.tracking_code AS trackingCode
+    COALESCE(o.current_wallet_paisa,o.wallet_credit_paisa) AS walletPaisa,o.current_referral_discount_paisa AS discountPaisa,CASE WHEN o.current_discount_paisa IS NULL THEN o.promo_discount_paisa ELSE o.current_promo_discount_paisa END AS promoPaisa,o.promo_label AS promoLabel,o.promo_revision AS promoRevision,${publicTrackingReferenceSql('o.id', 's.tracking_code')} AS trackingCode
     FROM order_email_jobs j INNER JOIN orders o ON o.id=j.order_id
     LEFT JOIN shipments s ON s.order_id=o.id WHERE j.id=? AND j.claim_token=?`)
         .bind(job.id, claim)
         .first<OrderEmailData>();
       if (!data) throw new Error('Order email unavailable');
-      if (data.currentStatus !== data.eventStatus) {
+      const skipReason = orderEmailSkipReason(
+        data.eventStatus,
+        data.currentStatus,
+        data.occurredAt,
+        options.now ?? Date.now(),
+      );
+      if (skipReason) {
         await db
           .prepare(
-            "UPDATE order_email_jobs SET status='cancelled',failure_code='obsolete_order_state',lease_until=0,claim_token=NULL WHERE id=? AND claim_token=?",
+            "UPDATE order_email_jobs SET status='cancelled',failure_code=?,lease_until=0,claim_token=NULL,attempts=attempts-1 WHERE id=? AND claim_token=?",
           )
-          .bind(job.id, claim)
+          .bind(skipReason, job.id, claim)
           .run();
         cancelled++;
         continue;

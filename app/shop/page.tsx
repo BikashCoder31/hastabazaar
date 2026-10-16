@@ -245,6 +245,7 @@ export default async function ShopPage({
                     </div>
                     <p className="mt-4 text-sm font-semibold text-primary">
                       {product.tradingName}
+                      {product.participationRoute === 'managed_maker' ? <span className="block text-xs text-muted-foreground">Made by this maker · Sold by {product.storeName ?? 'company store — terms review pending'}</span> : null}
                     </p>
                     <h2 className="mt-1 line-clamp-2 text-base font-semibold leading-6">
                       {product.nameEn}

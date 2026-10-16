@@ -79,6 +79,8 @@ export interface LoyaltyMutationContext extends MutationContext {
 export interface LoyaltyTerms {
   readonly enabled: boolean;
   readonly dailyPoints: number;
+  readonly weeklyPoints?: readonly number[];
+  readonly graceEnabled?: boolean;
   readonly pointsPerBlock: number;
   readonly creditPaisaPerBlock: number;
   readonly startsAt: number | null;
@@ -98,11 +100,20 @@ export interface CustomerLoyaltyState {
   readonly enabled: boolean;
   readonly paused: boolean;
   readonly dailyPoints: number;
+  readonly weeklyPoints?: readonly number[];
+  readonly graceEnabled?: boolean;
   readonly pointsPerBlock: number;
   readonly creditPaisaPerBlock: number;
   readonly startsAt: number | null;
   readonly endsAt: number | null;
-  readonly status: 'active' | 'scheduled' | 'expired' | 'paused' | 'disabled' | 'exhausted';
+  readonly status:
+    | 'active'
+    | 'scheduled'
+    | 'expired'
+    | 'paused'
+    | 'disabled'
+    | 'review_required'
+    | 'exhausted';
 }
 export interface LoyaltyDenomination {
   readonly pointsPerBlock: number;
@@ -112,6 +123,11 @@ export interface LoyaltyState {
   readonly revision: number;
   readonly publishedRevision: number;
   readonly draftRevision: number | null;
+  readonly scheduledRevision: number | null;
+  readonly scheduledFor: number | null;
+  readonly scheduledTerms: LoyaltyTerms | null;
+  readonly scheduledUnpause: boolean;
+  readonly scheduleBlockedReason: string | null;
   readonly paused: boolean;
   readonly creditedPaisa: number;
   readonly liability: LoyaltyLiability;
@@ -119,6 +135,7 @@ export interface LoyaltyState {
   readonly maximumLiability: LoyaltyLiability | null;
   readonly version: number;
   readonly terms: LoyaltyTerms;
+  readonly publishedTerms: LoyaltyTerms;
   readonly rateLocked: boolean;
   readonly lockedDenomination: LoyaltyDenomination | null;
   readonly issuedPoints: number;
@@ -142,11 +159,22 @@ export interface RedeemInput extends ClaimInput {
 }
 
 /** Stored snapshots are returned unchanged on an authorized exact replay. */
+export interface LoyaltyCycleProgress {
+  readonly day: number;
+  readonly number: number;
+  readonly graceUsed: boolean;
+  readonly graceApplied: boolean;
+  readonly resetReason: 'first_claim' | 'missed_day' | 'cycle_complete' | null;
+  /** Prior successful claim date used to decide this claim's cycle position. */
+  readonly lastClaimDate: string | null;
+}
+
 export interface ClaimResult {
   readonly claimId: string;
   readonly localDate: string;
   readonly awardedPoints: number;
   readonly balancePoints: number;
+  readonly cycle?: LoyaltyCycleProgress;
 }
 
 export interface RedemptionResult {
@@ -167,6 +195,7 @@ export interface RewardsView {
   readonly balancePoints: number;
   readonly walletBalancePaisa: number;
   readonly claimedToday: boolean;
+  readonly cycle?: LoyaltyCycleProgress;
   readonly nextClaimAt: number;
   readonly state: CustomerLoyaltyState;
   readonly history: readonly RewardHistoryEntry[];
@@ -247,5 +276,13 @@ export interface PromoRedemptionPage {
 }
 
 /** Quote confirmation binds live cart lines and campaign terms; amounts are always rederived. */
-export interface CheckoutPromoQuote extends PromoQuote { readonly quoteIntent: string; }
-export interface PromoQuoteLine { readonly id:string; readonly productId:string; readonly sellerId:string; readonly pricePaisa:number; readonly quantity:number; }
+export interface CheckoutPromoQuote extends PromoQuote {
+  readonly quoteIntent: string;
+}
+export interface PromoQuoteLine {
+  readonly id: string;
+  readonly productId: string;
+  readonly sellerId: string;
+  readonly pricePaisa: number;
+  readonly quantity: number;
+}

@@ -1,9 +1,12 @@
+import { orderQueueWhere, type AdminQueueFilters } from '../../admin/queue-filters';
+import { publicTrackingReferenceSql } from '../../riders/public-tracking';
 import { quotePromo, preparePromoConsumption } from './promo-codes';
 import { requireCheckoutContactProof, checkoutContactGuards, type CheckoutContactPolicy } from '@/lib/auth/contact-verification';
 import {prepareFirstCodReview} from '@/lib/orders/first-cod-review';
 import { promoQuoteIntent } from '@/lib/incentives/quote-intent';
 import { allocatePromoDiscount } from '@/lib/incentives/promo-policy';
 import { getDeliveryRates, rateVersionGuard } from './delivery-rates';
+import { getSellerCommissionTerms, commissionCheckoutGuards } from './commission-rates';
 import { buildFormAnswerInsert } from './form-answers';
 import { assertCommerceFormReplay, type CommerceForm } from './commerce-form-replay';
 import { getCommissionSetting, sellerAcceptedCommissionVersion } from './marketplace-settings';
@@ -18,7 +21,6 @@ import {
   allocatePlatformDiscountPaisa,
   calculateCommissionBasePaisa,
   calculateSellerCommissionPaisa,
-  COMMISSION_RULE_VERSION,
 } from '@/lib/marketplace/policy';
 import {
   CUSTOMER_POLICY_VERSION,
@@ -30,6 +32,8 @@ import { getCart, getCartId } from './cart';
 import { quoteOrderCredit } from './wallet';
 import { getEffectiveBusinessSetting } from './business-settings';
 import { buildManagedCommercialSnapshot } from '@/lib/managed-commerce/snapshots';
+import { acceptedManagedTermsGuards, getAcceptedManagedTerms, type AcceptedManagedTerms } from '@/lib/managed-commerce/accepted-terms';
+import type { PublicSellingIdentity } from '../../products/selling-identity';
 import type { ManagedMakerCommercialModel } from '@/lib/configuration/types';
 import {
   readDeliveryPricingSnapshot,
@@ -128,6 +132,9 @@ function checkoutTermsSnapshot(sellerCommissionBps: number): Record<string, unkn
       returns: publicLegalPolicies.returns.sha256,
       shipping: publicLegalPolicies.shipping.sha256,
       privacy: publicLegalPolicies.privacy.sha256,
+      'rewards-terms': publicLegalPolicies['rewards-terms'].sha256,
+      'promo-code-terms': publicLegalPolicies['promo-code-terms'].sha256,
+      'gift-card-terms': publicLegalPolicies['gift-card-terms'].sha256,
     },
     language: 'English',
     sellerCommissionBps,
@@ -314,6 +321,7 @@ export async function createCodOrder(
   const rates = await getDeliveryRates(database);
   const commissionSetting = await getCommissionSetting(database, now);
   const sellerCommissionBps = commissionSetting.basisPoints;
+  const sellerCommissionTerms = Object.fromEntries(await Promise.all([...new Set(items.filter(item => item.participationRoute !== 'managed_maker').map(item => item.sellerId))].map(async sellerId => [sellerId, await getSellerCommissionTerms(database, sellerId, now)] as const)));
   if (commissionSetting.versionId) {
     for (const sellerId of new Set(items.filter((item)=>item.participationRoute!=='managed_maker').map((item)=>item.sellerId))) {
       if (!await sellerAcceptedCommissionVersion(database,sellerId,commissionSetting.versionId)) {
@@ -339,6 +347,12 @@ export async function createCodOrder(
       !item.managedAgreementVersion || !item.managedAgreementLanguage || !item.managedAgreementAcceptedAt
     ))
   )) throw new CheckoutConflictError('A Managed Maker item is not active under the configured simulated program.');
+  const acceptedManaged = new Map<string, AcceptedManagedTerms>();
+  for (const sellerId of new Set(items.filter(item => item.commercialModel === 'managed_sale_linked_percentage_v1').map(item => item.sellerId))) {
+    const accepted = await getAcceptedManagedTerms(database, sellerId, now);
+    if (!accepted) throw new CheckoutConflictError('A maker must accept the current company-store terms before a new order.');
+    acceptedManaged.set(sellerId, accepted);
+  }
   if (input.deliveryRateVersion && input.deliveryRateVersion !== rates.version)
     throw new CheckoutConflictError(
       'Delivery rates changed. Reload checkout to review the current total.',
@@ -383,7 +397,7 @@ export async function createCodOrder(
     ? crypto.randomUUID()
     : input.selectedAddressId ?? null;
   const number = orderNumber(now);
-  const termsSnapshot = { ...checkoutTermsSnapshot(sellerCommissionBps), deliveryRate: delivery };
+  const termsSnapshot = { ...checkoutTermsSnapshot(sellerCommissionBps), sellerCommissionTerms, deliveryRate: delivery };
   const platformDiscounts = allocatePlatformDiscountPaisa(
     items.map((item) => ({
       key: item.id,
@@ -407,7 +421,7 @@ export async function createCodOrder(
     paymentStatus: 'pending',
     items: items.map((item) => ({
       productName: publicProductName(item.nameEn),
-      sellerName: item.tradingName,
+      sellerName: acceptedManaged.get(item.sellerId)?.snapshot.companyAccount.storeName ?? item.tradingName,
       sku: item.sku,
       unitPricePaisa: item.pricePaisa,
       quantity: item.quantity,
@@ -419,11 +433,30 @@ export async function createCodOrder(
     taxTotalPaisa: 0,
     grandTotalPaisa,
   };
+  const managedCheckoutGuards: D1PreparedStatement[] = [];
+  if (hasManagedItems) {
+    for (const setting of [managedProgram, managedModel, managedRetention, managedHold]) {
+      if (!setting) continue;
+      managedCheckoutGuards.push(...checkedCheckoutGuard(database, `COALESCE((SELECT id FROM business_setting_versions
+        WHERE setting_key=? AND status='published' AND effective_from<=? AND (effective_until IS NULL OR effective_until>?)
+        ORDER BY effective_from DESC,version DESC LIMIT 1),'')=?`, [setting.key, now, now, setting.versionId ?? '']));
+    }
+    for (const item of items.filter(item => item.participationRoute === 'managed_maker')) {
+      managedCheckoutGuards.push(...checkedCheckoutGuard(database, `EXISTS(SELECT 1 FROM seller_participation_profiles
+        WHERE seller_id=? AND participation_route='managed_maker' AND application_stage='active' AND commercial_model=?
+          AND legal_seller_reference=? AND invoice_issuer_reference=? AND payout_beneficiary_reference=?
+          AND managed_agreement_version=? AND managed_agreement_language=? AND managed_agreement_accepted_at=?)`,
+        [item.sellerId, item.commercialModel, item.legalSellerReference, item.invoiceIssuerReference, item.payoutBeneficiaryReference,
+          item.managedAgreementVersion, item.managedAgreementLanguage, item.managedAgreementAcceptedAt]));
+    }
+  }
   const statements: D1PreparedStatement[] = [
+    ...managedCheckoutGuards,
     database.prepare(
       "UPDATE delivery_rate_current SET version_id=version_id WHERE id='default'",
     ),
     ...rateVersionGuard(database, rates.version),
+    ...[...acceptedManaged.values()].flatMap(terms => acceptedManagedTermsGuards(database, terms, now)),
     database
       .prepare(
         `INSERT INTO orders (
@@ -600,6 +633,7 @@ export async function createCodOrder(
   }
 
   for (const item of items) {
+    const commission = sellerCommissionTerms[item.sellerId];
     const orderItemId = crypto.randomUUID();
     const lineTotalPaisa = item.pricePaisa * item.quantity;
     const sellerDiscountPaisa = 0;
@@ -627,7 +661,7 @@ export async function createCodOrder(
           id,
           item.productId,
           item.sellerId,
-          item.tradingName,
+          acceptedManaged.get(item.sellerId)?.snapshot.companyAccount.storeName ?? item.tradingName,
           publicProductName(item.nameEn),
           item.sku,
           item.pricePaisa,
@@ -635,10 +669,10 @@ export async function createCodOrder(
           sellerDiscountPaisa,
           platformDiscountPaisa,
           commissionBasePaisa,
-          managed ? `managed-${item.commercialModel ?? 'unconfigured'}` : (commissionSetting.versionId ?? COMMISSION_RULE_VERSION),
+          managed ? `managed-${item.commercialModel ?? 'unconfigured'}` : commission.version,
           managed ? item.managedAgreementVersion : item.sellerAgreementVersion,
-          managed ? 0 : sellerCommissionBps,
-          managed ? 0 : calculateSellerCommissionPaisa(commissionBasePaisa, sellerCommissionBps),
+          managed ? 0 : commission.basisPoints,
+          managed ? 0 : calculateSellerCommissionPaisa(commissionBasePaisa, commission.basisPoints),
           lineTotalPaisa,
           item.returnEligible,
           item.madeToOrder,
@@ -647,16 +681,17 @@ export async function createCodOrder(
         ),
     );
     if (managed) {
+      const accepted = acceptedManaged.get(item.sellerId);
       const snapshot = buildManagedCommercialSnapshot({
         sellerId: item.sellerId,
         commercialModel: item.commercialModel!,
-        legalSellerReference: item.legalSellerReference!,
-        invoiceIssuerReference: item.invoiceIssuerReference!,
+        legalSellerReference: accepted?.snapshot.companyAccount.entityReference ?? item.legalSellerReference!,
+        invoiceIssuerReference: accepted?.snapshot.companyAccount.entityReference ?? item.invoiceIssuerReference!,
         payoutBeneficiaryReference: item.payoutBeneficiaryReference!,
-        agreementVersion: item.managedAgreementVersion!,
-        agreementLanguage: item.managedAgreementLanguage!,
+        agreementVersion: accepted?.agreementVersion ?? item.managedAgreementVersion!,
+        agreementLanguage: accepted?.language ?? item.managedAgreementLanguage!,
         termsSettingVersionId: item.commercialModel === 'managed_sale_linked_percentage_v1'
-          ? managedRetention!.versionId
+          ? accepted!.settingVersionIds.retention
           : managedModel!.versionId,
         deliveryHoldDays: managedHold!.value,
         holdSettingVersionId: managedHold!.versionId,
@@ -664,8 +699,12 @@ export async function createCodOrder(
         makerFundedDiscountPaisa: sellerDiscountPaisa,
         platformFundedDiscountPaisa: platformDiscountPaisa,
         platformRetentionBps: item.commercialModel === 'managed_sale_linked_percentage_v1'
-          ? managedRetention!.value
+          ? accepted!.retentionBps
           : 0,
+        acceptedManagedDetailId: accepted?.detailId ?? null,
+        makerName: item.tradingName,
+        storeName: accepted?.snapshot.companyAccount.storeName ?? null,
+        legalSellerName: accepted?.snapshot.company.legalName ?? null,
       });
       const snapshotId = crypto.randomUUID();
       statements.push(
@@ -676,8 +715,9 @@ export async function createCodOrder(
           hold_setting_version_id,product_value_paisa,
           maker_funded_discount_paisa,platform_funded_discount_paisa,eligible_base_paisa,
           platform_retention_bps,platform_retained_paisa,maker_entitlement_paisa,
-          agreed_supplier_amount_paisa,simulation_label,created_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+          agreed_supplier_amount_paisa,simulation_label,created_at,accepted_managed_detail_id,
+          maker_name_snapshot,company_store_name_snapshot,company_legal_name_snapshot
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
           snapshotId, orderItemId, snapshot.sellerId, snapshot.participationRoute,
           snapshot.commercialModel, snapshot.legalSellerReference, snapshot.invoiceIssuerReference,
           snapshot.payoutBeneficiaryReference, snapshot.agreementVersion, snapshot.agreementLanguage,
@@ -685,7 +725,8 @@ export async function createCodOrder(
           snapshot.productValuePaisa, snapshot.makerFundedDiscountPaisa,
           snapshot.platformFundedDiscountPaisa, snapshot.eligibleBasePaisa, snapshot.platformRetentionBps,
           snapshot.platformRetainedPaisa, snapshot.makerEntitlementPaisa,
-          snapshot.agreedSupplierAmountPaisa, snapshot.simulationLabel, now,
+          snapshot.agreedSupplierAmountPaisa, snapshot.simulationLabel, now, snapshot.acceptedManagedDetailId,
+          snapshot.makerName, snapshot.storeName, snapshot.legalSellerName,
         ),
       );
       if (snapshot.commercialModel === 'managed_sale_linked_percentage_v1') statements.push(
@@ -702,6 +743,7 @@ export async function createCodOrder(
   if(promo && customerId) statements.push(...await preparePromoConsumption(database,{userId:customerId,orderId:id,requestId:input.idempotencyKey,quote:promo,now,payloadDigest:intentDigest,response:{...checkoutResult}}));
 
   statements.push(
+    ...commissionCheckoutGuards(database, Object.values(sellerCommissionTerms)),
     database
       .prepare(
         `INSERT INTO order_policy_acceptances (
@@ -881,7 +923,7 @@ export async function createCodOrder(
   return checkoutResult;
 }
 
-export interface OrderReceiptItem {
+export interface OrderReceiptItem extends Partial<PublicSellingIdentity> {
   id: string;
   productName: string;
   sellerName: string;
@@ -974,7 +1016,7 @@ export async function getOrderReceipt(
         (SELECT COUNT(DISTINCT current_items.seller_id) FROM order_items current_items WHERE current_items.order_id=orders.id AND current_items.fulfillment_status<>'cancelled') AS currentStoreCount,
         orders.policy_version AS policyVersion,
         order_policy_acceptances.accepted_at AS termsAcceptedAt,
-        shipments.status AS shipmentStatus, shipments.tracking_code AS trackingCode,
+        shipments.status AS shipmentStatus, ${publicTrackingReferenceSql('orders.id', 'shipments.tracking_code')} AS trackingCode,
         shipments.estimated_min_days AS estimatedMinDays,
         shipments.estimated_max_days AS estimatedMaxDays
        FROM orders INNER JOIN shipments ON shipments.order_id = orders.id
@@ -1011,6 +1053,9 @@ export async function getOrderReceipt(
       .prepare(
         `SELECT order_items.id, order_items.product_name_snapshot AS productName,
         order_items.seller_name_snapshot AS sellerName,
+        (SELECT maker_name_snapshot FROM managed_commercial_snapshots WHERE order_item_id=order_items.id) AS makerName,
+        (SELECT company_store_name_snapshot FROM managed_commercial_snapshots WHERE order_item_id=order_items.id) AS storeName,
+        (SELECT company_legal_name_snapshot FROM managed_commercial_snapshots WHERE order_item_id=order_items.id) AS legalSellerName,
         order_items.unit_price_paisa AS unitPricePaisa, order_items.quantity,
         order_items.line_total_paisa AS lineTotalPaisa,
         order_items.return_eligible_snapshot AS returnEligible,
@@ -1118,7 +1163,11 @@ export interface OperationsOrderRow {
 export async function listOrdersForOperations(
   database: D1Database,
   limit = 100,
+  filters: AdminQueueFilters = {},
+  page = 1,
 ): Promise<readonly OperationsOrderRow[]> {
+  const where = orderQueueWhere(filters);
+  if (!Number.isSafeInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100) throw new RangeError('Choose a valid order page and page size.');
   const result = await database
     .prepare(
       `SELECT orders.id, orders.order_number AS orderNumber, orders.status,
@@ -1126,11 +1175,18 @@ export async function listOrdersForOperations(
         COALESCE(orders.current_total_paisa,orders.grand_total_paisa) AS grandTotalPaisa, orders.payment_mode AS paymentMode,
         orders.placed_at AS placedAt, SUM(order_items.quantity) AS itemCount
        FROM orders INNER JOIN order_items ON order_items.order_id = orders.id
-       GROUP BY orders.id ORDER BY orders.created_at DESC LIMIT ?`,
+       ${where.sql}
+       GROUP BY orders.id ORDER BY orders.created_at DESC, orders.id LIMIT ? OFFSET ?`,
     )
-    .bind(limit)
+    .bind(...where.values, limit, (page - 1) * limit)
     .all<OperationsOrderRow>();
   return result.results;
+}
+
+export async function countOrdersForOperations(database:D1Database,filters:AdminQueueFilters={}) {
+ const where=orderQueueWhere(filters);
+ const row=await database.prepare('SELECT COUNT(*) AS total FROM orders '+(where.sql ? where.sql+' AND ' : 'WHERE ')+'EXISTS(SELECT 1 FROM order_items WHERE order_items.order_id=orders.id)').bind(...where.values).first<{total:number}>();
+ return Number(row?.total??0);
 }
 
 export interface SellerOrderRow {

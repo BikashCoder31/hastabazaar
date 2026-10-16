@@ -3,6 +3,8 @@ import { buildFormAnswerInsert } from './form-answers';
 import { staffMutationGuard } from './staff-mutation-guard';
 import { digestFormRequest } from '../../forms/submission';
 import type { FormAnswerSnapshot } from '../../forms/types';
+import type { managedMakerAgreementSnapshot } from '../../sellers/managed-identity';
+type CompanySellingIdentity = Pick<ReturnType<typeof managedMakerAgreementSnapshot>, 'company' | 'companyAccount'>;
 
 export async function issueManagedInvoiceGroups(
   database:D1Database,
@@ -18,15 +20,34 @@ export async function issueManagedInvoiceGroups(
   if(!order)return 0;
   const rows=await database.prepare(`SELECT s.invoice_issuer_reference AS issuerReference,
     s.legal_seller_reference AS legalSellerReference,s.agreement_version AS agreementVersion,
+    s.accepted_managed_detail_id AS acceptedDetailId,s.maker_name_snapshot AS makerName,
     i.id AS orderItemId,i.product_name_snapshot AS productName,i.sku_snapshot AS sku,
     i.quantity,i.unit_price_paisa AS unitPricePaisa,i.line_total_paisa AS lineTotalPaisa
     FROM managed_commercial_snapshots s JOIN order_items i ON i.id=s.order_item_id
-    WHERE i.order_id=? ORDER BY s.invoice_issuer_reference,i.id`).bind(options.orderId).all<{issuerReference:string;legalSellerReference:string;agreementVersion:string;orderItemId:string;productName:string;sku:string;quantity:number;unitPricePaisa:number;lineTotalPaisa:number}>();
+    WHERE i.order_id=? ORDER BY s.invoice_issuer_reference,i.id`).bind(options.orderId).all<{acceptedDetailId:string|null;makerName:string|null;issuerReference:string;legalSellerReference:string;agreementVersion:string;orderItemId:string;productName:string;sku:string;quantity:number;unitPricePaisa:number;lineTotalPaisa:number}>();
   const groups=new Map<string,typeof rows.results>();
   for(const row of rows.results)groups.set(row.issuerReference,[...(groups.get(row.issuerReference)??[]),row]);
   if(!groups.size)return 0;
   const statements:D1PreparedStatement[]=[];let index=0;
-  for(const [issuerReference,items] of groups){index+=1;const invoiceNumber=`SIM-INV-${order.orderNumber}-${index}`;const payload=`${invoiceNumber}|${order.orderNumber}|${issuerReference}`;const snapshot={simulationLabel:SIMULATED_RECORD_LABEL,taxDocument:false,reviewStatus:'SIMULATED_NOT_LEGAL_OR_TAX_APPROVED',orderNumber:order.orderNumber,issuerReference,legalSellerReference:items[0]!.legalSellerReference,agreementVersion:items[0]!.agreementVersion,currency:order.currency,customerEmail:order.customerEmail,issuedAt:options.now,items:items.map(({orderItemId,productName,sku,quantity,unitPricePaisa,lineTotalPaisa})=>({orderItemId,productName,sku,quantity,unitPricePaisa,lineTotalPaisa})),productTotalPaisa:items.reduce((sum,item)=>sum+Number(item.lineTotalPaisa),0)};
+  for(const [issuerReference,items] of groups){
+    let companySellingIdentity: CompanySellingIdentity | null = null;
+    for (const detailId of new Set(items.map(item => item.acceptedDetailId).filter((id): id is string => Boolean(id)))) {
+      const accepted = await database.prepare('SELECT agreement_snapshot_json AS json FROM managed_maker_application_details WHERE id=?')
+        .bind(detailId).first<{ json: string }>();
+      if (!accepted) throw new Error('The recorded company selling evidence needs review.');
+      const recorded = JSON.parse(accepted.json) as ReturnType<typeof managedMakerAgreementSnapshot>;
+      const identity = { company: recorded.company, companyAccount: recorded.companyAccount };
+      if (companySellingIdentity && JSON.stringify(companySellingIdentity) !== JSON.stringify(identity))
+        throw new Error('Different recorded company identities require document review.');
+      companySellingIdentity = identity;
+    }
+    index+=1;const invoiceNumber=`SIM-INV-${order.orderNumber}-${index}`;const payload=`${invoiceNumber}|${order.orderNumber}|${issuerReference}`;
+    const snapshot={simulationLabel:SIMULATED_RECORD_LABEL,taxDocument:false,reviewStatus:'SIMULATED_NOT_LEGAL_OR_TAX_APPROVED',
+      companySellingIdentity,sellingEvidenceStatus:companySellingIdentity?'recorded_acceptance':'legacy_review_required',
+      orderNumber:order.orderNumber,issuerReference,legalSellerReference:items[0]!.legalSellerReference,
+      agreementVersion:items[0]!.agreementVersion,currency:order.currency,customerEmail:order.customerEmail,issuedAt:options.now,
+      items:items.map(({orderItemId,productName,sku,quantity,unitPricePaisa,lineTotalPaisa,makerName})=>({orderItemId,productName,sku,quantity,unitPricePaisa,lineTotalPaisa,makerName})),
+      productTotalPaisa:items.reduce((sum,item)=>sum+Number(item.lineTotalPaisa),0)};
     statements.push(database.prepare(`INSERT OR IGNORE INTO managed_invoice_groups(id,order_id,issuer_reference,invoice_number,snapshot_json,barcode_payload,qr_payload,simulation_label,status,request_id,issued_at,voided_at)
       VALUES (?,?,?,?,?,?,?,?,'issued',?,?,NULL)`).bind(crypto.randomUUID(),options.orderId,issuerReference,invoiceNumber,JSON.stringify(snapshot),invoiceNumber,`hastabazaar-simulated-invoice:${encodeURIComponent(payload)}`,SIMULATED_RECORD_LABEL,`${options.requestId}:${index}`,options.now));
   }
@@ -34,6 +55,8 @@ export async function issueManagedInvoiceGroups(
 }
 
 export interface ManagedInvoiceSnapshot {
+  companySellingIdentity?: CompanySellingIdentity | null;
+  sellingEvidenceStatus?: 'recorded_acceptance' | 'legacy_review_required';
   simulationLabel:string;taxDocument:false;reviewStatus:string;orderNumber:string;
   issuerReference:string;legalSellerReference:string;agreementVersion:string;currency:string;
   customerEmail:string;issuedAt:number;productTotalPaisa:number;

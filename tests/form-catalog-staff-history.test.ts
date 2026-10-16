@@ -50,12 +50,13 @@ function fixture() {
     CREATE TABLE gift_cards(id TEXT PRIMARY KEY,issued_by TEXT,redeemed_by TEXT);
     CREATE TABLE orders(id TEXT PRIMARY KEY,customer_id TEXT);
     CREATE TABLE exception_work_items(id TEXT PRIMARY KEY,order_id TEXT,kind TEXT);
-    CREATE TABLE exception_work_events(id TEXT PRIMARY KEY,work_id TEXT,actor_id TEXT,action TEXT);
+    CREATE TABLE exception_work_events(id TEXT PRIMARY KEY,work_id TEXT,actor_id TEXT,action TEXT,payload_json TEXT);
     CREATE TABLE managed_invoice_groups(id TEXT PRIMARY KEY);
     CREATE TABLE managed_invoice_adjustments(id TEXT PRIMARY KEY,invoice_group_id TEXT,request_id TEXT,created_by TEXT);
     CREATE TABLE seller_profiles(id TEXT PRIMARY KEY,user_id TEXT);
     CREATE TABLE seller_participation_profiles(seller_id TEXT PRIMARY KEY);
     CREATE TABLE shipping_jobs(id TEXT PRIMARY KEY,order_id TEXT,seller_id TEXT);
+    CREATE TABLE shipping_parcels(shipping_job_id TEXT,method TEXT,rider_user_id TEXT);
     CREATE TABLE parcel_operation_events(id TEXT PRIMARY KEY,order_id TEXT,shipping_job_id TEXT,actor_id TEXT,action TEXT,payload_json TEXT);
     CREATE TABLE order_cancellation_reviews(id TEXT PRIMARY KEY,order_id TEXT,requested_by TEXT,status TEXT);
     CREATE TABLE order_cancellation_events(id TEXT PRIMARY KEY,order_id TEXT,actor_id TEXT);
@@ -146,7 +147,7 @@ void test('all twelve fixed staff form/subject branches bind source events and r
     sqlite.exec(`INSERT INTO occasions VALUES ('occasion-one');
       INSERT INTO products(id) VALUES ('product-one');
       INSERT INTO exception_work_items VALUES ('exception-one','order-one','incorrect_cash');
-      INSERT INTO exception_work_events VALUES ('exception-attempt','exception-one','actor-one','created');
+      INSERT INTO exception_work_events VALUES ('exception-attempt','exception-one','actor-one','created','{}');
       INSERT INTO managed_invoice_groups VALUES ('invoice-group');
       INSERT INTO managed_invoice_adjustments VALUES ('adjustment-one','invoice-group','invoice-attempt','actor-one');
       INSERT INTO seller_profiles VALUES ('seller-one','customer-one');
@@ -177,12 +178,12 @@ void test('all twelve fixed staff form/subject branches bind source events and r
       ['staff.exception-work','exception_work','exception-one','exception-attempt',viewer],
       ['staff.invoice-adjustment','managed_invoice_adjustment','adjustment-one','invoice-attempt',superViewer],
       ['staff.managed-maker-activation','seller','seller-one','activation-attempt',superViewer],
-      ['staff.parcel-control','shipping_job','job-one','parcel-one',viewer],
+      ['staff.parcel-control','shipping_job','job-one','parcel-one',superViewer],
       ['staff.payout-request-action','payout_request','payout-one','payout-one-attempt',viewer],
       ['staff.privacy-action','data_rights_request','privacy-one','privacy-attempt',viewer],
       ['staff.rider-control-1','rider','rider-one','rider-attempt',superViewer],
-      ['staff.rider-control-1','rider_report','report-one','report-attempt',viewer],
-      ['staff.rider-control-1','rider_report','report-two','confirm-attempt',viewer],
+      ['staff.rider-control-1','rider_report','report-one','report-attempt',superViewer],
+      ['staff.rider-control-1','rider_report','report-two','confirm-attempt',superViewer],
       ['staff.rider-control-2','rider_policy','current','policy-attempt',superViewer],
     ] as const;
     for (const [formId, subjectType, subjectId, requestId, reader] of cases) {
@@ -247,4 +248,16 @@ void test('staff history has fixed kinds, keyset discovery past 50, exact-subjec
     assert.equal(discovered.items.length, 50);
     await assert.rejects(() => listStaffFormHistory(db, viewer, 'catalog-category', { cursor: 'not a cursor' }));
   } finally { sqlite.close(); }
+});
+
+void test('courier history cannot expose earlier rider assignment context after reassignment',async()=>{
+ const {sqlite,db}=fixture();try{
+  const item=answer('staff.parcel-control','shipping_job','job-one','parcel-one');
+  assert.equal(await authorizeFormAnswerRead(db,viewer,item),true);
+  sqlite.exec("INSERT INTO shipping_parcels VALUES ('job-one','own_rider','private-rider')");
+  assert.equal(await authorizeFormAnswerRead(db,viewer,item),false);
+  sqlite.exec("UPDATE shipping_parcels SET method='courier',rider_user_id=NULL;INSERT INTO parcel_operation_events VALUES ('old-assignment','order-one','job-one','super-one','assign','{\"method\":\"own_rider\",\"riderEmail\":\"private@example.invalid\"}')");
+  assert.equal(await authorizeFormAnswerRead(db,viewer,item),false);
+  assert.equal(await authorizeFormAnswerRead(db,{id:'super-one',role:'super_admin'},item),true);
+ }finally{sqlite.close();}
 });

@@ -1,3 +1,5 @@
+import { getRegisteredSellerTerms } from '../lib/db/repositories/marketplace-settings';
+import { startSellerRegistration } from '../lib/db/repositories/seller-commercial-access';
 import { addManagedIdentityUpload, managedIdentityDocument } from './helpers/managed-identity-fixture';
 import assert from 'node:assert/strict';
 import { createRequire, registerHooks } from 'node:module';
@@ -6,7 +8,7 @@ import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 import { build } from 'esbuild';
-import { createElement, isValidElement, type ComponentType } from 'react';
+import { createElement, type ComponentType } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { FORM_REGISTRY, IMPLEMENTED_FORM_ADAPTERS } from '../lib/forms/registry';
@@ -25,20 +27,25 @@ declare global {
   var sellerCatalogActor: { sellerId: string; userId: string } | null;
   var sellerCatalogCustomer: { userId: string; email: string } | null;
   var sellerCatalogMedia: { stored: string[]; deleted: string[]; put(key: string): Promise<void>; delete(key: string): Promise<void> };
+  var sellerCatalogReact:typeof createElement;
 }
+globalThis.sellerCatalogReact=createElement;
 registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier === 'cloudflare:workers') return { url: 'data:text/javascript,export const env={get DB(){return globalThis.sellerCatalogDb},get MEDIA(){return globalThis.sellerCatalogMedia}}', shortCircuit: true };
   if (specifier === '@/lib/auth/seller') return { url: `data:text/javascript,
     export class SellerAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}}
     export async function requireSellerApi(){if(!globalThis.sellerCatalogActor)throw new SellerAuthorizationError('Authentication is required.',401);return globalThis.sellerCatalogActor}
     export async function requireSellerPage(){if(!globalThis.sellerCatalogActor)throw new SellerAuthorizationError('Authentication is required.',401);return globalThis.sellerCatalogActor}`, shortCircuit: true };
+  if (specifier === '@/lib/auth/seller-commercial-access') return {url: `data:text/javascript,
+    export class SellerTermsAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}}
+    export async function requireSellerTermsApi(){const user=globalThis.sellerCatalogCustomer;if(!user)throw new SellerTermsAuthorizationError('Sign in before starting seller registration.',401);return {userId:user.userId,audience:'applicant'}}`,shortCircuit:true};
   if (specifier === '@/lib/auth/customer') return { url: `data:text/javascript,
     export class CustomerAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}}
     export async function requireCustomerApi(){if(!globalThis.sellerCatalogActor)throw new CustomerAuthorizationError('Authentication is required.',401);return globalThis.sellerCatalogActor}
     export async function requireCustomerPage(){if(!globalThis.sellerCatalogActor)throw new CustomerAuthorizationError('Authentication is required.',401);return globalThis.sellerCatalogActor}
     export async function getCustomerUser(){return globalThis.sellerCatalogCustomer ?? null}`, shortCircuit: true };
   if (specifier === 'next/navigation') return { url: 'data:text/javascript,export function notFound(){throw new Error("Not found")};export function redirect(){throw new Error("Redirect")};export function useRouter(){return {refresh(){}}}', shortCircuit: true };
-  if (specifier === 'next/link') return { url: 'data:text/javascript,export default function Link({children}){return children}', shortCircuit: true };
+  if (specifier === 'next/link') return { url: 'data:text/javascript,export default function Link(props){return globalThis.sellerCatalogReact("a",props,props.children)}', shortCircuit: true };
   if (specifier === '@/components/layout/site-header' || specifier === '@/components/layout/site-footer')
     return { url: 'data:text/javascript,export function SiteHeader(){return null};export function SiteFooter(){return null}', shortCircuit: true };
   return nextResolve(specifier, context);
@@ -252,6 +259,12 @@ function seed(sqlite: DatabaseSync, formId: string, fields: unknown[] = [field])
   sqlite.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
     VALUES (?, ?, 1, 1, 'published', ?, 'Test publication', 'admin', 1, 'admin', 1, 'admin', 1, ?)`)
     .run(`${formId}-v1`, formId, JSON.stringify({ formId, fields }), `seed-${formId}`);
+}
+async function signInApplicant(sqlite: DatabaseSync,userId='applicant-user',email='maker@example.test') {
+  sqlite.prepare(`INSERT INTO users(id,auth_subject,email,display_name,status,created_at,updated_at) VALUES (?,?,?,'Fictional Applicant','active',1,1)`).run(userId,'test:'+userId,email);
+  sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES (?,'customer',1)").run(userId);
+  globalThis.sellerCatalogCustomer={userId,email};
+  await startSellerRegistration(globalThis.sellerCatalogDb,{userId,requestId:'start-'+userId,now:1});
 }
 function managedApplication() {
   const form = new FormData();
@@ -470,7 +483,8 @@ void test('maker and approved seller profile routes require versioned custom ans
 void test('application route rejects missing, unknown and file custom answers and replays only the same application', async () => {
   const { sqlite } = await fixture();
   try {
-    seed(sqlite, 'seller.application', [field, builtIn('tradingName')]);
+
+    await signInApplicant(sqlite);    seed(sqlite, 'seller.application', [field, builtIn('tradingName')]);
     const { POST } = await import('../app/api/seller-applications/route');
     const send = (requestId: string, options: { answer?: string | null; unknown?: boolean; tradingName?: string } = {}) => {
       const form = managedApplication();
@@ -516,7 +530,8 @@ void test('application route rejects missing, unknown and file custom answers an
 void test('exhausted seller application quota rejects before consuming the multipart body', async () => {
   const { sqlite } = await fixture();
   try {
-    const { POST } = await import('../app/api/seller-applications/route');
+
+    await signInApplicant(sqlite);    const { POST } = await import('../app/api/seller-applications/route');
     const form = managedApplication();
     form.set('email', 'admin@example.test');
     form.set('requestId', 'application-over-quota');
@@ -537,7 +552,8 @@ void test('exhausted seller application quota rejects before consuming the multi
 void test('invalid and existing-email seller application attempts consume the public quota', async () => {
   const { sqlite } = await fixture();
   try {
-    const { POST } = await import('../app/api/seller-applications/route');
+
+    await signInApplicant(sqlite);    const { POST } = await import('../app/api/seller-applications/route');
     const send = (form: FormData) => {
       const request = new Request('http://localhost:3000/api/seller-applications', {
         method: 'POST', headers: { origin: 'http://localhost:3000' }, body: form,
@@ -854,7 +870,7 @@ void test('preapproval maker draft history is linked locally and shows archived 
       .run(JSON.stringify({ formId: 'seller.product-submission', fields: [{ ...field, status: 'archived' }] }));
     const application = await import('../app/sell/application/page');
     const applicationHtml = renderToStaticMarkup(await application.default({ searchParams: Promise.resolve({}) }));
-    assert.match(applicationHtml, /private draft · Answer history/);
+    assert.match(applicationHtml, /Answer history/);
     const history = await import('../app/sell/application/products/[id]/answers/page');
     const html = renderToStaticMarkup(await history.default({ params: Promise.resolve({ id: 'maker-draft-history' }),
       searchParams: Promise.resolve({}) }));
@@ -880,20 +896,13 @@ void test('applicant can reach older owned draft histories after 50 tied drafts 
     }
     insert.run('foreign-draft', 'other-seller', 'foreign-draft', 'foreign-draft', 'foreign-draft', 300);
     const page = await import('../app/sell/application/page');
-    const findLink = (node: unknown, label: string): string | null => {
-      if (Array.isArray(node)) return node.map((child) => findLink(child, label)).find((href) => href !== null) ?? null;
-      if (!isValidElement(node)) return null;
-      const props = node.props as { children?: unknown; href?: unknown };
-      if (props.children === label && typeof props.href === 'string') return props.href;
-      return findLink(props.children, label);
-    };
     const first = await page.default({ searchParams: Promise.resolve({ appAt: '100', appId: 'application-cursor',
       makerAt: '101', makerId: 'maker-cursor' }) });
     const firstHtml = renderToStaticMarkup(first);
-    assert.equal((firstHtml.match(/private draft · Answer history/g) ?? []).length, 50);
+    assert.equal((firstHtml.match(/Answer history/g) ?? []).length, 50);
     assert.match(firstHtml, /owned-draft-51/);
     assert.doesNotMatch(firstHtml, /owned-draft-01|foreign-draft/);
-    const href = findLink(first, 'Older drafts');
+    const href = firstHtml.match(/href="([^"]+)"[^>]*>Older products<\/a>/)?.[1].replaceAll('&amp;','&');
     assert.ok(href, 'older private drafts must remain navigable');
     const older = new URL(href, 'http://localhost:3000');
     assert.equal(older.searchParams.get('appId'), 'application-cursor');
@@ -903,7 +912,7 @@ void test('applicant can reach older owned draft histories after 50 tied drafts 
     assert.match(secondHtml, /owned-draft-01/);
     assert.match(secondHtml, /owned-draft-00/);
     assert.doesNotMatch(secondHtml, /owned-draft-51|foreign-draft/);
-    assert.equal(findLink(second, 'Older drafts'), null);
+    assert.doesNotMatch(secondHtml, />Older products<\/a>/);
     globalThis.sellerCatalogActor = { sellerId: 'other-seller', userId: 'other-user' };
     const foreignHtml = renderToStaticMarkup(await page.default({ searchParams: Promise.resolve({}) }));
     assert.match(foreignHtml, /foreign-draft/);
@@ -1008,10 +1017,11 @@ void test('application audit-key race replays the winner but rejects changed act
   } finally { sqlite.close(); }
 });
 
-void test('anonymous application batch race responds with the winning reference, while changed email conflicts', async () => {
+void test('signed-in application batch race responds with the winning reference, while changed email conflicts', async () => {
   const { sqlite, db, database } = await fixture();
   try {
-    seed(sqlite, 'seller.application');
+
+    await signInApplicant(sqlite);    seed(sqlite, 'seller.application');
     const requestForm = managedApplication();
     requestForm.set('requestId', 'application-route-race');
     requestForm.set('formVersion', '1');
@@ -1022,7 +1032,7 @@ void test('anonymous application batch race responds with the winning reference,
     const parsed = parseSellerApplication(requestForm);
     assert.ok(parsed.input, parsed.errors.join('; '));
     const input = parsed.input;
-    db.beforeBatch = () => createSellerApplication(database, { userId: 'winning-user', sellerId: 'winning-seller',
+    db.beforeBatch = () => createSellerApplication(database, { userId: 'applicant-user', existingAccount: true, sellerId: 'winning-seller',
       applicationReference: 'HB-WINNING', input, documents: [managedIdentityDocument('winning-seller')], now: 1_800_000_000_400,
       form: { ...formLink('seller.application', 'application-route-race'), digest } });
     const { POST } = await import('../app/api/seller-applications/route');
@@ -1045,7 +1055,7 @@ void test('anonymous application batch race responds with the winning reference,
 });
 
 for (const signedIn of [false, true]) {
-  void test(`${signedIn ? 'signed-in' : 'anonymous'} application pre-batch replay returns the persisted winner after losing R2 upload`, async () => {
+  void test(signedIn ? 'signed-in application pre-batch replay returns the persisted winner after losing R2 upload' : 'anonymous application is rejected before private upload or account creation', async () => {
     const { sqlite, database } = await fixture();
     try {
       seed(sqlite, 'seller.application');
@@ -1061,9 +1071,7 @@ for (const signedIn of [false, true]) {
       const digest = await digestMultipartRequest(form);
       const winnerUserId = signedIn ? 'signed-in-user' : 'winning-user';
       if (signedIn) {
-        sqlite.prepare(`INSERT INTO users(id,email,display_name,status,created_at,updated_at)
-          VALUES (?, ?, 'Fictional Maker', 'active', 1, 1)`).run(winnerUserId, parsed.input.email);
-        globalThis.sellerCatalogCustomer = { userId: winnerUserId, email: parsed.input.email };
+        await signInApplicant(sqlite,winnerUserId,parsed.input.email);
       }
       globalThis.sellerCatalogMedia.put = async function (key) {
         this.stored.push(key);
@@ -1078,6 +1086,12 @@ for (const signedIn of [false, true]) {
         method: 'POST', headers: { origin: 'http://localhost:3000' }, body,
       }));
       const response = await send(form);
+      if (!signedIn) {
+        assert.equal(response.status,401);
+        assert.equal(globalThis.sellerCatalogMedia.stored.length,0);
+        assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM seller_profiles').get() as {count:number}).count,0);
+        return;
+      }
       assert.equal(response.status, 201);
       assert.equal((await response.json() as { applicationReference: string }).applicationReference, 'HB-WINNING-PREBATCH');
       assert.equal(globalThis.sellerCatalogMedia.stored.length, 2);
@@ -1258,5 +1272,29 @@ void test('post-commit correction verification failure preserves durable governm
     assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM managed_maker_application_details').get()?.n,2);
     assert.deepEqual(globalThis.sellerCatalogMedia.deleted,[],'a later read failure must never delete the committed private upload');
     assert.equal(response.status,200);assert.equal((await response.json() as {ok?:boolean}).ok,true);
+  }finally{sqlite.close();}
+});
+
+void test('actual registered application controller accepts displayed context and records its commission snapshot',async()=>{
+  const {sqlite,database}=await fixture();try{
+    await signInApplicant(sqlite);seed(sqlite,'seller.application',[]);
+    const terms=await getRegisteredSellerTerms(database);
+    const form=new FormData();for(const [key,value] of Object.entries({
+      hasBusinessTaxRegistration:'yes',applicantType:'individual',taxStatus:'business_pan_only',
+      taxRegistrationNumber:'123456789',legalName:'Fictional Applicant',tradingName:'Fictional Registered Studio',
+      email:'maker@example.test',phone:'9800000000',province:'Madhesh',district:'Parsa',municipality:'Birgunj',
+      locality:'Private workshop',businessDescription:'Fictional registered craft goods',productCategories:'Clay',
+      acceptedTerms:'yes',sellerAgreementContext:terms.context,formVersion:'1',requestId:'registered-controller',
+    }))form.set(key,value);
+    const parsed=parseSellerApplication(form);assert.ok(parsed.input,parsed.errors.join('; '));
+    const {sellerDocumentsForApplication}=await import('../lib/sellers/application');
+    for(const doc of sellerDocumentsForApplication(parsed.input).filter(doc=>doc.required)){
+      form.set(doc.field,new File(['%PDF-1.4\nFictional document'],doc.kind+'.pdf',{type:'application/pdf'}));
+    }
+    const {POST}=await import('../app/api/seller-applications/route');
+    const response=await POST(new Request('http://localhost:3000/api/seller-applications',{method:'POST',headers:{origin:'http://localhost:3000'},body:form}));
+    assert.equal(response.status,201,await response.text());
+    const row=sqlite.prepare("SELECT commission_bps,accepted_by FROM seller_agreement_acceptance_history WHERE acceptance_request_id='registered-controller'").get();
+    assert.equal(row?.commission_bps,terms.basisPoints);assert.equal(row?.accepted_by,'applicant-user');
   }finally{sqlite.close();}
 });

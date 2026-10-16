@@ -1,4 +1,6 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
+import type { RegisteredSellerTerms } from '@/lib/db/repositories/marketplace-settings';
 
 import { useEffect, useRef, useState } from 'react';
 import { CompanySellingIdentity, ManagedMakerIdentityFields, ManagedMakerAgreementFields } from './managed-maker-identity-fields';
@@ -30,7 +32,7 @@ import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sess
 const catalogBaseKeys = ['tradingName', 'businessDescription', 'legalName', 'representativeName',
   'email', 'phone', 'applicantType', 'taxMode', 'taxRegistrationNumber', 'registrationNumber',
   'registrationAuthority', 'document', 'profileImage', 'makerVideo', 'applicationAcknowledgement',
-  'participationRoute', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'personalPanCertificate', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'website', 'requestId', 'formVersion', 'customAnswers'];
+  'sellerAgreementContext', 'participationRoute', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'personalPanCertificate', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'website', 'requestId', 'formVersion', 'customAnswers'];
 const applicationAttemptKey = sessionAttemptKey('seller.application', 'new');
 const uncertainMessage = 'Application status is uncertain: your application may have been accepted. Retry with the same details to recover its reference, or contact support before starting a new attempt.';
 
@@ -82,9 +84,11 @@ function setFormValue(
 export function SellerApplicationForm({
   accountEmail,
   managedTerms,
+  registeredTerms,
 }: {
   accountEmail?: string;
   managedTerms?: ManagedMakerApplicationTerms;
+  registeredTerms?: Pick<RegisteredSellerTerms, 'percent' | 'context'>;
 }) {
   const [applicantType, setApplicantType] = useState<'individual' | 'company'>(
     'company',
@@ -185,7 +189,7 @@ export function SellerApplicationForm({
     event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>,
   ) {
     event.preventDefault();
-    if (!catalog.canSubmit || !catalog.config) return;
+    if (!catalog.canSubmit || !catalog.config || (registrationAnswer === 'yes' ? !registeredTerms : !managedTerms)) return;
     setState({ status: 'submitting' });
 
     const form = event.currentTarget;
@@ -249,6 +253,8 @@ export function SellerApplicationForm({
       onSubmit={submitApplication}
       className="space-y-10 rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-10"
     >
+      <FormGuide formId="seller.application" />
+
       <p className="text-xs text-muted-foreground">* Required field</p>
 
       <div className="sr-only" aria-hidden="true">
@@ -258,9 +264,9 @@ export function SellerApplicationForm({
 
       {registrationAnswer === 'no' && managedTerms ? <CompanySellingIdentity terms={managedTerms}/> : null}
       <FieldSet>
-        <FieldLegend>Choose your participation route</FieldLegend>
+        <FieldLegend>Choose how you want to sell</FieldLegend>
         <FieldDescription>
-          Both routes retain your public maker identity. Selling remains disabled until the applicable program, maker, and product approvals are complete.
+          You will have a public maker profile with either option. Your account and products must be approved before you can start selling.
         </FieldDescription>
         <FieldGroup className="grid gap-5 md:grid-cols-2">
           <Field>
@@ -287,7 +293,7 @@ export function SellerApplicationForm({
           {registrationAnswer === 'yes' ? (
             <Field>
               <FieldLabel htmlFor="applicantType">
-                Registered business form <span aria-hidden="true">*</span>
+                How your business is registered <span aria-hidden="true">*</span>
               </FieldLabel>
               <NativeSelect
                 id="applicantType"
@@ -324,8 +330,7 @@ export function SellerApplicationForm({
           {registrationAnswer === 'yes' && (
             <>
               <Field>
-                <FieldLabel htmlFor="registrationAuthority">
-                  Registration authority
+                <FieldLabel htmlFor="registrationAuthority">Office that registered your business
                   <span aria-hidden="true">*</span>
                 </FieldLabel>
                 <Input
@@ -353,7 +358,7 @@ export function SellerApplicationForm({
           {registrationAnswer === 'yes' && <>
             <Field>
               <FieldLabel htmlFor="taxStatus">
-                Tax-registration status <span aria-hidden="true">*</span>
+                Your business tax registration <span aria-hidden="true">*</span>
               </FieldLabel>
               <NativeSelect
                 id="taxStatus"
@@ -368,7 +373,7 @@ export function SellerApplicationForm({
             </Field>
             <Field>
               <FieldLabel htmlFor="taxRegistrationNumber">
-                Business PAN/VAT identifier <span aria-hidden="true">*</span>
+                Business PAN or VAT number <span aria-hidden="true">*</span>
               </FieldLabel>
               <Input id="taxRegistrationNumber" name="taxRegistrationNumber" required inputMode="numeric" pattern="[0-9]{9}" minLength={9} maxLength={9} />
               <FieldDescription>PAN and VAT may use the same nine-digit identifier; do not enter a personal PAN as proof of business registration.</FieldDescription>
@@ -378,13 +383,13 @@ export function SellerApplicationForm({
       </FieldSet>
 
       <FieldSet>
-        <FieldLegend>Representative and contact</FieldLegend>
+        <FieldLegend>Contact person and address</FieldLegend>
         <FieldGroup className="grid gap-5 md:grid-cols-2">
           {registrationAnswer === 'yes' && applicantType === 'company' && (
             <>
               <Field>
                 <FieldLabel htmlFor="representativeName">
-                  Authorised representative
+                  Person applying for the business
                   <span aria-hidden="true">*</span>
                 </FieldLabel>
                 <Input
@@ -394,6 +399,7 @@ export function SellerApplicationForm({
                   maxLength={160}
                   autoComplete="name"
                 />
+                <FieldDescription>This person must have permission to apply on behalf of the business.</FieldDescription>
               </Field>
             </>
           )}
@@ -479,7 +485,7 @@ export function SellerApplicationForm({
           </Field>
           <Field>
             <FieldLabel htmlFor="publicCity">
-              Public city or town <span aria-hidden="true">*</span>
+              City customers will see <span aria-hidden="true">*</span>
             </FieldLabel>
             <Input id="publicCity" name="publicCity" required maxLength={120} placeholder="For example, Birgunj" />
             <FieldDescription>Only this city/town is displayed publicly.</FieldDescription>
@@ -522,7 +528,7 @@ export function SellerApplicationForm({
       </FieldSet>
 
       <FieldSet>
-        <FieldLegend>Shared maker profile</FieldLegend>
+        <FieldLegend>Your public maker profile</FieldLegend>
         <FieldDescription>
           These optional details are used by both Registered Sellers and Managed Makers. Empty optional sections are hidden publicly.
         </FieldDescription>
@@ -543,11 +549,11 @@ export function SellerApplicationForm({
             </NativeSelect>
           </Field>
           <Field>
-            <FieldLabel htmlFor="profileImage">Logo or maker photograph (optional)</FieldLabel>
+            <FieldLabel htmlFor="profileImage">Shop logo or maker photo (optional)</FieldLabel>
             <Input id="profileImage" name="profileImage" type="file" accept="image/jpeg,image/png,image/webp" />
           </Field>
           <Field>
-            <FieldLabel htmlFor="makerVideo">Maker introduction or workshop-process video (optional)</FieldLabel>
+            <FieldLabel htmlFor="makerVideo">Video about you or your workshop (optional)</FieldLabel>
             <Input id="makerVideo" name="makerVideo" type="file" accept="video/mp4" />
             <FieldDescription>MP4 up to 20 MB and 60 seconds. This general maker video is distinct from an optional product-specific making video.</FieldDescription>
           </Field>
@@ -568,7 +574,7 @@ export function SellerApplicationForm({
       </FieldSet>
 
       <FieldSet>
-        <FieldLegend>Verification documents</FieldLegend>
+        <FieldLegend>Documents we need to check your details</FieldLegend>
         <FieldDescription>
           PDF, JPG, or PNG. Maximum 5 MB per file. Documents remain private and
           are available only to authorised reviewers.
@@ -595,11 +601,13 @@ export function SellerApplicationForm({
       {registrationAnswer === 'no' ? <ManagedMakerIdentityFields/> : null}
       {registrationAnswer === 'no' && managedTerms ? <ManagedMakerAgreementFields terms={managedTerms}/> : null}
       {registrationAnswer === 'no' && !managedTerms ? <p role="alert">Managed Maker agreement terms are unavailable. Reload before submitting.</p> : null}
+      {registrationAnswer === 'yes' && registeredTerms ? <input type="hidden" name="sellerAgreementContext" value={registeredTerms.context} /> : null}
+      {registrationAnswer === 'yes' && !registeredTerms ? <p role="alert">Seller commission terms are unavailable. Reload before submitting.</p> : null}
       {registrationAnswer === 'yes' ? (
         <Field orientation="horizontal">
           <Checkbox id="acceptedTerms" name="acceptedTerms" value="yes" required />
           <FieldLabel htmlFor="acceptedTerms" className="max-w-2xl font-normal">
-            I agree to the <a href="/seller-agreement" target="_blank" rel="noreferrer" className="font-semibold text-primary underline">Seller Marketplace Agreement</a>, including the independent-seller 9% commission on completed, paid product sales, and the <a href="/prohibited-products" target="_blank" rel="noreferrer" className="font-semibold text-primary underline">Prohibited & Restricted Products Policy</a>. <span aria-hidden="true">*</span>
+            I agree to the <a href="/seller-agreement" target="_blank" rel="noreferrer" className="font-semibold text-primary underline">Seller Marketplace Agreement</a>, including the independent-seller {registeredTerms?.percent}% commission on completed, paid product sales, and the <a href="/prohibited-products" target="_blank" rel="noreferrer" className="font-semibold text-primary underline">Prohibited & Restricted Products Policy</a>. <span aria-hidden="true">*</span>
           </FieldLabel>
         </Field>
       ) : (
@@ -650,7 +658,7 @@ export function SellerApplicationForm({
           type="submit"
           size="lg"
           className="h-11 px-6"
-          disabled={state.status === 'submitting' || !catalog.canSubmit || (registrationAnswer === 'no' && !managedTerms)}
+          disabled={state.status === 'submitting' || !catalog.canSubmit || (registrationAnswer === 'yes' ? !registeredTerms : !managedTerms)}
         >
           {state.status === 'submitting' ? (
             <>

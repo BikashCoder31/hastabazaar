@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import { useRef, useState, type SyntheticEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -72,6 +73,8 @@ export function FirstCodConfirmation({ orderId }: { orderId: string }) {
         onSubmit={submit}
         className="mt-4 space-y-3"
       >
+      <FormGuide formId="staff.first-cod-confirmation" />
+
         <Label htmlFor="cod-confirmation-reason">Confirmation reason</Label>
         <Textarea
           id="cod-confirmation-reason"

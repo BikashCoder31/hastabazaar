@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2, FilePenLine, Globe2, SearchCheck, XCircle } from 'lucide-react';
@@ -112,6 +113,8 @@ export function ProductReviewActions({ productId, status, canUnpublish = false, 
 
   return (
     <form ref={formRef} data-form-id={FORM_ID} className="space-y-4" onSubmit={(event) => event.preventDefault()}>
+      <FormGuide formId={FORM_ID} />
+
       {status !== 'submitted' ? (
         <div className="space-y-2"><label htmlFor="product-review-note" className="text-sm font-semibold">Review note</label><Textarea id="product-review-note" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} rows={5} placeholder={status === 'approved' ? 'Record why this approved product is ready for publication.' : 'Record the checks completed and reason for the decision.'} /><p className="text-xs text-muted-foreground">This note becomes part of the permanent audit history.</p></div>
       ) : null}

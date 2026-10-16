@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -84,6 +85,8 @@ export function SellerProfileForm({
       onSubmit={submit}
       className="seller-form mt-7 grid gap-5 rounded-2xl border bg-card p-6 sm:grid-cols-2"
     >
+      <FormGuide formId="seller.profile" />
+
       <Field
         name="tradingName"
         label={fieldDisplay(catalog.config, 'tradingName')?.label ?? 'Public trading name'}

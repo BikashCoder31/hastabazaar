@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 import test from 'node:test';
+import { addProductEvidenceSchema } from './helpers/product-evidence-schema';
 
 import type { RecentlyViewedPolicy } from '../lib/configuration/types';
 import {
@@ -69,6 +70,7 @@ async function fixture() {
     INSERT INTO product_media VALUES ('m1','p1','image/jpeg',0),('m2','p2','image/jpeg',0),('m3','p3','image/jpeg',0);
   `);
   sqlite.exec((await readFile(new URL('../drizzle/0053_recently_viewed.sql', import.meta.url), 'utf8')).replaceAll('--> statement-breakpoint', ''));
+  addProductEvidenceSchema(sqlite);
   return { sqlite, database: new TestDatabase(sqlite) as unknown as D1Database };
 }
 

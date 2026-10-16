@@ -1,3 +1,5 @@
+import { requireSellerTermsApi, SellerTermsAuthorizationError } from '@/lib/auth/seller-commercial-access';
+import { getRegisteredSellerTerms, SellerCommissionTermsChangedError } from '@/lib/db/repositories/marketplace-settings';
 import { ManagedMakerTermsChangedError } from '@/lib/db/repositories/managed-maker-details';
 import { readBoundedForm, BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
@@ -39,6 +41,12 @@ function json(body: unknown, status: number): Response {
 export async function POST(request: Request): Promise<Response> {
   if (!isTrustedMutationRequest(request))
     return json({ error: 'Cross-site requests are not allowed.' }, 403);
+  let commercialActorId: string;
+  try { commercialActorId=(await requireSellerTermsApi()).userId; }
+  catch (error) {
+    if (error instanceof SellerTermsAuthorizationError) return json({error:error.message},error.status);
+    return json({error:'Seller registration access could not be verified.'},503);
+  }
   const bindings = env as unknown as { DB?: D1Database; MEDIA?: R2Bucket };
   const database = requireDatabase(bindings);
   const rateLimit = await consumeRequestRateLimit(database, request, {
@@ -75,6 +83,8 @@ export async function POST(request: Request): Promise<Response> {
     if (error instanceof CustomerAuthorizationError) return json({ error: error.message }, error.status);
     throw error;
   }
+  if (!customer) return json({error:'Sign in before submitting a seller application.'},401);
+  if (customer.userId!==commercialActorId) return json({error:'Seller registration account changed. Sign in again.'},403);
   if (customer && parsed.input.email.toLowerCase() !== customer.email.toLowerCase()) {
     return json({ error: 'Use your signed-in account email for this application. To apply with a different account, sign in to that account first.' }, 409);
   }
@@ -106,6 +116,14 @@ export async function POST(request: Request): Promise<Response> {
     return json({ error: 'The application replay state is unavailable.' }, 503);
   }
   if (existing) return json({ error: 'Sign in with this email before applying to sell, then return to this form.' }, 409);
+  let registeredAgreementContext: string | undefined;
+  if (parsed.input.participationRoute === 'registered_seller') {
+    const shown=formData.getAll('sellerAgreementContext');
+    if (shown.length!==1 || typeof shown[0]!=='string' || !/^[a-f0-9]{64}$/.test(shown[0])) return json({error:'Reload and review the current seller commission terms.'},400);
+    registeredAgreementContext=shown[0];
+    const current=await getRegisteredSellerTerms(database);
+    if (registeredAgreementContext!==current.context) return json({error:'Seller commission terms have changed. Reload and review the current terms.'},409);
+  }
   let form;
   try {
     const config = await resolvePublishedForm(database, 'seller.application');
@@ -216,6 +234,7 @@ export async function POST(request: Request): Promise<Response> {
     const committedSellerId = await createSellerApplication(database, {
       userId,
       existingAccount: Boolean(customer),
+      registeredAgreementContext,
       sellerId,
       applicationReference,
       input: parsed.input,
@@ -234,6 +253,8 @@ export async function POST(request: Request): Promise<Response> {
     }
   } catch (error) {
     if (bucket) await Promise.allSettled(uploadedKeys.map((key) => bucket.delete(key)));
+    if (error instanceof SellerCommissionTermsChangedError || registeredAgreementContext && (await getRegisteredSellerTerms(database)).context!==registeredAgreementContext)
+      return json({error:'Seller commission terms have changed. Reload and review the current terms.'},409);
     const message = error instanceof Error ? error.message : '';
     if (/UNIQUE constraint failed|Duplicate entry/i.test(message)) {
       return json(

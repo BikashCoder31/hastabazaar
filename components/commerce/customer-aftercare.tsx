@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { CircleAlert, FileImage, RotateCcw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useId, useState } from 'react';
@@ -291,6 +292,8 @@ export function CustomerAftercare({
           </AccordionTrigger>
           <AccordionContent className="h-auto pb-6">
             <form data-form-id="commerce.return-request" onSubmit={submitReturn} className="border-t pt-5">
+      <FormGuide formId="commerce.return-request" />
+
               <div className="flex items-center gap-2">
                 <RotateCcw className="size-5 text-primary" />
                 <h3 className="font-heading text-2xl">Request a return</h3>
@@ -426,6 +429,8 @@ export function CustomerAftercare({
           </AccordionTrigger>
           <AccordionContent className="h-auto pb-6">
             <form data-form-id="commerce.complaint" onSubmit={submitComplaint} className="border-t pt-5">
+      <FormGuide formId="commerce.complaint" />
+
               <div className="flex items-center gap-2">
                 <CircleAlert className="size-5 text-primary" />
                 <h3 className="font-heading text-2xl">Raise a complaint</h3>

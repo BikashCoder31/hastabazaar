@@ -1,3 +1,4 @@
+import { DEFAULT_PLATFORM_SHARE_BPS } from './commission-defaults';
 import { companyDetails } from '../content/company-details';
 import { defaultProductWatermarkPolicy, validateProductWatermarkPolicy } from '../products/watermark-policy';
 import {
@@ -404,7 +405,7 @@ const definitions = [
     key: 'independent_seller_commission_bps',
     label: 'Independent seller commission',
     description: 'Commission retained from an independent seller transaction.',
-    defaultValue: 900,
+    defaultValue: DEFAULT_PLATFORM_SHARE_BPS,
     sensitivity: 'financial',
     changeControl: 'controlled',
     effectiveMode: 'effective_dated',
@@ -419,7 +420,7 @@ const definitions = [
     label: 'Managed Maker sale-linked platform retention',
     description:
       'Platform-retained share; maker entitlement is the reconciled remainder.',
-    defaultValue: 900,
+    defaultValue: DEFAULT_PLATFORM_SHARE_BPS,
     sensitivity: 'financial',
     changeControl: 'controlled',
     effectiveMode: 'effective_dated',

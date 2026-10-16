@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import { useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { Boxes } from 'lucide-react';
@@ -79,6 +80,8 @@ export function InventoryEditor({
   }
   return (
     <form data-form-id="seller.inventory" onSubmit={save} className="min-w-0 space-y-2">
+      <FormGuide formId="seller.inventory" />
+
       <Label htmlFor={'stock-' + productId}>
         Available stock<span className="sr-only"> for {productName}</span>
       </Label>

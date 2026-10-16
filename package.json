@@ -6,7 +6,8 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vinext dev",
+    "dev": "node --import tsx scripts/start-local.mjs",
+    "local:check": "node --import tsx scripts/start-local.mjs --check",
     "build": "vinext build",
     "build:babal": "node scripts/build-babal.mjs",
     "package:babal:ci": "node scripts/package-babal-ci.mjs",
@@ -16,6 +17,7 @@
     "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
     "test:returns": "tsx --test tests/returns-complaints.test.ts",
     "staging:verify": "tsx scripts/staging/verify-environment.mjs",
+    "staging:forms:check": "tsx scripts/staging/form-preview-readiness.mjs",
     "staging:seed": "tsx scripts/staging/seed-fictional-fixtures.mjs",
     "staging:demo": "tsx scripts/staging/run-managed-maker-demo.mjs",
     "staging:reset": "tsx scripts/staging/reset-disposable-data.mjs",
@@ -25,6 +27,7 @@
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
+    "@remotemerge/nepali-date-converter": "1.2.5",
     "@shadcn/react": "0.3.0",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",

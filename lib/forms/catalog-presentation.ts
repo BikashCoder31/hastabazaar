@@ -1,4 +1,5 @@
 import type { FormDefinition } from './types';
+import { formGuide } from './plain-language';
 
 // This policy affects the administration catalog only. Registry and runtime
 // configuration readers retain every form and its previously published config.
@@ -9,6 +10,7 @@ const universalFormIds: ReadonlySet<string> = new Set([
   'rider.code-verify', 'staff.homepage-hero-manager', 'staff.homepage-occasion-manager',
   'staff.homepage-visibility', 'staff.business-settings-manager', 'staff.delivery-rate',
   'staff.promo-code', 'staff.loyalty-settings', 'staff.referral-settings',
+  'staff.commission-schedule', 'staff.commission-cancel',
 ]);
 
 export function isFormCatalogEditable(form: FormDefinition): boolean {
@@ -22,15 +24,19 @@ export const FORM_CATALOG_CATEGORIES = [
   'Supply & delivery', 'Payouts & finance', 'Governance & operations',
 ] as const;
 type CatalogCategory = typeof FORM_CATALOG_CATEGORIES[number];
-export interface FormCatalogPresentation { readonly label: string; readonly category: CatalogCategory }
+export interface FormCatalogPresentation { readonly label: string; readonly category: CatalogCategory; readonly description?: string }
 
 const businessForms: Readonly<Record<string, FormCatalogPresentation>> = {
   'seller.application': { label: 'Seller application', category: 'Applications & business profiles' },
   'seller.maker-profile': { label: 'Managed Maker application profile', category: 'Applications & business profiles' },
+  'seller.managed-terms-acceptance': { label: 'Company-store terms acceptance', category: 'Applications & business profiles' },
   'seller.profile': { label: 'Seller business profile', category: 'Applications & business profiles' },
   'rider.application': { label: 'Rider application', category: 'Applications & business profiles' },
   'staff.seller-review-action': { label: 'Seller application review', category: 'Applications & business profiles' },
   'staff.managed-maker-activation': { label: 'Managed Maker activation', category: 'Applications & business profiles' },
+  'staff.managed-eligibility-release': { label: 'Maker earning release', category: 'Payouts & finance' },
+  'staff.managed-payout-preparation': { label: 'Sale-linked maker payment preparation', category: 'Payouts & finance' },
+  'staff.managed-payout-action': { label: 'Sale-linked maker payment action', category: 'Payouts & finance' },
   'seller.product-submission': { label: 'Product submission', category: 'Products & inventory' },
   'seller.inventory': { label: 'Inventory update', category: 'Products & inventory' },
   'staff.catalog': { label: 'Product catalog management', category: 'Products & inventory' },
@@ -88,8 +94,34 @@ const businessForms: Readonly<Record<string, FormCatalogPresentation>> = {
 };
 
 export function formCatalogPresentation(form: FormDefinition): FormCatalogPresentation {
-  return businessForms[form.id] ?? {
-    label: form.id.replace(/\./g, ' ').replace(/-/g, ' ').replace(/^./, (letter) => letter.toUpperCase()),
-    category: 'Governance & operations',
-  };
+  const guide = formGuide(form.id);
+  return { label: guide.title, description: guide.purpose, category: businessForms[form.id]?.category ?? 'Governance & operations' };
+}
+
+export interface FormCatalogRow {
+  form: Pick<FormDefinition, 'id' | 'audience' | 'adapterId'>;
+  presentation: FormCatalogPresentation;
+  publishedVersion: number;
+  draftVersion: number;
+  lastChangedAt?: number;
+  lastEditor?: string;
+}
+export type CatalogStatusFilter = 'all' | 'published' | 'draft' | 'unpublished' | 'attention';
+export interface FormCatalogFilters { query?: string; audience?: string; category?: string; status?: CatalogStatusFilter }
+export function hasUnpublishedDraft(row: FormCatalogRow): boolean { return row.draftVersion > row.publishedVersion; }
+export function catalogNeedsAttention(row: FormCatalogRow): boolean {
+  return hasUnpublishedDraft(row) || row.publishedVersion === 0 || row.form.adapterId.startsWith('pending:');
+}
+export function filterFormCatalog(rows: readonly FormCatalogRow[], filters: FormCatalogFilters): FormCatalogRow[] {
+  const words = filters.query?.trim().toLowerCase().split(/\s+/).filter(Boolean) ?? [];
+  return rows.filter(row => {
+    if (filters.audience && filters.audience !== 'all' && row.form.audience !== filters.audience) return false;
+    if (filters.category && filters.category !== 'all' && row.presentation.category !== filters.category) return false;
+    if (filters.status === 'published' && !row.publishedVersion) return false;
+    if (filters.status === 'draft' && !hasUnpublishedDraft(row)) return false;
+    if (filters.status === 'unpublished' && row.publishedVersion > 0) return false;
+    if (filters.status === 'attention' && !catalogNeedsAttention(row)) return false;
+    const text = `${row.presentation.label} ${row.presentation.description ?? ''} ${row.form.id} ${row.form.audience} ${row.presentation.category}`.toLowerCase();
+    return words.every(word => text.includes(word));
+  });
 }

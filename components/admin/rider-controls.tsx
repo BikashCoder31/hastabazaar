@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 import { useEffect, useState, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
@@ -57,6 +58,8 @@ export function RiderAdminAction({
   }
   return (
     <form data-form-id="staff.rider-control-1" className="my-3 space-y-2" onSubmit={(e) => void submit(e)}>
+      <FormGuide formId="staff.rider-control-1" />
+
       <Link className="text-sm underline" href={`/admin/staff-form-history?kind=${fields.reportId?'rider-report-control':'rider-control'}${fields.reportId||fields.userId?`&id=${encodeURIComponent(String(fields.reportId??fields.userId))}`:''}`}>View rider form history</Link>
       {action === 'review' ? (
         <label className="block">
@@ -86,7 +89,7 @@ export function RiderAdminAction({
         </p>
       )}
       {catalog.config?<ConfiguredFields config={catalog.config} baseKeys={BASE_KEYS}/>:null}
-      {!catalog.canSubmit?<output className="block text-sm">{catalog.message||'Form configuration is loading.'}</output>:null}
+      {!catalog.canSubmit?<output aria-live="polite" className="block text-sm">{catalog.message||'Form configuration is loading.'}</output>:null}
       <button type="submit" disabled={busy||!catalog.canSubmit} className="rounded-lg border px-4 py-2">
         {label}
       </button>
@@ -136,6 +139,8 @@ export function RiderPolicyForm({ policy }: { policy: RiderPolicy }) {
       }}
     >
       <h2 className="font-semibold">Delivery evidence settings</h2>
+      <FormGuide formId="staff.rider-control-2" />
+
       <Link className="text-sm underline" href="/admin/staff-form-history?kind=rider-policy&id=current">View policy form history</Link>
       <p>
         One handover photo or video is required. Evidence is retained; no
@@ -163,7 +168,7 @@ export function RiderPolicyForm({ policy }: { policy: RiderPolicy }) {
         is sent by this setting.
       </p>
       {catalog.config?<ConfiguredFields config={catalog.config} baseKeys={POLICY_KEYS}/>:null}
-      {!catalog.canSubmit?<output className="block text-sm">{catalog.message||'Form configuration is loading.'}</output>:null}
+      {!catalog.canSubmit?<output aria-live="polite" className="block text-sm">{catalog.message||'Form configuration is loading.'}</output>:null}
       <button type="submit" disabled={busy||!catalog.canSubmit} className="rounded border p-2">Save settings</button>
       <output className="block" aria-live="polite">
         {message}

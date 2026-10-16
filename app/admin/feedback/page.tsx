@@ -61,7 +61,7 @@ export default async function AdminFeedbackPage({ searchParams }: {
     {entries.length ? entries.map(({ job, answer, feedback }) => <article key={job.id} className="rounded-2xl border bg-card p-5">
       <h2 className="font-semibold">{feedback.topic}</h2>
       <p className="text-sm font-semibold">{deliveryLabel(job)}</p>
-      <p className="break-all text-xs text-muted-foreground">Request ID: {job.requestId} · Attempts: {job.attemptCount}</p>
+      <p className="break-all text-xs text-muted-foreground">Reference: {job.id} · Request ID: {job.requestId} · Attempts: {job.attemptCount}</p>
       <p className="break-words text-xs text-muted-foreground">Source: {sourceLabel(job.formId)} ({job.formId}) · Page: {feedback.pagePath} · Created: {createdTime(job.createdAt) ?? 'Time unavailable'}</p>
       <p className="text-sm text-muted-foreground">{feedback.name} · {feedback.email}</p>
       <p className="mt-3 whitespace-pre-wrap text-sm">{feedback.message}</p>

@@ -33,6 +33,7 @@ export async function POST(request: Request) {
         ? 'admin.invite'
         : 'order.manage',
     );
+    if (staff.role !== 'super_admin') throw new StaffAuthorizationError('Super Admin access is required.', 403);
     const db = requireDatabase(env as unknown as { DB?: D1Database });
     const text = (key: string) =>
       typeof data[key] === 'string' ? (data[key] as string) : '';

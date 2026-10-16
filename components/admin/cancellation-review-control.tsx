@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatPaisaExact } from '@/lib/marketplace/money-display';
@@ -104,6 +105,8 @@ export function CancellationReviewControl({ reviewId }: { reviewId: string }) {
   }
   return (
     <form ref={formRef} data-form-id={FORM_ID} onSubmit={(event) => event.preventDefault()} className="space-y-3">
+      <FormGuide formId={FORM_ID} />
+
       <p>
         Responsible team: operations. Review production with the seller.
         Approval rechecks the readiness cutoff and current financial amounts.
@@ -165,7 +168,7 @@ export function CancellationReviewControl({ reviewId }: { reviewId: string }) {
       >
         Reject with reason
       </button>
-      <output>{message}</output>
+      <output aria-live="polite">{message}</output>
     </form>
   );
 }

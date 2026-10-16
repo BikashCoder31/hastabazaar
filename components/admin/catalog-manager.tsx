@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 import { CategoryImageEditor } from '@/components/admin/category-image-editor';
 import { useEffect, useId, useState } from 'react';
@@ -193,7 +194,7 @@ function TaxonomySection({
         retained with their existing product associations.
       </p>
       {message ? (
-        <output className="block mt-3 text-sm">
+        <output aria-live="polite" className="block mt-3 text-sm">
           {refreshing
             ? 'Catalogue entry saved. Refreshing entries...'
             : message}
@@ -252,6 +253,8 @@ function TaxonomySection({
           }}
           className="mt-5 rounded-xl border bg-muted/35 p-4"
         >
+      <FormGuide formId="staff.catalog" />
+
           <p className="text-xs text-muted-foreground">* Required field</p>
 
           <fieldset

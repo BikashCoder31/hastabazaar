@@ -118,6 +118,14 @@ void test('release generator covers the maintained non-reset SQL inventory', asy
       'form, privacy, contact, and COD readiness objects are discoverable',
       () => {
         const columns: Record<string, string[]> = {
+          loyalty_config: ['scheduled_revision', 'scheduled_for', 'scheduled_unpause'],
+          loyalty_revisions: ['weekly_points_json', 'grace_enabled'],
+          loyalty_daily_claims: ['cycle_day', 'cycle_number', 'grace_used', 'grace_applied', 'cycle_reset_reason'],
+          managed_maker_application_details: ['agreement_language', 'agreement_form_version_id'],
+          seller_participation_profiles: ['accepted_managed_detail_id'],
+          managed_commercial_snapshots: ['accepted_managed_detail_id', 'maker_name_snapshot', 'company_store_name_snapshot', 'company_legal_name_snapshot'],
+          seller_route_transition_applications: ['registered_terms_snapshot_json'],
+          managed_payout_allocations: ['payout_id', 'entitlement_id', 'amount_paisa', 'disposition', 'created_at', 'terminal_at', 'request_id', 'actor_id', 'reserved_entitlement_key'],
           form_config_versions: [
             'id',
             'form_id',
@@ -189,6 +197,10 @@ void test('release generator covers the maintained non-reset SQL inventory', asy
           }
         }
         for (const trigger of [
+          'loyalty_schedule_insert_guard', 'loyalty_schedule_update_guard', 'loyalty_schedule_claim_guard',
+          'managed_allocation_preserve_identity', 'managed_allocation_no_delete',
+          'managed_payout_preserve_identity', 'managed_payout_no_delete', 'managed_payout_preserve_terminal',
+          'managed_legacy_payout_link_no_update', 'managed_legacy_payout_link_no_delete',
           'trg_form_config_versions_published_update',
           'trg_form_config_versions_published_delete',
           'account_phone_change_revoke',

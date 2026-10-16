@@ -60,6 +60,13 @@ export default async function PayoutsPage() {
         </div>
         <AccrueEarningsButton />
       </div>
+      <Card><CardHeader><CardTitle>How a payout moves forward</CardTitle></CardHeader><CardContent>
+        <ol className="grid list-decimal gap-4 pl-5 text-sm leading-6 md:grid-cols-3">
+          <li><strong>Check eligibility.</strong> Earnings become payable only after the sale is paid, delivered and eligible under its recorded hold, reserve and adjustment rules.</li>
+          <li><strong>Review and prepare.</strong> Check the verified receiving account and available balance. {staff.role === 'super_admin' ? 'Your eligible payout is approved when saved.' : 'Super Admin reviews a prepared payout.'}</li>
+          <li><strong>Process, then record.</strong> An approval does not send money. Process the payment separately and record the actual payment reference or failure.</li>
+        </ol>
+      </CardContent></Card>
       <Card>
         <CardHeader>
           <CardTitle>Seller payout requests</CardTitle>

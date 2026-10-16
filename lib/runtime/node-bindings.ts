@@ -58,8 +58,26 @@ function databasePool(): Pool {
   return pool;
 }
 
+// Translate the new feature expressions as complete tokens. Consuming quoted
+// strings and comments prevents text inside them from becoming executable SQL.
+function translateFeatureExpressions(sql: string): string {
+  return sql.replace(
+    /('private\/seller-documents\/'\s*\|\|\s*((?:\w+\.)?seller_id)\s*\|\|\s*'\/')|(json_type\(audit\.next_json,'\$\.catalogDigest'\)='text')|(json_extract\(d\.agreement_snapshot_json,'(\$\.(?:version|settingVersionIds\.(?:account|retention)))'\))|'(?:''|\\.|[^'\\])*'|"(?:""|\\.|[^"\\])*"|`(?:``|[^`])*`|--[^\n]*|\/\*[\s\S]*?\*\/|\b((?:\w+\.)?(?:draft_revision|scheduled_revision|scheduled_for))\s+IS\s+(NOT\s+)?\?/gi,
+    (token, prefix: string | undefined, prefixColumn: string | undefined, digest: string | undefined, extract: string | undefined, path: string | undefined, column: string | undefined, negate: string | undefined) => {
+      if (prefix) return `CONCAT(BINARY 'private/seller-documents/', ${prefixColumn}, '/')`;
+      if (digest) return "JSON_TYPE(JSON_EXTRACT(audit.next_json,'$.catalogDigest'))='STRING'";
+      if (extract) {
+        const value = `JSON_EXTRACT(d.agreement_snapshot_json,'${path}')`;
+        return `CASE WHEN JSON_TYPE(${value})='NULL' THEN NULL ELSE JSON_UNQUOTE(${value}) END`;
+      }
+      if (column) return negate ? `NOT (${column} <=> ?)` : `${column} <=> ?`;
+      return token;
+    },
+  );
+}
+
 export function translateSqliteSql(sql: string): string {
-  return sql
+  return translateFeatureExpressions(sql)
     .replace(/\bchanges\(\)/gi, 'ROW_COUNT()')
     .replace(/\bunixepoch\(\s*'now'\s*\)/gi, 'UNIX_TIMESTAMP()')
     // Exact new claim/redemption empty-field predicates; retain the array type guard.
@@ -73,6 +91,7 @@ export function translateSqliteSql(sql: string): string {
     )
     .replace(/lower\(hex\(randomblob\(16\)\)\)/gi, "LOWER(REPLACE(UUID(), '-', ''))")
     .replace(/'reward:'\s*\|\|\s*r\.order_id/g, "CONCAT('reward:', r.order_id)")
+    .replace(/\bdetail\s*\|\|\s*\?/gi, 'CONCAT(detail, ?)')
     .replace(/\bINSERT\s+OR\s+IGNORE\b/gi, 'INSERT IGNORE')
     .replace(/\s+COLLATE\s+NOCASE\b/gi, '')
     .replace(
@@ -267,6 +286,13 @@ class MariaDbD1Database {
           await connection.execute('SELECT id FROM users WHERE id=? FOR UPDATE', mysqlBindings([statement.bindings[0]]));
           await connection.execute('SELECT role FROM user_roles WHERE user_id=? FOR UPDATE', mysqlBindings([statement.bindings[0]]));
         }
+      }
+      for (const statement of statements.filter(s => s.sql.startsWith('/* seller-commission-lock */'))) {
+        // Keep account, role and approval changes outside the acceptance transaction.
+        await connection.execute('SELECT id FROM users WHERE id=? FOR UPDATE', mysqlBindings([statement.bindings[0]]));
+        await connection.execute('SELECT role FROM user_roles WHERE user_id=? FOR UPDATE', mysqlBindings([statement.bindings[0]]));
+        await connection.execute('SELECT id FROM seller_profiles WHERE user_id=? AND id=? FOR UPDATE', mysqlBindings(statement.bindings));
+        await connection.execute("SELECT id FROM business_setting_versions WHERE setting_key='independent_seller_commission_bps' FOR UPDATE");
       }
       const responses: D1LikeResult<T>[] = [];
       for (const statement of statements) {

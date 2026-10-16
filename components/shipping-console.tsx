@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 
 import { useRouter } from 'next/navigation';
@@ -144,6 +145,8 @@ export function ShippingConsole({
           data-form-id="shipping.console-request"
           className="grid gap-3 rounded-2xl border bg-card p-5 md:grid-cols-4"
         >
+      <FormGuide formId="shipping.console-request" />
+
           <select
             name="orderId"
             required
@@ -217,6 +220,8 @@ export function ShippingConsole({
               data-form-id={admin ? 'shipping.console-action-staff' : 'shipping.console-action-seller'}
               className="mt-4 grid gap-2 md:grid-cols-3"
             >
+      <FormGuide formId={admin ? 'shipping.console-action-staff' : 'shipping.console-action-seller'} />
+
               {admin ? (
                 <>
                   <select

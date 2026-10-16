@@ -212,11 +212,14 @@ export async function getMarketplaceAnalytics(database: D1Database) {
 export async function listShippingJobs(
   database: D1Database,
   sellerId?: string,
+  includeRiderDetails = false,
 ): Promise<readonly ShippingJobRow[]> {
   const filter = sellerId ? 'WHERE shipping_jobs.seller_id = ?' : '';
+  const visibleReference = (column: string) => includeRiderDetails ? column :
+    "CASE WHEN EXISTS(SELECT 1 FROM shipping_parcels private_parcel WHERE private_parcel.shipping_job_id=shipping_jobs.id AND (private_parcel.method='own_rider' OR private_parcel.rider_user_id IS NOT NULL)) THEN NULL ELSE " + column + " END";
   const result = await database
     .prepare(
-      `SELECT shipping_jobs.id, orders.order_number AS orderNumber, shipping_jobs.seller_id AS sellerId, seller_profiles.trading_name AS sellerName, shipping_jobs.direction, shipping_jobs.status, shipping_jobs.label_reference AS labelReference, shipping_jobs.tracking_code AS trackingCode, shipping_jobs.pickup_window_start AS pickupWindowStart, shipping_jobs.pickup_window_end AS pickupWindowEnd, shipping_jobs.claim_reference AS claimReference, shipping_jobs.reconciliation_status AS reconciliationStatus, shipping_jobs.reconciliation_note AS reconciliationNote, shipping_jobs.updated_at AS updatedAt FROM shipping_jobs INNER JOIN orders ON orders.id = shipping_jobs.order_id INNER JOIN seller_profiles ON seller_profiles.id = shipping_jobs.seller_id ${filter} ORDER BY shipping_jobs.updated_at DESC LIMIT 200`,
+      `SELECT shipping_jobs.id, orders.order_number AS orderNumber, shipping_jobs.seller_id AS sellerId, seller_profiles.trading_name AS sellerName, shipping_jobs.direction, shipping_jobs.status, ${visibleReference('shipping_jobs.label_reference')} AS labelReference, ${visibleReference('shipping_jobs.tracking_code')} AS trackingCode, shipping_jobs.pickup_window_start AS pickupWindowStart, shipping_jobs.pickup_window_end AS pickupWindowEnd, ${visibleReference('shipping_jobs.claim_reference')} AS claimReference, shipping_jobs.reconciliation_status AS reconciliationStatus, ${visibleReference('shipping_jobs.reconciliation_note')} AS reconciliationNote, shipping_jobs.updated_at AS updatedAt FROM shipping_jobs INNER JOIN orders ON orders.id = shipping_jobs.order_id INNER JOIN seller_profiles ON seller_profiles.id = shipping_jobs.seller_id ${filter} ORDER BY shipping_jobs.updated_at DESC LIMIT 200`,
     )
     .bind(...(sellerId ? [sellerId] : []))
     .all<ShippingJobRow>();

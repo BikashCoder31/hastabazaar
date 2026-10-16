@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { CompanySellingIdentity, ManagedMakerIdentityFields, ManagedMakerAgreementFields } from './managed-maker-identity-fields';
 import type { ManagedMakerApplicationTerms } from '@/lib/db/repositories/managed-maker-details';
 import { useRouter } from 'next/navigation';
@@ -84,6 +85,8 @@ export function MakerApplicationProfileForm({ profile, managedTerms }: { profile
     }
   }
   return <form data-form-id="seller.maker-profile" onSubmit={(event) => void submit(event)} className="mt-5 grid gap-4 rounded-2xl border bg-card p-6 sm:grid-cols-2">
+      <FormGuide formId="seller.maker-profile" />
+
     <Field name="publicName" label={fieldDisplay(catalog.config, 'publicName')?.label ?? 'Public maker/shop name'}
       help={fieldDisplay(catalog.config, 'publicName')?.helpText} placeholder={fieldDisplay(catalog.config, 'publicName')?.placeholder}
       defaultValue={profile.publicName} required />

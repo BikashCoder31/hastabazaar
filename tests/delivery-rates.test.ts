@@ -980,7 +980,7 @@ void test('configured open-box assignment snapshots rider exposure, remittance d
       .run();
     await prepareSellerParcels(db, {
       orderId: 'order-1',
-      actorId: 'admin-1',
+      actorId: 'super-1',
       requestId: 'open-box-setup',
       now,
     });
@@ -994,7 +994,7 @@ void test('configured open-box assignment snapshots rider exposure, remittance d
       () =>
         operateParcel(db, {
           jobId: parcel.id,
-          actorId: 'admin-1',
+          actorId: 'super-1',
           requestId: 'untrained-open-box-assign',
           version: parcel.version,
           action: 'assign',
@@ -1013,7 +1013,7 @@ void test('configured open-box assignment snapshots rider exposure, remittance d
       .run();
     await operateParcel(db, {
       jobId: parcel.id,
-      actorId: 'admin-1',
+      actorId: 'super-1',
       requestId: 'open-box-assign',
       version: parcel.version,
       action: 'assign',
@@ -1071,7 +1071,7 @@ void test('configured open-box assignment snapshots rider exposure, remittance d
       () =>
         operateParcel(db, {
           jobId: parcel.id,
-          actorId: 'admin-1',
+          actorId: 'super-1',
           requestId: 'blocked-overdue-reassign',
           version: assigned!.version,
           action: 'assign',
@@ -1091,7 +1091,7 @@ void test('configured open-box assignment snapshots rider exposure, remittance d
       .run();
     await operateParcel(db, {
       jobId: parcel.id,
-      actorId: 'admin-1',
+      actorId: 'super-1',
       requestId: 'open-box-dispatch',
       version: assigned!.version,
       action: 'dispatch',
@@ -1134,7 +1134,7 @@ void test('configured open-box assignment snapshots rider exposure, remittance d
     });
     await operateParcel(db, {
       jobId: parcel.id,
-      actorId: 'admin-1',
+      actorId: 'super-1',
       requestId: 'confirm-open-box-report',
       version: dispatched!.version,
       riderReportId: reportId,

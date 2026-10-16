@@ -43,7 +43,7 @@ async function plugin(overrides: Record<string, string | undefined> = {}) {
 }
 
 void test('portable decoder primitive needs no staging marker while the real activation guard refuses it', async () => {
-  const ordinary = await config({ HASTABAZAAR_LOCAL_RIDER_DECODER: undefined });
+  const ordinary = await config({ HASTABAZAAR_LOCAL_RIDER_DECODER: undefined, HASTABAZAAR_RUNTIME_ENV: 'development' });
   const ordinaryPlugins = await Promise.all((ordinary.plugins as unknown[] ?? []).flat(Infinity));
   assert.equal(ordinaryPlugins.some((item) => item && typeof item === 'object' &&
     'name' in item && item.name === 'hastabazaar-local-rider-media-decoder'), false);

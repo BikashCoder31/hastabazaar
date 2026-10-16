@@ -6,6 +6,7 @@ import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlit
 
 import { operatePayout, prepareSellerPayout } from '../lib/db/repositories/payouts';
 import { prepareManagedPayout, transitionManagedPayout } from '../lib/db/repositories/managed-settlements';
+import { earnedMaker } from './helpers/company-store-financial-fixture';
 import { getFormAnswerById } from '../lib/db/repositories/form-answers';
 import { authorizeFormAnswerRead } from '../lib/forms/access';
 import { listStaffFormHistory, readStaffFormHistoryAnswer } from '../lib/forms/staff-history';
@@ -126,11 +127,17 @@ void test('approval schema upgrade preserves rows, dependent entries, indexes an
 });
 
 void test('managed payout approvals accept their active Super Admin preparer and deny ordinary or suspended actors', async () => {
-  const {sqlite,db}=fixture();
+  const f=await earnedMaker();
+  const {sqlite,db}=f;
   try {
+    for (const [id,role] of [['sa1','super_admin'],['sa2','super_admin'],['admin1','admin']]) {
+      sqlite.prepare("INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES(?,?,?,'active',1,1)").run(id, `${id}@local.hastabazaar.test`, id);
+      sqlite.prepare('INSERT INTO user_roles(user_id,role,assigned_at) VALUES(?,?,1)').run(id,role);
+    }
     sqlite.exec(`INSERT INTO managed_payouts(id,seller_id,payout_number,amount_paisa,status,destination_reference,simulation_label,prepared_by,scheduled_for,request_id,created_at,updated_at)
-      VALUES('managed-one','seller-one','SIM-MANAGED-ONE',5000,'prepared','SIM-ACCOUNT','SIMULATED','sa1',1,'managed-one',1,1)`);
-    const approval={payoutId:'managed-one',actorId:'sa1',action:'approve' as const,requestId:'managed-approved',now};
+      VALUES('managed-one','maker','SIM-MANAGED-ONE',91000,'prepared','SIM-REVIEWED-MAKER-RECEIVING','SIMULATED','sa1',1,'managed-one',1,1)`);
+    sqlite.prepare("INSERT INTO managed_payout_entries(payout_id,settlement_entry_id) SELECT 'managed-one',id FROM managed_settlement_entries WHERE entitlement_id=?").run(f.entitlementId);
+    const approval={payoutId:'managed-one',actorId:'sa1',action:'approve' as const,requestId:'managed-approved',now,environment:f.context.environment};
     await assert.rejects(transitionManagedPayout(db,{...approval,actorId:'admin1'}),/permission|Super Admin/i);
     await transitionManagedPayout(db,approval);
     assert.deepEqual({...sqlite.prepare("SELECT status,approved_by AS approvedBy FROM managed_payouts WHERE id='managed-one'").get() as object},{status:'approved',approvedBy:'sa1'});
@@ -433,18 +440,20 @@ void test('direct SuperAdmin seller preparation approves while Admin preparation
 
 void test('direct managed preparation uses current authority and keeps payment recording explicit', async () => {
   for (const actorRole of ['super_admin','admin'] as const) {
-    const {sqlite,db}=fixture();
+    const f=await earnedMaker();
+    const {sqlite,db}=f;
     try {
-      sqlite.exec("PRAGMA foreign_keys=OFF; INSERT INTO managed_entitlements(id,snapshot_id,seller_id,status,calculated_paisa,eligible_at,created_at,updated_at) VALUES('entitlement','snapshot','seller-one','eligible',5000,1,1,1); INSERT INTO managed_settlement_entries(id,entitlement_id,type,amount_paisa,reason_code,request_id,created_at) VALUES('entry','entitlement','earned',5000,'SIMULATED','earning',1); PRAGMA foreign_keys=ON;");
       const actorId=actorRole==='super_admin'?'sa1':'admin1';
-      const input={sellerId:'seller-one',actorId,destinationReference:'SIM-ACCOUNT',requestId:`managed-direct-${actorRole}`,now,scheduledFor:now+1000};
+      sqlite.prepare("INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES(?,?,?,'active',1,1)").run(actorId, `${actorId}@local.hastabazaar.test`, actorId);
+      sqlite.prepare('INSERT INTO user_roles(user_id,role,assigned_at) VALUES(?,?,1)').run(actorId,actorRole);
+      const input={...f.context,actorId,requestId:`managed-direct-${actorRole}`,now,scheduledFor:now+1000};
       const id=await prepareManagedPayout(db,input);
       assert.deepEqual({...sqlite.prepare('SELECT status,approved_by AS approver,paid_at AS paidAt,provider_reference AS reference FROM managed_payouts WHERE id=?').get(id) as object},
         {status:actorRole==='super_admin'?'approved':'prepared',approver:actorRole==='super_admin'?actorId:null,paidAt:null,reference:null});
       assert.equal(await prepareManagedPayout(db,input),id);
       sqlite.prepare('DELETE FROM user_roles WHERE user_id=?').run(actorId);
       await assert.rejects(prepareManagedPayout(db,input),/permission/i);
-      assert.equal((sqlite.prepare('SELECT COUNT(*) AS n FROM managed_payout_entries').get() as {n:number}).n,1);
+      assert.equal((sqlite.prepare('SELECT COUNT(*) AS n FROM managed_payout_allocations').get() as {n:number}).n,1);
     } finally {sqlite.close();}
   }
 });

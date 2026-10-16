@@ -290,7 +290,7 @@ void test('fake delivery retries with redacted failure, bounded attempts, and re
   }
 });
 
-void test('delivery authorization is prioritized and an expired code is suppressed with a reason', async () => {
+void test('held delivery authorization suppresses queued live and expired rider codes', async () => {
   const { sqlite, db } = fixture();
   try {
     sqlite.exec(
@@ -309,8 +309,9 @@ void test('delivery authorization is prioritized and an expired code is suppress
       'https://example.test',
       { now: 300, limit: 1 },
     );
-    assert.equal(prioritized.accepted, 1);
-    assert.deepEqual(sent, ['HastaBazaar · Live delivery code']);
+    assert.equal(prioritized.accepted, 0);
+    assert.equal(prioritized.cancelled, 1);
+    assert.deepEqual(sent, []);
     sqlite
       .prepare(
         "INSERT INTO notification_messages(id,recipient_user_id,audience_role,channel,template_key,subject_en,subject_ne,body_en,body_ne,related_type,related_id,status,request_id,created_at,business_event_key,guest_order_id) VALUES ('otp-expired','other','customer','email','delivery.authorization','Expired delivery code','Expired delivery code','Code','Code','order','order-otp','queued','delivery-otp:job-otp:250',201,'delivery.authorization','order-otp')",
@@ -995,7 +996,7 @@ void test('rider emails and notification reads suppress revoked approval and cha
     sqlite.close();
   }
 });
-void test('current rider owner receives authorized links, staff permission revocation suppresses pending action, profile decision remains visible to owner', async () => {
+void test('rider owner and ordinary Admin notifications stay private, including after a profile decision', async () => {
   const { sqlite, db } = riderNotificationFixture();
   try {
     riderMessage(sqlite, 'owner-report', 'owner', 'rider_report', 'report-1');
@@ -1022,7 +1023,8 @@ void test('current rider owner receives authorized links, staff permission revoc
       'https://example.test',
       { now: 2 },
     );
-    assert.deepEqual(r, { accepted: 2, failed: 0, cancelled: 1 });
+    assert.deepEqual(r, { accepted: 0, failed: 0, cancelled: 3 });
+    assert.equal(messages.length, 0);
     assert.ok(messages.every((m) => m.includes('https://example.test/rider')));
     sqlite.exec(
       "UPDATE notification_messages SET channel='in_app';UPDATE rider_profiles SET status='rejected'",
@@ -1030,9 +1032,9 @@ void test('current rider owner receives authorized links, staff permission revoc
     const visible = await listNotifications(db, 'owner', 100, 'customer');
     assert.deepEqual(
       visible.map((n) => n.id),
-      ['profile-owner'],
+      [],
     );
-    await markNotificationRead(db, 'owner', 'profile-owner', 3);
+    await assert.rejects(markNotificationRead(db, 'owner', 'profile-owner', 3), /Notification not found/);
   } finally {
     sqlite.close();
   }

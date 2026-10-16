@@ -23,6 +23,8 @@ const state: LoyaltyState = {
   revision: 2,
   draftRevision: 2,
   publishedRevision: 1,
+  publishedTerms:terms,
+  scheduledRevision:null,scheduledFor:null,scheduledTerms:null,scheduledUnpause:false,scheduleBlockedReason:null,
   paused: false,
   terms,
   rateLocked: true,
@@ -39,6 +41,61 @@ const state: LoyaltyState = {
     remainingPoints: 50,
   },
 };
+void test('required private form answers are checked before retaining or sending a new draft',async()=>{
+  const h=await mounted();
+  try {
+    await h.form().getByLabel('Private context').waitFor();await h.form().getByLabel('Reason').fill('A reviewed draft reason');
+    await h.send();assert.equal(h.requests.length,0);
+    assert.equal(await h.page.evaluate(()=>Object.keys(sessionStorage).filter(key=>key.includes('staff.loyalty-settings:staff-a:settings')).length),0);
+    await h.page.getByRole('alert').getByText(/required form answers/).waitFor();
+  }finally{await h.browser.close();}
+});
+void test('initial weekly setup names missing fields and keeps unsaved saved and scheduled rules separate',async()=>{
+  const h=await mounted();
+  const defaults={...terms,enabled:false,startsAt:null,endsAt:null,dailyBudgetPoints:null,lifetimeBudgetPoints:null};
+  const initial:LoyaltyState={...state,version:1,revision:0,publishedRevision:0,draftRevision:null,paused:true,terms:defaults,publishedTerms:defaults,rateLocked:false,lockedDenomination:null,
+    issuedPoints:0,redeemedPoints:0,outstandingPoints:0,issuedTodayPoints:0,creditedPaisa:0,liability:{wholeBlocks:0,creditPaisa:0,remainingPoints:0},maximumLiability:null};
+  const weekly={...terms,enabled:true,dailyPoints:5,weeklyPoints:[5,7,9,10,11,13,15],graceEnabled:false,startsAt:Date.parse('2026-10-20T03:15:00Z'),endsAt:Date.parse('2026-10-27T03:15:00Z'),dailyBudgetPoints:15,lifetimeBudgetPoints:150};
+  try {
+    await h.reload(initial);await h.form().getByLabel('Private context').waitFor();
+    assert.equal(await h.form().getByLabel('Earning schedule').inputValue(),'weekly');
+    for(let day=0;day<7;day++)assert.equal(await h.form().getByLabel(`Day ${day+1} points`,{exact:true}).inputValue(),String(weekly.weeklyPoints[day]));
+    assert.equal(await h.form().getByLabel('Grace period',{exact:true}).isChecked(),false);
+    for(const label of ['Earning start (Nepal time)','Earning end (Nepal time)','Daily points limit','Total points limit'])assert.equal(await h.form().getByLabel(label,{exact:true}).getAttribute('aria-invalid'),'true');
+    await h.fillPrivate();await h.send();assert.equal(h.requests.length,0);
+    await h.form().getByLabel('Earning start (Nepal time)',{exact:true}).fill('2026-10-20T09:00');await h.form().getByLabel('Earning end (Nepal time)',{exact:true}).fill('2026-10-27T09:00');
+    await h.form().getByLabel('Daily points limit',{exact:true}).fill('15');await h.form().getByLabel('Total points limit',{exact:true}).fill('150');await h.form().getByLabel('Enable daily earning when published',{exact:true}).check();
+    await h.page.getByText(/The earning details are ready for a draft/).waitFor();assert.equal(h.requests.length,0);
+    h.respond(200,{...initial,version:2,revision:1,draftRevision:1,terms:weekly,maximumLiability:{wholeBlocks:1,creditPaisa:1000,remainingPoints:50}});
+    await h.send();await h.page.getByRole('region',{name:'Saved loyalty draft'}).waitFor();assert.equal(h.requests.length,1);assert.deepEqual(h.requests[0].terms,weekly);
+    await h.page.getByText('Earning paused',{exact:true}).waitFor();
+    await h.form().getByLabel('Day 1 points',{exact:true}).fill('6');await h.page.getByText(/Unsaved changes: use Save draft/).waitFor();
+    await h.fillPrivate();h.respond(200,{...initial,version:3,scheduledRevision:1,scheduledFor:weekly.startsAt,scheduledTerms:weekly,scheduledUnpause:true});h.page.once('dialog',dialog=>dialog.accept());
+    await h.send('Publish draft');await h.page.getByRole('region',{name:'Scheduled loyalty change'}).waitFor();
+    assert.equal(h.requests.length,2);assert.equal(h.requests[1].terms,undefined);await h.page.getByText(/Day 1–7: 5, 7, 9, 10, 11, 13, 15 points/).waitFor();
+    assert.deepEqual(h.errors,[]);
+  }finally{await h.browser.close();}
+});
+void test('scheduled publication retains exact pending metadata through reload and rejects a substituted receipt',async()=>{
+  const h=await mounted();
+  const startsAt=Date.now()+86400000;
+  const future={...terms,dailyPoints:5,weeklyPoints:[5,7,9,10,11,13,15],graceEnabled:false,startsAt};
+  const queued:LoyaltyState={...state,version:4,revision:1,draftRevision:null,scheduledRevision:2,scheduledFor:startsAt,scheduledTerms:future,scheduledUnpause:true,terms,publishedTerms:terms};
+  try {
+    await h.reload({...state,terms:future});await h.form().getByLabel('Private context').waitFor();await h.fillPrivate();h.loseResponse();h.page.once('dialog',dialog=>dialog.accept());await h.send('Publish draft');await h.page.getByRole('alert').waitFor();
+    const original=h.requests[0];
+    await h.reload(queued);await h.form().getByLabel('Private context').waitFor();await h.fillPrivate();
+    h.respond(200,{...queued,scheduledFor:startsAt+60000});h.page.once('dialog',dialog=>dialog.accept());await h.send('Publish draft');await h.page.getByText(/result could not be verified/).waitFor();
+    assert.deepEqual(h.requests[1],original);
+    h.respond(200,queued);h.page.once('dialog',dialog=>dialog.accept());await h.send('Publish draft');await h.page.getByText(/New earning rules are scheduled/).waitFor();
+    assert.deepEqual(h.requests[2],original);
+    assert.equal(await h.form().getByRole('button',{name:'Publish draft',exact:true}).isEnabled(),false);
+    await h.page.getByRole('region',{name:'Scheduled loyalty change'}).waitFor();
+    await h.fillPrivate();h.respond(200,{...queued,version:5,scheduledUnpause:false,paused:true});h.page.once('dialog',dialog=>dialog.accept());await h.send('Pause earning');await h.page.getByText('Earning paused. Existing points remain redeemable.',{exact:true}).waitFor();
+    await h.fillPrivate();h.respond(200,{...queued,version:6,paused:true,scheduledRevision:null,scheduledFor:null,scheduledTerms:null,scheduledUnpause:false});h.page.once('dialog',dialog=>dialog.accept());await h.send('Cancel scheduled change');await h.page.getByText(/Scheduled change cancelled/).waitFor();
+    assert.equal(h.requests[4].action,'cancel_schedule');assert.deepEqual(h.errors,[]);
+  }finally{await h.browser.close();}
+});
 async function mounted(role = 'super_admin') {
   const { chromium } = await import(
     process.env.PLAYWRIGHT_MODULE ??
@@ -55,6 +112,25 @@ async function mounted(role = 'super_admin') {
     platform: 'browser',
     format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
+    plugins: [
+      {
+        name: 'loyalty-router-fixture',
+        setup(bundler) {
+          bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({
+            path: 'navigation',
+            namespace: 'loyalty-fixture',
+          }));
+          bundler.onLoad(
+            { filter: /^navigation$/, namespace: 'loyalty-fixture' },
+            () => ({
+              contents:
+                'export function useRouter(){return {refresh(){window.routerRefreshCount=(window.routerRefreshCount??0)+1}}}',
+              loader: 'js',
+            }),
+          );
+        },
+      },
+    ],
   });
   const browser = (await chromium.launch({
     headless: true,
@@ -156,6 +232,13 @@ async function mounted(role = 'super_admin') {
       { next, owner, hydrate },
     );
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    if (role === 'super_admin') {
+      await page
+        .getByText('Administrative details and recorded exposure', {
+          exact: true,
+        })
+        .click();
+    }
   }
   await reload();
   const form = () =>
@@ -219,6 +302,235 @@ async function finish(route: FixtureRoute, status: number, body: unknown) {
   });
 }
 
+void test('unsaved daily earning and forecast inputs update the estimate without submitting or changing the locked rate', async () => {
+  const h = await mounted();
+  try {
+    await h.form().getByLabel('Private context').waitFor();
+    const estimate = h.page.getByRole('region', {
+      name: 'Future earning cost',
+    });
+    await estimate.getByText('30,000', { exact: true }).waitFor();
+    await estimate.getByText(/3,000\.00/).waitFor();
+    await estimate.getByText('10 days per customer', { exact: true }).waitFor();
+    await h.form().getByLabel('Daily points', { exact: true }).fill('20');
+    await estimate.getByText('60,000', { exact: true }).waitFor();
+    await estimate.getByText(/6,000\.00/).waitFor();
+    await estimate.getByText('5 days per customer', { exact: true }).waitFor();
+    await estimate.getByLabel('Expected daily participants').fill('50');
+    await estimate.getByLabel('Forecast days').fill('5');
+    await estimate.getByText('5,000', { exact: true }).waitFor();
+    await estimate.getByText(/500\.00/).waitFor();
+    assert.equal(
+      await h.form().getByLabel('Credit per block (NPR)').inputValue(),
+      '10.00',
+    );
+    assert.equal(
+      await h
+        .form()
+        .getByLabel('Credit per block (NPR)')
+        .getAttribute('readonly'),
+      '',
+    );
+    assert.equal(h.requests.length, 0);
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.browser.close();
+  }
+});
+
+void test('weekly admin controls switch legacy earning into editable defaults with grace off and verify the saved schedule', async () => {
+  const h = await mounted();
+  const weekly = {
+    ...terms,
+    dailyPoints: 5,
+    weeklyPoints: [5, 7, 9, 10, 11, 13, 17],
+    graceEnabled: true,
+  };
+  try {
+    await h.form().getByLabel('Private context').waitFor();
+    assert.equal(
+      await h.form().getByLabel('Earning schedule').inputValue(),
+      'fixed',
+    );
+    await h.form().getByLabel('Earning schedule').selectOption('weekly');
+    const estimate = h.page.getByRole('region', {
+      name: 'Future earning cost',
+    });
+    await estimate.getByText('29,200', { exact: true }).waitFor();
+    assert.equal(await h.form().getByLabel('Day 1 points').inputValue(), '5');
+    assert.equal(await h.form().getByLabel('Day 7 points').inputValue(), '15');
+    assert.equal(
+      await h
+        .form()
+        .getByLabel('Grace period')
+        .evaluate((element) => (element as HTMLInputElement).checked),
+      false,
+    );
+    await h.form().getByLabel('Day 7 points').fill('17');
+    await estimate.getByText('30,000', { exact: true }).waitFor();
+    await h.form().getByLabel('Grace period').check();
+    assert.equal(h.requests.length, 0);
+    await h.fillPrivate();
+    h.respond(200, {
+      ...state,
+      version: 4,
+      revision: 3,
+      draftRevision: 3,
+      terms: weekly,
+    });
+    await h.send();
+    await h.page
+      .getByText('Draft saved. Review and publish separately.', { exact: true })
+      .waitFor();
+    assert.deepEqual(h.requests[0].terms, weekly);
+    assert.equal(await h.form().getByLabel('Day 7 points').inputValue(), '17');
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.browser.close();
+  }
+});
+
+void test('weekly retained retries restore the original schedule and grace and reject changed intent', async () => {
+  const h = await mounted();
+  const weekly = {
+    ...terms,
+    dailyPoints: 5,
+    weeklyPoints: [5, 7, 9, 10, 11, 13, 15],
+    graceEnabled: true,
+  };
+  const weeklyState = { ...state, terms: weekly };
+  try {
+    await h.reload(weeklyState);
+    await h.form().getByLabel('Private context').waitFor();
+    await h.fillPrivate();
+    h.loseResponse();
+    await h.send();
+    await h.page.getByRole('alert').waitFor();
+    const original = h.requests[0];
+    await h.reload({
+      ...weeklyState,
+      version: 8,
+      revision: 4,
+      draftRevision: 4,
+      terms: {
+        ...weekly,
+        weeklyPoints: [5, 8, 10, 12, 14, 16, 18],
+        graceEnabled: false,
+      },
+    });
+    await h.form().getByLabel('Private context').waitFor();
+    assert.equal(await h.form().getByLabel('Day 7 points').inputValue(), '15');
+    assert.equal(
+      await h
+        .form()
+        .getByLabel('Grace period')
+        .evaluate((element) => (element as HTMLInputElement).checked),
+      true,
+    );
+    assert.equal(await h.form().getByLabel('Reason').inputValue(), '');
+    await h.fillPrivate();
+    await h.form().getByLabel('Day 7 points').fill('16');
+    await h.send();
+    await h.page
+      .getByText(/This operation differs from the prior attempt/)
+      .waitFor();
+    assert.equal(h.requests.length, 1);
+    await h.form().getByLabel('Day 7 points').fill('15');
+    await h.form().getByLabel('Grace period').click();
+    await h.send();
+    await h.page
+      .getByText(/This operation differs from the prior attempt/)
+      .waitFor();
+    assert.equal(h.requests.length, 1);
+    await h.form().getByLabel('Grace period').check();
+    h.respond(200, {
+      ...weeklyState,
+      version: 4,
+      revision: 3,
+      draftRevision: 3,
+    });
+    await h.send();
+    await h.page
+      .getByText('Draft saved. Review and publish separately.', { exact: true })
+      .waitFor();
+    assert.deepEqual(h.requests[1], original);
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.browser.close();
+  }
+});
+
+void test('weekly verified success rejects substituted schedule or grace and retains the operation', async (t) => {
+  const weekly = {
+    ...terms,
+    dailyPoints: 5,
+    weeklyPoints: [5, 7, 9, 10, 11, 13, 15],
+    graceEnabled: false,
+  };
+  for (const [name, changed] of [
+    [
+      'substituted weekly award',
+      { ...weekly, weeklyPoints: [5, 7, 9, 10, 11, 13, 16] },
+    ],
+    ['substituted grace setting', { ...weekly, graceEnabled: true }],
+  ] as const)
+    await t.test(name, async () => {
+      const h = await mounted();
+      try {
+        await h.reload({ ...state, terms: weekly });
+        await h.form().getByLabel('Private context').waitFor();
+        await h.fillPrivate();
+        h.respond(200, { ...state, version: 4, paused: true, terms: changed });
+        h.page.once('dialog', (dialog) => dialog.accept());
+        await h.send('Pause earning');
+        await h.page.getByText(/result could not be verified/).waitFor();
+        assert.equal(h.requests.length, 1);
+        assert.ok(
+          await h.page.evaluate(() =>
+            Object.keys(sessionStorage).some((key) => key.endsWith(':intent')),
+          ),
+        );
+      } finally {
+        await h.browser.close();
+      }
+    });
+});
+
+void test('weekly corrupt retained disabled defaults cannot bypass schedule validation', async () => {
+  const h = await mounted();
+  try {
+    await h.form().getByLabel('Private context').waitFor();
+    await h.fillPrivate();
+    h.loseResponse();
+    await h.send();
+    await h.page.getByRole('alert').waitFor();
+    await h.page.evaluate(() => {
+      const key = Object.keys(sessionStorage).find((key) =>
+        key.endsWith(':intent'),
+      )!;
+      const retained = JSON.parse(sessionStorage.getItem(key)!);
+      retained.expectedTerms = {
+        ...retained.expectedTerms,
+        enabled: false,
+        startsAt: null,
+        endsAt: null,
+        dailyBudgetPoints: null,
+        lifetimeBudgetPoints: null,
+        weeklyPoints: [5, 7],
+        graceEnabled: false,
+      };
+      sessionStorage.setItem(key, JSON.stringify(retained));
+    });
+    await h.reload();
+    await h.page.getByText(/prior operation metadata is invalid/).waitFor();
+    await h.fillPrivate();
+    await h.send();
+    assert.equal(h.requests.length, 1);
+  } finally {
+    await h.browser.close();
+  }
+});
+
 void test('mounted admin lifecycle exposes private accounting, finite terms, locked denomination and configured keyboard submission', async () => {
   const h = await mounted();
   try {
@@ -245,12 +557,12 @@ void test('mounted admin lifecycle exposes private accounting, finite terms, loc
     assert.equal(
       await h
         .form()
-        .getByLabel('Credit per block (paisa)')
+        .getByLabel('Credit per block (NPR)')
         .getAttribute('readonly'),
       '',
     );
     await h.fillPrivate();
-    await h.form().getByLabel('Daily points').fill('11');
+    await h.form().getByLabel('Daily points', { exact: true }).fill('11');
     h.respond(200, {
       ...state,
       version: 4,
@@ -277,6 +589,15 @@ void test('mounted admin lifecycle exposes private accounting, finite terms, loc
     );
     assert.equal(h.requests[0].expectedVersion, 3);
     assert.equal(h.requests[0].action, 'draft');
+    assert.deepEqual(h.requests[0].terms, { ...terms, dailyPoints: 11 });
+    assert.equal(
+      await h.page.evaluate(
+        () =>
+          (window as unknown as { routerRefreshCount: number })
+            .routerRefreshCount,
+      ),
+      1,
+    );
     assert.deepEqual(h.requests[0].customAnswers, [
       { fieldId: 'context_note', value: 'Private evidence' },
     ]);
@@ -284,6 +605,14 @@ void test('mounted admin lifecycle exposes private accounting, finite terms, loc
     h.page.once('dialog', (dialog) => dialog.dismiss());
     await h.send('Publish draft');
     assert.equal(h.requests.length, 1);
+    assert.equal(
+      await h.page.evaluate(
+        () =>
+          (window as unknown as { routerRefreshCount: number })
+            .routerRefreshCount,
+      ),
+      1,
+    );
     h.page.once('dialog', (dialog) => dialog.accept());
     h.respond(200, {
       ...state,
@@ -292,6 +621,7 @@ void test('mounted admin lifecycle exposes private accounting, finite terms, loc
       publishedRevision: 3,
       draftRevision: null,
       terms: { ...terms, dailyPoints: 11 },
+      publishedTerms:{...terms,dailyPoints:11},
     });
     await h.send('Publish draft');
     await h.page
@@ -299,6 +629,14 @@ void test('mounted admin lifecycle exposes private accounting, finite terms, loc
       .waitFor();
     assert.equal(h.requests[1].action, 'publish');
     assert.equal(h.requests[1].terms, undefined);
+    assert.equal(
+      await h.page.evaluate(
+        () =>
+          (window as unknown as { routerRefreshCount: number })
+            .routerRefreshCount,
+      ),
+      2,
+    );
     await h.fillPrivate();
     h.page.once('dialog', (dialog) => dialog.accept());
     h.respond(200, {
@@ -309,6 +647,7 @@ void test('mounted admin lifecycle exposes private accounting, finite terms, loc
       draftRevision: null,
       paused: true,
       terms: { ...terms, dailyPoints: 11 },
+      publishedTerms:{...terms,dailyPoints:11},
     });
     await h.send('Pause earning');
     await h.page
@@ -317,6 +656,14 @@ void test('mounted admin lifecycle exposes private accounting, finite terms, loc
       })
       .waitFor();
     assert.equal(h.requests[2].action, 'pause');
+    assert.equal(
+      await h.page.evaluate(
+        () =>
+          (window as unknown as { routerRefreshCount: number })
+            .routerRefreshCount,
+      ),
+      3,
+    );
     assert.deepEqual(h.errors, []);
   } finally {
     await h.browser.close();
@@ -339,7 +686,7 @@ void test('mounted terms reject nonfinite budgets and reversed dates without sub
     await h.fillPrivate();
     await h
       .form()
-      .getByLabel('Lifetime budget (points)')
+      .getByLabel('Total points limit')
       .fill('100000000000000000000');
     await h.send();
     await h.page
@@ -353,8 +700,11 @@ void test('mounted terms reject nonfinite budgets and reversed dates without sub
         .evaluate((el) => document.activeElement === el),
       true,
     );
-    await h.form().getByLabel('Lifetime budget (points)').fill('1050');
-    await h.form().getByLabel('Earning end (UTC)').fill('1970-01-01T00:00');
+    await h.form().getByLabel('Total points limit').fill('1050');
+    await h
+      .form()
+      .getByLabel('Earning end (Nepal time)')
+      .fill('1970-01-01T05:45');
     await h.send();
     await h.page
       .getByRole('alert')
@@ -371,7 +721,7 @@ void test('uncertain draft retries restore exact owner-scoped terms and versions
   try {
     await h.form().getByLabel('Private context').waitFor();
     await h.fillPrivate();
-    await h.form().getByLabel('Daily points').fill('11');
+    await h.form().getByLabel('Daily points', { exact: true }).fill('11');
     h.loseResponse();
     await h.send();
     await h.page.getByRole('alert').waitFor();
@@ -392,7 +742,7 @@ void test('uncertain draft retries restore exact owner-scoped terms and versions
       paused: true,
     });
     await h.form().getByLabel('Private context').waitFor();
-    assert.equal(await h.form().getByLabel('Daily points').inputValue(), '11');
+    assert.equal(await h.form().getByLabel('Daily points', { exact: true }).inputValue(), '11');
     await h.fillPrivate();
     h.respond(409, { error: 'Updated form', code: 'stale_version' });
     await h.send();
@@ -729,7 +1079,7 @@ void test('retained settings hydrate with the server snapshot before restoring o
   try {
     await h.form().getByLabel('Private context').waitFor();
     await h.fillPrivate();
-    await h.form().getByLabel('Daily points').fill('11');
+    await h.form().getByLabel('Daily points', { exact: true }).fill('11');
     h.loseResponse();
     await h.send();
     await h.page.getByRole('alert').waitFor();
@@ -748,7 +1098,7 @@ void test('retained settings hydrate with the server snapshot before restoring o
     await h.page
       .getByText(/Retained draft attempt at administrative version 3/)
       .waitFor();
-    assert.equal(await h.form().getByLabel('Daily points').inputValue(), '11');
+    assert.equal(await h.form().getByLabel('Daily points', { exact: true }).inputValue(), '11');
     assert.deepEqual(
       await h.page.evaluate(
         () =>
@@ -870,13 +1220,22 @@ void test('disabled initial revision zero accepts a finite first draft while ear
       true,
     );
     await h.fillPrivate();
-    await h.form().getByLabel('Earning start (UTC)').fill('2026-09-28T00:00');
-    await h.form().getByLabel('Earning end (UTC)').fill('2026-09-29T00:00');
-    await h.form().getByLabel('Daily budget (points)').fill('100');
-    await h.form().getByLabel('Lifetime budget (points)').fill('1050');
+    await h
+      .form()
+      .getByLabel('Earning start (Nepal time)')
+      .fill('2026-09-28T05:45');
+    await h
+      .form()
+      .getByLabel('Earning end (Nepal time)')
+      .fill('2026-09-29T05:45');
+    await h.form().getByLabel('Daily points limit').fill('100');
+    await h.form().getByLabel('Total points limit').fill('1050');
     const finite = {
       ...terms,
       enabled: false,
+      dailyPoints: 5,
+      weeklyPoints: [5, 7, 9, 10, 11, 13, 15],
+      graceEnabled: false,
       startsAt: Date.parse('2026-09-28T00:00Z'),
       endsAt: Date.parse('2026-09-29T00:00Z'),
     };
@@ -931,8 +1290,8 @@ void test('true locked denomination stays distinct from an incompatible immutabl
       '100',
     );
     assert.equal(
-      await h.form().getByLabel('Credit per block (paisa)').inputValue(),
-      '1000',
+      await h.form().getByLabel('Credit per block (NPR)').inputValue(),
+      '10.00',
     );
     h.holdReads();
     await h.page
@@ -1007,8 +1366,8 @@ void test('uncertain pre-issuance draft preserves original denomination B throug
       '200',
     );
     assert.equal(
-      await h.form().getByLabel('Credit per block (paisa)').inputValue(),
-      '3000',
+      await h.form().getByLabel('Credit per block (NPR)').inputValue(),
+      '30.00',
     );
     await h.page
       .getByText(/Locked exchange denomination: 100 points/)
@@ -1028,8 +1387,8 @@ void test('uncertain pre-issuance draft preserves original denomination B throug
       '100',
     );
     assert.equal(
-      await h.form().getByLabel('Credit per block (paisa)').inputValue(),
-      '1000',
+      await h.form().getByLabel('Credit per block (NPR)').inputValue(),
+      '10.00',
     );
     assert.equal(
       await h.page.evaluate(
@@ -1083,7 +1442,7 @@ void test('finite incompatible draft exposure overflow remains readable and requ
       .getByText(/budget exposure|supported integer/i)
       .waitFor();
     assert.equal(h.requests.length, 0);
-    await h.form().getByLabel('Lifetime budget (points)').fill('1050');
+    await h.form().getByLabel('Total points limit').fill('1050');
     h.respond(200, { ...state, version: 9, revision: 3, draftRevision: 3 });
     await h.send();
     await h.page

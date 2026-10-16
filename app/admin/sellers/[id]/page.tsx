@@ -1,3 +1,4 @@
+import { AcceptedAgreementSnapshot } from '@/components/admin/accepted-agreement-snapshot';
 import { getManagedMakerDetailsForReview, getManagedMakerApplicationTerms, ManagedMakerAuthorityError } from '@/lib/db/repositories/managed-maker-details';
 import { CompanySellingIdentity } from '@/components/seller/managed-maker-identity-fields';
 import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
@@ -16,6 +17,7 @@ import {
 
 import { SellerReviewActions } from '@/components/admin/seller-review-actions';
 import { ManagedMakerActivationForm } from '@/components/admin/managed-maker-activation-form';
+import { getAcceptedManagedTerms } from '@/lib/managed-commerce/accepted-terms';
 import { ManagedProgramReview } from '@/components/admin/managed-program-review';
 import { SellerGovernanceActions } from '@/components/admin/seller-governance-actions';
 import { StatusBadge } from '@/components/admin/status-badge';
@@ -29,6 +31,10 @@ import { managedMakerDisplayName } from '@/lib/sellers/participation';
 import { getManagedProgramWorkspace } from '@/lib/managed-commerce/program-workspace';
 
 export const dynamic = 'force-dynamic';
+
+function readAcceptedManagedTerms(database: D1Database, sellerId: string) {
+  return getAcceptedManagedTerms(database, sellerId, Date.now());
+}
 
 const dateTimeFormatter = new Intl.DateTimeFormat('en-NP', {
   dateStyle: 'medium',
@@ -78,6 +84,8 @@ export default async function SellerApplicationPage({
     ? await Promise.all([getManagedMakerDetailsForReview(database,id,staff.id),getManagedMakerApplicationTerms(database)]) : [null,null];
   const governance = await getSellerGovernance(database, id);
   const managedProgram = await getManagedProgramWorkspace(database, id);
+  const acceptedManagedTerms = application.participationRoute === 'managed_maker'
+    ? await readAcceptedManagedTerms(database, id) : null;
 
   return (
     <div className="space-y-7">
@@ -103,7 +111,10 @@ export default async function SellerApplicationPage({
         <StatusBadge status={application.status} />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <nav aria-label="Seller review sections" className="flex flex-wrap gap-2">
+        {[['seller-readiness','Readiness'],['seller-identity','Identity & terms'],['seller-registration','Registration'],['seller-evidence','Documents'],['seller-decision','Application decision'],['seller-history','Review history']].filter(([target])=>target!=='seller-identity'||application.participationRoute==='managed_maker').map(([target,label])=><a key={target} href={'#'+target} className="inline-flex min-h-11 items-center rounded-full border bg-card px-4 text-sm font-semibold hover:bg-muted">{label}</a>)}
+      </nav>
+      <div id="seller-readiness" className="scroll-mt-28 grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader><CardTitle>Selected route</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
@@ -112,17 +123,17 @@ export default async function SellerApplicationPage({
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle>Activation readiness</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Recorded maker or seller status</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <p className="font-semibold">Applications Only</p>
-            <p className="text-muted-foreground">Profile and product drafts may continue. Selling stays restricted until program, maker, and product readiness are all satisfied.</p>
+            <p className="font-semibold">{application.participationRoute==='managed_maker' ? application.applicationStage==='active' ? 'Maker activated' : 'Maker review and activation required' : application.status==='approved' ? 'Registered Seller approved' : 'Seller review required'}</p>
+            <p className="text-muted-foreground">Selling also requires current program settings, accepted terms and separately published products. <Link href="/admin/programs" className="underline">Review current program readiness</Link>.</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle>Outstanding responsibility</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p className="font-semibold">{application.participationRoute === 'managed_maker' ? 'Hastabazaar / external adviser' : 'Reviewer'}</p>
-            <p className="text-muted-foreground">{application.participationRoute === 'managed_maker' ? 'Commercial model, reviewed agreement, legal seller, invoice issuer, supplier requirements, and payout beneficiary remain unassigned.' : 'Verify registration evidence, applicable agreement, payout details, and product review requirements.'}</p>
+            <p className="text-muted-foreground">{application.participationRoute === 'managed_maker' ? 'Review the recorded commercial model, accepted agreement, company seller, invoice issuer and receiving account below. Program and product readiness are checked separately.' : 'Verify registration evidence, applicable agreement, payout details, and product review requirements.'}</p>
           </CardContent>
         </Card>
       </div>
@@ -130,11 +141,11 @@ export default async function SellerApplicationPage({
       <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.4fr)_minmax(20rem,0.6fr)]">
         <div className="space-y-6">
           {managedTerms ? <CompanySellingIdentity terms={managedTerms}/> : null}
-          {application.participationRoute === 'managed_maker' ? <Card><CardHeader><CardTitle>Private Managed Maker agreement and identity</CardTitle></CardHeader><CardContent>
+          {application.participationRoute === 'managed_maker' ? <Card id="seller-identity" className="scroll-mt-28"><CardHeader><CardTitle>Private Managed Maker agreement and identity</CardTitle></CardHeader><CardContent>
             {managedDetails ? <dl className="grid gap-4 sm:grid-cols-2"><Detail label="Government ID">{managedDetails.governmentIdType.replaceAll('_',' ')} {managedDetails.governmentIdDescription}</Detail>
               <Detail label="Personal PAN (private)">{managedDetails.personalPan ?? 'Not supplied'}</Detail><Detail label="Accepted agreement">{managedDetails.agreementVersion}</Detail>
               <Detail label="Accepted at">{dateTimeFormatter.format(new Date(managedDetails.agreementAcceptedAt))}</Detail><Detail label="Accepted by">{managedDetails.agreementAcceptedBy}</Detail>
-              <Detail label="Historical accepted terms"><pre className="whitespace-pre-wrap break-words text-xs">{JSON.stringify(JSON.parse(managedDetails.agreementSnapshotJson),null,2)}</pre></Detail></dl>
+              <div className="sm:col-span-2"><Detail label="Historical accepted terms"><AcceptedAgreementSnapshot json={managedDetails.agreementSnapshotJson} /></Detail></div></dl>
               : <p>Current government ID and Managed Maker agreement acceptance have not been supplied. Request changes before approving activation.</p>}
           </CardContent></Card> : null}
           <ManagedProgramReview sellerId={application.id} workspace={managedProgram} />
@@ -254,7 +265,7 @@ export default async function SellerApplicationPage({
             </CardContent>
           </Card>
 
-          <Card>
+          <Card id="seller-registration" className="scroll-mt-28">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <ShieldCheck className="size-5 text-primary" /> Registration and
@@ -336,7 +347,7 @@ export default async function SellerApplicationPage({
             </CardContent>
           </Card>
 
-          <Card>
+          <Card id="seller-evidence" className="scroll-mt-28">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileCheck2 className="size-5 text-primary" /> Evidence
@@ -376,7 +387,7 @@ export default async function SellerApplicationPage({
         </div>
 
         <div className="space-y-6">
-          <Card>
+          <Card id="seller-decision" className="scroll-mt-28">
             <CardHeader>
               <CardTitle>Application decision</CardTitle>
             </CardHeader>
@@ -388,12 +399,12 @@ export default async function SellerApplicationPage({
                 applicationStage={application.applicationStage}
               />
               {application.participationRoute === 'managed_maker' && application.applicationStage === 'approved_for_activation' ? (
-                <div className="mt-5"><ManagedMakerActivationForm sellerId={application.id} companyAccount={managedTerms?.account}/></div>
+                <div className="mt-5"><ManagedMakerActivationForm sellerId={application.id} companyAccount={managedTerms?.account} acceptedTerms={acceptedManagedTerms ? { detailId: acceptedManagedTerms.detailId, retentionBps: acceptedManagedTerms.retentionBps, agreementVersion: acceptedManagedTerms.agreementVersion } : null}/></div>
               ) : null}
             </CardContent>
           </Card>
 
-          <Card>
+          <Card id="seller-history" className="scroll-mt-28">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <History className="size-5 text-primary" /> Moderation history

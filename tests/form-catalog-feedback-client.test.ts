@@ -71,8 +71,10 @@ for (const kind of ['contact', 'footer'] as const) {
           resolveFourth();
           return route.abort('failed');
         }
+        if (requests.length === 6)
+          return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'Fictional message rejected before registration.' }) });
         jobs++;
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, registered: true, reference: 'saved-second-message' }) });
       });
       await page.goto('https://feedback.test/');
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
@@ -136,6 +138,16 @@ for (const kind of ['contact', 'footer'] as const) {
       await page.waitForFunction(() => document.querySelector('form[data-form-id]')?.textContent?.includes('Thank you'));
       assert.notEqual(requests[4].requestId, requests[0].requestId);
       assert.equal(jobs, 2);
+      assert.match(await remounted.innerText(), /saved-second-message/);
+      await remounted.locator('[name="name"]').fill('Rejected Message');
+      await remounted.locator('[name="email"]').fill('asha@example.test');
+      await remounted.locator('[name="topic"]').selectOption('General question');
+      if (kind === 'contact') await remounted.locator('[name="subject"]').fill('A rejected question');
+      await remounted.locator('[name="message"]').fill('Fictional follow-up rejected before registration.');
+      await remounted.locator('[name="privacyAcknowledgement"]').check();
+      await remounted.locator('button[type="submit"]').click();
+      await remounted.getByText('Fictional message rejected before registration.').waitFor();
+      assert.doesNotMatch(await remounted.innerText(), /saved-second-message|Your message is registered/);
     } finally { await page.close(); await browser.close(); }
   });
 }

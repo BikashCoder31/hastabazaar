@@ -1,4 +1,5 @@
 'use client';
+import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 
 import { useRef, useState, useSyncExternalStore, type SyntheticEvent } from 'react';
@@ -99,6 +100,8 @@ export function InvoiceAdjustmentForm({
   return (
     <form data-form-id="staff.invoice-adjustment" onSubmit={(event) => void submit(event)}
       className="mt-4 space-y-3 rounded-xl border p-4">
+      <FormGuide formId="staff.invoice-adjustment" />
+
       <p className="text-sm font-semibold">Issue simulated correction document</p>
       <Link className="text-sm underline" href="/admin/staff-form-history?kind=invoice-adjustment">View correction form history</Link>
       <p className="text-xs leading-5 text-muted-foreground">
@@ -125,14 +128,14 @@ export function InvoiceAdjustmentForm({
         <textarea name="note" required minLength={12} maxLength={500} className="mt-1 block min-h-24 w-full rounded border p-2" />
       </label>
       {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={BASE_KEYS} /> : null}
-      {!catalog.canSubmit ? <output className="block text-sm">{catalog.message || 'Form configuration is loading.'}</output> : null}
+      {!catalog.canSubmit ? <output aria-live="polite" className="block text-sm">{catalog.message || 'Form configuration is loading.'}</output> : null}
       {attemptPresent ? <p className="text-xs text-muted-foreground">A prior correction may have been issued. Retry only identical details, or check the invoice before starting a new attempt.</p> : null}
       {attemptPresent ? <button type="button" disabled={busy} className="rounded border px-3 py-2 text-sm"
         onClick={() => { if (window.confirm('A correction may already have been issued. Check the invoice first. Start a new request reference?')) {
           clearSessionAttempt(attemptKey); setAttemptRevision((revision) => revision + 1); fingerprints.current.delete(invoiceId); setMessage('');
           if (catalog.status === 'stale') catalog.refresh();
         } }}>Start a new attempt</button> : null}
-      {message ? <output className="block text-sm font-medium">{message}</output> : null}
+      {message ? <output aria-live="polite" className="block text-sm font-medium">{message}</output> : null}
       <button disabled={busy || !reasonCodes.length || !catalog.canSubmit} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{busy ? 'Issuing…' : 'Issue simulated document'}</button>
     </form>
   );

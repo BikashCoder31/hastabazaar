@@ -1,5 +1,6 @@
 'use client';
 
+import { FormGuide } from '@/components/forms/form-guide';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
@@ -101,6 +102,8 @@ export function ComplaintCaseActions({
   return (
     <form ref={formRef} data-form-id="staff.complaint-case-action" className="space-y-4"
       onSubmit={(event) => event.preventDefault()}>
+      <FormGuide formId="staff.complaint-case-action" />
+
       <div className="space-y-2">
         <Label>Action</Label>
         <select

@@ -1,3 +1,4 @@
+import { registerTransitionFixture,submitRegisteredTransitionFixture as submitRegisteredSellerTransition } from './helpers/registered-transition-fixture';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
@@ -7,7 +8,7 @@ import { build } from 'esbuild';
 
 import { addFixedSupplyAdjustment, createFixedSupplyRecord, decideFixedSupplyRecord,
   prepareFixedSupplierPayment, transitionFixedSupplierPayment } from '../lib/managed-commerce/fixed-supply';
-import { reviewRouteTransition, submitRegisteredSellerTransition } from '../lib/managed-commerce/route-transition';
+import { reviewRouteTransition } from '../lib/managed-commerce/route-transition';
 import { resolveRuntimeEnvironment } from '../lib/staging/environment';
 import { FORM_REGISTRY, IMPLEMENTED_FORM_ADAPTERS } from '../lib/forms/registry';
 import { validateFormDraft } from '../lib/forms/validation';
@@ -119,6 +120,7 @@ async function fixture() {
   const upgrade = await readFile(new URL('../drizzle/0062_single_super_admin_approvals.sql', import.meta.url), 'utf8');
   sqlite.exec('PRAGMA foreign_keys=OFF;' + upgrade.split('-- BEGIN managed_supplier_payments')[1].split('-- END managed_supplier_payments')[0].replaceAll('--> statement-breakpoint', '') + 'PRAGMA foreign_keys=ON;');
   const db = new Database(sqlite);
+  registerTransitionFixture(db as unknown as D1Database,sqlite);
   globalThis.managedProgramDb = db as unknown as D1Database;
   globalThis.managedProgramActor = { id: 'reviewer', role: 'super_admin' };
   return { sqlite, db, database: db as unknown as D1Database };
@@ -605,7 +607,7 @@ void test('mounted managed-program forms send their own published answer context
       assert.equal(await form.count(), 1, id);
       assert.equal(await form.locator('[data-configured-field="context_note"]').count(), 1, id);
       await form.getByLabel('Staff context').fill('Reviewed staging evidence');
-      if (action === 'decide_supply') { await form.getByLabel('Evidence reference').fill('SIM-GRN'); await form.getByLabel('Decision reason').fill('SIMULATED approval'); }
+      if (action === 'decide_supply') { await form.getByLabel('Supporting document or reference').fill('SIM-GRN'); await form.getByLabel('Decision reason').fill('SIMULATED approval'); }
       if (action === 'add_adjustment') { await form.locator('[name="amountNpr"]').fill('100.00'); await form.locator('[name="reason"]').fill('SIMULATED adjustment'); }
       if (action === 'review_transition') await form.getByLabel('Review reason').fill('SIMULATED review');
       const before = bodies.length;
