@@ -4,6 +4,7 @@ import { FORM_REGISTRY } from '../lib/forms/registry';
 import { validateFormDraft } from '../lib/forms/validation';
 void test('Native workspace forms reject additional financial or authorization questions', () => {
   for (const id of [
+    'staff.referral-report-filter',
     'staff.promo-report-filter',
     'staff.loyalty-report-filter',
     'staff.commission-report-filter',

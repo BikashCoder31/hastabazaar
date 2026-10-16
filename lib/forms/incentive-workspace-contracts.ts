@@ -38,6 +38,12 @@ function nativeForm(
 export const INCENTIVE_WORKSPACE_FORM_CONTRACTS: Readonly<
   Record<string, FormDefinition>
 > = Object.freeze({
+  'staff.referral-report-filter': nativeForm(
+    'staff.referral-report-filter',
+    '/admin/referrals',
+    'query',
+    ['view', 'period', 'q', 'status', 'page'],
+  ),
   'staff.promo-report-filter': nativeForm(
     'staff.promo-report-filter',
     '/admin/promo-codes',

@@ -15,6 +15,7 @@ void test('the reviewed source inventory includes native commission and incentiv
     { path: 'app/admin/layout.tsx', ordinal: 1, formId: 'identity.logout' },
     { path: 'app/admin/order-emails/page.tsx', ordinal: 1, formId: 'staff.order-email-filter' },
     { path: 'app/admin/orders/page.tsx', ordinal: 1, formId: 'staff.order-queue-filter' },
+    { path: 'app/admin/referrals/page.tsx', ordinal: 1, formId: 'staff.referral-report-filter' },
     { path: 'app/admin/sellers/page.tsx', ordinal: 1, formId: 'staff.seller-registry-filter' },
     { path: 'app/seller-access-denied/page.tsx', ordinal: 1, formId: 'identity.logout' },
     { path: 'app/seller/layout.tsx', ordinal: 1, formId: 'identity.logout' },

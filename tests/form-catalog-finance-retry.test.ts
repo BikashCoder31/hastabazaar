@@ -96,14 +96,25 @@ void test('seven finance and staff forms retain opaque attempts across uncertain
           return form;
         };
         const send = async (form: any) => { // oxlint-disable-line typescript/no-explicit-any -- Playwright runtime locator.
-          if (target.mode === 'payout') { await form.getByRole('button', { name: 'Review decision' }).click(); await page.getByRole('button', { name: 'Confirm decision' }).click(); }
+          if (target.mode === 'referral') {
+            const before = bodies.length;
+            await form.getByRole('button', { name: 'Review changes', exact: true }).click();
+            const review = page.getByRole('region', { name: 'Review referral offer' });
+            await review.waitFor();
+            assert.equal(bodies.length, before, 'Reviewing a referral offer must not send a PUT');
+            await review.getByRole('button', { name: 'Go back', exact: true }).click();
+            assert.equal(bodies.length, before, 'Going back must not send a PUT');
+            await form.getByRole('button', { name: 'Review changes', exact: true }).click();
+            await review.getByRole('button', { name: 'Confirm and save offer' }).click();
+          }
+          else if (target.mode === 'payout') { await form.getByRole('button', { name: 'Review decision' }).click(); await page.getByRole('button', { name: 'Confirm decision' }).click(); }
           else if (target.mode === 'invitation') { await form.getByRole('button', { name: 'Review invitation' }).click(); await page.getByRole('button', { name: 'Confirm decision' }).click(); }
           else if (target.mode === 'proposal' || target.mode === 'decision') {
             await form.evaluate((element: HTMLFormElement) => element.requestSubmit());
             await page.getByRole('button', { name: target.mode === 'proposal' ? 'Confirm permission changes' : 'Approve access changes' }).click();
           } else await form.evaluate((element: HTMLFormElement) => element.requestSubmit());
           await page.waitForTimeout(80);
-          if (target.mode === 'proposal' || target.mode === 'decision' || target.mode === 'payout' || target.mode === 'invitation') {
+          if (target.mode === 'referral' || target.mode === 'proposal' || target.mode === 'decision' || target.mode === 'payout' || target.mode === 'invitation') {
             const back = page.getByRole('button', { name: 'Go back', exact: true });
             if (await back.isVisible()) await back.click();
           }
@@ -131,7 +142,7 @@ void test('seven finance and staff forms retain opaque attempts across uncertain
           assert.equal(await page.getByRole('button', { name: 'Start a new attempt' }).count(), 1, `${target.form}: malformed2xx reload warning`);
         }
         response = 'stale'; await send(form); assert.equal(bodies.at(-1)?.[target.key], original, `${target.form}: stale version`);
-        const submitName = {prepare:'Prepare for approval',payout:'Review decision',delivery:'Save rates for future orders',referral:'Save offer',invitation:'Review invitation',proposal:'Save permissions',decision:'Approve'}[target.mode];
+        const submitName = {prepare:'Prepare for approval',payout:'Review decision',delivery:'Save rates for future orders',referral:'Review changes',invitation:'Review invitation',proposal:'Save permissions',decision:'Approve'}[target.mode];
         const submitButton = form.getByRole('button', { name: submitName, exact: true });
         assert.equal(await submitButton.isDisabled(), true, `${target.form}: real stale hook freezes submission`);
         const frozenBodyCount = bodies.length;
