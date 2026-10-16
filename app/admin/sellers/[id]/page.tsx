@@ -123,17 +123,17 @@ export default async function SellerApplicationPage({
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle>Activation readiness</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Recorded maker or seller status</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <p className="font-semibold">Applications Only</p>
-            <p className="text-muted-foreground">Profile and product drafts may continue. Selling stays restricted until program, maker, and product readiness are all satisfied.</p>
+            <p className="font-semibold">{application.participationRoute==='managed_maker' ? application.applicationStage==='active' ? 'Maker activated' : 'Maker review and activation required' : application.status==='approved' ? 'Registered Seller approved' : 'Seller review required'}</p>
+            <p className="text-muted-foreground">Selling also requires current program settings, accepted terms and separately published products. <Link href="/admin/programs" className="underline">Review current program readiness</Link>.</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle>Outstanding responsibility</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p className="font-semibold">{application.participationRoute === 'managed_maker' ? 'Hastabazaar / external adviser' : 'Reviewer'}</p>
-            <p className="text-muted-foreground">{application.participationRoute === 'managed_maker' ? 'Commercial model, reviewed agreement, legal seller, invoice issuer, supplier requirements, and payout beneficiary remain unassigned.' : 'Verify registration evidence, applicable agreement, payout details, and product review requirements.'}</p>
+            <p className="text-muted-foreground">{application.participationRoute === 'managed_maker' ? 'Review the recorded commercial model, accepted agreement, company seller, invoice issuer and receiving account below. Program and product readiness are checked separately.' : 'Verify registration evidence, applicable agreement, payout details, and product review requirements.'}</p>
           </CardContent>
         </Card>
       </div>

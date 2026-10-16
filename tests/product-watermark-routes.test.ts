@@ -24,3 +24,34 @@ async function get(id='m',query=''){const {GET}=await import('../app/api/product
 void test('anonymous published photos including existing originals always deliver a marked copy; video stays byte-identical',async()=>{const f=await fixture();try{const response=await get('m','?original=1');assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'image/webp');assert.notDeepEqual(new Uint8Array(await response.arrayBuffer()),f.original);assert.deepEqual(f.objects.get('private/product-media/s/p/m'),f.original);assert.deepEqual(new Uint8Array(await (await get('v')).arrayBuffer()),new Uint8Array([1,2,3,4,5]));}finally{f.dispose();}});
 void test('eligibility and owner/reviewer authorization run before derivative cache access',async()=>{const f=await fixture();try{await get();f.sqlite.exec("UPDATE products SET status='draft'");f.reads.length=0;assert.equal((await get()).status,404);assert.equal(f.reads.length,0);context.watermarkSubject='other';assert.equal((await get()).status,404);assert.equal(f.reads.length,0);context.watermarkSubject='owner';assert.equal((await get()).status,200);context.watermarkSubject='reviewer';assert.equal((await get()).status,200);context.watermarkSubject=null;f.sqlite.exec("UPDATE products SET status='published';UPDATE users SET status='disabled' WHERE id='owner'");f.reads.length=0;assert.equal((await get()).status,404);assert.equal(f.reads.length,0);}finally{f.dispose();}});
 void test('seller preview refuses anonymous, unrelated customer, cross-origin and oversized inputs, and renders without storage',async()=>{assert.ok(existsSync(new URL('../app/api/seller/product-photo-preview/route.ts',import.meta.url)),'Authenticated seller preview endpoint exists');const {POST}=await import('../app/api/seller/product-photo-preview/route');const f=await fixture();try{const request=(origin='https://watermark.test',data=f.original)=>{const form=new FormData();form.set('file',new File([data],'fictional.png',{type:'image/png'}));return new Request('https://watermark.test/api/seller/product-photo-preview',{method:'POST',headers:{Origin:origin},body:form});};assert.equal((await POST(request())).status,401);context.watermarkSubject='other';assert.equal((await POST(request())).status,403);context.watermarkSeller=true;context.watermarkSubject='owner';assert.equal((await POST(request('https://hostile.test'))).status,403);assert.equal((await POST(request('https://watermark.test',new Uint8Array(5*1024*1024+1)))).status,400);const before=f.objects.size;const preview=await POST(request());assert.equal(preview.status,200);assert.equal(preview.headers.get('content-type'),'image/webp');assert.notDeepEqual(new Uint8Array(await preview.arrayBuffer()),f.original);assert.equal(f.objects.size,before);}finally{f.dispose();}});
+
+void test('private draft photos follow the real maker ownership and restriction rules', async () => {
+ const f = await fixture();
+ try {
+  f.sqlite.exec(`UPDATE products SET status='draft'; DELETE FROM user_roles WHERE user_id='owner';
+   INSERT INTO user_roles(user_id,role,assigned_at) VALUES('owner','customer',1);
+   INSERT INTO seller_participation_profiles(seller_id,participation_route,application_stage,public_name,public_city,created_at,updated_at)
+   VALUES('s','managed_maker','submitted','SIMULATED Maker','Kathmandu',1,1)`);
+  context.watermarkSubject='owner';
+  const response=await get();
+  assert.equal(response.status,200,'The owned applicant draft must show its saved photo');
+  assert.equal(response.headers.get('content-type'),'image/webp');
+  assert.notDeepEqual(new Uint8Array(await response.arrayBuffer()),f.original);
+  for(const sql of [
+   "UPDATE users SET status='disabled' WHERE id='owner'",
+   "DELETE FROM user_roles WHERE user_id='owner' AND role='customer'",
+   "UPDATE seller_participation_profiles SET application_stage='rejected'",
+   "UPDATE seller_participation_profiles SET application_stage='suspended'",
+   "UPDATE seller_participation_profiles SET participation_route='registered_seller'",
+   "INSERT INTO seller_restrictions(seller_id,mode,obligation_mode,reason_code,private_reason,applied_by,applied_at,updated_at) VALUES('s','disabled','admin_review','qa','SIMULATED','reviewer',1,1)",
+   `INSERT INTO seller_restrictions(seller_id,mode,suspended_until,obligation_mode,reason_code,private_reason,applied_by,applied_at,updated_at) VALUES('s','suspended',${Date.now()+86400000},'admin_review','qa','SIMULATED','reviewer',1,1)`,
+  ]) {
+   f.sqlite.exec('SAVEPOINT negative_case'); f.sqlite.exec(sql); f.reads.length=0;
+   assert.equal((await get()).status,404,sql); assert.equal(f.reads.length,0,'Denied requests cannot read cached derivatives');
+   f.sqlite.exec('ROLLBACK TO negative_case; RELEASE negative_case');
+  }
+  context.watermarkSubject='other'; f.reads.length=0;
+  assert.equal((await get()).status,404); assert.equal(f.reads.length,0);
+  context.watermarkSubject=null; assert.equal((await get()).status,404);
+ } finally { f.dispose(); }
+});

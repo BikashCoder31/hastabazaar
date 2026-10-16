@@ -277,7 +277,7 @@ async function programmaticStaffGrant(db: D1Database, viewer: FormAnswerViewer, 
       permission = 'order.manage';
       sql = `SELECT a.action,a.next_json AS nextJson FROM orders p JOIN audit_logs a
         ON a.request_id=? AND a.actor_id=? AND a.subject_type='order' AND a.subject_id=p.id
-        AND a.action IN ('order.dispatch','order.deliver') WHERE p.id=? LIMIT 1`;
+        AND a.action IN ('order.dispatch','order.deliver','order.company.start_packing','order.company.ready_for_pickup') WHERE p.id=? LIMIT 1`;
       break;
     case 'staff.seller-review-action':
       if (subjectType !== 'seller') return false;
@@ -336,6 +336,7 @@ async function programmaticStaffGrant(db: D1Database, viewer: FormAnswerViewer, 
         audit.createdBy !== actorId || context.supersedesId !== audit.supersedesId || !isDigest(context.requestDigest))) return false;
   } else {
     if (!isDigest(context.catalogDigest)) return false;
+    if(formId==='staff.order-fulfillment' && audit.action.startsWith('order.company.')) superAdminOnly=true;
     if (formId === 'staff.product-review') {
       if (audit.action === 'product.published') permission = 'product.publish';
       if (audit.action === 'product.unpublished') superAdminOnly = true;

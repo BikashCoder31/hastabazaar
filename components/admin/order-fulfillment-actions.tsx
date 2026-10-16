@@ -23,26 +23,29 @@ import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
-import type { AdminFulfillmentAction } from '@/lib/db/repositories/fulfillment';
+import type { AdminFulfillmentAction, SellerFulfillmentAction } from '@/lib/db/repositories/fulfillment';
+type FulfillmentAction = AdminFulfillmentAction | SellerFulfillmentAction;
 
 const definitions = {
+  start_packing: {label:'Start company packing',title:'Start packing these company-store items?',description:'Records preparation of this maker’s company-store items. It does not dispatch the parcel or record payment.',icon:Send,variant:'default'},
+  ready_for_pickup: {label:'Mark company items ready',title:'Mark these company-store items ready for pickup?',description:'Confirm preparation is complete. Dispatch, delivery and customer payment remain separate steps.',icon:CircleCheckBig,variant:'default'},
   dispatch: { label: 'Mark dispatched', title: 'Dispatch this order?', description: 'The customer will see the consignment as dispatched.', icon: Send, variant: 'default' },
   deliver: { label: 'Confirm delivery', title: 'Confirm delivery and COD collection?', description: 'This records the COD payment as collected and closes fulfilment.', icon: CircleCheckBig, variant: 'default' },
   cancel: { label: 'Cancel order', title: 'Cancel this complete order?', description: 'Eligible parcels close and reserved inventory is restored. Custom production already started requires a separate staff review. Readiness and revised amounts are checked before cancellation.', icon: Ban, variant: 'destructive' },
 } as const;
 
-export function AdminOrderFulfillmentActions({ orderId, status, initialTrackingCode }: { orderId: string; status: string; initialTrackingCode?: string | null }) {
+export function AdminOrderFulfillmentActions({ orderId, status, initialTrackingCode, companySellerId }: { orderId: string; status: string; initialTrackingCode?: string | null; companySellerId?:string }) {
   const router = useRouter();
   const catalog = usePublishedFormConfig('staff.order-fulfillment');
   const formRef = useRef<HTMLFormElement>(null);
   const [attemptPresent, setAttemptPresent] = useState(false);
-  const keyFor = (action: AdminFulfillmentAction) => sessionAttemptKey('staff.order-fulfillment', `${orderId}:${action}`);
-  const [selected, setSelected] = useState<AdminFulfillmentAction | null>(null);
+  const keyFor = (action: FulfillmentAction) => sessionAttemptKey('staff.order-fulfillment', companySellerId ? `${orderId}:company:${companySellerId}:${action}` : `${orderId}:${action}`);
+  const [selected, setSelected] = useState<FulfillmentAction | null>(null);
   const [note, setNote] = useState('');
   const [trackingCode, setTrackingCode] = useState(initialTrackingCode??'');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
-  const actions: AdminFulfillmentAction[] = status === 'ready_for_pickup'
+  const actions: FulfillmentAction[] = companySellerId ? status==='confirmed'?['start_packing']:status==='packing'?['ready_for_pickup']:[] : status === 'ready_for_pickup'
     ? ['dispatch', 'cancel']
     : status === 'dispatched'
       ? ['deliver']
@@ -51,7 +54,7 @@ export function AdminOrderFulfillmentActions({ orderId, status, initialTrackingC
         : [];
   if (actions.length === 0) return <p className="text-sm leading-6 text-muted-foreground">No operations action is currently available.</p>;
 
-  function prepare(action: AdminFulfillmentAction) {
+  function prepare(action: FulfillmentAction) {
     setError('');
     setSelected(action);
     setAttemptPresent(hasSessionAttempt(keyFor(action)));
@@ -66,7 +69,7 @@ export function AdminOrderFulfillmentActions({ orderId, status, initialTrackingC
     setError('');
     try {
       const configured = readConfiguredSubmission(formRef.current, catalog.config, ['action', 'note', 'trackingCode', 'requestId', 'formVersion']);
-      const payload = { action: selected, note, trackingCode,
+      const payload = { action: selected, note, trackingCode, ...(companySellerId?{sellerId:companySellerId}:{}),
         ...configuredJsonPayload(catalog.config, configured.answers, ['action', 'note', 'trackingCode', 'requestId', 'formVersion']) };
       const attemptKey = keyFor(selected);
       const requestId = getOrCreateSessionAttempt(attemptKey);

@@ -7,6 +7,7 @@ import { getAuthenticatedUser } from '@/app/auth';
 import { requireDatabase, requireMediaBucket } from '@/lib/db/d1';
 import { getProductMediaObject } from '@/lib/db/repositories/products';
 import { matchesIfRange, parseByteRange } from '@/lib/media/byte-range';
+import { getManagedMakerAuthority, ManagedMakerAuthorizationError } from '@/lib/managed-commerce/maker-authority';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,7 @@ async function canViewPrivateMedia(
   sellerId: string,
 ): Promise<boolean> {
   if (await hasStaffPermissionBySubject(database, authSubject, 'product.review')) return true;
-  return Boolean(
+  const registeredOwner = Boolean(
     await database
       .prepare(
         `SELECT 1
@@ -39,6 +40,16 @@ async function canViewPrivateMedia(
       .bind(authSubject, sellerId)
       .first(),
   );
+  if (registeredOwner) return true;
+  const owner = await database.prepare("SELECT id FROM users WHERE auth_subject=? AND status='active' LIMIT 1")
+    .bind(authSubject).first<{ id: string }>();
+  if (!owner) return false;
+  try {
+    return (await getManagedMakerAuthority(database, owner.id, Date.now())).sellerId === sellerId;
+  } catch (error) {
+    if (error instanceof ManagedMakerAuthorizationError) return false;
+    throw error;
+  }
 }
 
 export async function GET(

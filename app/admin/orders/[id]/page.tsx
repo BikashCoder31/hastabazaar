@@ -22,6 +22,7 @@ import { notFound } from 'next/navigation';
 import { ArrowLeft, Banknote, MapPin, PackageCheck, Truck } from 'lucide-react';
 
 import { AdminOrderFulfillmentActions } from '@/components/admin/order-fulfillment-actions';
+import { listCompanyPreparationGroups } from '@/lib/db/repositories/fulfillment';
 import { OrderStatusBadge } from '@/components/commerce/order-status-badge';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
@@ -62,6 +63,8 @@ export default async function AdminOrderPage({
   const codReview = await getFirstCodReview(db, id);
   const codPending =
     codReview?.status === 'pending' && order.status !== 'cancelled';
+  const companyPreparation = staff.role==='super_admin' && !codPending
+    ? await listCompanyPreparationGroups(db,id) : [];
   const query = await searchParams;
   let deliveryAfter;
   try {
@@ -171,6 +174,14 @@ export default async function AdminOrderPage({
         />
       </div>
       {codPending ? <FirstCodConfirmation orderId={id} /> : null}
+      {companyPreparation.length ? <section className="mt-6 space-y-4 rounded-2xl border bg-card p-5" aria-label="Company-store preparation">
+        <h2 className="font-heading text-2xl">Company-store preparation</h2>
+        <p className="text-sm text-muted-foreground">Super Admin prepares company-store items on behalf of each maker. Parcel dispatch, delivery and payment stay separate.</p>
+        {companyPreparation.map(group=><div key={group.sellerId} className="min-w-0 space-y-3 rounded-lg border p-4">
+          <p className="break-words font-semibold">{group.makerName} · {group.status.replaceAll('_',' ')}</p>
+          <AdminOrderFulfillmentActions orderId={id} status={group.status} companySellerId={group.sellerId}/>
+        </div>)}
+      </section> : null}
       <div className="mt-6">
         <ParcelControls
           orderId={id}

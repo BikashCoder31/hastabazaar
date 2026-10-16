@@ -7,6 +7,7 @@ import { requireDatabase } from '@/lib/db/d1';
 import {
   FulfillmentConflictError,
   transitionAdminFulfillment,
+  transitionCompanyPreparation,
   type AdminFulfillmentAction,
 } from '@/lib/db/repositories/fulfillment';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
@@ -33,12 +34,16 @@ export async function POST(
     const { id } = await context.params;
     const parsed = await readBoundedJsonObject(request) as unknown;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
-      Object.keys(parsed).some((key) => !['action','note','trackingCode','requestId',
+      Object.keys(parsed).some((key) => !['action','note','trackingCode','sellerId','requestId',
         'formVersion','customAnswers'].includes(key)))
       return json({ error: 'Invalid fulfilment request.' }, 400);
     const body = parsed as Record<string, unknown>;
+    const companyPreparation = body.action === 'start_packing' || body.action === 'ready_for_pickup';
     const action = body.action as AdminFulfillmentAction;
-    if (!['dispatch', 'deliver', 'cancel'].includes(action)) return json({ error: 'Invalid fulfilment action.' }, 400);
+    if (!companyPreparation && !['dispatch', 'deliver', 'cancel'].includes(action)) return json({ error: 'Invalid fulfilment action.' }, 400);
+    if (companyPreparation && staff.role !== 'super_admin') throw new StaffAuthorizationError('Super Admin access is required for company-store preparation.',403);
+    if (companyPreparation ? typeof body.sellerId !== 'string' || !body.sellerId.trim() : body.sellerId !== undefined)
+      return json({error:'Select the company-store maker items to prepare.'},400);
     const note = typeof body.note === 'string' ? body.note.trim() : '';
     if (note.length < 8 || note.length > 500) return json({ error: 'Add a clear note of 8–500 characters.' }, 400);
     if (body.trackingCode !== undefined && typeof body.trackingCode !== 'string')
@@ -54,6 +59,13 @@ export async function POST(
     const form = await validateSellerFormSubmission(database, 'staff.order-fulfillment',
       body.formVersion, body.customAnswers, body.requestId);
     validatedVersionId = form.versionId;
+    if (companyPreparation) {
+      await transitionCompanyPreparation(database, {orderId:id,sellerId:body.sellerId as string,actorId:staff.id,
+        action:body.action as 'start_packing'|'ready_for_pickup',note,requestId:body.requestId,now:Date.now(),
+        form:{requestId:body.requestId,versionId:form.versionId,answers:form.answers}});
+      await sendPendingOrderUpdates({orderId:id});
+      return json({ok:true});
+    }
     await transitionAdminFulfillment(
       database,
       {
