@@ -59,6 +59,8 @@ const migrationNames = [
   'mariadb-single-super-admin-approvals.sql',
   'mariadb-managed-maker-identity.sql',
   'mariadb-commission-workspace.sql',
+  'mariadb-company-store-maker-readiness.sql',
+  'mariadb-loyalty-scheduled-changes.sql',
 ];
 const tables = {},
   triggers = {},
@@ -86,12 +88,11 @@ for (const name of migrationNames) {
       ...new Set([...(tables[match[1]] ?? []), ...columns]),
     ].sort((a, b) => a.localeCompare(b));
   }
-  for (const m of sql.matchAll(
-    /ALTER TABLE\s+`?(\w+)`?\s+ADD COLUMN IF NOT EXISTS\s+`?(\w+)`?/gi,
-  ))
-    tables[m[1]] = [...new Set([...(tables[m[1]] ?? []), m[2]])].sort((a, b) =>
-      a.localeCompare(b),
-    );
+  for (const alter of sql.matchAll(/ALTER TABLE\s+`?(\w+)`?\s+([\s\S]*?);/gi)) {
+    for (const column of alter[2].matchAll(/\bADD COLUMN IF NOT EXISTS\s+`?(\w+)`?/gi)) {
+      tables[alter[1]] = [...new Set([...(tables[alter[1]] ?? []), column[1]])].sort((a,b) => a.localeCompare(b));
+    }
+  }
   for (const m of sql.matchAll(/CREATE TRIGGER\s+(?:IF\s+NOT\s+EXISTS\s+)?`?(\w+)`?/gi))
     triggers[m[1]] = [];
 }
@@ -101,7 +102,19 @@ triggers.order_items_require_available_inventory = [
   'product_deletions',
   'for update',
 ];
+triggers.loyalty_schedule_claim_guard = ['scheduled_revision', 'scheduled_for', 'new.created_at', 'loyalty_scheduled_rules_due'];
+for (const name of ['loyalty_schedule_insert_guard', 'loyalty_schedule_update_guard'])
+  triggers[name] = ['scheduled_unpause', 'current_revision', 'draft_revision', 'loyalty_revisions', 'starts_at'];
+triggers.managed_allocation_preserve_identity = ['old.disposition', 'released', 'paid', 'new.amount_paisa', '<=>'];
+triggers.managed_payout_preserve_identity = ['destination_reference', 'amount_paisa', 'payout_number', '<=>'];
+triggers.managed_payout_preserve_terminal = ['paid', 'rejected', 'reversed', 'provider_reference', '<=>'];
 const requiredChecks = {
+  'managed_payout_allocations.amount_paisa': ['amount_paisa', '<> 0'],
+  'managed_payout_allocations.disposition': ['disposition', 'reserved', 'released', 'paid'],
+  'managed_payout_allocations.managed_allocation_terminal_shape': ['disposition', 'reserved', 'terminal_at', 'is null', 'is not null'],
+  'managed_maker_application_details.agreement_language': ['agreement_language', 'en', 'ne'],
+  'seller_route_transition_applications.registered_terms_snapshot_json': ['registered_terms_snapshot_json', 'json_valid'],
+  'loyalty_config.scheduled_unpause': ['scheduled_unpause', '0', '1'],
   'category_media.category_media_size': ['size_bytes', '0', '5242880'],
   'category_media.category_media_dimensions': ['width', 'height', '0', '2400', '1600'],
   'category_media.category_media_mime': ['mime_type', 'image/webp'],
@@ -142,6 +155,9 @@ const requiredChecks = {
   ],
 };
 const manifest = {
+  requiredUniqueIndexes: { 'managed_payout_allocations.managed_allocation_one_reservation': ['reserved_entitlement_key'] },
+  requiredGeneratedColumns: { 'managed_payout_allocations.reserved_entitlement_key': ["case when binary disposition='reserved' then entitlement_id else null end"] },
+  requiredColumnCollations: { 'managed_payout_allocations.reserved_entitlement_key': 'utf8mb4_unicode_ci' },
   requiredChecks,
   release,
   startup: 'app.cjs',

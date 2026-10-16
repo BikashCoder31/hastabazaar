@@ -58,8 +58,26 @@ function databasePool(): Pool {
   return pool;
 }
 
+// Translate the new feature expressions as complete tokens. Consuming quoted
+// strings and comments prevents text inside them from becoming executable SQL.
+function translateFeatureExpressions(sql: string): string {
+  return sql.replace(
+    /('private\/seller-documents\/'\s*\|\|\s*((?:\w+\.)?seller_id)\s*\|\|\s*'\/')|(json_type\(audit\.next_json,'\$\.catalogDigest'\)='text')|(json_extract\(d\.agreement_snapshot_json,'(\$\.(?:version|settingVersionIds\.(?:account|retention)))'\))|'(?:''|\\.|[^'\\])*'|"(?:""|\\.|[^"\\])*"|`(?:``|[^`])*`|--[^\n]*|\/\*[\s\S]*?\*\/|\b((?:\w+\.)?(?:draft_revision|scheduled_revision|scheduled_for))\s+IS\s+(NOT\s+)?\?/gi,
+    (token, prefix: string | undefined, prefixColumn: string | undefined, digest: string | undefined, extract: string | undefined, path: string | undefined, column: string | undefined, negate: string | undefined) => {
+      if (prefix) return `CONCAT(BINARY 'private/seller-documents/', ${prefixColumn}, '/')`;
+      if (digest) return "JSON_TYPE(JSON_EXTRACT(audit.next_json,'$.catalogDigest'))='STRING'";
+      if (extract) {
+        const value = `JSON_EXTRACT(d.agreement_snapshot_json,'${path}')`;
+        return `CASE WHEN JSON_TYPE(${value})='NULL' THEN NULL ELSE JSON_UNQUOTE(${value}) END`;
+      }
+      if (column) return negate ? `NOT (${column} <=> ?)` : `${column} <=> ?`;
+      return token;
+    },
+  );
+}
+
 export function translateSqliteSql(sql: string): string {
-  return sql
+  return translateFeatureExpressions(sql)
     .replace(/\bchanges\(\)/gi, 'ROW_COUNT()')
     .replace(/\bunixepoch\(\s*'now'\s*\)/gi, 'UNIX_TIMESTAMP()')
     // Exact new claim/redemption empty-field predicates; retain the array type guard.

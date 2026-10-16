@@ -1,5 +1,49 @@
 {
+  "requiredUniqueIndexes": {
+    "managed_payout_allocations.managed_allocation_one_reservation": [
+      "reserved_entitlement_key"
+    ]
+  },
+  "requiredGeneratedColumns": {
+    "managed_payout_allocations.reserved_entitlement_key": [
+      "case when binary disposition='reserved' then entitlement_id else null end"
+    ]
+  },
+  "requiredColumnCollations": {
+    "managed_payout_allocations.reserved_entitlement_key": "utf8mb4_unicode_ci"
+  },
   "requiredChecks": {
+    "managed_payout_allocations.amount_paisa": [
+      "amount_paisa",
+      "<> 0"
+    ],
+    "managed_payout_allocations.disposition": [
+      "disposition",
+      "reserved",
+      "released",
+      "paid"
+    ],
+    "managed_payout_allocations.managed_allocation_terminal_shape": [
+      "disposition",
+      "reserved",
+      "terminal_at",
+      "is null",
+      "is not null"
+    ],
+    "managed_maker_application_details.agreement_language": [
+      "agreement_language",
+      "en",
+      "ne"
+    ],
+    "seller_route_transition_applications.registered_terms_snapshot_json": [
+      "registered_terms_snapshot_json",
+      "json_valid"
+    ],
+    "loyalty_config.scheduled_unpause": [
+      "scheduled_unpause",
+      "0",
+      "1"
+    ],
     "category_media.category_media_size": [
       "size_bytes",
       "0",
@@ -63,7 +107,7 @@
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "a87f50c4e718323290c73f37cfab8d0bccf7a85a05fbc265bf62cecc58065cd2",
+      "sha256": "d8ab2f9938ae5b4a554981870b257a2510f79cade60bfb22d5e02dfe4f0a0ab1",
       "usage": "empty-database-only"
     },
     {
@@ -314,6 +358,16 @@
     {
       "path": "deployment/babal/mariadb-commission-workspace.sql",
       "sha256": "5cdd67c13f5abcd93c611c7fdc0ffea3d66dbb3d7fbbe49209c2a40381c0c960",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-company-store-maker-readiness.sql",
+      "sha256": "35b0c3850164da892d6064b4842cda8dda3fd0a3be83870b1ff9a52624ae9691",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-loyalty-scheduled-changes.sql",
+      "sha256": "f415cd9ea6ca1c46ea2fcb0d35a1fc305142a39f0529f53b09c4e53e3b6a4515",
       "usage": "additive-maintenance"
     }
   ],
@@ -599,6 +653,7 @@
       "to_status"
     ],
     "orders": [
+      "address_saved_for_future",
       "buyer_platform_fee_paisa",
       "cancellation_version",
       "cancelled_at",
@@ -635,11 +690,13 @@
       "promo_label",
       "promo_revision",
       "receipt_token_hash",
+      "recipient_email",
       "referral_discount_paisa",
       "refunded_promo_discount_paisa",
       "return_policy_snapshot_json",
       "seller_discount_paisa",
       "shipping_address_json",
+      "source_address_id",
       "status",
       "tax_total_paisa",
       "updated_at",
@@ -783,6 +840,7 @@
       "name_ne",
       "origin_evidence_reference",
       "origin_evidence_status",
+      "origin_story",
       "preparation_days",
       "price_paisa",
       "producer",
@@ -1152,6 +1210,7 @@
       "updated_at"
     ],
     "seller_participation_profiles": [
+      "accepted_managed_detail_id",
       "application_stage",
       "commercial_model",
       "craft_experience_json",
@@ -1204,10 +1263,13 @@
       "uploaded_at"
     ],
     "managed_commercial_snapshots": [
+      "accepted_managed_detail_id",
       "agreed_supplier_amount_paisa",
       "agreement_language",
       "agreement_version",
       "commercial_model",
+      "company_legal_name_snapshot",
+      "company_store_name_snapshot",
       "created_at",
       "delivery_hold_days",
       "eligible_base_paisa",
@@ -1217,6 +1279,7 @@
       "legal_seller_reference",
       "maker_entitlement_paisa",
       "maker_funded_discount_paisa",
+      "maker_name_snapshot",
       "order_item_id",
       "participation_route",
       "payout_beneficiary_reference",
@@ -1368,9 +1431,11 @@
       "longitude",
       "method",
       "open_box_required",
+      "open_box_snapshot_json",
       "operation_request_id",
       "position_at",
       "remitted_paisa",
+      "rider_finance_snapshot_json",
       "rider_user_id",
       "shipping_job_id",
       "tracking_url",
@@ -1448,6 +1513,8 @@
     "rider_profiles": [
       "application_id",
       "open_box_eligible",
+      "open_box_reviewed_at",
+      "open_box_reviewed_by",
       "review_note",
       "reviewed_by",
       "status",
@@ -1635,6 +1702,7 @@
       "id",
       "legal_name",
       "open_seller_key",
+      "registered_terms_snapshot_json",
       "registration_authority",
       "registration_number",
       "request_id",
@@ -1664,6 +1732,8 @@
     "managed_maker_application_details": [
       "agreement_accepted_at",
       "agreement_accepted_by",
+      "agreement_form_version_id",
+      "agreement_language",
       "agreement_snapshot_json",
       "agreement_version",
       "created_at",
@@ -1869,6 +1939,9 @@
       "locked_points_per_block",
       "paused",
       "redeemed_points",
+      "scheduled_for",
+      "scheduled_revision",
+      "scheduled_unpause",
       "version"
     ],
     "loyalty_revisions": [
@@ -1880,6 +1953,7 @@
       "enabled",
       "ends_at",
       "form_version_id",
+      "grace_enabled",
       "lifetime_budget_points",
       "points_per_block",
       "reason",
@@ -1898,7 +1972,11 @@
       "awarded_points",
       "created_at",
       "cycle_day",
+      "cycle_number",
+      "cycle_reset_reason",
       "form_version_id",
+      "grace_applied",
+      "grace_used",
       "id",
       "local_date",
       "payload_digest",
@@ -1932,6 +2010,17 @@
     "loyalty_day_issuance": [
       "issued_points",
       "local_date"
+    ],
+    "managed_payout_allocations": [
+      "actor_id",
+      "amount_paisa",
+      "created_at",
+      "disposition",
+      "entitlement_id",
+      "payout_id",
+      "request_id",
+      "reserved_entitlement_key",
+      "terminal_at"
     ],
     "user_credentials": [
       "created_at",
@@ -2287,6 +2376,50 @@
     "wallet_entries_no_replace": [],
     "loyalty_weekly_revision_guard": [],
     "loyalty_weekly_claim_guard": [],
+    "managed_allocation_preserve_identity": [
+      "old.disposition",
+      "released",
+      "paid",
+      "new.amount_paisa",
+      "<=>"
+    ],
+    "managed_allocation_no_delete": [],
+    "managed_payout_preserve_identity": [
+      "destination_reference",
+      "amount_paisa",
+      "payout_number",
+      "<=>"
+    ],
+    "managed_payout_no_delete": [],
+    "managed_payout_preserve_terminal": [
+      "paid",
+      "rejected",
+      "reversed",
+      "provider_reference",
+      "<=>"
+    ],
+    "managed_legacy_payout_link_no_update": [],
+    "managed_legacy_payout_link_no_delete": [],
+    "loyalty_schedule_insert_guard": [
+      "scheduled_unpause",
+      "current_revision",
+      "draft_revision",
+      "loyalty_revisions",
+      "starts_at"
+    ],
+    "loyalty_schedule_update_guard": [
+      "scheduled_unpause",
+      "current_revision",
+      "draft_revision",
+      "loyalty_revisions",
+      "starts_at"
+    ],
+    "loyalty_schedule_claim_guard": [
+      "scheduled_revision",
+      "scheduled_for",
+      "new.created_at",
+      "loyalty_scheduled_rules_due"
+    ],
     "payouts_single_sa_insert": [],
     "payouts_single_sa_update": [],
     "refunds_single_sa_insert": [],

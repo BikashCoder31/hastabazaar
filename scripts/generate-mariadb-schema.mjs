@@ -61,6 +61,8 @@ const recentlyViewedSql = await readFile(
 );
 const managedMakerIdentitySql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-managed-maker-identity.sql'), 'utf8');
 const commissionWorkspaceSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-commission-workspace.sql'), 'utf8');
+const makerReadinessSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-company-store-maker-readiness.sql'), 'utf8');
+const loyaltyScheduledSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-loyalty-scheduled-changes.sql'), 'utf8');
 const managedFixedSupplySql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-managed-fixed-supply.sql'),
   'utf8',
@@ -451,6 +453,8 @@ output.push(
   ...loyaltyParents,
   promoCodesSql.trim(),
   loyaltyPointsSql.trim(),
+  makerReadinessSql.trim(),
+  loyaltyScheduledSql.trim(),
   '',
   '-- Babal.Host password authentication and server-side sessions.',
   'CREATE TABLE IF NOT EXISTS `user_credentials` (',
@@ -535,7 +539,7 @@ output.push(
 );
 
 await mkdir(dirname(outputPath), { recursive: true });
-const schemaSql = output.join('\n');
+const schemaSql = output.join('\n').replace(/\r\n/g, '\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
   'category_image_assignments',
@@ -604,6 +608,7 @@ const resetTables = [
   'seller_restrictions',
   'managed_invoice_groups',
   'managed_payout_entries',
+  'managed_payout_allocations',
   'managed_payouts',
   'managed_settlement_entries',
   'managed_entitlements',
