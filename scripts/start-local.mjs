@@ -104,7 +104,7 @@ export function assertLocalCheckout(checkout) {
   }
 }
 
-async function readLocalCheckout(projectRoot, cwd) {
+export async function readLocalCheckout(projectRoot, cwd) {
   const git = (args) => execFileSync('git', ['--no-optional-locks', '-C', projectRoot, ...args], {
     encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
   }).trim();

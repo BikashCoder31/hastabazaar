@@ -7,7 +7,7 @@ export function currentManagedSaleEvidence(seller:string,owner:string,now:number
  return `FROM managed_maker_application_details d JOIN seller_documents document ON document.id=d.identity_document_id
   WHERE d.seller_id=${seller} AND d.agreement_accepted_by=${owner}
    AND document.seller_id=d.seller_id AND document.status<>'rejected' AND d.agreement_accepted_at<=${now}
-   AND document.object_key LIKE 'private/seller-documents/'||d.seller_id||'/%'
+   AND instr(document.object_key,'private/seller-documents/'||d.seller_id||'/')=1
    AND d.agreement_version='${version}' AND json_extract(d.agreement_snapshot_json,'$.version')='${version}'
    AND COALESCE(json_extract(d.agreement_snapshot_json,'$.settingVersionIds.account'),'')=COALESCE((SELECT id FROM business_setting_versions
     WHERE setting_key='managed_maker_company_account' AND status='published' AND effective_from<=${now}

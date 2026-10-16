@@ -74,6 +74,9 @@ export default defineConfig(async ({ command }) => {
   const localDecoder = localDecoderOptIn
     ? await (await import('./scripts/staging/rider-media-plugin')).localRiderMediaPlugin(process.env, process.cwd())
     : null;
+  const localProductMedia = !localDecoder && command === 'serve' && process.env.HASTABAZAAR_RUNTIME_ENV === 'local_staging'
+    ? await (await import('./scripts/staging/product-watermark-plugin')).localProductMediaPlugin(process.env, process.cwd(), command)
+    : null;
   const isBabalBuild = process.env.DEPLOY_TARGET === 'babal';
   if (isBabalBuild) {
     return {
@@ -117,6 +120,7 @@ export default defineConfig(async ({ command }) => {
       : undefined,
     plugins: [
       ...(localDecoder ? [localDecoder] : []),
+      ...(localProductMedia ? [localProductMedia] : []),
       vinext(),
       sites(),
       cloudflare({

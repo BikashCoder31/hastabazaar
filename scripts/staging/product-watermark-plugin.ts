@@ -1,13 +1,33 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { realpath } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { renderProductWatermark, ProductWatermarkError, maximumProductWatermarkBytes, productWatermarkRendererVersion } from '../../lib/products/watermark';
 import { validateProductWatermarkPolicy } from '../../lib/products/watermark-policy';
+import { createLocalEnvironment, readLocalCheckout } from '../start-local.mjs';
+import { assertDisposableStagingContext, readAndVerifyStagingMarker, resolveDisposableStagingPaths } from './guards.mjs';
 
 const endpointPath = '/__staging/product-watermark';
+/** Native image decoding for the checked Desktop preview; never initializes data. */
+export async function localProductMediaPlugin(environment: Record<string, string | undefined>, projectRoot: string,
+  command: 'serve' | 'build' = 'serve', cwd = process.cwd()): Promise<Plugin> {
+  if (command !== 'serve' || environment.NODE_ENV !== 'development' || environment.DEPLOY_TARGET)
+    throw new Error('Local product image processing requires development serve mode.');
+  createLocalEnvironment(environment);
+  assertDisposableStagingContext(environment);
+  const checkout = await readLocalCheckout(await realpath(projectRoot), await realpath(cwd));
+  const paths = resolveDisposableStagingPaths(checkout.projectRoot, environment);
+  if (await realpath(paths.root) !== paths.root) throw new Error('The local staging directory must not redirect.');
+  await readAndVerifyStagingMarker(paths);
+  const origin = new URL(environment.APP_ORIGIN!);
+  return createLocalProductWatermarkPlugin(checkout.projectRoot, origin.href,
+    origin.hostname === 'localhost' ? 'localhost' : '127.0.0.1');
+}
 /** Internal loopback primitive, activated only through the existing disposable staging guard. */
-export function createLocalProductWatermarkPlugin(projectRoot: string, appOrigin: string): Plugin {
+export function createLocalProductWatermarkPlugin(projectRoot: string, appOrigin: string,
+  boundHost: '127.0.0.1' | 'localhost' = '127.0.0.1'): Plugin {
+  if (boundHost !== '127.0.0.1' && boundHost !== 'localhost') throw new Error('A strict loopback listener is required.');
   const origin = new URL(appOrigin);
   if (origin.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(origin.hostname) || !origin.port ||
       origin.pathname !== '/' || origin.search || origin.hash || origin.username || origin.password)
@@ -55,7 +75,7 @@ export function createLocalProductWatermarkPlugin(projectRoot: string, appOrigin
   const workerSource =
     'import {validateProductWatermarkPolicy} from ' + JSON.stringify(policyPath) + ';\n' +
     'const capability = ' + JSON.stringify(capability) + ';\n' +
-    'const endpoint = ' + JSON.stringify('http://127.0.0.1:' + port + endpointPath) + ';\n' +
+    'const endpoint = ' + JSON.stringify('http://' + boundHost + ':' + port + endpointPath) + ';\n' +
     'export const maximumProductWatermarkBytes = ' + maximumProductWatermarkBytes + ';\n' +
     'export const productWatermarkRendererVersion = ' + JSON.stringify(productWatermarkRendererVersion) + ';\n' +
     [
@@ -85,7 +105,7 @@ export function createLocalProductWatermarkPlugin(projectRoot: string, appOrigin
       return id.split('?', 1)[0].replaceAll('\\', '/') === mediaPath ? workerSource : null;
     },
     configureServer(server) {
-      if (server.config.server.host !== '127.0.0.1' || server.config.server.port !== port || server.config.server.strictPort !== true)
+      if (server.config.server.host !== boundHost || server.config.server.port !== port || server.config.server.strictPort !== true)
         throw new Error('The watermark bridge must share the strict loopback staging listener.');
       server.middlewares.use((request, response, next) => {
         if (request.url?.split('?', 1)[0] !== endpointPath) { next(); return; }

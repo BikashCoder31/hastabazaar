@@ -81,7 +81,7 @@ async function findAcceptedOffer(db:D1Database,sellerId:string,offer:ManagedTerm
     FROM managed_maker_application_details d JOIN seller_documents document ON document.id=d.identity_document_id
     JOIN seller_profiles seller ON seller.id=d.seller_id
     WHERE d.seller_id=? AND document.seller_id=d.seller_id AND document.status<>'rejected'
-      AND document.object_key LIKE 'private/seller-documents/'||d.seller_id||'/%'
+      AND instr(document.object_key,'private/seller-documents/'||d.seller_id||'/')=1
       AND d.agreement_accepted_by=seller.user_id AND d.agreement_accepted_at<=?
     ORDER BY d.agreement_accepted_at DESC,d.id DESC`).bind(sellerId, now).all<{
       id: string; snapshotJson: string; acceptedBy: string; acceptedAt: number; language: string | null; formVersionId: string | null;
@@ -152,7 +152,7 @@ export async function acceptManagedTerms(db: D1Database, input: Acceptance): Pro
   const detailId = crypto.randomUUID(), guardId = crypto.randomUUID();
   const statements: D1PreparedStatement[] = [db.prepare(`INSERT INTO operation_transaction_guards(id,valid)
     SELECT ?,CASE WHEN ${ownerSql} AND EXISTS(SELECT 1 FROM seller_documents WHERE id=? AND seller_id=?
-      AND status<>'rejected' AND object_key LIKE 'private/seller-documents/'||seller_id||'/%') THEN 1 ELSE 0 END`)
+      AND status<>'rejected' AND instr(object_key,'private/seller-documents/'||seller_id||'/')=1) THEN 1 ELSE 0 END`)
     .bind(guardId, input.sellerId, input.actorId, input.now, evidence.documentId, input.sellerId)];
   for (const [key, versionId] of [[accountKey, offer.settingVersionIds.account], [retentionKey, offer.settingVersionIds.retention]]) {
     statements.push(db.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN

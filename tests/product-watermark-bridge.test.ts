@@ -32,3 +32,33 @@ void test('native local bridge renders actual WebP only through capability-bound
     const output=await response.arrayBuffer();assert.equal((await sharp(new Uint8Array(output)).metadata()).format,'webp');assert.notDeepEqual(Buffer.from(output),input);
   }finally{await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}
 });
+
+void test('checked localhost listener keeps its exact transport and server-only capability',async()=>{
+  const {createLocalProductWatermarkPlugin}=await import('../scripts/staging/product-watermark-plugin');
+  let middleware:(req:IncomingMessage,res:ServerResponse,next:()=>void)=>void=(_req,res)=>{res.statusCode=404;res.end();};
+  const server=createServer((req,res)=>middleware(req,res,()=>{res.statusCode=404;res.end();}));
+  await new Promise<void>(resolve=>server.listen(0,'localhost',resolve));
+  const port=(server.address() as {port:number}).port,origin='http://localhost:'+port;
+  try {
+    assert.throws(()=>createLocalProductWatermarkPlugin(process.cwd(),origin,'0.0.0.0' as 'localhost'),/loopback/i);
+    const plugin=createLocalProductWatermarkPlugin(process.cwd(),origin,'localhost');
+    const configure=plugin.configureServer as (server:unknown)=>void;
+    assert.throws(()=>configure({config:{server:{host:'0.0.0.0',port,strictPort:true}}}),/loopback|listener/i);
+    configure({config:{server:{host:'localhost',port,strictPort:true}},middlewares:{use(fn:typeof middleware){middleware=fn;}}});
+    const loader=plugin.load as unknown as (this:unknown,id:string)=>string|null;
+    const path=process.cwd().replaceAll('\\','/')+'/lib/products/watermark.ts';
+    const source=loader.call({environment:{name:'rsc'}},path)!;
+    assert.ok(source.includes(origin+'/__staging/product-watermark'));
+    assert.ok(loader.call({environment:{name:'ssr'}},path));
+    assert.equal(loader.call({environment:{name:'client'}},path),null);
+    assert.equal(loader.call({environment:{name:'rsc'}},path+'.unrelated'),null);
+    const token=/const capability = "([a-f0-9]{64})"/.exec(source)![1];
+    const policy={enabled:false,sizePercent:18,opacityPercent:28,position:'bottom-right'};
+    const input=await sharp({create:{width:900,height:900,channels:3,background:'#d9c9ab'}}).png().toBuffer();
+    const headers={'content-type':'image/png','x-watermark-policy':encodeURIComponent(JSON.stringify(policy)),authorization:'Bearer '+token};
+    assert.equal((await fetch(origin+'/__staging/product-watermark',{method:'POST',body:new Uint8Array(input),headers:{...headers,'sec-fetch-site':'same-origin'}})).status,403);
+    const response=await fetch(origin+'/__staging/product-watermark',{method:'POST',body:new Uint8Array(input),headers});
+    assert.equal(response.status,200);
+    assert.equal((await sharp(new Uint8Array(await response.arrayBuffer())).metadata()).format,'webp');
+  } finally { await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve())); }
+});
