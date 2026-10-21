@@ -238,6 +238,43 @@ void test('mobile keyboard editor persists Nepal schedule, pause/resume/end, ove
     await page
       .getByRole('heading', { name: 'Festival · ended', exact: true })
       .waitFor();
+
+    // A refreshed global revision must never authorize older, unsaved terms.
+    await page.getByRole('button',{name:'Edit First launch edited',exact:true}).click();
+    await page.getByLabel('Campaign name').fill('Unsaved stale name');
+    f.sqlite.exec("INSERT INTO user_roles(user_id,role,assigned_at) VALUES('staff','super_admin',1)");
+    const beforeManualRefresh=await getFeeWaiverState(f.database);
+    const competingTerms={
+      name:'First launch edited',
+      description:'Another operator reviewed these campaign terms.',
+      startsAt:terms.startsAt+12567,
+      endsAt:terms.endsAt+98765,
+    };
+    const competingRevision=await mutateFeeWaiver(f.database,feeWaiverContext('ui-manual-refresh-competitor',beforeManualRefresh.revision,{actorId:'staff',authSubject:'staff',now:Date.now()}),{
+      type:'revise',campaignId:first.id,terms:competingTerms,
+    });
+    await page.getByRole('button',{name:'Refresh campaigns',exact:true}).click();
+    await page.getByRole('heading',{name:'New campaign',exact:true}).waitFor({timeout:3000});
+    await page.getByRole('status').waitFor();
+    assert.match(await page.getByRole('status').textContent()??'',/unsaved edit was cleared/i);
+    assert.equal(await page.getByLabel('Campaign name').inputValue(),'');
+    const postCountBeforeEmptySave=posts.length;
+    await page.getByRole('button',{name:'Save draft',exact:true}).click();
+    assert.equal(posts.length,postCountBeforeEmptySave,'An old edit cannot be submitted after manual refresh');
+    assert.deepEqual((await getFeeWaiverState(f.database)).campaigns.find(c=>c.id===first.id),competingRevision);
+
+    // Only reopening the refreshed campaign and deliberately editing can revise it.
+    await page.getByRole('button',{name:'Edit First launch edited',exact:true}).click();
+    assert.equal(await page.getByLabel('Description').inputValue(),competingTerms.description);
+    await page.getByLabel('Campaign name').fill('Reviewed current launch');
+    await page.getByRole('button',{name:'Save changes',exact:true}).click();
+    await page.getByRole('heading',{name:'Reviewed current launch · active',exact:true}).waitFor();
+    const reviewedCampaign=(await getFeeWaiverState(f.database)).campaigns.find(c=>c.id===first.id)!;
+    assert.equal(reviewedCampaign.name,'Reviewed current launch');
+    assert.equal(reviewedCampaign.description,competingTerms.description);
+    assert.equal(reviewedCampaign.startsAt,competingTerms.startsAt);
+    assert.equal(reviewedCampaign.endsAt,competingTerms.endsAt);
+
     competing = true;
     await page
       .getByRole('button', { name: 'Pause Second launch', exact: true })

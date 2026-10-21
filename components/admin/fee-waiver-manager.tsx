@@ -28,6 +28,7 @@ export function FeeWaiverManager({ initialState }: { initialState: State }) {
   const [endsAt, setEndsAt] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   // Windows can change without an operator mutation. Keep the active list current.
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -44,6 +45,7 @@ export function FeeWaiverManager({ initialState }: { initialState: State }) {
     setStartsAt(c ? nepalDateTimeInput(c.startsAt) : '');
     setEndsAt(c ? nepalDateTimeInput(c.endsAt) : '');
     setError('');
+    setNotice('');
   }
   async function refresh() {
     const response = await fetch('/api/admin/fee-waivers', {
@@ -59,6 +61,7 @@ export function FeeWaiverManager({ initialState }: { initialState: State }) {
     if (busy) return;
     setBusy(true);
     setError('');
+    setNotice('');
     try {
       const response = await fetch('/api/admin/fee-waivers', {
         method: 'POST',
@@ -216,6 +219,7 @@ export function FeeWaiverManager({ initialState }: { initialState: State }) {
           ) : null}
         </div>
       </form>
+      {notice ? <output className="block break-words text-sm text-muted-foreground">{notice}</output> : null}
       {error ? (
         <p role="alert" className="break-words text-sm text-destructive">
           {error}
@@ -233,7 +237,15 @@ export function FeeWaiverManager({ initialState }: { initialState: State }) {
           disabled={busy}
           onClick={() => {
             setBusy(true);
+            setError('');
+            setNotice('');
             void refresh()
+              .then(() => {
+                if (editing) {
+                  edit(null);
+                  setNotice('Campaigns refreshed. Your unsaved edit was cleared. Reopen the campaign to review its current details before editing again.');
+                }
+              })
               .catch((e) => setError(e.message))
               .finally(() => setBusy(false));
           }}
