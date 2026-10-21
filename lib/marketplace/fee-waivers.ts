@@ -1,3 +1,5 @@
+import { calculateSellerCommissionPaisa } from './policy';
+
 /** Instants are UTC epoch milliseconds; presentation converts them to Nepal time. */
 export interface FeeWaiverTerms {
   name: string;
@@ -10,6 +12,35 @@ export interface FeeWaiverCampaign extends FeeWaiverTerms {
   id: string;
   revision: number;
   state: FeeWaiverState;
+}
+export interface FeeBreakdown {
+  standardBps: number;
+  basePaisa: number;
+  standardPaisa: number;
+  waivedPaisa: number;
+  netPaisa: number;
+  campaignId: string | null;
+  campaignRevision: number | null;
+}
+/** Accepted terms remain standard; the order's effective fee is the net amount. */
+export function calculateMarketplaceFee(
+  basePaisa: number,
+  standardBps: number,
+  campaign: FeeWaiverCampaign | null,
+): FeeBreakdown {
+  if (!Number.isSafeInteger(basePaisa) || basePaisa < 0)
+    throw new RangeError('Review the marketplace fee base.');
+  const standardPaisa = calculateSellerCommissionPaisa(basePaisa, standardBps);
+  const waivedPaisa = campaign ? standardPaisa : 0;
+  return {
+    standardBps,
+    basePaisa,
+    standardPaisa,
+    waivedPaisa,
+    netPaisa: standardPaisa - waivedPaisa,
+    campaignId: campaign?.id ?? null,
+    campaignRevision: campaign?.revision ?? null,
+  };
 }
 export interface FeeWaiverContext {
   actorId: string;

@@ -7,6 +7,8 @@ import { promoQuoteIntent } from '@/lib/incentives/quote-intent';
 import { allocatePromoDiscount } from '@/lib/incentives/promo-policy';
 import { getDeliveryRates, rateVersionGuard } from './delivery-rates';
 import { getSellerCommissionTerms, commissionCheckoutGuards } from './commission-rates';
+import { quoteFeeWaiver, feeWaiverCheckoutGuards, feeEvidenceInsert } from './fee-waivers';
+import { calculateMarketplaceFee, type FeeBreakdown } from '../../marketplace/fee-waivers';
 import { buildFormAnswerInsert } from './form-answers';
 import { assertCommerceFormReplay, type CommerceForm } from './commerce-form-replay';
 import { getCommissionSetting, sellerAcceptedCommissionVersion } from './marketplace-settings';
@@ -20,7 +22,6 @@ import {
   phaseOneMarketplacePolicy,
   allocatePlatformDiscountPaisa,
   calculateCommissionBasePaisa,
-  calculateSellerCommissionPaisa,
 } from '@/lib/marketplace/policy';
 import {
   CUSTOMER_POLICY_VERSION,
@@ -356,6 +357,8 @@ export async function createCodOrder(
   const rates = await getDeliveryRates(database);
   const commissionSetting = await getCommissionSetting(database, now);
   const sellerCommissionBps = commissionSetting.basisPoints;
+  const feeWaiverQuote = items.some(item => item.participationRoute !== 'managed_maker')
+    ? await quoteFeeWaiver(database, now) : null;
   const sellerCommissionTerms = Object.fromEntries(await Promise.all([...new Set(items.filter(item => item.participationRoute !== 'managed_maker').map(item => item.sellerId))].map(async sellerId => [sellerId, await getSellerCommissionTerms(database, sellerId, now)] as const)));
   if (commissionSetting.versionId) {
     for (const sellerId of new Set(items.filter((item)=>item.participationRoute!=='managed_maker').map((item)=>item.sellerId))) {
@@ -441,6 +444,8 @@ export async function createCodOrder(
   const registeredSettlementTerms = items.some(item => item.participationRoute !== 'managed_maker')
     ? await getRegisteredSettlementTerms(database, now) : null;
   const termsSnapshot = { ...checkoutTermsSnapshot(sellerCommissionBps), serviceFee, sellerCommissionTerms, deliveryRate: delivery, reviewedQuote: input.reviewedQuote ?? null,
+    marketplaceFees: [] as (FeeBreakdown & { orderItemId: string })[],
+    ...(feeWaiverQuote ? { marketplaceFeeWaiver: feeWaiverQuote } : {}),
     ...(registeredSettlementTerms ? { registeredSettlementTerms } : {}) };
   const platformDiscounts = allocatePlatformDiscountPaisa(
     items.map((item) => ({
@@ -517,7 +522,9 @@ export async function createCodOrder(
           item.managedAgreementVersion, item.managedAgreementLanguage, item.managedAgreementAcceptedAt]));
     }
   }
+  const placedAt = Date.now();
   const statements: D1PreparedStatement[] = [
+    ...(feeWaiverQuote ? feeWaiverCheckoutGuards(database, feeWaiverQuote, placedAt) : []),
     ...managedCheckoutGuards,
     database.prepare(
       "UPDATE delivery_rate_current SET version_id=version_id WHERE id='default'",
@@ -558,7 +565,7 @@ export async function createCodOrder(
         delivery.chargePaisa,
         buyerFeePaisa,
         grandTotalPaisa,
-        now,
+        placedAt,
         now,
         now,
         credit.walletPaisa,
@@ -757,6 +764,7 @@ export async function createCodOrder(
       platformFundedDiscountPaisa: platformDiscountPaisa,
     });
     const managed = item.participationRoute === 'managed_maker';
+    const fee = managed ? null : calculateMarketplaceFee(commissionBasePaisa, commission.basisPoints, feeWaiverQuote!.campaign);
     statements.push(
       database
         .prepare(
@@ -784,8 +792,8 @@ export async function createCodOrder(
           commissionBasePaisa,
           managed ? `managed-${item.commercialModel ?? 'unconfigured'}` : commission.version,
           managed ? item.managedAgreementVersion : item.sellerAgreementVersion,
-          managed ? 0 : commission.basisPoints,
-          managed ? 0 : calculateSellerCommissionPaisa(commissionBasePaisa, commission.basisPoints),
+          managed || fee!.campaignId !== null ? 0 : fee!.standardBps,
+          fee?.netPaisa ?? 0,
           lineTotalPaisa,
           item.returnEligible,
           item.madeToOrder,
@@ -793,6 +801,10 @@ export async function createCodOrder(
           promoAllocations[item.id] ?? 0,promoAllocations[item.id] ?? 0,promo ? 0 : platformDiscountPaisa,
         ),
     );
+    if (fee) {
+      statements.push(feeEvidenceInsert(database, orderItemId, fee, placedAt));
+      termsSnapshot.marketplaceFees.push({ orderItemId, ...fee });
+    }
     if (managed) {
       const accepted = acceptedManaged.get(item.sellerId);
       const snapshot = buildManagedCommercialSnapshot({

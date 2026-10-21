@@ -2,6 +2,8 @@ import {
   FeeWaiverError,
   validateFeeWaiverInstant,
   validateFeeWaiverTerms,
+  selectFeeWaiver,
+  type FeeBreakdown,
   type FeeWaiverCampaign,
   type FeeWaiverCommand,
   type FeeWaiverContext,
@@ -131,6 +133,81 @@ export async function getFeeWaiverState(
         endsAt,
       })),
   };
+}
+
+export interface FeeWaiverQuote {
+  controlRevision: number;
+  campaign: FeeWaiverCampaign | null;
+  evaluatedAt: number;
+}
+export async function quoteFeeWaiver(
+  db: D1Database,
+  at: number,
+): Promise<FeeWaiverQuote> {
+  validateFeeWaiverInstant(at);
+  const state = await getFeeWaiverState(db);
+  return {
+    controlRevision: state.revision,
+    campaign: selectFeeWaiver(state.campaigns, at),
+    evaluatedAt: at,
+  };
+}
+
+/** Serialize with campaign mutations, including quotes that found no campaign.
+ * Eligibility is re-evaluated at the server's actual order placement instant. */
+export function feeWaiverCheckoutGuards(
+  db: D1Database,
+  quote: FeeWaiverQuote,
+  placedAt: number,
+): D1PreparedStatement[] {
+  validateFeeWaiverInstant(placedAt);
+  const idOrder =
+    (db as D1Database & { dialect?: string }).dialect === 'mariadb'
+      ? 'BINARY c.id'
+      : 'c.id COLLATE BINARY';
+  const winner = `FROM marketplace_fee_waiver_campaigns c JOIN marketplace_fee_waiver_revisions r ON r.campaign_id=c.id AND r.revision=c.revision
+    WHERE r.state='published' AND r.starts_at<=? AND r.ends_at>? ORDER BY r.starts_at,${idOrder} LIMIT 1`;
+  return [
+    db.prepare(
+      "UPDATE marketplace_fee_waiver_control SET revision=revision WHERE id='default'",
+    ),
+    ...guard(
+      db,
+      `EXISTS(SELECT 1 FROM marketplace_fee_waiver_control WHERE id='default' AND revision=?)
+      AND COALESCE((SELECT c.id ${winner}),'')=? AND COALESCE((SELECT r.revision ${winner}),0)=?`,
+      [
+        quote.controlRevision,
+        placedAt,
+        placedAt,
+        quote.campaign?.id ?? '',
+        placedAt,
+        placedAt,
+        quote.campaign?.revision ?? 0,
+      ],
+    ),
+  ];
+}
+
+export function feeEvidenceInsert(
+  db: D1Database,
+  orderItemId: string,
+  breakdown: FeeBreakdown,
+  now: number,
+): D1PreparedStatement {
+  return db
+    .prepare(`INSERT INTO order_item_marketplace_fees(order_item_id,standard_bps,base_paisa,standard_paisa,waived_paisa,net_paisa,campaign_id,campaign_revision,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?)`)
+    .bind(
+      orderItemId,
+      breakdown.standardBps,
+      breakdown.basePaisa,
+      breakdown.standardPaisa,
+      breakdown.waivedPaisa,
+      breakdown.netPaisa,
+      breakdown.campaignId,
+      breakdown.campaignRevision,
+      now,
+    );
 }
 
 interface Receipt {

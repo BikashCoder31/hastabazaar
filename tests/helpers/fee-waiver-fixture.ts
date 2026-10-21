@@ -1,4 +1,6 @@
 import { commissionDatabase } from './commission-database';
+import { historicalCommissionFixture } from './historical-commission-fixture';
+import { seedCheckoutBuyer } from './checkout-contact';
 import type {
   FeeWaiverContext,
   FeeWaiverTerms,
@@ -6,6 +8,40 @@ import type {
 
 /** Only an in-memory SQLite database; applies real migrations and real transaction rollback. */
 export const feeWaiverFixture = commissionDatabase;
+/** Fictional checkout prerequisites, on the same real in-memory migrated database. */
+export async function feeWaiverCheckoutFixture() {
+  const fixture = await commissionDatabase();
+  fixture.sqlite
+    .exec(`INSERT INTO business_setting_versions(id,setting_key,version,value_json,status,revision,change_control,effective_from,reason,created_by,created_at,last_request_id)
+    VALUES('waiver-standard','independent_seller_commission_bps',1,'1000','published',1,'controlled',1,'Fictional standard terms','owner',1,'waiver-standard');`);
+  historicalCommissionFixture(fixture.sqlite, 'owner', true);
+  await seedCheckoutBuyer(fixture.database);
+  fixture.sqlite
+    .exec(`INSERT INTO categories(id,slug,name_en,is_active,sort_order,created_at,updated_at) VALUES('cat','craft','Craft',1,1,1,1);
+    INSERT INTO products(id,seller_id,category_id,slug,sku,name_en,description_en,price_paisa,inventory_quantity,producer,country_of_origin,materials,status,created_at,updated_at)
+      VALUES('product','seller-a','cat','craft','SKU','Craft','Fictional craft',10000,10,'Maker','NP','Wood','published',1,1);
+    INSERT INTO carts(id,anonymous_token_hash,currency,created_at,updated_at) VALUES('cart','token','NPR',1,1);
+    INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES('line-a','cart','product',1,1,1);`);
+  return {
+    ...fixture,
+    input: {
+      customerAuthSubject: 'checkout-buyer',
+      customerEmail: 'buyer@example.test',
+      customerPhone: '9811111111',
+      locale: 'en-NP' as const,
+      termsAccepted: true,
+      idempotencyKey: crypto.randomUUID(),
+      address: {
+        recipientName: 'Fictional Buyer',
+        phone: '9811111111',
+        province: 'Bagmati',
+        district: 'Kathmandu',
+        municipality: 'Kathmandu',
+        locality: 'Ward 1',
+      },
+    },
+  };
+}
 export const feeWaiverTerms: FeeWaiverTerms = {
   name: 'Global launch',
   description: 'All marketplace sellers',
