@@ -3,6 +3,7 @@ import { access, readFile, realpath } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseEnv } from 'node:util';
+import { sameFeeSqlDefinition } from '../lib/operations/fee-schema-readiness.mjs';
 
 const localSettings = Object.freeze({
   HASTABAZAAR_RUNTIME_ENV: 'local_staging',
@@ -183,9 +184,9 @@ export function inspectLocalFeatureSchema(sqlite) {
     ['order_item_marketplace_fees', 'marketplace_fee_snapshot_immutable', ['update', 'delete']],
   ]) for (const event of events) {
     const name = `${String(table)}_no_${event}`;
-    const definition = sqlite.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?").get(name)?.sql?.toLowerCase().replace(/\s+/g, ' ');
+    const definition = sqlite.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?").get(name)?.sql;
     if (!definition) missing.push(name);
-    else if (!definition.includes(`before ${event} on ${String(table)}`) || !definition.includes('raise(abort,') || !definition.includes(message)) missing.push(`${name}.version`);
+    else if (!sameFeeSqlDefinition(definition,`CREATE TRIGGER ${name} BEFORE ${event} ON ${String(table)} BEGIN SELECT RAISE(ABORT,'${String(message)}'); END`)) missing.push(`${name}.version`);
   }
   return { ready: missing.length === 0, missing };
 }

@@ -1,4 +1,5 @@
 import manifest from '../../deployment/babal/release-manifest.json';
+import { sameFeeSqlDefinition } from './fee-schema-readiness.mjs';
 export const releaseId=manifest.release;
 // MariaDB implements partial unique indexes and discount labels using generated
 // columns. SQLite uses its native partial indexes and the current discount total.
@@ -45,16 +46,18 @@ export async function inspectReadiness(
     else if(actual.length!==expected.columns.length||actual.some((row,i)=>row.columnName!==expected.columns[i]||Number(row.position)!==i+1||row.referencedTable!==expected.referencedTable||row.referencedColumn!==expected.referencedColumns[i]||row.referencedSchema!==row.databaseName||!['RESTRICT','NO ACTION'].includes(row.deleteRule)||!['RESTRICT','NO ACTION'].includes(row.updateRule)))missing.push('foreign-key-version:'+key);
    }
    const rows2=await db.prepare('SELECT TRIGGER_NAME AS name,ACTION_STATEMENT AS definition,EVENT_OBJECT_TABLE AS tableName,EVENT_MANIPULATION AS event,ACTION_TIMING AS timing FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=DATABASE()').all<{name:string;definition:string;tableName:string;event:string;timing:string}>();
-   for(const row of rows2.results)triggers.set(row.name,row.definition.toLowerCase());
+   for(const row of rows2.results)triggers.set(row.name,row.definition);
    for(const [name,shape] of Object.entries(manifest.requiredTriggerShapes)){
     const row=rows2.results.find(row=>row.name===name);
     if(row&&(row.tableName!==shape.table||row.event!==shape.event||row.timing!==shape.timing))missing.push('trigger-shape:'+name);
    }
    const checkRows=await db.prepare('SELECT TABLE_NAME AS tableName,CONSTRAINT_NAME AS name,CHECK_CLAUSE AS definition FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE()').all<{tableName:string;name:string;definition:string}>();
-   const checks=new Map(checkRows.results.map(row=>[row.tableName+'.'+row.name,row.definition.toLowerCase().replace(/`/g,'')]));
+   const checks=new Map(checkRows.results.map(row=>[row.tableName+'.'+row.name,row.definition]));
    for(const [name,fragments] of Object.entries(manifest.requiredChecks)){
     const definition=checks.get(name);if(!definition)missing.push('check:'+name);
-    else if(fragments.some(fragment=>!definition.includes(fragment)))missing.push('check-version:'+name);
+    else if(name in manifest.requiredExactChecks){
+     if(!sameFeeSqlDefinition(definition,manifest.requiredExactChecks[name as keyof typeof manifest.requiredExactChecks]))missing.push('check-version:'+name);
+    }else if(fragments.some(fragment=>!definition.toLowerCase().replace(/`/g,'').includes(fragment)))missing.push('check-version:'+name);
    }
   }else{
    for(const name of Object.keys(manifest.requiredTables)){
@@ -63,7 +66,7 @@ export async function inspectReadiness(
     const rows=await db.prepare(`PRAGMA table_info(${name})`).all<{name:string}>();
     if(rows.results.length)columns.set(name,new Set(rows.results.map(r=>r.name)));
    }
-   const rows=await db.prepare("SELECT name,sql AS definition FROM sqlite_master WHERE type='trigger'").all<{name:string;definition:string}>();for(const row of rows.results)triggers.set(row.name,row.definition.toLowerCase());
+   const rows=await db.prepare("SELECT name,sql AS definition FROM sqlite_master WHERE type='trigger'").all<{name:string;definition:string}>();for(const row of rows.results)triggers.set(row.name,row.definition);
    const indexes=await db.prepare("SELECT name,sql AS definition FROM sqlite_master WHERE type='index' AND name='managed_allocation_one_reservation'").all<{name:string;definition:string}>();
    const allocationIndex=indexes.results[0]?.definition?.toLowerCase().replace(/\s+/g,'')??'';
    if(!allocationIndex)missing.push('index:managed_payout_allocations.managed_allocation_one_reservation');
@@ -79,11 +82,11 @@ export async function inspectReadiness(
   }
   for(const [name,fragments] of Object.entries(manifest.requiredTriggers)){
    const definition=triggers.get(name);if(!definition)missing.push(`trigger:${name}`);
-   else if(dialect==='mariadb'&&fragments.some(fragment=>!definition.replace(/`/g,'').includes(fragment)))missing.push(`trigger-version:${name}`);
-   else if(dialect==='sqlite'&&name in manifest.requiredTriggerShapes){
+   else if(name in manifest.requiredTriggerShapes){
     const shape=manifest.requiredTriggerShapes[name as keyof typeof manifest.requiredTriggerShapes];
-    if(!definition.includes(`before ${shape.event.toLowerCase()} on ${shape.table}`)||!definition.includes('raise(abort,')||!definition.includes(fragments[2]))missing.push(`trigger-version:${name}`);
-   }
+    const expected=dialect==='mariadb'?`SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='${fragments[2]}'`:`CREATE TRIGGER ${name} BEFORE ${shape.event} ON ${shape.table} BEGIN SELECT RAISE(ABORT,'${fragments[2]}'); END`;
+    if(!sameFeeSqlDefinition(definition,expected))missing.push(`trigger-version:${name}`);
+   }else if(dialect==='mariadb'&&fragments.some(fragment=>!definition.toLowerCase().replace(/`/g,'').includes(fragment)))missing.push(`trigger-version:${name}`);
   }
   if(columns.get('marketplace_fee_waiver_control')?.has('revision')){
    const control=await db.prepare('SELECT id,revision FROM marketplace_fee_waiver_control').all<{id:string;revision:number}>();

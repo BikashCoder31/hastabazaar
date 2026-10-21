@@ -188,6 +188,33 @@ Object.assign(requiredChecks, {
   'order_item_marketplace_fees.marketplace_fee_full_waiver': ['campaign_id', 'campaign_revision', 'is null', 'is not null', 'waived_paisa', 'standard_paisa', 'net_paisa'],
 });
 requiredChecks['marketplace_fee_waiver_revisions.ends_at'].push('starts_at', '>');
+// Complete CHECK_CLAUSE forms verified against MariaDB 10.11 introspection.
+// MariaDB removes the redundant branch parentheses in the full-waiver check;
+// retain the actual AND/OR precedence and all other grouping/operators.
+const requiredExactChecks = {};
+for (const [table, columns] of Object.entries({
+  marketplace_fee_waiver_control: ['revision'],
+  marketplace_fee_waiver_campaigns: ['revision', 'created_at', 'updated_at'],
+  marketplace_fee_waiver_revisions: ['revision', 'starts_at', 'ends_at', 'created_at'],
+  marketplace_fee_waiver_requests: ['created_at'],
+  order_item_marketplace_fees: ['base_paisa', 'standard_paisa', 'waived_paisa', 'net_paisa', 'created_at'],
+})) for (const column of columns) {
+  const minimum = column === 'revision' && table !== 'marketplace_fee_waiver_control' || column === 'ends_at' ? 1 : 0;
+  requiredExactChecks[`${table}.${column}`] = `${column} BETWEEN ${minimum} AND 9007199254740991`;
+}
+Object.assign(requiredExactChecks, {
+  'marketplace_fee_waiver_control.id': "id = 'default'",
+  'marketplace_fee_waiver_revisions.state': "state IN ('draft','published','paused','ended')",
+  'marketplace_fee_waiver_revisions.name': 'CHAR_LENGTH(TRIM(name)) BETWEEN 1 AND 100',
+  'marketplace_fee_waiver_revisions.description': 'CHAR_LENGTH(description) <= 1000',
+  'marketplace_fee_waiver_requests.request_id': 'CHAR_LENGTH(request_id) BETWEEN 1 AND 191',
+  'marketplace_fee_waiver_requests.command_json': "JSON_VALID(command_json) AND JSON_TYPE(command_json) = 'OBJECT'",
+  'marketplace_fee_waiver_requests.response_json': "JSON_VALID(response_json) AND JSON_TYPE(response_json) = 'OBJECT'",
+  'order_item_marketplace_fees.standard_bps': 'standard_bps BETWEEN 0 AND 10000',
+  'order_item_marketplace_fees.marketplace_fee_reconciled': 'standard_paisa - waived_paisa = net_paisa',
+  'order_item_marketplace_fees.marketplace_fee_full_waiver': 'campaign_id IS NULL AND campaign_revision IS NULL AND waived_paisa = 0 OR campaign_id IS NOT NULL AND campaign_revision IS NOT NULL AND waived_paisa = standard_paisa AND net_paisa = 0',
+});
+requiredExactChecks['marketplace_fee_waiver_revisions.ends_at'] += ' AND ends_at > starts_at';
 const requiredForeignKeys = {
   'marketplace_fee_waiver_revisions.fee_revision_campaign_fk': { columns: ['campaign_id'], referencedTable: 'marketplace_fee_waiver_campaigns', referencedColumns: ['id'] },
   'marketplace_fee_waiver_revisions.fee_revision_actor_fk': { columns: ['created_by'], referencedTable: 'users', referencedColumns: ['id'] },
@@ -196,6 +223,7 @@ const requiredForeignKeys = {
   'order_item_marketplace_fees.fee_evidence_revision_fk': { columns: ['campaign_id', 'campaign_revision'], referencedTable: 'marketplace_fee_waiver_revisions', referencedColumns: ['campaign_id', 'revision'] },
 };
 const manifest = {
+  requiredExactChecks,
   requiredForeignKeys,
   requiredTriggerShapes,
   requiredUniqueIndexes: {

@@ -7,15 +7,16 @@ import { fileURLToPath } from 'node:url';
 import { hostedAuthProjectFixture } from './helpers/hosted-auth-project-fixture';
 import { inspectReadiness } from '../lib/operations/readiness';
 import manifest from '../deployment/babal/release-manifest.json';
+import nativeFeeMetadata from './helpers/mariadb-fee-readiness-metadata.json';
 
 void test('native readiness verifies the actual reserved predicate and parent ID collation',async()=>{
   const inspect=async(expression:string,collation='utf8mb4_unicode_ci')=>inspectReadiness({dialect:'mariadb',prepare(sql:string){return{async all(){
     if(sql.includes('information_schema.COLUMNS'))return{results:Object.entries(manifest.requiredTables).flatMap(([tableName,names])=>names.map(columnName=>({tableName,columnName,generationExpression:expression,collation:tableName==='managed_payout_allocations'?collation:manifest.requiredColumnCollations[`${tableName}.${columnName}` as keyof typeof manifest.requiredColumnCollations]??'utf8mb4_unicode_ci'})))};
     if(sql.includes('information_schema.STATISTICS'))return{results:Object.entries(manifest.requiredUniqueIndexes).flatMap(([key,columns])=>columns.map((columnName,i)=>({tableName:key.split('.')[0],name:key.split('.')[1],nonUnique:0,position:i+1,columnName,prefixLength:null})))};
-    if(sql.includes('information_schema.TRIGGERS'))return{results:Object.entries(manifest.requiredTriggers).map(([name,parts])=>({name,definition:parts.join(' ')||'BEGIN SIGNAL END',tableName:manifest.requiredTriggerShapes[name as keyof typeof manifest.requiredTriggerShapes]?.table,event:manifest.requiredTriggerShapes[name as keyof typeof manifest.requiredTriggerShapes]?.event,timing:'BEFORE'}))};
+    if(sql.includes('information_schema.TRIGGERS'))return{results:Object.entries(manifest.requiredTriggers).map(([name,parts])=>({name,definition:nativeFeeMetadata.triggers.find(row=>row.name===name)?.definition??(parts.join(' ')||'BEGIN SIGNAL END'),tableName:manifest.requiredTriggerShapes[name as keyof typeof manifest.requiredTriggerShapes]?.table,event:manifest.requiredTriggerShapes[name as keyof typeof manifest.requiredTriggerShapes]?.event,timing:'BEFORE'}))};
     if(sql.includes('information_schema.KEY_COLUMN_USAGE'))return{results:Object.entries(manifest.requiredForeignKeys).flatMap(([key,fk])=>fk.columns.map((columnName,i)=>({tableName:key.split('.')[0],name:key.split('.')[1],columnName,position:i+1,referencedTable:fk.referencedTable,referencedColumn:fk.referencedColumns[i],referencedSchema:'fixture',databaseName:'fixture',deleteRule:'RESTRICT',updateRule:'RESTRICT'})))};
     if(sql.includes('FROM marketplace_fee_waiver_control'))return{results:[{id:'default',revision:0}]};
-    if(sql.includes('information_schema.CHECK_CONSTRAINTS'))return{results:Object.entries(manifest.requiredChecks).map(([key,parts])=>({tableName:key.split('.')[0],name:key.split('.')[1],definition:parts.join(' ')}))};
+    if(sql.includes('information_schema.CHECK_CONSTRAINTS'))return{results:Object.entries(manifest.requiredChecks).map(([key,parts])=>nativeFeeMetadata.checks.find(row=>row.tableName+'.'+row.name===key)??({tableName:key.split('.')[0],name:key.split('.')[1],definition:parts.join(' ')}))};
     return{results:[]};
   }};}} as unknown as D1Database);
   const actual="case when cast(`disposition` as char charset binary) = 'reserved' then `entitlement_id` else NULL end";
@@ -89,6 +90,10 @@ void test('fully migrated SQLite with local auth prerequisites is ready without 
       return { results: sqlite.prepare(sql).all() };
     } }; } } as unknown as D1Database;
     assert.deepEqual(await inspectReadiness(db), { ready: true, missing: [] });
+    const feeGuard = String(sqlite.prepare("SELECT sql FROM sqlite_master WHERE name='order_item_marketplace_fees_no_update'").get()!.sql);
+    sqlite.exec("DROP TRIGGER order_item_marketplace_fees_no_update; CREATE TRIGGER order_item_marketplace_fees_no_update BEFORE UPDATE ON order_item_marketplace_fees WHEN 0 BEGIN SELECT RAISE(ABORT,'marketplace_fee_snapshot_immutable'); END");
+    assert.ok((await inspectReadiness(db)).missing.includes('trigger-version:order_item_marketplace_fees_no_update'));
+    sqlite.exec('DROP TRIGGER order_item_marketplace_fees_no_update; ' + feeGuard);
     sqlite.exec('DROP TRIGGER order_items_require_available_inventory');
     const missing = await inspectReadiness(db);
     assert.equal(missing.ready, false);

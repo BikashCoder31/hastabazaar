@@ -43,14 +43,20 @@ void test('upgrade refuses an occupied preview and never overwrites a backup', a
   }finally {sqlite.close();await rm(directory,{recursive:true,force:true});}
 });
 
-void test('additive upgrade preserves every existing row and a second run changes nothing', async () => {
+void test('legacy maker/loyalty additive upgrade preserves every row and leaves later fee storage for separate review', async () => {
   const sqlite = await oldDatabase();
   try {
     const manifest = await readReadinessManifest(process.cwd());
     const before = existingRecordSnapshot(sqlite);
     assert.equal(inspectReadinessUpgrade(sqlite, 'existing-super').migrationNeeded, true);
     assert.deepEqual(applyReadinessUpgrade(sqlite, manifest, 'existing-super', 100), { migrations: 2, forms: 4, audits: 4 });
-    assert.deepEqual(inspectLocalFeatureSchema(sqlite), {ready: true, missing: []});
+    assert.deepEqual(inspectLocalFeatureSchema(sqlite), {ready: false, missing: [
+      'marketplace_fee_waiver_control', 'marketplace_fee_waiver_campaigns', 'marketplace_fee_waiver_revisions',
+      'marketplace_fee_waiver_requests', 'order_item_marketplace_fees',
+      'marketplace_fee_waiver_revisions_no_update', 'marketplace_fee_waiver_revisions_no_delete',
+      'marketplace_fee_waiver_requests_no_update', 'marketplace_fee_waiver_requests_no_delete',
+      'marketplace_fee_waiver_campaigns_no_delete', 'order_item_marketplace_fees_no_update', 'order_item_marketplace_fees_no_delete',
+    ]});
     assert.deepEqual({...sqlite.prepare('SELECT scheduled_revision,scheduled_for,scheduled_unpause FROM loyalty_config').get()},
       {scheduled_revision:null,scheduled_for:null,scheduled_unpause:0});
     assertExistingRecordsPreserved(sqlite, before);
