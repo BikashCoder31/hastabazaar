@@ -32,6 +32,8 @@ import { getOperationsOrderDetail } from '@/lib/db/repositories/fulfillment';
 import { listManagedInvoiceGroupsForOrder } from '@/lib/db/repositories/managed-documents';
 import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
 import { can } from '@/lib/marketplace/permissions';
+import { readOrderMarketplaceFeeViews } from '@/lib/db/repositories/fee-waivers';
+import { OrderMarketplaceFees } from '@/components/seller/order-marketplace-fees';
 
 export const dynamic = 'force-dynamic';
 const invoiceSettingsObservedAt = () => Date.now();
@@ -62,6 +64,7 @@ export default async function AdminOrderPage({
   if (!order) notFound();
   const address = order.address;
   const db = requireDatabase(env as unknown as { DB?: D1Database });
+  const marketplaceFees = await readOrderMarketplaceFeeViews(db,order.items.map(item=>item.id));
   const codReview = await getFirstCodReview(db, id);
   const feeSummary = staff.role==='super_admin' ? await serviceFeeRefundSummary(db,id) : null;
   const codPending =
@@ -156,6 +159,7 @@ export default async function AdminOrderPage({
           },
         ]}
       />
+      <OrderMarketplaceFees fees={marketplaceFees}/>
       <Link
         href="/admin/orders"
         className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"

@@ -11,6 +11,8 @@ import { SellerOrderFulfillmentActions } from '@/components/seller/order-fulfill
 import { requireSellerPage } from '@/lib/auth/seller';
 import { requireDatabase } from '@/lib/db/d1';
 import { getSellerOrderDetail } from '@/lib/db/repositories/fulfillment';
+import { readOrderMarketplaceFeeViews } from '@/lib/db/repositories/fee-waivers';
+import { OrderMarketplaceFees } from '@/components/seller/order-marketplace-fees';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +36,7 @@ export default async function SellerOrderPage({
     seller.sellerId,
   );
   if (!order) notFound();
+  const marketplaceFees = await readOrderMarketplaceFeeViews(requireDatabase(env as unknown as { DB?: D1Database }),order.items.map(item=>item.id));
   const codReview = await getFirstCodReview(
     requireDatabase(env as unknown as { DB?: D1Database }),
     id,
@@ -55,6 +58,7 @@ export default async function SellerOrderPage({
   );
   return (
     <div>
+      <OrderMarketplaceFees fees={marketplaceFees}/>
       <ParcelList
         parcels={parcels.map((p) =>
           customerParcel({

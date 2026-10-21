@@ -125,6 +125,14 @@ const destinations: readonly {
     role: 'super_admin',
   },
   {
+    href: '/admin/fee-waivers',
+    label: 'Marketplace fee waivers',
+    group: 'Controls',
+    icon: 'commission',
+    permission: 'commercial_policy.manage',
+    role: 'super_admin',
+  },
+  {
     href: '/admin/loyalty',
     label: 'Daily loyalty points',
     group: 'Controls',
@@ -489,6 +497,10 @@ const taskGuides: Readonly<
       'Schedule the change without rewriting historical orders.',
     ],
   ],
+  '/admin/fee-waivers': [
+    'Schedule full marketplace fee waivers for Registered Seller orders and review overlapping campaigns.',
+    ['Create a named campaign with Nepal start and end times.', 'Publish or schedule, pause, resume or end a campaign.', 'Check active overlaps; only one full waiver applies to each new eligible order.'],
+  ],
   '/admin/delivery-rates': [
     'Review delivery prices and service-area settings.',
     [
@@ -616,6 +628,7 @@ const taskOrder: readonly string[] = [
   '/admin/referrals',
   '/admin/business-settings',
   '/admin/commission',
+  '/admin/fee-waivers',
   '/admin/delivery-rates',
   '/admin/promo-codes',
   '/admin/loyalty',

@@ -173,6 +173,15 @@ export function SellerEarningsSummary({
             <strong>{commission.basisPoints / 100}% company / {(10000 - commission.basisPoints) / 100}% seller</strong>. Historical entries
             keep their recorded commission.
           </p> : null}
+          {earnings.marketplaceFees ? <div className="space-y-2 rounded-xl border p-4">
+            <h3 className="font-semibold">Original marketplace fees</h3>
+            <dl className="grid gap-3 text-sm sm:grid-cols-3">
+              <div><dt>Original standard fees</dt><dd>{sellerMoney(earnings.marketplaceFees.originalStandardPaisa)}</dd></div>
+              <div><dt>Original fees waived</dt><dd>{sellerMoney(earnings.marketplaceFees.originalWaivedPaisa)}</dd></div>
+              <div><dt>Original net fees</dt><dd>{sellerMoney(earnings.marketplaceFees.originalNetPaisa)}</dd></div>
+            </dl>
+            <p className="text-xs text-muted-foreground">Includes original orders before cancellations and refunds. These are not remaining fees or payout balances. Open an order to see its recorded campaign.</p>
+          </div> : null}
           {earnings.currentRateUnavailable ? <output className="block text-sm leading-6">Current commission terms are unavailable. New orders require configured, accepted terms. Recorded earnings below keep their original amounts.</output> : earnings.commissionAccepted === false && commission ? (
             <p className="text-sm leading-6 text-amber-800 dark:text-amber-200">
               {earnings.offeredCommissionBps !== undefined && earnings.offeredCommissionBps !== commission.basisPoints ? (

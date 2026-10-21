@@ -111,12 +111,25 @@ export async function getCommissionReport(
     pendingPaisa: Number(summary?.pendingPaisa ?? 0),
     missingEntries: Number(summary?.missingEntries ?? 0),
   };
+  const campaignNames = new Map<string, Set<string>>();
+  const orderIds = [...new Set(rows.results.map(row=>row.orderId))];
+  for(let start=0;start<orderIds.length;start+=90) {
+    const batch=orderIds.slice(start,start+90);
+    const names=await db.prepare(`SELECT DISTINCT i.order_id AS orderId,i.seller_id AS sellerId,r.name
+      FROM order_items i JOIN order_item_marketplace_fees f ON f.order_item_id=i.id
+      JOIN marketplace_fee_waiver_revisions r ON r.campaign_id=f.campaign_id AND r.revision=f.campaign_revision
+      WHERE i.order_id IN (${batch.map(()=>'?').join(',')}) AND ${independentItem}`).bind(...batch).all<{orderId:string;sellerId:string;name:string}>();
+    for(const row of names.results) {
+      const key=JSON.stringify([row.orderId,row.sellerId]);
+      const names=campaignNames.get(key)??new Set<string>();names.add(row.name);campaignNames.set(key,names);
+    }
+  }
   return {
     totals,
     totalRows,
     page,
     pageSize,
-    rows: rows.results,
+    rows: rows.results.map(row=>({...row,campaignNames:[...(campaignNames.get(JSON.stringify([row.orderId,row.sellerId]))??[])].sort()})),
     sellers: sellers.results,
   };
 }

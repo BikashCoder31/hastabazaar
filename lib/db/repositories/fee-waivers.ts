@@ -62,6 +62,22 @@ export async function readOrderMarketplaceFees(
   return fees;
 }
 
+/** Resolve names by the immutable revision saved on the order, never the current campaign. */
+export async function readOrderMarketplaceFeeViews(db: D1Database, orderItemIds: string[]) {
+  const fees = await readOrderMarketplaceFees(db, orderItemIds);
+  const views: {itemId:string;productName:string;fee:FeeBreakdown;campaignName:string|null}[] = [];
+  const ids = [...fees.keys()];
+  for(let start=0;start<ids.length;start+=90) {
+    const batch=ids.slice(start,start+90);
+    const rows=await db.prepare(`SELECT i.id,i.product_name_snapshot AS productName,r.name AS campaignName FROM order_items i
+      LEFT JOIN order_item_marketplace_fees f ON f.order_item_id=i.id
+      LEFT JOIN marketplace_fee_waiver_revisions r ON r.campaign_id=f.campaign_id AND r.revision=f.campaign_revision
+      WHERE i.id IN (${batch.map(()=>'?').join(',')}) ORDER BY i.id`).bind(...batch).all<{id:string;productName:string;campaignName:string|null}>();
+    for(const row of rows.results) views.push({itemId:row.id,productName:row.productName,fee:fees.get(row.id)!,campaignName:row.campaignName});
+  }
+  return views;
+}
+
 const authoritySql = `EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=? AND u.auth_subject=? AND u.status='active' AND r.role='super_admin')`;
 const campaignColumns =
   'c.id,r.revision,r.state,r.name,r.description,r.starts_at AS startsAt,r.ends_at AS endsAt';
@@ -96,7 +112,7 @@ function lockActor(db: D1Database, c: FeeWaiverContext) {
       .bind(c.actorId),
   ];
 }
-async function authorize(db: D1Database, c: FeeWaiverContext) {
+async function authorize(db: D1Database, c: Pick<FeeWaiverContext, 'actorId' | 'authSubject'>) {
   if (
     !(await db
       .prepare(`SELECT 1 WHERE ${authoritySql}`)
@@ -104,6 +120,15 @@ async function authorize(db: D1Database, c: FeeWaiverContext) {
       .first())
   )
     throw new FeeWaiverError('unauthorized');
+}
+
+/** Staff sessions alone are insufficient: check the live role before exposing controls. */
+export async function getAuthorizedFeeWaiverState(
+  db: D1Database,
+  actor: Pick<FeeWaiverContext, 'actorId' | 'authSubject'>,
+) {
+  await authorize(db, actor);
+  return getFeeWaiverState(db);
 }
 /** Failure diagnosis must not erase the original storage/audit error if reads also fail. */
 async function failureChecks<T>(

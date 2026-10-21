@@ -7,11 +7,14 @@ import { SellerNavigation } from '@/components/seller/seller-navigation';
 import { requireSellerPage } from '@/lib/auth/seller';
 import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
-import { getSellerCommissionNotices } from '@/lib/db/repositories/commission-rates';
-import { CommissionFeeNotice } from '@/components/seller/commission-fee-notice';
+import { getSellerCommissionNotices, getSellerCommissionTerms } from '@/lib/db/repositories/commission-rates';
+import { CommissionFeeNotice, SellerMarketplaceFeeNotice } from '@/components/seller/commission-fee-notice';
+import { quoteFeeWaiver } from '@/lib/db/repositories/fee-waivers';
+import { CommissionRateUnavailableError } from '@/lib/db/repositories/business-settings';
 import { mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
 
 export const dynamic = 'force-dynamic';
+const sellerFeeQuoteObservedAt = () => Date.now();
 
 export default async function SellerLayout({
   children,
@@ -20,6 +23,10 @@ export default async function SellerLayout({
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const participation = await database.prepare('SELECT participation_route AS route FROM seller_participation_profiles WHERE seller_id=?').bind(seller.sellerId).first<{route:string}>();
   const notices = participation?.route === 'managed_maker' ? [] : await getSellerCommissionNotices(database, seller.sellerId);
+  const currentFees = participation?.route === 'managed_maker' ? null : await Promise.all([
+    getSellerCommissionTerms(database,seller.sellerId).catch(error=>{if(error instanceof CommissionRateUnavailableError)return null;throw error;}),
+    quoteFeeWaiver(database,sellerFeeQuoteObservedAt()),
+  ]);
   return (
     <div className="min-h-screen bg-secondary/35">
       <a
@@ -80,6 +87,7 @@ export default async function SellerLayout({
           />
         </aside>
         <main tabIndex={-1} id="main-content" className="min-w-0 pb-10">
+          {currentFees?.[0]?<SellerMarketplaceFeeNotice basisPoints={currentFees[0].basisPoints} campaign={currentFees[1].campaign}/>:null}
           {notices.map(notice => <CommissionFeeNotice key={notice.id} notice={notice} agreementAccepted={seller.sellerAgreementVersion === notice.agreementVersion} />)}
           {children}
         </main>

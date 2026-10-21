@@ -20,6 +20,8 @@ export interface CommissionTotals {
 }
 
 export interface CommissionOrderRow extends CommissionTotals {
+  /** Names from the immutable campaign revisions referenced by these items. */
+  campaignNames?: string[];
   orderId: string;
   orderNumber: string;
   sellerId: string;

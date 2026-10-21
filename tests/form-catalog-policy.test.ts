@@ -23,6 +23,7 @@ void test('the reviewed source inventory includes fixed security controls beside
     { path: 'components/account/account-navigation.tsx', ordinal: 1, formId: 'identity.logout' },
     { path: 'components/account/rewards-panel.tsx', ordinal: 1, formId: 'account.daily-reward' },
     { path: 'components/account/rewards-panel.tsx', ordinal: 2, formId: 'account.points-redemption' },
+    { path: 'components/admin/fee-waiver-manager.tsx', ordinal: 1, formId: 'staff.fee-waivers' },
     { path: 'components/admin/first-cod-confirmation.tsx', ordinal: 1, formId: 'staff.first-cod-confirmation' },
     { path: 'components/admin/loyalty-manager.tsx', ordinal: 1, formId: 'staff.loyalty-settings' },
     { path: 'components/admin/platform-service-fee-refund.tsx', ordinal: 1, formId: 'system.platform-service-fee-refund' },

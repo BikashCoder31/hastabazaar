@@ -6,6 +6,19 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import type { CommissionRateChange } from '@/lib/commission/rates';
 import { commissionDate } from '@/lib/commission/reporting';
+import type { FeeWaiverCampaign } from '@/lib/marketplace/fee-waivers';
+
+export function SellerMarketplaceFeeNotice({basisPoints,campaign}:{basisPoints:number;campaign:FeeWaiverCampaign|null}) {
+  return <section className="mb-7 space-y-2 rounded-2xl border bg-card p-5 text-sm" aria-label="Current marketplace fees">
+    <h2 className="font-heading text-2xl">Marketplace fees for new orders</h2>
+    <p>Standard marketplace fee: {basisPoints/100}%. Existing acceptance requirements apply.</p>
+    {campaign?<><p className="break-words">Full fee waiver · {campaign.name}</p>
+      <p>Net marketplace fee: 0% while this campaign applies.</p>
+      <p>{commissionDate(campaign.startsAt)} – {commissionDate(campaign.endsAt)} (Nepal time). The end time is exclusive.</p>
+      <p className="text-muted-foreground">This is an estimate for new eligible orders. The applicable campaign is checked again when the order is placed. Standard fee evidence, seller acceptance and checkout eligibility checks still apply.</p>
+    </>:<p>No campaign waiver is currently applying. Net marketplace fee: {basisPoints/100}%.</p>}
+  </section>;
+}
 
 type Notice = Pick<
   CommissionRateChange,
