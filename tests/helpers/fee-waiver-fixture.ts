@@ -47,3 +47,37 @@ export function interleaveFeeWaiverBatch(
     },
   });
 }
+
+/** Commit a real winning request after receipt miss but before the snapshot query executes. */
+export function interleaveFeeWaiverStateRead(
+  db: D1Database,
+  action: () => Promise<unknown>,
+): D1Database {
+  let used = false;
+  return new Proxy(db, {
+    get(target, key) {
+      if (key === 'prepare')
+        return (sql: string) => {
+          const statement = target.prepare(sql);
+          if (!sql.startsWith('SELECT ctl.revision AS controlRevision'))
+            return statement;
+          return new Proxy(statement, {
+            get(prepared, property) {
+              if (property === 'all')
+                return async () => {
+                  if (!used) {
+                    used = true;
+                    await action();
+                  }
+                  return prepared.all();
+                };
+              const value = Reflect.get(prepared, property);
+              return typeof value === 'function' ? value.bind(prepared) : value;
+            },
+          });
+        };
+      const value = Reflect.get(target, key);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}

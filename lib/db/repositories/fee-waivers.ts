@@ -51,6 +51,26 @@ async function authorize(db: D1Database, c: FeeWaiverContext) {
   )
     throw new FeeWaiverError('unauthorized');
 }
+/** Failure diagnosis must not erase the original storage/audit error if reads also fail. */
+async function failureChecks<T>(
+  original: unknown,
+  check: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await check();
+  } catch (diagnostic) {
+    if (
+      diagnostic instanceof FeeWaiverError &&
+      ['unauthorized', 'stale', 'conflict'].includes(diagnostic.code)
+    )
+      throw diagnostic;
+    throw new AggregateError(
+      [original, diagnostic],
+      'Fee waiver failure checks also failed.',
+      { cause: original },
+    );
+  }
+}
 function normalizeCommand(command: FeeWaiverCommand): FeeWaiverCommand {
   if (
     !command ||
@@ -142,8 +162,9 @@ async function replay(
       ...lockActor(db, c),
       ...guard(db, authoritySql, [c.actorId, c.authSubject]),
     ]);
-  } catch {
-    throw new FeeWaiverError('unauthorized');
+  } catch (error) {
+    await failureChecks(error, () => authorize(db, c));
+    throw error;
   }
   return JSON.parse(receipt.response_json) as FeeWaiverCampaign;
 }
@@ -169,11 +190,14 @@ export async function mutateFeeWaiver(
   const saved = await replay(db, c, payload);
   if (saved) return saved;
   const snapshot = await getFeeWaiverState(db);
-  if (
-    snapshot.revision !== c.expectedRevision ||
-    c.expectedRevision === Number.MAX_SAFE_INTEGER
-  )
+  if (snapshot.revision !== c.expectedRevision) {
+    // A winner can commit after our first receipt lookup but before the snapshot read.
+    const concurrent = await replay(db, c, payload);
+    if (concurrent) return concurrent;
     throw new FeeWaiverError('stale');
+  }
+  if (c.expectedRevision === Number.MAX_SAFE_INTEGER)
+    throw new FeeWaiverError('invalid');
   const before =
     command.type === 'create'
       ? null
@@ -291,12 +315,19 @@ export async function mutateFeeWaiver(
   );
   try {
     await db.batch(statements);
-  } catch {
+  } catch (error) {
     // Another identical request may have committed while this caller read its quote.
-    await authorize(db, c);
-    const concurrent = await replay(db, c, payload);
+    const concurrent = await failureChecks(error, async () => {
+      await authorize(db, c);
+      const receipt = await replay(db, c, payload);
+      if (receipt) return receipt;
+      const latest = await getFeeWaiverState(db);
+      if (latest.revision !== c.expectedRevision)
+        throw new FeeWaiverError('stale');
+      return null;
+    });
     if (concurrent) return concurrent;
-    throw new FeeWaiverError('stale');
+    throw error;
   }
   return next;
 }

@@ -10,6 +10,7 @@ import {
   feeWaiverTerms as terms,
   feeWaiverContext as ctx,
   interleaveFeeWaiverBatch,
+  interleaveFeeWaiverStateRead,
 } from './helpers/fee-waiver-fixture';
 import {
   seedIncentiveCustomer,
@@ -17,6 +18,96 @@ import {
   incentiveOrder,
   incentiveItem,
 } from './helpers/incentive-db';
+
+for (const changed of [false, true])
+  void test(`receipt miss then winning state read ${changed ? 'rejects changed payload as conflict' : 'replays identical response'}`, async () => {
+    const f = await feeWaiverFixture();
+    try {
+      const command = { type: 'create', terms } as const;
+      let winner: unknown;
+      const raced = interleaveFeeWaiverStateRead(f.database, async () => {
+        winner = await mutateFeeWaiver(
+          f.database,
+          ctx('early-race', 0),
+          command,
+        );
+      });
+      const attempt = mutateFeeWaiver(
+        raced,
+        ctx('early-race', 0),
+        changed
+          ? { type: 'create', terms: { ...terms, name: 'Changed intent' } }
+          : command,
+      );
+      if (changed) await assert.rejects(attempt, { code: 'conflict' });
+      else assert.deepEqual(await attempt, winner);
+      assert.equal((await getFeeWaiverState(f.database)).revision, 1);
+      assert.equal(
+        f.sqlite
+          .prepare('SELECT COUNT(*) n FROM marketplace_fee_waiver_requests')
+          .get()?.n,
+        1,
+      );
+    } finally {
+      await f.dispose();
+    }
+  });
+
+void test('unexpected audit failure retains its diagnostic error and rolls back without reporting stale', async () => {
+  const f = await feeWaiverFixture();
+  try {
+    f.sqlite.exec(
+      "CREATE TRIGGER fail_fee_audit BEFORE INSERT ON audit_logs BEGIN SELECT RAISE(ABORT,'unexpected audit storage failure'); END",
+    );
+    await assert.rejects(
+      mutateFeeWaiver(f.database, ctx('audit-diagnostic', 0), {
+        type: 'create',
+        terms,
+      }),
+      /unexpected audit storage failure/,
+    );
+    assert.equal((await getFeeWaiverState(f.database)).revision, 0);
+    assert.equal(
+      f.sqlite
+        .prepare('SELECT COUNT(*) n FROM marketplace_fee_waiver_requests')
+        .get()?.n,
+      0,
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+for (const isReplay of [false, true])
+  void test(`unexpected ${isReplay ? 'replay' : 'mutation'} database batch errors propagate unchanged with active authority`, async () => {
+    const f = await feeWaiverFixture();
+    try {
+      const command = { type: 'create', terms } as const;
+      const fault = new Error('simulated database transport failure');
+      const failedBatch = new Proxy(f.database, {
+        get(target, key) {
+          if (key === 'batch')
+            return async () => {
+              throw fault;
+            };
+          const value = Reflect.get(target, key);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+      if (isReplay)
+        await mutateFeeWaiver(f.database, ctx('transport', 0), command);
+      await assert.rejects(
+        mutateFeeWaiver(failedBatch, ctx('transport', 0), command),
+        (error) => error === fault,
+      );
+      assert.equal(
+        (await getFeeWaiverState(f.database)).revision,
+        isReplay ? 1 : 0,
+      );
+    } finally {
+      await f.dispose();
+    }
+  });
 
 void test('global control cannot contain extra null or non-default rows', async () => {
   const f = await feeWaiverFixture();
