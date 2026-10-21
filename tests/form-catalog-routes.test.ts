@@ -432,6 +432,7 @@ void test('well-formed draft conflicting with historical field identity remains 
 });
 
 const universalFormIds = [
+  'staff.fee-waivers',
   'identity.register', 'identity.login-password', 'identity.email-code-request',
   'identity.email-code-verify', 'identity.password-reset-request', 'identity.password-reset-complete',
   'account.profile', 'account.address', 'account.daily-reward', 'account.points-redemption',
