@@ -25,8 +25,8 @@ CREATE TABLE IF NOT EXISTS marketplace_fee_waiver_revisions (
  request_id VARCHAR(191) COLLATE utf8mb4_bin NOT NULL UNIQUE,
  created_at BIGINT NOT NULL CHECK(created_at BETWEEN 0 AND 9007199254740991),
  PRIMARY KEY(campaign_id,revision),
- FOREIGN KEY(campaign_id) REFERENCES marketplace_fee_waiver_campaigns(id),
- FOREIGN KEY(created_by) REFERENCES users(id),
+ CONSTRAINT fee_revision_campaign_fk FOREIGN KEY(campaign_id) REFERENCES marketplace_fee_waiver_campaigns(id),
+ CONSTRAINT fee_revision_actor_fk FOREIGN KEY(created_by) REFERENCES users(id),
  INDEX idx_marketplace_fee_waiver_history(campaign_id,created_at,revision)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS marketplace_fee_waiver_requests (
  command_json LONGTEXT NOT NULL CHECK(json_valid(command_json) AND JSON_TYPE(command_json)='OBJECT'),
  response_json LONGTEXT NOT NULL CHECK(json_valid(response_json) AND JSON_TYPE(response_json)='OBJECT'),
  created_at BIGINT NOT NULL CHECK(created_at BETWEEN 0 AND 9007199254740991),
- FOREIGN KEY(actor_id) REFERENCES users(id)
+ CONSTRAINT fee_request_actor_fk FOREIGN KEY(actor_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS order_item_marketplace_fees (
@@ -50,10 +50,10 @@ CREATE TABLE IF NOT EXISTS order_item_marketplace_fees (
  campaign_id VARCHAR(191) COLLATE utf8mb4_bin,
  campaign_revision BIGINT,
  created_at BIGINT NOT NULL CHECK(created_at BETWEEN 0 AND 9007199254740991),
- FOREIGN KEY(order_item_id) REFERENCES order_items(id),
- FOREIGN KEY(campaign_id,campaign_revision) REFERENCES marketplace_fee_waiver_revisions(campaign_id,revision),
- CHECK(standard_paisa-waived_paisa=net_paisa),
- CHECK((campaign_id IS NULL AND campaign_revision IS NULL AND waived_paisa=0) OR
+ CONSTRAINT fee_evidence_item_fk FOREIGN KEY(order_item_id) REFERENCES order_items(id),
+ CONSTRAINT fee_evidence_revision_fk FOREIGN KEY(campaign_id,campaign_revision) REFERENCES marketplace_fee_waiver_revisions(campaign_id,revision),
+ CONSTRAINT marketplace_fee_reconciled CHECK(standard_paisa-waived_paisa=net_paisa),
+ CONSTRAINT marketplace_fee_full_waiver CHECK((campaign_id IS NULL AND campaign_revision IS NULL AND waived_paisa=0) OR
        (campaign_id IS NOT NULL AND campaign_revision IS NOT NULL AND waived_paisa=standard_paisa AND net_paisa=0)),
  INDEX idx_order_item_marketplace_fees_campaign(campaign_id,campaign_revision)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

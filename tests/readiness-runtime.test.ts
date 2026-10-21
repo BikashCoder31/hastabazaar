@@ -10,9 +10,11 @@ import manifest from '../deployment/babal/release-manifest.json';
 
 void test('native readiness verifies the actual reserved predicate and parent ID collation',async()=>{
   const inspect=async(expression:string,collation='utf8mb4_unicode_ci')=>inspectReadiness({dialect:'mariadb',prepare(sql:string){return{async all(){
-    if(sql.includes('information_schema.COLUMNS'))return{results:Object.entries(manifest.requiredTables).flatMap(([tableName,names])=>names.map(columnName=>({tableName,columnName,generationExpression:expression,collation})))};
-    if(sql.includes('information_schema.STATISTICS'))return{results:[{tableName:'managed_payout_allocations',name:'managed_allocation_one_reservation',nonUnique:0,position:1,columnName:'reserved_entitlement_key',prefixLength:null}]};
-    if(sql.includes('information_schema.TRIGGERS'))return{results:Object.entries(manifest.requiredTriggers).map(([name,parts])=>({name,definition:parts.join(' ')||'BEGIN SIGNAL END'}))};
+    if(sql.includes('information_schema.COLUMNS'))return{results:Object.entries(manifest.requiredTables).flatMap(([tableName,names])=>names.map(columnName=>({tableName,columnName,generationExpression:expression,collation:tableName==='managed_payout_allocations'?collation:manifest.requiredColumnCollations[`${tableName}.${columnName}` as keyof typeof manifest.requiredColumnCollations]??'utf8mb4_unicode_ci'})))};
+    if(sql.includes('information_schema.STATISTICS'))return{results:Object.entries(manifest.requiredUniqueIndexes).flatMap(([key,columns])=>columns.map((columnName,i)=>({tableName:key.split('.')[0],name:key.split('.')[1],nonUnique:0,position:i+1,columnName,prefixLength:null})))};
+    if(sql.includes('information_schema.TRIGGERS'))return{results:Object.entries(manifest.requiredTriggers).map(([name,parts])=>({name,definition:parts.join(' ')||'BEGIN SIGNAL END',tableName:manifest.requiredTriggerShapes[name as keyof typeof manifest.requiredTriggerShapes]?.table,event:manifest.requiredTriggerShapes[name as keyof typeof manifest.requiredTriggerShapes]?.event,timing:'BEFORE'}))};
+    if(sql.includes('information_schema.KEY_COLUMN_USAGE'))return{results:Object.entries(manifest.requiredForeignKeys).flatMap(([key,fk])=>fk.columns.map((columnName,i)=>({tableName:key.split('.')[0],name:key.split('.')[1],columnName,position:i+1,referencedTable:fk.referencedTable,referencedColumn:fk.referencedColumns[i],referencedSchema:'fixture',databaseName:'fixture',deleteRule:'RESTRICT',updateRule:'RESTRICT'})))};
+    if(sql.includes('FROM marketplace_fee_waiver_control'))return{results:[{id:'default',revision:0}]};
     if(sql.includes('information_schema.CHECK_CONSTRAINTS'))return{results:Object.entries(manifest.requiredChecks).map(([key,parts])=>({tableName:key.split('.')[0],name:key.split('.')[1],definition:parts.join(' ')}))};
     return{results:[]};
   }};}} as unknown as D1Database);

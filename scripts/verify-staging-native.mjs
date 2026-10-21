@@ -44,8 +44,9 @@ owned();
 await writeFile(marker, JSON.stringify({id,name,password,token,host:'127.0.0.1',port:13329,database:'native_'+run+'_fresh'}), {mode:0o600});
 let connection;
 const observations=[];
+const nativeRuns=[];
 let activeFile='', activeStatement='';
-function nativeTests(files){
+function nativeTests(files, expectedTests){
   activeFile=files.join(', ');activeStatement='';
   let output;
   try{output=execFileSync(process.execPath,['--import','tsx','--test','--test-reporter=tap','--test-concurrency=1',...files],{
@@ -56,7 +57,9 @@ function nativeTests(files){
     console.error(diagnostics.replaceAll(password,'[redacted]').replaceAll(token,'[redacted]').replaceAll(securityKey,'[redacted]'));
     throw new Error('Required native test failed: '+files.join(', '));
   }
-  assertRequiredNativeResults(output);
+  const counts=assertRequiredNativeResults(output);
+  if(expectedTests!==undefined)assert.equal(counts.tests,expectedTests,'Required native scenario count changed; review the runner contract');
+  nativeRuns.push({files,...counts});
   console.log(output);
 }
 function statements(sql) {
@@ -98,7 +101,7 @@ try {
   await writeFile(resolve(workspace,'staging-upgrade-inventory.json'),JSON.stringify({sha256:upgrade.sha256,sources:upgrade.steps.map(({name,sourceSha256})=>({name,sourceSha256}))},null,2));
   const schema=await readFile(resolve(project,'deployment/babal/mariadb-schema.sql'),'utf8');
   const adapter={dialect:'mariadb',prepare(sql){return{async all(){const [results]=await connection.query(sql);return{results};}};}};
-  const companions=['mariadb-company-store-maker-readiness.sql','mariadb-loyalty-scheduled-changes.sql'];
+  const companions=['mariadb-company-store-maker-readiness.sql','mariadb-loyalty-scheduled-changes.sql','mariadb-marketplace-fee-waivers.sql'];
   await create('fresh');
   await check('fresh bootstrap and maintained companion sequence',async()=>{
     await load('deployment/babal/mariadb-schema.sql');
@@ -118,7 +121,7 @@ try {
     for(const companion of companions)legacy=legacy.replace((await readFile(resolve(project,'deployment/babal',companion),'utf8')).replace(/\r\n/g,'\n').trim(),'');
     assert.notEqual(legacy,schema);
     await load('fixture-pre-weekly-bootstrap',legacy);
-    // Only the four companions under test are missing from this newly empty fixture.
+    // Only the five reviewed companions under test are missing from this owned fixture.
     for(const migration of manifest.migrations.filter(m=>m.usage==='additive-maintenance'&&!companions.some(n=>m.path.endsWith(n))&&!m.path.endsWith('mariadb-loyalty-points.sql')))await load(migration.path);
     // Earlier wallet companions replace their kind CHECK. Restore the actual
     // pre-weekly loyalty base last, as the old hosted release does.
@@ -154,8 +157,8 @@ try {
     for(const table of ['seller_participation_profiles','managed_commercial_snapshots'])assert.equal((await connection.query('SELECT COUNT(*) n FROM '+table+' WHERE accepted_managed_detail_id IS NOT NULL'))[0][0].n,0);
   });
   await connection.query('USE `native_'+run+'_fresh`');
-  await check('current accounting, financial, billing and hosted MFA native journeys execute without skips',async()=>{
-    for(const file of ['tests/accounting-native-runtime.test.ts','tests/commerce-financial-native.test.ts','tests/billing-release-native.test.ts']){
+  await check('current accounting, financial, billing, fee waiver and hosted MFA native journeys execute without skips',async()=>{
+    for(const file of ['tests/accounting-native-runtime.test.ts','tests/commerce-financial-native.test.ts','tests/billing-release-native.test.ts','tests/fee-waiver-native.test.ts']){
       // This exact schema was created by this process in the pinned disposable
       // container. Never accept a name/host from the caller or reuse saved data.
       owned();await connection.query('USE information_schema');
@@ -164,9 +167,9 @@ try {
       await connection.query('USE `native_'+run+'_fresh`');
       await load('deployment/babal/mariadb-schema.sql');
       for(const migration of manifest.migrations.filter(m=>m.usage==='additive-maintenance'))await load(migration.path);
-      nativeTests([file]);
+      nativeTests([file],file==='tests/fee-waiver-native.test.ts'?13:undefined);
     }
-    // Enroll the billing fixture's accounts so recovery verifies real commerce
+    // Enroll alongside the fee fixture so recovery verifies real commerce
     // records and MFA together. This test does not replace business records.
     nativeTests(['tests/hosted-security-native.test.ts']);
   });
@@ -181,5 +184,5 @@ try {
   console.error(JSON.stringify({status:'FAIL',file:activeFile,statement:activeStatement,message:String(error.message).replaceAll(password,'[redacted]').slice(0,1800)}));process.exitCode=1;
 }finally{
   await connection?.end();owned();execFileSync(docker,['stop',name],{stdio:'pipe'});
-  await writeFile(resolve(workspace,'native-'+run+'-results.json'),JSON.stringify({observations,container:name,databasesPreserved:true,stopped:true},null,2));
+  await writeFile(resolve(workspace,'native-'+run+'-results.json'),JSON.stringify({observations,nativeRuns,container:name,databasesPreserved:true,stopped:true},null,2));
 }

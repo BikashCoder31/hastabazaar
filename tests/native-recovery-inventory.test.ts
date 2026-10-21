@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {captureNativeInventory,normalizeNativeView} from '../scripts/recovery/native-inventory.mjs';
+import * as nativeInventory from '../scripts/recovery/native-inventory.mjs';
 
 function fixture(database:string,view='loyalty_latest_claims',suffix='',relationDatabase=database){
  return {async query(sql:string){
@@ -23,6 +24,14 @@ void test('native recovery compares the reviewed view definition across owned sc
  assert.ok(normalizeNativeView(sql,'native_123_fresh').endsWith('FROM `$database`.`loyalty_daily_claims` d'));
  const qualified='CREATE VIEW loyalty_latest_claims AS SELECT d.* FROM `native_123_fresh`.`loyalty_daily_claims` d';
  assert.equal(normalizeNativeView(qualified.replace('`native_123_fresh`.',''),'native_123_recovery'),normalizeNativeView(qualified,'native_123_fresh'));
+});
+
+void test('native encrypted recovery requires populated durable fee revisions, receipts and line evidence in its compared inventory', () => {
+  assert.equal(typeof nativeInventory.assertFeeRecoveryEvidence, 'function');
+  const tables = ['marketplace_fee_waiver_control', 'marketplace_fee_waiver_campaigns', 'marketplace_fee_waiver_revisions', 'marketplace_fee_waiver_requests', 'order_item_marketplace_fees'].map(name => ({ name, classification: 'durable', rows: name === 'marketplace_fee_waiver_revisions' || name === 'marketplace_fee_waiver_requests' ? 2 : 1, sha256: 'a'.repeat(64) }));
+  const inspect = nativeInventory.assertFeeRecoveryEvidence;
+  assert.deepEqual(inspect({ tables }), tables);
+  for (const altered of [tables.slice(1), tables.map(row => ({ ...row, rows: 0 })), tables.map(row => ({ ...row, classification: 'transient' })), tables.map(row => ({ ...row, sha256: '' }))]) assert.throws(() => inspect({ tables: altered }));
 });
 
 void test('native view rejects comma relations disguised as aliases and schema-qualified routines',()=>{

@@ -141,6 +141,11 @@ export async function readLocalCheckout(projectRoot, cwd) {
 
 export function inspectLocalFeatureSchema(sqlite) {
   const required = {
+    marketplace_fee_waiver_control: ['id', 'revision'],
+    marketplace_fee_waiver_campaigns: ['id', 'revision', 'created_at', 'updated_at'],
+    marketplace_fee_waiver_revisions: ['campaign_id', 'revision', 'state', 'name', 'description', 'starts_at', 'ends_at', 'created_by', 'request_id', 'created_at'],
+    marketplace_fee_waiver_requests: ['request_id', 'actor_id', 'auth_subject', 'command_json', 'response_json', 'created_at'],
+    order_item_marketplace_fees: ['order_item_id', 'standard_bps', 'base_paisa', 'standard_paisa', 'waived_paisa', 'net_paisa', 'campaign_id', 'campaign_revision', 'created_at'],
     commission_control: ['id', 'revision'],
     commission_rate_changes: ['id', 'basis_points', 'effective_at', 'agreement_version', 'terms_text', 'reason', 'created_by', 'created_at'],
     commission_rate_cancellations: ['rate_id', 'request_id', 'reason', 'cancelled_by', 'cancelled_at'],
@@ -167,6 +172,21 @@ export function inspectLocalFeatureSchema(sqlite) {
     if (!sqlite.prepare('SELECT 1 FROM sqlite_master WHERE name=?').get(name)) missing.push(name);
   }
   if (!missing.includes('commission_control') && !sqlite.prepare("SELECT 1 FROM commission_control WHERE id='default'").get()) missing.push('commission_control.default');
+  if (!missing.some(name => name === 'marketplace_fee_waiver_control' || name.startsWith('marketplace_fee_waiver_control.'))) {
+    const controls = sqlite.prepare('SELECT id,revision FROM marketplace_fee_waiver_control').all();
+    if (controls.length !== 1 || controls[0].id !== 'default' || !Number.isSafeInteger(controls[0].revision) || controls[0].revision < 0) missing.push('marketplace_fee_waiver_control.default');
+  }
+  for (const [table, message, events] of [
+    ['marketplace_fee_waiver_revisions', 'fee_waiver_revision_immutable', ['update', 'delete']],
+    ['marketplace_fee_waiver_requests', 'fee_waiver_request_immutable', ['update', 'delete']],
+    ['marketplace_fee_waiver_campaigns', 'fee_waiver_campaign_retained', ['delete']],
+    ['order_item_marketplace_fees', 'marketplace_fee_snapshot_immutable', ['update', 'delete']],
+  ]) for (const event of events) {
+    const name = `${String(table)}_no_${event}`;
+    const definition = sqlite.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?").get(name)?.sql?.toLowerCase().replace(/\s+/g, ' ');
+    if (!definition) missing.push(name);
+    else if (!definition.includes(`before ${event} on ${String(table)}`) || !definition.includes('raise(abort,') || !definition.includes(message)) missing.push(`${name}.version`);
+  }
   return { ready: missing.length === 0, missing };
 }
 

@@ -95,7 +95,7 @@ export interface ApplicationMedia {
 }
 type ApplicationMediaMap = ReadonlyMap<string, ApplicationMedia>;
 
-// Reviewed against migrations 0000–0071, db/schema.ts and hosted-auth readiness.
+// Reviewed against migrations 0000–0073, db/schema.ts and hosted-auth readiness.
 // Discovery remains dynamic: a new/unknown table stops export until its policy
 // is deliberately added here. No suffix or broad durable fallback grants trust.
 const REVIEWED_TABLE_GROUPS: Readonly<
@@ -141,6 +141,11 @@ const REVIEWED_TABLE_GROUPS: Readonly<
     'loyalty_points_entries',
     'loyalty_redemptions',
     'loyalty_revisions',
+    'marketplace_fee_waiver_control',
+    'marketplace_fee_waiver_campaigns',
+    'marketplace_fee_waiver_revisions',
+    'marketplace_fee_waiver_requests',
+    'order_item_marketplace_fees',
     'managed_commercial_snapshots',
     'managed_entitlements',
     'managed_invoice_adjustments',

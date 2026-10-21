@@ -61,6 +61,7 @@ const migrationNames = [
   'mariadb-commission-workspace.sql',
   'mariadb-company-store-maker-readiness.sql',
   'mariadb-loyalty-scheduled-changes.sql',
+  'mariadb-marketplace-fee-waivers.sql',
 ];
 const tables = {},
   triggers = {},
@@ -108,6 +109,17 @@ for (const name of ['loyalty_schedule_insert_guard', 'loyalty_schedule_update_gu
 triggers.managed_allocation_preserve_identity = ['old.disposition', 'released', 'paid', 'new.amount_paisa', '<=>'];
 triggers.managed_payout_preserve_identity = ['destination_reference', 'amount_paisa', 'payout_number', '<=>'];
 triggers.managed_payout_preserve_terminal = ['paid', 'rejected', 'reversed', 'provider_reference', '<=>'];
+const requiredTriggerShapes = {};
+for (const [table, message, events] of [
+  ['marketplace_fee_waiver_revisions', 'fee_waiver_revision_immutable', ['UPDATE', 'DELETE']],
+  ['marketplace_fee_waiver_requests', 'fee_waiver_request_immutable', ['UPDATE', 'DELETE']],
+  ['marketplace_fee_waiver_campaigns', 'fee_waiver_campaign_retained', ['DELETE']],
+  ['order_item_marketplace_fees', 'marketplace_fee_snapshot_immutable', ['UPDATE', 'DELETE']],
+]) for (const event of events) {
+  const name = `${String(table)}_no_${event.toLowerCase()}`;
+  triggers[name] = ['signal sqlstate', '45000', message];
+  requiredTriggerShapes[name] = { table, event, timing: 'BEFORE' };
+}
 const requiredChecks = {
   'managed_payout_allocations.amount_paisa': ['amount_paisa', '<> 0'],
   'managed_payout_allocations.disposition': ['disposition', 'reserved', 'released', 'paid'],
@@ -154,10 +166,61 @@ const requiredChecks = {
     '9007199254740991',
   ],
 };
+// Inline MariaDB checks retain their column name; explicit cross-column checks
+// have stable names. Readiness verifies both their presence and body evidence.
+for (const [table, columns] of Object.entries({
+  marketplace_fee_waiver_control: ['revision'],
+  marketplace_fee_waiver_campaigns: ['revision', 'created_at', 'updated_at'],
+  marketplace_fee_waiver_revisions: ['revision', 'starts_at', 'ends_at', 'created_at'],
+  marketplace_fee_waiver_requests: ['created_at'],
+  order_item_marketplace_fees: ['base_paisa', 'standard_paisa', 'waived_paisa', 'net_paisa', 'created_at'],
+})) for (const column of columns) requiredChecks[`${table}.${column}`] = [column, 'between', '9007199254740991'];
+Object.assign(requiredChecks, {
+  'marketplace_fee_waiver_control.id': ['id', 'default'],
+  'marketplace_fee_waiver_revisions.state': ['state', 'draft', 'published', 'paused', 'ended'],
+  'marketplace_fee_waiver_revisions.name': ['name', 'char_length', 'trim', '100'],
+  'marketplace_fee_waiver_revisions.description': ['description', 'char_length', '1000'],
+  'marketplace_fee_waiver_requests.request_id': ['request_id', 'char_length', '191'],
+  'marketplace_fee_waiver_requests.command_json': ['json_valid', 'json_type', 'command_json', 'object'],
+  'marketplace_fee_waiver_requests.response_json': ['json_valid', 'json_type', 'response_json', 'object'],
+  'order_item_marketplace_fees.standard_bps': ['standard_bps', 'between', '10000'],
+  'order_item_marketplace_fees.marketplace_fee_reconciled': ['standard_paisa', 'waived_paisa', 'net_paisa', '-'],
+  'order_item_marketplace_fees.marketplace_fee_full_waiver': ['campaign_id', 'campaign_revision', 'is null', 'is not null', 'waived_paisa', 'standard_paisa', 'net_paisa'],
+});
+requiredChecks['marketplace_fee_waiver_revisions.ends_at'].push('starts_at', '>');
+const requiredForeignKeys = {
+  'marketplace_fee_waiver_revisions.fee_revision_campaign_fk': { columns: ['campaign_id'], referencedTable: 'marketplace_fee_waiver_campaigns', referencedColumns: ['id'] },
+  'marketplace_fee_waiver_revisions.fee_revision_actor_fk': { columns: ['created_by'], referencedTable: 'users', referencedColumns: ['id'] },
+  'marketplace_fee_waiver_requests.fee_request_actor_fk': { columns: ['actor_id'], referencedTable: 'users', referencedColumns: ['id'] },
+  'order_item_marketplace_fees.fee_evidence_item_fk': { columns: ['order_item_id'], referencedTable: 'order_items', referencedColumns: ['id'] },
+  'order_item_marketplace_fees.fee_evidence_revision_fk': { columns: ['campaign_id', 'campaign_revision'], referencedTable: 'marketplace_fee_waiver_revisions', referencedColumns: ['campaign_id', 'revision'] },
+};
 const manifest = {
-  requiredUniqueIndexes: { 'managed_payout_allocations.managed_allocation_one_reservation': ['reserved_entitlement_key'] },
+  requiredForeignKeys,
+  requiredTriggerShapes,
+  requiredUniqueIndexes: {
+    'managed_payout_allocations.managed_allocation_one_reservation': ['reserved_entitlement_key'],
+    'marketplace_fee_waiver_control.PRIMARY': ['id'],
+    'marketplace_fee_waiver_campaigns.PRIMARY': ['id'],
+    'marketplace_fee_waiver_revisions.PRIMARY': ['campaign_id', 'revision'],
+    'marketplace_fee_waiver_revisions.request_id': ['request_id'],
+    'marketplace_fee_waiver_requests.PRIMARY': ['request_id'],
+    'order_item_marketplace_fees.PRIMARY': ['order_item_id'],
+  },
   requiredGeneratedColumns: { 'managed_payout_allocations.reserved_entitlement_key': ["case when binary disposition='reserved' then entitlement_id else null end"] },
-  requiredColumnCollations: { 'managed_payout_allocations.reserved_entitlement_key': 'utf8mb4_unicode_ci' },
+  requiredColumnCollations: {
+    'managed_payout_allocations.reserved_entitlement_key': 'utf8mb4_unicode_ci',
+    'marketplace_fee_waiver_campaigns.id': 'utf8mb4_bin',
+    'marketplace_fee_waiver_revisions.campaign_id': 'utf8mb4_bin',
+    'marketplace_fee_waiver_revisions.request_id': 'utf8mb4_bin',
+    'marketplace_fee_waiver_requests.request_id': 'utf8mb4_bin',
+    'order_item_marketplace_fees.campaign_id': 'utf8mb4_bin',
+    'marketplace_fee_waiver_revisions.created_by': 'utf8mb4_unicode_ci',
+    'marketplace_fee_waiver_requests.actor_id': 'utf8mb4_unicode_ci',
+    'order_item_marketplace_fees.order_item_id': 'utf8mb4_unicode_ci',
+    'users.id': 'utf8mb4_unicode_ci',
+    'order_items.id': 'utf8mb4_unicode_ci',
+  },
   requiredChecks,
   release,
   startup: 'app.cjs',

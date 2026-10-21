@@ -7,6 +7,22 @@ export function nativeIdentifier(name){assert.match(name,/^[a-z_][a-z0-9_]*$/);r
 const digest=value=>createHash('sha256').update(canonicalJson(value)).digest('hex');
 const MAX_ROW_BYTES=512_000;
 
+/** Empty tables do not certify recovery of retained financial evidence. */
+export function assertFeeRecoveryEvidence(inventory) {
+ const expected = {
+  marketplace_fee_waiver_control: 1, marketplace_fee_waiver_campaigns: 1,
+  marketplace_fee_waiver_revisions: 2, marketplace_fee_waiver_requests: 2,
+  order_item_marketplace_fees: 1,
+ };
+ return Object.entries(expected).map(([name, minimum]) => {
+  const table = inventory.tables.find(table => table.name === name);
+  assert.ok(table && table.classification === 'durable' && table.rows >= minimum, 'Native recovery requires populated durable fee evidence: ' + name);
+  if (name === 'marketplace_fee_waiver_control') assert.equal(table.rows, 1);
+  assert.match(table.sha256, /^[a-f0-9]{64}$/);
+  return table;
+ });
+}
+
 export function normalizeNativeView(sql,database){
  const tokens=[];
  const pattern=/'(?:''|\\.|[^'\\])*'|"(?:""|\\.|[^"\\])*"|--[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/|`(?:``|[^`])*`|[A-Za-z_][A-Za-z0-9_]*|[^\s]/g;

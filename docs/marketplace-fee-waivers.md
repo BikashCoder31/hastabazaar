@@ -1,0 +1,31 @@
+# Marketplace fee waiver storage and release gates
+
+Fee campaigns waive the marketplace seller fee once. Orders retain the accepted standard rate, original standard amount, waived amount, net fee, campaign ID and immutable campaign revision. Overlapping campaigns never stack. Managed Maker commercial snapshots retain their separate contract. Returns reverse the recorded net fee and preserve the original evidence.
+
+## Additive schema
+
+Hosted MariaDB 10.11+ uses only `deployment/babal/mariadb-marketplace-fee-waivers.sql` for this feature. Its five tables are `marketplace_fee_waiver_control`, `marketplace_fee_waiver_campaigns`, `marketplace_fee_waiver_revisions`, `marketplace_fee_waiver_requests` and `order_item_marketplace_fees`. The singleton control begins at revision zero; no campaigns or financial snapshots are seeded. Existing orders, commission agreements and ledgers are unchanged. Seven retention/immutability triggers protect revision, receipt and order-line evidence.
+
+The fresh empty-database schema generator embeds that exact companion. Campaign and request identities use binary collation; external user and order-item foreign keys retain the existing parent collation. The release manifest generator registers the companion as `additive-maintenance`, hashes its bytes, and requires the tables/columns, primary and unique identities, checks, foreign keys, column collations, trigger bodies/event/timing and valid control singleton. Missing or incompatible storage blocks release readiness.
+
+`scripts/staging-native-upgrade.mjs` prepares only explicitly selected reviewed companion sources, in dependency order; its default sequence is a disposable rehearsal candidate. It is not a current hosted schema inventory. Select the precise missing delta after a read-only destination comparison. In particular a host already at the commission/weekly-loyalty schema needs only the fee companion for this feature. Never replay historical companions without comparison. This preparation helper executes no SQL.
+
+The staging upload gateway performs **zero database migrations**. Packaging SQL, uploading an artifact and restarting do not apply schema. Schema maintenance remains a separate reviewed owner operation with paused writes, workers and dispatch. Never import the empty-database base/reset file into a retained database. MariaDB DDL implicitly commits; wrapping it in a transaction does not make rollback safe.
+
+SQLite/D1 uses the distinct additive source `drizzle/0073_marketplace_fee_waivers.sql`. Do not apply SQLite migration SQL to hosted MariaDB. The canonical local launcher checks all five tables, their required columns, control singleton and seven effective guards read-only. An older retained local database must stop startup. Its upgrade needs a separate concrete review of this source, exact destination, preservation backup and recovery procedure; no launcher, check, test or packaging operation repairs retained data.
+
+## Recovery and rollback
+
+All five tables are durable portability data. The owned-container native runner checks fresh installation and repeated additive upgrade against populated historical rows, then runs 12 real MariaDB fee scenarios (13 TAP tests including their parent). The ordinary suite reports one intentional native-parent skip; it provides no native passing evidence. Required native runs reject every skip/TODO and record per-file counts.
+
+The existing encrypted native database/media/key recovery compares every original row hash, schema and trigger definition with the restored database. It additionally requires nonempty campaign revisions, request receipts and line evidence in all five durable tables and includes their counts/hashes in `feeEvidence`. Empty fee tables cannot certify financial recovery. Restored dispatch remains disabled; transient authority is cleared and enrolled security/consumed recovery state is preserved. Source conservation is checked throughout. A local source-snapshot rehearsal has `commit:null` and `linuxRuntimeVerified:false`; only Linux CI can certify recovery of the exact packaged artifact/commit reused for delivery.
+
+Keep revision history and waived-order evidence during rollback. Returning to an older binary is safe only after proving that it reads the current fee evidence and net accounting correctly. Never down-migrate or delete evidence to make old code run. If writes escaped maintenance, reconcile them before any separately approved coordinated restore; a pre-upgrade restore can discard new business history.
+
+## Destination preparation and outstanding operational gates
+
+The staging release observed by the coordinator is `39645188624-1`, with an active Super Admin, pending Admin and initialized security key/policy. Preserve those records, enrollment and keys. Production's older `38358135513-1` does not contain the hosted-security CLI; its reported key/policy absence does not establish whether encrypted DB records exist. Production security records remain unknown until safe read-only inventory and an owner enrollment/recovery ceremony. Do not initialize a fresh policy over unknown encrypted records.
+
+Before installation, record the exact candidate SHA, artifact digest and inventories, native/recovery receipts, destination schema diff, paused-write controls, existing release/media/key/policy and separately reviewed additive SQL list/hashes. Rehearse the current retained snapshot only into an explicitly reviewed inert empty target. Require final CLI readiness, exact-release protected HTTPS health, restart persistence and protected financial/security smoke. Release packaging or synthetic fixture success is not retained-data recovery proof.
+
+Three hosted database slots are occupied. Removing the successful retained `hastabaz_recovery_20261022` copy requires specific approval; previous failed-copy cleanup approval is insufficient. The gateway's server-origin IP health access also needs a separately approved narrowly scoped exception, keeping Basic auth and all other restrictions. These capacity/access gates and personal MFA ceremonies remain with the coordinator/owner. No hosted maintenance, cleanup, launch, enrollment reset or deployment is authorized by this document.

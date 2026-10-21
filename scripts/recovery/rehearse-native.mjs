@@ -8,7 +8,7 @@ import {dirname,resolve,sep} from 'node:path';
 import {pipeline} from 'node:stream/promises';
 import mysql from 'mysql2/promise';
 import {createNativeRecoveryBundle,extractNativeRecoveryBundle,assertDisposableRecoveryTarget,fileDigest} from './native-recovery.mjs';
-import {captureNativeInventory,invalidateRestoredAuthority,nativeIdentifier} from './native-inventory.mjs';
+import {captureNativeInventory,invalidateRestoredAuthority,nativeIdentifier,assertFeeRecoveryEvidence} from './native-inventory.mjs';
 import {exportKeyRecovery,inspectKeyRecovery} from '../../lib/portability/crypto.ts';
 import {decryptSecurityValue,securityKeyId,totpAtCounter,verifyTotp} from '../../lib/security/crypto.ts';
 import {validateAccount,validateManifest} from '../../lib/security/model.ts';
@@ -54,6 +54,7 @@ export async function rehearseNativeRecovery({docker,marker,owned,source,workspa
   await writeFile(file+'.metadata.json',JSON.stringify({httpMetadata:{contentType:'application/octet-stream',cacheControl:mediaKey.startsWith('private/')?'private, no-store':'public, max-age=600'},customMetadata:{fixture:'native-recovery'},size:bytes.length,etag:createHash('sha256').update(bytes).digest('hex'),uploaded:'2026-10-21T00:00:00.000Z'}),{flag:'wx',mode:0o600});
  }
  const before=await captureNativeInventory(source),[engine]=await source.query('SELECT VERSION() value');
+ const feeEvidence=assertFeeRecoveryEvidence(before);
  const provenance={release:artifactInventory.release,artifactKind:localRecovery?'source-snapshot':'linux-release',sourceSha256:localRecovery?artifactInventory.sourceSha256:null,commit:artifactInventory.commit,artifactSha256:artifactInventory.archiveSha256,schemaSha256:before.schemaSha256,keyIds:[securityKeyId(key)],engine:engine[0].value,writeMode:'paused',dispatchPaused:true};
  const dump=resolve(snapshot,'database.sql');
  await nativeProcess(docker,['exec',marker.name,'sh','-c','MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb-dump --user=root --single-transaction --hex-blob --order-by-primary --skip-comments --skip-dump-date --routines --triggers "$1"','native-dump',marker.database],dump,'dump');
@@ -72,6 +73,7 @@ export async function rehearseNativeRecovery({docker,marker,owned,source,workspa
   await nativeProcess(docker,['exec','-i',marker.name,'sh','-c','MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb --user=root --binary-mode=1 --comments "$1"','native-restore',targetName],resolve(target,'database.sql'),'restore');
   restored=await mysql.createConnection({host:marker.host,port:marker.port,user:'root',password:marker.password,database:targetName});
   const after=await captureNativeInventory(restored);assert.deepEqual(after,before,'Native restored records/schema/triggers differ');
+  assert.deepEqual(assertFeeRecoveryEvidence(after),feeEvidence,'Encrypted recovery lost fee campaign revisions, receipts or line evidence');
   const adapter={dialect:'mariadb',prepare(sql){let values=[];return{bind(...next){values=next;return this;},async first(){const [results]=await restored.query(sql,values);return results[0]??null;},async all(){const [results]=await restored.query(sql,values);return{results};}};}};
   assert.deepEqual(await inspectReadiness(adapter),{ready:true,missing:[]});
   const [security]=await restored.query("SELECT `key`,value FROM marketplace_settings WHERE `key`='auth-private:manifest:v1' OR `key` LIKE 'auth-private:account:%' ORDER BY BINARY `key`");
@@ -93,7 +95,7 @@ export async function rehearseNativeRecovery({docker,marker,owned,source,workspa
   assert.equal((await restored.query("SELECT COUNT(*) n FROM marketplace_settings WHERE `key` LIKE 'auth-private:%' AND `key`<>'auth-private:manifest:v1' AND `key` NOT LIKE 'auth-private:account:%'"))[0][0].n,0);
   assert.deepEqual((await restored.query("SELECT `key`,value FROM marketplace_settings WHERE `key`='auth-private:manifest:v1' OR `key` LIKE 'auth-private:account:%' ORDER BY BINARY `key`"))[0],security);
   assert.deepEqual(await captureNativeInventory(source),before,'Source changed during restore');
-  const report={passed:true,activationAllowed:false,containerOwned:true,dispatchPaused:true,engine:provenance.engine,release:provenance.release,artifactKind:provenance.artifactKind,sourceSha256:provenance.sourceSha256,linuxRuntimeVerified:!localRecovery,commit:provenance.commit,artifactSha256:provenance.artifactSha256,archiveSha256:bundle.archiveSha256,manifestSha256:bundle.manifestHash,keyArchiveSha256:createHash('sha256').update(keyBytes).digest('hex'),keyIds:provenance.keyIds,schemaSha256:before.schemaSha256,tables:before.tables.length,views:before.views,rows:before.tables.reduce((sum,table)=>sum+table.rows,0),mediaObjects:mediaKeys.size,enrolledAccountsVerified:active,externalPolicyRecovered:true,transientAuthorityCleared:true,sourceUnchanged:true};
+  const report={passed:true,feeEvidence,activationAllowed:false,containerOwned:true,dispatchPaused:true,engine:provenance.engine,release:provenance.release,artifactKind:provenance.artifactKind,sourceSha256:provenance.sourceSha256,linuxRuntimeVerified:!localRecovery,commit:provenance.commit,artifactSha256:provenance.artifactSha256,archiveSha256:bundle.archiveSha256,manifestSha256:bundle.manifestHash,keyArchiveSha256:createHash('sha256').update(keyBytes).digest('hex'),keyIds:provenance.keyIds,schemaSha256:before.schemaSha256,tables:before.tables.length,views:before.views,rows:before.tables.reduce((sum,table)=>sum+table.rows,0),mediaObjects:mediaKeys.size,enrolledAccountsVerified:active,externalPolicyRecovered:true,transientAuthorityCleared:true,sourceUnchanged:true};
   await writeFile(resolve(root,'verification.json'),JSON.stringify(report,null,2)+'\n',{flag:'wx',mode:0o600});return report;
  }finally{
   await restored?.end();

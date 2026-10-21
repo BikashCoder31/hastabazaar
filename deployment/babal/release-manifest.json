@@ -1,7 +1,112 @@
 {
+  "requiredForeignKeys": {
+    "marketplace_fee_waiver_revisions.fee_revision_campaign_fk": {
+      "columns": [
+        "campaign_id"
+      ],
+      "referencedTable": "marketplace_fee_waiver_campaigns",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "marketplace_fee_waiver_revisions.fee_revision_actor_fk": {
+      "columns": [
+        "created_by"
+      ],
+      "referencedTable": "users",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "marketplace_fee_waiver_requests.fee_request_actor_fk": {
+      "columns": [
+        "actor_id"
+      ],
+      "referencedTable": "users",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "order_item_marketplace_fees.fee_evidence_item_fk": {
+      "columns": [
+        "order_item_id"
+      ],
+      "referencedTable": "order_items",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "order_item_marketplace_fees.fee_evidence_revision_fk": {
+      "columns": [
+        "campaign_id",
+        "campaign_revision"
+      ],
+      "referencedTable": "marketplace_fee_waiver_revisions",
+      "referencedColumns": [
+        "campaign_id",
+        "revision"
+      ]
+    }
+  },
+  "requiredTriggerShapes": {
+    "marketplace_fee_waiver_revisions_no_update": {
+      "table": "marketplace_fee_waiver_revisions",
+      "event": "UPDATE",
+      "timing": "BEFORE"
+    },
+    "marketplace_fee_waiver_revisions_no_delete": {
+      "table": "marketplace_fee_waiver_revisions",
+      "event": "DELETE",
+      "timing": "BEFORE"
+    },
+    "marketplace_fee_waiver_requests_no_update": {
+      "table": "marketplace_fee_waiver_requests",
+      "event": "UPDATE",
+      "timing": "BEFORE"
+    },
+    "marketplace_fee_waiver_requests_no_delete": {
+      "table": "marketplace_fee_waiver_requests",
+      "event": "DELETE",
+      "timing": "BEFORE"
+    },
+    "marketplace_fee_waiver_campaigns_no_delete": {
+      "table": "marketplace_fee_waiver_campaigns",
+      "event": "DELETE",
+      "timing": "BEFORE"
+    },
+    "order_item_marketplace_fees_no_update": {
+      "table": "order_item_marketplace_fees",
+      "event": "UPDATE",
+      "timing": "BEFORE"
+    },
+    "order_item_marketplace_fees_no_delete": {
+      "table": "order_item_marketplace_fees",
+      "event": "DELETE",
+      "timing": "BEFORE"
+    }
+  },
   "requiredUniqueIndexes": {
     "managed_payout_allocations.managed_allocation_one_reservation": [
       "reserved_entitlement_key"
+    ],
+    "marketplace_fee_waiver_control.PRIMARY": [
+      "id"
+    ],
+    "marketplace_fee_waiver_campaigns.PRIMARY": [
+      "id"
+    ],
+    "marketplace_fee_waiver_revisions.PRIMARY": [
+      "campaign_id",
+      "revision"
+    ],
+    "marketplace_fee_waiver_revisions.request_id": [
+      "request_id"
+    ],
+    "marketplace_fee_waiver_requests.PRIMARY": [
+      "request_id"
+    ],
+    "order_item_marketplace_fees.PRIMARY": [
+      "order_item_id"
     ]
   },
   "requiredGeneratedColumns": {
@@ -10,7 +115,17 @@
     ]
   },
   "requiredColumnCollations": {
-    "managed_payout_allocations.reserved_entitlement_key": "utf8mb4_unicode_ci"
+    "managed_payout_allocations.reserved_entitlement_key": "utf8mb4_unicode_ci",
+    "marketplace_fee_waiver_campaigns.id": "utf8mb4_bin",
+    "marketplace_fee_waiver_revisions.campaign_id": "utf8mb4_bin",
+    "marketplace_fee_waiver_revisions.request_id": "utf8mb4_bin",
+    "marketplace_fee_waiver_requests.request_id": "utf8mb4_bin",
+    "order_item_marketplace_fees.campaign_id": "utf8mb4_bin",
+    "marketplace_fee_waiver_revisions.created_by": "utf8mb4_unicode_ci",
+    "marketplace_fee_waiver_requests.actor_id": "utf8mb4_unicode_ci",
+    "order_item_marketplace_fees.order_item_id": "utf8mb4_unicode_ci",
+    "users.id": "utf8mb4_unicode_ci",
+    "order_items.id": "utf8mb4_unicode_ci"
   },
   "requiredChecks": {
     "managed_payout_allocations.amount_paisa": [
@@ -98,6 +213,137 @@
       "between",
       "-9007199254740991",
       "9007199254740991"
+    ],
+    "marketplace_fee_waiver_control.revision": [
+      "revision",
+      "between",
+      "9007199254740991"
+    ],
+    "marketplace_fee_waiver_campaigns.revision": [
+      "revision",
+      "between",
+      "9007199254740991"
+    ],
+    "marketplace_fee_waiver_campaigns.created_at": [
+      "created_at",
+      "between",
+      "9007199254740991"
+    ],
+    "marketplace_fee_waiver_campaigns.updated_at": [
+      "updated_at",
+      "between",
+      "9007199254740991"
+    ],
+    "marketplace_fee_waiver_revisions.revision": [
+      "revision",
+      "between",
+      "9007199254740991"
+    ],
+    "marketplace_fee_waiver_revisions.starts_at": [
+      "starts_at",
+      "between",
+      "9007199254740991"
+    ],
+    "marketplace_fee_waiver_revisions.ends_at": [
+      "ends_at",
+      "between",
+      "9007199254740991",
+      "starts_at",
+      ">"
+    ],
+    "marketplace_fee_waiver_revisions.created_at": [
+      "created_at",
+      "between",
+      "9007199254740991"
+    ],
+    "marketplace_fee_waiver_requests.created_at": [
+      "created_at",
+      "between",
+      "9007199254740991"
+    ],
+    "order_item_marketplace_fees.base_paisa": [
+      "base_paisa",
+      "between",
+      "9007199254740991"
+    ],
+    "order_item_marketplace_fees.standard_paisa": [
+      "standard_paisa",
+      "between",
+      "9007199254740991"
+    ],
+    "order_item_marketplace_fees.waived_paisa": [
+      "waived_paisa",
+      "between",
+      "9007199254740991"
+    ],
+    "order_item_marketplace_fees.net_paisa": [
+      "net_paisa",
+      "between",
+      "9007199254740991"
+    ],
+    "order_item_marketplace_fees.created_at": [
+      "created_at",
+      "between",
+      "9007199254740991"
+    ],
+    "marketplace_fee_waiver_control.id": [
+      "id",
+      "default"
+    ],
+    "marketplace_fee_waiver_revisions.state": [
+      "state",
+      "draft",
+      "published",
+      "paused",
+      "ended"
+    ],
+    "marketplace_fee_waiver_revisions.name": [
+      "name",
+      "char_length",
+      "trim",
+      "100"
+    ],
+    "marketplace_fee_waiver_revisions.description": [
+      "description",
+      "char_length",
+      "1000"
+    ],
+    "marketplace_fee_waiver_requests.request_id": [
+      "request_id",
+      "char_length",
+      "191"
+    ],
+    "marketplace_fee_waiver_requests.command_json": [
+      "json_valid",
+      "json_type",
+      "command_json",
+      "object"
+    ],
+    "marketplace_fee_waiver_requests.response_json": [
+      "json_valid",
+      "json_type",
+      "response_json",
+      "object"
+    ],
+    "order_item_marketplace_fees.standard_bps": [
+      "standard_bps",
+      "between",
+      "10000"
+    ],
+    "order_item_marketplace_fees.marketplace_fee_reconciled": [
+      "standard_paisa",
+      "waived_paisa",
+      "net_paisa",
+      "-"
+    ],
+    "order_item_marketplace_fees.marketplace_fee_full_waiver": [
+      "campaign_id",
+      "campaign_revision",
+      "is null",
+      "is not null",
+      "waived_paisa",
+      "standard_paisa",
+      "net_paisa"
     ]
   },
   "release": "local-unversioned-candidate",
@@ -107,7 +353,7 @@
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "d8ab2f9938ae5b4a554981870b257a2510f79cade60bfb22d5e02dfe4f0a0ab1",
+      "sha256": "527b3faf2eae0a0c1228ca0846c6945150cad1a5ea2567ce84f17287b61094c2",
       "usage": "empty-database-only"
     },
     {
@@ -368,6 +614,11 @@
     {
       "path": "deployment/babal/mariadb-loyalty-scheduled-changes.sql",
       "sha256": "f415cd9ea6ca1c46ea2fcb0d35a1fc305142a39f0529f53b09c4e53e3b6a4515",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-marketplace-fee-waivers.sql",
+      "sha256": "c9399f9a217f29913d62da0fed502735dffb55083ed29f34c208fe6536bdb9b9",
       "usage": "additive-maintenance"
     }
   ],
@@ -2022,6 +2273,47 @@
       "reserved_entitlement_key",
       "terminal_at"
     ],
+    "marketplace_fee_waiver_control": [
+      "id",
+      "revision"
+    ],
+    "marketplace_fee_waiver_campaigns": [
+      "created_at",
+      "id",
+      "revision",
+      "updated_at"
+    ],
+    "marketplace_fee_waiver_revisions": [
+      "campaign_id",
+      "created_at",
+      "created_by",
+      "description",
+      "ends_at",
+      "name",
+      "request_id",
+      "revision",
+      "starts_at",
+      "state"
+    ],
+    "marketplace_fee_waiver_requests": [
+      "actor_id",
+      "auth_subject",
+      "command_json",
+      "created_at",
+      "request_id",
+      "response_json"
+    ],
+    "order_item_marketplace_fees": [
+      "base_paisa",
+      "campaign_id",
+      "campaign_revision",
+      "created_at",
+      "net_paisa",
+      "order_item_id",
+      "standard_bps",
+      "standard_paisa",
+      "waived_paisa"
+    ],
     "user_credentials": [
       "created_at",
       "password_hash",
@@ -2419,6 +2711,41 @@
       "scheduled_for",
       "new.created_at",
       "loyalty_scheduled_rules_due"
+    ],
+    "marketplace_fee_waiver_revisions_no_update": [
+      "signal sqlstate",
+      "45000",
+      "fee_waiver_revision_immutable"
+    ],
+    "marketplace_fee_waiver_revisions_no_delete": [
+      "signal sqlstate",
+      "45000",
+      "fee_waiver_revision_immutable"
+    ],
+    "marketplace_fee_waiver_requests_no_update": [
+      "signal sqlstate",
+      "45000",
+      "fee_waiver_request_immutable"
+    ],
+    "marketplace_fee_waiver_requests_no_delete": [
+      "signal sqlstate",
+      "45000",
+      "fee_waiver_request_immutable"
+    ],
+    "marketplace_fee_waiver_campaigns_no_delete": [
+      "signal sqlstate",
+      "45000",
+      "fee_waiver_campaign_retained"
+    ],
+    "order_item_marketplace_fees_no_update": [
+      "signal sqlstate",
+      "45000",
+      "marketplace_fee_snapshot_immutable"
+    ],
+    "order_item_marketplace_fees_no_delete": [
+      "signal sqlstate",
+      "45000",
+      "marketplace_fee_snapshot_immutable"
     ],
     "payouts_single_sa_insert": [],
     "payouts_single_sa_update": [],

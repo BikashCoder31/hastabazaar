@@ -63,6 +63,7 @@ const managedMakerIdentitySql = await readFile(resolve(projectRoot, 'deployment/
 const commissionWorkspaceSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-commission-workspace.sql'), 'utf8');
 const makerReadinessSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-company-store-maker-readiness.sql'), 'utf8');
 const loyaltyScheduledSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-loyalty-scheduled-changes.sql'), 'utf8');
+const feeWaiversSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-marketplace-fee-waivers.sql'), 'utf8');
 const managedFixedSupplySql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-managed-fixed-supply.sql'),
   'utf8',
@@ -455,6 +456,7 @@ output.push(
   loyaltyPointsSql.trim(),
   makerReadinessSql.trim(),
   loyaltyScheduledSql.trim(),
+  feeWaiversSql.trim(),
   '',
   '-- Babal.Host password authentication and server-side sessions.',
   'CREATE TABLE IF NOT EXISTS `user_credentials` (',
@@ -542,6 +544,11 @@ await mkdir(dirname(outputPath), { recursive: true });
 const schemaSql = output.join('\n').replace(/\r\n/g, '\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
+  'order_item_marketplace_fees',
+  'marketplace_fee_waiver_requests',
+  'marketplace_fee_waiver_revisions',
+  'marketplace_fee_waiver_campaigns',
+  'marketplace_fee_waiver_control',
   'category_image_assignments',
   'category_media',
   'delivery_assignments',
