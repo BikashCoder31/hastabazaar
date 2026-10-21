@@ -137,13 +137,13 @@ export async function inspectHostedSecurityReadiness(bindings: SecurityPolicyBin
     const manifest = await store.readManifest();
     result.phase = initialized ? 'initialized' : 'pending';
     if (!initialized) result.reasonCodes.push('SECURITY_SETUP_PENDING');
-    const staff = await database.prepare("SELECT DISTINCT u.id FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.status='active' AND r.role IN ('admin','super_admin')").all<{ id: string }>();
+    const staff = await database.prepare("SELECT DISTINCT u.id FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.status='active' AND r.role='super_admin'").all<{ id: string }>();
     if (!staff.results.length) result.reasonCodes.push('SECURITY_STAFF_MISSING');
     for (const id of manifest?.value.userIds ?? []) await store.readAccount(id);
     for (const { id } of staff.results) {
       if (!manifest?.value.userIds.includes(id)) { result.reasonCodes.push('SECURITY_STAFF_UNREGISTERED'); continue; }
       const account = await store.readAccount(id);
-      if (account?.value.status === 'active') result.enrolled++; else result.pending++;
+      if (account?.value.status === 'active') result.enrolled++; else if (account?.value.status !== 'disabled') result.pending++;
     }
     if (result.pending) result.reasonCodes.push('SECURITY_ENROLLMENT_PENDING');
     if (!initialized && result.enrolled) throw unavailable();

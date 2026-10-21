@@ -76,6 +76,8 @@ void test('provisioning refuses orphaned private DB records and release readines
   const pending = await implementation.inspectHostedSecurityReadiness(f.bindings(), f.db);
   assert.equal(pending.ready, false); assert.equal(pending.pending, 1);
   f.sqlite.exec("INSERT INTO users VALUES('new','new','new@example.test','New','active',0); INSERT INTO user_roles VALUES('new','admin')");
+  assert.equal((await implementation.inspectHostedSecurityReadiness(f.bindings(), f.db)).reasonCodes.includes('SECURITY_STAFF_UNREGISTERED'),false,'Optional Admin may register through the security flow');
+  f.sqlite.exec("UPDATE user_roles SET role='super_admin' WHERE user_id='new'");
   const unknown = await implementation.inspectHostedSecurityReadiness(f.bindings(), f.db);
   assert.equal(unknown.ready, false); assert.ok(unknown.reasonCodes.includes('SECURITY_STAFF_UNREGISTERED'));
 }));

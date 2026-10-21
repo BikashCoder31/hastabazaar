@@ -11,7 +11,9 @@ import {
 
 type SecurityStatus = {
   user: { displayName: string; email: string; role: string };
-  status: 'pending' | 'active' | 'setup' | 'verify';
+  status: 'pending' | 'active' | 'setup' | 'verify' | 'optional' | 'disabled';
+  mfaRequired?: boolean;
+  canDisable?: boolean;
   needsPassword: boolean;
   canManage: boolean;
   localSimulation: boolean;
@@ -89,7 +91,9 @@ function readStatus(value: Record<string, unknown>): SecurityStatus {
     typeof user.displayName !== 'string' ||
     typeof user.email !== 'string' ||
     typeof user.role !== 'string' ||
-    !['pending', 'active', 'setup', 'verify'].includes(String(value.status)) ||
+    !['pending', 'active', 'setup', 'verify', 'optional', 'disabled'].includes(
+      String(value.status),
+    ) ||
     !session ||
     !Number.isFinite(session.absoluteHours) ||
     !Number.isFinite(session.idleMinutes) ||
@@ -185,6 +189,10 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
   const [confirmation, setConfirmation] = useState('');
   const [capturedCode, setCapturedCode] = useState('');
   const [replacing, setReplacing] = useState(false);
+  const [disablePassword, setDisablePassword] = useState('');
+  const [disableCode, setDisableCode] = useState('');
+  const [disableRecovery, setDisableRecovery] = useState(false);
+  const [disableAcknowledged, setDisableAcknowledged] = useState(false);
   const destination = safeReturnTo(returnTo);
 
   useEffect(() => {
@@ -235,6 +243,9 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
     setBootstrapPassword('');
     setConfirmation('');
     setReplacing(false);
+    setDisablePassword('');
+    setDisableCode('');
+    setDisableAcknowledged(false);
   }
 
   const privileged =
@@ -287,7 +298,11 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
                 ? 'MFA active'
                 : status.status === 'verify'
                   ? 'Verify your Admin access'
-                  : 'MFA setup pending'
+                  : status.status === 'optional'
+                    ? 'MFA is optional'
+                    : status.status === 'disabled'
+                      ? 'MFA is turned off'
+                      : 'MFA setup pending'
               : 'Admin MFA is not required for this account'}
           </h2>
           <p className="mt-2 break-words text-sm">
@@ -299,14 +314,18 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
                 Protected Admin sessions end after{' '}
                 {status.session.absoluteHours} hours or{' '}
                 {status.session.idleMinutes} minutes without activity. Signing
-                in again requires your password and authenticator or a
-                single-use recovery code.
+                in again requires{' '}
+                {status.mfaRequired === false
+                  ? 'your password.'
+                  : 'your password and authenticator or a single-use recovery code.'}
               </p>
               {status.status !== 'active' && status.status !== 'verify' ? (
                 <p className="mt-3 text-sm leading-6">
-                  Your existing access remains available while setup is pending.
-                  Protection becomes active after you confirm your authenticator
-                  and save the recovery codes.
+                  {status.status === 'disabled'
+                    ? 'You turned off MFA after verifying account ownership. Enable it again below to protect future sign-ins.'
+                    : status.status === 'optional'
+                      ? 'You can continue with your password or enable MFA for additional protection. Enrollment is optional for Admin.'
+                      : 'Your existing access remains available while setup is pending. Protection becomes active after you confirm your authenticator and save the recovery codes.'}
                 </p>
               ) : null}
               {status.status === 'active' ? (
@@ -452,7 +471,10 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
         </section>
       ) : null}
 
-      {privileged && !status.needsPassword && status.status === 'verify' ? (
+      {privileged &&
+      !status.needsPassword &&
+      (['verify', 'optional', 'disabled'].includes(status.status) ||
+        (status.status === 'setup' && status.mfaRequired === false)) ? (
         <section className={card}>
           <h2 className="text-xl font-semibold">Complete your sign-in</h2>
           <form
@@ -487,41 +509,51 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
               autoComplete="current-password"
               disabled={busy}
             />
-            <SecretField
-              id="security-verify-code"
-              label={recoveryMode ? 'Recovery code' : 'Authenticator code'}
-              value={code}
-              onChange={(event) => setCode(event.target.value)}
-              required
-              maxLength={recoveryMode ? 80 : 6}
-              pattern={recoveryMode ? undefined : '[0-9]{6}'}
-              inputMode={recoveryMode ? 'text' : 'numeric'}
-              autoComplete="one-time-code"
-              disabled={busy}
-            />
-            <p className="text-sm leading-6">
-              {recoveryMode
-                ? 'A recovery code works once. Using it keeps MFA enabled.'
-                : 'Enter the six-digit code shown in your authenticator app.'}
-            </p>
+            {status.status === 'verify' ? (
+              <>
+                <SecretField
+                  id="security-verify-code"
+                  label={recoveryMode ? 'Recovery code' : 'Authenticator code'}
+                  value={code}
+                  onChange={(event) => setCode(event.target.value)}
+                  required
+                  maxLength={recoveryMode ? 80 : 6}
+                  pattern={recoveryMode ? undefined : '[0-9]{6}'}
+                  inputMode={recoveryMode ? 'text' : 'numeric'}
+                  autoComplete="one-time-code"
+                  disabled={busy}
+                />
+                <p className="text-sm leading-6">
+                  {recoveryMode
+                    ? 'A recovery code works once. Using it keeps MFA enabled.'
+                    : 'Enter the six-digit code shown in your authenticator app.'}
+                </p>
+              </>
+            ) : null}
             <div className="flex flex-wrap gap-3">
               <button type="submit" disabled={busy} className={button}>
-                {busy ? 'Verifying…' : 'Verify and continue'}
+                {busy
+                  ? 'Verifying…'
+                  : status.status === 'verify'
+                    ? 'Verify and continue'
+                    : 'Continue with password'}
               </button>
-              <button
-                type="button"
-                disabled={busy}
-                className={secondary}
-                onClick={() => {
-                  setRecoveryMode(!recoveryMode);
-                  setCode('');
-                  setError('');
-                }}
-              >
-                {recoveryMode
-                  ? 'Use authenticator instead'
-                  : 'Use a recovery code'}
-              </button>
+              {status.status === 'verify' ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  className={secondary}
+                  onClick={() => {
+                    setRecoveryMode(!recoveryMode);
+                    setCode('');
+                    setError('');
+                  }}
+                >
+                  {recoveryMode
+                    ? 'Use authenticator instead'
+                    : 'Use a recovery code'}
+                </button>
+              ) : null}
             </div>
           </form>
         </section>
@@ -935,6 +967,96 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
           >
             Replace authenticator
           </button>
+        </section>
+      ) : null}
+      {privileged && status.canDisable && !recovery && !replacing && !setup ? (
+        <section className={card}>
+          <h2 className="text-xl font-semibold">Turn off MFA</h2>
+          <p className="mt-2 text-sm leading-6">
+            Verify your password and a fresh authenticator or unused recovery
+            code. This signs out all your sessions and invalidates your recovery
+            codes. Future sign-ins will use your password until you enable MFA
+            again. Security-key exports still require MFA.
+          </p>
+          <form
+            aria-label="Disable MFA"
+            data-form-id="system.security-mfa-disable"
+            className="mt-5 grid max-w-xl gap-4"
+            onSubmit={(event) =>
+              submit(event, async () => {
+                try {
+                  await securityRequest('disable', {
+                    password: disablePassword,
+                    code: disableCode,
+                    recovery: disableRecovery,
+                    acknowledge: disableAcknowledged,
+                  });
+                  clearSecrets();
+                  window.location.assign('/login');
+                } finally {
+                  setDisablePassword('');
+                  setDisableCode('');
+                  setDisableAcknowledged(false);
+                }
+              })
+            }
+          >
+            <SecretField
+              id="security-disable-password"
+              label="Current password"
+              type="password"
+              value={disablePassword}
+              onChange={(event) => setDisablePassword(event.target.value)}
+              required
+              maxLength={256}
+              autoComplete="current-password"
+              disabled={busy}
+            />
+            <SecretField
+              id="security-disable-code"
+              label={disableRecovery ? 'Recovery code' : 'Authenticator code'}
+              value={disableCode}
+              onChange={(event) => setDisableCode(event.target.value)}
+              required
+              maxLength={disableRecovery ? 80 : 6}
+              pattern={disableRecovery ? undefined : '[0-9]{6}'}
+              inputMode={disableRecovery ? 'text' : 'numeric'}
+              autoComplete="one-time-code"
+              disabled={busy}
+            />
+            <button
+              type="button"
+              className={secondary}
+              disabled={busy}
+              onClick={() => {
+                setDisableRecovery(!disableRecovery);
+                setDisableCode('');
+              }}
+            >
+              {disableRecovery
+                ? 'Use authenticator instead'
+                : 'Use a recovery code'}
+            </button>
+            <label className="flex items-start gap-3 text-sm">
+              <input
+                type="checkbox"
+                checked={disableAcknowledged}
+                onChange={(event) =>
+                  setDisableAcknowledged(event.target.checked)
+                }
+                disabled={busy}
+              />
+              I understand future sign-ins will use only my password until I
+              enable MFA again.
+            </label>
+            <button
+              type="submit"
+              className={secondary}
+              disabled={busy || !disableAcknowledged}
+            >
+              {busy ? 'Verifying…' : 'Disable MFA'}
+            </button>
+          </form>
         </section>
       ) : null}
       {privileged ? (

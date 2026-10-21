@@ -1113,3 +1113,129 @@ void test('security pages keep server authorization and never place secrets in p
     assert.match(source, /cache: 'no-store'/);
   }
 });
+
+void test('optional Admin MFA remains available without requiring enrollment to continue', async () => {
+  await withFixture(
+    'SecurityWorkspace',
+    async (route) => {
+      if (!new URL(route.request().url()).pathname.startsWith('/api/security/'))
+        return false;
+      await route.fulfill({
+        json: {
+          ...fixtureStatus,
+          user: { ...fixtureStatus.user, role: 'admin' },
+          status: 'optional',
+          mfaRequired: false,
+        },
+      });
+      return true;
+    },
+    async (page) => {
+      await page.getByText('MFA is optional', { exact: true }).waitFor();
+      assert.equal(
+        await page
+          .getByRole('button', { name: 'Set up authenticator', exact: true })
+          .count(),
+        1,
+      );
+      assert.equal(
+        await page
+          .getByRole('button', { name: 'Continue with password', exact: true })
+          .count(),
+        1,
+      );
+      assert.equal(
+        await page
+          .getByRole('button', { name: 'Disable MFA', exact: true })
+          .count(),
+        0,
+      );
+    },
+  );
+});
+void test('unfinished optional setup still offers password continuation after reload', async () => {
+  await withFixture(
+    'SecurityWorkspace',
+    async (route) => {
+      if (!new URL(route.request().url()).pathname.startsWith('/api/security/'))
+        return false;
+      await route.fulfill({
+        json: { ...fixtureStatus, status: 'setup', mfaRequired: false },
+      });
+      return true;
+    },
+    async (page) => {
+      await page
+        .getByRole('button', { name: 'Continue with password', exact: true })
+        .waitFor();
+    },
+  );
+});
+void test('MFA disable requires explicit acknowledgment and sends password and a fresh factor only to its protected endpoint', async () => {
+  let posted: Record<string, unknown> | undefined;
+  await withFixture(
+    'SecurityWorkspace',
+    async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (!path.startsWith('/api/security/')) return false;
+      if (route.request().method() === 'GET')
+        await route.fulfill({
+          json: {
+            ...fixtureStatus,
+            status: 'active',
+            sessionVerified: true,
+            canDisable: true,
+          },
+        });
+      else {
+        assert.equal(path, '/api/security/disable');
+        posted = route.request().postDataJSON() as Record<string, unknown>;
+        await route.fulfill({
+          status: 409,
+          json: { error: 'Fixture keeps this page open' },
+        });
+      }
+      return true;
+    },
+    async (page) => {
+      const form = page.getByRole('form', { name: 'Disable MFA', exact: true });
+      await form.waitFor();
+      const button = form.getByRole('button', {
+        name: 'Disable MFA',
+        exact: true,
+      });
+      assert.equal(await button.isDisabled(), true);
+      await form
+        .getByLabel('Current password', { exact: true })
+        .fill('fictional-owner-password');
+      await form
+        .getByLabel('Authenticator code', { exact: true })
+        .fill('123456');
+      await form
+        .getByRole('checkbox', { name: /I understand.*password/ })
+        .check();
+      await button.click();
+      await page.getByRole('alert').waitFor();
+      assert.match(
+        await page.getByRole('alert').innerText(),
+        /Fixture keeps this page open/,
+      );
+      assert.deepEqual(posted, {
+        password: 'fictional-owner-password',
+        code: '123456',
+        recovery: false,
+        acknowledge: true,
+      });
+      assert.equal(
+        await form.getByLabel('Current password', { exact: true }).inputValue(),
+        '',
+      );
+      assert.equal(
+        await form
+          .getByLabel('Authenticator code', { exact: true })
+          .inputValue(),
+        '',
+      );
+    },
+  );
+});
