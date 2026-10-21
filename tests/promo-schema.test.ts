@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import nativeFeeMetadata from './helpers/mariadb-fee-readiness-metadata.json';
 import { calculatePromoDiscount } from '../lib/incentives/promo-policy';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -1057,7 +1058,7 @@ void test('MariaDB generator ships promo tables after canonical prerequisites an
     // by readiness-runtime and the required native MariaDB job.
     const suppliedChecks = new Set([...baseChecks, ...categoryChecks].map(check => `${check.tableName}.${check.name}`));
     const otherChecks = Object.entries(manifest.requiredChecks).filter(([key]) => !suppliedChecks.has(key))
-      .map(([key, fragments]) => ({tableName:key.split('.')[0],name:key.split('.')[1],definition:(fragments as string[]).join(' ')}));
+      .map(([key, fragments]) => nativeFeeMetadata.checks.find(row=>row.tableName+'.'+row.name===key)??({tableName:key.split('.')[0],name:key.split('.')[1],definition:(fragments as string[]).join(' ')}));
     const checks = [...baseChecks, ...categoryChecks, ...otherChecks];
     const columns = Object.entries(manifest.requiredTables).flatMap(([tableName, names]) =>
       (names as string[]).map((columnName) => ({ tableName, columnName,
@@ -1069,6 +1070,8 @@ void test('MariaDB generator ships promo tables after canonical prerequisites an
       (names as string[]).map((columnName,i)=>({tableName:key.split('.')[0],name:key.split('.')[1],nonUnique:0,position:i+1,columnName,prefixLength:null})));
     const migrationSql = (await Promise.all(manifest.migrations.map((m: { path: string }) => readFile(join(root, m.path), 'utf8')))).join('\n');
     const triggers = Object.keys(manifest.requiredTriggers).map((name) => {
+      const fee = nativeFeeMetadata.triggers.find(row=>row.name===name);
+      if(fee)return{...fee,tableName:manifest.requiredTriggerShapes[name].table,event:manifest.requiredTriggerShapes[name].event,timing:manifest.requiredTriggerShapes[name].timing};
       const match = migrationSql.match(new RegExp('CREATE TRIGGER(?: IF NOT EXISTS)? `?' + name + '`?[\\s\\S]*?END(?:\\$\\$|;)', 'i'));
       assert.ok(match, name);
       return { name, definition: match[0] };
@@ -1085,7 +1088,12 @@ void test('MariaDB generator ships promo tables after canonical prerequisites an
     ];
     await mkdir(join(root, 'lib', 'operations'), { recursive: true });
     await cp(new URL('../lib/operations/readiness.ts', import.meta.url), join(root, 'lib', 'operations', 'readiness.ts'));
-    await writeFile(join(root, 'readiness-fixtures.json'), JSON.stringify({ columns, indexes, triggers, cases }));
+    await cp(new URL('../lib/operations/fee-schema-readiness.mjs', import.meta.url), join(root, 'lib', 'operations', 'fee-schema-readiness.mjs'));
+    const foreignKeys=Object.entries(manifest.requiredForeignKeys).flatMap(([key,value])=>{
+      const fk=value as {columns:string[];referencedTable:string;referencedColumns:string[]};
+      return fk.columns.map((columnName,i)=>({tableName:key.split('.')[0],name:key.split('.')[1],columnName,position:i+1,referencedTable:fk.referencedTable,referencedColumn:fk.referencedColumns[i],referencedSchema:'fixture',databaseName:'fixture',deleteRule:'RESTRICT',updateRule:'RESTRICT'}));
+    });
+    await writeFile(join(root, 'readiness-fixtures.json'), JSON.stringify({ columns, indexes, triggers, foreignKeys, cases }));
     await writeFile(join(root, 'inspect-readiness.mjs'), [
       "import { readFile } from 'node:fs/promises';",
       "import { inspectReadiness } from './lib/operations/readiness.ts';",
@@ -1098,6 +1106,8 @@ void test('MariaDB generator ships promo tables after canonical prerequisites an
       "    else if (sql.includes('FROM information_schema.TRIGGERS ')) rows = fixture.triggers;",
       "    else if (sql.includes('FROM information_schema.CHECK_CONSTRAINTS ')) rows = scenario.checks;",
       "    else if (sql.includes('FROM information_schema.STATISTICS ')) rows = fixture.indexes;",
+      "    else if (sql.includes('FROM information_schema.KEY_COLUMN_USAGE ')) rows = fixture.foreignKeys;",
+      "    else if (sql.includes('FROM marketplace_fee_waiver_control')) rows = [{id:'default',revision:0}];",
       "    else throw new Error('Unexpected readiness query: ' + sql);",
       '    return { async all() { return { results: rows }; } };',
       '  } };',
