@@ -5,6 +5,7 @@ export const accountingColumns: Record<string, string> = {
   audit_logs: 'id,subject_type,subject_id,action,next_json,created_at',
   order_items:
     'id,order_id,seller_id,commission_rule_version,commission_paisa,fulfillment_status',
+  order_item_marketplace_fees: 'order_item_id,standard_bps,base_paisa,standard_paisa,waived_paisa,net_paisa,campaign_id,campaign_revision,created_at',
   seller_ledger_entries:
     'id,seller_id,order_item_id,type,amount_paisa,available_at,created_at',
   payout_entries: 'ledger_entry_id,released_at',
@@ -42,6 +43,7 @@ export const accountingGroups = {
   sellers: [
     'orders',
     'order_items',
+    'order_item_marketplace_fees',
     'seller_ledger_entries',
     'payout_entries',
     'payouts',

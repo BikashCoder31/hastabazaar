@@ -14,6 +14,8 @@ import {
 
 export interface SellerEarnings {
   registered: SellerFinanceSummary;
+  /** Original checkout evidence, before cancellations/refunds. Never a cash balance. */
+  marketplaceFees: { originalStandardPaisa: number; originalWaivedPaisa: number; originalNetPaisa: number };
   commission: SellerCommissionTerms | null;
   commissionAccepted?: boolean;
   offeredCommissionBps?: number;
@@ -39,7 +41,7 @@ export async function getSellerEarnings(
   sellerId: string,
   now = Date.now(),
 ): Promise<SellerEarnings> {
-  const [registered, commission, baseCommission, participation] = await Promise.all([
+  const [registered, commission, baseCommission, participation, marketplaceFees] = await Promise.all([
     getSellerFinanceSummary(database, sellerId, now),
     getSellerCommissionTerms(database, sellerId, now).catch(unavailableRate),
     getCommissionSetting(database, now).catch(unavailableRate),
@@ -59,6 +61,13 @@ export async function getSellerEarnings(
         hasManagedRecords: number;
         hasRegisteredRecords: number;
       }>(),
+    database.prepare(`SELECT COALESCE(SUM(COALESCE(f.standard_paisa,i.commission_paisa)),0) AS originalStandardPaisa,
+      COALESCE(SUM(COALESCE(f.waived_paisa,0)),0) AS originalWaivedPaisa,
+      COALESCE(SUM(COALESCE(f.net_paisa,i.commission_paisa)),0) AS originalNetPaisa
+      FROM order_items i LEFT JOIN order_item_marketplace_fees f ON f.order_item_id=i.id
+      WHERE i.seller_id=? AND NOT EXISTS(SELECT 1 FROM managed_commercial_snapshots m WHERE m.order_item_id=i.id)
+        AND COALESCE(i.commission_rule_version,'') NOT LIKE 'managed-%'`)
+      .bind(sellerId).first<SellerEarnings['marketplaceFees']>(),
   ]);
   const hasManaged =
     participation?.route === 'managed_maker' ||
@@ -77,6 +86,11 @@ export async function getSellerEarnings(
   const commissionAccepted = baseCommission ? await sellerAcceptedCommissionVersion(database, sellerId, baseCommission.versionId) : false;
   return {
     registered,
+    marketplaceFees: {
+      originalStandardPaisa: Number(marketplaceFees?.originalStandardPaisa ?? 0),
+      originalWaivedPaisa: Number(marketplaceFees?.originalWaivedPaisa ?? 0),
+      originalNetPaisa: Number(marketplaceFees?.originalNetPaisa ?? 0),
+    },
     commission,
     commissionAccepted,
     offeredCommissionBps: baseCommission?.basisPoints,

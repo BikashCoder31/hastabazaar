@@ -110,6 +110,9 @@ const registered = {
   refundPaisa: -800,
   paidPaisa: 20000,
 };
+// Original historical fee, before the separate 250-paisa ledger reversal above.
+const marketplaceFees = { originalStandardPaisa: 12500, originalWaivedPaisa: 0, originalNetPaisa: 12500 };
+const noMarketplaceFees = { originalStandardPaisa: 0, originalWaivedPaisa: 0, originalNetPaisa: 0 };
 
 // Catch hiding actionable work below non-actionable catalog status, or treating review as a seller task.
 void test('seller action overview prioritizes owned work and separates waiting review', async () => {
@@ -168,6 +171,7 @@ void test('earnings shows recorded balances and labels saved commission for new 
     createElement(ui.SellerEarningsSummary, {
       earnings: {
         registered,
+        marketplaceFees,
         commission: { basisPoints: 725, version: 'saved-725', acceptedAt: 1 },
         managed: null,
         participationRoute: 'registered_seller',
@@ -213,6 +217,7 @@ void test('managed earnings stay separate and use saved retention without changi
       createElement(ui.SellerEarningsSummary, {
         earnings: {
           registered,
+          marketplaceFees: noMarketplaceFees,
           commission: { basisPoints: 725, version: 'saved-725', acceptedAt: 1 },
           participationRoute: 'managed_maker',
           hasRegisteredRecords: false,
@@ -236,11 +241,11 @@ void test('managed earnings stay separate and use saved retention without changi
 
 void test('12% offers display the 88% remainder and pending consent without repricing earnings', async () => {
   const {SellerEarningsSummary}=await import('../components/seller/seller-earnings-summary');
-  const base={registered,commission:{basisPoints:1200,version:'current-12',acceptedAt:null},commissionAccepted:false,participationRoute:'registered_seller',hasRegisteredRecords:true,managed:null};
+  const base={registered,marketplaceFees,commission:{basisPoints:1200,version:'current-12',acceptedAt:null},commissionAccepted:false,participationRoute:'registered_seller',hasRegisteredRecords:true,managed:null};
   const registeredHtml=renderToStaticMarkup(createElement(SellerEarningsSummary,{earnings:base}));
   assert.match(registeredHtml,/12% company/);assert.match(registeredHtml,/88% seller/);
   assert.match(registeredHtml,/acceptance.*required|review and accept/i);assert.match(registeredHtml,/125\.00/);
-  const makerHtml=renderToStaticMarkup(createElement(SellerEarningsSummary,{earnings:{...base,participationRoute:'managed_maker',hasRegisteredRecords:false,
+  const makerHtml=renderToStaticMarkup(createElement(SellerEarningsSummary,{earnings:{...base,marketplaceFees:noMarketplaceFees,participationRoute:'managed_maker',hasRegisteredRecords:false,
     managed:{retentionBps:null,offeredRetentionBps:1200,commercialModel:'managed_sale_linked_percentage_v1',summary:{calculatedPaisa:91000,earnedPaisa:91000,heldPaisa:0,eligiblePaisa:91000,paidPaisa:0,balancePaisa:91000,reservedPaisa:0,payablePaisa:91000,blockedPaisa:0,refundOffsetPaisa:0,needsReconciliation:false}}}}));
   assert.match(makerHtml,/12% company/);assert.match(makerHtml,/88% maker/);
   assert.match(makerHtml,/review and accept/i);assert.match(makerHtml,/910\.00/);assert.doesNotMatch(makerHtml,/880\.00/);
@@ -248,7 +253,7 @@ void test('12% offers display the 88% remainder and pending consent without repr
 
 void test('unavailable current terms show recorded earnings without inventing a rate', async () => {
   const {SellerEarningsSummary} = await import('../components/seller/seller-earnings-summary');
-  const html = renderToStaticMarkup(createElement(SellerEarningsSummary,{earnings:{registered,commission:null,currentRateUnavailable:true,participationRoute:'registered_seller',hasRegisteredRecords:true,managed:null}}));
+  const html = renderToStaticMarkup(createElement(SellerEarningsSummary,{earnings:{registered,marketplaceFees,commission:null,currentRateUnavailable:true,participationRoute:'registered_seller',hasRegisteredRecords:true,managed:null}}));
   assert.match(html,/Current commission terms are unavailable/);
   assert.match(html,/125\.00/);
   assert.doesNotMatch(html,/(9|12)% company/);
@@ -264,6 +269,7 @@ void test('earnings preserves zero and negative positions without making them lo
       createElement(ui.SellerEarningsSummary, {
         earnings: {
           registered: { ...registered, availablePaisa },
+          marketplaceFees,
           commission: {
             basisPoints: 900,
             version: 'saved-nine',
@@ -316,6 +322,7 @@ void test('missing accepted terms, fixed suppliers and transitioned makers do no
       createElement(ui.SellerEarningsSummary, {
         earnings: {
           registered,
+          marketplaceFees: route === 'registered_seller' ? marketplaceFees : noMarketplaceFees,
           commission: { basisPoints: 725, version: 'saved-725', acceptedAt: 1 },
           participationRoute: route,
           hasRegisteredRecords: route === 'registered_seller',

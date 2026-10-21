@@ -9,18 +9,22 @@ import {
   nprToPaisa,
   percentageToBps,
   promoCostPreview,
+  incentiveDate,
 } from '@/lib/incentives/presentation';
 import type { PromoTerms } from '@/lib/incentives/types';
+import type { FeeWaiverCampaign } from '@/lib/marketplace/fee-waivers';
 
 export function PromoCodeCostPreview({
   terms,
   error = '',
   defaultCommissionBps,
+  feeWaiver = null,
   disabled = false,
 }: {
   terms: PromoTerms | null;
   error?: string;
   defaultCommissionBps?: number;
+  feeWaiver?: FeeWaiverCampaign | null;
   disabled?: boolean;
 }) {
   const [subtotal, setSubtotal] = useState('1000.00');
@@ -32,7 +36,7 @@ export function PromoCodeCostPreview({
   try {
     const subtotalPaisa = nprToPaisa(subtotal, 'the sample products subtotal');
     const commissionBps = percentageToBps(commission);
-    if (terms) result = promoCostPreview(terms, subtotalPaisa, commissionBps);
+    if (terms) result = promoCostPreview(terms, subtotalPaisa, commissionBps, feeWaiver);
   } catch (reason) {
     message =
       reason instanceof Error
@@ -52,6 +56,7 @@ export function PromoCodeCostPreview({
           minimum subtotal above.
         </p>
         {defaultCommissionBps === undefined ? <output className="mt-2 block text-sm">The current saved commission rate is unavailable. Enter an explicit illustration rate or review Business Settings. No replacement rate is assumed.</output> : null}
+        {feeWaiver ? <p className="mt-2 text-sm">This estimate uses the saved marketplace fee waiver “{feeWaiver.name}”, {incentiveDate(feeWaiver.startsAt)} to {incentiveDate(feeWaiver.endsAt)} (Nepal time). Checkout confirms eligibility when the order is placed.</p> : null}
       </div>
       <fieldset disabled={disabled} className="grid gap-4 sm:grid-cols-2">
         <legend className="sr-only">Illustration assumptions</legend>
@@ -116,7 +121,7 @@ export function PromoCodeCostPreview({
               </div>
               <div>
                 <dt className="text-xs text-muted-foreground">
-                  Estimated commission revenue
+                  Estimated net commission revenue
                 </dt>
                 <dd
                   className="mt-1 font-semibold tabular-nums"
@@ -163,7 +168,8 @@ export function PromoCodeCostPreview({
       <p className="text-xs leading-relaxed text-muted-foreground">
         Excludes delivery, taxes and other fees. Commission is calculated on the
         products subtotal before the Hatskala-funded promo, assuming a
-        completed, paid sale. Contribution is commission less promo cost.
+        completed, paid sale, after the illustrated marketplace fee waiver.
+        Contribution is net commission less promo cost. Waived fees do not fund the discount.
         Campaign dates, usage limits, remaining budget and customer eligibility
         are not verified here. Changing these assumptions only updates this
         illustration.

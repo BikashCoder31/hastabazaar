@@ -22,6 +22,22 @@ export interface FeeBreakdown {
   campaignId: string | null;
   campaignRevision: number | null;
 }
+/** Historical recorded money is authoritative; never recalculate it at a new rate. */
+export function historicalFeeBreakdown(
+  commissionBps: number,
+  commissionPaisa: number,
+  basePaisa: number,
+): FeeBreakdown {
+  return {
+    standardBps: commissionBps,
+    basePaisa,
+    standardPaisa: commissionPaisa,
+    waivedPaisa: 0,
+    netPaisa: commissionPaisa,
+    campaignId: null,
+    campaignRevision: null,
+  };
+}
 /** Accepted terms remain standard; the order's effective fee is the net amount. */
 export function calculateMarketplaceFee(
   basePaisa: number,

@@ -150,6 +150,13 @@ function definitions(q: AccountingQuery, now: number): Definition[] {
     );
   const sellerNote =
     'Recorded independent-seller ledger events in this period; not company net profit.';
+  const originalFeeSource = 'order_items i JOIN orders o ON o.id=i.order_id LEFT JOIN order_item_marketplace_fees f ON f.order_item_id=i.id';
+  m('sellers', 'seller_original_standard_commission', 'Original standard marketplace fees', originalFeeSource,
+    'COALESCE(f.standard_paisa,i.commission_paisa)', `${independentItem} AND ${flow('o.created_at')}`, 'period_flow', ['order_item'],
+    'Original checkout snapshots including subsequently cancelled/refunded lines. Historical lines use recorded fees. Not earned revenue; reversals and remaining balances are separate.');
+  m('sellers', 'seller_original_waived_commission', 'Original marketplace fee waivers', originalFeeSource,
+    'COALESCE(f.waived_paisa,0)', `${independentItem} AND ${flow('o.created_at')}`, 'period_flow', ['order_item'],
+    'Original checkout fee relief, including subsequently cancelled/refunded lines. Evidence only, not a cash expense or earned commission.');
   m('service_fees', 'service_fee_charged', 'Platform service fees at checkout', 'orders', 'buyer_platform_fee_paisa', flow('created_at'), 'period_flow', ['order_service_fee'], 'Original saved customer fees, once per order. Includes pending/uncollected charges; not collected revenue or seller commission.');
   m('service_fees', 'service_fee_current', 'Platform service fees after cancellations', 'orders', currentPlatformServiceFeeSql(), flow('created_at'), 'period_flow', ['order_service_fee'], 'Saved order charges after uncollected COD cancellation waivers. Not proof of cash collection; lawful refunds are reported separately.');
   m(

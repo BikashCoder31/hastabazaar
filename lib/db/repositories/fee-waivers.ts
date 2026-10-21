@@ -3,12 +3,64 @@ import {
   validateFeeWaiverInstant,
   validateFeeWaiverTerms,
   selectFeeWaiver,
+  historicalFeeBreakdown,
   type FeeBreakdown,
   type FeeWaiverCampaign,
   type FeeWaiverCommand,
   type FeeWaiverContext,
   type FeeWaiverTerms,
 } from '../../marketplace/fee-waivers';
+
+/** Original immutable fee snapshots only; ledger reversals remain separate. */
+export async function readOrderMarketplaceFees(
+  db: D1Database,
+  orderItemIds: string[],
+): Promise<Map<string, FeeBreakdown>> {
+  const fees = new Map<string, FeeBreakdown>();
+  const ids = [...new Set(orderItemIds)];
+  // Stay below D1's binding limit for large order/report reads.
+  for (let start = 0; start < ids.length; start += 90) {
+    const batch = ids.slice(start, start + 90);
+    const rows = await db
+      .prepare(`SELECT i.id,i.commission_bps AS commissionBps,i.commission_paisa AS commissionPaisa,
+      COALESCE(i.commission_base_paisa,i.line_total_paisa-i.seller_discount_paisa) AS historicalBasePaisa,
+      f.standard_bps AS standardBps,f.base_paisa AS basePaisa,f.standard_paisa AS standardPaisa,
+      f.waived_paisa AS waivedPaisa,f.net_paisa AS netPaisa,f.campaign_id AS campaignId,f.campaign_revision AS campaignRevision
+      FROM order_items i LEFT JOIN order_item_marketplace_fees f ON f.order_item_id=i.id
+      WHERE i.id IN (${batch.map(() => '?').join(',')})
+        AND NOT EXISTS(SELECT 1 FROM managed_commercial_snapshots m WHERE m.order_item_id=i.id)
+        AND COALESCE(i.commission_rule_version,'') NOT LIKE 'managed-%'`)
+      .bind(...batch)
+      .all<
+        FeeBreakdown & {
+          id: string;
+          commissionBps: number;
+          commissionPaisa: number;
+          historicalBasePaisa: number;
+        }
+      >();
+    for (const row of rows.results)
+      fees.set(
+        row.id,
+        row.standardBps == null
+          ? historicalFeeBreakdown(
+              row.commissionBps,
+              row.commissionPaisa,
+              row.historicalBasePaisa,
+            )
+          : {
+              standardBps: row.standardBps,
+              basePaisa: row.basePaisa,
+              standardPaisa: row.standardPaisa,
+              waivedPaisa: row.waivedPaisa,
+              netPaisa: row.netPaisa,
+              campaignId: row.campaignId,
+              campaignRevision: row.campaignRevision,
+            },
+      );
+  }
+  return fees;
+}
 
 const authoritySql = `EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=? AND u.auth_subject=? AND u.status='active' AND r.role='super_admin')`;
 const campaignColumns =
