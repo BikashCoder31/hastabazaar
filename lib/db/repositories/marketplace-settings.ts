@@ -46,8 +46,11 @@ export type RegisteredSellerTerms = Awaited<ReturnType<typeof getRegisteredSelle
 export async function prepareSellerCommissionAcceptance(database: D1Database, options: {sellerId:string;actorId:string;context:string;requestId:string;now:number;language?:'en'|'ne';mode?:'application'|'approved_seller'|'managed_transition';transitionId?:string;acceptedAt?:number}) {
   const terms=await getRegisteredSellerTerms(database,options.now);
   if (options.context!==terms.context) throw new SellerCommissionTermsChangedError('Seller commission terms have changed. Reload and review the current terms before accepting.');
+  const snapshot={schema:1,context:terms.context,agreementVersion:terms.agreementVersion,
+    commissionSettingVersionId:terms.versionId,commissionBps:terms.basisPoints,document:terms.document,
+    language:options.language??'en',acceptedAt:options.mode==='managed_transition'?(options.acceptedAt??options.now):options.now,acceptedBy:options.actorId};
   const guardId=crypto.randomUUID();
-  return {terms,statements: [
+  return {terms,snapshot,statements: [
     database.prepare('/* seller-commission-lock */ SELECT id FROM seller_profiles WHERE user_id=? AND id=?').bind(options.actorId,options.sellerId),
     database.prepare(`INSERT INTO operation_transaction_guards(id,valid)
       SELECT ?,CASE WHEN COALESCE((SELECT id FROM business_setting_versions WHERE setting_key='independent_seller_commission_bps' AND status='published'

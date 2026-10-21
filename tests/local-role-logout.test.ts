@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { registerHooks } from 'node:module';
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import test from 'node:test';
 
 registerHooks({ resolve(specifier, context, nextResolve) {
@@ -17,13 +17,25 @@ declare global { var localLogoutDb: D1Database; var localLogoutHeaders: Headers 
 
 function fixture() {
   const sqlite = new DatabaseSync(':memory:');
-  sqlite.exec('CREATE TABLE user_sessions(token_hash TEXT PRIMARY KEY)');
+  sqlite.exec(`PRAGMA foreign_keys=ON;
+    CREATE TABLE users(id TEXT PRIMARY KEY, auth_subject TEXT, display_name TEXT, email TEXT, status TEXT);
+    CREATE TABLE user_roles(user_id TEXT REFERENCES users(id), role TEXT);
+    CREATE TABLE account_email_verifications(user_id TEXT REFERENCES users(id), email TEXT);
+    CREATE TABLE user_sessions(token_hash TEXT PRIMARY KEY, user_id TEXT REFERENCES users(id), expires_at INTEGER, created_at INTEGER, last_seen_at INTEGER);
+    INSERT INTO users VALUES('buyer','local-test-buyer','Fictional buyer','buyer@local.hastabazaar.test','active');
+    INSERT INTO users VALUES('hosted','password:fictional','Fictional hosted buyer','hosted@local.hastabazaar.test','active');
+    INSERT INTO user_roles VALUES('buyer','customer'),('hosted','customer');`);
   const token = 'fictional-hosted-logout-session';
-  sqlite.prepare('INSERT INTO user_sessions(token_hash) VALUES (?)').run(createHash('sha256').update(token).digest('hex'));
-  sqlite.prepare('INSERT INTO user_sessions(token_hash) VALUES (?)').run('unrelated-session-hash');
+  const now = Date.now();
+  for (const hash of [createHash('sha256').update(token).digest('hex'), 'unrelated-session-hash']) {
+    sqlite.prepare('INSERT INTO user_sessions VALUES (?,?,?,?,?)').run(hash, 'hosted', now + 60_000, now, now);
+  }
   globalThis.localLogoutDb = { prepare(sql: string) {
     const statement = sqlite.prepare(sql);
-    return { bind(value: string) { return { async run() { return statement.run(value); } }; } };
+    return { bind(...values: SQLInputValue[]) { return {
+      async first() { return statement.get(...values) ?? null; },
+      async run() { return statement.run(...values); },
+    }; } };
   } } as unknown as D1Database;
   return { sqlite, token };
 }

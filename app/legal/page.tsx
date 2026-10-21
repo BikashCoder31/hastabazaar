@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { CompanyDisclosure } from '@/components/layout/company-disclosure';
+import { companyDetails } from '@/lib/content/company-details';
 import { ArrowRight, FileText } from 'lucide-react';
 
 import { SiteFooter } from '@/components/layout/site-footer';
@@ -31,10 +32,10 @@ export default function LegalPage() {
           <p className="mt-5 text-base leading-7 text-muted-foreground">
             Questions about our policies? Contact{' '}
             <a
-              href="mailto:support@hastabazaar.com"
+              href={`mailto:${companyDetails.supportEmail}`}
               className="font-semibold text-primary underline underline-offset-4"
             >
-              support@hastabazaar.com
+              {companyDetails.supportEmail}
             </a>
             .
           </p>

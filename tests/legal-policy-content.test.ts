@@ -61,7 +61,8 @@ void test('customer policy navigation excludes seller commercial terms and prese
     hub,
     /Find the policies that explain shopping, selling, delivery and\s+personal information on HastaBazaar\./,
   );
-  assert.match(hub, /mailto:support@hastabazaar\.com/);
+  assert.match(hub, /href=\{`mailto:\$\{companyDetails\.supportEmail\}`\}/);
+  assert.match(hub, /\{companyDetails\.supportEmail\}/);
   for (const policy of publicLegalPolicyNavigation) {
     assert.match(readFileSync(`app${policy.href}/page.tsx`, 'utf8'), /LegalPolicyPage/);
   }

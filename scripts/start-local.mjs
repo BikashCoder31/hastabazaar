@@ -14,6 +14,7 @@ const localSettings = Object.freeze({
   CHECKOUT_CONTACT_POLICY: 'email_only',
   HOST: 'localhost',
   PORT: '3018',
+  CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'true',
 });
 
 const forbiddenSettings = /^(?:DEPLOY_TARGET|VERCEL(?:_.*)?|CF_PAGES(?:_.*)?|CLOUDFLARE_ENV|NODE_OPTIONS|VITE_USER_NODE_ENV|HASTABAZAAR_LOCAL_RIDER_DECODER|MEDIA_ROOT|DB_.*|DATABASE_URL|SMTP_.*|CLOUDFLARE_API_.*|CLOUDFLARE_ACCOUNT_ID|CF_API_.*|CF_ACCOUNT_ID|R2_.*|S3_.*|AWS_.*|GOOGLE_CLIENT_.*|STRIPE_.*|PAYPAL_.*|ESEWA_.*|KHALTI_.*|RESEND_.*|SENDGRID_.*|MAILGUN_.*|ORDER_EMAIL_JOB_SECRET|GIT_DIR|GIT_WORK_TREE|GIT_COMMON_DIR|GIT_CONFIG.*|GIT_INDEX_FILE|GIT_OBJECT_DIRECTORY|GIT_ALTERNATE_OBJECT_DIRECTORIES)$/;
@@ -78,8 +79,10 @@ export async function verifyLocalEnvironmentFiles(projectRoot) {
       if (error.code === 'ENOENT') continue;
       throw new Error(`Cannot read local environment file ${name}.`);
     }
+    if(name.startsWith('.dev.vars'))throw new Error(`${name} would shadow the protected Worker key. The checked local preview loads that key from its private installation file; review this environment file separately.`);
     try {
       const values = parseEnv(contents);
+      if(Object.keys(values).some(name=>name.toUpperCase()==='HASTABAZAAR_SECURITY_KEY'))throw new Error('The security key must stay in the protected installation file, not an environment file.');
       createLocalEnvironment(values);
       assertStagingRoot(projectRoot, values);
     } catch (error) { throw new Error(`${name}: ${error.message}`); }
@@ -96,7 +99,7 @@ export function assertLocalCheckout(checkout) {
   }
   for (const name of ['projectRoot', 'cwd', 'gitRoot']) {
     if (!checkout[name] || !samePath(checkout[name], checkout.configuredRoot)) {
-      throw new Error('Wrong checkout or working directory. Start the canonical Desktop/Hatskala project.');
+      throw new Error('Wrong checkout or working directory. Start the canonical Desktop/HastaBazaar project.');
     }
   }
   if (!checkout.baselineIsAncestor) {
@@ -189,7 +192,8 @@ export async function checkLocalData(projectRoot, environment) {
       if (!readiness.ready) {
         throw new Error(`Local forms/sign-in data is incomplete: ${readiness.readyForms}/${readiness.requiredForms} forms ready. ${readiness.errors.join(' ')}`);
       }
-      return { databasePath, readiness };
+      const hasSecurityRecords=Boolean(sqlite.prepare("SELECT 1 FROM marketplace_settings WHERE substr(`key`,1,13)='auth-private:' LIMIT 1").get());
+      return { databasePath, readiness, hasSecurityRecords };
     } finally { sqlite.close(); }
   } catch (error) {
     throw new Error(`Local staging data check failed: ${error.message} No data was created, restored, migrated, or seeded.`);
@@ -214,6 +218,10 @@ async function main() {
     console.log('Local check passed. No server started; no data changed.');
     return;
   }
+  const {provisionLocalSecurityKey}=await import('./staging/security-key.mjs');
+  const securityKey=await provisionLocalSecurityKey(projectRoot,data.hasSecurityRecords);
+  if(environment.HASTABAZAAR_SECURITY_KEY && environment.HASTABAZAAR_SECURITY_KEY!==securityKey)throw new Error('Inherited security key conflicts with this local installation.');
+  environment.HASTABAZAAR_SECURITY_KEY=securityKey;
   // strictPort is enforced by the local-staging server settings in vite.config.ts.
   // Vinext accepts --hostname and --port, but does not implement --strictPort.
   const child = spawn(process.execPath, [cli, 'dev', '--hostname', 'localhost', '--port', '3018'], {

@@ -112,6 +112,17 @@ void test('Program Management honestly keeps both Managed Maker models in Applic
   assert.doesNotMatch(html, /Activate now/i);
 });
 
+void test('Program Management uses supplied retention and never fills a missing rate', async () => {
+  const {ProgramManagement} = await import('../components/admin/program-management');
+  const props = {programMode:'applications_only' as const,activeModel:null,capabilities:managedMakerCapabilities};
+  const supplied = renderToStaticMarkup(createElement(ProgramManagement,{...props,platformRetentionBps:1375}));
+  assert.match(supplied,/13\.75% platform retention/);
+  assert.match(supplied,/86\.25% maker entitlement/);
+  const missing = renderToStaticMarkup(createElement(ProgramManagement,props));
+  assert.match(missing,/current saved retention rate is unavailable/);
+  assert.doesNotMatch(missing,/9% platform retention|91% maker entitlement/);
+});
+
 void test('implemented commercial models are staging-selectable but remain blocked for live use', () => {
   assert.equal(
     managedMakerModelIsLiveSelectable('managed_sale_linked_percentage_v1'),

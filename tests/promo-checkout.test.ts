@@ -1,4 +1,7 @@
-import { seedCheckoutBuyer, seedVerifiedCheckoutContact } from './helpers/checkout-contact';
+import {
+  seedCheckoutBuyer,
+  seedVerifiedCheckoutContact,
+} from './helpers/checkout-contact';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
@@ -18,6 +21,11 @@ import {
 } from '../lib/checkout/validation';
 import { quoteCheckoutPromo } from '../lib/incentives/quote-intent';
 import { SELLER_AGREEMENT_VERSION } from '../lib/content/legal-policies';
+import {
+  seedPromoCommissionAcceptance,
+  seedPromoDeliveryAddress,
+  withReviewedPromoQuote,
+} from './helpers/promo-checkout-fixture';
 
 export function checkoutInput(): CheckoutInput {
   return {
@@ -53,6 +61,8 @@ export async function fixture() {
     )
     .bind(SELLER_AGREEMENT_VERSION)
     .run();
+  await seedPromoCommissionAcceptance(f.db, 900);
+  await seedPromoDeliveryAddress(f.db);
   for (const id of [
     'staff.promo-code',
     'commerce.checkout',
@@ -191,7 +201,7 @@ void test('promo and wallet cover merchandise without changing seller gross', as
       )
       .run();
     const q = await quoteCheckoutPromo(f.db, 'customer', 'cart', 'SAVE10', 100);
-    const input = {
+    const input = await withReviewedPromoQuote(f.db, 'cart', {
       ...checkoutInput(),
       useWallet: true,
       deliveryRateVersion: 'fixture-rates',
@@ -199,7 +209,7 @@ void test('promo and wallet cover merchandise without changing seller gross', as
       promoCode: q.code,
       promoRevision: q.revision,
       promoQuoteIntent: q.quoteIntent,
-    };
+    });
     const result = await createCodOrder(
       f.db,
       'cart',
@@ -240,19 +250,20 @@ void test('stale promo price and commit-time price or authority changes reject w
   try {
     await cart(f.db);
     const q = await quoteCheckoutPromo(f.db, 'customer', 'cart', 'SAVE10', 100);
-    const input = {
+    const input = await withReviewedPromoQuote(f.db, 'cart', {
       ...checkoutInput(),
       deliveryRateVersion: 'fixture-rates',
       customerAuthSubject: 'customer',
       promoCode: q.code,
       promoRevision: q.revision,
       promoQuoteIntent: q.quoteIntent,
-    };
+    });
     await f.db
       .prepare("UPDATE products SET price_paisa=11000 WHERE id='product'")
       .run();
     await assert.rejects(
       createCodOrder(f.db, 'cart', 'receipt', input, 100, 'customer'),
+      /promo quote changed/i,
     );
     assert.equal(
       (
@@ -390,32 +401,40 @@ void test('failed promo batch leaves no wallet provisioning or order/redemption/
       .prepare("DELETE FROM wallet_accounts WHERE user_id='customer'")
       .run();
     const q = await quoteCheckoutPromo(f.db, 'customer', 'cart', 'SAVE10', 100);
-    const input = {
+    const input = await withReviewedPromoQuote(f.db, 'cart', {
       ...checkoutInput(),
       deliveryRateVersion: 'fixture-rates',
       customerAuthSubject: 'customer',
       promoCode: q.code,
       promoRevision: q.revision,
       promoQuoteIntent: q.quoteIntent,
-    };
+    });
     const before = (await f.db
       .prepare('SELECT COUNT(*) n FROM form_answer_sets')
       .first<{ n: number }>())!.n;
+    let attempted = false;
     const db = {
       prepare: f.db.prepare.bind(f.db),
-      batch: async (statements: D1PreparedStatement[]) =>
-        f.db.batch([
+      batch: async (statements: D1PreparedStatement[]) => {
+        attempted = true;
+        return f.db.batch([
           ...statements,
           f.db.prepare(
             "INSERT INTO operation_transaction_guards(id,valid) VALUES ('forced-failure',0)",
           ),
-        ]),
+        ]);
+      },
     } as D1Database;
     await assert.rejects(
       createCodOrder(db, 'cart', 'receipt', input, 100, 'customer', {
         versionId: 'commerce.checkout-v1',
         answers: { formId: 'commerce.checkout', version: 1, answers: [] },
       }),
+    );
+    assert.equal(
+      attempted,
+      true,
+      'The forced failure must occur inside the financial batch.',
     );
     assert.equal(
       (
@@ -585,14 +604,14 @@ void test('commit-time price, seller owner, cart and customer changes abort the 
         'SAVE10',
         100,
       );
-      const input = {
+      const input = await withReviewedPromoQuote(f.db, 'cart', {
         ...checkoutInput(),
         deliveryRateVersion: 'fixture-rates',
         customerAuthSubject: 'customer',
         promoCode: q.code,
         promoRevision: q.revision,
         promoQuoteIntent: q.quoteIntent,
-      };
+      });
       let intercepted = false;
       const db = {
         prepare: f.db.prepare.bind(f.db),
@@ -647,35 +666,120 @@ void test('MariaDB JSON scalar encoding preserves exact checkout replay and chan
   const f = await fixture();
   try {
     await cart(f.db);
-    const input = { ...checkoutInput(), deliveryRateVersion: 'fixture-rates', customerAuthSubject: 'customer' };
-    const form = { versionId: 'commerce.checkout-v1', answers: { formId: 'commerce.checkout' as const, version: 1, answers: [] } };
-    const placed = await createCodOrder(f.db, 'cart', 'receipt', input, 100, 'customer', form);
+    const input = await withReviewedPromoQuote(f.db, 'cart', {
+      ...checkoutInput(),
+      deliveryRateVersion: 'fixture-rates',
+      customerAuthSubject: 'customer',
+    });
+    const form = {
+      versionId: 'commerce.checkout-v1',
+      answers: {
+        formId: 'commerce.checkout' as const,
+        version: 1,
+        answers: [],
+      },
+    };
+    const placed = await createCodOrder(
+      f.db,
+      'cart',
+      'receipt',
+      input,
+      100,
+      'customer',
+      form,
+    );
+    const savedTerms = await f.db
+      .prepare('SELECT terms_snapshot_json FROM order_policy_acceptances')
+      .first<{ terms_snapshot_json: string }>();
+    assert.ok(savedTerms);
+    const snapshot = JSON.parse(savedTerms.terms_snapshot_json) as {
+      sellerCommissionBps: number;
+      reviewedQuote: unknown;
+    };
+    assert.deepEqual(snapshot.reviewedQuote, input.reviewedQuote);
+    assert.equal(
+      (
+        await f.db
+          .prepare('SELECT commission_bps FROM order_items')
+          .first<{ commission_bps: number }>()
+      )?.commission_bps,
+      900,
+    );
     const mariaScalarDb = Object.assign(Object.create(f.db) as D1Database, {
       dialect: 'mariadb',
       prepare(sql: string) {
-        const mariaProjection = "JSON_VALUE(a.next_json,'$.checkoutIntentDigest')";
+        const mariaProjection =
+          "JSON_VALUE(a.next_json,'$.checkoutIntentDigest')";
         const usesBareScalar = sql.includes(mariaProjection);
-        const statement = f.db.prepare(sql.replace(mariaProjection, "json_extract(a.next_json,'$.checkoutIntentDigest')"));
-        if (!sql.includes('AS checkoutIntentDigest') || usesBareScalar) return statement;
+        const statement = f.db.prepare(
+          sql.replace(
+            mariaProjection,
+            "json_extract(a.next_json,'$.checkoutIntentDigest')",
+          ),
+        );
+        if (!sql.includes('AS checkoutIntentDigest') || usesBareScalar)
+          return statement;
         return {
           bind(...values: Parameters<typeof statement.bind>) {
             const bound = statement.bind(...values);
             return {
               async first() {
-                const row = await bound.first<{ checkoutIntentDigest: string }>();
-                return row && { ...row, checkoutIntentDigest: JSON.stringify(row.checkoutIntentDigest) };
+                const row = await bound.first<{
+                  checkoutIntentDigest: string;
+                }>();
+                return (
+                  row && {
+                    ...row,
+                    checkoutIntentDigest: JSON.stringify(
+                      row.checkoutIntentDigest,
+                    ),
+                  }
+                );
               },
             };
           },
         };
       },
     });
-    assert.deepEqual(await createCodOrder(mariaScalarDb, 'cart', 'receipt', input, 101, 'customer', form), placed);
+    assert.deepEqual(
+      await createCodOrder(
+        mariaScalarDb,
+        'cart',
+        'receipt',
+        input,
+        101,
+        'customer',
+        form,
+      ),
+      placed,
+    );
     await assert.rejects(
-      createCodOrder(mariaScalarDb, 'cart', 'receipt', { ...input, customerPhone: '9811111112' }, 102, 'customer', form),
+      createCodOrder(
+        mariaScalarDb,
+        'cart',
+        'receipt',
+        { ...input, customerPhone: '9811111112' },
+        102,
+        'customer',
+        form,
+      ),
       /already used for different order details/,
     );
-    assert.equal((await f.db.prepare('SELECT COUNT(*) AS n FROM orders').first<{ n: number }>())?.n, 1);
+    assert.equal(
+      (
+        await f.db
+          .prepare('SELECT COUNT(*) AS n FROM orders')
+          .first<{ n: number }>()
+      )?.n,
+      1,
+    );
+    assert.deepEqual(
+      await f.db
+        .prepare('SELECT terms_snapshot_json FROM order_policy_acceptances')
+        .first(),
+      savedTerms,
+      'Replay must preserve the original accepted terms and reviewed quote.',
+    );
   } finally {
     await f.dispose();
   }
@@ -686,14 +790,14 @@ void test('authorized exact promo replay after expiry returns original receipt a
   try {
     await cart(f.db);
     const q = await quoteCheckoutPromo(f.db, 'customer', 'cart', 'SAVE10', 100);
-    const input = {
+    const input = await withReviewedPromoQuote(f.db, 'cart', {
       ...checkoutInput(),
       deliveryRateVersion: 'fixture-rates',
       customerAuthSubject: 'customer',
       promoCode: q.code,
       promoRevision: q.revision,
       promoQuoteIntent: q.quoteIntent,
-    };
+    });
     const form = {
       versionId: 'commerce.checkout-v1',
       answers: { formId: 'commerce.checkout', version: 1, answers: [] },
@@ -706,6 +810,33 @@ void test('authorized exact promo replay after expiry returns original receipt a
       100,
       'customer',
       form,
+    );
+    const recordedTerms = async () => ({
+      lines: (
+        await f.db
+          .prepare(
+            'SELECT i.commission_bps,i.commission_rule_version,i.commission_paisa FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.order_number=? ORDER BY i.id',
+          )
+          .bind(result.orderNumber)
+          .all()
+      ).results,
+      acceptance: await f.db
+        .prepare(
+          'SELECT a.terms_snapshot_json FROM order_policy_acceptances a JOIN orders o ON o.id=a.order_id WHERE o.order_number=?',
+        )
+        .bind(result.orderNumber)
+        .first<{ terms_snapshot_json: string }>(),
+    });
+    const originalTerms = await recordedTerms();
+    assert.equal(originalTerms.lines[0].commission_bps, 900);
+    assert.equal(
+      originalTerms.lines[0].commission_rule_version,
+      'promo-fixture-commission',
+    );
+    assert.ok(originalTerms.acceptance);
+    assert.deepEqual(
+      JSON.parse(originalTerms.acceptance.terms_snapshot_json).reviewedQuote,
+      input.reviewedQuote,
     );
     await f.db
       .prepare(
@@ -797,20 +928,43 @@ void test('authorized exact promo replay after expiry returns original receipt a
         null,
       ),
     );
-    await assert.rejects(createCodOrder(f.db, 'guest', 'guest',
-      { ...checkoutInput(), deliveryRateVersion: 'fixture-rates' }, 100, null),
-      /Sign in/);
-    await seedCheckoutBuyer(f.db, 'plain-buyer', 'plain-buyer@example.test', '9822222222');
+    await assert.rejects(
+      createCodOrder(
+        f.db,
+        'guest',
+        'guest',
+        { ...checkoutInput(), deliveryRateVersion: 'fixture-rates' },
+        100,
+        null,
+      ),
+      /Sign in/,
+    );
+    await seedCheckoutBuyer(
+      f.db,
+      'plain-buyer',
+      'plain-buyer@example.test',
+      '9822222222',
+    );
     const plain = await createCodOrder(
       f.db,
       'guest',
       'guest',
-      { ...checkoutInput(), customerEmail: 'plain-buyer@example.test', customerPhone: '9822222222',
-        customerAuthSubject: 'plain-buyer', deliveryRateVersion: 'fixture-rates' },
+      {
+        ...checkoutInput(),
+        customerEmail: 'plain-buyer@example.test',
+        customerPhone: '9822222222',
+        customerAuthSubject: 'plain-buyer',
+        deliveryRateVersion: 'fixture-rates',
+      },
       100,
       'plain-buyer',
     );
     assert.equal(plain.grandTotalPaisa, 10500);
+    assert.deepEqual(
+      await recordedTerms(),
+      originalTerms,
+      'Successful and rejected replays must preserve original rates, amounts and accepted quote.',
+    );
   } finally {
     await f.dispose();
   }
@@ -821,14 +975,14 @@ void test('promo checkout rejects identity relink before financial batch or auth
   try {
     await cart(f.db);
     const q = await quoteCheckoutPromo(f.db, 'customer', 'cart', 'SAVE10', 100);
-    const input = {
+    const input = await withReviewedPromoQuote(f.db, 'cart', {
       ...checkoutInput(),
       deliveryRateVersion: 'fixture-rates',
       customerAuthSubject: 'customer',
       promoCode: q.code,
       promoRevision: q.revision,
       promoQuoteIntent: q.quoteIntent,
-    };
+    });
     let intercepted = false;
     const db = {
       prepare: f.db.prepare.bind(f.db),
@@ -990,6 +1144,8 @@ void test('promo totals preserve safe merchandise-bound integers and reject unsa
             return f.db.batch(statements);
           },
         } as D1Database;
+        // Low-level arithmetic guard: no form or reviewed quote is supplied,
+        // so an unrepresentable amount must reach its own overflow rejection.
         await assert.rejects(
           createCodOrder(
             db,
@@ -1006,6 +1162,7 @@ void test('promo totals preserve safe merchandise-bound integers and reject unsa
             100,
             'customer',
           ),
+          /Review your cart total before placing the order/,
         );
         assert.equal(attempted, false);
       },

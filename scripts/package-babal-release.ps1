@@ -67,6 +67,9 @@ function Get-ReleaseFiles([string]$Root) {
 
 $files = @(Get-ReleaseFiles $standalone)
 $paths = @($files.path)
+if ($paths -notcontains 'hosted-security.mjs') {
+  throw 'Release is missing the bundled hosted-security operator. Rebuild the approved application before packaging.'
+}
 $forbidden = @(
   $paths | Where-Object {
     $_ -match '(^|/)\.env($|\.)' -or

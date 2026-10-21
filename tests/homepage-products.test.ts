@@ -3,6 +3,7 @@ import {addProductEvidenceSchema} from './helpers/product-evidence-schema';
 import { readFile } from 'node:fs/promises';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import test from 'node:test';
+import { companyDetails } from '../lib/content/company-details';
 
 import {
   listActiveHomepagePromotions,
@@ -76,6 +77,7 @@ function homepageFixture() {
     );
     CREATE TABLE seller_participation_profiles (
       seller_id TEXT PRIMARY KEY,
+      public_name TEXT,
       participation_route TEXT,
       application_stage TEXT,
       commercial_model TEXT,
@@ -379,7 +381,9 @@ void test('homepage source has no hard-coded product fallback and retains honest
     /Just added by our sellers|approved seller product/i,
   );
   assert.match(page, /ProductSlider/);
-  assert.match(footer, /support@hastabazaar\.com/);
+  assert.equal(companyDetails.supportEmail, 'support@hastabazaar.com');
+  assert.match(footer, /href=\{`mailto:\$\{companyDetails\.supportEmail\}`\}/);
+  assert.match(footer, /\{companyDetails\.supportEmail\}/);
 });
 
 void test('new arrivals uses a wide capped desktop shell without changing the mobile card layout', async () => {

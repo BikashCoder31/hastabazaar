@@ -71,3 +71,37 @@ void test('enabled rendering failure returns controlled 503 and never original b
   const response=await productPhotoResponse({bucket,mediaId:'m',objectKey:'private/product-media/s/p/m',mimeType:'image/jpeg',policy,policyVersion:'default'});
   assert.equal(response.status,503);assert.notDeepEqual(new Uint8Array(await response.arrayBuffer()),original);
 });
+
+void test('a cold catalog of eighteen product photos loads without busy errors', async () => {
+  const {productPhotoResponse}=await delivery(); const input=await fixture();
+  const store=new Map<string,Uint8Array>();
+  for(let i=0;i<18;i++) store.set(`original/${i}`,input);
+  const bucket={async get(key:string){const data=store.get(key);return data?{body:new Response(new Uint8Array(data)).body,size:data.length}:null;},async put(key:string,data:Uint8Array){store.set(key,data);}} as unknown as R2Bucket;
+  const responses=await Promise.all(Array.from({length:18},(_,i)=>productPhotoResponse({bucket,mediaId:String(i),objectKey:`original/${i}`,mimeType:'image/png',policy,policyVersion:'cold'})));
+  assert.deepEqual(responses.map(response=>response.status),Array(18).fill(200));
+  for(const response of responses) assert.equal((await sharp(await response.arrayBuffer()).metadata()).format,'webp');
+  assert.equal(store.size,36);
+});
+
+void test('concurrent duplicate photo requests share one derivative and each gets its own readable body', async () => {
+  const {productPhotoResponse}=await delivery(); const input=await fixture();
+  const store=new Map<string,Uint8Array>([['original',input]]); let writes=0;
+  const bucket={async get(key:string){const data=store.get(key);return data?{body:new Response(new Uint8Array(data)).body,size:data.length}:null;},async put(key:string,data:Uint8Array){writes++;store.set(key,data);}} as unknown as R2Bucket;
+  const options={bucket,mediaId:'same',objectKey:'original',mimeType:'image/png',policy,policyVersion:'same'};
+  const responses=await Promise.all(Array.from({length:18},()=>productPhotoResponse(options)));
+  assert.deepEqual(responses.map(response=>response.status),Array(18).fill(200));
+  const bodies=await Promise.all(responses.map(async response=>new Uint8Array(await response.arrayBuffer())));
+  for(const body of bodies) assert.deepEqual(body,bodies[0]);
+  assert.equal(writes,1);
+});
+
+void test('failed photo jobs release capacity and can retry after the original is repaired', async () => {
+  const {productPhotoResponse}=await delivery();
+  let original=new Uint8Array([1,2,3]); const copies=new Map<string,Uint8Array>();
+  const bucket={async get(key:string){const data=key==='original'?original:copies.get(key);return data?{body:new Response(new Uint8Array(data)).body,size:data.length}:null;},async put(key:string,data:Uint8Array){copies.set(key,data);}} as unknown as R2Bucket;
+  const options={bucket,mediaId:'repair',objectKey:'original',mimeType:'image/png',policy,policyVersion:'repair'};
+  assert.equal((await productPhotoResponse(options)).status,503);
+  original=await fixture();
+  assert.equal((await productPhotoResponse(options)).status,200);
+  assert.equal(copies.size,1);
+});

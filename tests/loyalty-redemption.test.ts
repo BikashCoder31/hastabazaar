@@ -1,4 +1,5 @@
 import { seedVerifiedCheckoutContact } from './helpers/checkout-contact';
+import { seedPromoCommissionAcceptance, withReviewedPromoQuote } from './helpers/promo-checkout-fixture';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
@@ -439,6 +440,7 @@ void test('wallet headroom overflow rejects without debit', async () => {
 async function checkoutSetup(db: D1Database) {
   await seedVerifiedCheckoutContact(db, 'customer');
   await seedIncentiveInventory(db);
+  await seedPromoCommissionAcceptance(db, 900);
   await db
     .prepare(
       "UPDATE seller_profiles SET seller_agreement_version=? WHERE id='seller'",
@@ -472,36 +474,38 @@ async function checkoutSetup(db: D1Database) {
       "INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES ('loyalty-item','loyalty-cart','product',1,1,1)",
     )
     .run();
-  return () =>
-    createCodOrder(
-      db,
-      'loyalty-cart',
-      'receipt',
-      {
-        customerEmail: 'customer@example.test',
-        customerPhone: '9811111111',
-        locale: 'en-NP',
-        termsAccepted: true,
-        idempotencyKey: 'loyalty-checkout',
-        address: {
-          recipientName: 'Fixture Buyer',
-          phone: '9811111111',
-          province: 'Bagmati',
-          district: 'Kathmandu',
-          municipality: 'Kathmandu',
-          locality: 'Fixture locality',
-        },
-        useWallet: true,
-        deliveryRateVersion: 'loyalty-rates',
-        customerAuthSubject: 'customer',
-      },
-      NOW,
-      'customer',
-      {
+  const input = {
+    customerEmail: 'customer@example.test',
+    customerPhone: '9811111111',
+    locale: 'en-NP' as const,
+    termsAccepted: true,
+    idempotencyKey: 'loyalty-checkout',
+    address: {
+      recipientName: 'Fixture Buyer',
+      phone: '9811111111',
+      province: 'Bagmati',
+      district: 'Kathmandu',
+      municipality: 'Kathmandu',
+      locality: 'Fixture locality',
+    },
+    useWallet: true,
+    deliveryRateVersion: 'loyalty-rates',
+    customerAuthSubject: 'customer',
+  };
+  let reviewedInput = await withReviewedPromoQuote(db, 'loyalty-cart', input, NOW);
+  return {
+    // A retry after a balance conflict represents a new customer review, not a
+    // silent change to the originally displayed payable amount.
+    async reviewAgain() {
+      reviewedInput = await withReviewedPromoQuote(db, 'loyalty-cart', input, NOW);
+    },
+    place() {
+      return createCodOrder(db, 'loyalty-cart', 'receipt', reviewedInput, NOW, 'customer', {
         versionId: 'commerce.checkout-v1',
         answers: { formId: 'commerce.checkout', version: 1, answers: [] },
-      },
-    );
+      });
+    },
+  };
 }
 void test('real redemption checkout concurrency reconciles wallet and refund restores wallet only with no points reaward', async () => {
   const redeem = await redemption(),
@@ -512,14 +516,17 @@ void test('real redemption checkout concurrency reconciles wallet and refund res
     const checkout = await checkoutSetup(f.db);
     const outcomes = await Promise.allSettled([
       redeem(f.db, input('parallel', 200)),
-      checkout(),
+      checkout.place(),
       redeem(f.db, input('parallel', 200)),
     ]);
     for (const i of [0, 2])
       if (outcomes[i].status === 'rejected')
         await redeem(f.db, input('parallel', 200));
-    const placed =
-      outcomes[1].status === 'fulfilled' ? outcomes[1].value : await checkout();
+    if (outcomes[1].status === 'rejected') {
+      assert.match(String(outcomes[1].reason), /quote|credit|wallet|changed|conflict/i);
+      await checkout.reviewAgain();
+    }
+    const placed = outcomes[1].status === 'fulfilled' ? outcomes[1].value : await checkout.place();
     const order = await f.db
       .prepare(
         'SELECT id,wallet_credit_paisa wallet FROM orders WHERE order_number=?',

@@ -76,6 +76,11 @@ void test('new no-PAN maker reaches review activation publication and checkout',
     assert.equal(snapshot?.company_store_name_snapshot, f.accepted.snapshot.companyAccount.storeName);
     assert.equal(f.sqlite.prepare('SELECT seller_name_snapshot AS seller FROM order_items').get()?.seller, f.accepted.snapshot.companyAccount.storeName);
     f.sqlite.prepare("UPDATE orders SET status='delivered',payment_status='paid',delivered_at=?").run(f.now + 7);
+    assert.equal(await issueManagedInvoiceGroups(f.db, { orderId: String(f.sqlite.prepare('SELECT id FROM orders').get()?.id), requestId: 'approved-no-duplicate', now: f.now + 8 }), 0);
+    // Explicitly model a pre-format historical order for the legacy evidence checks below.
+    const historicalStatement=JSON.parse(String(f.sqlite.prepare("SELECT snapshot_json AS json FROM order_documents WHERE kind='order_statement'").get()?.json));
+    delete historicalStatement.billing;
+    f.sqlite.prepare("UPDATE order_documents SET snapshot_json=? WHERE kind='order_statement'").run(JSON.stringify(historicalStatement));
     assert.equal(await issueManagedInvoiceGroups(f.db, { orderId: String(f.sqlite.prepare('SELECT id FROM orders').get()?.id), requestId: 'fictional-invoice', now: f.now + 8 }), 1);
     const invoice = f.sqlite.prepare('SELECT snapshot_json AS json FROM managed_invoice_groups').get();
     const invoiceJson = JSON.parse(String(invoice?.json));

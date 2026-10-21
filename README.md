@@ -4,7 +4,7 @@ A clean, non-WordPress foundation for the Hastabazaar handmade marketplace.
 
 ## Development
 
-The active local project is `C:/Users/abinash/Desktop/Hatskala`.
+The active local project is `C:/Users/abinash/Desktop/HastaBazaar`.
 Open a terminal in that folder, or double-click `START-HASTABAZAAR.cmd`.
 The Desktop project already has its local data. For normal startup, use:
 

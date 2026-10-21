@@ -86,6 +86,11 @@ void test('registered seller transition requires private receiving evidence befo
 void test('a PAN transition preserves populated invoices refunds settlement entries and paid allocation histories',async()=>{
  const f=await fixture();
  try {
+  // This scenario intentionally predates the approved format; keep the legacy
+  // invoice populated so the transition proves preservation of historical records.
+  const statement=f.sqlite.prepare("SELECT snapshot_json AS json FROM order_documents WHERE order_id=? AND kind='order_statement'").get(f.orderId);
+  const historical=JSON.parse(String(statement?.json));delete historical.billing;
+  f.sqlite.prepare("UPDATE order_documents SET snapshot_json=? WHERE order_id=? AND kind='order_statement'").run(JSON.stringify(historical),f.orderId);
   await issueManagedInvoiceGroups(f.db,{orderId:f.orderId,requestId:'history-invoice',now:f.financialNow});
   await refund(f);
   const payoutId=await prepareManagedPayout(f.db,{...f.context,requestId:'history-prepare'});

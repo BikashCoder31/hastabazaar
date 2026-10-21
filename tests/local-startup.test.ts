@@ -115,14 +115,19 @@ void test('conflicting environment files are rejected even when the process sett
     await writeFile(join(directory, '.env.development.local'), 'APP_ORIGIN=https://hastabazaar.com\n');
     await assert.rejects(verifyLocalEnvironmentFiles(directory), /APP_ORIGIN/);
     await writeFile(join(directory, '.env.development.local'), 'APP_ORIGIN=http://localhost:3018\n');
-    await writeFile(join(directory, '.dev.vars'), 'SMTP_PASSWORD="hidden-fixture-value"\n');
+    await writeFile(join(directory, '.env.local'), 'SMTP_PASSWORD="hidden-fixture-value"\n');
     await assert.rejects(verifyLocalEnvironmentFiles(directory), (error: Error) => {
       assert.match(error.message, /SMTP_PASSWORD/);
       assert.equal(error.message.includes('hidden-fixture-value'), false);
       return true;
     });
-    await writeFile(join(directory, '.dev.vars'), 'HASTABAZAAR_RUNTIME_ENV=local_staging\n');
+    await writeFile(join(directory, '.env.local'), 'HASTABAZAAR_RUNTIME_ENV=local_staging\n');
     await assert.doesNotReject(verifyLocalEnvironmentFiles(directory));
+    for (const name of ['.dev.vars', '.dev.vars.local', '.dev.vars.development']) {
+      await writeFile(join(directory, name), 'HASTABAZAAR_RUNTIME_ENV=local_staging\n');
+      await assert.rejects(verifyLocalEnvironmentFiles(directory), /shadow the protected Worker key/);
+      await rm(join(directory, name));
+    }
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 

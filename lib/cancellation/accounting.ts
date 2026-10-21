@@ -79,7 +79,9 @@ export function calculateCancellation(
     pricingPolicy: typeof DELIVERY_PRICING_POLICY;
     baseChargePaisa: number;
   },
+  originalServiceFeePaisa = 0,
 ) {
+  safe(originalServiceFeePaisa);
   if(typeof deliveryRule==='number')safe(deliveryRule);
   else {
     if(deliveryRule.pricingPolicy!==DELIVERY_PRICING_POLICY)throw new Error('Invalid delivery pricing policy.');
@@ -101,7 +103,7 @@ export function calculateCancellation(
     sellers.set(row.sellerId, existing);
   }
   const fees = split(
-    delivery,
+    safe(delivery + (remaining.length ? originalServiceFeePaisa : 0)),
     [...sellers].map(([id, r]) => ({ id, amount: r.amount })),
   );
   return {
@@ -109,10 +111,12 @@ export function calculateCancellation(
     wallet,
     discount,
     delivery,
+    ...(originalServiceFeePaisa ? { platformServiceFeePaisa: remaining.length ? originalServiceFeePaisa : 0,
+      uncollectedServiceFeeWaivedPaisa: remaining.length ? 0 : originalServiceFeePaisa } : {}),
     promoDiscount: remaining.reduce((n, r) => n + (r.promo ?? 0), 0),
     total: safe(
       Number(
-        BigInt(subtotal) + BigInt(delivery) - BigInt(wallet) - BigInt(discount),
+        BigInt(subtotal) + BigInt(delivery) + BigInt(remaining.length ? originalServiceFeePaisa : 0) - BigInt(wallet) - BigInt(discount),
       ),
     ),
     walletRestored: cancelled.reduce((n, r) => n + r.wallet, 0),

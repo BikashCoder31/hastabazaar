@@ -191,6 +191,7 @@ const applicationMultipartKeys = new Set([
   'instagramUrl', 'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl', 'acceptedTerms',
   'sellerAgreementContext', 'applicationAcknowledgement', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'personalPanCertificate', 'representativeIdentity', 'bankVerification',
   'businessRegistration', 'panCertificate', 'vatCertificate', 'website', 'participationRoute',
+  'payoutBeneficiary', 'bankName', 'bankBranch', 'bankAccountNumber', 'pickupAddress', 'returnAddress',
   'document',
 ]);
 const applicationFileKeys = new Set(['personalPanCertificate', 'profileImage', 'makerVideo', 'representativeIdentity',
@@ -199,7 +200,7 @@ const productMultipartKeys = new Set([
   'formVersion', 'requestId', 'reviewRequestId', 'categoryId', 'nameEn', 'nameNe',
   'descriptionEn', 'descriptionNe', 'price', 'compareAtPrice', 'discountPercentage',
   'inventoryQuantity', 'preparationDays', 'occasionIds', 'madeToOrder', 'returnEligible',
-  'materials', 'producer', 'sku', 'originStory', 'countryOfOrigin', 'originEvidenceReference', 'dimensions', 'size', 'colour', 'variations',
+  'materials', 'producer', 'sku', 'sellerSku', 'originStory', 'countryOfOrigin', 'originEvidenceReference', 'dimensions', 'size', 'colour', 'variations',
   'specifications', 'careInstructions', 'safetyInformation', 'returnConditions',
   'warrantyOffered', 'warranty', 'warrantyYears', 'warrantyMonths', 'manufacturedAt',
   'expiresAt', 'licenceReference', 'image1', 'image2', 'image3', 'image4', 'image5',

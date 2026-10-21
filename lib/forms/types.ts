@@ -63,6 +63,8 @@ export interface PublishedFormConfig extends FormConfigDraft {
 }
 
 export interface FormAnswerSnapshot {
+  /** Server-owned domain data; only product submission snapshots may contain it. */
+  readonly productIdentity?: { readonly sellerSku: string | null; readonly revision?: number };
   readonly formId: FormId;
   readonly version: number;
   readonly answers: readonly { readonly fieldId: string; readonly label: string; readonly type: CustomFieldType; readonly value: unknown }[];

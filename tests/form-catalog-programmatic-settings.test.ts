@@ -172,7 +172,8 @@ void test('direct settings save retains date, capability, version and authority 
       value: 1200, actorId: 'admin-a', reason: 'SIMULATED sufficient commission notice', requestId: 'direct-notice',
       now: 100, effectiveFrom: 100 + 15 * 86400000, expectedVersion: 0, form: form('staff.business-settings-manager') });
     assert.equal(saved.status, 'published');
-    assert.equal((await settingsRepository.getEffectiveBusinessSetting(database, saved.key, 100)).source, 'default');
+    await assert.rejects(settingsRepository.getEffectiveBusinessSetting(database, saved.key, 100),
+      /No effective published commission rate/);
     assert.equal((await settingsRepository.getEffectiveBusinessSetting(database, saved.key, 100 + 15 * 86400000)).value, 1200);
   } finally { sqlite.close(); }
 });

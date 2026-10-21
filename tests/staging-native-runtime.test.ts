@@ -98,6 +98,10 @@ void test('MariaDB referral filters remain SELECT only and reject Admin direct a
 
 void test('MariaDB maker acceptance retains exact private ownership and replay',{skip:!enabled},async()=>{
   const now=Date.now()-60_000;
+  // This fictional historical agreement explicitly uses nine-percent retention.
+  // Current bootstrap intentionally has no silently effective commission default.
+  await db.prepare(`INSERT INTO business_setting_versions(id,setting_key,version,value_json,status,revision,change_control,effective_from,reason,created_by,created_at,last_request_id)
+    VALUES('native-maker-retention','managed_sale_linked_platform_retention_bps',1,'900','published',1,'controlled',1,'Explicit fictional native maker agreement','super',1,'native-maker-retention')`).run();
   await publishForm(db,managedTermsFormId);
   async function application(id:string,phone:string){
     const form=new FormData();for(const [key,value]of Object.entries({hasBusinessTaxRegistration:'no',applicantType:'individual',legalName:'Fictional Native Maker',tradingName:'Fictional Studio',email:id+'@example.test',phone,province:'Bagmati',district:'Kathmandu',municipality:'Kathmandu',locality:'Fictional workshop',publicCity:'Kathmandu',businessDescription:'Fictional native maker application.',productCategories:'Clay work',applicationAcknowledgement:'yes',...managedIdentityFields()}))form.set(key,value);

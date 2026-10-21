@@ -20,12 +20,12 @@ export function PromoCodeCostPreview({
 }: {
   terms: PromoTerms | null;
   error?: string;
-  defaultCommissionBps: number;
+  defaultCommissionBps?: number;
   disabled?: boolean;
 }) {
   const [subtotal, setSubtotal] = useState('1000.00');
   const [commission, setCommission] = useState(() =>
-    moneyInput(defaultCommissionBps),
+    defaultCommissionBps === undefined ? '' : moneyInput(defaultCommissionBps),
   );
   let result: ReturnType<typeof promoCostPreview> | null = null;
   let message = error;
@@ -51,6 +51,7 @@ export function PromoCodeCostPreview({
           A registered-seller illustration using the unsaved discount and
           minimum subtotal above.
         </p>
+        {defaultCommissionBps === undefined ? <output className="mt-2 block text-sm">The current saved commission rate is unavailable. Enter an explicit illustration rate or review Business Settings. No replacement rate is assumed.</output> : null}
       </div>
       <fieldset disabled={disabled} className="grid gap-4 sm:grid-cols-2">
         <legend className="sr-only">Illustration assumptions</legend>

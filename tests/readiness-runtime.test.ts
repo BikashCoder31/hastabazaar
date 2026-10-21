@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { prepareHostedAuthSchema } from '../scripts/staging/hosted-auth-readiness.mjs';
+import { hostedAuthProjectFixture } from './helpers/hosted-auth-project-fixture';
 import { inspectReadiness } from '../lib/operations/readiness';
 import manifest from '../deployment/babal/release-manifest.json';
 
@@ -77,13 +77,12 @@ void test('readiness keeps information_schema checks for a tagged MariaDB adapte
 void test('fully migrated SQLite with local auth prerequisites is ready without the MariaDB release tracker', async () => {
   const sqlite = new DatabaseSync(':memory:');
   const directory = fileURLToPath(new URL('../drizzle/', import.meta.url));
-  const recovery = fileURLToPath(new URL('../.staging/recovery/', import.meta.url));
-  mkdirSync(recovery, { recursive: true });
-  const backup = recovery + `readiness-${crypto.randomUUID()}.sqlite`;
+  const isolatedProject = await hostedAuthProjectFixture();
+  const backup = join(isolatedProject.recovery, `readiness-${crypto.randomUUID()}.sqlite`);
   try {
     for (const name of (await readdir(directory)).filter(name => /^\d{4}_.+\.sql$/.test(name)).sort())
       sqlite.exec(await readFile(directory + name, 'utf8'));
-    await prepareHostedAuthSchema(sqlite, backup);
+    await isolatedProject.prepareHostedAuthSchema(sqlite, backup);
     const db = { prepare(sql: string) { return { async all() {
       return { results: sqlite.prepare(sql).all() };
     } }; } } as unknown as D1Database;
@@ -92,5 +91,5 @@ void test('fully migrated SQLite with local auth prerequisites is ready without 
     const missing = await inspectReadiness(db);
     assert.equal(missing.ready, false);
     assert.ok(missing.missing.includes('trigger:order_items_require_available_inventory'));
-  } finally { sqlite.close(); rmSync(backup, { force: true }); }
+  } finally { sqlite.close(); await isolatedProject.dispose(); }
 });

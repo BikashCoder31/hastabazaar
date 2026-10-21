@@ -32,11 +32,14 @@ void test('native D1 supports real maker IDs and exact private-document boundari
       SELECT 1 ${currentManagedSaleEvidence('s.id', 's.user_id', now)})`).bind(id).first();
   }
   try {
-    await application(sellerId);
     await f.db.batch([
       f.db.prepare("INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES('native-reviewer','reviewer@local.hastabazaar.test','SIMULATED reviewer','active',1,1)"),
       f.db.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES('native-reviewer','super_admin',1)"),
+      f.db.prepare(`INSERT INTO business_setting_versions(id,setting_key,version,value_json,status,revision,change_control,effective_from,reason,created_by,created_at,last_request_id)
+        VALUES('native-historical-retention','managed_sale_linked_platform_retention_bps',1,'900','published',1,'controlled',1,
+          'Explicit historical native terms','native-reviewer',1,'native-historical-retention')`),
     ]);
+    await application(sellerId);
     await t.test('full UUID application acceptance loads in the native runtime', async () => {
       assert.equal(sellerId.length, 36);
       const offers = await getManagedTermsOffers(f.db, sellerId, now);

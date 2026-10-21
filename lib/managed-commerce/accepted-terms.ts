@@ -1,9 +1,10 @@
-import { getEffectiveBusinessSetting } from '../db/repositories/business-settings';
+import { CommissionRateUnavailableError, getEffectiveBusinessSetting } from '../db/repositories/business-settings';
 import { buildFormAnswerInsert } from '../db/repositories/form-answers';
 import { digestFormRequest, FormRequestConflictError } from '../forms/submission';
 import type { FormAnswerSnapshot } from '../forms/types';
 import { managedMakerAgreementContext, managedMakerAgreementSnapshot } from '../sellers/managed-identity';
 import { makerOwnerPredicate } from './maker-authority';
+import { managedAgreementVersionForSeller } from '../db/repositories/managed-maker-details';
 
 const accountKey = 'managed_maker_company_account';
 const retentionKey = 'managed_sale_linked_platform_retention_bps';
@@ -40,11 +41,11 @@ export function acceptedManagedTermsGuards(db: D1Database, terms: AcceptedManage
   return statements;
 }
 
-async function offerAt(db: D1Database, at: number): Promise<ManagedTermsOffer> {
+async function offerAt(db: D1Database, at: number, sellerId: string): Promise<ManagedTermsOffer> {
   const [account, retention] = await Promise.all([
     getEffectiveBusinessSetting(db, accountKey, at), getEffectiveBusinessSetting(db, retentionKey, at),
   ]);
-  const snapshot = managedMakerAgreementSnapshot(account.value, retention.value);
+  const snapshot = managedMakerAgreementSnapshot(account.value, retention.value, await managedAgreementVersionForSeller(db,sellerId));
   const context = await managedMakerAgreementContext(snapshot);
   const settingVersionIds = { account: account.versionId, retention: retention.versionId };
   return { id: await digestFormRequest({ context, settingVersionIds }), context, snapshot,
@@ -55,7 +56,7 @@ async function offerAt(db: D1Database, at: number): Promise<ManagedTermsOffer> {
 /** Commercial evidence only. Private government ID data never enters this projection. */
 export async function getManagedTermsOffers(db: D1Database, sellerId: string, now: number) {
   if (!Number.isSafeInteger(now) || now <= 0) throw new RangeError('A valid terms lookup time is required.');
-  const current = await offerAt(db, now);
+  const current = await offerAt(db, now, sellerId);
   const boundaries = await db.prepare(`SELECT DISTINCT effective_from AS at FROM business_setting_versions
     WHERE setting_key IN (?,?) AND status='published' AND effective_from>?
     UNION SELECT DISTINCT effective_until AS at FROM business_setting_versions
@@ -64,14 +65,15 @@ export async function getManagedTermsOffers(db: D1Database, sellerId: string, no
   const upcoming: ManagedTermsOffer[] = [];
   let previous = current.id;
   for (const { at } of boundaries.results) {
-    const offer = await offerAt(db, at);
+    const offer = await offerAt(db, at, sellerId).catch(error => { if (error instanceof CommissionRateUnavailableError) return null; throw error; });
+    if (!offer) continue; // A future gap is not an offer; new sales at that time remain blocked.
     if (offer.id !== previous) { upcoming.push({ ...offer, effectiveFrom: at,accepted:Boolean(await findAcceptedOffer(db,sellerId,offer,now)) }); previous = offer.id; }
   }
   return { current:{...current,accepted:Boolean(await findAcceptedOffer(db,sellerId,current,now))}, upcoming };
 }
 
 export async function getAcceptedManagedTerms(db: D1Database, sellerId: string, now: number): Promise<AcceptedManagedTerms | null> {
-  const offer = await offerAt(db, now);
+  const offer = await offerAt(db, now, sellerId);
   return findAcceptedOffer(db,sellerId,offer,now);
 }
 async function findAcceptedOffer(db:D1Database,sellerId:string,offer:ManagedTermsOffer,now:number):Promise<AcceptedManagedTerms|null> {

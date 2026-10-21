@@ -15,6 +15,9 @@ import {
 } from '@/lib/cart/session';
 import { requireDatabase } from '@/lib/db/d1';
 import { getOrderDocument } from '@/lib/db/repositories/orders';
+import { ApprovedBillingDocument } from '@/components/commerce/approved-billing-document';
+import { APPROVED_BILLING_VERSION } from '@/lib/documents/billing';
+import { mayApplyCompanyStamp } from '@/lib/documents/company-stamp';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Order document' };
@@ -28,8 +31,10 @@ function money(paisa: number): string {
 
 export default async function OrderDocumentPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ orderNumber: string; id: string }>;
+  searchParams?: Promise<{receipt?:string}>;
 }) {
   const { orderNumber, id } = await params;
   const requestHeaders = await headers();
@@ -45,6 +50,28 @@ export default async function OrderDocumentPage({
   );
   if (!document) notFound();
   const snapshot = document.snapshot;
+  if(snapshot.billing?.version===APPROVED_BILLING_VERSION){
+    const selected=(await searchParams)?.receipt;
+    const groups=snapshot.billing.receiptGroups??[];
+    const group=selected?groups.find(value=>value.key===selected):null;
+    if(selected&&!group)notFound();
+    const root=`/orders/${encodeURIComponent(orderNumber)}/documents/${encodeURIComponent(id)}`;
+    return <main id="main-content" tabIndex={-1} className="min-h-screen bg-slate-100 px-3 py-7 print:bg-white print:p-0">
+      <div className="mx-auto mb-6 max-w-4xl space-y-3 print:hidden"><Link className="underline" href={`/orders/${encodeURIComponent(orderNumber)}`}>Back to order</Link>
+        <p>This local operational document retains the recorded order values. Official bill activation remains subject to legal and accounting clearance.</p>
+        {snapshot.billing.receiptReviewReason?<output className="block">{snapshot.billing.receiptReviewReason}</output>:null}
+        {document.status!=='issued'?<output className="block">Document status: {document.status}</output>:null}
+        {document.kind==='payment_receipt'?<nav className="flex flex-wrap gap-4" aria-label="Seller receipts">{groups.map(value=><Link key={value.key} className="underline" href={`${root}?receipt=${encodeURIComponent(value.key)}`}>{value.issuer.legalName}</Link>)}</nav>:null}
+        <PrintDocumentButton/></div>
+      {document.kind==='order_statement'?<ApprovedBillingDocument snapshot={snapshot} kind="order_statement" documentNumber={document.documentNumber}
+        notice={document.status!=='issued'?`Document status: ${document.status}`:undefined}/>:
+        !groups.length?<ApprovedBillingDocument snapshot={snapshot} kind="payment_receipt" documentNumber={document.documentNumber}
+          notice={`Operational payment receipt. Official seller bills pending review.${document.status!=='issued'?` Document status: ${document.status}.`:''}`}/>:
+        (group?[group]:groups).map(value=><ApprovedBillingDocument key={value.key} snapshot={snapshot} kind="payment_receipt" documentNumber={document.documentNumber} group={value}
+          notice={document.status!=='issued'?`Document status: ${document.status}`:snapshot.billing?.receiptIssuance!=='simulation'?'Official bill pending legal and accounting clearance.':undefined}
+          stampSource={document.status==='issued'&&snapshot.billing?.receiptIssuance==='simulation'&&mayApplyCompanyStamp(value)?`/orders/${encodeURIComponent(orderNumber)}/documents/${encodeURIComponent(id)}/stamp?receipt=${encodeURIComponent(value.key)}`:undefined}/>)}
+    </main>;
+  }
 
   return (
     <div className="min-h-screen bg-muted/25 print:bg-white">
@@ -99,7 +126,7 @@ export default async function OrderDocumentPage({
                         SKU {item.sku}
                       </span>
                     </td>
-                    <td className="py-4 pr-4">{item.sellerName}</td>
+                    <td className="py-4 pr-4">{item.makerName ? <><span className="block">Supplied by {item.makerName}</span><span className="block text-xs">{item.legalSellerName ? `Sold and invoiced by ${item.legalSellerName}` : `Recorded seller: ${item.sellerName} · Invoice identity requires review`}</span></> : <>Sold by {item.sellerName}<span className="block text-xs">Through HastaBazaar</span>{item.legalSellerName ? <span className="block text-xs">Legal seller and invoice issuer: {item.legalSellerName}</span> : null}</>}</td>
                     <td className="py-4 pr-4">{item.quantity}</td>
                     <td className="py-4 pr-4 text-right">
                       {money(item.unitPricePaisa)}
@@ -140,7 +167,7 @@ export default async function OrderDocumentPage({
               <dd>{money(snapshot.deliveryChargePaisa)}</dd>
             </div>
             <div className="flex justify-between">
-              <dt>Platform fee</dt>
+              <dt>Platform service fee</dt>
               <dd>{money(snapshot.buyerPlatformFeePaisa)}</dd>
             </div>
             <div className="flex justify-between">

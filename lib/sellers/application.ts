@@ -1,5 +1,6 @@
 import { parseManagedMakerIdentity, type ManagedMakerIdentity } from './managed-identity';
 import { SELLER_AGREEMENT_VERSION } from '@/lib/content/legal-policies';
+import type { SellerOnboarding } from './onboarding';
 import {
   parseCraftExperience,
   parseMakerSocialLinks,
@@ -21,7 +22,18 @@ export function sellerDocumentsForApplication(input: {
   taxMode: 'PAN' | 'VAT' | 'BOTH' | 'NONE';
   participationRoute?: ParticipationRoute;
   hasBusinessTaxRegistration?: boolean;
+  onboarding?: Pick<SellerOnboarding, 'version'>;
 }) {
+  if (input.onboarding) {
+    const managed = input.participationRoute === 'managed_maker';
+    return [
+      ...(!managed ? [{ field: 'businessRegistration', kind: 'business_registration' as const, label: 'Business registration certificate (including sole proprietors)', required: true }] : []),
+      { field: managed ? 'personalPanCertificate' : 'panCertificate', kind: 'pan_certificate' as const, label: managed ? 'Personal PAN certificate' : 'Business PAN certificate', required: true },
+      ...(!managed && input.taxMode !== 'PAN' ? [{ field: 'vatCertificate', kind: 'vat_certificate' as const, label: 'VAT certificate', required: true }] : []),
+      { field: 'representativeIdentity', kind: 'representative_identity' as const, label: managed ? 'Government-issued identity document' : 'Authorised representative identity document', required: true },
+      { field: 'bankVerification', kind: 'bank_verification' as const, label: 'Bank evidence showing beneficiary, bank and account number', required: true },
+    ];
+  }
   if (input.participationRoute === 'managed_maker' || input.taxMode === 'NONE') {
     return [
       { field: 'personalPanCertificate', kind: 'pan_certificate' as const, label: 'Personal PAN certificate (optional)', required: false },
@@ -87,6 +99,7 @@ export function sellerDocumentsForApplication(input: {
 }
 
 export interface SellerApplicationInput {
+  onboarding?: SellerOnboarding;
   managedIdentity?: ManagedMakerIdentity;
   participationRoute: ParticipationRoute;
   hasBusinessTaxRegistration: boolean;
@@ -213,11 +226,11 @@ export function parseSellerApplication(formData: FormData): {
     legalName: textField(formData, 'legalName'),
     tradingName: textField(formData, 'tradingName'),
     registrationAuthority:
-      participationRoute === 'registered_seller' && applicantType === 'company'
+      participationRoute === 'registered_seller' && (applicantType === 'company' || usesNewRouteQuestion)
         ? textField(formData, 'registrationAuthority')
         : '',
     registrationNumber:
-      participationRoute === 'registered_seller' && applicantType === 'company'
+      participationRoute === 'registered_seller' && (applicantType === 'company' || usesNewRouteQuestion)
         ? textField(formData, 'registrationNumber')
         : '',
     taxMode: resolvedTaxMode,

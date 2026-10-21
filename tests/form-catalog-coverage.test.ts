@@ -3,8 +3,9 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import test from 'node:test';
 import { FORM_REGISTRY, IMPLEMENTED_FORM_ADAPTERS, PROGRAMMATIC_FORM_SITES } from '../lib/forms/registry';
+import { isFormCatalogEditable } from '../lib/forms/catalog-presentation';
 import { collectFormSites, scanFormSites } from './helpers/form-policy';
-import { validateFormDraft } from '../lib/forms/validation';
+import { validateAnswersForDefinition, validateFormDraft } from '../lib/forms/validation';
 
 const root = resolve(import.meta.dirname, '..');
 
@@ -43,6 +44,40 @@ void test('cart, logout and local-role controls retain explicit protected no-ans
     assert.deepEqual(definition.capabilities.customFieldTypes, []);
     assert.ok(definition.baseFields.every((field) => field.capability === 'protected'));
     assert.throws(() => validateFormDraft(id, {formId:id,fields:[{id:'extra_context',key:'extra_context',type:'short_text',label:'Extra',required:false,status:'active',order:0}]}));
+  }
+});
+
+void test('security and backup controls reject configurable questions and generic secret answers without requiring publication', () => {
+  const controls = [
+    ['system.backup-export', '/api/admin/backup-transfer', 'super_admin'],
+    ['system.backup-key-recovery', '/api/admin/backup-transfer', 'super_admin'],
+    ['system.backup-inspect', '/api/admin/backup-transfer/inspect', 'super_admin'],
+    ['system.security-password-bootstrap', '/api/security/bootstrap', 'staff'],
+    ['system.security-mfa-verify', '/api/security/verify', 'staff'],
+    ['system.security-mfa-setup', '/api/security/setup', 'staff'],
+    ['system.security-mfa-activation', '/api/security/confirm', 'staff'],
+    ['system.security-recovery-codes', '/api/security/recovery', 'staff'],
+  ] as const;
+  for (const [id, route, audience] of controls) {
+    const definition = FORM_REGISTRY[id];
+    assert.ok(definition, `${id} must be inventoried`);
+    assert.equal(definition.route, route, id);
+    assert.equal(definition.audience, audience, id);
+    assert.equal(definition.mode, 'system', id);
+    assert.equal(definition.adapterId, id);
+    assert.deepEqual(IMPLEMENTED_FORM_ADAPTERS[id], { formId: id, route, mode: 'system' });
+    assert.equal(isFormCatalogEditable(definition), false, `${id} must not need a catalog publication`);
+    assert.equal(definition.capabilities.answerBehavior, 'none', id);
+    assert.deepEqual(definition.capabilities.customFieldTypes, [], id);
+    assert.ok(definition.baseFields.length > 0 && definition.baseFields.every((field) => field.capability === 'protected'), id);
+    for (const key of ['extra_context', 'password', 'code', 'passphrase', 'recovery_code', ...definition.baseFields.map((field) => field.key)]) {
+      assert.throws(() => validateFormDraft(id, { formId: id, fields: [{
+        id: key, key, type: 'short_text', label: 'Additional question', required: false, status: 'active', order: 0,
+      }] }), `${id} must reject configurable ${key}`);
+      assert.throws(() => validateAnswersForDefinition(definition, {
+        formId: id, version: 1, publishedAt: 1, fields: [],
+      }, [{ fieldId: key, value: 'private-input' }]), `${id} must reject generic ${key} answer snapshots`);
+    }
   }
 });
 

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import * as rates from '../lib/db/repositories/commission-rates';
-import { commissionDatabase } from './helpers/commission-database';
+import { commissionDatabase, historicalCommissionDatabase } from './helpers/commission-database';
 import * as reporting from '../lib/db/repositories/commission-reporting';
 import { createCodOrder } from '../lib/db/repositories/orders';
 import { seedCheckoutBuyer } from './helpers/checkout-contact';
@@ -48,7 +48,7 @@ void test('recovering Commission preserves the existing configured and accepted 
 });
 
 void test('schedules apply only after the effective date and explicit seller acceptance', async () => {
-  const f = await commissionDatabase();
+  const f = await historicalCommissionDatabase(true);
   try {
     const created = await rates.scheduleCommissionRate(f.database, schedule());
     assert.equal(
@@ -102,7 +102,7 @@ void test('schedules apply only after the effective date and explicit seller acc
 });
 
 void test('invalid schedules, insufficient notice, unauthorized staff and stale revisions are rejected', async () => {
-  const f = await commissionDatabase();
+  const f = await historicalCommissionDatabase(true);
   try {
     for (const overrides of [
       { basisPoints: -1 },
@@ -139,7 +139,7 @@ void test('invalid schedules, insufficient notice, unauthorized staff and stale 
 });
 
 void test('schedule retry is idempotent; cancellation is audited and keeps accepted sellers on their previous rate', async () => {
-  const f = await commissionDatabase();
+  const f = await historicalCommissionDatabase(true);
   try {
     const created = await rates.scheduleCommissionRate(f.database, schedule());
     assert.equal(
@@ -215,7 +215,7 @@ void test('schedule retry is idempotent; cancellation is audited and keeps accep
 });
 
 void test('a later unaccepted schedule preserves the earlier accepted effective rate and effective schedules cannot be cancelled', async () => {
-  const f = await commissionDatabase();
+  const f = await historicalCommissionDatabase(true);
   try {
     const created = await rates.scheduleCommissionRate(f.database, schedule());
     await rates.acceptCommissionRate(f.database, {
@@ -280,7 +280,7 @@ void test('Nepal datetime and percentage parsing reject invalid or ambiguous inp
 });
 
 void test('earnings use ledger snapshots, sum split reversals once, and exclude cancelled items from pending totals', async () => {
-  const f = await commissionDatabase();
+  const f = await historicalCommissionDatabase(true);
   try {
     await seedReport(f.database);
     const report = await reporting.getCommissionReport(f.database, {});
@@ -349,7 +349,7 @@ void test('earnings use ledger snapshots, sum split reversals once, and exclude 
 });
 
 void test('checkout snapshots per-seller accepted rates and later changes leave historical amounts intact', async () => {
-  const f = await commissionDatabase();
+  const f = await historicalCommissionDatabase(true);
   try {
     await seedCheckoutBuyer(f.database);
     const change = await rates.scheduleCommissionRate(f.database, schedule());
@@ -557,7 +557,7 @@ void test('release manifest includes the commission workspace migration after th
 });
 
 void test('returned-to-origin seller parcels do not remain pending commission', async () => {
-  const f = await commissionDatabase();
+  const f = await historicalCommissionDatabase(true);
   try {
     await seedReport(f.database);
     await executeStatements(
@@ -582,7 +582,7 @@ void test('returned-to-origin seller parcels do not remain pending commission', 
 });
 
 void test('completed Managed Maker items do not require independent commission ledger entries', async () => {
-  const f = await commissionDatabase();
+  const f = await historicalCommissionDatabase(true);
   try {
     await seedReport(f.database);
     await f.database.prepare("UPDATE orders SET status='delivered',payment_status='paid' WHERE id='order-2'").run();
@@ -596,7 +596,7 @@ void test('completed Managed Maker items do not require independent commission l
 });
 
 void test('seller fee notices can cross the server-to-client component boundary as plain objects', async () => {
-  const f = await commissionDatabase();
+  const f = await historicalCommissionDatabase(true);
   try {
     await rates.scheduleCommissionRate(f.database, schedule());
     const notices = await rates.getSellerCommissionNotices(

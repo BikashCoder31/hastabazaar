@@ -10,7 +10,7 @@ import { requireStaffPage } from '@/lib/auth/staff';
 import { businessSettingDefinitions } from '@/lib/configuration/definitions';
 import { requireDatabase } from '@/lib/db/d1';
 import {
-  getEffectiveBusinessSetting,
+  getBusinessSettingForManagement,
   listBusinessSettingHistory,
 } from '@/lib/db/repositories/business-settings';
 
@@ -21,7 +21,7 @@ export default async function BusinessSettingsPage({searchParams}: {searchParams
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const now = new Date().getTime();
   const initialSettings = await Promise.all(
-    businessSettingDefinitions.filter(definition => definition.key !== 'independent_seller_commission_bps' && (staff.role === 'super_admin' || !definition.affectedSurfaces.some(surface => surface === 'rider'))).map(async (definition) => ({
+    businessSettingDefinitions.filter(definition => staff.role === 'super_admin' || !definition.affectedSurfaces.some(surface => surface === 'rider')).map(async (definition) => ({
       key: definition.key,
       label: definition.label,
       description: definition.description,
@@ -31,7 +31,7 @@ export default async function BusinessSettingsPage({searchParams}: {searchParams
       snapshotOnTransaction: definition.snapshotOnTransaction,
       affectedSurfaces: definition.affectedSurfaces,
       requiredCapability: definition.requiredCapability,
-      effective: await getEffectiveBusinessSetting(database, definition.key, now),
+      effective: await getBusinessSettingForManagement(database, definition.key, now),
       history: await listBusinessSettingHistory(database, definition.key),
     })),
   );

@@ -7,12 +7,17 @@ import { fileURLToPath } from 'node:url';
 import mysql from 'mysql2/promise';
 import { inspectReadiness } from '../lib/operations/readiness.ts';
 import { stagingNativeUpgrade } from './staging-native-upgrade.mjs';
+import { rehearseNativeRecovery } from './recovery/rehearse-native.mjs';
+import {assertLocalRecoveryMode,createLocalSourceArtifact} from './recovery/local-source-artifact.mjs';
+import {assertRequiredNativeResults} from './recovery/native-test-results.mjs';
 
 // This command has no database-target arguments. It creates its own isolated
 // container and new databases; it never resets, seeds or connects to saved data.
 const project = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 assert.equal(resolve(process.cwd()), project);
-assert.equal(process.argv.length, 2);
+const localRecovery=process.argv.length===3&&process.argv[2]==='--local-recovery';
+assert.ok(process.argv.length===2||localRecovery,'Only --local-recovery is an optional runner argument');
+if(localRecovery)assertLocalRecoveryMode();
 const docker = process.platform === 'win32' ? 'C:/Program Files/Docker/Docker/resources/bin/docker.exe' : 'docker';
 const context = JSON.parse(execFileSync(docker, ['context','inspect'], {encoding:'utf8'}))[0];
 assert.match(context.Endpoints.docker.Host, /^(npipe|unix):\/\//);
@@ -22,6 +27,7 @@ await mkdir(workspace, {recursive:true});
 const name = 'hastabazaar-native-' + run;
 const password = randomBytes(32).toString('hex');
 const token = randomBytes(24).toString('hex');
+const securityKey = randomBytes(32).toString('base64url');
 const envFile = resolve(workspace, '.env.native-' + run);
 const marker = resolve(workspace, '.native-' + run + '.json');
 await writeFile(envFile, 'MARIADB_ROOT_PASSWORD=' + password + '\nMARIADB_ROOT_HOST=%\n', {mode:0o600});
@@ -39,6 +45,20 @@ await writeFile(marker, JSON.stringify({id,name,password,token,host:'127.0.0.1',
 let connection;
 const observations=[];
 let activeFile='', activeStatement='';
+function nativeTests(files){
+  activeFile=files.join(', ');activeStatement='';
+  let output;
+  try{output=execFileSync(process.execPath,['--import','tsx','--test','--test-reporter=tap','--test-concurrency=1',...files],{
+    cwd:project,encoding:'utf8',maxBuffer:16*1024*1024,env:{...process.env,HATSKALA_STAGING_NATIVE:'1',HATSKALA_NATIVE_MARKER:marker,HATSKALA_NATIVE_TOKEN:token,
+      HASTABAZAAR_NATIVE_SECURITY_KEY:securityKey,HASTABAZAAR_RUNTIME_ENV:'local_staging',MEDIA_ROOT:resolve(workspace,'native-'+run+'-media'),DB_HOST:'127.0.0.1',DB_PORT:'13329',DB_NAME:'native_'+run+'_fresh',DB_USER:'root',DB_PASSWORD:password},
+  });}catch(error){
+    const diagnostics=[error.stdout,error.stderr].filter(Boolean).map(value=>String(value)).join('\n');
+    console.error(diagnostics.replaceAll(password,'[redacted]').replaceAll(token,'[redacted]').replaceAll(securityKey,'[redacted]'));
+    throw new Error('Required native test failed: '+files.join(', '));
+  }
+  assertRequiredNativeResults(output);
+  console.log(output);
+}
 function statements(sql) {
   let delimiter=';', buffer=''; const result=[];
   for(const line of sql.split(/\r?\n/)){
@@ -86,10 +106,7 @@ try {
     assert.deepEqual(await inspectReadiness(adapter),{ready:true,missing:[]});
   });
   await check('real native repository and financial guard tests',async()=>{
-    execFileSync(process.execPath,['--import','tsx','--test','--test-concurrency=1','tests/staging-native-runtime.test.ts'],{
-      cwd:project,stdio:'inherit',env:{...process.env,HATSKALA_STAGING_NATIVE:'1',HATSKALA_NATIVE_MARKER:marker,HATSKALA_NATIVE_TOKEN:token,
-        HASTABAZAAR_RUNTIME_ENV:'local_staging',DB_HOST:'127.0.0.1',DB_PORT:'13329',DB_NAME:'native_'+run+'_fresh',DB_USER:'root',DB_PASSWORD:password},
-    });
+    nativeTests(['tests/staging-native-runtime.test.ts']);
   });
   await create('legacy');
   await check('populated pre-weekly schema upgrades conserve every original value',async()=>{
@@ -135,6 +152,30 @@ try {
     assert.deepEqual(await inspectReadiness(adapter),{ready:true,missing:[]});
     assert.deepEqual((await connection.query('SELECT scheduled_revision,scheduled_for,scheduled_unpause,paused,current_revision,draft_revision,issued_points,redeemed_points,credited_paisa FROM loyalty_config'))[0][0],{scheduled_revision:null,scheduled_for:null,scheduled_unpause:0,paused:1,current_revision:1,draft_revision:2,issued_points:100,redeemed_points:100,credited_paisa:1000});
     for(const table of ['seller_participation_profiles','managed_commercial_snapshots'])assert.equal((await connection.query('SELECT COUNT(*) n FROM '+table+' WHERE accepted_managed_detail_id IS NOT NULL'))[0][0].n,0);
+  });
+  await connection.query('USE `native_'+run+'_fresh`');
+  await check('current accounting, financial, billing and hosted MFA native journeys execute without skips',async()=>{
+    for(const file of ['tests/accounting-native-runtime.test.ts','tests/commerce-financial-native.test.ts','tests/billing-release-native.test.ts']){
+      // This exact schema was created by this process in the pinned disposable
+      // container. Never accept a name/host from the caller or reuse saved data.
+      owned();await connection.query('USE information_schema');
+      await connection.query('DROP DATABASE `native_'+run+'_fresh`');
+      await connection.query('CREATE DATABASE `native_'+run+'_fresh` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci');
+      await connection.query('USE `native_'+run+'_fresh`');
+      await load('deployment/babal/mariadb-schema.sql');
+      for(const migration of manifest.migrations.filter(m=>m.usage==='additive-maintenance'))await load(migration.path);
+      nativeTests([file]);
+    }
+    // Enroll the billing fixture's accounts so recovery verifies real commerce
+    // records and MFA together. This test does not replace business records.
+    nativeTests(['tests/hosted-security-native.test.ts']);
+  });
+  await check(localRecovery?'local source snapshot survives encrypted native database/media/key recovery':'exact verified Linux artifact survives encrypted native database/media/key recovery',async()=>{
+    const artifactDirectory=localRecovery?await createLocalSourceArtifact(project,workspace):process.env.HASTABAZAAR_NATIVE_ARTIFACT_DIRECTORY;
+    assert.ok(artifactDirectory,'An exact verified Linux release artifact is required for native recovery rehearsal');
+    const result=await rehearseNativeRecovery({docker,marker:{id,name,password,token,host:'127.0.0.1',port:13329,database:'native_'+run+'_fresh'},owned,source:connection,workspace,artifactDirectory,key:securityKey,localRecovery});
+    await writeFile(resolve(artifactDirectory,'native-recovery-verification.json'),JSON.stringify(result,null,2)+'\n',{flag:'wx',mode:0o600});
+    console.log(JSON.stringify(result));
   });
 }catch(error){
   console.error(JSON.stringify({status:'FAIL',file:activeFile,statement:activeStatement,message:String(error.message).replaceAll(password,'[redacted]').slice(0,1800)}));process.exitCode=1;

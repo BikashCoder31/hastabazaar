@@ -75,10 +75,12 @@ void test('customer, seller, and staff navigation wrap labels instead of truncat
     account,
     /grid-cols-1 gap-1 min-\[360px\]:grid-cols-2 sm:grid-cols-4/,
   );
-  assert.match(
-    seller,
-    /grid-cols-1 gap-1 min-\[380px\]:grid-cols-2 sm:grid-cols-3/,
-  );
+  // Seller navigation now separates compact quick links from full secondary labels.
+  assert.match(seller, /aria-label="Seller quick links"[\s\S]*?<ul className="grid grid-cols-4 gap-1">/);
+  assert.match(seller, /<li key=\{href\} className="min-w-0">/);
+  assert.match(seller, /aria-label="More seller pages"[\s\S]*?<ul className="grid gap-1 sm:grid-cols-2">/);
+  assert.match(seller, /<span className="whitespace-normal">\{label\}<\/span>/);
+  assert.doesNotMatch(seller, /className="[^"]*\b(?:truncate|whitespace-nowrap)\b[^"]*"/);
   // The searchable staff menu now collapses on mobile; labels must still wrap.
   assert.match(admin, /className="min-w-0 whitespace-normal"/);
   assert.doesNotMatch(admin, /className="[^"]*\btruncate\b[^"]*"/);

@@ -32,6 +32,7 @@ void test('actual Windows release package reports exact nonzero byte totals and 
     const archiveContents: Record<string, string> = {
       'app.cjs': 'module.exports = { fixture: true };\n',
       'server.js': '// Synthetic package fixture.\n',
+      'hosted-security.mjs': '// Synthetic operator fixture.\n',
       'package.json': '{"name":"release-fixture","private":true}\n',
       'dist/client/vinext-client-entry-manifest.json': '{"fixture":true}\n',
       'deployment/babal/release-manifest.json': release,
@@ -68,7 +69,7 @@ void test('actual Windows release package reports exact nonzero byte totals and 
     const manifest = decodeJson<ReleaseFileManifest>(await readFile(artifact('.manifest.json'), 'utf8'));
     assert.equal(manifest.release, releaseId);
     assert.equal(manifest.totalBytes, knownTotal, 'totalBytes must equal the independently known fixture bytes');
-    assert.equal(manifest.fileCount, 6);
+    assert.equal(manifest.fileCount, 7);
     assert.deepEqual(manifest.files, expected);
 
     // Inspect the actual ZIP independently, rather than trusting the packaging report.
@@ -92,11 +93,11 @@ try {
     const inspection = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', inspector, '-Archive', artifact('.zip')], { encoding: 'utf8', timeout: 30_000, env: powershellEnvironment });
     assert.equal(inspection.status, 0, `${inspection.error?.message ?? ''}\n${inspection.stderr}`);
     const actualArchiveFiles = decodeJson<FileProof[]>(inspection.stdout);
-    assert.equal(actualArchiveFiles.length, 6);
+    assert.equal(actualArchiveFiles.length, 7);
     assert.deepEqual(actualArchiveFiles, expected);
     const verification = decodeJson<{ sourceFileCount: number; archiveFileCount: number; mismatchCount: number; missingRequired: string[]; zipSha256: string }>(await readFile(artifact('.verification.json'), 'utf8'));
-    assert.equal(verification.sourceFileCount, 6);
-    assert.equal(verification.archiveFileCount, 6);
+    assert.equal(verification.sourceFileCount, 7);
+    assert.equal(verification.archiveFileCount, 7);
     assert.equal(verification.mismatchCount, 0);
     assert.deepEqual(verification.missingRequired, []);
     const zipHash = sha256(await readFile(artifact('.zip')));

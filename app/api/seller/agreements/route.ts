@@ -26,13 +26,15 @@ export async function POST(request: Request): Promise<Response> {
     const body = (await request.json()) as { accepted?: unknown; language?: unknown; termsContext?: unknown };
     if (body.accepted !== true)
       return json({ error: 'Confirm the current seller agreement.' }, 400);
+    if (body.language !== 'en')
+      return json({ error: 'Review and accept the current English seller agreement.' }, 400);
     const seller = await requireSellerApi();
     const database = requireDatabase(env as unknown as { DB?: D1Database });
     const now = Date.now();
     if (typeof body.termsContext!=='string' || !/^[a-f0-9]{64}$/.test(body.termsContext)) return json({error:'Reload and review the current seller terms.'},400);
-    const language = body.language === 'en' ? 'en' : 'ne';
+    const language = body.language;
     const requestId = request.headers.get('cf-ray') ?? request.headers.get('x-request-id') ?? crypto.randomUUID();
-    const {terms:commission,statements:acceptance}=await prepareSellerCommissionAcceptance(database,{sellerId:seller.sellerId,actorId:seller.userId,context:body.termsContext,requestId,now,language});
+    const {terms:commission,snapshot:registeredTermsSnapshot,statements:acceptance}=await prepareSellerCommissionAcceptance(database,{sellerId:seller.sellerId,actorId:seller.userId,context:body.termsContext,requestId,now,language});
     checked={database,context:body.termsContext,sellerId:seller.sellerId,actorId:seller.userId,language,versionId:commission.versionId};
     if (seller.sellerAgreementVersion === SELLER_AGREEMENT_VERSION && await sellerAcceptedCommissionVersion(database,seller.sellerId,commission.versionId))
       return json({ status: 'already_accepted' }, 200);
@@ -59,7 +61,7 @@ export async function POST(request: Request): Promise<Response> {
           seller.userId,
           seller.sellerId,
           JSON.stringify({ version: seller.sellerAgreementVersion }),
-          JSON.stringify({ version: SELLER_AGREEMENT_VERSION, languagePresented:language, commissionBps:commission.basisPoints, commissionSettingVersionId:commission.versionId, termsContext:body.termsContext, acceptedAt: now }),
+          JSON.stringify({ version: SELLER_AGREEMENT_VERSION, languagePresented:language, commissionBps:commission.basisPoints, commissionSettingVersionId:commission.versionId, termsContext:body.termsContext, acceptedAt: now, registeredTermsSnapshot }),
           requestId,
           now,
         ),

@@ -5,6 +5,7 @@ import { getAuthenticatedUser } from '@/app/auth';
 import { RECEIPT_COOKIE, hashOpaqueToken, readCookie } from '@/lib/cart/session';
 import { requireDatabase, requireMediaBucket } from '@/lib/db/d1';
 import { getReturnEvidenceAccess } from '@/lib/db/repositories/returns';
+import { inlineFileDisposition } from '@/lib/http/content-disposition';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,11 +44,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   if (!authorised) return json({ error: 'Evidence access is not permitted.' }, 403);
   const object = await requireMediaBucket(bindings).get(evidence.objectKey);
   if (!object) return json({ error: 'Evidence file not found.' }, 404);
-  const safeName = evidence.originalName.replace(/[\r\n"\\]/g, '_');
   return new Response(object.body, {
     headers: {
       'content-type': evidence.mimeType,
-      'content-disposition': `inline; filename="${safeName}"`,
+      'content-disposition': inlineFileDisposition(evidence.originalName),
       'cache-control': 'private, no-store',
       'x-content-type-options': 'nosniff',
     },

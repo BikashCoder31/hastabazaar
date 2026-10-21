@@ -1,6 +1,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { SELLER_AGREEMENT_VERSION } from '../../lib/content/legal-policies';
+import { historicalCommissionFixture } from './historical-commission-fixture';
 
 export async function commissionDatabase() {
   const sqlite = new DatabaseSync(':memory:');
@@ -99,6 +100,7 @@ export async function commissionDatabase() {
     }
     return {
       database,
+      sqlite,
       dispose: async () => {
         sqlite.close();
       },
@@ -107,4 +109,11 @@ export async function commissionDatabase() {
     sqlite.close();
     throw error;
   }
+}
+
+/** Opt in only for tests whose scenario includes a configured historical rate. */
+export async function historicalCommissionDatabase(acceptExistingSellers = false) {
+  const fixture = await commissionDatabase();
+  historicalCommissionFixture(fixture.sqlite,'owner',acceptExistingSellers);
+  return fixture;
 }

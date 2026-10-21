@@ -105,11 +105,11 @@ export async function SiteFooter({ compact = false }: { compact?: boolean } = {}
               you choose.
             </p>
             <a
-              href="mailto:support@hastabazaar.com"
+              href={`mailto:${companyDetails.supportEmail}`}
               className="site-footer-email"
             >
               <Mail className="size-4" aria-hidden="true" />
-              support@hastabazaar.com
+              {companyDetails.supportEmail}
             </a>
             <nav
               aria-label="Official Hastabazaar social media"

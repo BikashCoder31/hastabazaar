@@ -1,4 +1,5 @@
 import { seedCheckoutBuyer } from './helpers/checkout-contact';
+import { historicalCommissionFixture } from './helpers/historical-commission-fixture';
 import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
 import {
@@ -226,6 +227,7 @@ async function databaseFixture() {
       )
       .run();
   }
+  historicalCommissionFixture(sqlite, 'super-1', true);
   return { database, sqlite, dispose: async () => sqlite.close() };
 }
 
@@ -673,7 +675,7 @@ void test('receipt store count uses seller identity when two stores share a disp
     await f.dispose();
   }
 });
-void test('checkout snapshots another recipient without mutating or depending on the saved address', async () => {
+void test('checkout saves an edited recipient as a new address without changing the original', async () => {
   const f = await databaseFixture();
   try {
     const db = f.database as unknown as D1Database;
@@ -684,6 +686,7 @@ void test('checkout snapshots another recipient without mutating or depending on
       )
       .bind(now, now)
       .run();
+    const originalAddress = await db.prepare("SELECT * FROM addresses WHERE id='owned-address'").first();
     const rates = await getDeliveryRates(db);
     const input = {
       ...checkoutInput(rates.version),
@@ -717,7 +720,9 @@ void test('checkout snapshots another recipient without mutating or depending on
       }>();
     assert.equal(snapshot?.deliveryFor, 'other');
     assert.equal(snapshot?.recipientEmail, 'recipient@example.test');
-    assert.equal(snapshot?.sourceAddressId, 'owned-address');
+    assert.notEqual(snapshot?.sourceAddressId, 'owned-address');
+    assert.equal((await db.prepare('SELECT locality FROM addresses WHERE id=? AND user_id=?')
+      .bind(snapshot!.sourceAddressId, 'checkout-buyer').first<{locality:string}>())?.locality, 'One-order locality');
     assert.equal(
       JSON.parse(snapshot!.addressJson).locality,
       'One-order locality',
@@ -730,6 +735,7 @@ void test('checkout snapshots another recipient without mutating or depending on
       )?.locality,
       'Original locality',
     );
+    assert.deepEqual(await db.prepare("SELECT * FROM addresses WHERE id='owned-address'").first(),originalAddress);
     await db.prepare("DELETE FROM addresses WHERE id='owned-address'").run();
     assert.equal(
       JSON.parse(
@@ -746,6 +752,117 @@ void test('checkout snapshots another recipient without mutating or depending on
     await f.dispose();
   }
 });
+void test('checkout automatically saves a new address and its pin once without an opt-in flag', async () => {
+  const f = await databaseFixture();
+  try {
+    const db = f.database as unknown as D1Database;
+    await checkoutCart(db);
+    const rates = await getDeliveryRates(db);
+    const input = { ...checkoutInput(rates.version), saveAddressForFuture: false,
+      address: { ...checkoutInput(rates.version).address, location: {latitude:27.7172, longitude:85.324} } };
+    const order = await createCodOrder(db,'rate-token','automatic-address',input,now,'checkout-buyer');
+    const row = await db.prepare('SELECT source_address_id AS addressId,address_saved_for_future AS saved FROM orders WHERE order_number=?')
+      .bind(order.orderNumber).first<{addressId:string;saved:number}>();
+    assert.equal(row?.saved,1);
+    assert.ok(row?.addressId);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM addresses WHERE user_id=?').bind('checkout-buyer').first<{n:number}>())?.n,1);
+    const saved = await db.prepare('SELECT is_default AS isDefault FROM addresses WHERE id=?').bind(row!.addressId).first<{isDefault:number}>();
+    assert.equal(saved?.isDefault,1);
+    assert.deepEqual({...await db.prepare('SELECT latitude,longitude FROM address_locations WHERE address_id=?').bind(row!.addressId).first()},{latitude:27.7172,longitude:85.324});
+    const before = await db.prepare('SELECT COUNT(*) AS n FROM audit_logs').first();
+    assert.deepEqual(await createCodOrder(db,'rate-token','automatic-address',input,now+1,'checkout-buyer'),order);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM addresses WHERE user_id=?').bind('checkout-buyer').first<{n:number}>())?.n,1);
+    assert.deepEqual(await db.prepare('SELECT COUNT(*) AS n FROM audit_logs').first(),before);
+    await db.prepare("INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES ('repeat-line','rate-cart','product-1',1,?,?)").bind(now+2,now+2).run();
+    const repeated = await createCodOrder(db,'rate-token','repeat-destination',{
+      ...input,idempotencyKey:crypto.randomUUID(),address:{...input.address,phone:'+9779811111111'},
+    },now+2,'checkout-buyer');
+    assert.equal((await db.prepare('SELECT source_address_id AS addressId FROM orders WHERE order_number=?').bind(repeated.orderNumber).first<{addressId:string}>())?.addressId,row!.addressId);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM addresses WHERE user_id=?').bind('checkout-buyer').first<{n:number}>())?.n,1);
+  } finally { await f.dispose(); }
+});
+
+void test('checkout reuses an unchanged owned saved address and guards its commit-time presence', async () => {
+  for (const concurrentChange of ['none','delete','edit','pin']) {
+    const f = await databaseFixture();
+    try {
+      const db = f.database as unknown as D1Database;
+      await checkoutCart(db);
+      await db.prepare("INSERT INTO addresses(id,user_id,label,recipient_name,phone,province,district,municipality,locality,is_default,created_at,updated_at) VALUES ('same-address','checkout-buyer','Home','Buyer','9811111111','Bagmati','Kathmandu','Kathmandu','Local QA',1,?,?)").bind(now,now).run();
+      const original = await db.prepare("SELECT * FROM addresses WHERE id='same-address'").first();
+      const existingOrders = await db.prepare('SELECT COUNT(*) AS n FROM orders').first();
+      const rates = await getDeliveryRates(db);
+      const batch = f.database.batch.bind(f.database);
+      if (concurrentChange !== 'none') f.database.batch = async statements => {
+        if (concurrentChange === 'delete') await db.prepare("DELETE FROM addresses WHERE id='same-address'").run();
+        else if (concurrentChange === 'edit') await db.prepare("UPDATE addresses SET locality='Concurrent edit' WHERE id='same-address'").run();
+        else await db.prepare("INSERT INTO address_locations(address_id,latitude,longitude) VALUES ('same-address',27.7,85.3)").run();
+        return batch(statements);
+      };
+      const operation = () => createCodOrder(db,'rate-token','same-address-receipt',{
+        ...checkoutInput(rates.version),selectedAddressId:'same-address',
+      },now,'checkout-buyer');
+      if (concurrentChange !== 'none') {
+        await assert.rejects(operation);
+        assert.deepEqual(await db.prepare('SELECT COUNT(*) AS n FROM orders').first(),existingOrders);
+      } else {
+        const result=await operation();
+        const row=await db.prepare('SELECT source_address_id AS addressId,address_saved_for_future AS saved FROM orders WHERE order_number=?').bind(result.orderNumber).first<{addressId:string;saved:number}>();
+        assert.equal(row?.addressId,'same-address');assert.equal(row?.saved,0);
+        assert.deepEqual(await db.prepare("SELECT * FROM addresses WHERE id='same-address'").first(),original);
+        assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM addresses WHERE user_id=?').bind('checkout-buyer').first<{n:number}>())?.n,1);
+      }
+    } finally { await f.dispose(); }
+  }
+});
+
+void test('concurrent address creation requires a safe retry and cannot duplicate the same destination', async () => {
+  for (const mode of ['insert','edit','replace']) {
+  const f=await databaseFixture();
+  try {
+    const db=f.database as unknown as D1Database;
+    await checkoutCart(db);
+    const rates=await getDeliveryRates(db);
+    const input=checkoutInput(rates.version);
+    if (mode !== 'insert') await db.prepare("INSERT INTO addresses(id,user_id,label,recipient_name,phone,province,district,municipality,locality,is_default,created_at,updated_at) VALUES ('old-address','checkout-buyer','Home','Buyer','9811111111','Bagmati','Kathmandu','Kathmandu','Another locality',1,?,?)").bind(now,now).run();
+    const orders=await db.prepare('SELECT COUNT(*) AS n FROM orders').first();
+    const batch=f.database.batch.bind(f.database);
+    f.database.batch=async statements=>{
+      if (mode === 'edit') await db.prepare("UPDATE addresses SET locality='Local QA' WHERE id='old-address'").run();
+      else {
+        if (mode === 'replace') await db.prepare("DELETE FROM addresses WHERE id='old-address'").run();
+        await db.prepare("INSERT INTO addresses(id,user_id,label,recipient_name,phone,province,district,municipality,locality,is_default,created_at,updated_at) VALUES ('concurrent-address','checkout-buyer','Home','Buyer','9811111111','Bagmati','Kathmandu','Kathmandu','Local QA',1,?,?)").bind(now,now).run();
+      }
+      return batch(statements);
+    };
+    await assert.rejects(()=>createCodOrder(db,'rate-token','concurrent-address-receipt',input,now,'checkout-buyer'));
+    assert.deepEqual(await db.prepare('SELECT COUNT(*) AS n FROM orders').first(),orders);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM addresses WHERE user_id=?').bind('checkout-buyer').first<{n:number}>())?.n,1);
+    f.database.batch=batch;
+    const retried=await createCodOrder(db,'rate-token','concurrent-address-receipt',input,now+1,'checkout-buyer');
+    assert.equal((await db.prepare('SELECT source_address_id AS addressId FROM orders WHERE order_number=?').bind(retried.orderNumber).first<{addressId:string}>())?.addressId,mode === 'edit' ? 'old-address' : 'concurrent-address');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM addresses WHERE user_id=?').bind('checkout-buyer').first<{n:number}>())?.n,1);
+  } finally {await f.dispose();}
+  }
+});
+
+void test('late checkout failure rolls back automatically saved address and optional pin', async () => {
+  const f = await databaseFixture();
+  try {
+    const db=f.database as unknown as D1Database;
+    await checkoutCart(db);
+    const rates=await getDeliveryRates(db);
+    const tables=['orders','addresses','address_locations','audit_logs','products','cart_items'];
+    const before=await Promise.all(tables.map(table=>db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));
+    const originalBatch=f.database.batch.bind(f.database);
+    f.database.batch=statements=>originalBatch([...statements,f.database.prepare("INSERT INTO operation_transaction_guards(id,valid) VALUES ('late-checkout-failure',0)")]);
+    await assert.rejects(()=>createCodOrder(db,'rate-token','late-address-failure',{
+      ...checkoutInput(rates.version),address:{...checkoutInput(rates.version).address,location:{latitude:27.7172,longitude:85.324}},
+    },now,'checkout-buyer'));
+    for(let i=0;i<tables.length;i++)assert.deepEqual((await db.prepare(`SELECT * FROM ${tables[i]} ORDER BY rowid`).all()).results,before[i].results,tables[i]);
+  } finally { await f.dispose(); }
+});
+
 void test('checkout rejects another account address and can explicitly save a new address atomically', async () => {
   const f = await databaseFixture();
   try {

@@ -1,4 +1,5 @@
 import { seedVerifiedCheckoutContact } from './helpers/checkout-contact';
+import { seedPromoCommissionAcceptance, withReviewedPromoQuote } from './helpers/promo-checkout-fixture';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
@@ -338,6 +339,7 @@ void test('claim wallet-first serialization remains compatible with concurrent c
       await import('../lib/incentives/quote-intent');
     const { createCodOrder } = await import('../lib/db/repositories/orders');
     await seedIncentiveInventory(f.db);
+    await seedPromoCommissionAcceptance(f.db, 900);
     await f.db
       .prepare(
         'UPDATE seller_profiles SET seller_agreement_version=? WHERE id=?',
@@ -443,6 +445,7 @@ void test('claim wallet-first serialization remains compatible with concurrent c
       promoRevision: q.revision,
       promoQuoteIntent: q.quoteIntent,
     };
+    let reviewedInput = await withReviewedPromoQuote(f.db, 'loyalty-cart', input, now);
     // This is the reviewed Task 8 source-insert contract, not a Task 10 repository implementation.
     const redemption = f.db.batch([
       f.db.prepare(
@@ -474,7 +477,7 @@ void test('claim wallet-first serialization remains compatible with concurrent c
         f.db,
         'loyalty-cart',
         'loyalty-receipt',
-        input,
+        reviewedInput,
         now,
         'customer',
         {
@@ -487,12 +490,15 @@ void test('claim wallet-first serialization remains compatible with concurrent c
     // A balance snapshot conflict is retried using the same intentional request.
     if (operations[0].status === 'rejected')
       await r.claimDailyPoints(f.db, claim('tomorrow', 1, 'customer', now));
-    if (operations[2].status === 'rejected')
+    if (operations[2].status === 'rejected') {
+      assert.match(String(operations[2].reason), /quote|credit|wallet|changed|conflict/i);
+      // A changed wallet balance requires a fresh customer review before retry.
+      reviewedInput = await withReviewedPromoQuote(f.db, 'loyalty-cart', input, now);
       await createCodOrder(
         f.db,
         'loyalty-cart',
         'loyalty-receipt',
-        input,
+        reviewedInput,
         now,
         'customer',
         {
@@ -500,6 +506,7 @@ void test('claim wallet-first serialization remains compatible with concurrent c
           answers: { formId: 'commerce.checkout', version: 1, answers: [] },
         },
       );
+    }
     const state = await r.getLoyaltyState(f.db, 'super', now, 'super');
     assert.equal(state.issuedPoints, 200);
     assert.equal(state.redeemedPoints, 100);

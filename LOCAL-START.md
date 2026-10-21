@@ -1,6 +1,6 @@
 # Start Hastabazaar locally
 
-The active project is **C:\Users\abinash\Desktop\Hatskala**.
+The active project is **C:\Users\abinash\Desktop\HastaBazaar**.
 
 1. Open that folder and double-click **START-HASTABAZAAR.cmd**.
 2. Keep its terminal window open. It shows the project folder, branch, commit, local database, and website address before starting.
@@ -23,3 +23,7 @@ The launcher uses local staging with no live email or payment services. Its conf
 - **Port 3018 already in use:** stop the known existing local preview in its terminal, then try again. Do not start another copy on a different port.
 
 Older worktrees and dated copies are historical references. The ZIP files in **C:\Users\abinash\Desktop\Hatskala-backups** are recovery archives and cannot be launched normally. Keep using the active Desktop folder; restore an archive only as a separately reviewed recovery operation.
+
+## Project move
+
+This is the active folder from 2026-10-16. The former C:\Users\abinash\Desktop\Hatskala folder is retired. Its launcher stops with a message directing you here. Existing recovery archives and old reports stay outside this active project. Open this new folder in Codex or your editor for future work.

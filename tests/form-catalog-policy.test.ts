@@ -8,7 +8,7 @@ import { collectFormSites, scanFormSites } from './helpers/form-policy';
 
 const root = resolve(import.meta.dirname, '..');
 
-void test('the reviewed source inventory includes native commission and incentive reports beside queue, COD and secure logout controls', async () => {
+void test('the reviewed source inventory includes fixed security controls beside native commission, incentive, queue and COD controls', async () => {
   const sites = await collectFormSites(root);
   const reviewedSites = [
     { path: 'app/account-access-denied/page.tsx', ordinal: 1, formId: 'identity.logout' },
@@ -25,7 +25,16 @@ void test('the reviewed source inventory includes native commission and incentiv
     { path: 'components/account/rewards-panel.tsx', ordinal: 2, formId: 'account.points-redemption' },
     { path: 'components/admin/first-cod-confirmation.tsx', ordinal: 1, formId: 'staff.first-cod-confirmation' },
     { path: 'components/admin/loyalty-manager.tsx', ordinal: 1, formId: 'staff.loyalty-settings' },
+    { path: 'components/admin/platform-service-fee-refund.tsx', ordinal: 1, formId: 'system.platform-service-fee-refund' },
     { path: 'components/admin/promo-code-manager.tsx', ordinal: 1, formId: 'staff.promo-code' },
+    { path: 'components/security/backup-transfer-workspace.tsx', ordinal: 1, formId: 'system.backup-export' },
+    { path: 'components/security/backup-transfer-workspace.tsx', ordinal: 2, formId: 'system.backup-key-recovery' },
+    { path: 'components/security/backup-transfer-workspace.tsx', ordinal: 3, formId: 'system.backup-inspect' },
+    { path: 'components/security/security-workspace.tsx', ordinal: 1, formId: 'system.security-password-bootstrap' },
+    { path: 'components/security/security-workspace.tsx', ordinal: 2, formId: 'system.security-mfa-verify' },
+    { path: 'components/security/security-workspace.tsx', ordinal: 3, formId: 'system.security-mfa-setup' },
+    { path: 'components/security/security-workspace.tsx', ordinal: 4, formId: 'system.security-mfa-activation' },
+    { path: 'components/security/security-workspace.tsx', ordinal: 5, formId: 'system.security-recovery-codes' },
   ] as const;
   const reviewedPaths = new Set<string>(reviewedSites.map((site) => site.path));
   assert.deepEqual(sites.filter((site) => reviewedPaths.has(site.path))
@@ -37,9 +46,10 @@ void test('the reviewed source inventory includes native commission and incentiv
       formId: site.formId, route: definition.route, mode: definition.mode,
     });
   }
-  const workspacePaths = new Set(['components/admin/commission-report.tsx','components/admin/commission-settings.tsx','components/admin/incentive-reports.tsx']);
+  const workspacePaths = new Set(['components/admin/accounting-workspace.tsx','components/admin/commission-report.tsx','components/admin/commission-settings.tsx','components/admin/incentive-reports.tsx']);
   const workspaceSites = sites.filter(site=>workspacePaths.has(site.path));
   assert.deepEqual(workspaceSites.map(site=>({path:site.path,ids:site.formIds})),[
+    {path:'components/admin/accounting-workspace.tsx',ids:['staff.accounting-report-filter']},
     {path:'components/admin/commission-report.tsx',ids:['staff.commission-report-filter']},
     {path:'components/admin/commission-settings.tsx',ids:['staff.commission-schedule']},
     {path:'components/admin/commission-settings.tsx',ids:['staff.commission-cancel']},
@@ -183,6 +193,42 @@ void test('programmatic actions name their actual primary receiving routes', () 
     expected.map(([id]) => [id, FORM_REGISTRY[id].route]),
     expected.map(([id, route]) => [id, route]),
   );
+});
+
+void test('security inventory names existing native receiving handlers and retains conditional confirmation and download steps', async () => {
+  const security = [
+    ['system.security-password-bootstrap', 'bootstrap'],
+    ['system.security-mfa-verify', 'verify'],
+    ['system.security-mfa-setup', 'setup'],
+    ['system.security-mfa-activation', 'confirm'],
+    ['system.security-recovery-codes', 'recovery'],
+  ] as const;
+  for (const [id, action] of security) {
+    assert.equal(FORM_REGISTRY[id]?.route, `/api/security/${action}`, id);
+    const receivingRoute = await readFile(resolve(root, `app/api/security/${action}/route.ts`), 'utf8');
+    assert.match(receivingRoute, /export function POST\(/);
+    assert.ok(receivingRoute.includes(`handleSecurityAction(request,'${action}')`));
+  }
+  const backupRoutes = [
+    ['system.backup-export', '/api/admin/backup-transfer', 'createBackup'],
+    ['system.backup-key-recovery', '/api/admin/backup-transfer', 'createBackup'],
+    ['system.backup-inspect', '/api/admin/backup-transfer/inspect', 'inspectBackup'],
+  ] as const;
+  for (const [id, route, handler] of backupRoutes) {
+    assert.equal(FORM_REGISTRY[id]?.route, route, id);
+    const receivingRoute = await readFile(resolve(root, `app${route}/route.ts`), 'utf8');
+    assert.ok(receivingRoute.includes(`${handler} as POST`));
+  }
+  assert.match(FORM_REGISTRY['system.security-mfa-setup'].capabilities.explanation, /\/api\/security\/confirm/);
+  assert.match(FORM_REGISTRY['system.security-mfa-activation'].capabilities.explanation, /local acknowledgement/i);
+  for (const id of ['system.backup-export', 'system.backup-key-recovery']) {
+    assert.match(FORM_REGISTRY[id].capabilities.explanation, /\/api\/admin\/backup-transfer\/download/);
+  }
+  for (const path of ['components/security/security-workspace.tsx', 'components/security/backup-transfer-workspace.tsx', 'lib/security/controller.ts', 'lib/portability/service.ts']) {
+    const source = await readFile(resolve(root, path), 'utf8');
+    assert.doesNotMatch(source, /(?:from\s*['"][^'"]*(?:\/forms\/|\/components\/forms)|\b(?:customAnswers|formVersion|form_answer_sets|form_answer_values)\b)/,
+      `${path} must keep secrets outside generic form configuration and answer storage`);
+  }
 });
 
 void test('return-case capability explains its conditional receiving actions', () => {

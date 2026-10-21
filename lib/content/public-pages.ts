@@ -1,5 +1,6 @@
 import { getManualDeliveryQuote } from '../checkout/validation';
 import { phaseOneMarketplacePolicy } from '../marketplace/policy';
+import { companyDetails } from './company-details';
 
 type Section = {
   id: string;
@@ -79,13 +80,13 @@ export const publicPages = {
         id: 'email',
         title: 'Email HastaBazaar support',
         paragraphs: [
-          'For general questions, help accessing an order or a privacy enquiry, email support@hastabazaar.com. If your question concerns an order, include its order number and a clear description of the issue.',
+          `For general questions, help accessing an order or a privacy enquiry, email ${companyDetails.supportEmail}. If your question concerns an order, include its order number and a clear description of the issue.`,
           'Please do not email passwords, one-time codes or private receipt links. We may ask you to verify order ownership before sharing private details.',
         ],
         links: [
           {
-            label: 'support@hastabazaar.com',
-            href: 'mailto:support@hastabazaar.com',
+            label: companyDetails.supportEmail,
+            href: `mailto:${companyDetails.supportEmail}`,
           },
         ],
       },
@@ -159,7 +160,7 @@ export const publicPages = {
           `Kathmandu, Lalitpur and Bhaktapur: ${rate('Kathmandu')}.`,
           `Configured Terai delivery districts, including Dhanusha: ${rate('Dhanusha')}.`,
           `Other Nepal districts: ${rate('Dolpa')}.`,
-          'The product calculator shows the current one-store district base rate. Multiple products from the same store share that fee; each additional store adds 50% of the base. Checkout saves the applied pricing policy and amount. This is not a live courier quote, and there is no separate buyer platform fee.',
+          'The product calculator shows the current one-store district base rate. Multiple products from the same store share that fee; each additional store adds 50% of the base. Checkout saves the applied pricing policy and amount. This is not a live courier quote. Any Platform service fee is shown separately at checkout, once per order. It is non-refundable except where required by law. Orders keep their saved fee and terms when settings change.',
         ],
       },
       {

@@ -1,6 +1,6 @@
 # Active local project
 
-The authoritative local Hastabazaar checkout is `C:/Users/abinash/Desktop/Hatskala`.
+The authoritative local Hastabazaar checkout is `C:/Users/abinash/Desktop/HastaBazaar`.
 Use this directory for local development and preview. Old worktrees, dated copies, and paths recorded in historical reports are not active launch targets.
 
 Use `npm run dev` or `START-HASTABAZAAR.cmd` to start the checked local preview at `http://localhost:3018`. Use `npm run local:check` for its read-only preflight. Do not bypass the launcher with a direct `vinext`, Vite, or Wrangler command to get around a failed check.
@@ -14,3 +14,5 @@ The existing `.staging` marker and exactly one local D1 database must pass the r
 Recovery ZIPs in the sibling `C:/Users/abinash/Desktop/Hatskala-backups` folder are archives, not active projects. Do not extract or launch one during ordinary development. A recovery operation requires a concrete review of the intended source and destination first.
 
 See `LOCAL-START.md` for the user's launch instructions.
+
+The user-approved move to this folder was completed on 2026-10-16. The former Desktop/Hatskala folder is retired and must not be launched. Its retained archives and reports are historical only.

@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { copyFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { buildHostedSecurityCli } from './build-hosted-security-cli.mjs';
 
 const cli = fileURLToPath(
   new URL('../node_modules/vinext/dist/cli.js', import.meta.url),
@@ -22,5 +23,6 @@ if (result.status === 0) {
     new URL('../deployment/babal/app.cjs', import.meta.url),
     new URL('../dist/standalone/app.cjs', import.meta.url),
   );
+  await buildHostedSecurityCli(fileURLToPath(new URL('../dist/standalone/', import.meta.url)));
 }
 process.exitCode = result.status ?? 1;

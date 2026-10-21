@@ -15,10 +15,12 @@ import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fi
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
 import { clearVersionedSessionAttempt, getOrCreateVersionedSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
+import { MANAGED_SUPPLIER_AGREEMENT_VERSION } from '@/lib/sellers/managed-identity';
+import { SellerOnboardingFields } from './seller-onboarding-fields';
 
 const catalogBaseKeys = ['publicName', 'publicCity', 'sellerId', 'expectedVersion', 'experienceCraft',
   'experienceBand', 'facebookUrl', 'instagramUrl', 'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl',
-  'legalName', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'representativeIdentity', 'personalPanCertificate', 'requestId', 'formVersion', 'customAnswers'];
+  'legalName', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'representativeIdentity', 'personalPanCertificate', 'bankVerification', 'payoutBeneficiary', 'bankName', 'bankBranch', 'bankAccountNumber', 'pickupAddress', 'returnAddress', 'requestId', 'formVersion', 'customAnswers'];
 
 const networks = [
   ['facebook', 'Facebook'],
@@ -106,7 +108,7 @@ export function MakerApplicationProfileForm({ profile, managedTerms }: { profile
       </select>
     </div>
     {networks.map(([network, label]) => <Field key={network} name={`${network}Url`} label={`${label} link (optional)`} type="url" defaultValue={profile.socialLinks[network] ?? ''} />)}
-    {correcting && managedTerms ? <div className="space-y-4 sm:col-span-2"><p className="text-sm">Supply government identity evidence and explicitly accept the current terms to resubmit requested corrections.</p><CompanySellingIdentity terms={managedTerms}/><ManagedMakerIdentityFields includeUploads/><ManagedMakerAgreementFields terms={managedTerms}/></div> : null}
+    {correcting && managedTerms ? <div className="space-y-4 sm:col-span-2"><p className="text-sm">Supply government identity evidence and explicitly accept the current terms to resubmit requested corrections. Prior evidence and acceptances remain recorded.</p><CompanySellingIdentity terms={managedTerms}/><ManagedMakerIdentityFields includeUploads requirePersonalPan={managedTerms.version===MANAGED_SUPPLIER_AGREEMENT_VERSION}/>{managedTerms.version===MANAGED_SUPPLIER_AGREEMENT_VERSION ? <SellerOnboardingFields/> : null}<ManagedMakerAgreementFields terms={managedTerms}/></div> : null}
     <p className="text-sm leading-6 text-muted-foreground sm:col-span-2">Your private verification, pickup, return, and invoice addresses are not shown here. Empty optional public sections stay hidden.</p>
     {catalog.config ? <div className="sm:col-span-2"><ConfiguredFields config={catalog.config} baseKeys={catalogBaseKeys} /></div> : null}
     {catalog.status !== 'ready' ? <p role="alert" className="text-sm text-destructive sm:col-span-2">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}

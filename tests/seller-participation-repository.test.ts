@@ -127,6 +127,9 @@ void test('managed application persists absent tax data, private address, and ed
   const sqlite = new DatabaseSync(':memory:');
   try {
     await applyMigrations(sqlite);
+    sqlite.exec("INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES('fixture-config-author','config@example.test','Fixture configuration author','active',1,1)");
+    const {historicalCommissionFixture}=await import('./helpers/historical-commission-fixture');
+    historicalCommissionFixture(sqlite,'fixture-config-author');
     const database = new TestDatabase(sqlite) as unknown as D1Database;
     const parsed = parseSellerApplication(managedMakerForm());
     assert.ok(parsed.input, parsed.errors.join('\n'));

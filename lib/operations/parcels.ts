@@ -1,4 +1,5 @@
 import { assertFirstCodFulfillmentAllowed } from '../orders/first-cod-review';
+import { payableOrderTotalSql } from '../db/repositories/platform-service-fee';
 import {
   cancellationPreview,
   cancelSelectedParcels,
@@ -18,6 +19,9 @@ import { safeCourierUrl, parseLocation } from '../delivery/validation';
 import { buildEarningsAccrualStatements } from '../db/repositories/payouts';
 import { accrueManagedEntitlements } from '../db/repositories/managed-settlements';
 import { issueManagedInvoiceGroups } from '../db/repositories/managed-documents';
+import { withReceiptGroups } from '../documents/billing';
+import type { OrderDocumentSnapshot } from '../db/repositories/orders';
+import { receiptNumberStatements } from '../db/repositories/billing-documents';
 import { getEffectiveBusinessSetting } from '../db/repositories/business-settings';
 import {
   addKathmanduBusinessDays,
@@ -316,7 +320,7 @@ export async function prepareSellerParcels(
   if (await repeated(db, o.requestId, o.actorId, payload)) return;
   const order = await db
     .prepare(
-      "SELECT COALESCE(current_total_paisa,grand_total_paisa) AS total,cancellation_version AS cancellationVersion FROM orders WHERE id=? AND status IN ('confirmed','packing','ready_for_pickup')",
+      `SELECT ${payableOrderTotalSql()} AS total,cancellation_version AS cancellationVersion FROM orders WHERE id=? AND status IN ('confirmed','packing','ready_for_pickup')`,
     )
     .bind(o.orderId)
     .first<{ total: number; cancellationVersion: number }>();
@@ -1124,6 +1128,8 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       p.orderId,
       JSON.parse(statement.snapshot) as Record<string, unknown>,
     );
+    const paymentReceiptSnapshot=withReceiptGroups({...snapshot,
+      documentTitle:'Cash on delivery payment receipt',paymentStatus:'paid',issuedAt:o.now} as OrderDocumentSnapshot);
     statements.push(
       db
         .prepare(
@@ -1132,17 +1138,14 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
         .bind(
           crypto.randomUUID(),
           'RCPT-PARCEL-' + p.orderId,
-          JSON.stringify({
-            ...snapshot,
-            documentTitle: 'Cash on delivery payment receipt',
-            paymentStatus: 'paid',
-            issuedAt: o.now,
-          }),
+          JSON.stringify(paymentReceiptSnapshot),
           o.requestId + ':payment-receipt',
           o.now,
           p.orderId,
         ),
     );
+    statements.push(...await receiptNumberStatements(db,{snapshot:paymentReceiptSnapshot,
+      requestId:o.requestId+':payment-receipt',now:o.now}));
   }
   statements.push(
     ...buildEarningsAccrualStatements(db, { orderId: p.orderId, now: o.now }),

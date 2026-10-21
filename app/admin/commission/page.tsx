@@ -9,6 +9,7 @@ import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { getCommissionRateState } from '@/lib/db/repositories/commission-rates';
 import { getCommissionReport } from '@/lib/db/repositories/commission-reporting';
+import { getCommissionSetting } from '@/lib/db/repositories/marketplace-settings';
 import {
   commissionDate,
   type CommissionFilters,
@@ -34,8 +35,9 @@ export default async function CommissionPage({
     page: Number(first('page') ?? 1),
   };
   const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const [state, result] = await Promise.all([
-    getCommissionRateState(database),
+  const rateState = getCommissionRateState(database);
+  const [state, result, base] = await Promise.all([
+    rateState,
     getCommissionReport(database, filters)
       .then((report) => ({ report, error: '' }))
       .catch(async (error) => {
@@ -45,11 +47,15 @@ export default async function CommissionPage({
           error: error.message,
         };
       }),
+    rateState.then((state) => getCommissionSetting(database, state.asOf)),
   ]);
   const { report, error: filterError } = result;
   const now = state.asOf;
   const scheduled = state.history.find(
     (change) => change.status === 'scheduled',
+  );
+  const currentSupplement = state.history.find(
+    (change) => change.id === state.current.version && change.status === 'active',
   );
   return (
     <div className="space-y-7">
@@ -79,18 +85,33 @@ export default async function CommissionPage({
           ))}
         </nav>
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
         <section className="rounded-2xl border bg-card p-5 sm:p-6">
           <h2 className="text-sm font-semibold text-muted-foreground">
-            Current published rate
+            Current saved base rate
           </h2>
           <p className="mt-2 font-heading text-4xl">
-            {state.current.basisPoints / 100}%
+            {base.percent}%
           </p>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Applies to future orders for sellers who accepted this fee schedule.
-            Other sellers retain their previous accepted rate; the launch rate
-            is 9%.
+            The current base in Business Settings applies when no accepted,
+            effective fee supplement applies to the seller. Existing orders
+            retain their recorded rates.
+          </p>
+        </section>
+        <section className="rounded-2xl border bg-card p-5 sm:p-6">
+          <h2 className="text-sm font-semibold text-muted-foreground">
+            Current published fee supplement
+          </h2>
+          <p className={`mt-2 font-heading ${currentSupplement ? 'text-4xl' : 'text-2xl'}`}>
+            {currentSupplement
+              ? `${currentSupplement.basisPoints / 100}%`
+              : 'No published fee supplement'}
+          </p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            A supplement applies to future orders only after its effective date
+            and the seller&apos;s acceptance. An earlier accepted, effective supplement
+            can still apply to a seller who has not accepted the latest one.
           </p>
         </section>
         <section className="rounded-2xl border bg-card p-5 sm:p-6">
@@ -189,10 +210,11 @@ export default async function CommissionPage({
             </article>
           ))}
           <article className="rounded-xl border border-dashed p-4">
-            <h3 className="font-semibold">9% launch commission</h3>
+            <h3 className="font-semibold">Original recorded terms</h3>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              The original rate continues for sellers until a later fee schedule
-              takes effect and they accept it.
+              The current saved base and published supplements are shown above.
+              Historical orders and agreements retain their original recorded
+              commission terms.
             </p>
           </article>
         </div>

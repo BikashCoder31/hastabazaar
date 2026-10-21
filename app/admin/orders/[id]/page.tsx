@@ -1,4 +1,6 @@
 import { FirstCodConfirmation } from '@/components/admin/first-cod-confirmation';
+import { PlatformServiceFeeRefund } from '@/components/admin/platform-service-fee-refund';
+import { serviceFeeRefundSummary } from '@/lib/db/repositories/platform-service-fee-refunds';
 import { getFirstCodReview } from '@/lib/orders/first-cod-review';
 import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import { CancellationReviewSection } from '@/components/admin/cancellation-review-section';
@@ -61,6 +63,7 @@ export default async function AdminOrderPage({
   const address = order.address;
   const db = requireDatabase(env as unknown as { DB?: D1Database });
   const codReview = await getFirstCodReview(db, id);
+  const feeSummary = staff.role==='super_admin' ? await serviceFeeRefundSummary(db,id) : null;
   const codPending =
     codReview?.status === 'pending' && order.status !== 'cancelled';
   const companyPreparation = staff.role==='super_admin' && !codPending
@@ -126,6 +129,7 @@ export default async function AdminOrderPage({
   const visibleParcels = staff.role === 'super_admin' ? parcels : parcels.filter(p => p.method !== 'own_rider').map(p => ({ ...p, riderUserId: null, latitude: null, longitude: null, accuracy: null, positionAt: null, riderFinanceSnapshotJson: null }));
   return (
     <div>
+      {feeSummary && feeSummary.chargedPaisa > 0 ? <div className="mb-6"><PlatformServiceFeeRefund orderId={id} {...feeSummary}/></div> : null}
       <CancellationReviewSection db={db} orderId={id} />
       <StaffFormHistoryLinks
         entries={[
@@ -378,6 +382,14 @@ export default async function AdminOrderPage({
               <div className="flex justify-between border-t pt-3 font-semibold">
                 <dt>COD total</dt>
                 <dd>{money(order.grandTotalPaisa)}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt>Platform service fee (included)</dt>
+                <dd>{money(order.buyerPlatformFeePaisa)}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt>Legally required fee refunds</dt>
+                <dd>{money(feeSummary?.refundedPaisa??0)}</dd>
               </div>
               <div className="flex justify-between">
                 <dt>Payment</dt>

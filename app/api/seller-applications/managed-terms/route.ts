@@ -1,9 +1,9 @@
 import { requireSellerTermsApi, SellerTermsAuthorizationError } from '@/lib/auth/seller-commercial-access';
 import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
-import { getManagedMakerApplicationTerms } from '@/lib/db/repositories/managed-maker-details';
+import { getManagedMakerApplicationTerms, managedAgreementVersionForSeller } from '@/lib/db/repositories/managed-maker-details';
 import {
-  MANAGED_MAKER_AGREEMENT_VERSION,
+  MANAGED_SUPPLIER_AGREEMENT_VERSION,
   managedMakerAgreementTerms,
 } from '@/lib/sellers/managed-identity';
 import { companyDetails } from '@/lib/content/company-details';
@@ -27,19 +27,19 @@ export async function GET(): Promise<Response> {
     return Response.json({error:error instanceof SellerTermsAuthorizationError ? error.message : 'Seller terms access could not be verified.'},
       {status:error instanceof SellerTermsAuthorizationError ? error.status : 503,headers:{'Cache-Control':'private, no-store','Vary':'Cookie'}});
   }
-  const terms = await getManagedMakerApplicationTerms(
-    requireDatabase(env as unknown as { DB?: D1Database }),
-  );
   const db = requireDatabase(env as unknown as { DB?: D1Database });
   const participation = await getSellerParticipationForUser(db, viewer.userId);
+  const version = participation?.participationRoute==='managed_maker'
+    ? await managedAgreementVersionForSeller(db,participation.sellerId) : MANAGED_SUPPLIER_AGREEMENT_VERSION;
+  const terms = await getManagedMakerApplicationTerms(db,Date.now(),version);
   const offers = participation?.participationRoute === 'managed_maker'
     ? await getManagedTermsOffers(db, participation.sellerId, Date.now()) : null;
   return Response.json(
     {
       ...terms,
-      version: MANAGED_MAKER_AGREEMENT_VERSION,
+      version,
       company: companyDetails,
-      terms: managedMakerAgreementTerms(terms.platformRetentionBps),
+      terms: managedMakerAgreementTerms(terms.platformRetentionBps,version),
       offers,
     },
     { headers: { 'Cache-Control': 'private, no-store', 'Vary': 'Cookie' } },

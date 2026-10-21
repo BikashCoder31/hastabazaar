@@ -1,6 +1,11 @@
 import { getRegisteredSellerTerms } from '../lib/db/repositories/marketplace-settings';
+import { createHash } from 'node:crypto';
+import { MANAGED_SUPPLIER_AGREEMENT_VERSION, managedMakerAgreementSnapshot } from '../lib/sellers/managed-identity';
+import { getBusinessSettingDefinition } from '../lib/configuration/definitions';
+import { parseCurrentSellerApplication } from '../lib/sellers/onboarding';
 import { startSellerRegistration } from '../lib/db/repositories/seller-commercial-access';
 import { addManagedIdentityUpload, managedIdentityDocument } from './helpers/managed-identity-fixture';
+import { historicalCommissionFixture } from './helpers/historical-commission-fixture';
 import assert from 'node:assert/strict';
 import { createRequire, registerHooks } from 'node:module';
 import { readdir, readFile } from 'node:fs/promises';
@@ -15,17 +20,17 @@ import { FORM_REGISTRY, IMPLEMENTED_FORM_ADAPTERS } from '../lib/forms/registry'
 import { validateAnswersForDefinition, validateFormDraft } from '../lib/forms/validation';
 import { listFormAnswersForSubject } from '../lib/db/repositories/form-answers';
 import { authorizeFormAnswerRead } from '../lib/forms/access';
-import { createSellerApplication, updateSellerParticipationPublicProfile } from '../lib/db/repositories/seller-applications';
+import { createSellerApplication, createCurrentSellerApplication, updateSellerParticipationPublicProfile } from '../lib/db/repositories/seller-applications';
 import { updateSellerProfile } from '../lib/db/repositories/seller-profile';
 import { createProductSubmission, setProductInventory } from '../lib/db/repositories/products';
 import { digestMultipartRequest, validateSellerMultipartStructure } from '../lib/forms/submission';
 import { requestFingerprint } from '../lib/http/rate-limit';
-import { parseSellerApplication } from '../lib/sellers/application';
+import { parseSellerApplication, sellerDocumentsForApplication } from '../lib/sellers/application';
 
 declare global {
   var sellerCatalogDb: D1Database;
   var sellerCatalogActor: { sellerId: string; userId: string } | null;
-  var sellerCatalogCustomer: { userId: string; email: string } | null;
+  var sellerCatalogCustomer: { userId: string; email: string; authSubject?:string } | null;
   var sellerCatalogMedia: { stored: string[]; deleted: string[]; put(key: string): Promise<void>; delete(key: string): Promise<void> };
   var sellerCatalogReact:typeof createElement;
 }
@@ -246,6 +251,7 @@ async function fixture() {
     for (const part of source.split('--> statement-breakpoint')) if (part.trim()) sqlite.exec(part);
   }
   sqlite.exec("INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES ('admin','admin@example.test','Fictional Admin','active',1,1)");
+  historicalCommissionFixture(sqlite, 'admin');
   sqlite.exec("INSERT INTO categories(id,slug,name_en,is_active,sort_order,created_at,updated_at) VALUES ('cat-test','fictional-clay','Fictional Clay',1,1,1,1)");
   const db = new Database(sqlite);
   globalThis.sellerCatalogDb = db as unknown as D1Database;
@@ -263,10 +269,13 @@ function seed(sqlite: DatabaseSync, formId: string, fields: unknown[] = [field])
 async function signInApplicant(sqlite: DatabaseSync,userId='applicant-user',email='maker@example.test') {
   sqlite.prepare(`INSERT INTO users(id,auth_subject,email,display_name,status,created_at,updated_at) VALUES (?,?,?,'Fictional Applicant','active',1,1)`).run(userId,'test:'+userId,email);
   sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES (?,'customer',1)").run(userId);
-  globalThis.sellerCatalogCustomer={userId,email};
+  sqlite.prepare('UPDATE users SET phone=? WHERE id=?').run('9800000000',userId);
+  sqlite.prepare('INSERT INTO account_email_verifications(user_id,email,verified_at) VALUES (?,?,1)').run(userId,email);
+  sqlite.prepare('INSERT INTO account_phone_verifications(user_id,phone,verified_at) VALUES (?,\'+9779800000000\',1)').run(userId);
+  globalThis.sellerCatalogCustomer={userId,email,authSubject:'test:'+userId};
   await startSellerRegistration(globalThis.sellerCatalogDb,{userId,requestId:'start-'+userId,now:1});
 }
-function managedApplication() {
+function managedApplication(current=false) {
   const form = new FormData();
   for (const [key, value] of Object.entries({
     hasBusinessTaxRegistration: 'no', applicantType: 'individual', legalName: 'Fictional Maker', tradingName: 'Fictional Studio',
@@ -275,7 +284,22 @@ function managedApplication() {
     productCategories: 'Clay', experienceCraft: 'Clay', experienceBand: 'less_than_one_year', applicationAcknowledgement: 'yes',
   })) form.set(key, value);
   addManagedIdentityUpload(form);
+  if(current) {
+  form.set('managedAgreementVersion',MANAGED_SUPPLIER_AGREEMENT_VERSION);
+  form.set('managedAgreementContext',createHash('sha256').update(JSON.stringify(managedMakerAgreementSnapshot(getBusinessSettingDefinition('managed_maker_company_account').defaultValue,900,MANAGED_SUPPLIER_AGREEMENT_VERSION))).digest('hex'));
+  form.set('personalPan','123456789');
+  addCurrentPayoutFields(form);
+  for(const key of ['personalPanCertificate','bankVerification'])form.set(key,new File(['%PDF-1.4\nFictional evidence'],key+'.pdf',{type:'application/pdf'}));
+  }
   return form;
+}
+function addCurrentPayoutFields(form:FormData) {
+  for(const [key,value] of Object.entries({payoutBeneficiary:'Fictional Applicant',bankName:'Fictional Bank',bankBranch:'Birgunj',bankAccountNumber:'1234567890',
+    pickupAddress:'Fictional pickup, Birgunj 11, Parsa',returnAddress:'Fictional return, Birgunj 11, Parsa'}))form.set(key,value);
+}
+function currentApplicationDocuments(input:NonNullable<ReturnType<typeof parseCurrentSellerApplication>['input']>,sellerId:string) {
+  return sellerDocumentsForApplication(input).filter(doc=>doc.required).map(doc=>({id:crypto.randomUUID(),kind:doc.kind,
+    objectKey:`private/seller-documents/${sellerId}/${crypto.randomUUID()}`,originalName:'Fictional.pdf',mimeType:'application/pdf',sizeBytes:30}));
 }
 const answer = { formId: 'seller.application', version: 1, answers: [{ fieldId: field.id, label: field.label, type: field.type, value: 'Fictional answer' }] } as const;
 function formLink(formId: string, requestId: string) {
@@ -487,7 +511,7 @@ void test('application route rejects missing, unknown and file custom answers an
     await signInApplicant(sqlite);    seed(sqlite, 'seller.application', [field, builtIn('tradingName')]);
     const { POST } = await import('../app/api/seller-applications/route');
     const send = (requestId: string, options: { answer?: string | null; unknown?: boolean; tradingName?: string } = {}) => {
-      const form = managedApplication();
+      const form = managedApplication(true);
       form.set('tradingName', options.tradingName ?? 'Fictional Studio');
       form.set('formVersion', '1');
       form.set('requestId', requestId);
@@ -504,7 +528,7 @@ void test('application route rejects missing, unknown and file custom answers an
       ['application-top-level', (form: FormData) => form.set('unrelatedAdminOverride', 'yes')],
       ['application-duplicate', (form: FormData) => form.append('tradingName', 'Injected alternate')],
     ] as const) {
-      const form = managedApplication(); form.set('formVersion', '1'); form.set('requestId', requestId);
+      const form = managedApplication(true); form.set('formVersion', '1'); form.set('requestId', requestId);
       form.set('custom.workshop_note', 'Fictional answer'); mutate(form);
       assert.equal((await POST(new Request('http://localhost:3000/api/seller-applications', { method: 'POST',
         headers: { origin: 'http://localhost:3000' }, body: form }))).status, 400, requestId);
@@ -532,7 +556,7 @@ void test('exhausted seller application quota rejects before consuming the multi
   try {
 
     await signInApplicant(sqlite);    const { POST } = await import('../app/api/seller-applications/route');
-    const form = managedApplication();
+    const form = managedApplication(true);
     form.set('email', 'admin@example.test');
     form.set('requestId', 'application-over-quota');
     const request = new Request('http://localhost:3000/api/seller-applications', {
@@ -560,11 +584,11 @@ void test('invalid and existing-email seller application attempts consume the pu
       });
       return { request, response: POST(request) };
     };
-    const invalid = managedApplication();
+    const invalid = managedApplication(true);
     invalid.delete('legalName');
     const first = send(invalid);
     assert.equal((await first.response).status, 400);
-    const existing = managedApplication();
+    const existing = managedApplication(true);
     existing.set('email', 'admin@example.test');
     existing.set('requestId', 'application-existing-email');
     const second = send(existing);
@@ -1022,18 +1046,18 @@ void test('signed-in application batch race responds with the winning reference,
   try {
 
     await signInApplicant(sqlite);    seed(sqlite, 'seller.application');
-    const requestForm = managedApplication();
+    const requestForm = managedApplication(true);
     requestForm.set('requestId', 'application-route-race');
     requestForm.set('formVersion', '1');
     requestForm.set('custom.workshop_note', 'Fictional answer');
     requestForm.set('profileImage', new File([validPhotoBytes],
       'maker.jpg', { type: 'image/jpeg' }));
     const digest = await digestMultipartRequest(requestForm);
-    const parsed = parseSellerApplication(requestForm);
+    const parsed = parseCurrentSellerApplication(requestForm);
     assert.ok(parsed.input, parsed.errors.join('; '));
     const input = parsed.input;
-    db.beforeBatch = () => createSellerApplication(database, { userId: 'applicant-user', existingAccount: true, sellerId: 'winning-seller',
-      applicationReference: 'HB-WINNING', input, documents: [managedIdentityDocument('winning-seller')], now: 1_800_000_000_400,
+    db.beforeBatch = () => createCurrentSellerApplication(database, { userId: 'applicant-user', existingAccount: true, sellerId: 'winning-seller',
+      applicationReference: 'HB-WINNING', input, documents: currentApplicationDocuments(input,'winning-seller'), now: 1_800_000_000_400,
       form: { ...formLink('seller.application', 'application-route-race'), digest } });
     const { POST } = await import('../app/api/seller-applications/route');
     const send = (form: FormData) => POST(new Request('http://localhost:3000/api/seller-applications', {
@@ -1042,10 +1066,10 @@ void test('signed-in application batch race responds with the winning reference,
     const response = await send(requestForm);
     assert.equal(response.status, 201);
     assert.equal((await response.json() as { applicationReference: string }).applicationReference, 'HB-WINNING');
-    assert.equal(globalThis.sellerCatalogMedia.stored.length, 2);
+    assert.equal(globalThis.sellerCatalogMedia.stored.length, 4);
     assert.deepEqual(globalThis.sellerCatalogMedia.deleted, globalThis.sellerCatalogMedia.stored,
       'the losing application must remove private media uploaded before its DB race');
-    const changed = managedApplication();
+    const changed = managedApplication(true);
     changed.set('email', 'changed@example.test');
     changed.set('requestId', 'application-route-race');
     changed.set('formVersion', '1');
@@ -1059,14 +1083,14 @@ for (const signedIn of [false, true]) {
     const { sqlite, database } = await fixture();
     try {
       seed(sqlite, 'seller.application');
-      const form = managedApplication();
+      const form = managedApplication(true);
       const requestId = `application-prebatch-${signedIn ? 'auth' : 'anon'}`;
       form.set('requestId', requestId);
       form.set('formVersion', '1');
       form.set('custom.workshop_note', 'Fictional answer');
       form.set('profileImage', new File([validPhotoBytes],
         'maker.jpg', { type: 'image/jpeg' }));
-      const parsed = parseSellerApplication(form);
+      const parsed = parseCurrentSellerApplication(form);
       assert.ok(parsed.input, parsed.errors.join('; '));
       const digest = await digestMultipartRequest(form);
       const winnerUserId = signedIn ? 'signed-in-user' : 'winning-user';
@@ -1076,9 +1100,9 @@ for (const signedIn of [false, true]) {
       globalThis.sellerCatalogMedia.put = async function (key) {
         this.stored.push(key);
         if (this.stored.length !== 1) return;
-        await createSellerApplication(database, { userId: winnerUserId, existingAccount: signedIn,
+        await createCurrentSellerApplication(database, { userId: winnerUserId, existingAccount: signedIn,
           sellerId: 'winning-seller', applicationReference: 'HB-WINNING-PREBATCH',
-          input: parsed.input!, documents: [managedIdentityDocument('winning-seller')], now: 1_800_000_000_400,
+          input: parsed.input!, documents: currentApplicationDocuments(parsed.input!,'winning-seller'), now: 1_800_000_000_400,
           form: { ...formLink('seller.application', requestId), digest } });
       };
       const { POST } = await import('../app/api/seller-applications/route');
@@ -1094,14 +1118,14 @@ for (const signedIn of [false, true]) {
       }
       assert.equal(response.status, 201);
       assert.equal((await response.json() as { applicationReference: string }).applicationReference, 'HB-WINNING-PREBATCH');
-      assert.equal(globalThis.sellerCatalogMedia.stored.length, 2);
+      assert.equal(globalThis.sellerCatalogMedia.stored.length, 4);
       assert.deepEqual(globalThis.sellerCatalogMedia.deleted, globalThis.sellerCatalogMedia.stored,
         'the private losing upload must be removed when the pre-batch replay finds a winner');
       assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM seller_profiles').get() as { count: number }).count, 1);
       assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM audit_logs WHERE request_id=?').get(requestId) as { count: number }).count, 1);
       assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM form_answer_sets WHERE request_id=?').get(requestId) as { count: number }).count, 1);
 
-      const changed = managedApplication();
+      const changed = managedApplication(true);
       changed.set('requestId', requestId);
       changed.set('formVersion', '1');
       changed.set('custom.workshop_note', 'Changed answer');
@@ -1281,12 +1305,14 @@ void test('actual registered application controller accepts displayed context an
     const terms=await getRegisteredSellerTerms(database);
     const form=new FormData();for(const [key,value] of Object.entries({
       hasBusinessTaxRegistration:'yes',applicantType:'individual',taxStatus:'business_pan_only',
-      taxRegistrationNumber:'123456789',legalName:'Fictional Applicant',tradingName:'Fictional Registered Studio',
+      taxRegistrationNumber:'123456789',legalName:'Fictional Applicant',tradingName:'Fictional Registered Studio',representativeName:'Fictional Applicant',
+      registrationAuthority:'Fictional firm office',registrationNumber:'FICTIONAL-FIRM-1',
       email:'maker@example.test',phone:'9800000000',province:'Madhesh',district:'Parsa',municipality:'Birgunj',
       locality:'Private workshop',businessDescription:'Fictional registered craft goods',productCategories:'Clay',
       acceptedTerms:'yes',sellerAgreementContext:terms.context,formVersion:'1',requestId:'registered-controller',
     }))form.set(key,value);
-    const parsed=parseSellerApplication(form);assert.ok(parsed.input,parsed.errors.join('; '));
+    addCurrentPayoutFields(form);
+    const parsed=parseCurrentSellerApplication(form);assert.ok(parsed.input,parsed.errors.join('; '));
     const {sellerDocumentsForApplication}=await import('../lib/sellers/application');
     for(const doc of sellerDocumentsForApplication(parsed.input).filter(doc=>doc.required)){
       form.set(doc.field,new File(['%PDF-1.4\nFictional document'],doc.kind+'.pdf',{type:'application/pdf'}));
@@ -1296,5 +1322,26 @@ void test('actual registered application controller accepts displayed context an
     assert.equal(response.status,201,await response.text());
     const row=sqlite.prepare("SELECT commission_bps,accepted_by FROM seller_agreement_acceptance_history WHERE acceptance_request_id='registered-controller'").get();
     assert.equal(row?.commission_bps,terms.basisPoints);assert.equal(row?.accepted_by,'applicant-user');
+  }finally{sqlite.close();}
+});
+
+void test('lost committed application response preserves private evidence and exact replay recovers without uploading again',async()=>{
+  const {sqlite,db,database}=await fixture();
+  try {
+    await signInApplicant(sqlite);seed(sqlite,'seller.application',[]);
+    const form=managedApplication(true);form.set('requestId','uncertain-private-evidence');form.set('formVersion','1');
+    const originalBatch=db.batch.bind(db);const originalPrepare=db.prepare.bind(db);let outage=false;
+    db.batch=async statements=>{await originalBatch(statements);outage=true;throw new Error('Lost committed response');};
+    db.prepare=(sql:string)=>{if(outage)throw new Error('Replay read unavailable');return originalPrepare(sql);};
+    const {POST}=await import('../app/api/seller-applications/route');
+    const send=()=>POST(new Request('http://localhost:3000/api/seller-applications',{method:'POST',headers:{origin:'http://localhost:3000'},body:form}));
+    assert.equal((await send()).status,500);
+    assert.equal((sqlite.prepare('SELECT COUNT(*) AS n FROM seller_documents').get() as {n:number}).n,3);
+    assert.equal(globalThis.sellerCatalogMedia.stored.length,3);assert.equal(globalThis.sellerCatalogMedia.deleted.length,0);
+    outage=false;db.batch=originalBatch;
+    assert.equal((await send()).status,201);
+    assert.equal(globalThis.sellerCatalogMedia.stored.length,3,'exact replay recovers before uploads');
+    assert.equal(globalThis.sellerCatalogMedia.deleted.length,0);
+    assert.ok(database);
   }finally{sqlite.close();}
 });

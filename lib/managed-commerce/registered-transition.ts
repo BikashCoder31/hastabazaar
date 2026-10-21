@@ -8,6 +8,7 @@ import { staffMutationGuard } from '@/lib/db/repositories/staff-mutation-guard';
 import { getRegisteredSellerTerms, prepareSellerCommissionAcceptance } from '@/lib/db/repositories/marketplace-settings';
 import { makerMutationGuards, getManagedMakerAuthority } from './maker-authority';
 import type { SellerApplicationDocument } from '@/lib/sellers/application';
+import { isPendingPayoutReference } from '../sellers/onboarding';
 
 export class RouteTransitionError extends Error {}
 type TransitionForm = {requestId:string;versionId:string;answers:FormAnswerSnapshot;digest?:string};
@@ -62,6 +63,8 @@ async function evidence(db:D1Database,sellerId:string,references:readonly string
       FROM seller_documents WHERE id=? AND seller_id=? AND status IN ('pending','verified') AND uploaded_at<=?`).bind(required('Private document ID',reference,1),sellerId,now).first<Evidence>();
     if(!row||!row.objectKey.startsWith(`private/seller-documents/${sellerId}/`)||!kinds.includes(row.kind))
       throw new RouteTransitionError('Required private registration, tax or receiving-account evidence is missing, rejected or belongs to another maker.');
+    if (row.kind==='pan_certificate' && !upload && !row.objectKey.startsWith(`private/seller-documents/${sellerId}/transition-`))
+      throw new RouteTransitionError('Upload a business PAN certificate for this transition. A retained personal PAN certificate cannot prove business registration.');
     documents.push(row);
   }
   if(kinds.some(kind=>documents.filter(document=>document.kind===kind).length!==1)||documents.length!==kinds.length)
@@ -79,6 +82,7 @@ function termsGuard(db:D1Database,snapshot:TermsSnapshot,now:number) {
     [now,now,snapshot.commissionSettingVersionId??'']);
 }
 async function validatedSnapshot(db:D1Database,input:RegisteredTransitionInput):Promise<TermsSnapshot> {
+  if (isPendingPayoutReference(input.payoutAccountReference??'')) throw new RouteTransitionError('A reviewed receiving-account reference is required.');
   if(!['PAN','VAT','BOTH'].includes(input.taxMode))throw new RangeError('Select PAN, VAT, or both.');
   const terms=await getRegisteredSellerTerms(db,input.now);
   if(input.registeredTermsContext!==terms.context||input.agreementVersion!==terms.agreementVersion||input.agreementLanguage!=='en'||input.agreementAcceptedAt!==input.now)

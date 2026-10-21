@@ -61,6 +61,8 @@ export function assertBusinessSettingPublicationReady<
   value: BusinessSettingValue<K>,
   context: { simulationAllowed?: boolean } = {},
 ): void {
+  const blocked = businessSettingPublicationLimitation(key, value);
+  if (blocked) throw new RangeError(blocked);
   if (
     key === 'managed_maker_active_model' &&
     value !== null &&
@@ -114,4 +116,14 @@ export function assertBusinessSettingPublicationReady<
       value as BusinessSettingValue<'homepage_occasion_slides'>,
     );
   }
+}
+
+export function businessSettingPublicationLimitation(key: BusinessSettingKey, value: unknown): string | null {
+  if (['payout_processing_weekday', 'payout_cutoff_local_time', 'payout_timezone'].includes(key))
+    return 'Scheduled payout execution is not implemented. This calendar setting cannot be published; existing values and manual payout records remain available.';
+  if (key === 'platform_payout_minimum_paisa' && value !== 0)
+    return 'A configurable payout minimum is not implemented. Keep the approved positive eligible balance rule (zero minimum).';
+  if (key === 'new_seller_reserve_bps' && value !== 0)
+    return 'A nonzero seller reserve requires an approved reserve agreement and release policy. Publication is unavailable until that workflow is implemented.';
+  return null;
 }

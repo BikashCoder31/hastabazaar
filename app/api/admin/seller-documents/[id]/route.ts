@@ -7,6 +7,7 @@ import {
 } from '@/lib/auth/staff';
 import { requireDatabase, requireMediaBucket } from '@/lib/db/d1';
 import { getSellerDocumentForStaff } from '@/lib/db/repositories/seller-applications';
+import { PENDING_PAYOUT_PREFIX } from '@/lib/sellers/onboarding';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +38,14 @@ export async function GET(
 
     const object = await requireMediaBucket(bindings).get(document.objectKey);
     if (!object) return json({ error: 'Document file not found.' }, 404);
+    if (new URL(_request.url).searchParams.get('details')==='payout') {
+      const retained=object.customMetadata?.submittedPayout;
+      if (!retained?.startsWith(PENDING_PAYOUT_PREFIX)) return json({error:'No retained submitted payout details for this historical file.'},404);
+      const details=JSON.parse(retained.slice(PENDING_PAYOUT_PREFIX.length)) as Record<string,unknown>;
+      return Response.json({status:'Pending independent verification at submission',
+        ...Object.fromEntries(['version','payoutBeneficiary','bankName','bankBranch','bankAccountNumber'].map(key=>[key,details[key]]))},
+        {headers:{'Cache-Control':'private, no-store, max-age=0',Vary:'Cookie','X-Content-Type-Options':'nosniff'}});
+    }
 
     const safeName = document.originalName
       .replace(/[^\x20-\x7e]/g, '_')

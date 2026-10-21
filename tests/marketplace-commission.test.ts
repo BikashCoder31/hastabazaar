@@ -9,7 +9,6 @@ import {
   setMarketplaceCommission,
 } from '../lib/db/repositories/marketplace-settings';
 import {
-  CURRENT_SELLER_COMMISSION_BPS,
   allocatePlatformDiscountPaisa,
   calculateCommissionBasePaisa,
   calculateCumulativeCommissionReversalPaisa,
@@ -59,14 +58,13 @@ void test('commission lookup uses the centralized versioned Business Settings so
 });
 
 void test('9% commission fixtures use exact half-up minor-unit arithmetic', () => {
-  assert.equal(CURRENT_SELLER_COMMISSION_BPS, 900);
-  assert.equal(calculateSellerCommissionPaisa(100_000), 9_000);
+  assert.equal(calculateSellerCommissionPaisa(100_000, 900), 9_000);
   assert.equal(
     calculateSellerCommissionPaisa(
       calculateCommissionBasePaisa({
         productValuePaisa: 100_000,
         sellerFundedDiscountPaisa: 10_000,
-      }),
+      }), 900,
     ),
     8_100,
   );
@@ -75,7 +73,7 @@ void test('9% commission fixtures use exact half-up minor-unit arithmetic', () =
       calculateCommissionBasePaisa({
         productValuePaisa: 100_000,
         platformFundedDiscountPaisa: 10_000,
-      }),
+      }), 900,
     ),
     9_000,
   );
@@ -87,7 +85,7 @@ void test('9% commission fixtures use exact half-up minor-unit arithmetic', () =
         platformFundedDiscountPaisa: 5_000,
         taxPaisa: 8_000,
         deliveryPaisa: 15_000,
-      }),
+      }), 900,
     ),
     8_100,
   );
@@ -97,14 +95,14 @@ void test('9% commission fixtures use exact half-up minor-unit arithmetic', () =
         productValuePaisa: 100_000,
         taxPaisa: 8_000,
         deliveryPaisa: 15_000,
-      }),
+      }), 900,
     ),
     9_000,
   );
-  assert.equal(calculateSellerCommissionPaisa(101), 9);
-  assert.equal(calculateSellerCommissionPaisa(50), 5);
-  assert.equal(calculateSellerCommissionPaisa(0), 0);
-  assert.throws(() => calculateSellerCommissionPaisa(-1), RangeError);
+  assert.equal(calculateSellerCommissionPaisa(101, 900), 9);
+  assert.equal(calculateSellerCommissionPaisa(50, 900), 5);
+  assert.equal(calculateSellerCommissionPaisa(0, 900), 0);
+  assert.throws(() => calculateSellerCommissionPaisa(-1, 900), RangeError);
   assert.throws(
     () =>
       calculateCommissionBasePaisa({
@@ -183,7 +181,7 @@ void test('platform discounts allocate deterministically across mixed sellers wi
   const second = allocatePlatformDiscountPaisa([...lines].reverse(), 100);
   assert.deepEqual([...first], [...second]);
   assert.equal([...first.values()].reduce((sum, value) => sum + value, 0), 100);
-  assert.equal(calculateSellerCommissionPaisa(300), 27);
+  assert.equal(calculateSellerCommissionPaisa(300, 900), 27);
 });
 
 void test('versioned commission preserves historical snapshots and requires acceptance of a new version', async () => {

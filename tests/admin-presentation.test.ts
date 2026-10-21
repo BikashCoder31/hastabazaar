@@ -32,7 +32,7 @@ void test('staff navigation denies unknown roles and limits staff access to Supe
   }
   assert.deepEqual(
     adminNavigation('admin', []).map((item) => item.href),
-    ['/admin/notifications'],
+    ['/admin/notifications', '/security'],
   );
   const orderDesk = adminNavigation('admin', ['order.manage']);
   assert.ok(orderDesk.some((item) => item.href === '/admin/orders'));

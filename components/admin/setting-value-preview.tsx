@@ -11,6 +11,7 @@ const labels: Record<string, string> = {
   facebook: 'Facebook',
   youtube: 'YouTube',
   enabled: 'Status',
+  amountPaisa: 'Amount per order',
   retentionDays: 'Retention days',
   excludedEmailDomains: 'Excluded email domains',
   excludedPathPrefixes: 'Excluded path prefixes',

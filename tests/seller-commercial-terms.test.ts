@@ -51,6 +51,9 @@ function fixture() {
     sqlite.prepare(`INSERT INTO business_setting_versions VALUES (?,?,?,?,'published',3,'controlled',?,NULL,'SIMULATED approved rate','super',1,'super',1,'super',1,'super',1,'Approved',NULL,?)`)
       .run(id,'independent_seller_commission_bps',version,JSON.stringify(bps),from,id+'-request');
   }
+  // Explicit fictional managed terms; application code has no default rate.
+  sqlite.prepare(`INSERT INTO business_setting_versions VALUES (?,?,1,'900','published',3,'controlled',1,NULL,'Isolated historical terms','super',1,'super',1,'super',1,'super',1,'Approved',NULL,?)`)
+    .run('managed-fixture','managed_sale_linked_platform_retention_bps','managed-fixture-request');
   return { sqlite, database: new Database(sqlite), publish };
 }
 

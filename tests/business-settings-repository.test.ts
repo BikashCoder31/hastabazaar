@@ -190,16 +190,7 @@ void test('controlled financial changes permit the submitted same-actor approval
       now: 1_300,
     });
 
-    assert.equal(
-      (
-        await getEffectiveBusinessSetting(
-          database,
-          'managed_sale_linked_platform_retention_bps',
-          1_999,
-        )
-      ).value,
-      900,
-    );
+    await assert.rejects(getEffectiveBusinessSetting(database, 'managed_sale_linked_platform_retention_bps', 1_999), /No effective published.*rate/i);
     const effective = await getEffectiveBusinessSetting(
       database,
       'managed_sale_linked_platform_retention_bps',
@@ -756,7 +747,7 @@ void test('same-actor rejection retains submitted revision, rejection audit and 
     assert.deepEqual({ ...audit }, { actor_id: 'admin-a', action: 'business_setting.rejected', subject_id: draft.id, reason: input.reason });
     await assert.rejects(rejectBusinessSettingChange(database, { ...input, requestId: 'reject-again' }), BusinessSettingConflictError);
     assert.equal((sqlite.prepare("SELECT count(*) AS n FROM audit_logs WHERE action='business_setting.rejected'").get())?.n, 1);
-    assert.equal((await getEffectiveBusinessSetting(database, 'managed_sale_linked_platform_retention_bps', 2000)).value, 900);
+    await assert.rejects(getEffectiveBusinessSetting(database, 'managed_sale_linked_platform_retention_bps', 2000), /No effective published.*rate/i);
   } finally { sqlite.close(); }
 });
 

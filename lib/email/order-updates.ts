@@ -1,4 +1,5 @@
 import { publicTrackingReferenceSql } from '../riders/public-tracking';
+import { payableOrderTotalSql } from '../db/repositories/platform-service-fee';
 import { orderProgress } from '../orders/progress';
 import { emailRetryDelayMs, maximumEmailAttempts } from './retry-policy';
 import {
@@ -179,7 +180,7 @@ export async function deliverOrderEmails(
     try {
       const data = await db
         .prepare(`SELECT o.order_number AS orderNumber,o.customer_email AS email,o.status AS currentStatus,EXISTS(SELECT 1 FROM first_cod_reviews r WHERE r.order_id=o.id AND r.status='pending') AS firstCodPending,
-    j.order_status AS eventStatus,j.attempts,j.created_at AS occurredAt,COALESCE(o.current_total_paisa,o.grand_total_paisa) AS cashPaisa,
+    j.order_status AS eventStatus,j.attempts,j.created_at AS occurredAt,${payableOrderTotalSql('o')} AS cashPaisa,
     CASE WHEN EXISTS(SELECT 1 FROM shipping_jobs pj JOIN shipping_parcels pp ON pp.shipping_job_id=pj.id WHERE pj.order_id=o.id) THEN (SELECT SUM(pp.collected_paisa) FROM shipping_jobs pj JOIN shipping_parcels pp ON pp.shipping_job_id=pj.id WHERE pj.order_id=o.id) ELSE NULL END AS collectedPaisa,
     COALESCE(o.current_wallet_paisa,o.wallet_credit_paisa) AS walletPaisa,o.current_referral_discount_paisa AS discountPaisa,CASE WHEN o.current_discount_paisa IS NULL THEN o.promo_discount_paisa ELSE o.current_promo_discount_paisa END AS promoPaisa,o.promo_label AS promoLabel,o.promo_revision AS promoRevision,${publicTrackingReferenceSql('o.id', 's.tracking_code')} AS trackingCode
     FROM order_email_jobs j INNER JOIN orders o ON o.id=j.order_id

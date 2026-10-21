@@ -1,6 +1,9 @@
 import { sellerQueueStatuses, orderQueueStatuses, emailQueueStatuses, emailQueueStatusLabels } from '../admin/queue-filters';
 import { INCENTIVE_FORM_CONTRACTS } from '../incentives/forms';
 import { INCENTIVE_WORKSPACE_FORM_CONTRACTS } from './incentive-workspace-contracts';
+import { ACCOUNTING_FILTER_FORM } from '../accounting/form-contract';
+import { SERVICE_FEE_REFUND_FORM } from '../checkout/platform-service-fee-form-contract';
+import { SECURITY_FORM_CONTRACTS } from '../security/form-contracts';
 import type { BaseFieldCapability, FormAudience, FormCapabilities, FormDefinition, FormId, FormMode } from './types';
 import { feedbackTopics } from '../feedback/customer-feedback';
 import { baseFieldCopy } from './plain-language';
@@ -13,6 +16,11 @@ export interface ImplementedFormAdapter {
 
 // Integrations add an entry here only when their server adapter exists and is tested.
 export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormAdapter>> = Object.freeze({
+  ...Object.fromEntries(Object.values(SECURITY_FORM_CONTRACTS).map((definition) => [definition.id, {
+    formId: definition.id, route: definition.route, mode: definition.mode,
+  }])),
+  [SERVICE_FEE_REFUND_FORM.id]: { formId:SERVICE_FEE_REFUND_FORM.id,route:SERVICE_FEE_REFUND_FORM.route,mode:SERVICE_FEE_REFUND_FORM.mode },
+  [ACCOUNTING_FILTER_FORM.id]: { formId: ACCOUNTING_FILTER_FORM.id, route: ACCOUNTING_FILTER_FORM.route, mode: ACCOUNTING_FILTER_FORM.mode },
   ...Object.fromEntries(Object.values(INCENTIVE_WORKSPACE_FORM_CONTRACTS).map(definition=>[definition.id,{formId:definition.id,route:definition.route,mode:definition.mode}])),
   'staff.loyalty-settings': { formId: 'staff.loyalty-settings', route: '/api/admin/loyalty', mode: 'operation' },
   'account.points-redemption': { formId: 'account.points-redemption', route: '/api/account/rewards/redeem', mode: 'transaction' },
@@ -502,14 +510,14 @@ function sellerDefinition(id: 'seller.application' | 'seller.maker-profile' | 's
         'province', 'district', 'municipality', 'ward', 'locality', 'publicCity', 'productCategories',
         'experienceCraft', 'experienceBand', 'facebookUrl', 'instagramUrl', 'linkedinUrl', 'tiktokUrl',
         'xUrl', 'youtubeUrl', 'representativeIdentity', 'bankVerification', 'businessRegistration',
-        'panCertificate', 'vatCertificate'].map((key) => protectedField(key,
+          'panCertificate', 'vatCertificate', 'payoutBeneficiary', 'bankName', 'bankBranch', 'bankAccountNumber', 'pickupAddress', 'returnAddress'].map((key) => protectedField(key,
           'Legal identity, consent, anti-abuse and private upload rules are not configurable.')),
       ...common];
   } else if (id === 'seller.maker-profile') {
     route = '/api/seller-applications/profile';
     fields = [displayField('publicName', 'short_text', true), displayField('publicCity', 'short_text', true),
       ...['sellerId', 'expectedVersion', 'experienceCraft', 'experienceBand', 'facebookUrl', 'instagramUrl',
-        'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl', 'legalName', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'representativeIdentity', 'personalPanCertificate'].map((key) =>
+        'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl', 'legalName', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'representativeIdentity', 'personalPanCertificate', 'bankVerification', 'payoutBeneficiary', 'bankName', 'bankBranch', 'bankAccountNumber', 'pickupAddress', 'returnAddress'].map((key) =>
         protectedField(key, 'Ownership, version, legal identity, social-link and craft validation stay server enforced.')),
       ...common];
   } else if (id === 'seller.profile') {
@@ -522,7 +530,7 @@ function sellerDefinition(id: 'seller.application' | 'seller.maker-profile' | 's
   } else if (id === 'seller.product-submission') {
     route = '/api/seller/products';
     fields = [displayField('nameEn', 'short_text', true), displayField('descriptionEn', 'long_text', true),
-      ...['sku', 'price', 'pricePaisa', 'inventoryQuantity', 'image', 'video', 'reviewRequestId', 'categoryId',
+      ...['sku', 'sellerSku', 'price', 'pricePaisa', 'inventoryQuantity', 'image', 'video', 'reviewRequestId', 'categoryId',
         'occasionIds', 'sellerId', 'producer', 'materials', 'nameNe', 'descriptionNe', 'compareAtPrice',
         'discountPercentage', 'returnEligible', 'madeToOrder', 'preparationDays', 'originStory',
         'countryOfOrigin', 'originEvidenceReference', 'originEvidenceStatus',
@@ -665,7 +673,7 @@ const FIRST_COD_CONFIRMATION_DEFINITION = Object.freeze({
 } satisfies FormDefinition);
 
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
-  Object.assign({ ...INCENTIVE_WORKSPACE_FORM_CONTRACTS, 'staff.first-cod-confirmation': FIRST_COD_CONFIRMATION_DEFINITION, 'account.points-redemption': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.points-redemption'], adapterId: 'account.points-redemption' }), 'staff.loyalty-settings': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.loyalty-settings'], adapterId: 'staff.loyalty-settings' }), 'account.daily-reward': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.daily-reward'], adapterId: 'account.daily-reward' }), 'commerce.promo-quote': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['commerce.promo-quote'], adapterId: 'commerce.promo-quote' }), 'staff.promo-code': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.promo-code'], adapterId: 'staff.promo-code' }) }, Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
+  Object.assign({ ...SECURITY_FORM_CONTRACTS, [SERVICE_FEE_REFUND_FORM.id]:SERVICE_FEE_REFUND_FORM, [ACCOUNTING_FILTER_FORM.id]: ACCOUNTING_FILTER_FORM, ...INCENTIVE_WORKSPACE_FORM_CONTRACTS, 'staff.first-cod-confirmation': FIRST_COD_CONFIRMATION_DEFINITION, 'account.points-redemption': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.points-redemption'], adapterId: 'account.points-redemption' }), 'staff.loyalty-settings': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.loyalty-settings'], adapterId: 'staff.loyalty-settings' }), 'account.daily-reward': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.daily-reward'], adapterId: 'account.daily-reward' }), 'commerce.promo-quote': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['commerce.promo-quote'], adapterId: 'commerce.promo-quote' }), 'staff.promo-code': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.promo-code'], adapterId: 'staff.promo-code' }) }, Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
     const item = Object.hasOwn(PROGRAMMATIC_KEYS, row.split('|')[0])
       ? programmaticDefinition(row.split('|')[0] as ProgrammaticFormId)
       : Object.hasOwn(QUERY_FIELDS, row.split('|')[0]) || row.startsWith('system.local-testing-role|')

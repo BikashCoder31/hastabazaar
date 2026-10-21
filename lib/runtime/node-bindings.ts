@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
 import { Readable } from 'node:stream';
 import { connect as connectTls, type TLSSocket } from 'node:tls';
+import { createHostedSecurityPolicy } from '../security/hosted-policy';
 
 import mysql, {
   type Pool,
@@ -76,8 +77,18 @@ function translateFeatureExpressions(sql: string): string {
   );
 }
 
+function translateBillingExpressions(sql:string):string {
+  return sql.replace(/json_type\(stock_answer\.answers_json,'\$\.productIdentity\.sellerSku'\)='text'|json_extract\((stock_answer\.answers_json),'(\$\.productIdentity\.sellerSku)'\)|json_extract\(((?:d|order_documents|approved)\.snapshot_json),'(\$\.billing\.(?:version|receiptGroups\[\d+\]\.key))'\)|\(seller_profiles\.locality \|\| ', ' \|\| seller_profiles\.municipality \|\| ', ' \|\| seller_profiles\.district \|\| ', ' \|\| seller_profiles\.province \|\| ', Nepal'\)|'(?:''|\\.|[^'\\])*'|"(?:""|\\.|[^"\\])*"|`(?:``|[^`])*`|--[^\n]*|\/\*[\s\S]*?\*\//gi,
+    (token,skuColumn:string|undefined,skuPath:string|undefined,documentColumn:string|undefined,documentPath:string|undefined)=>{
+      if(token.startsWith('json_type('))return "JSON_TYPE(JSON_EXTRACT(stock_answer.answers_json,'$.productIdentity.sellerSku'))='STRING'";
+      if(skuColumn||documentColumn)return `JSON_UNQUOTE(JSON_EXTRACT(${skuColumn??documentColumn},'${skuPath??documentPath}'))`;
+      if(token.startsWith('(seller_profiles.locality'))return "CONCAT(seller_profiles.locality, ', ', seller_profiles.municipality, ', ', seller_profiles.district, ', ', seller_profiles.province, ', Nepal')";
+      return token;
+    });
+}
+
 export function translateSqliteSql(sql: string): string {
-  return translateFeatureExpressions(sql)
+  return translateBillingExpressions(translateFeatureExpressions(sql))
     .replace(/\bchanges\(\)/gi, 'ROW_COUNT()')
     .replace(/\bunixepoch\(\s*'now'\s*\)/gi, 'UNIX_TIMESTAMP()')
     // Exact new claim/redemption empty-field predicates; retain the array type guard.
@@ -262,6 +273,11 @@ class MariaDbD1Database {
       if (typeof formId !== 'string' || !formId) throw new Error('Form transaction ID is invalid.');
       return formId;
     }))].sort();
+    const billingIssuers=[...new Set(statements.filter(s=>s.sql.startsWith('/* billing-issuer-lock */')).map(s=>{
+      const issuer=s.bindings[0];
+      if(typeof issuer!=='string'||!issuer||issuer.length>191)throw new Error('Billing issuer lock is invalid.');
+      return issuer;
+    }))].sort();
     const connection = await databasePool().getConnection();
     const locks: string[] = [];
     try {
@@ -277,6 +293,14 @@ class MariaDbD1Database {
         const key = 'form:' + createHash('sha256').update(requiredEnvironment('DB_NAME') + '\0' + formId).digest('hex').slice(0, 59);
         const [rows] = await connection.execute<RowDataPacket[]>('SELECT GET_LOCK(?,30) AS acquired', [key]);
         if (Number(rows[0]?.acquired) !== 1) throw new Error('Form transaction lock unavailable.');
+        locks.push(key);
+      }
+      for(const issuer of billingIssuers){
+        // Cover empty counters as well as existing sequences on every worker.
+        // All issuers are locked in sorted order before MAX+1 is evaluated.
+        const key='bill:'+createHash('sha256').update(requiredEnvironment('DB_NAME')+'\0'+issuer).digest('hex').slice(0,59);
+        const [rows]=await connection.execute<RowDataPacket[]>('SELECT GET_LOCK(?,30) AS acquired',[key]);
+        if(Number(rows[0]?.acquired)!==1)throw new Error('Billing issuer lock unavailable.');
         locks.push(key);
       }
       for (const statement of formStatements) {
@@ -327,8 +351,7 @@ function mediaRoot(): string {
   );
 }
 
-function objectPath(key: string): string {
-  const root = mediaRoot();
+function objectPath(key: string, root = mediaRoot()): string {
   const target = resolve(root, key.replaceAll('\\', '/'));
   if (target !== root && !target.startsWith(`${root}${sep}`)) {
     throw new Error('Invalid media object key.');
@@ -336,9 +359,38 @@ function objectPath(key: string): string {
   return target;
 }
 
-class LocalMediaBucket {
+export class LocalMediaBucket {
+  constructor(private readonly root = mediaRoot()) {}
+  async list(options:{prefix?:string;cursor?:string;limit?:number}={}){
+    const limit=options.limit??1000;
+    if(!Number.isSafeInteger(limit)||limit<1||limit>1000)throw Error('Invalid media page size.');
+    const files:string[]=[];
+    const walk=async(relative='')=>{
+      let entries;try{entries=await readdir(objectPath(relative,this.root),{withFileTypes:true});}catch(error){if(!relative&&(error as NodeJS.ErrnoException).code==='ENOENT')return;throw error;}
+      for(const entry of entries){
+        if(entry.isSymbolicLink())throw Error('Media inventory cannot follow symbolic links.');
+        const key=relative?relative+'/'+entry.name:entry.name;
+        if(entry.isDirectory())await walk(key);else if(entry.isFile())files.push(key);else throw Error('Unsupported media object.');
+      }
+    };
+    await walk();
+    const names=new Set(files),keys:string[]=[];
+    for(const key of files){
+      const sidecar=key.endsWith('.metadata.json')&&names.has(key.slice(0,-14));
+      if(sidecar){if(names.has(key+'.metadata.json'))throw Error('Ambiguous media metadata object; review before transfer.');continue;}
+      if(!names.has(key+'.metadata.json'))throw Error('Media metadata is missing; a complete transfer cannot be prepared.');
+      keys.push(key);
+    }
+    keys.sort((a,b)=>Buffer.compare(Buffer.from(a),Buffer.from(b)));
+    let after='';if(options.cursor){after=Buffer.from(options.cursor,'base64url').toString('utf8');if(Buffer.from(after).toString('base64url')!==options.cursor)throw Error('Invalid media cursor.');}
+    const matching=keys.filter(key=>(!options.prefix||key.startsWith(options.prefix))&&(!after||Buffer.compare(Buffer.from(key),Buffer.from(after))>0));
+    const selected=matching.slice(0,limit),objects=[];
+    for(const key of selected){const metadata=await this.head(key);if(!metadata)throw Error('A media object changed during inventory.');objects.push(metadata);}
+    const truncated=matching.length>selected.length;
+    return {objects,truncated,delimitedPrefixes:[],...(truncated?{cursor:Buffer.from(selected[selected.length-1]).toString('base64url')}:{})};
+  }
   async put(key: string, value: BodyInit, options: PutOptions = {}) {
-    const target = objectPath(key);
+    const target = objectPath(key,this.root);
     const temporary = `${target}.${crypto.randomUUID()}.tmp`;
     const body = Buffer.from(await new Response(value).arrayBuffer());
     await mkdir(dirname(target), { recursive: true });
@@ -359,7 +411,7 @@ class LocalMediaBucket {
   }
 
   async head(key: string) {
-    const target = objectPath(key);
+    const target = objectPath(key,this.root);
     try {
       const metadata = JSON.parse(
         await readFile(`${target}.metadata.json`, 'utf8'),
@@ -412,12 +464,12 @@ class LocalMediaBucket {
       ...(range ? { range: { offset, length } } : {}),
       body: object.size === 0
         ? new ReadableStream({ start(controller) { controller.close(); } })
-        : Readable.toWeb(createReadStream(objectPath(key), { start: offset, end: offset + length - 1 })),
+        : Readable.toWeb(createReadStream(objectPath(key,this.root), { start: offset, end: offset + length - 1 })),
     };
   }
 
   async delete(key: string): Promise<void> {
-    const target = objectPath(key);
+    const target = objectPath(key,this.root);
     await Promise.all([
       rm(target, { force: true }),
       rm(`${target}.metadata.json`, { force: true }),
@@ -626,6 +678,7 @@ class LocalCaptureEmailService {
   get configured() { return true; }
   async send(message: OutgoingEmail): Promise<void> {
     if (process.env.HASTABAZAAR_RUNTIME_ENV !== 'local_staging') throw new Error('Mail capture is local-staging only.');
+    if (process.env.HATSKALA_STAGING_NATIVE === '1') throw new Error('Native verification cannot dispatch or capture email in the retained local project.');
     const recipient = message.to.trim().toLowerCase();
     if (!recipient.endsWith('@local.hastabazaar.test')) throw new Error('Local staging mail capture rejected a non-test recipient.');
     const root = resolve(process.cwd(), '.staging', 'mail-capture');
@@ -641,6 +694,17 @@ const emailService = process.env.HASTABAZAAR_RUNTIME_ENV === 'local_staging'
   : new SmtpEmailService();
 
 export const env = {
+  get SECURITY_POLICY() {
+    return process.env.HASTABAZAAR_RUNTIME_ENV === 'local_staging' ? undefined : createHostedSecurityPolicy({
+      HASTABAZAAR_RUNTIME_ENV: process.env.HASTABAZAAR_RUNTIME_ENV,
+      HASTABAZAAR_SECURITY_KEY: process.env.HASTABAZAAR_SECURITY_KEY,
+      HASTABAZAAR_SECURITY_POLICY_ROOT: process.env.HASTABAZAAR_SECURITY_POLICY_ROOT,
+      APP_ORIGIN: process.env.APP_ORIGIN, MEDIA_ROOT: process.env.MEDIA_ROOT,
+    });
+  },
+  get HASTABAZAAR_SECURITY_KEY() {
+    return process.env.HASTABAZAAR_SECURITY_KEY;
+  },
   DB: new MariaDbD1Database() as unknown as D1Database,
   MEDIA: new LocalMediaBucket() as unknown as R2Bucket,
   EMAIL: emailService,

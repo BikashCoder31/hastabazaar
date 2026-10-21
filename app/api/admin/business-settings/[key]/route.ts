@@ -7,7 +7,7 @@ import {
 } from '@/lib/configuration/definitions';
 import { requireDatabase } from '@/lib/db/d1';
 import {
-  getEffectiveBusinessSetting,
+  getBusinessSettingForManagement,
   listBusinessSettingHistory,
 } from '@/lib/db/repositories/business-settings';
 
@@ -28,7 +28,7 @@ export async function GET(
     const database = requireDatabase(env as unknown as { DB?: D1Database });
     const now = Date.now();
     const [effective, history] = await Promise.all([
-      getEffectiveBusinessSetting(database, key, now),
+      getBusinessSettingForManagement(database, key, now),
       listBusinessSettingHistory(database, key),
     ]);
     return json(

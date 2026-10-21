@@ -38,6 +38,7 @@ const links = [
   { href: '/account/addresses', label: 'Addresses', icon: MapPin },
   { href: '/account/notifications', label: 'Notifications', icon: Bell },
   { href: '/account/profile', label: 'My profile', icon: UserRound },
+  { href: '/security', label: 'Account security', icon: ShieldCheck },
   { href: '/account/privacy', label: 'Privacy', icon: ShieldCheck },
   { href: '/help', label: 'Help & support', icon: LifeBuoy },
 ];

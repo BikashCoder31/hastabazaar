@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from 'react';
 import { CompanySellingIdentity, ManagedMakerIdentityFields, ManagedMakerAgreementFields } from './managed-maker-identity-fields';
 import type { ManagedMakerApplicationTerms } from '@/lib/db/repositories/managed-maker-details';
 import { sellerDocumentsForApplication } from '@/lib/sellers/application';
+import { CURRENT_ONBOARDING_VERSION } from '@/lib/sellers/onboarding';
+import { SellerOnboardingFields } from './seller-onboarding-fields';
 import { CheckCircle2, LoaderCircle, ShieldCheck } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -32,6 +34,7 @@ import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sess
 const catalogBaseKeys = ['tradingName', 'businessDescription', 'legalName', 'representativeName',
   'email', 'phone', 'applicantType', 'taxMode', 'taxRegistrationNumber', 'registrationNumber',
   'registrationAuthority', 'document', 'profileImage', 'makerVideo', 'applicationAcknowledgement',
+  'payoutBeneficiary', 'bankName', 'bankBranch', 'bankAccountNumber', 'pickupAddress', 'returnAddress',
   'sellerAgreementContext', 'participationRoute', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'personalPanCertificate', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'website', 'requestId', 'formVersion', 'customAnswers'];
 const applicationAttemptKey = sessionAttemptKey('seller.application', 'new');
 const uncertainMessage = 'Application status is uncertain: your application may have been accepted. Retry with the same details to recover its reference, or contact support before starting a new attempt.';
@@ -234,7 +237,7 @@ export function SellerApplicationForm({
     return (
       <div className="rounded-3xl border border-border bg-card p-8 shadow-sm sm:p-10">
         <CheckCircle2 className="size-10 text-primary" aria-hidden="true" />
-        <h2 className="mt-5 font-heading text-3xl">Application received</h2>
+        <h2 className="mt-5 font-heading text-3xl">Under review</h2>
         <p className="mt-3 max-w-xl leading-7 text-muted-foreground">
           Keep this reference for future communication. HastaBazaar will verify
           the business and documents before seller access is enabled.
@@ -271,7 +274,7 @@ export function SellerApplicationForm({
         <FieldGroup className="grid gap-5 md:grid-cols-2">
           <Field>
             <FieldLabel htmlFor="hasBusinessTaxRegistration">
-              Do you have PAN/VAT registration for this business? <span aria-hidden="true">*</span>
+              Your onboarding route <span aria-hidden="true">*</span>
             </FieldLabel>
             <NativeSelect
               id="hasBusinessTaxRegistration"
@@ -280,14 +283,14 @@ export function SellerApplicationForm({
               onChange={(event) => setRegistrationAnswer(event.target.value as 'yes' | 'no')}
               required
             >
-              <NativeSelectOption value="yes">Yes</NativeSelectOption>
-              <NativeSelectOption value="no">No</NativeSelectOption>
+              <NativeSelectOption value="no">Sell through HastaBazaar</NativeSelectOption>
+              <NativeSelectOption value="yes">Registered business seller</NativeSelectOption>
             </NativeSelect>
             <FieldDescription>
-              If your business has PAN but you cannot upload its certificate now, choose Yes and gather the certificate before submitting. Choose No only if you do not have business PAN/VAT.
+              Registered businesses, including sole proprietors, must provide registration and business PAN. Personal PAN alone does not qualify.
               {registrationAnswer === 'yes'
                 ? 'Registered Seller: provide only the registration evidence that applies to the selected status.'
-                : 'Managed Maker application: business PAN/VAT fields are not required. Later identity, supplier, payment, or tax-document requirements will be shown at the stage where they apply.'}
+                : 'Sell through HastaBazaar is an application for reviewed supply to the company. Personal PAN, its certificate, government ID and bank evidence are required. Registration and tax duties still need legal/accounting review before activation.'}
             </FieldDescription>
           </Field>
           {registrationAnswer === 'yes' ? (
@@ -338,7 +341,7 @@ export function SellerApplicationForm({
                   name="registrationAuthority"
                   required
                   maxLength={160}
-                  placeholder="For example, Office of Company Registrar"
+                  placeholder="For example, your firm or company registration office"
                 />
               </Field>
               <Field>
@@ -385,7 +388,7 @@ export function SellerApplicationForm({
       <FieldSet>
         <FieldLegend>Contact person and address</FieldLegend>
         <FieldGroup className="grid gap-5 md:grid-cols-2">
-          {registrationAnswer === 'yes' && applicantType === 'company' && (
+          {registrationAnswer === 'yes' && (
             <>
               <Field>
                 <FieldLabel htmlFor="representativeName">
@@ -419,8 +422,8 @@ export function SellerApplicationForm({
             />
             <FieldDescription>
               {accountEmail
-                ? 'After Admin approval, this signed-in account will have seller access.'
-                : 'Already have a customer account? Sign in before applying. Seller access will belong to this email after Admin approval.'}
+                ? 'Use your verified account email and phone. Submission starts review; selling access requires separate approval.'
+                : 'Sign in and verify your account email and phone before applying.'}
             </FieldDescription>
           </Field>
           <Field>
@@ -585,6 +588,7 @@ export function SellerApplicationForm({
             taxMode: registrationAnswer === 'no' ? 'NONE' : taxStatus === 'vat_registered' ? 'VAT' : 'PAN',
             participationRoute: registrationAnswer === 'yes' ? 'registered_seller' : 'managed_maker',
             hasBusinessTaxRegistration: registrationAnswer === 'yes',
+            onboarding: { version: CURRENT_ONBOARDING_VERSION },
           }).map(
             (document) => (
               <DocumentField
@@ -598,7 +602,9 @@ export function SellerApplicationForm({
         </FieldGroup>
       </FieldSet>
 
-      {registrationAnswer === 'no' ? <ManagedMakerIdentityFields/> : null}
+      <SellerOnboardingFields />
+      <p className="text-sm"><a href="/account/profile" target="_blank" rel="noreferrer" className="underline">Verify your account email and phone</a> before submitting. Return here and use the same verified phone.</p>
+      {registrationAnswer === 'no' ? <ManagedMakerIdentityFields requirePersonalPan/> : null}
       {registrationAnswer === 'no' && managedTerms ? <ManagedMakerAgreementFields terms={managedTerms}/> : null}
       {registrationAnswer === 'no' && !managedTerms ? <p role="alert">Managed Maker agreement terms are unavailable. Reload before submitting.</p> : null}
       {registrationAnswer === 'yes' && registeredTerms ? <input type="hidden" name="sellerAgreementContext" value={registeredTerms.context} /> : null}

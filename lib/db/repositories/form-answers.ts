@@ -1,6 +1,7 @@
 import { FORM_REGISTRY } from '../../forms/registry';
 import type { CustomFieldType, FormAnswerSnapshot, FormId } from '../../forms/types';
 import { validateAnswersForDefinition } from '../../forms/validation';
+import { normalizeSellerSku } from '../../products/stock-codes';
 
 export class FormAnswerRepositoryError extends Error {
   constructor(message = 'Form answer snapshot is invalid.') {
@@ -42,9 +43,21 @@ function unsafeName(value: string): boolean {
 }
 
 function validateInput(formId: FormId, raw: unknown): FormAnswerSnapshot {
-  if (!FORM_REGISTRY[formId] || !record(raw) || Object.keys(raw).some((key) => !['formId', 'version', 'answers'].includes(key)) ||
+  if (!FORM_REGISTRY[formId] || !record(raw) || Object.keys(raw).some((key) => !['formId', 'version', 'answers', 'productIdentity'].includes(key)) ||
       raw.formId !== formId || !Number.isSafeInteger(raw.version) || Number(raw.version) < 1 ||
       !Array.isArray(raw.answers) || raw.answers.length > 64) throw new FormAnswerRepositoryError();
+  let productIdentity: FormAnswerSnapshot['productIdentity'];
+  if (raw.productIdentity !== undefined) {
+    if (formId !== 'seller.product-submission' || !record(raw.productIdentity) ||
+      Object.keys(raw.productIdentity).some(key=>!['sellerSku','revision'].includes(key)) || !Object.hasOwn(raw.productIdentity, 'sellerSku')) throw new FormAnswerRepositoryError();
+    try {
+      const sellerSku = normalizeSellerSku(raw.productIdentity.sellerSku);
+      if (sellerSku !== raw.productIdentity.sellerSku) throw new FormAnswerRepositoryError();
+      const revision=raw.productIdentity.revision;
+      if(revision!==undefined&&(!Number.isSafeInteger(revision)||Number(revision)<1))throw new FormAnswerRepositoryError();
+      productIdentity = { sellerSku,...(revision===undefined?{}:{revision:Number(revision)}) };
+    } catch { throw new FormAnswerRepositoryError(); }
+  }
   const seen = new Set<string>();
   const answers: FormAnswerSnapshot['answers'][number][] = [];
   for (const entry of raw.answers) {
@@ -85,7 +98,7 @@ function validateInput(formId: FormId, raw: unknown): FormAnswerSnapshot {
     })),
   }, answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value })));
   if (checked.answers.length !== answers.length) throw new FormAnswerRepositoryError();
-  return { formId, version, answers };
+  return { formId, version, answers, ...(productIdentity ? { productIdentity } : {}) };
 }
 
 // Every predicate runs inside the caller's D1 batch, so invalid versions or
@@ -296,6 +309,7 @@ export function buildFormAnswerInsert(db: D1Database, input: {
   const actorId = input.actorId === null ? null : required(input.actorId, 'Actor ID', 191);
   if (!Number.isSafeInteger(input.now) || input.now < 0) throw new FormAnswerRepositoryError('Timestamp is invalid.');
   const snapshot = validateInput(formId, input.answers);
+  if (snapshot.productIdentity && (subjectType !== 'product' || !actorId)) throw new FormAnswerRepositoryError();
   const builtInKeys = JSON.stringify(FORM_REGISTRY[formId].baseFields.map((field) =>
     field.key.replace(/[^a-z0-9]/gi, '').toLowerCase()));
   const json = JSON.stringify(snapshot);
@@ -326,6 +340,7 @@ function decodeAnswer(row: AnswerRow): StoredFormAnswer {
   const { answersJson, configJson, currentConfigJson, ...metadata } = row;
   try {
     const snapshot = validateInput(metadata.formId, JSON.parse(answersJson) as unknown);
+    if (snapshot.productIdentity && (metadata.subjectType !== 'product' || !metadata.actorId)) throw new FormAnswerRepositoryError();
     const config = JSON.parse(configJson) as { fields: { id: string; type: string; choices?: { value: string; label: string }[] }[] };
     const current = currentConfigJson ? JSON.parse(currentConfigJson) as { fields: { id: string; status: string }[] } : null;
     if (!Array.isArray(config.fields) || (current && !Array.isArray(current.fields))) throw new FormAnswerRepositoryError();

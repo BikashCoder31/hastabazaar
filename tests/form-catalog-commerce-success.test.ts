@@ -21,7 +21,8 @@ function bundle() {
       createRoot(document.getElementById('root')).render(mode.startsWith('customer-')?
         <CustomerAftercare orderNumber="HK-TEST" orderStatus="delivered" items={[{id:'item',productName:'Product',sellerName:'Shop',quantity:1,returnEligible:true}]} returns={[]} complaints={[]}/>:
         mode.startsWith('seller-')?<SellerCaseResponseForm kind={mode==='seller-return'?'return':'complaint'} id="case-1" disabled={false}/>:
-        mode.startsWith('gift-')?<GiftCardForm issue={mode==='gift-issue'}/>:<CheckoutForm customerId="customer-fixture"/>);` },
+        mode.startsWith('gift-')?<GiftCardForm issue={mode==='gift-issue'}/>:<CheckoutForm policyContext={'a'.repeat(64)} customerId="customer-fixture" customerEmail="buyer@example.test" customerPhone="9811111111"
+          savedAddresses={[{id:'fixture-address',label:'Home',isDefault:1,recipientName:'Fixture Buyer',phone:'9811111111',province:'Madhesh',district:'Dhanusha',municipality:'Janakpur',locality:'Fixture locality',ward:null,landmark:null,postalCode:null}]}/>);` },
     bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' }, plugins: [{ name: 'navigation-fixture', setup(builder) {
       builder.onResolve({ filter: /^next\/navigation$|^next\/link$|^@\/components\/delivery\/location-picker$/ },
@@ -43,7 +44,7 @@ async function fill(page: FixturePage, mode: string, form: FixtureLocator) {
     await form.getByLabel(mode === 'gift-issue' ? 'Amount in NPR' : 'Gift card code').fill(mode === 'gift-issue' ? '100' : 'HG-SIMULATED');
   else {
     for (const [label, value] of [['Recipient name', 'Maya Buyer'], ['Recipient phone', '9811111111'],
-      ['Order email', 'buyer@example.test'], ['Contact phone', '9811111111'], ['District', 'Dhanusha'],
+      ['District', 'Dhanusha'],
       ['Municipality / rural municipality', 'Janakpur'], ['Street, tole or locality', 'Ward 1']])
       await form.getByLabel(label).fill(value);
     await form.locator('label[for="checkout-terms"]').click();

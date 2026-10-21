@@ -4,6 +4,7 @@ import vinext from 'vinext';
 import { defineConfig } from 'vite';
 import { localPreviewBindings } from './lib/staging/local-preview-bindings';
 import hostingConfig from './.openai/hosting.json' with { type: 'json' };
+import {localSecurityPolicyPlugin} from './lib/staging/security-policy-plugin';
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   '00000000-0000-4000-8000-000000000000';
@@ -119,13 +120,17 @@ export default defineConfig(async ({ command }) => {
       ? { watch: { useFsEvents: false, usePolling: true } }
       : undefined,
     plugins: [
+      ...(command === 'serve' && process.env.HASTABAZAAR_RUNTIME_ENV === 'local_staging' ? [localSecurityPolicyPlugin()] : []),
       ...(localDecoder ? [localDecoder] : []),
       ...(localProductMedia ? [localProductMedia] : []),
       vinext(),
       sites(),
       cloudflare({
         viteEnvironment: { name: 'rsc', childEnvironments: ['ssr'] },
-        config: { ...localBindingConfig, vars: localPreviewBindings(process.env, command) },
+        config: { ...localBindingConfig, vars: localPreviewBindings(process.env, command),
+          // Secret values are loaded from the checked launcher's process environment,
+          // never config.vars/client defines or a built preview .dev.vars asset.
+          secrets: { required: command === 'serve' && process.env.HASTABAZAAR_RUNTIME_ENV === 'local_staging' ? ['HASTABAZAAR_SECURITY_KEY'] : [] } },
         remoteBindings: false,
         persistState:
           process.env.HASTABAZAAR_RUNTIME_ENV === 'local_staging'

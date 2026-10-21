@@ -1,4 +1,3 @@
-import { DEFAULT_PLATFORM_SHARE_BPS } from '@/lib/configuration/commission-defaults';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import type { RuntimeEnvironment } from '@/lib/staging/environment';
@@ -22,7 +21,7 @@ export function ProgramManagement({
   capabilities,
   environment,
   environmentVerified = Boolean(environment),
-  platformRetentionBps = DEFAULT_PLATFORM_SHARE_BPS,
+  platformRetentionBps,
   workspace,
 }: {
   programMode: ManagedMakerProgramMode;
@@ -80,7 +79,9 @@ export function ProgramManagement({
                   </Badge>
                 </div>
                 <CardDescription>{capability.code === 'managed_sale_linked_percentage_v1'
-                  ? `${platformRetentionBps / 100}% platform retention and the reconciled ${(10_000 - platformRetentionBps) / 100}% maker entitlement become earned only after delivered-and-paid conditions. New transactions use the effective setting; existing records retain their snapshots.`
+                  ? platformRetentionBps === undefined
+                    ? 'The current saved retention rate is unavailable. Review Business Settings before new sales. Existing records retain their snapshots.'
+                    : `${platformRetentionBps / 100}% platform retention and the reconciled ${(10_000 - platformRetentionBps) / 100}% maker entitlement become earned only after delivered-and-paid conditions. New transactions use the effective setting; existing records retain their snapshots.`
                   : capability.description}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">

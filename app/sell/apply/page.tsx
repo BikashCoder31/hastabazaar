@@ -7,6 +7,7 @@ import { requireSellerTermsPage } from '@/lib/auth/seller-commercial-access';
 import { requireDatabase } from '@/lib/db/d1';
 import { getManagedMakerApplicationTerms } from '@/lib/db/repositories/managed-maker-details';
 import { getRegisteredSellerTerms } from '@/lib/db/repositories/marketplace-settings';
+import { MANAGED_SUPPLIER_AGREEMENT_VERSION } from '@/lib/sellers/managed-identity';
 export const dynamic='force-dynamic';
 export const metadata={title:'Seller registration',robots:{index:false,follow:false}};
 export default async function SellerRegistrationPage() {
@@ -14,7 +15,7 @@ export default async function SellerRegistrationPage() {
   const database=requireDatabase(env as unknown as {DB?: D1Database});
   const clock=await database.prepare("SELECT unixepoch('now') * 1000 AS now").first<{now:number}>();
   const now=Number(clock?.now ?? 0);
-  const [managedTerms,registeredTerms]=await Promise.all([getManagedMakerApplicationTerms(database,now),getRegisteredSellerTerms(database,now)]);
+  const [managedTerms,registeredTerms]=await Promise.all([getManagedMakerApplicationTerms(database,now,MANAGED_SUPPLIER_AGREEMENT_VERSION),getRegisteredSellerTerms(database,now)]);
   return <div className="min-h-screen bg-background text-foreground">
     <SiteHeader />
     <main id="main-content" className="shell py-12">

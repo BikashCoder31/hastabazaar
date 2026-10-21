@@ -12,6 +12,8 @@ import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
 import { listCustomerAddresses } from '@/lib/db/repositories/customers';
 import {getContactVerificationStatus, resolveCheckoutContactPolicy} from '@/lib/auth/contact-verification';
+import { getCheckoutPolicyContext } from '@/lib/checkout/policy-context';
+import { getPlatformServiceFee } from '@/lib/db/repositories/platform-service-fee';
 
 export const metadata: Metadata = { title: 'Secure checkout' };
 export const dynamic = 'force-dynamic';
@@ -50,6 +52,8 @@ export default async function CheckoutPage() {
         </p>
         <div className="mt-8">
           <CheckoutForm
+            serviceFee={await getPlatformServiceFee(requireDatabase(env as unknown as { DB?: D1Database }))}
+            policyContext={await getCheckoutPolicyContext()}
             deliveryRates={deliveryRates}
             walletBalancePaisa={wallet?.balancePaisa ?? 0}
             referralCampaign={wallet?.campaign}

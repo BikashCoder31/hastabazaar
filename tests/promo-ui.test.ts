@@ -49,9 +49,9 @@ async function mounted(surface = 'checkout', checkoutContext = false) {
  window.unmountFixture=()=>root.unmount();
  root.render(${JSON.stringify(surface)}==='empty'?null:${JSON.stringify(surface)}.startsWith('admin')?
  <PromoCodeManager role={${JSON.stringify(surface)}==='admin-denied'?'admin':'super_admin'} initialPage={{campaigns:[${JSON.stringify(state)}],nextCursor:${JSON.stringify(surface === 'admin-paginated' ? 'fixture-cursor' : null)}}}/>:
- <CheckoutForm customerId={${JSON.stringify(surface)}==='guest'?undefined:'customer-fixture'} customerEmail={${JSON.stringify(surface)}==='guest'?undefined:'buyer@example.test'} customerPhone="9811111111" customerDisplayName="Fictional Buyer"
+ <CheckoutForm policyContext={'a'.repeat(64)} customerId={${JSON.stringify(surface)}==='guest'?undefined:'customer-fixture'} customerEmail={${JSON.stringify(surface)}==='guest'?undefined:'buyer@example.test'} customerPhone="9811111111" customerDisplayName="Fictional Buyer"
  savedAddresses={[{id:'address-a',isDefault:true,recipientName:'Fictional Buyer',phone:'9811111111',province:'Bagmati',district:'Kathmandu',municipality:'Kathmandu',locality:'Fictional locality'}]}
- walletBalancePaisa={window.fixtureWalletBalance??2000} referralCampaign={{enabled:true,friendDiscountPaisa:500,minimumSubtotalPaisa:0}}/>);`,
+ walletBalancePaisa={window.fixtureWalletBalance??2000} referralCampaign={{enabled:1,friendDiscountPaisa:500,rewardPaisa:500,returnWindowDays:7,minimumSubtotalPaisa:0}}/>);`,
     },
     bundle: true,
     write: false,

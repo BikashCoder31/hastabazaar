@@ -13,8 +13,10 @@ import { digestFormRequest, isValidatedFormVersionStale, validateSellerFormSubmi
 import { FormRuntimeError } from '../../forms/runtime';
 import { FormValidationError } from '../../forms/validation';
 import type { FormAnswerSnapshot } from '../../forms/types';
+import { resolveRuntimeEnvironment, type RuntimeEnvironmentInput } from '../../staging/environment';
 
 export class BusinessSettingConflictError extends Error {}
+export class CommissionRateUnavailableError extends RangeError {}
 
 export type BusinessSettingForm = Readonly<{
   formId: string;
@@ -79,7 +81,7 @@ export type BusinessSettingVersion<K extends BusinessSettingKey = BusinessSettin
 export type EffectiveBusinessSetting<K extends BusinessSettingKey> = Readonly<{
   key: K;
   value: BusinessSettingValue<K>;
-  source: 'default' | 'persisted';
+  source: 'default' | 'persisted' | 'unconfigured';
   version: number | null;
   versionId: string | null;
   effectiveFrom: number | null;
@@ -412,7 +414,7 @@ export async function createBusinessSettingDraft<K extends BusinessSettingKey>(
     form?: BusinessSettingForm;
   },
 ): Promise<BusinessSettingVersion<K>> {
-  const companyAuthority = options.key === 'managed_maker_company_account' ? await decisionAuthority(database, options.actorId) : [];
+  const companyAuthority = ['managed_maker_company_account', 'platform_service_fee_policy'].includes(options.key) ? await decisionAuthority(database, options.actorId) : [];
   const definition = getBusinessSettingDefinition(options.key);
   const value = validateBusinessSettingValue(options.key, options.value);
   const reason = normalizeReason(options.reason);
@@ -580,7 +582,7 @@ export async function submitBusinessSettingDraft(
   },
 ): Promise<void> {
   const record = await getVersionById(database, options.id);
-  const companyAuthority = record?.key === 'managed_maker_company_account' ? await decisionAuthority(database, options.actorId) : [];
+  const companyAuthority = record && ['managed_maker_company_account', 'platform_service_fee_policy'].includes(record.key) ? await decisionAuthority(database, options.actorId) : [];
   const reason = normalizeReason(options.reason);
   const requestId = validateRequestId(options.requestId);
   const now = timestamp('Current time', options.now);
@@ -704,7 +706,7 @@ export async function saveBusinessSettingChange<K extends BusinessSettingKey>(
   await assertChronologicalPublication(database, options.key, effectiveFrom);
   const id = crypto.randomUUID();
   const version = options.expectedVersion + 1;
-  const previous = await getEffectiveBusinessSetting(database, options.key, now);
+  const previous = await getBusinessSettingForManagement(database, options.key, now);
   await atomic(database, formStatements(database, options.key, options.form, options.actorId, requestId, id, now, [
     ...authority,
     ...guard(database, `(SELECT COALESCE(MAX(version),0) FROM business_setting_versions WHERE setting_key=?)=?
@@ -728,6 +730,88 @@ export async function saveBusinessSettingChange<K extends BusinessSettingKey>(
   const saved = await getVersionById(database, id);
   if (!saved) throw new BusinessSettingConflictError('Publication could not be verified.');
   return saved as BusinessSettingVersion<K>;
+}
+
+/** One-time local prelaunch setup. Normal rate changes retain their notice rules. */
+export async function initializeLocalLaunchCommission(database: D1Database, options: {
+  actorId: string; requestId: string; reason: string; now: number; basisPoints: number;
+  expectedRevision: number; expectedVersions: Record<string, unknown>;
+  environment: RuntimeEnvironmentInput;
+}): Promise<{ basisPoints: number; effectiveFrom: number; versionIds: Record<string, string> }> {
+  const runtime = resolveRuntimeEnvironment(options.environment);
+  if (runtime.kind !== 'local_staging' || options.environment.nodeEnvironment !== 'development' ||
+    options.environment.appOrigin !== 'http://localhost:3018')
+    throw new BusinessSettingConflictError('Initial commission setup is available only in the checked local development environment.');
+  const authority = await decisionAuthority(database, options.actorId);
+  const keys = ['independent_seller_commission_bps', 'managed_sale_linked_platform_retention_bps'] as const;
+  const reason = normalizeReason(options.reason), requestId = validateRequestId(options.requestId);
+  const now = timestamp('Current time', options.now);
+  if (options.basisPoints !== 1200)
+    throw new RangeError('This one-time prelaunch setup is restricted to the approved 12% initial commission.');
+  for (const key of keys) validateBusinessSettingValue(key, options.basisPoints);
+  if (!Number.isSafeInteger(options.expectedRevision) || options.expectedRevision < 0 ||
+    !options.expectedVersions || keys.some(key => !Number.isSafeInteger(options.expectedVersions[key]) || Number(options.expectedVersions[key]) < 0))
+    throw new RangeError('Refresh the initial commission configuration before saving.');
+  const expectedVersions = Object.fromEntries(keys.map(key => [key, options.expectedVersions[key]]));
+  const requestDigest = await digestFormRequest({ actorId: options.actorId, requestId, reason,
+    basisPoints: options.basisPoints, expectedRevision: options.expectedRevision, expectedVersions });
+  const prior = await database.prepare('SELECT actor_id AS actorId,action,next_json AS nextJson FROM audit_logs WHERE request_id=? LIMIT 1')
+    .bind(requestId).first<{ actorId: string; action: string; nextJson: string }>();
+  if (prior) {
+    const saved = JSON.parse(prior.nextJson) as { requestDigest: string; basisPoints: number; effectiveFrom: number; versionIds: Record<string, string> };
+    if (prior.actorId !== options.actorId || prior.action !== 'commission.launch.initialized' || saved.requestDigest !== requestDigest)
+      throw new BusinessSettingConflictError('Request ID was already used for another setting action.');
+    return { basisPoints: saved.basisPoints, effectiveFrom: saved.effectiveFrom, versionIds: saved.versionIds };
+  }
+  const histories = await Promise.all(keys.map(key => listBusinessSettingHistory(database, key)));
+  if (histories.some((rows, index) => Math.max(0, ...rows.map(row => row.version)) !== expectedVersions[keys[index]] ||
+    rows.some(row => row.status === 'published' && Number(row.effectiveFrom) <= now)))
+    throw new BusinessSettingConflictError('Initial setup cannot replace previously effective terms or stale versions. Use the normal Super Admin change controls.');
+  const control = await database.prepare("SELECT revision FROM commission_control WHERE id='default'").first<{ revision: number }>();
+  const forbidden = await database.prepare("SELECT 1 FROM audit_logs WHERE action='commission.launch.initialized' UNION ALL SELECT 1 FROM commission_rate_changes LIMIT 1").first();
+  if (!control || control.revision !== options.expectedRevision || forbidden)
+    throw new BusinessSettingConflictError('Initial commission setup is already complete or commission history changed. Use the normal Super Admin change controls.');
+  const versionIds = Object.fromEntries(keys.map(key => [key, crypto.randomUUID()]));
+  const receipt = { basisPoints: options.basisPoints, effectiveFrom: now, versionIds };
+  const statements: D1PreparedStatement[] = [
+    database.prepare("UPDATE commission_control SET revision=revision WHERE id='default'"),
+    ...authority,
+    ...guard(database, `EXISTS(SELECT 1 FROM commission_control WHERE id='default' AND revision=?)
+      AND NOT EXISTS(SELECT 1 FROM audit_logs WHERE action='commission.launch.initialized')
+      AND NOT EXISTS(SELECT 1 FROM commission_rate_changes)`, [options.expectedRevision]),
+  ];
+  for (const [index, key] of keys.entries()) {
+    const history = histories[index], expectedVersion = Number(expectedVersions[key]);
+    statements.push(...guard(database, `COALESCE((SELECT MAX(version) FROM business_setting_versions WHERE setting_key=?),0)=?
+      AND (SELECT COUNT(*) FROM business_setting_versions WHERE setting_key=?)=?
+      AND NOT EXISTS(SELECT 1 FROM business_setting_versions WHERE setting_key=? AND status='published' AND effective_from<=?)`,
+    [key, expectedVersion, key, history.length, key, now]));
+    for (const row of history) {
+      statements.push(...guard(database, `EXISTS(SELECT 1 FROM business_setting_versions WHERE id=? AND setting_key=? AND version=?
+        AND revision=? AND status=? AND value_json=? AND effective_from IS ? AND effective_until IS ?)`,
+      [row.id, key, row.version, row.revision, row.status, JSON.stringify(row.value), row.effectiveFrom, row.effectiveUntil]));
+      if (row.status === 'published') {
+        statements.push(database.prepare(`UPDATE business_setting_versions SET status='cancelled',revision=revision+1,
+          decision_note=?,last_request_id=? WHERE id=? AND status='published' AND effective_from>?`)
+          .bind(reason, `${requestId}:cancel:${row.id}`, row.id, now),
+        audit(database, { actorId: options.actorId, action: 'business_setting.cancelled', subjectId: row.id, reason,
+          previous: row, next: { status: 'cancelled', revision: row.revision + 1 }, requestId: `${requestId}:cancel:${row.id}`, now }));
+      }
+    }
+    statements.push(database.prepare(`INSERT INTO business_setting_versions(id,setting_key,version,value_json,status,revision,
+      change_control,effective_from,reason,created_by,created_at,published_by,published_at,decision_note,last_request_id)
+      VALUES(?,?,?,?,'published',1,'controlled',?,?,?,?,?,?,?,?)`)
+      .bind(versionIds[key], key, expectedVersion + 1, JSON.stringify(options.basisPoints), now, reason,
+        options.actorId, now, options.actorId, now, reason, `${requestId}:publish:${index}`),
+    audit(database, { actorId: options.actorId, action: 'business_setting.published', subjectId: versionIds[key], reason,
+      previous: history, next: { key, version: expectedVersion + 1, value: options.basisPoints, effectiveFrom: now, initialLaunch: true },
+      requestId: `${requestId}:publish:${index}`, now }));
+  }
+  statements.push(database.prepare("UPDATE commission_control SET revision=revision+1 WHERE id='default'"),
+    audit(database, { actorId: options.actorId, action: 'commission.launch.initialized', subjectId: versionIds[keys[0]], reason,
+      previous: { histories }, next: { ...receipt, requestDigest }, requestId, now }));
+  await atomic(database, statements);
+  return receipt;
 }
 
 export async function approveBusinessSettingChange(
@@ -896,9 +980,12 @@ export async function getEffectiveBusinessSetting<K extends BusinessSettingKey>(
     .bind(key, at, at)
     .first<BusinessSettingRow>();
   if (!row) {
+    if (key === 'independent_seller_commission_bps' || key === 'managed_sale_linked_platform_retention_bps') {
+      throw new CommissionRateUnavailableError(`No effective published commission rate for ${definition.label}. Review Business Settings before new sales.`);
+    }
     return Object.freeze({
       key,
-      value: definition.defaultValue,
+      value: definition.defaultValue as BusinessSettingValue<K>,
       source: 'default',
       version: null,
       versionId: null,
@@ -916,6 +1003,15 @@ export async function getEffectiveBusinessSetting<K extends BusinessSettingKey>(
     effectiveFrom: record.effectiveFrom,
     approvedBy: record.approvedBy,
   });
+}
+
+/** Management can display and configure a missing rate without inventing one. */
+export async function getBusinessSettingForManagement(database: D1Database, key: BusinessSettingKey, at: number): Promise<EffectiveBusinessSetting<BusinessSettingKey>> {
+  try { return await getEffectiveBusinessSetting(database, key, at); }
+  catch (error) {
+    if (!(error instanceof CommissionRateUnavailableError)) throw error;
+    return Object.freeze({key, value:null, source:'unconfigured', version:null, versionId:null, effectiveFrom:null, approvedBy:null});
+  }
 }
 
 export async function listBusinessSettingHistory<K extends BusinessSettingKey>(

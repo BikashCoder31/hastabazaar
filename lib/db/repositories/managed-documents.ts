@@ -4,12 +4,16 @@ import { staffMutationGuard } from './staff-mutation-guard';
 import { digestFormRequest } from '../../forms/submission';
 import type { FormAnswerSnapshot } from '../../forms/types';
 import type { managedMakerAgreementSnapshot } from '../../sellers/managed-identity';
+import { APPROVED_BILLING_VERSION } from '../../documents/billing';
 type CompanySellingIdentity = Pick<ReturnType<typeof managedMakerAgreementSnapshot>, 'company' | 'companyAccount'>;
 
 export async function issueManagedInvoiceGroups(
   database:D1Database,
   options:{orderId:string;requestId:string;now:number},
 ):Promise<number>{
+  const statement=await database.prepare("SELECT snapshot_json AS json FROM order_documents WHERE order_id=? AND kind='order_statement'")
+    .bind(options.orderId).first<{json:string}>();
+  if(statement && (JSON.parse(statement.json) as {billing?:{version?:string}}).billing?.version===APPROVED_BILLING_VERSION)return 0;
   const order=await database.prepare(`SELECT order_number AS orderNumber,customer_email AS customerEmail,
     payment_status AS paymentStatus,currency,delivered_at AS deliveredAt FROM orders o
     WHERE o.id=? AND o.status='delivered'
@@ -60,7 +64,7 @@ export interface ManagedInvoiceSnapshot {
   simulationLabel:string;taxDocument:false;reviewStatus:string;orderNumber:string;
   issuerReference:string;legalSellerReference:string;agreementVersion:string;currency:string;
   customerEmail:string;issuedAt:number;productTotalPaisa:number;
-  items:readonly {orderItemId:string;productName:string;sku:string;quantity:number;unitPricePaisa:number;lineTotalPaisa:number}[];
+  items:readonly {orderItemId:string;productName:string;sku:string;quantity:number;unitPricePaisa:number;lineTotalPaisa:number;makerName?:string|null}[];
 }
 export async function getManagedInvoiceGroup(database:D1Database,options:{orderNumber:string;invoiceId:string;receiptTokenHash:string|null;customerId:string|null}){
   const row=await database.prepare(`SELECT g.id,g.invoice_number AS invoiceNumber,g.status,g.snapshot_json AS snapshotJson,

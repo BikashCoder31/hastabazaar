@@ -30,7 +30,10 @@ async function fixture(
       import React from 'react'; import {createRoot} from 'react-dom/client';
       import {CheckoutForm} from './components/commerce/checkout-form';
       createRoot(document.getElementById('root')).render(<CheckoutForm
-        customerId={${customer ? "'customer-fixture'" : 'undefined'}} />);
+        policyContext={'a'.repeat(64)}
+        customerId={${customer ? "'customer-fixture'" : 'undefined'}}
+        customerPhone="9811111111"
+        savedAddresses={${customer ? "[{id:'fixture-address',label:'Home',isDefault:1,recipientName:'Fixture Buyer',phone:'9811111111',province:'Madhesh',district:'Dhanusha',municipality:'Janakpur',locality:'Fixture locality',ward:null,landmark:null,postalCode:null}]" : '[]'}} />);
     `,
     },
     bundle: true,
@@ -287,6 +290,7 @@ for (const [scenario, fields] of [
           name: 'Place COD order',
           exact: true,
         });
+        await h.page.locator('label[for="checkout-terms"]').click();
         await h.page.waitForFunction(
           () =>
             !document.querySelector<HTMLButtonElement>('button[type="submit"]')

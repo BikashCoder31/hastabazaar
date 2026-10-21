@@ -13,6 +13,7 @@ import {
 import { getPromoAdminReport } from '@/lib/db/repositories/incentive-reporting';
 import { getCommissionRateState } from '@/lib/db/repositories/commission-rates';
 import { filtersFromParams } from '@/lib/incentives/reporting';
+import { CommissionRateUnavailableError } from '@/lib/db/repositories/business-settings';
 
 export const dynamic = 'force-dynamic';
 export default async function PromoCodesPage({
@@ -43,7 +44,7 @@ export default async function PromoCodesPage({
         });
         return { report, error: error.message };
       }),
-    getCommissionRateState(database),
+    getCommissionRateState(database).catch(error => { if (error instanceof CommissionRateUnavailableError) return null; throw error; }),
   ]);
   const { report, error: filterError } = result;
   return (
@@ -62,7 +63,7 @@ export default async function PromoCodesPage({
         <PromoCodeManager
           role={staff.role}
           initialPage={initialPage}
-          defaultCommissionBps={commission.current.basisPoints}
+          defaultCommissionBps={commission?.current.basisPoints}
         />
       </section>
       {filterError ? (

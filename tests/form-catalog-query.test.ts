@@ -97,7 +97,7 @@ void test('minimum price changes both published product results and count', asyn
     sqlite.exec(`
       CREATE TABLE users(id TEXT PRIMARY KEY,status TEXT);
       CREATE TABLE seller_profiles(id TEXT PRIMARY KEY,user_id TEXT,status TEXT,trading_name TEXT);
-      CREATE TABLE seller_participation_profiles(seller_id TEXT,participation_route TEXT,application_stage TEXT,
+      CREATE TABLE seller_participation_profiles(seller_id TEXT,public_name TEXT,participation_route TEXT,application_stage TEXT,
         commercial_model TEXT,legal_seller_reference TEXT,invoice_issuer_reference TEXT,
         payout_beneficiary_reference TEXT,managed_agreement_version TEXT,managed_agreement_accepted_at INTEGER);
       CREATE TABLE seller_restrictions(seller_id TEXT,mode TEXT,suspended_until INTEGER);

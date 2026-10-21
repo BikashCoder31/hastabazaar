@@ -194,7 +194,7 @@ export function PromoCodeManager(props: {
   return props.role === 'super_admin' ? (
     <AuthorizedPromoCodeManager
       initialPage={props.initialPage}
-      defaultCommissionBps={props.defaultCommissionBps ?? 900}
+      defaultCommissionBps={props.defaultCommissionBps}
     />
   ) : (
     <p role="alert">Super Admin access is required.</p>
@@ -205,7 +205,7 @@ function AuthorizedPromoCodeManager({
   defaultCommissionBps,
 }: {
   initialPage: PromoCampaignPage;
-  defaultCommissionBps: number;
+  defaultCommissionBps?: number;
 }) {
   const router = useRouter();
   const published = usePublishedFormConfig('staff.promo-code');

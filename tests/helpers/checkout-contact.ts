@@ -7,10 +7,17 @@ export async function seedVerifiedCheckoutContact(db: D1Database, userId: string
   assert.ok(canonical, 'A fictional Nepal mobile is required.');
   const user = await db.prepare('SELECT email FROM users WHERE id=?').bind(userId).first<{ email: string }>();
   assert.ok(user, 'Create the intended fictional customer before verifying contact.');
+  const mariaDb = (db as unknown as { dialect?: string }).dialect === 'mariadb';
+  const emailUpdate = mariaDb
+    ? 'ON DUPLICATE KEY UPDATE email=VALUES(email),verified_at=VALUES(verified_at)'
+    : 'ON CONFLICT(user_id) DO UPDATE SET email=excluded.email,verified_at=excluded.verified_at';
+  const phoneUpdate = mariaDb
+    ? 'ON DUPLICATE KEY UPDATE phone=VALUES(phone),verified_at=VALUES(verified_at)'
+    : 'ON CONFLICT(user_id) DO UPDATE SET phone=excluded.phone,verified_at=excluded.verified_at';
   await db.batch([
     db.prepare('UPDATE users SET phone=? WHERE id=?').bind(canonical, userId),
-    db.prepare('INSERT INTO account_email_verifications(user_id,email,verified_at) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET email=excluded.email,verified_at=excluded.verified_at').bind(userId, user.email.toLowerCase(), now),
-    db.prepare('INSERT INTO account_phone_verifications(user_id,phone,verified_at) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET phone=excluded.phone,verified_at=excluded.verified_at').bind(userId, canonical, now),
+    db.prepare(`INSERT INTO account_email_verifications(user_id,email,verified_at) VALUES (?,?,?) ${emailUpdate}`).bind(userId, user.email.toLowerCase(), now),
+    db.prepare(`INSERT INTO account_phone_verifications(user_id,phone,verified_at) VALUES (?,?,?) ${phoneUpdate}`).bind(userId, canonical, now),
   ]);
 }
 

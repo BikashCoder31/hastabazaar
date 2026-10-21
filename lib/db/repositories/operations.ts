@@ -1881,6 +1881,10 @@ export async function performGovernanceAction(
         .prepare(`UPDATE users SET status = ?, updated_at = ? WHERE id = ?`)
         .bind(status, options.now, subjectId),
     );
+    // Re-enabling an account must require a new sign-in. Delete the sessions
+    // in the same transaction as disabling it, while keeping MFA enrollment.
+    if (status === 'disabled')
+      statements.push(database.prepare('DELETE FROM user_sessions WHERE user_id = ?').bind(subjectId));
     next = { status };
   } else if (options.action === 'incident.create') {
     const id = crypto.randomUUID();

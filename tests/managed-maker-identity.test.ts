@@ -154,6 +154,8 @@ async function fixture() {
   sqlite.exec(`INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES
     ('super','super@example.test','Super','active',1,1),('staff','staff@example.test','Staff','active',1,1);
     INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('super','super_admin',1),('staff','admin',1);`);
+  const {historicalCommissionFixture} = await import('./helpers/historical-commission-fixture');
+  historicalCommissionFixture(sqlite,'super');
   const database=new TestDatabase(sqlite) as unknown as D1Database;
   registerTransitionFixture(database,sqlite);
   return {sqlite,database};
