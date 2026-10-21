@@ -35,6 +35,7 @@ void test('the reviewed source inventory includes fixed security controls beside
     { path: 'components/security/security-workspace.tsx', ordinal: 3, formId: 'system.security-mfa-setup' },
     { path: 'components/security/security-workspace.tsx', ordinal: 4, formId: 'system.security-mfa-activation' },
     { path: 'components/security/security-workspace.tsx', ordinal: 5, formId: 'system.security-recovery-codes' },
+    { path: 'components/security/security-workspace.tsx', ordinal: 6, formId: 'system.security-mfa-disable' },
   ] as const;
   const reviewedPaths = new Set<string>(reviewedSites.map((site) => site.path));
   assert.deepEqual(sites.filter((site) => reviewedPaths.has(site.path))
@@ -202,12 +203,13 @@ void test('security inventory names existing native receiving handlers and retai
     ['system.security-mfa-setup', 'setup'],
     ['system.security-mfa-activation', 'confirm'],
     ['system.security-recovery-codes', 'recovery'],
+    ['system.security-mfa-disable', 'disable'],
   ] as const;
   for (const [id, action] of security) {
     assert.equal(FORM_REGISTRY[id]?.route, `/api/security/${action}`, id);
     const receivingRoute = await readFile(resolve(root, `app/api/security/${action}/route.ts`), 'utf8');
     assert.match(receivingRoute, /export function POST\(/);
-    assert.ok(receivingRoute.includes(`handleSecurityAction(request,'${action}')`));
+    assert.ok(receivingRoute.replace(/\s/g,'').includes(`handleSecurityAction(request,'${action}')`));
   }
   const backupRoutes = [
     ['system.backup-export', '/api/admin/backup-transfer', 'createBackup'],

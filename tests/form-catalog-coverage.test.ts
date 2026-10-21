@@ -57,6 +57,7 @@ void test('security and backup controls reject configurable questions and generi
     ['system.security-mfa-setup', '/api/security/setup', 'staff'],
     ['system.security-mfa-activation', '/api/security/confirm', 'staff'],
     ['system.security-recovery-codes', '/api/security/recovery', 'staff'],
+    ['system.security-mfa-disable', '/api/security/disable', 'super_admin'],
   ] as const;
   for (const [id, route, audience] of controls) {
     const definition = FORM_REGISTRY[id];
