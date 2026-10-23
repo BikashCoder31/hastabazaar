@@ -4,7 +4,7 @@ import { customerFeeNativeFixture, seedNativeLegacyHistory } from './helpers/cus
 import { AT, terms, feeWaiverContext as ctx } from './helpers/customer-fee-waiver-fixture';
 import { getCustomerFeeWaiverState as state, mutateCustomerFeeWaiver as mutate } from '../lib/db/repositories/customer-fee-waivers';
 import { createCodOrder, getOrderReceipt } from '../lib/db/repositories/orders';
-import { saveBusinessSettingChange } from '../lib/db/repositories/business-settings';
+import { getEffectiveBusinessSetting, saveBusinessSettingChange } from '../lib/db/repositories/business-settings';
 import { recordLawfulServiceFeeRefund } from '../lib/db/repositories/platform-service-fee-refunds';
 import { transitionAdminFulfillment } from '../lib/db/repositories/fulfillment';
 import { createCustomerReturnRequest, reviewReturnAsAdmin, advanceReturnAsAdmin } from '../lib/db/repositories/returns';
@@ -18,16 +18,20 @@ const settled = <T>(promise: Promise<T>) => promise.then(value => ({ ok: true as
 // 21 required scenarios + this parent = 22. Ordinary-suite skip is not native proof.
 void test('native customer fee transactions, independent lock races and actual-net aftercare', { skip: !enabled }, async t => {
   const f = await customerFeeNativeFixture(true), { db, monitor, blocker } = f;
-  let placement = AT, sequence = 0;
+  let placement = AT, sequence = 0, policyPublishedAt = AT - 100;
   t.mock.method(Date, 'now', () => placement);
-  const command = async (request: string, value: Parameters<typeof mutate>[2]) => mutate(db, ctx(request, (await state(db)).revision, { now: AT }), value);
-  const policy = async (enabled = true, amountPaisa = 1000) => {
+  const command = async (request: string, value: Parameters<typeof mutate>[2], now = placement) => mutate(db, ctx(request, (await state(db)).revision, { now }), value);
+  const policy = async (enabled = true, amountPaisa = 1000, now = policyPublishedAt + 1) => {
     const row = await db.prepare("SELECT COALESCE(MAX(version),0) n FROM business_setting_versions WHERE setting_key='platform_service_fee_policy'").first<{ n: number }>();
-    return saveBusinessSettingChange(db, { key: 'platform_service_fee_policy', value: { enabled, amountPaisa }, actorId: 'owner', reason: 'Fictional native customer policy', requestId: 'native-policy-' + (++sequence), now: AT - 1, effectiveFrom: null, expectedVersion: Number(row!.n) });
+    // Routine setup publications are strictly ordered before the frozen placement.
+    // The races explicitly publish at their captured placement millisecond.
+    const saved = await saveBusinessSettingChange(db, { key: 'platform_service_fee_policy', value: { enabled, amountPaisa }, actorId: 'owner', reason: 'Fictional native customer policy', requestId: 'native-policy-' + (++sequence), now, effectiveFrom: null, expectedVersion: Number(row!.n) });
+    policyPublishedAt = now;
+    return saved;
   };
-  async function campaign(key: string, startsAt = AT - 10, endsAt = AT + 1000) {
-    const draft = await command(key + '-create', { type: 'create', terms: { ...terms, startsAt, endsAt } });
-    return command(key + '-publish', { type: 'publish', campaignId: draft.id });
+  async function campaign(key: string, startsAt = AT - 10, endsAt = AT + 1000, publicationAt = placement) {
+    const draft = await command(key + '-create', { type: 'create', terms: { ...terms, startsAt, endsAt } }, publicationAt);
+    return command(key + '-publish', { type: 'publish', campaignId: draft.id }, publicationAt);
   }
   async function endAll() { for (const c of (await state(db)).campaigns.filter(c => c.state !== 'ended')) await command('native-end-' + c.id + '-' + c.revision, { type: 'end', campaignId: c.id }); }
   async function cart(mode: 'registered' | 'mixed' | 'managed' = 'registered', quantity = 1) {
@@ -37,7 +41,7 @@ void test('native customer fee transactions, independent lock races and actual-n
       await db.prepare('INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES(?,?,?,?,1,1)').bind(key + '-' + product, key, product, quantity).run();
     return { key, input: { ...f.input, idempotencyKey: key } };
   }
-  const place = (c: Awaited<ReturnType<typeof cart>>, now = AT) => createCodOrder(db, c.key, c.key, c.input, now, 'checkout-buyer');
+  const place = (c: Awaited<ReturnType<typeof cart>>, now = placement) => createCodOrder(db, c.key, c.key, c.input, now, 'checkout-buyer');
   async function financial() {
     const tables = ['orders', 'payments', 'order_items', 'order_customer_service_fees', 'order_item_marketplace_fees', 'order_documents', 'seller_ledger_entries', 'managed_commercial_snapshots', 'cart_items', 'products'];
     return Object.fromEntries(await Promise.all(tables.map(async table => [table, (await db.prepare(`SELECT * FROM ${table} ORDER BY 1`).all()).results])));
@@ -120,7 +124,7 @@ void test('native customer fee transactions, independent lock races and actual-n
       await campaignRace({ type: 'resume', campaignId: paused.id }, 'native-race-resume');
     });
     for (const boundary of ['start', 'end'] as const) await t.test(`placement at the exact ${boundary} boundary rejects the earlier quote`, async () => {
-      await endAll(); await campaign('native-boundary-' + boundary, boundary === 'start' ? AT : AT - 10, boundary === 'end' ? AT : AT + 1000);
+      await endAll(); await campaign('native-boundary-' + boundary, boundary === 'start' ? AT : AT - 10, boundary === 'end' ? AT : AT + 1000, boundary === 'end' ? AT - 1 : AT);
       const c = await cart(), before = await financial();
       await assert.rejects(place(c, AT - 1));
       assert.deepEqual(await financial(), before);
@@ -160,9 +164,12 @@ void test('native customer fee transactions, independent lock races and actual-n
       await endAll(); await campaign('native-' + mode);
       const c = await cart(mode), receipt = await place(c);
       const order = await db.prepare('SELECT id FROM orders WHERE order_number=?').bind(receipt.orderNumber).first<{ id: string }>();
-      const lines = (await db.prepare('SELECT commission_bps,commission_paisa FROM order_items WHERE order_id=?').bind(order!.id).all<{ commission_bps: number; commission_paisa: number }>()).results;
+      const lines = (await db.prepare('SELECT product_id,commission_bps,commission_paisa FROM order_items WHERE order_id=? ORDER BY product_id').bind(order!.id).all<{ product_id: string; commission_bps: number; commission_paisa: number }>()).results;
       assert.equal(lines.length, mode === 'mixed' ? 2 : 1);
-      for (const line of lines) assert.deepEqual([line.commission_bps, line.commission_paisa], [1200, 12000]);
+      // Managed retention belongs to its commercial snapshot, never registered commission.
+      assert.deepEqual(lines.map(line => [line.product_id, line.commission_bps, line.commission_paisa]), mode === 'mixed' ? [
+        ['managed-product', 0, 0], ['product', 1200, 12000],
+      ] : [['managed-product', 0, 0]]);
       const snapshot = await db.prepare('SELECT platform_retention_bps,platform_retained_paisa FROM managed_commercial_snapshots WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id=?)').bind(order!.id).first<{ platform_retention_bps: number; platform_retained_paisa: number }>();
       assert.deepEqual([snapshot!.platform_retention_bps, snapshot!.platform_retained_paisa], [1200, 12000]);
       assert.equal((await db.prepare('SELECT COUNT(*) n FROM order_customer_service_fees WHERE order_id=? AND waived_paisa=1000 AND net_paisa=0').bind(order!.id).first<{ n: number }>())?.n, 1);
@@ -207,21 +214,28 @@ void test('native customer fee transactions, independent lock races and actual-n
         const preview = await cancellationPreview(db, access, [sellerId]);
         await cancelSelectedParcels(db, access, { sellerIds: [sellerId], fingerprint: preview.fingerprint, requestId: c.key + '-cancel-' + index, note: 'Fictional uncollected native cancellation', now: AT + 3 + index });
         const after = await getOrderReceipt(db, receipt.orderNumber, c.key, 'checkout-buyer');
-        assert.equal(after?.buyerPlatformFeePaisa, index === 0 && !waived ? 1000 : 0);
+        // Native JSON_EXTRACT/COALESCE returns the recorded scalar as an exact string.
+        assert.equal(after?.buyerPlatformFeePaisa, index === 0 && !waived ? '1000' : '0');
         if (index === 1) assert.equal(after?.grandTotalPaisa, 0);
         assert.equal(after?.originalBuyerPlatformFeePaisa, waived ? 0 : 1000);
         assert.deepEqual(await db.prepare('SELECT f.* FROM order_customer_service_fees f JOIN orders o ON o.id=f.order_id WHERE o.order_number=?').bind(receipt.orderNumber).first(), before);
       }
     });
     for (const waived of [false, true]) await t.test(`${waived ? 'zero-net waived' : 'charged'} quote cannot commit stale policy identity after evaluating its predicate and waiting for control`, async () => {
+      placement = Math.max(placement, policyPublishedAt + 1);
       await endAll(); if (waived) await campaign('native-policy-race');
+      const quotedPolicy = await getEffectiveBusinessSetting(db, 'platform_service_fee_policy', placement);
       const c = await cart(), before = await financial(), mark = f.traces.length;
       await blocker.beginTransaction(); await blocker.query("UPDATE customer_fee_waiver_control SET revision=revision WHERE id='default'");
       const checkout = settled(place(c));
       try {
         const waiting = await f.waitForBlocked(/UPDATE customer_fee_waiver_control/, mark);
         assert.ok(f.traces.slice(mark).some(e => e.thread === waiting.thread && e.complete && e.sql.includes("setting_key='platform_service_fee_policy'")), 'The actual checkout policy predicate completed before its real control lock wait');
-        await policy(true, waived ? 1000 : 2500); // The waived case changes identity without changing zero net money.
+        const published = await policy(true, waived ? 1000 : 2500, placement);
+        assert.equal(published.effectiveFrom, placement, 'Concurrent publication applies at the actual captured placement');
+        assert.notEqual(published.id, quotedPolicy.versionId, 'Concurrent publication changes immutable policy identity');
+        assert.equal((await getEffectiveBusinessSetting(db, 'platform_service_fee_policy', placement)).versionId, published.id);
+        // The waived case changes identity without changing zero net money.
         await blocker.commit();
         assert.equal((await checkout).ok, false, 'A stale policy must never commit old customer money or evidence');
         assert.deepEqual(await financial(), before);

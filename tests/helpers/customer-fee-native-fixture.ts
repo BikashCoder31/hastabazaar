@@ -102,19 +102,29 @@ export async function customerFeeNativeFixture(managed = false) {
     },
     async waitForBlocked(sql: RegExp, since = 0, holder = blocker.threadId) {
       const deadline = performance.now() + 10000;
+      let observations = 0;
+      let lastWaits: { thread: number; holder: number }[] = [];
       while (performance.now() < deadline) {
         const [rows] = await monitor.query<RowDataPacket[]>(`SELECT waiting.trx_mysql_thread_id AS thread,holding.trx_mysql_thread_id AS holder
           FROM information_schema.INNODB_LOCK_WAITS w
           JOIN information_schema.INNODB_TRX waiting ON waiting.trx_id=w.requesting_trx_id
           JOIN information_schema.INNODB_TRX holding ON holding.trx_id=w.blocking_trx_id`);
+        observations++;
+        lastWaits = rows.slice(0, 8).map(r => ({ thread: Number(r.thread), holder: Number(r.holder) }));
         const event = traces.slice(since).find(e => !e.complete && sql.test(e.sql) && rows.some(r => Number(r.thread) === e.thread && Number(r.holder) === holder));
         if (event) {
           assert.notEqual(event.thread, holder, 'Competitor uses a different real MariaDB connection');
           console.log('NATIVE LOCK WAIT: ' + JSON.stringify({ waiter: event.thread, holder, statement: event.sql.slice(0, 100) }));
           return event;
         }
-        await new Promise(resolve => setTimeout(resolve, 10));
+        // MariaDB10.11 trx0i_s.cc requires >100ms since the LAST cache read.
+        // Faster polling can indefinitely retain the initial empty snapshot.
+        await new Promise(resolve => setTimeout(resolve, 150));
       }
+      const recent = traces.slice(since).slice(-12).map(e => ({ thread: e.thread, complete: e.complete,
+        statement: e.sql.replace(/'(?:''|[^'])*'/g, '?').replace(/\s+/g, ' ').slice(0, 160) }));
+      console.log('NATIVE LOCK WAIT TIMEOUT: ' + JSON.stringify({ pattern: sql.source, holder, observations,
+        lastWaits, matchingPending: traces.slice(since).filter(e => !e.complete && sql.test(e.sql)).length, recent }));
       throw new Error('Expected independent MariaDB lock wait was not observed: ' + sql);
     },
     close,
