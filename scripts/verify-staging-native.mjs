@@ -10,6 +10,7 @@ import { stagingNativeUpgrade } from './staging-native-upgrade.mjs';
 import { rehearseNativeRecovery } from './recovery/rehearse-native.mjs';
 import {assertLocalRecoveryMode,createLocalSourceArtifact} from './recovery/local-source-artifact.mjs';
 import {assertRequiredNativeResults} from './recovery/native-test-results.mjs';
+import {safeChildEnvironment,withOwnedProcesses} from './testing/verify-packaged-browser-gates.mjs';
 
 // This command has no database-target arguments. It creates its own isolated
 // container and new databases; it never resets, seeds or connects to saved data.
@@ -189,6 +190,23 @@ try {
     // records and MFA together. This test does not replace business records.
     nativeTests(['tests/hosted-security-native.test.ts']);
   });
+  if(!localRecovery)await check('required exact-package contact/catalog and populated-summary browser gates',async()=>{
+    // Do not reset: preserve financial evidence and already-enrolled staff, then
+    // include the appended fictional optional Admin in the later recovery dump.
+    owned();
+    const childEnv={...safeChildEnvironment(process.env),GITHUB_SHA:process.env.GITHUB_SHA,
+      HASTABAZAAR_NATIVE_ARTIFACT_DIRECTORY:process.env.HASTABAZAAR_NATIVE_ARTIFACT_DIRECTORY,
+      HATSKALA_STAGING_NATIVE:'1',HATSKALA_NATIVE_MARKER:marker,HATSKALA_NATIVE_TOKEN:token,
+      HASTABAZAAR_NATIVE_SECURITY_KEY:securityKey,HASTABAZAAR_RUNTIME_ENV:'local_staging',
+      DB_HOST:'127.0.0.1',DB_PORT:'13329',DB_NAME:'native_'+run+'_fresh',DB_USER:'root',DB_PASSWORD:password};
+    const result=await withOwnedProcesses(owner=>owner.run(process.execPath,['--import','tsx','scripts/testing/verify-packaged-browser-gates.mts'],{
+      cwd:project,env:childEnv,
+    },600_000),45_000);
+    console.log(result.output.replaceAll(password,'[redacted]').replaceAll(token,'[redacted]').replaceAll(securityKey,'[redacted]'));
+    assert.equal(result.code,0,'Both required browser gates must execute without skips before recovery/artifact acceptance');
+    owned();
+  });
+  else console.log('LOCAL SOURCE SNAPSHOT ONLY: exact Linux packaged browser acceptance is not certified');
   await check(localRecovery?'local source snapshot survives encrypted native database/media/key recovery':'exact verified Linux artifact survives encrypted native database/media/key recovery',async()=>{
     const artifactDirectory=localRecovery?await createLocalSourceArtifact(project,workspace):process.env.HASTABAZAAR_NATIVE_ARTIFACT_DIRECTORY;
     assert.ok(artifactDirectory,'An exact verified Linux release artifact is required for native recovery rehearsal');

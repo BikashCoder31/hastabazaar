@@ -527,8 +527,13 @@ export async function createCodOrder(
     }
   }
   const placedAt = Date.now();
+  const customerPolicyGuard = () => checkedCheckoutGuard(database,
+    "COALESCE((SELECT id FROM business_setting_versions WHERE setting_key='platform_service_fee_policy' AND status='published' AND effective_from<=? AND (effective_until IS NULL OR effective_until>?) ORDER BY effective_from DESC,version DESC LIMIT 1),'')=?",
+    [placedAt, placedAt, serviceFee.versionId ?? '']);
   const statements: D1PreparedStatement[] = [
     ...customerFeeCheckoutGuards(database, customerFeeQuote, placedAt),
+    // Recheck immutable policy identity after any customer-control lock wait.
+    ...customerPolicyGuard(),
     ...managedCheckoutGuards,
     database.prepare(
       "UPDATE delivery_rate_current SET version_id=version_id WHERE id='default'",
@@ -583,9 +588,7 @@ export async function createCodOrder(
   statements.push(...prepareFirstCodReview(database,{customerId:contactProof.actor.userId,orderId:id,
     totalPaisa:grandTotalPaisa+credit.walletPaisa,now}));
   const snapshotGuards:D1PreparedStatement[]=[
-    ...checkedCheckoutGuard(database,
-      "COALESCE((SELECT id FROM business_setting_versions WHERE setting_key='platform_service_fee_policy' AND status='published' AND effective_from<=? AND (effective_until IS NULL OR effective_until>?) ORDER BY effective_from DESC,version DESC LIMIT 1),'')=?",
-      [placedAt, placedAt, serviceFee.versionId ?? '']),
+    ...customerPolicyGuard(),
     ...(registeredSettlementTerms ? ([
       ['seller_delivery_hold_days', registeredSettlementTerms.holdSettingVersionId],
       ['new_seller_reserve_bps', registeredSettlementTerms.reserveSettingVersionId],
@@ -1121,6 +1124,14 @@ export interface OrderDocumentRow {
   issuedAt: number;
 }
 
+/** Native JSON scalar expressions may arrive as strings; public paisa stays numeric. */
+function receiptCustomerFeePaisa(value: unknown): number {
+  const paisa = typeof value === 'string' && /^(0|[1-9][0-9]*)$/.test(value) ? Number(value) : value;
+  if (typeof paisa !== 'number' || !Number.isSafeInteger(paisa) || paisa < 0)
+    throw new RangeError('Recorded customer service fee must be a non-negative safe integer.');
+  return paisa;
+}
+
 export async function getOrderReceipt(
   database: D1Database,
   orderNumberValue: string,
@@ -1186,6 +1197,7 @@ export async function getOrderReceipt(
       }
     >();
   if (!order) return null;
+  const buyerPlatformFeePaisa = receiptCustomerFeePaisa(order.buyerPlatformFeePaisa);
   const [itemResult, documentResult, customerFees] = await Promise.all([
     database
       .prepare(
@@ -1238,6 +1250,7 @@ export async function getOrderReceipt(
   } = order;
   return {
     ...safeOrder,
+    buyerPlatformFeePaisa,
     customerServiceFee: customerFees.get(orderId)!,
     ...(promoCampaignId && promoRevision && promoCode && promoLabel ? {promo:{campaignId:promoCampaignId,revision:promoRevision,code:promoCode,label:promoLabel}} : {}),
     address: JSON.parse(addressJson) as CheckoutInput['address'],

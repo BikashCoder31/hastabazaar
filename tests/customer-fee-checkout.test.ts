@@ -1,7 +1,7 @@
 import {seedLegacyPublishedCampaign,legacyFeeEvidenceInsert} from './helpers/legacy-fee-history-fixture';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createCodOrder } from '../lib/db/repositories/orders';
+import { createCodOrder, getOrderReceipt } from '../lib/db/repositories/orders';
 import { getPlatformServiceFee } from '../lib/db/repositories/platform-service-fee';
 import { getCheckoutPolicyContext } from '../lib/checkout/policy-context';
 import { saveBusinessSettingChange } from '../lib/db/repositories/business-settings';
@@ -575,4 +575,117 @@ void test('equal-start customer campaigns attribute only the immutable ID winner
   } finally {
     await f.dispose();
   }
+});
+
+// Deterministic SQLite statement-boundary coverage only; real independent
+// MariaDB post-predicate/control waits are exercised by customer-fee-native.
+for (const mode of ['charged', 'waived', 'disabled', 'zero'] as const)
+  void test(`post-predicate ${mode} policy identity change is rejected after control acquisition`, async t => {
+    t.mock.method(Date, 'now', () => AT);
+    const f = await customerFeeCheckoutFixture();
+    try {
+      if (mode !== 'charged') await campaign(f.database);
+      const initial = mode === 'disabled' ? { enabled: false, amountPaisa: 1000 }
+        : mode === 'zero' ? { enabled: true, amountPaisa: 0 } : null;
+      if (initial) await saveBusinessSettingChange(f.database, {
+        key: 'platform_service_fee_policy', value: initial, actorId: 'owner',
+        reason: 'Fictional initial zero policy', requestId: 'post-predicate-initial',
+        now: AT - 2, effectiveFrom: null, expectedVersion: 0,
+      });
+      const before = conserved(f), sql = new WeakMap<D1PreparedStatement, string>();
+      let interleaved = false;
+      const db = new Proxy(f.database, { get(target, key, receiver) {
+        if (key === 'prepare') return (query: string) => {
+          const statement = target.prepare(query); sql.set(statement, query); return statement;
+        };
+        if (key === 'batch') return async (statements: D1PreparedStatement[]) => {
+          const control = statements.findIndex(statement => sql.get(statement)?.startsWith('UPDATE customer_fee_waiver_control '));
+          assert.ok(control > 0, 'Checkout retains its actual customer-control acquisition');
+          const prefix = statements.slice(0, control);
+          assert.ok(prefix.some(statement => sql.get(statement)?.includes("setting_key='platform_service_fee_policy'")), 'An actual policy predicate precedes control');
+          // Execute the real prefix successfully, then a real committed publication.
+          // Splitting SQLite batches models this boundary, not native locking.
+          await target.batch(prefix);
+          await saveBusinessSettingChange(f.database, {
+            key: 'platform_service_fee_policy', value: initial ?? { enabled: true, amountPaisa: mode === 'charged' ? 2500 : 1000 },
+            actorId: 'owner', reason: 'Publication after successful policy predicate',
+            requestId: 'post-predicate-publication', now: AT, effectiveFrom: null,
+            expectedVersion: initial ? 1 : 0,
+          });
+          interleaved = true;
+          return target.batch(statements.slice(control));
+        };
+        return Reflect.get(target, key, receiver);
+      } });
+      await assert.rejects(place(f, f.input, db), /changed|review/i);
+      assert.equal(interleaved, true);
+      assert.deepEqual(conserved(f), before);
+    } finally { await f.dispose(); }
+  });
+
+// Only the untrusted scalar returned at the SQL/driver boundary is substituted.
+// The public reader, actual order, access checks and all other reads remain real.
+function receiptScalarBoundary(database: D1Database, scalar: unknown): D1Database {
+  function wrap(statement: D1PreparedStatement): D1PreparedStatement {
+    return new Proxy(statement, { get(target, key, receiver) {
+      if (key === 'bind') return (...values: Parameters<D1PreparedStatement['bind']>) => wrap(target.bind(...values));
+      if (key === 'first') return async () => {
+        const row = await target.first<Record<string, unknown>>();
+        return row && { ...row, buyerPlatformFeePaisa: scalar };
+      };
+      const value = Reflect.get(target, key, receiver);
+      return typeof value === 'function' ? value.bind(target) : value;
+    } });
+  }
+  return new Proxy(database, { get(target, key, receiver) {
+    if (key === 'prepare') return (query: string) => {
+      const statement = target.prepare(query);
+      return query.includes(' AS buyerPlatformFeePaisa') ? wrap(statement) : statement;
+    };
+    return Reflect.get(target, key, receiver);
+  } });
+}
+
+void test('public receipt returns numeric safe paisa for valid numeric and canonical native scalars', async t => {
+  t.mock.method(Date, 'now', () => AT);
+  const f = await customerFeeCheckoutFixture();
+  try {
+    const order = await place(f), before = conserved(f);
+    for (const [label, scalar, expected] of [
+      ['number zero', 0, 0], ['number fee', 1000, 1000],
+      ['number maximum', 9007199254740991, 9007199254740991],
+      ['native zero', '0', 0], ['native fee', '1000', 1000],
+      ['native maximum', '9007199254740991', 9007199254740991],
+    ] as const) await t.test('public receipt: ' + label, async () => {
+      const receipt = await getOrderReceipt(receiptScalarBoundary(f.database, scalar), order.orderNumber, 'receipt', 'checkout-buyer');
+      assert.ok(receipt);
+      assert.equal(typeof receipt.buyerPlatformFeePaisa, 'number');
+      assert.equal(Number.isSafeInteger(receipt.buyerPlatformFeePaisa), true);
+      assert.equal(receipt.buyerPlatformFeePaisa, expected);
+      assert.equal(receipt.originalBuyerPlatformFeePaisa, 1000);
+      assert.equal(receipt.customerServiceFee.netPaisa, 1000);
+    });
+    assert.deepEqual(conserved(f), before, 'Receipt normalization never rewrites money or evidence');
+  } finally { await f.dispose(); }
+});
+
+void test('public receipt refuses invalid, noncanonical and unsafe customer fee scalars', async t => {
+  t.mock.method(Date, 'now', () => AT);
+  const f = await customerFeeCheckoutFixture();
+  try {
+    const order = await place(f), before = conserved(f);
+    const cases: [string, unknown][] = [
+      ['missing', undefined], ['null', null], ['boolean true', true], ['boolean false', false],
+      ['empty', ''], ['space', ' '], ['leading zero', '01000'], ['plus sign', '+1000'],
+      ['negative zero string', '-0'], ['decimal string', '1000.0'], ['exponent', '1e3'],
+      ['leading whitespace', ' 1000'], ['trailing whitespace', '1000 '], ['hex', '0x3e8'],
+      ['unsafe string', '9007199254740992'], ['unsafe number', 9007199254740992],
+      ['fraction', 1000.5], ['negative', -1], ['NaN', NaN], ['infinite', Infinity],
+      ['object', {}], ['array', []], ['bigint', BigInt(1000)],
+    ];
+    for (const [label, scalar] of cases) await t.test('public receipt: reject ' + label, async () => {
+      await assert.rejects(getOrderReceipt(receiptScalarBoundary(f.database, scalar), order.orderNumber, 'receipt', 'checkout-buyer'), /customer service fee.*non-negative safe integer/i);
+    });
+    assert.deepEqual(conserved(f), before, 'Rejected scalar never rewrites money or evidence');
+  } finally { await f.dispose(); }
 });

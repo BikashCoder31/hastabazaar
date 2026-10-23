@@ -6,8 +6,8 @@ import { acceptManagedTerms, getAcceptedManagedTerms, getManagedTermsOffers, man
 import { createBusinessSettingDraft, getEffectiveBusinessSetting, publishBusinessSettingDraft } from '../lib/db/repositories/business-settings';
 import type { BusinessSettingKey, BusinessSettingValue } from '../lib/configuration/types';
 import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { getRegisteredSellerTerms } from '../lib/db/repositories/marketplace-settings';
 import { getManagedMakerApplicationTerms } from '../lib/db/repositories/managed-maker-details';
 import { MANAGED_SUPPLIER_AGREEMENT_VERSION } from '../lib/sellers/managed-identity';
@@ -15,11 +15,12 @@ import { companyStoreMakerFixture } from './helpers/company-store-maker-fixture'
 
 void test('application browser keeps each available route usable and refuses absent terms even after a forged selection',async()=>{
  const f=await companyStoreMakerFixture();
+ try {
  // Existing tests use isolated Chrome with all network requests intercepted. No checked local preview is launched.
  // oxlint-disable-next-line typescript/no-explicit-any -- Existing browser runtime contract.
  const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs') as any;
+ const output=await mkdtemp(path.join(tmpdir(),'hastabazaar-managed-terms-ui-'));
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH??'C:/Program Files/Google/Chrome/Application/chrome.exe'});
- const output=await mkdtemp(fileURLToPath(new URL('../.superpowers/sdd/2026-10-23-customer-fee-waiver-correction/task-6-ui-',import.meta.url)));
  try {
   for(const key of ['independent_seller_commission_bps','managed_sale_linked_platform_retention_bps'] as const){
    const draft=await createBusinessSettingDraft(f.db,{key,value:1200,actorId:'reviewer',reason:'SIMULATED Task 6 browser terms',requestId:`ui-draft-${key}`,now:f.now-16*86_400_000});
@@ -67,7 +68,8 @@ void test('application browser keeps each available route usable and refuses abs
    assert.deepEqual(errors,[]);await page.close();
   }
   console.log(`Task 6 UI evidence: ${output}`);
- }finally{await browser.close();f.dispose();}
+ }finally{await browser.close();}
+ }finally{f.dispose();}
 });
 
 void test('managed 12% renewal binds both real published source IDs and preserves old 9% orders and acceptance',async()=>{
@@ -128,8 +130,9 @@ void test('upcoming terms retain original private answers and form through reloa
  createRoot(document.getElementById('root')).render(<><ManagedTermsAcceptance ownerId="owner" sellerId="maker" offer={current} future alreadyAccepted={false}/><ManagedTermsRecovery ownerId="owner" sellerId="maker" visibleOfferIds={[current.id]}/></>);
  `},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'next',setup(b){b.onResolve({filter:/^next\/navigation$/},()=>({path:'navigation',namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:'export function useRouter(){return {refresh(){}}}',loader:'js'}));}}]});
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH??'C:/Program Files/Google/Chrome/Application/chrome.exe'});
- const page=await browser.newPage({viewport:{width:390,height:844}});const sent:Record<string,unknown>[]=[];let version=1;
+ const sent:Record<string,unknown>[]=[];let version=1;
  try {
+  const page=await browser.newPage({viewport:{width:390,height:844}});
   // oxlint-disable-next-line typescript/no-explicit-any -- Runtime route.
   await page.route('https://terms.test/**',async(route:any)=>{
    const url=new URL(route.request().url());

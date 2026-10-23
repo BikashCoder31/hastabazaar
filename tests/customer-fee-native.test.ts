@@ -214,8 +214,9 @@ void test('native customer fee transactions, independent lock races and actual-n
         const preview = await cancellationPreview(db, access, [sellerId]);
         await cancelSelectedParcels(db, access, { sellerIds: [sellerId], fingerprint: preview.fingerprint, requestId: c.key + '-cancel-' + index, note: 'Fictional uncollected native cancellation', now: AT + 3 + index });
         const after = await getOrderReceipt(db, receipt.orderNumber, c.key, 'checkout-buyer');
-        // Native JSON_EXTRACT/COALESCE returns the recorded scalar as an exact string.
-        assert.equal(after?.buyerPlatformFeePaisa, index === 0 && !waived ? '1000' : '0');
+        assert.equal(typeof after?.buyerPlatformFeePaisa, 'number', 'Public receipt normalizes native JSON scalar money');
+        assert.equal(Number.isSafeInteger(after?.buyerPlatformFeePaisa), true);
+        assert.equal(after?.buyerPlatformFeePaisa, index === 0 && !waived ? 1000 : 0);
         if (index === 1) assert.equal(after?.grandTotalPaisa, 0);
         assert.equal(after?.originalBuyerPlatformFeePaisa, waived ? 0 : 1000);
         assert.deepEqual(await db.prepare('SELECT f.* FROM order_customer_service_fees f JOIN orders o ON o.id=f.order_id WHERE o.order_number=?').bind(receipt.orderNumber).first(), before);
