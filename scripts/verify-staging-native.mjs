@@ -174,7 +174,7 @@ try {
   });
   await connection.query('USE `native_'+run+'_fresh`');
   await check('current accounting, financial, billing, fee waiver and hosted MFA native journeys execute without skips',async()=>{
-    const exactFeeCounts={'tests/fee-waiver-native.test.ts':5,'tests/customer-fee-native.test.ts':22};
+    const exactFeeCounts={'tests/fee-waiver-native.test.ts':5,'tests/customer-fee-native.test.ts':29};
     for(const file of ['tests/accounting-native-runtime.test.ts','tests/commerce-financial-native.test.ts','tests/billing-release-native.test.ts','tests/fee-waiver-native.test.ts','tests/customer-fee-native.test.ts']){
       // This exact schema was created by this process in the pinned disposable
       // container. Never accept a name/host from the caller or reuse saved data.

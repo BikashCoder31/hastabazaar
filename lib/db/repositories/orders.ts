@@ -6,12 +6,12 @@ import {prepareFirstCodReview} from '@/lib/orders/first-cod-review';
 import { promoQuoteIntent } from '@/lib/incentives/quote-intent';
 import { allocatePromoDiscount } from '@/lib/incentives/promo-policy';
 import { getDeliveryRates, rateVersionGuard } from './delivery-rates';
-import { getSellerCommissionTerms, commissionCheckoutGuards } from './commission-rates';
+import { getSellerCommissionTerms, getCommissionCheckoutAcceptance, commissionCheckoutGuards } from './commission-rates';
 import { quoteCustomerServiceFee, customerFeeCheckoutGuards, customerFeeEvidenceInsert, readOrderCustomerServiceFees, type OrderCustomerFeeView } from './customer-service-fees';
 import { calculateMarketplaceFee, type FeeBreakdown } from '../../marketplace/fee-waivers';
 import { buildFormAnswerInsert } from './form-answers';
 import { assertCommerceFormReplay, type CommerceForm } from './commerce-form-replay';
-import { getCommissionSetting, sellerAcceptedCommissionVersion } from './marketplace-settings';
+import { getCommissionSetting } from './marketplace-settings';
 import { publicProductEligibility } from '@/lib/products/eligibility';
 import { publicProductName } from '@/lib/products/truthful-presentation';
 import {
@@ -360,12 +360,13 @@ export async function createCodOrder(
   const commissionSetting = await getCommissionSetting(database, now);
   const sellerCommissionBps = commissionSetting.basisPoints;
   const sellerCommissionTerms = Object.fromEntries(await Promise.all([...new Set(items.filter(item => item.participationRoute !== 'managed_maker').map(item => item.sellerId))].map(async sellerId => [sellerId, await getSellerCommissionTerms(database, sellerId, now)] as const)));
-  if (commissionSetting.versionId) {
-    for (const sellerId of new Set(items.filter((item)=>item.participationRoute!=='managed_maker').map((item)=>item.sellerId))) {
-      if (!await sellerAcceptedCommissionVersion(database,sellerId,commissionSetting.versionId)) {
-        throw new CheckoutConflictError('A seller must accept the current commission and agreement version before receiving a new order.');
-      }
+  const sellerCommissionAcceptances: Record<string, string> = {};
+  for (const sellerId of Object.keys(sellerCommissionTerms)) {
+    const acceptanceId = await getCommissionCheckoutAcceptance(database, sellerId, commissionSetting, now);
+    if (!acceptanceId) {
+      throw new CheckoutConflictError('A seller must accept the current commission and agreement version before receiving a new order.');
     }
+    sellerCommissionAcceptances[sellerId] = acceptanceId;
   }
   const hasManagedItems = items.some((item) => item.participationRoute === 'managed_maker');
   const [managedProgram, managedModel, managedRetention, managedHold] = hasManagedItems
@@ -509,13 +510,14 @@ export async function createCodOrder(
     taxTotalPaisa: 0,
     grandTotalPaisa,
   };
+  const placedAt = Date.now();
   const managedCheckoutGuards: D1PreparedStatement[] = [];
   if (hasManagedItems) {
     for (const setting of [managedProgram, managedModel, managedRetention, managedHold]) {
       if (!setting) continue;
       managedCheckoutGuards.push(...checkedCheckoutGuard(database, `COALESCE((SELECT id FROM business_setting_versions
         WHERE setting_key=? AND status='published' AND effective_from<=? AND (effective_until IS NULL OR effective_until>?)
-        ORDER BY effective_from DESC,version DESC LIMIT 1),'')=?`, [setting.key, now, now, setting.versionId ?? '']));
+        ORDER BY effective_from DESC,version DESC LIMIT 1),'')=?`, [setting.key, placedAt, placedAt, setting.versionId ?? '']));
     }
     for (const item of items.filter(item => item.participationRoute === 'managed_maker')) {
       managedCheckoutGuards.push(...checkedCheckoutGuard(database, `EXISTS(SELECT 1 FROM seller_participation_profiles
@@ -526,7 +528,6 @@ export async function createCodOrder(
           item.managedAgreementVersion, item.managedAgreementLanguage, item.managedAgreementAcceptedAt]));
     }
   }
-  const placedAt = Date.now();
   const customerPolicyGuard = () => checkedCheckoutGuard(database,
     "COALESCE((SELECT id FROM business_setting_versions WHERE setting_key='platform_service_fee_policy' AND status='published' AND effective_from<=? AND (effective_until IS NULL OR effective_until>?) ORDER BY effective_from DESC,version DESC LIMIT 1),'')=?",
     [placedAt, placedAt, serviceFee.versionId ?? '']);
@@ -534,12 +535,13 @@ export async function createCodOrder(
     ...customerFeeCheckoutGuards(database, customerFeeQuote, placedAt),
     // Recheck immutable policy identity after any customer-control lock wait.
     ...customerPolicyGuard(),
+    ...commissionCheckoutGuards(database, sellerCommissionTerms, commissionSetting, sellerCommissionAcceptances, placedAt),
     ...managedCheckoutGuards,
     database.prepare(
       "UPDATE delivery_rate_current SET version_id=version_id WHERE id='default'",
     ),
     ...rateVersionGuard(database, rates.version),
-    ...[...acceptedManaged.values()].flatMap(terms => acceptedManagedTermsGuards(database, terms, now)),
+    ...[...acceptedManaged.values()].flatMap(terms => acceptedManagedTermsGuards(database, terms, placedAt)),
     database
       .prepare(
         `INSERT INTO orders (
@@ -875,7 +877,6 @@ export async function createCodOrder(
   if(promo && customerId) statements.push(...await preparePromoConsumption(database,{userId:customerId,orderId:id,requestId:input.idempotencyKey,quote:promo,now,payloadDigest:intentDigest,response:{...checkoutResult}}));
 
   statements.push(
-    ...commissionCheckoutGuards(database, Object.values(sellerCommissionTerms)),
     database
       .prepare(
         `INSERT INTO order_policy_acceptances (

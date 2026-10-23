@@ -6,6 +6,9 @@ import {
   prepareSellerCommissionAcceptance,
 } from '../../lib/db/repositories/marketplace-settings';
 import { managedMakerAgreementSnapshot } from '../../lib/sellers/managed-identity';
+import { savePromoDraft, publishPromo } from '../../lib/db/repositories/promo-codes';
+import { quoteCheckoutPromo } from '../../lib/incentives/quote-intent';
+import type { CheckoutInput } from '../../lib/checkout/validation';
 import {
   acceptManagedTerms,
   getManagedTermsOffers,
@@ -24,7 +27,50 @@ export const terms = {
   endsAt: AT + 1000,
 };
 export const customerFeeFixture = commissionDatabase;
-export async function customerFeeCheckoutFixture() {
+/** Real disposable promo and gift-credit sources make rollback assertions cover
+ * pending consumption, wallet posting and address writes as well as order money. */
+export async function withCommercialFinancialIntent(db: D1Database, token: string, input: CheckoutInput, now: number): Promise<CheckoutInput> {
+  const key = crypto.randomUUID(), code = 'CF' + key.replaceAll('-', '').slice(0, 16).toUpperCase();
+  const formId = 'staff.promo-code', versionId = 'commercial-promo-form';
+  await db.prepare(`INSERT OR IGNORE INTO form_config_versions(id,form_id,version,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+    VALUES(?,?,1,'published',?,'SIMULATED commercial rollback fixture','owner',1,'owner',1,'owner',1,?)`)
+    .bind(versionId, formId, JSON.stringify({ formId, fields: [] }), versionId).run();
+  const context = { actorId: 'owner', authSubject: 'owner', requestId: key + '-draft', expectedVersion: 0, now,
+    reason: 'SIMULATED commercial rollback promo', form: { formId: 'staff.promo-code' as const, versionId,
+      answers: { formId, version: 1, answers: [] } } };
+  const draft = await savePromoDraft(db, context, { code, label: 'Fictional rollback promo', kind: 'fixed', fixedPaisa: 1000,
+    minimumSubtotalPaisa: 0, startsAt: 0, endsAt: now + 100000, totalUseLimit: 10, perCustomerUseLimit: 2, budgetPaisa: 10000 });
+  await publishPromo(db, { ...context, requestId: key + '-publish', expectedVersion: 1 }, draft.campaignId);
+  await db.prepare("INSERT OR IGNORE INTO wallet_accounts(user_id,referral_code,balance_paisa,created_at) VALUES('checkout-buyer',?,0,1)")
+    .bind(key.replaceAll('-', '').slice(0, 16).toUpperCase()).run();
+  await db.prepare(`INSERT INTO gift_cards(id,code_hash,amount_paisa,issued_by,issuance_request_id,issued_at,redeemed_by,redeemed_at,redemption_request_id)
+    VALUES(?,?,500,'owner',?,?,'checkout-buyer',?,?)`).bind(key, key, key + '-issue', now, now, key + '-redeem').run();
+  await db.prepare(`INSERT INTO wallet_entries(id,user_id,gift_card_id,amount_paisa,platform_amount_paisa,kind,created_at)
+    VALUES(?,'checkout-buyer',?,500,-500,'gift_card',?)`).bind(key, key, now).run();
+  const quote = await quoteCheckoutPromo(db, 'checkout-buyer', token, code, now, 'checkout-buyer');
+  return { ...input, useWallet: true, saveAddressForFuture: true, saveAddressLabel: 'Fictional commercial address',
+    promoCode: quote.code, promoRevision: quote.revision, promoQuoteIntent: quote.quoteIntent };
+}
+/** Advance only the fixture clock after a real asynchronous quote-state read.
+ * Seller/cart preparation still sees the request instant; no SQL result is faked. */
+export function afterCustomerFeePreparation(db: D1Database, advance: () => void): D1Database {
+  return new Proxy(db, { get(target, key) {
+    if (key === 'prepare') return (sql: string) => {
+      const statement = target.prepare(sql);
+      if (!sql.startsWith('SELECT ctl.revision AS controlRevision')) return statement;
+      return new Proxy(statement, { get(prepared, property) {
+        if (property === 'all') return async () => {
+          const result = await prepared.all(); advance(); return result;
+        };
+        const value = Reflect.get(prepared, property);
+        return typeof value === 'function' ? value.bind(prepared) : value;
+      } });
+    };
+    const value = Reflect.get(target, key);
+    return typeof value === 'function' ? value.bind(target) : value;
+  } });
+}
+export async function customerFeeCheckoutFixture(basisPoints = 1200) {
   const f = await commissionDatabase();
   for (const key of [
     'independent_seller_commission_bps',
@@ -32,7 +78,7 @@ export async function customerFeeCheckoutFixture() {
   ] as const)
     await saveBusinessSettingChange(f.database, {
       key,
-      value: 1200,
+      value: basisPoints,
       actorId: 'owner',
       reason: 'Explicit disposable twelve percent terms',
       requestId: `fixture:${key}`,

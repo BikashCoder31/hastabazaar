@@ -24,7 +24,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 }});
 const url = 'http://localhost:3018/api/admin/customer-fee-waivers';
 const legacyUrl = 'http://localhost:3018/api/admin/fee-waivers';
-const terms = { name:'Customer campaign', description:'Whole positive customer charge', startsAt:0, endsAt:253402300799999 };
+const terms = { name:'Customer campaign', description:'Whole positive customer charge', startsAt:0, endsAt:253402280099999 };
 const create = { feeTarget:'customer_service_fee', command:{type:'create',terms}, expectedRevision:0, requestId:'route-create' };
 function request(body: unknown, origin='http://localhost:3018', path=url, raw=false) {
   return new Request(path,{method:'POST',headers:{origin,'content-type':'application/json'},body:raw?String(body):JSON.stringify(body)});
@@ -108,4 +108,26 @@ void test('customer route rejects revoked, inactive and changed actors including
       assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM customer_fee_waiver_campaigns').get()?.n,0);
     } finally {await f.dispose();}
   }
+});
+
+void test('authorized customer endpoint rejects out-of-editor timestamps before campaign, audit or receipt writes', async () => {
+  const route = await import('../app/api/admin/customer-fee-waivers/route');
+  const f = await fixture();
+  try {
+    const snapshot = () => JSON.stringify(['customer_fee_waiver_control', 'customer_fee_waiver_campaigns',
+      'customer_fee_waiver_revisions', 'customer_fee_waiver_requests', 'audit_logs'].map(table =>
+      f.sqlite.prepare(`SELECT * FROM ${table} ORDER BY 1`).all()));
+    const before = snapshot();
+    for (const at of [253402280100000, 8640000000000000, Number.MAX_SAFE_INTEGER]) {
+      const response = await route.POST(request({ ...create, requestId: 'bad-date-' + at,
+        command: { type: 'create', terms: { ...terms, endsAt: at } } }));
+      assert.equal(response.status, 422, await response.clone().text());
+      assert.equal(snapshot(), before);
+    }
+    for (const [index, [startsAt, endsAt]] of [[0, 1], [0, 60000], [253402280039999, 253402280099999]].entries()) {
+      const response = await route.POST(request({ ...create, expectedRevision: index, requestId: 'good-date-' + index,
+        command: { type: 'create', terms: { ...terms, startsAt, endsAt } } }));
+      assert.equal(response.status, 200, await response.clone().text());
+    }
+  } finally { await f.dispose(); }
 });

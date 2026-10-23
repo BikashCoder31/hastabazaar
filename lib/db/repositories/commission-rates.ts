@@ -1,6 +1,6 @@
 import { SELLER_AGREEMENT_VERSION } from '../../content/legal-policies';
 import { COMMISSION_RULE_VERSION } from '../../marketplace/policy';
-import { getCommissionSetting } from './marketplace-settings';
+import { getCommissionSetting, type CommissionSetting } from './marketplace-settings';
 import {
   COMMISSION_NOTICE_MS,
   commissionFeeScheduleText,
@@ -388,22 +388,52 @@ export async function acceptCommissionRate(
   }
 }
 
-/** Prevent a checkout from committing a schedule cancelled while its order was being built. */
+/** Capture the actual owner acceptance used for this checkout, without inventing a renewal. */
+export async function getCommissionCheckoutAcceptance(
+  db: D1Database, sellerId: string, setting: CommissionSetting, at: number,
+): Promise<string | null> {
+  const row = await db.prepare(`SELECT a.id FROM seller_agreement_acceptance_history a
+    JOIN seller_profiles s ON s.id=a.seller_id
+    WHERE a.seller_id=? AND a.commission_setting_version_id=? AND a.commission_bps=?
+      AND a.agreement_version=? AND a.accepted_by=s.user_id AND a.accepted_at<=?
+    ORDER BY a.accepted_at DESC,a.id DESC LIMIT 1`)
+    .bind(sellerId, setting.versionId, setting.basisPoints, SELLER_AGREEMENT_VERSION, at).first<{ id: string }>();
+  return row?.id ?? null;
+}
+
+/** Revalidate the selected base, actual acceptance and accepted supplement at the
+ * recorded placement instant, after customer-control acquisition. A changed
+ * identity requires fresh review; it never silently reprices an accepted order. */
 export function commissionCheckoutGuards(
   db: D1Database,
-  terms: SellerCommissionTerms[],
+  terms: Record<string, SellerCommissionTerms>,
+  setting: CommissionSetting,
+  acceptanceIds: Record<string, string>,
+  placedAt: number,
 ) {
+  if (!Object.keys(terms).length) return [];
+  const selectedSupplement = `FROM commission_rate_changes r
+    JOIN commission_rate_acceptances a ON a.rate_id=r.id
+    LEFT JOIN commission_rate_cancellations c ON c.rate_id=r.id
+    WHERE a.seller_id=? AND c.rate_id IS NULL AND r.effective_at<=? AND a.accepted_at<=?
+    ORDER BY r.effective_at DESC,r.created_at DESC,r.id DESC LIMIT 1`;
   return [
-    ...new Set(
-      terms
-        .filter((t) => t.version !== COMMISSION_RULE_VERSION)
-        .map((t) => t.version),
-    ),
-  ].flatMap((version) =>
-    guard(
-      db,
-      'NOT EXISTS(SELECT 1 FROM commission_rate_cancellations WHERE rate_id = ?)',
-      [version],
-    ),
-  );
+    ...guard(db, `EXISTS(SELECT 1 FROM business_setting_versions WHERE id=? AND id=(
+      SELECT id FROM business_setting_versions WHERE setting_key='independent_seller_commission_bps'
+      AND status='published' AND effective_from<=? AND (effective_until IS NULL OR effective_until>?)
+      ORDER BY effective_from DESC,version DESC LIMIT 1))`, [setting.versionId, placedAt, placedAt]),
+    ...Object.entries(terms).flatMap(([sellerId, term]) => [
+      ...guard(db, `EXISTS(SELECT 1 FROM seller_agreement_acceptance_history a JOIN seller_profiles s ON s.id=a.seller_id
+        JOIN users u ON u.id=s.user_id WHERE a.id=? AND a.seller_id=? AND a.commission_setting_version_id=?
+        AND a.commission_bps=? AND a.agreement_version=? AND a.accepted_by=s.user_id AND a.accepted_at<=?
+        AND s.seller_agreement_version=a.agreement_version AND s.status='approved' AND u.status='active')`,
+        [acceptanceIds[sellerId], sellerId, setting.versionId, setting.basisPoints, SELLER_AGREEMENT_VERSION, placedAt]),
+      ...guard(db, `COALESCE((SELECT r.id ${selectedSupplement}),?)=?
+        AND COALESCE((SELECT r.basis_points ${selectedSupplement}),?)=?
+        AND COALESCE((SELECT a.accepted_at ${selectedSupplement}),-1)=?`,
+        [sellerId, placedAt, placedAt, setting.versionId ?? COMMISSION_RULE_VERSION, term.version,
+          sellerId, placedAt, placedAt, setting.basisPoints, term.basisPoints,
+          sellerId, placedAt, placedAt, term.acceptedAt ?? -1]),
+    ]),
+  ];
 }

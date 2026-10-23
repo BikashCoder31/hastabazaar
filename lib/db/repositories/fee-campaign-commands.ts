@@ -124,6 +124,12 @@ function commands(
     if (command.type !== 'create') identifier(command.campaignId);
     if (command.type === 'create' || command.type === 'revise') {
       validateFeeWaiverTerms(command.terms);
+      // New customer schedules must fit the four-digit Nepal datetime editor.
+      // 0 is the existing nonnegative lower bound; this upper endpoint is
+      // 9999-12-31 23:59:59.999 at +05:45. Preserve sub-minute saved instants.
+      // Historical revisions and the legacy seller validator remain unchanged.
+      if (command.terms.startsAt > 253402280099999 || command.terms.endsAt > 253402280099999)
+        throw new FeeWaiverError('invalid');
       if (
         Object.keys(command.terms).some(
           (k) => !['name', 'description', 'startsAt', 'endsAt'].includes(k),

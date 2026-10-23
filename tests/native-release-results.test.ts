@@ -21,7 +21,7 @@ void test('owned runner registers separate exact-count customer and retained leg
  const source=await readFile(new URL('../scripts/verify-staging-native.mjs',import.meta.url),'utf8');
  assert.match(source,/'tests\/customer-fee-native\.test\.ts'/);
  assert.match(source,/'tests\/fee-waiver-native\.test\.ts'\s*:\s*5/);
- assert.match(source,/'tests\/customer-fee-native\.test\.ts'\s*:\s*22/);
+ assert.match(source,/'tests\/customer-fee-native\.test\.ts'\s*:\s*29/);
  assert.match(source,/const companions=\[[^\]]*'mariadb-customer-service-fee-waivers\.sql'/);
  assert.match(source,/assert\.equal\([^\n]*customer_fee_waiver[^\n]*0[^\n]*0074/);
  assert.match(source,/staging-upgrade-'\+run/,'Runner evidence filenames must be unique per invocation');

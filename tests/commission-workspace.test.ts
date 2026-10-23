@@ -348,7 +348,8 @@ void test('earnings use ledger snapshots, sum split reversals once, and exclude 
   }
 });
 
-void test('checkout snapshots per-seller accepted rates and later changes leave historical amounts intact', async () => {
+void test('checkout snapshots per-seller accepted rates and later changes leave historical amounts intact', async context => {
+  context.mock.method(Date, 'now', () => now + 17 * day);
   const f = await historicalCommissionDatabase(true);
   try {
     await seedCheckoutBuyer(f.database);

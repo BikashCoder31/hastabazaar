@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { customerFeeNativeFixture, seedNativeLegacyHistory } from './helpers/customer-fee-native-fixture';
-import { AT, terms, feeWaiverContext as ctx } from './helpers/customer-fee-waiver-fixture';
+import { AT, terms, feeWaiverContext as ctx, afterCustomerFeePreparation, withCommercialFinancialIntent } from './helpers/customer-fee-waiver-fixture';
 import { getCustomerFeeWaiverState as state, mutateCustomerFeeWaiver as mutate } from '../lib/db/repositories/customer-fee-waivers';
 import { createCodOrder, getOrderReceipt } from '../lib/db/repositories/orders';
 import { getEffectiveBusinessSetting, saveBusinessSettingChange } from '../lib/db/repositories/business-settings';
@@ -11,11 +11,14 @@ import { createCustomerReturnRequest, reviewReturnAsAdmin, advanceReturnAsAdmin 
 import { cancellationPreview, cancelSelectedParcels } from '../lib/cancellation/repository';
 import { prepareSellerParcels } from '../lib/operations/parcels';
 import { confirmFirstCodReview, getFirstCodReview } from '../lib/orders/first-cod-review';
+import { getRegisteredSellerTerms, prepareSellerCommissionAcceptance } from '../lib/db/repositories/marketplace-settings';
+import { acceptManagedTerms, getManagedTermsOffers, managedTermsFormId } from '../lib/managed-commerce/accepted-terms';
+import { acceptCommissionRate, scheduleCommissionRate } from '../lib/db/repositories/commission-rates';
 
 const enabled = process.env.HATSKALA_STAGING_NATIVE === '1';
 const settled = <T>(promise: Promise<T>) => promise.then(value => ({ ok: true as const, value }), error => ({ ok: false as const, error }));
 
-// 21 required scenarios + this parent = 22. Ordinary-suite skip is not native proof.
+// 21 original + 7 commercial scenarios + this parent = 29. Ordinary-suite skip is not native proof.
 void test('native customer fee transactions, independent lock races and actual-net aftercare', { skip: !enabled }, async t => {
   const f = await customerFeeNativeFixture(true), { db, monitor, blocker } = f;
   let placement = AT, sequence = 0, policyPublishedAt = AT - 100;
@@ -42,8 +45,12 @@ void test('native customer fee transactions, independent lock races and actual-n
     return { key, input: { ...f.input, idempotencyKey: key } };
   }
   const place = (c: Awaited<ReturnType<typeof cart>>, now = placement) => createCodOrder(db, c.key, c.key, c.input, now, 'checkout-buyer');
-  async function financial() {
-    const tables = ['orders', 'payments', 'order_items', 'order_customer_service_fees', 'order_item_marketplace_fees', 'order_documents', 'seller_ledger_entries', 'managed_commercial_snapshots', 'cart_items', 'products'];
+  async function financial(includeAudit = false) {
+    const tables = ['orders', 'payments', 'order_items', 'order_customer_service_fees', 'order_item_marketplace_fees', 'order_documents',
+      'order_policy_acceptances', 'seller_ledger_entries', 'managed_commercial_snapshots', 'managed_entitlements', 'cart_items', 'products',
+      'addresses', 'address_locations', 'wallet_accounts', 'wallet_entries', 'gift_cards', 'promo_redemptions', 'promo_customer_usage',
+      'promo_campaigns', 'promo_revisions', 'shipments', 'order_status_events',
+      'notification_messages', 'form_answer_sets', 'staff_permission_guards', 'operation_transaction_guards', ...(includeAudit ? ['audit_logs'] : [])];
     return Object.fromEntries(await Promise.all(tables.map(async table => [table, (await db.prepare(`SELECT * FROM ${table} ORDER BY 1`).all()).results])));
   }
   async function gateThread(gate: ReturnType<typeof f.holdCommit>, operation: Promise<unknown>) {
@@ -241,6 +248,93 @@ void test('native customer fee transactions, independent lock races and actual-n
         assert.equal((await checkout).ok, false, 'A stale policy must never commit old customer money or evidence');
         assert.deepEqual(await financial(), before);
       } finally { await blocker.rollback(); await checkout; await policy(); }
+    });
+    // Each scenario publishes through supported commands on an explicitly
+    // simulated logical clock, with the full registered notice interval.
+    const notice = 1_296_000_000;
+    async function commercial(managed: boolean, bps: number, effectiveAt: number) {
+      const key = managed ? 'managed_sale_linked_platform_retention_bps' : 'independent_seller_commission_bps';
+      const version = await db.prepare('SELECT MAX(version) n FROM business_setting_versions WHERE setting_key=?').bind(key).first<{ n: number }>();
+      return saveBusinessSettingChange(db, { key, value: bps, actorId: 'owner', reason: 'SIMULATED native commercial placement terms',
+        requestId: 'native-commercial-' + (++sequence), expectedVersion: Number(version!.n), now: effectiveAt - notice - 1, effectiveFrom: effectiveAt });
+    }
+    async function acceptCommercial(managed: boolean, at: number, upcoming = false) {
+      if (managed) {
+        const offers = await getManagedTermsOffers(db, 'seller-b', at);
+        const offer = upcoming ? offers.upcoming.find(o => o.retentionBps === 1200)! : offers.current;
+        assert.ok(offer);
+        return acceptManagedTerms(db, { sellerId: 'seller-b', actorId: 'user-b', offerId: offer.id, context: offer.context,
+          language: 'en', requestId: 'native-commercial-accept-' + (++sequence), now: at,
+          form: { versionId: 'managed-terms-form', answers: { formId: managedTermsFormId, version: 1, answers: [] } } });
+      }
+      const offer = await getRegisteredSellerTerms(db, at);
+      await db.batch((await prepareSellerCommissionAcceptance(db, { sellerId: 'seller-a', actorId: 'user-a', context: offer.context,
+        requestId: 'native-commercial-accept-' + (++sequence), now: at })).statements);
+    }
+    async function prepareCommercial(managed: boolean) {
+      placement += 2 * notice + 1000;
+      const requestAt = placement;
+      await commercial(managed, 900, requestAt - 100);
+      await acceptCommercial(managed, requestAt - 2);
+      return requestAt;
+    }
+    for (const managed of [false, true]) for (const renewed of [false, true])
+      await t.test(`${managed ? 'managed' : 'registered'} native scheduled nine-to-twelve crossing rejects ${renewed ? 'renewed' : 'missing renewal'} and conserves every order effect`, async () => {
+        await endAll();
+        const requestAt = await prepareCommercial(managed), boundary = requestAt + 1;
+        await commercial(managed, 1200, boundary);
+        if (renewed) await acceptCommercial(managed, managed ? requestAt - 1 : boundary, managed);
+        const c = await cart(managed ? 'managed' : 'registered');
+        const input = await withCommercialFinancialIntent(db, c.key, c.input, requestAt), before = await financial(true);
+        const advancing = afterCustomerFeePreparation(db, () => { placement = boundary + 1; });
+        await assert.rejects(createCodOrder(advancing, c.key, c.key, input, requestAt, 'checkout-buyer'), /changed|review|terms/i);
+        assert.equal(placement, boundary + 1, 'Clock advances after real checkout preparation');
+        assert.deepEqual(await financial(true), before);
+        if (renewed) {
+          const receipt = await createCodOrder(db, c.key, c.key, input, placement, 'checkout-buyer');
+          const money = await db.prepare(managed
+            ? 'SELECT s.platform_retention_bps AS bps FROM managed_commercial_snapshots s JOIN order_items i ON i.id=s.order_item_id JOIN orders o ON o.id=i.order_id WHERE o.order_number=?'
+            : 'SELECT i.commission_bps AS bps FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.order_number=?').bind(receipt.orderNumber).first<{ bps: number }>();
+          assert.equal(money!.bps, 1200);
+        }
+      });
+    for (const managed of [false, true])
+      await t.test(`${managed ? 'managed' : 'registered'} native commercial publication commits while checkout really waits for customer control`, async () => {
+        await endAll();
+        const requestAt = await prepareCommercial(managed), boundary = requestAt + 1;
+        const c = await cart(managed ? 'managed' : 'registered');
+        const input = await withCommercialFinancialIntent(db, c.key, c.input, requestAt), before = await financial(true), mark = f.traces.length;
+        await blocker.beginTransaction();
+        await blocker.query("UPDATE customer_fee_waiver_control SET revision=revision WHERE id='default'");
+        const advancing = afterCustomerFeePreparation(db, () => { placement = boundary + 1; });
+        const checkout = settled(createCodOrder(advancing, c.key, c.key, input, requestAt, 'checkout-buyer'));
+        try {
+          await f.waitForBlocked(/UPDATE customer_fee_waiver_control/, mark);
+          const publication = await commercial(managed, 1200, boundary);
+          assert.equal((await getEffectiveBusinessSetting(db, managed ? 'managed_sale_linked_platform_retention_bps'
+            : 'independent_seller_commission_bps', placement)).versionId, publication.id);
+          // Publications legitimately add audits; preserve those while rejecting
+          // every attempted checkout write after the real control wait.
+          const afterPublication = await financial(true);
+          assert.deepEqual({ ...afterPublication, audit_logs: before.audit_logs }, before);
+          await blocker.commit();
+          assert.equal((await checkout).ok, false, 'Post-control commercial guard rejects the now-current source');
+          assert.deepEqual(await financial(true), afterPublication);
+        } finally { await blocker.rollback(); await checkout; }
+      });
+    await t.test('native accepted supplement retains its own nine percent over a current accepted twelve percent base', async () => {
+      placement += 2 * notice + 1000;
+      await commercial(false, 1200, placement - 100);
+      await acceptCommercial(false, placement - 2);
+      const supplement = 'native-legitimate-supplement';
+      await scheduleCommissionRate(db, { actorId: 'owner', requestId: supplement, expectedRevision: 0, basisPoints: 900,
+        effectiveAt: placement - 10, now: placement - notice - 100, reason: 'SIMULATED legitimate supplemental commission' });
+      await acceptCommissionRate(db, { sellerId: 'seller-a', userId: 'user-a', rateId: supplement, now: placement - 2 });
+      const c = await cart(), receipt = await place(c);
+      const row = await db.prepare('SELECT i.commission_bps,i.commission_rule_version FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.order_number=?')
+        .bind(receipt.orderNumber).first<{ commission_bps: number; commission_rule_version: string }>();
+      assert.deepEqual([row!.commission_bps, row!.commission_rule_version], [900, supplement]);
+      await acceptCommercial(true, placement - 2);
     });
     // Recovery runs after this final suite reset: keep BOTH histories nonempty in this same source.
     await seedNativeLegacyHistory(db);
