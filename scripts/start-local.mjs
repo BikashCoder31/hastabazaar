@@ -3,7 +3,7 @@ import { access, readFile, realpath } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseEnv } from 'node:util';
-import { sameFeeSqlDefinition } from '../lib/operations/fee-schema-readiness.mjs';
+import { sameFeeSqlDefinition, customerFeeRequiredTables, customerFeeSqliteDefinitionProblems, customerFeeControlProblems } from '../lib/operations/fee-schema-readiness.mjs';
 
 const localSettings = Object.freeze({
   HASTABAZAAR_RUNTIME_ENV: 'local_staging',
@@ -142,6 +142,7 @@ export async function readLocalCheckout(projectRoot, cwd) {
 
 export function inspectLocalFeatureSchema(sqlite) {
   const required = {
+    ...customerFeeRequiredTables,
     marketplace_fee_waiver_control: ['id', 'revision'],
     marketplace_fee_waiver_campaigns: ['id', 'revision', 'created_at', 'updated_at'],
     marketplace_fee_waiver_revisions: ['campaign_id', 'revision', 'state', 'name', 'description', 'starts_at', 'ends_at', 'created_by', 'request_id', 'created_at'],
@@ -188,6 +189,10 @@ export function inspectLocalFeatureSchema(sqlite) {
     if (!definition) missing.push(name);
     else if (!sameFeeSqlDefinition(definition,`CREATE TRIGGER ${name} BEFORE ${event} ON ${String(table)} BEGIN SELECT RAISE(ABORT,'${String(message)}'); END`)) missing.push(`${name}.version`);
   }
+  const definitions = sqlite.prepare("SELECT type,name,sql AS definition FROM sqlite_master WHERE type IN ('table','index','trigger')").all();
+  missing.push(...customerFeeSqliteDefinitionProblems(definitions));
+  if (!missing.some(name => name === 'customer_fee_waiver_control' || name.startsWith('customer_fee_waiver_control.') || name.endsWith(':customer_fee_waiver_control')))
+    missing.push(...customerFeeControlProblems(sqlite.prepare('SELECT id,revision FROM customer_fee_waiver_control').all()));
   return { ready: missing.length === 0, missing };
 }
 

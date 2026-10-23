@@ -170,3 +170,12 @@ void test('Accounting distinguishes confirmed empty data from source failure and
   assert.match(html, /Choose a valid report date/);
   assert.match(html, /Start a new report/);
 });
+
+void test('Accounting overview exposes gross customer fee and campaign relief separately from actual net',async()=>{
+  const {AccountingWorkspaceView}=await import('../components/admin/accounting-workspace');
+  const workspace:AccountingWorkspace={query:parseAccountingQuery(new URLSearchParams('period=all'),now),observedAt:now,environment:'Local staging',issues:[],coverage:[],rows:[],nextCursor:null,
+    metrics:[{key:'service_fee_standard',label:'Standard customer service fees',amountPaisa:'2000',status:'available',basis:'period_flow',sourceKinds:['order_service_fee'],explanation:'Once per order'},
+      {key:'service_fee_campaign_waived',label:'Customer campaign fee waivers',amountPaisa:'1000',status:'available',basis:'period_flow',sourceKinds:['order_service_fee'],explanation:'Original recorded relief'}]};
+  const html=renderToStaticMarkup(createElement(AccountingWorkspaceView,{workspace}));
+  assert.match(html,/Standard customer service fees/);assert.match(html,/Customer campaign fee waivers/);assert.match(html,/NPR 20\.00/);assert.match(html,/NPR 10\.00/);
+});

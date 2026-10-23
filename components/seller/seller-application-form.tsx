@@ -96,7 +96,7 @@ export function SellerApplicationForm({
   const [applicantType, setApplicantType] = useState<'individual' | 'company'>(
     'company',
   );
-  const [registrationAnswer, setRegistrationAnswer] = useState<'yes' | 'no'>('yes');
+  const [registrationAnswer, setRegistrationAnswer] = useState<'yes' | 'no'>(registeredTerms || !managedTerms ? 'yes' : 'no');
   const [taxStatus, setTaxStatus] = useState<'business_pan_only' | 'vat_registered'>(
     'business_pan_only',
   );
@@ -271,6 +271,8 @@ export function SellerApplicationForm({
         <FieldDescription>
           You will have a public maker profile with either option. Your account and products must be approved before you can start selling.
         </FieldDescription>
+        {!registeredTerms ? <p role="alert">Registered Seller applications are unavailable because no published commission terms are effective. Please return when terms are available.</p> : null}
+        {!managedTerms ? <p role="alert">Managed Maker applications are unavailable because no published retention terms are effective. Please return when terms are available.</p> : null}
         <FieldGroup className="grid gap-5 md:grid-cols-2">
           <Field>
             <FieldLabel htmlFor="hasBusinessTaxRegistration">
@@ -283,8 +285,8 @@ export function SellerApplicationForm({
               onChange={(event) => setRegistrationAnswer(event.target.value as 'yes' | 'no')}
               required
             >
-              <NativeSelectOption value="no">Sell through HastaBazaar</NativeSelectOption>
-              <NativeSelectOption value="yes">Registered business seller</NativeSelectOption>
+              <NativeSelectOption value="no" disabled={!managedTerms}>Sell through HastaBazaar{!managedTerms ? ' (unavailable)' : ''}</NativeSelectOption>
+              <NativeSelectOption value="yes" disabled={!registeredTerms}>Registered business seller{!registeredTerms ? ' (unavailable)' : ''}</NativeSelectOption>
             </NativeSelect>
             <FieldDescription>
               Registered businesses, including sole proprietors, must provide registration and business PAN. Personal PAN alone does not qualify.
@@ -606,24 +608,22 @@ export function SellerApplicationForm({
       <p className="text-sm"><a href="/account/profile" target="_blank" rel="noreferrer" className="underline">Verify your account email and phone</a> before submitting. Return here and use the same verified phone.</p>
       {registrationAnswer === 'no' ? <ManagedMakerIdentityFields requirePersonalPan/> : null}
       {registrationAnswer === 'no' && managedTerms ? <ManagedMakerAgreementFields terms={managedTerms}/> : null}
-      {registrationAnswer === 'no' && !managedTerms ? <p role="alert">Managed Maker agreement terms are unavailable. Reload before submitting.</p> : null}
       {registrationAnswer === 'yes' && registeredTerms ? <input type="hidden" name="sellerAgreementContext" value={registeredTerms.context} /> : null}
-      {registrationAnswer === 'yes' && !registeredTerms ? <p role="alert">Seller commission terms are unavailable. Reload before submitting.</p> : null}
-      {registrationAnswer === 'yes' ? (
+      {registrationAnswer === 'yes' && registeredTerms ? (
         <Field orientation="horizontal">
           <Checkbox id="acceptedTerms" name="acceptedTerms" value="yes" required />
           <FieldLabel htmlFor="acceptedTerms" className="max-w-2xl font-normal">
-            I agree to the <a href="/seller-agreement" target="_blank" rel="noreferrer" className="font-semibold text-primary underline">Seller Marketplace Agreement</a>, including the independent-seller {registeredTerms?.percent}% commission on completed, paid product sales, and the <a href="/prohibited-products" target="_blank" rel="noreferrer" className="font-semibold text-primary underline">Prohibited & Restricted Products Policy</a>. <span aria-hidden="true">*</span>
+            I agree to the <a href="/seller-agreement" target="_blank" rel="noreferrer" className="font-semibold text-primary underline">Seller Marketplace Agreement</a>, including the independent-seller {registeredTerms.percent}% commission on completed, paid product sales, and the <a href="/prohibited-products" target="_blank" rel="noreferrer" className="font-semibold text-primary underline">Prohibited & Restricted Products Policy</a>. <span aria-hidden="true">*</span>
           </FieldLabel>
         </Field>
-      ) : (
+      ) : registrationAnswer === 'no' && managedTerms ? (
         <Field orientation="horizontal">
           <Checkbox id="applicationAcknowledgement" name="applicationAcknowledgement" value="yes" required />
           <FieldLabel htmlFor="applicationAcknowledgement" className="max-w-2xl font-normal">
             I confirm this is a Managed Maker application only. I understand that profile and product drafts may be prepared, but publication, orders, invoicing, and payment remain unavailable until the program, maker, product, applicable supplier requirements, and reviewed agreement are ready. <span aria-hidden="true">*</span>
           </FieldLabel>
         </Field>
-      )}
+      ) : null}
       <p className="text-sm leading-6 text-muted-foreground">
         Your application information is handled under our{' '}
         <a

@@ -1,5 +1,5 @@
 import manifest from '../../deployment/babal/release-manifest.json';
-import { sameFeeSqlDefinition } from './fee-schema-readiness.mjs';
+import { sameFeeSqlDefinition, customerFeeTriggerDefinitions, customerFeeSqliteDefinitionProblems, customerFeeControlProblems } from './fee-schema-readiness.mjs';
 export const releaseId=manifest.release;
 // MariaDB implements partial unique indexes and discount labels using generated
 // columns. SQLite uses its native partial indexes and the current discount total.
@@ -67,6 +67,8 @@ export async function inspectReadiness(
     if(rows.results.length)columns.set(name,new Set(rows.results.map(r=>r.name)));
    }
    const rows=await db.prepare("SELECT name,sql AS definition FROM sqlite_master WHERE type='trigger'").all<{name:string;definition:string}>();for(const row of rows.results)triggers.set(row.name,row.definition);
+   const customerDefinitions=await db.prepare("SELECT type,name,sql AS definition FROM sqlite_master WHERE type IN ('table','index','trigger')").all<{type:string;name:string;definition:string}>();
+   missing.push(...customerFeeSqliteDefinitionProblems(customerDefinitions.results));
    const indexes=await db.prepare("SELECT name,sql AS definition FROM sqlite_master WHERE type='index' AND name='managed_allocation_one_reservation'").all<{name:string;definition:string}>();
    const allocationIndex=indexes.results[0]?.definition?.toLowerCase().replace(/\s+/g,'')??'';
    if(!allocationIndex)missing.push('index:managed_payout_allocations.managed_allocation_one_reservation');
@@ -84,7 +86,8 @@ export async function inspectReadiness(
    const definition=triggers.get(name);if(!definition)missing.push(`trigger:${name}`);
    else if(name in manifest.requiredTriggerShapes){
     const shape=manifest.requiredTriggerShapes[name as keyof typeof manifest.requiredTriggerShapes];
-    const expected=dialect==='mariadb'?`SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='${fragments[2]}'`:`CREATE TRIGGER ${name} BEFORE ${shape.event} ON ${shape.table} BEGIN SELECT RAISE(ABORT,'${fragments[2]}'); END`;
+    const customerShape=customerFeeTriggerDefinitions[name as keyof typeof customerFeeTriggerDefinitions];
+    const expected=customerShape?customerShape[dialect]:dialect==='mariadb'?`SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='${fragments[2]}'`:`CREATE TRIGGER ${name} BEFORE ${shape.event} ON ${shape.table} BEGIN SELECT RAISE(ABORT,'${fragments[2]}'); END`;
     if(!sameFeeSqlDefinition(definition,expected))missing.push(`trigger-version:${name}`);
    }else if(dialect==='mariadb'&&fragments.some(fragment=>!definition.toLowerCase().replace(/`/g,'').includes(fragment)))missing.push(`trigger-version:${name}`);
   }
@@ -92,6 +95,10 @@ export async function inspectReadiness(
    const control=await db.prepare('SELECT id,revision FROM marketplace_fee_waiver_control').all<{id:string;revision:number}>();
    if(control.results.length!==1||control.results[0]?.id!=='default')missing.push('control:marketplace_fee_waiver_control.default');
    else if(control.results[0].revision==null||!Number.isSafeInteger(Number(control.results[0].revision))||Number(control.results[0].revision)<0)missing.push('control-version:marketplace_fee_waiver_control.default');
+  }
+  if(columns.get('customer_fee_waiver_control')?.has('id')&&columns.get('customer_fee_waiver_control')?.has('revision')){
+   const control=await db.prepare('SELECT id,revision FROM customer_fee_waiver_control').all<{id:string;revision:number}>();
+   missing.push(...customerFeeControlProblems(control.results));
   }
   return {ready:missing.length===0,missing};
  }catch{return {ready:false,missing:['database-unavailable']};}

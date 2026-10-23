@@ -7,7 +7,7 @@ import { promoQuoteIntent } from '@/lib/incentives/quote-intent';
 import { allocatePromoDiscount } from '@/lib/incentives/promo-policy';
 import { getDeliveryRates, rateVersionGuard } from './delivery-rates';
 import { getSellerCommissionTerms, commissionCheckoutGuards } from './commission-rates';
-import { quoteFeeWaiver, feeWaiverCheckoutGuards, feeEvidenceInsert } from './fee-waivers';
+import { quoteCustomerServiceFee, customerFeeCheckoutGuards, customerFeeEvidenceInsert, readOrderCustomerServiceFees, type OrderCustomerFeeView } from './customer-service-fees';
 import { calculateMarketplaceFee, type FeeBreakdown } from '../../marketplace/fee-waivers';
 import { buildFormAnswerInsert } from './form-answers';
 import { assertCommerceFormReplay, type CommerceForm } from './commerce-form-replay';
@@ -35,7 +35,7 @@ import { matchesSavedDeliveryAddress } from '../../checkout/saved-address';
 import { quoteOrderCredit } from './wallet';
 import { getEffectiveBusinessSetting } from './business-settings';
 import { getCheckoutPolicyContext } from '../../checkout/policy-context';
-import { getPlatformServiceFee, currentPlatformServiceFeeSql, payableOrderTotalSql } from './platform-service-fee';
+import { currentPlatformServiceFeeSql, payableOrderTotalSql } from './platform-service-fee';
 import { lawfulServiceFeeRefundTotalSql } from './platform-service-fee-refunds';
 import { assertReviewedCheckoutQuote, ReviewedCheckoutChangedError } from '../../checkout/reviewed-quote';
 import { getRegisteredSettlementTerms } from '../../settlements/registered-terms';
@@ -115,6 +115,8 @@ interface CheckoutCartItem {
 }
 
 export interface OrderDocumentSnapshot {
+  /** Original accepted fee evidence; absent on historical saved documents. */
+  customerServiceFee?: OrderCustomerFeeView;
   billing?: BillingContext;
   walletCreditPaisa?: number;
   referralDiscountPaisa?: number;
@@ -357,8 +359,6 @@ export async function createCodOrder(
   const rates = await getDeliveryRates(database);
   const commissionSetting = await getCommissionSetting(database, now);
   const sellerCommissionBps = commissionSetting.basisPoints;
-  const feeWaiverQuote = items.some(item => item.participationRoute !== 'managed_maker')
-    ? await quoteFeeWaiver(database, now) : null;
   const sellerCommissionTerms = Object.fromEntries(await Promise.all([...new Set(items.filter(item => item.participationRoute !== 'managed_maker').map(item => item.sellerId))].map(async sellerId => [sellerId, await getSellerCommissionTerms(database, sellerId, now)] as const)));
   if (commissionSetting.versionId) {
     for (const sellerId of new Set(items.filter((item)=>item.participationRoute!=='managed_maker').map((item)=>item.sellerId))) {
@@ -413,7 +413,8 @@ export async function createCodOrder(
   if(promo && (promo.revision !== input.promoRevision || await promoQuoteIntent(customerId!,cartId,items,promo,input.customerAuthSubject!) !== input.promoQuoteIntent))
     throw new CheckoutConflictError('Your promo quote changed. Apply it again to review the current total.');
   const promoDiscountPaisa=promo?.discountPaisa ?? 0;
-  const serviceFee = await getPlatformServiceFee(database, now);
+  const customerFeeQuote = await quoteCustomerServiceFee(database, now);
+  const serviceFee = customerFeeQuote.snapshot;
   const buyerFeePaisa = serviceFee.chargedPaisa;
   const credit = await quoteOrderCredit(database, {
     userId: customerId,
@@ -445,7 +446,7 @@ export async function createCodOrder(
     ? await getRegisteredSettlementTerms(database, now) : null;
   const termsSnapshot = { ...checkoutTermsSnapshot(sellerCommissionBps), serviceFee, sellerCommissionTerms, deliveryRate: delivery, reviewedQuote: input.reviewedQuote ?? null,
     marketplaceFees: [] as (FeeBreakdown & { orderItemId: string })[],
-    ...(feeWaiverQuote ? { marketplaceFeeWaiver: feeWaiverQuote } : {}),
+    customerFeeWaiver: customerFeeQuote,
     ...(registeredSettlementTerms ? { registeredSettlementTerms } : {}) };
   const platformDiscounts = allocatePlatformDiscountPaisa(
     items.map((item) => ({
@@ -463,6 +464,9 @@ export async function createCodOrder(
   const invoiceCompany={reference:companyDetails.entityReference,kind:'company' as const,
     legalName:companyDetails.legalName,pan:companyDetails.pan,address:companyDetails.registeredOffice,taxMode:'PAN' as const};
   const statementSnapshot: OrderDocumentSnapshot = {
+    customerServiceFee:{orderId:id,source:'customer_v2',standardPaisa:serviceFee.standardPaisa,
+      waivedPaisa:serviceFee.waivedPaisa,netPaisa:serviceFee.chargedPaisa,
+      campaign:serviceFee.campaign,policyVersionId:serviceFee.versionId},
     billing:{version:APPROVED_BILLING_VERSION,receiptIssuance:'pending_clearance',company:invoiceCompany,
       customer:{email:input.customerEmail,phone:input.customerPhone},deliveryAddress:{...input.address}},
     walletCreditPaisa: credit.walletPaisa,
@@ -524,7 +528,7 @@ export async function createCodOrder(
   }
   const placedAt = Date.now();
   const statements: D1PreparedStatement[] = [
-    ...(feeWaiverQuote ? feeWaiverCheckoutGuards(database, feeWaiverQuote, placedAt) : []),
+    ...customerFeeCheckoutGuards(database, customerFeeQuote, placedAt),
     ...managedCheckoutGuards,
     database.prepare(
       "UPDATE delivery_rate_current SET version_id=version_id WHERE id='default'",
@@ -575,12 +579,13 @@ export async function createCodOrder(
       ),
   ];
 
+  statements.push(customerFeeEvidenceInsert(database, id, serviceFee, placedAt));
   statements.push(...prepareFirstCodReview(database,{customerId:contactProof.actor.userId,orderId:id,
     totalPaisa:grandTotalPaisa+credit.walletPaisa,now}));
   const snapshotGuards:D1PreparedStatement[]=[
     ...checkedCheckoutGuard(database,
       "COALESCE((SELECT id FROM business_setting_versions WHERE setting_key='platform_service_fee_policy' AND status='published' AND effective_from<=? AND (effective_until IS NULL OR effective_until>?) ORDER BY effective_from DESC,version DESC LIMIT 1),'')=?",
-      [now, now, serviceFee.versionId ?? '']),
+      [placedAt, placedAt, serviceFee.versionId ?? '']),
     ...(registeredSettlementTerms ? ([
       ['seller_delivery_hold_days', registeredSettlementTerms.holdSettingVersionId],
       ['new_seller_reserve_bps', registeredSettlementTerms.reserveSettingVersionId],
@@ -764,7 +769,7 @@ export async function createCodOrder(
       platformFundedDiscountPaisa: platformDiscountPaisa,
     });
     const managed = item.participationRoute === 'managed_maker';
-    const fee = managed ? null : calculateMarketplaceFee(commissionBasePaisa, commission.basisPoints, feeWaiverQuote!.campaign);
+    const fee = managed ? null : calculateMarketplaceFee(commissionBasePaisa, commission.basisPoints, null);
     statements.push(
       database
         .prepare(
@@ -792,7 +797,7 @@ export async function createCodOrder(
           commissionBasePaisa,
           managed ? `managed-${item.commercialModel ?? 'unconfigured'}` : commission.version,
           managed ? item.managedAgreementVersion : item.sellerAgreementVersion,
-          managed || fee!.campaignId !== null ? 0 : fee!.standardBps,
+          managed ? 0 : fee!.standardBps,
           fee?.netPaisa ?? 0,
           lineTotalPaisa,
           item.returnEligible,
@@ -802,7 +807,6 @@ export async function createCodOrder(
         ),
     );
     if (fee) {
-      statements.push(feeEvidenceInsert(database, orderItemId, fee, placedAt));
       termsSnapshot.marketplaceFees.push({ orderItemId, ...fee });
     }
     if (managed) {
@@ -1060,6 +1064,7 @@ export interface OrderReceiptItem extends Partial<PublicSellingIdentity> {
 }
 
 export interface OrderReceipt {
+  customerServiceFee: OrderCustomerFeeView;
   buyerPlatformFeePaisa: number;
   refundedPlatformServiceFeePaisa: number;
   originalBuyerPlatformFeePaisa: number;
@@ -1134,7 +1139,7 @@ export async function getOrderReceipt(
         (SELECT COALESCE(SUM(r.wallet_credit_paisa),0) FROM refunds r WHERE r.order_id=orders.id AND r.status='paid') AS refundedWalletCreditPaisa,
         (SELECT COALESCE(SUM(r.referral_discount_paisa),0) FROM refunds r WHERE r.order_id=orders.id AND r.status='paid') AS refundedReferralDiscountPaisa,
         orders.promo_campaign_id AS promoCampaignId,orders.promo_revision AS promoRevision,orders.promo_code AS promoCode,orders.promo_label AS promoLabel,
-        orders.order_number AS orderNumber, orders.customer_email AS customerEmail,
+        orders.id AS orderId, orders.order_number AS orderNumber, orders.customer_email AS customerEmail,
         orders.customer_phone AS customerPhone, orders.delivery_for AS deliveryFor,
         orders.recipient_email AS recipientEmail, orders.source_address_id AS sourceAddressId,
         orders.address_saved_for_future AS addressSavedForFuture,
@@ -1167,8 +1172,9 @@ export async function getOrderReceipt(
     .first<
       Omit<
         OrderReceipt,
-        'address' | 'items' | 'documents' | 'deliveryPricing'
+        'address' | 'items' | 'documents' | 'deliveryPricing' | 'customerServiceFee'
       > & {
+        orderId: string;
         addressJson: string;
         deliveryRateSnapshotJson: string | null;
         originalStoreCount: number;
@@ -1180,7 +1186,7 @@ export async function getOrderReceipt(
       }
     >();
   if (!order) return null;
-  const [itemResult, documentResult] = await Promise.all([
+  const [itemResult, documentResult, customerFees] = await Promise.all([
     database
       .prepare(
         `SELECT order_items.id, order_items.product_name_snapshot AS productName,
@@ -1215,12 +1221,14 @@ export async function getOrderReceipt(
       )
       .bind(orderNumberValue,orderNumberValue)
       .all<OrderDocumentRow>(),
+    readOrderCustomerServiceFees(database, [order.orderId]),
   ]);
   const pricing = readDeliveryPricingSnapshot(
     order.deliveryRateSnapshotJson,
     order.deliveryChargePaisa,
   );
   const {
+    orderId,
     addressJson,
     deliveryRateSnapshotJson: _deliveryRateSnapshotJson,
     originalStoreCount,
@@ -1230,6 +1238,7 @@ export async function getOrderReceipt(
   } = order;
   return {
     ...safeOrder,
+    customerServiceFee: customerFees.get(orderId)!,
     ...(promoCampaignId && promoRevision && promoCode && promoLabel ? {promo:{campaignId:promoCampaignId,revision:promoRevision,code:promoCode,label:promoLabel}} : {}),
     address: JSON.parse(addressJson) as CheckoutInput['address'],
     items: itemResult.results,

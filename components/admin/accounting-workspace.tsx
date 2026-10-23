@@ -52,6 +52,8 @@ const linkClass =
 function visibleMetric(key: string, section: AccountingQuery['section']) {
   if (section === 'overview')
     return [
+      'service_fee_standard',
+      'service_fee_campaign_waived',
       'service_fee_charged',
       'service_fee_current',
       'service_fee_refunded',

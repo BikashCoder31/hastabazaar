@@ -87,11 +87,15 @@ export function parseReviewedCheckoutQuote(
       returnWindowDays: amount(c.returnWindowDays),
     };
   }
-  let serviceFee: PlatformServiceFeeSnapshot | undefined;
+  let serviceFee: ReviewedCheckoutQuote['serviceFee'];
   if (q.serviceFee !== undefined) {
-    try { serviceFee = parseServiceFeeSnapshot(q.serviceFee); } catch { return fail(); }
+    try {
+      serviceFee = parseServiceFeeSnapshot(q.serviceFee);
+    } catch {
+      return fail();
+    }
   }
-  const result = {
+  const result: ReviewedCheckoutQuote = {
     lines,
     deliveryPaisa: amount(q.deliveryPaisa),
     walletPaisa: amount(q.walletPaisa),
@@ -111,7 +115,7 @@ export function parseReviewedCheckoutQuote(
     BigInt(result.deliveryPaisa) -
     BigInt(result.walletPaisa) -
     BigInt(result.referralPaisa) -
-    BigInt(result.promoPaisa) + BigInt(serviceFee?.chargedPaisa ?? 0);
+    BigInt(result.promoPaisa) + BigInt(result.serviceFee?.chargedPaisa ?? 0);
   if (
     payable !== BigInt(result.payablePaisa) ||
     subtotal > BigInt(Number.MAX_SAFE_INTEGER)
@@ -124,6 +128,7 @@ export function assertReviewedCheckoutQuote(
   reviewed: unknown,
   current: unknown,
 ): void {
+  // Compare the complete saved fee, including campaign attribution at a zero charge.
   if (
     JSON.stringify(parseReviewedCheckoutQuote(reviewed)) !==
     JSON.stringify(parseReviewedCheckoutQuote(current))

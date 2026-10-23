@@ -30,7 +30,7 @@ const token = randomBytes(24).toString('hex');
 const securityKey = randomBytes(32).toString('base64url');
 const envFile = resolve(workspace, '.env.native-' + run);
 const marker = resolve(workspace, '.native-' + run + '.json');
-await writeFile(envFile, 'MARIADB_ROOT_PASSWORD=' + password + '\nMARIADB_ROOT_HOST=%\n', {mode:0o600});
+await writeFile(envFile, 'MARIADB_ROOT_PASSWORD=' + password + '\nMARIADB_ROOT_HOST=%\n', {flag:'wx',mode:0o600});
 const id = execFileSync(docker, ['run','-d','--name',name,'--label','codex.scope=staging-native-compatibility',
   '-p','127.0.0.1:13329:3306','--env-file',envFile,'mariadb:10.11'], {encoding:'utf8'}).trim();
 const owned = () => {
@@ -41,7 +41,7 @@ const owned = () => {
   assert.equal(actual.Mounts.some(m => m.Type==='bind'),false);
 };
 owned();
-await writeFile(marker, JSON.stringify({id,name,password,token,host:'127.0.0.1',port:13329,database:'native_'+run+'_fresh'}), {mode:0o600});
+await writeFile(marker, JSON.stringify({id,name,password,token,host:'127.0.0.1',port:13329,database:'native_'+run+'_fresh'}), {flag:'wx',mode:0o600});
 let connection;
 const observations=[];
 const nativeRuns=[];
@@ -57,8 +57,7 @@ function nativeTests(files, expectedTests){
     console.error(diagnostics.replaceAll(password,'[redacted]').replaceAll(token,'[redacted]').replaceAll(securityKey,'[redacted]'));
     throw new Error('Required native test failed: '+files.join(', '));
   }
-  const counts=assertRequiredNativeResults(output);
-  if(expectedTests!==undefined)assert.equal(counts.tests,expectedTests,'Required native scenario count changed; review the runner contract');
+  const counts=assertRequiredNativeResults(output,expectedTests);
   nativeRuns.push({files,...counts});
   console.log(output);
 }
@@ -97,11 +96,11 @@ try {
   assert.match((await connection.query('SELECT VERSION() v'))[0][0].v,/^10\.11\./);
   const manifest=JSON.parse(await readFile(resolve(project,'deployment/babal/release-manifest.json'),'utf8'));
   const upgrade=await stagingNativeUpgrade(project);
-  await writeFile(resolve(workspace,'staging-upgrade.sql'),upgrade.sql);
-  await writeFile(resolve(workspace,'staging-upgrade-inventory.json'),JSON.stringify({sha256:upgrade.sha256,sources:upgrade.steps.map(({name,sourceSha256})=>({name,sourceSha256}))},null,2));
+  await writeFile(resolve(workspace,'staging-upgrade-'+run+'.sql'),upgrade.sql,{flag:'wx'});
+  await writeFile(resolve(workspace,'staging-upgrade-'+run+'-inventory.json'),JSON.stringify({sha256:upgrade.sha256,sources:upgrade.steps.map(({name,sourceSha256})=>({name,sourceSha256}))},null,2),{flag:'wx'});
   const schema=await readFile(resolve(project,'deployment/babal/mariadb-schema.sql'),'utf8');
   const adapter={dialect:'mariadb',prepare(sql){return{async all(){const [results]=await connection.query(sql);return{results};}};}};
-  const companions=['mariadb-company-store-maker-readiness.sql','mariadb-loyalty-scheduled-changes.sql','mariadb-marketplace-fee-waivers.sql'];
+  const companions=['mariadb-company-store-maker-readiness.sql','mariadb-loyalty-scheduled-changes.sql','mariadb-marketplace-fee-waivers.sql','mariadb-customer-service-fee-waivers.sql'];
   await create('fresh');
   await check('fresh bootstrap and maintained companion sequence',async()=>{
     await load('deployment/babal/mariadb-schema.sql');
@@ -118,14 +117,20 @@ try {
     // SQL contains $' sequences; use a callback so replacement strings cannot
     // reinterpret them as JavaScript replacement patterns.
     let legacy=schema.replace(loyalty.trim(),()=>loyalty.split('-- Weekly loyalty cycle extension')[0].trim());
-    for(const companion of companions)legacy=legacy.replace((await readFile(resolve(project,'deployment/babal',companion),'utf8')).replace(/\r\n/g,'\n').trim(),'');
+    for(const companion of companions){
+      const source=(await readFile(resolve(project,'deployment/babal',companion),'utf8')).replace(/\r\n/g,'\n').trim();
+      assert.equal(legacy.split(source).length,2,'Each maintained companion must be removed exactly once');
+      legacy=legacy.replace(source,'');
+    }
     assert.notEqual(legacy,schema);
     await load('fixture-pre-weekly-bootstrap',legacy);
-    // Only the five reviewed companions under test are missing from this owned fixture.
+    // These four companions plus the weekly loyalty extension are absent.
     for(const migration of manifest.migrations.filter(m=>m.usage==='additive-maintenance'&&!companions.some(n=>m.path.endsWith(n))&&!m.path.endsWith('mariadb-loyalty-points.sql')))await load(migration.path);
     // Earlier wallet companions replace their kind CHECK. Restore the actual
     // pre-weekly loyalty base last, as the old hosted release does.
     await load('fixture-pre-weekly-loyalty',loyalty.split('-- Weekly loyalty cycle extension')[0]);
+    assert.equal((await connection.query("SELECT COUNT(*) n FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE 'customer_fee_waiver%'"))[0][0].n,0,'0074 must be absent before additive upgrade');
+    assert.equal((await connection.query("SELECT COUNT(*) n FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='order_customer_service_fees'"))[0][0].n,0,'0074 order evidence must be absent before additive upgrade');
     await connection.query("INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('historic','historic@example.test','Fictional historical user',17,17)");
     await connection.query("INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,request_id,created_at) VALUES('historic-audit','historic','fictional.history','user','historic','historic',17)");
     // Copy only synthetic records made by the fresh runtime tests, using the
@@ -139,6 +144,16 @@ try {
       const absent=keys.map(column=>'dst.`'+column+'`<=>src.`'+column+'`').join(' AND ');
       await connection.query('INSERT INTO `'+table+'`('+columns+') SELECT '+columns.split(',').map(c=>'src.'+c).join(',')+' FROM `native_'+run+'_fresh`.`'+table+'` src WHERE NOT EXISTS(SELECT 1 FROM `'+table+'` dst WHERE '+absent+')');
     }
+    // Model an already-applied 0073 installation before the additive customer
+    // migration. These original seller records must survive every later step.
+    await load('fixture-retained-0073-history',await readFile(resolve(project,'deployment/babal/mariadb-marketplace-fee-waivers.sql'),'utf8'));
+    await connection.query("INSERT INTO marketplace_fee_waiver_campaigns VALUES('upgrade-historical-campaign',2,1,2)");
+    await connection.query("INSERT INTO marketplace_fee_waiver_revisions VALUES('upgrade-historical-campaign',1,'draft','Historical seller campaign','Retained pre-customer fixture',0,253402300799999,'super','upgrade-historical-create',1),('upgrade-historical-campaign',2,'published','Historical seller campaign','Retained pre-customer fixture',0,253402300799999,'super','upgrade-historical-publish',2)");
+    await connection.query("INSERT INTO marketplace_fee_waiver_requests VALUES('upgrade-historical-create','super','super','{\"type\":\"create\"}','{\"id\":\"upgrade-historical-campaign\",\"revision\":1}',1),('upgrade-historical-publish','super','super','{\"type\":\"publish\"}','{\"id\":\"upgrade-historical-campaign\",\"revision\":2}',2)");
+    await connection.query("UPDATE marketplace_fee_waiver_control SET revision=2 WHERE id='default'");
+    await connection.query("INSERT INTO order_item_marketplace_fees SELECT id,commission_bps,COALESCE(commission_base_paisa,line_total_paisa-seller_discount_paisa),commission_paisa,0,commission_paisa,NULL,NULL,1 FROM order_items WHERE id='allocation-item'");
+    assert.equal((await connection.query('SELECT COUNT(*) n FROM order_item_marketplace_fees'))[0][0].n,1,'Populated original seller fee evidence is required before 0074');
+    assert.equal((await connection.query("SELECT COUNT(*) n FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='order_customer_service_fees'"))[0][0].n,0,'0074 must still be absent with retained 0073 history');
     await connection.query("INSERT INTO managed_settlement_entries(id,entitlement_id,type,amount_paisa,metadata_json,reason_code,request_id,created_by,created_at) VALUES('historic-settlement','entitlement','earned',9100,'{}','fictional','historic-settlement','super',1)");
     await connection.query("INSERT INTO managed_payout_entries(payout_id,settlement_entry_id) VALUES('payout-two','historic-settlement')");
     await connection.query("INSERT INTO loyalty_revisions(revision,enabled,daily_points,points_per_block,credit_paisa_per_block,starts_at,ends_at,daily_budget_points,lifetime_budget_points,created_by,request_id,reason,form_version_id,created_at) VALUES(1,1,100,100,1000,0,253402300799999,1000,10000,'super','historic-live','Fictional historical live','staff.loyalty-settings-v1',1),(2,0,7,100,1000,NULL,NULL,NULL,NULL,'super','historic-draft','Fictional historical draft','staff.loyalty-settings-v1',2)");
@@ -158,7 +173,8 @@ try {
   });
   await connection.query('USE `native_'+run+'_fresh`');
   await check('current accounting, financial, billing, fee waiver and hosted MFA native journeys execute without skips',async()=>{
-    for(const file of ['tests/accounting-native-runtime.test.ts','tests/commerce-financial-native.test.ts','tests/billing-release-native.test.ts','tests/fee-waiver-native.test.ts']){
+    const exactFeeCounts={'tests/fee-waiver-native.test.ts':5,'tests/customer-fee-native.test.ts':22};
+    for(const file of ['tests/accounting-native-runtime.test.ts','tests/commerce-financial-native.test.ts','tests/billing-release-native.test.ts','tests/fee-waiver-native.test.ts','tests/customer-fee-native.test.ts']){
       // This exact schema was created by this process in the pinned disposable
       // container. Never accept a name/host from the caller or reuse saved data.
       owned();await connection.query('USE information_schema');
@@ -167,7 +183,7 @@ try {
       await connection.query('USE `native_'+run+'_fresh`');
       await load('deployment/babal/mariadb-schema.sql');
       for(const migration of manifest.migrations.filter(m=>m.usage==='additive-maintenance'))await load(migration.path);
-      nativeTests([file],file==='tests/fee-waiver-native.test.ts'?13:undefined);
+      nativeTests([file],exactFeeCounts[file]);
     }
     // Enroll alongside the fee fixture so recovery verifies real commerce
     // records and MFA together. This test does not replace business records.
@@ -184,5 +200,5 @@ try {
   console.error(JSON.stringify({status:'FAIL',file:activeFile,statement:activeStatement,message:String(error.message).replaceAll(password,'[redacted]').slice(0,1800)}));process.exitCode=1;
 }finally{
   await connection?.end();owned();execFileSync(docker,['stop',name],{stdio:'pipe'});
-  await writeFile(resolve(workspace,'native-'+run+'-results.json'),JSON.stringify({observations,nativeRuns,container:name,databasesPreserved:true,stopped:true},null,2));
+  await writeFile(resolve(workspace,'native-'+run+'-results.json'),JSON.stringify({observations,nativeRuns,container:name,databasesPreserved:true,stopped:true},null,2),{flag:'wx'});
 }

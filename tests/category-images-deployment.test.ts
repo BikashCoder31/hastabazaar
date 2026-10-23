@@ -31,6 +31,7 @@ void test('release generators include category schema, hash inventory, checks an
     for (const name of [
       'scripts/generate-release-manifest.mjs',
       'scripts/generate-mariadb-schema.mjs',
+      'lib/operations/fee-schema-readiness.mjs',
       'drizzle/meta/0020_snapshot.json',
     ]) {
       const target = join(root, name);

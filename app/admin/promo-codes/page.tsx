@@ -14,10 +14,8 @@ import { getPromoAdminReport } from '@/lib/db/repositories/incentive-reporting';
 import { getCommissionRateState } from '@/lib/db/repositories/commission-rates';
 import { filtersFromParams } from '@/lib/incentives/reporting';
 import { CommissionRateUnavailableError } from '@/lib/db/repositories/business-settings';
-import { quoteFeeWaiver } from '@/lib/db/repositories/fee-waivers';
 
 export const dynamic = 'force-dynamic';
-const promoFeeQuoteObservedAt = () => Date.now();
 export default async function PromoCodesPage({
   searchParams,
 }: {
@@ -27,7 +25,7 @@ export default async function PromoCodesPage({
   if (staff.role !== 'super_admin') redirect('/staff-access-denied');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const filters = filtersFromParams((await searchParams) ?? {});
-  const [initialPage, result, commission, feeWaiver] = await Promise.all([
+  const [initialPage, result, commission] = await Promise.all([
     listPromoCampaigns(database, {
       actorId: staff.id,
       authSubject: staff.authSubject,
@@ -47,7 +45,6 @@ export default async function PromoCodesPage({
         return { report, error: error.message };
       }),
     getCommissionRateState(database).catch(error => { if (error instanceof CommissionRateUnavailableError) return null; throw error; }),
-    quoteFeeWaiver(database,promoFeeQuoteObservedAt()),
   ]);
   const { report, error: filterError } = result;
   return (
@@ -67,7 +64,6 @@ export default async function PromoCodesPage({
           role={staff.role}
           initialPage={initialPage}
           defaultCommissionBps={commission?.current.basisPoints}
-          feeWaiver={feeWaiver.campaign}
         />
       </section>
       {filterError ? (

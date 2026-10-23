@@ -1,3 +1,4 @@
+import {seedLegacyPublishedCampaign,seedLegacyRevision} from './helpers/legacy-fee-history-fixture';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as policy from '../lib/marketplace/fee-waivers';
@@ -5,7 +6,6 @@ import * as repository from '../lib/db/repositories/fee-waivers';
 import { createCodOrder } from '../lib/db/repositories/orders';
 import {
   feeWaiverCheckoutFixture,
-  feeWaiverContext,
   feeWaiverTerms,
   interleaveFeeWaiverBatch,
 } from './helpers/fee-waiver-fixture';
@@ -16,17 +16,7 @@ async function campaign(
   startsAt = 10,
   endsAt = 1000,
 ) {
-  const revision = (await repository.getFeeWaiverState(db)).revision;
-  const draft = await repository.mutateFeeWaiver(
-    db,
-    feeWaiverContext(key + '-create', revision),
-    { type: 'create', terms: { ...feeWaiverTerms, startsAt, endsAt } },
-  );
-  return repository.mutateFeeWaiver(
-    db,
-    feeWaiverContext(key + '-publish', revision + 1),
-    { type: 'publish', campaignId: draft.id },
-  );
+  return seedLegacyPublishedCampaign(db,key,{...feeWaiverTerms,startsAt,endsAt});
 }
 function amounts(f: Awaited<ReturnType<typeof feeWaiverCheckoutFixture>>) {
   return {
@@ -72,7 +62,7 @@ void test('full waiver uses the standard rounded amount once and ordinary fees r
 });
 
 for (const waived of [false, true])
-  void test(`checkout persists immutable ${waived ? 'waived' : 'ordinary'} evidence and preserves accepted standard terms on retry`, async (t) => {
+  void test(`legacy ${waived ? 'active' : 'absent'} campaign preserves accepted commission and creates no new legacy evidence on retry`, async (t) => {
     t.mock.method(Date, 'now', () => 101);
     const f = await feeWaiverCheckoutFixture();
     try {
@@ -88,21 +78,16 @@ for (const waived of [false, true])
       const row = f.sqlite
         .prepare('SELECT * FROM order_item_marketplace_fees')
         .get();
-      assert.ok(
+      assert.equal(
         row,
-        'every registered marketplace line needs immutable evidence',
+        undefined,
+        'New checkout never writes legacy commission relief',
       );
-      assert.equal(row.standard_bps, 1000);
-      assert.equal(row.standard_paisa, 1000);
-      assert.equal(row.waived_paisa, waived ? 1000 : 0);
-      assert.equal(row.net_paisa, waived ? 0 : 1000);
-      assert.equal(row.campaign_id, active?.id ?? null);
-      assert.equal(row.campaign_revision, active?.revision ?? null);
       const line = f.sqlite
         .prepare('SELECT commission_bps,commission_paisa FROM order_items')
         .get();
-      assert.equal(line?.commission_bps, waived ? 0 : 1000);
-      assert.equal(line?.commission_paisa, waived ? 0 : 1000);
+      assert.equal(line?.commission_bps, 1000);
+      assert.equal(line?.commission_paisa, 1000);
       const terms = JSON.parse(
         String(
           f.sqlite
@@ -116,9 +101,11 @@ for (const waived of [false, true])
         'the accepted order snapshot must retain the standard amount',
       );
       assert.equal(terms.marketplaceFees[0].standardPaisa, 1000);
-      assert.equal(terms.marketplaceFees[0].netPaisa, waived ? 0 : 1000);
-      assert.equal(terms.marketplaceFees[0].orderItemId, row.order_item_id);
-      assert.equal(row.created_at, 101);
+      assert.equal(terms.marketplaceFees[0].netPaisa, 1000);
+      assert.equal(
+        terms.marketplaceFees[0].orderItemId,
+        f.sqlite.prepare('SELECT id FROM order_items').get()?.id,
+      );
       assert.equal(
         f.sqlite.prepare('SELECT placed_at FROM orders').get()?.placed_at,
         101,
@@ -132,11 +119,7 @@ for (const waived of [false, true])
         1000,
       );
       if (active)
-        await repository.mutateFeeWaiver(
-          f.database,
-          feeWaiverContext('pause-retry', 2),
-          { type: 'pause', campaignId: active.id },
-        );
+        await seedLegacyRevision(f.database,{...active,revision:3,state:'paused'});
       else await campaign(f.database);
       assert.deepEqual(
         await createCodOrder(
@@ -152,23 +135,22 @@ for (const waived of [false, true])
       assert.deepEqual(amounts(f), {
         orders: 1,
         payments: 1,
-        evidence: 1,
+        evidence: 0,
         stock: 9,
         cart: 0,
       });
-      assert.throws(
-        () =>
-          f.sqlite
-            .prepare('UPDATE order_item_marketplace_fees SET net_paisa=0')
-            .run(),
-        /immutable/,
+      assert.equal(
+        f.sqlite
+          .prepare('SELECT COUNT(*) n FROM order_customer_service_fees')
+          .get()?.n,
+        1,
       );
     } finally {
       await f.dispose();
     }
   });
 
-void test('a mixed cart waives only the registered marketplace fee and preserves the Managed Maker snapshot', async (t) => {
+void test('legacy campaigns leave mixed cart commission and Managed Maker snapshots unchanged', async (t) => {
   t.mock.method(Date, 'now', () => 100);
   const f = await feeWaiverCheckoutFixture();
   try {
@@ -204,7 +186,7 @@ void test('a mixed cart waives only the registered marketplace fee and preserves
     assert.deepEqual(
       rows.map((row) => ({ ...row })),
       [
-        { seller_id: 'seller-a', net_paisa: 0, waived_paisa: 1000 },
+        { seller_id: 'seller-a', net_paisa: null, waived_paisa: null },
         { seller_id: 'seller-b', net_paisa: null, waived_paisa: null },
       ],
     );
@@ -231,7 +213,7 @@ void test('a mixed cart waives only the registered marketplace fee and preserves
   }
 });
 
-void test('overlapping campaigns deterministically attribute one full waiver', async (t) => {
+void test('overlapping legacy campaigns never write new commission waiver evidence', async (t) => {
   t.mock.method(Date, 'now', () => 100);
   const f = await feeWaiverCheckoutFixture();
   try {
@@ -250,39 +232,49 @@ void test('overlapping campaigns deterministically attribute one full waiver', a
         'SELECT campaign_id,waived_paisa,net_paisa FROM order_item_marketplace_fees',
       )
       .get();
-    assert.ok(row);
-    assert.equal(row.campaign_id, [a.id, b.id].sort()[0]);
-    assert.equal(row.waived_paisa, 1000);
-    assert.equal(row.net_paisa, 0);
+    assert.equal(row, undefined);
+    assert.equal(
+      policy.selectFeeWaiver(
+        (await repository.getAuthorizedFeeWaiverState(f.database,{actorId:'owner',authSubject:'owner'})).campaigns,
+        100,
+      )?.id,
+      [a.id, b.id].sort()[0],
+    );
+    assert.equal(
+      f.sqlite.prepare('SELECT commission_paisa FROM order_items').get()
+        ?.commission_paisa,
+      1000,
+    );
   } finally {
     await f.dispose();
   }
 });
 
 for (const mutation of ['pause', 'new-campaign'] as const)
-  void test(`a concurrent ${mutation} rejects stale checkout and rolls back all financial and stock writes`, async (t) => {
+  void test(`a concurrent legacy ${mutation} leaves new checkout unchanged`, async (t) => {
     t.mock.method(Date, 'now', () => 100);
     const f = await feeWaiverCheckoutFixture();
     try {
       const active = mutation === 'pause' ? await campaign(f.database) : null;
       const db = interleaveFeeWaiverBatch(f.database, async () => {
         if (active)
-          await repository.mutateFeeWaiver(
-            f.database,
-            feeWaiverContext('pause', 2),
-            { type: 'pause', campaignId: active.id },
-          );
+          await seedLegacyRevision(f.database,{...active,revision:3,state:'paused'});
         else await campaign(f.database);
       });
-      await assert.rejects(
-        createCodOrder(db, 'token', 'receipt', f.input, 100, 'checkout-buyer'),
+      await createCodOrder(
+        db,
+        'token',
+        'receipt',
+        f.input,
+        100,
+        'checkout-buyer',
       );
       assert.deepEqual(amounts(f), {
-        orders: 0,
-        payments: 0,
+        orders: 1,
+        payments: 1,
         evidence: 0,
-        stock: 10,
-        cart: 1,
+        stock: 9,
+        cart: 0,
       });
     } finally {
       await f.dispose();
@@ -290,34 +282,32 @@ for (const mutation of ['pause', 'new-campaign'] as const)
   });
 
 for (const boundary of ['start', 'end'] as const)
-  void test(`server placement at exact ${boundary} boundary rejects the earlier selection`, async (t) => {
+  void test(`legacy campaign exact ${boundary} boundary leaves accepted commission unchanged`, async (t) => {
     t.mock.method(Date, 'now', () => (boundary === 'end' ? 1000 : 200));
     const f = await feeWaiverCheckoutFixture();
     try {
       await campaign(f.database, 'boundary', boundary === 'start' ? 200 : 10);
-      await assert.rejects(
-        createCodOrder(
-          f.database,
-          'token',
-          'receipt',
-          f.input,
-          100,
-          'checkout-buyer',
-        ),
+      await createCodOrder(
+        f.database,
+        'token',
+        'receipt',
+        f.input,
+        100,
+        'checkout-buyer',
       );
       assert.deepEqual(amounts(f), {
-        orders: 0,
-        payments: 0,
+        orders: 1,
+        payments: 1,
         evidence: 0,
-        stock: 10,
-        cart: 1,
+        stock: 9,
+        cart: 0,
       });
     } finally {
       await f.dispose();
     }
   });
 
-for (const table of ['order_item_marketplace_fees', 'payments'])
+for (const table of ['payments'])
   void test(`a failed ${table} insert rolls back evidence, order, payment and stock together`, async (t) => {
     t.mock.method(Date, 'now', () => 100);
     const f = await feeWaiverCheckoutFixture();
@@ -348,3 +338,31 @@ for (const table of ['order_item_marketplace_fees', 'payments'])
       await f.dispose();
     }
   });
+
+void test('a legacy evidence insert guard cannot fail a new order', async (t) => {
+  t.mock.method(Date, 'now', () => 100);
+  const f = await feeWaiverCheckoutFixture();
+  try {
+    f.sqlite.exec(
+      "CREATE TRIGGER reject_legacy_insert BEFORE INSERT ON order_item_marketplace_fees BEGIN SELECT RAISE(ABORT,'legacy evidence must not be inserted'); END",
+    );
+    await campaign(f.database);
+    await createCodOrder(
+      f.database,
+      'token',
+      'receipt',
+      f.input,
+      100,
+      'checkout-buyer',
+    );
+    assert.deepEqual(amounts(f), {
+      orders: 1,
+      payments: 1,
+      evidence: 0,
+      stock: 9,
+      cart: 0,
+    });
+  } finally {
+    await f.dispose();
+  }
+});

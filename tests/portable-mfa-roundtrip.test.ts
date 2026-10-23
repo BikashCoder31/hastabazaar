@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createHash, randomBytes } from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import type { SQLInputValue } from 'node:sqlite';
 import { securityDatabase } from './helpers/security-database';
 import {
@@ -73,12 +74,17 @@ function newFixtureDatabase() {
     CREATE TABLE accepted_agreements(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),snapshot TEXT NOT NULL,accepted_at INTEGER NOT NULL);
     CREATE TABLE orders(id TEXT PRIMARY KEY,referral_discount_paisa INTEGER NOT NULL,promo_discount_paisa INTEGER NOT NULL,
       current_discount_paisa INTEGER,current_promo_discount_paisa INTEGER NOT NULL,
+      buyer_platform_fee_paisa INTEGER NOT NULL DEFAULT 1000,
       discount_source VARCHAR(16) GENERATED ALWAYS AS (CASE WHEN promo_discount_paisa>0 THEN 'promo' WHEN referral_discount_paisa>0 THEN 'referral' ELSE 'none' END) VIRTUAL,
       current_referral_discount_paisa INTEGER GENERATED ALWAYS AS
        (CASE WHEN current_discount_paisa IS NULL THEN referral_discount_paisa ELSE current_discount_paisa-current_promo_discount_paisa END) VIRTUAL);
     CREATE TABLE order_items(id TEXT PRIMARY KEY,order_id TEXT NOT NULL REFERENCES orders(id),
       referral_discount_paisa INTEGER NOT NULL,promo_discount_paisa INTEGER NOT NULL,
       discount_source VARCHAR(16) GENERATED ALWAYS AS (CASE WHEN promo_discount_paisa>0 THEN 'promo' WHEN referral_discount_paisa>0 THEN 'referral' ELSE 'none' END) VIRTUAL);`);
+  for (const name of ['0044_business_configuration.sql','0073_marketplace_fee_waivers.sql','0074_customer_service_fee_waivers.sql'])
+    fixture.sqlite.exec(readFileSync(new URL('../drizzle/'+name,import.meta.url),'utf8'));
+  // The independently prepared empty destination has schema only. Source rows are explicit below.
+  fixture.sqlite.exec('DELETE FROM marketplace_fee_waiver_control; DELETE FROM customer_fee_waiver_control');
   return fixture;
 }
 type FixtureDatabase = ReturnType<typeof newFixtureDatabase>;
@@ -258,6 +264,7 @@ async function emptyFixtureTarget(
   let currentObject: PortableObjectMetadata | null = null;
   let objectChunks: Uint8Array[] = [];
   const insertedColumns = new Map<string, string[]>();
+  const pendingCustomerEvidence: (() => void)[] = [];
   function matchingTable(table: PortableTable): TrustedTable {
     const actual = trusted.get(table.name);
     assert.ok(
@@ -343,10 +350,16 @@ async function emptyFixtureTarget(
               actual.writableColumns.map(() => '?').join(',') +
               ')',
           );
-          for (const row of rows)
-            statement.run(
+          for (const row of rows) {
+            const write = () => statement.run(
               ...writableIndices.map((index) => sqlValue(row[index])),
             );
+            // The transport orders table frames by name. This independent target
+            // defers customer evidence until original orders are present so the
+            // real match-order trigger can validate each restored financial fact.
+            if (actual.name === 'order_customer_service_fees') pendingCustomerEvidence.push(write);
+            else write();
+          }
         },
         async beginObject(metadata) {
           assert.equal(currentObject, null);
@@ -374,6 +387,7 @@ async function emptyFixtureTarget(
           objectChunks = [];
         },
         async verify(_inspection, expected) {
+          for (const write of pendingCustomerEvidence.splice(0)) write();
           assert.deepEqual(
             [
               ...expected.tableRecords.map((table) => table.name),
@@ -526,6 +540,25 @@ void test('real enrolled Super Admin/Admin MFA and saved financial history survi
       ('order-referral-original',900,0,NULL,0),('order-referral-current',900,0,400,0),('order-promo-current',0,1200,800,800),('order-none',0,0,0,0);
       INSERT INTO order_items(id,order_id,referral_discount_paisa,promo_discount_paisa) VALUES
       ('item-referral-original','order-referral-original',450,0),('item-referral-current','order-referral-current',200,0),('item-promo-current','order-promo-current',0,600),('item-none','order-none',0,0);`);
+    for (const [id,key,value] of [
+      ['policy-original-nine','independent_seller_commission_bps',900],
+      ['policy-current-twelve','independent_seller_commission_bps',1200],
+      ['policy-managed-twelve','managed_sale_linked_platform_retention_bps',1200],
+      ['policy-customer-fee','platform_service_fee_policy',{enabled:true,amountPaisa:1000}],
+    ] as const) source.sqlite.prepare(`INSERT INTO business_setting_versions(id,setting_key,version,value_json,status,change_control,effective_from,reason,created_by,created_at,last_request_id)
+      VALUES(?,?,?,?, 'published','controlled',?,'Fictional retained published policy',?,?,?)`).run(id,key,id==='policy-current-twelve'?2:1,JSON.stringify(value),NOW-1000,owner.id,NOW-1000,id);
+    for (const prefix of ['marketplace','customer']) {
+      source.sqlite.prepare(`INSERT INTO ${prefix}_fee_waiver_control VALUES('default',2)`).run();
+      source.sqlite.prepare(`INSERT INTO ${prefix}_fee_waiver_campaigns VALUES(?,2,?,?)`).run(prefix+'-retained',NOW-1000,NOW);
+      for (const [revision,state] of [[1,'draft'],[2,'published']] as const) {
+        const requestId=prefix+'-request-'+revision;
+        source.sqlite.prepare(`INSERT INTO ${prefix}_fee_waiver_revisions VALUES(?,?,?,?,?,?,?,?,?,?)`).run(prefix+'-retained',revision,state,prefix+' fictional campaign','Retained original business history',NOW-1000,NOW+1000,owner.id,requestId,NOW);
+        source.sqlite.prepare(`INSERT INTO ${prefix}_fee_waiver_requests VALUES(?,?,?,?,?,?)`).run(requestId,owner.id,owner.subject,JSON.stringify({type:revision===1?'create':'publish',campaignId:prefix+'-retained'}),JSON.stringify({id:prefix+'-retained',revision,state}),NOW);
+      }
+    }
+    source.sqlite.exec(`INSERT INTO order_item_marketplace_fees VALUES('item-referral-original',900,10000,900,900,0,'marketplace-retained',2,${NOW});
+      UPDATE orders SET buyer_platform_fee_paisa=0 WHERE id='order-promo-current';
+      INSERT INTO order_customer_service_fees VALUES('order-promo-current',1,1000,'policy-customer-fee',1000,1000,0,'customer-retained',2,${NOW}),('order-none',1,1000,'policy-customer-fee',1000,0,1000,NULL,NULL,${NOW});`);
     source.sqlite
       .prepare('INSERT INTO accepted_agreements VALUES (?,?,?,?)')
       .run(
@@ -551,6 +584,12 @@ void test('real enrolled Super Admin/Admin MFA and saved financial history survi
         NOW,
       );
     const sourceTrusted = localTableInventory(source);
+    const retainedFeeNames = ['marketplace_fee_waiver_control','marketplace_fee_waiver_campaigns','marketplace_fee_waiver_revisions','marketplace_fee_waiver_requests','order_item_marketplace_fees','customer_fee_waiver_control','customer_fee_waiver_campaigns','customer_fee_waiver_revisions','customer_fee_waiver_requests','order_customer_service_fees','business_setting_versions'];
+    const retainedBusiness = (database:FixtureDatabase) => Object.fromEntries(retainedFeeNames.map(name=>[name,database.sqlite.prepare('SELECT * FROM '+trustedIdentifier(name)+' ORDER BY 1,2').all()]));
+    const feeBefore = retainedBusiness(source);
+    const protectedRecords = (database:FixtureDatabase) => database.sqlite.prepare("SELECT * FROM marketplace_settings WHERE `key`='auth-private:manifest:v1' OR `key` LIKE 'auth-private:account:%' ORDER BY `key`").all();
+    const protectedBefore = protectedRecords(source);
+    assert.equal(protectedBefore.length,3,'Real manifest and enrolled Super Admin/Admin protected records must be populated');
     const before = new Map(
       [...sourceTrusted].map(([name, table]) => [
         name,
@@ -657,6 +696,10 @@ void test('real enrolled Super Admin/Admin MFA and saved financial history survi
       PASSPHRASE,
     );
     const report = await inspectPortableTransfer(archive, PASSPHRASE);
+    for (const name of retainedFeeNames) {
+      const table = report.inventory.tables.find(table => table.name === name);
+      assert.ok(table && table.classification === 'durable' && table.rowCount > 0, 'Encrypted recovery must contain actual retained business data: ' + name);
+    }
     assert.equal(report.finalCutoverReady, false);
     assert.equal(report.totalObjects, 3);
     for (const [tableName, columnName, expected] of [
@@ -692,6 +735,8 @@ void test('real enrolled Super Admin/Admin MFA and saved financial history survi
       expectedPackageId: report.packageId,
     });
     assert.equal(target.wasVerified(), true);
+    assert.deepEqual(retainedBusiness(destination),feeBefore,'Every original seller/customer fee and published policy field survives encrypted restore');
+    assert.deepEqual(protectedRecords(destination),protectedBefore,'Both encrypted staff MFA records and manifest survive byte-for-byte with their original consumed state');
     assert.equal(
       target.insertedColumns.get('orders')!.includes('discount_source'),
       false,

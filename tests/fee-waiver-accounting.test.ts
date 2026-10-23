@@ -1,7 +1,9 @@
+import {seedLegacyPublishedCampaign,seedLegacyOrderFees} from './helpers/legacy-fee-history-fixture';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as fees from '../lib/marketplace/fee-waivers';
 import * as repository from '../lib/db/repositories/fee-waivers';
+import { readOrderCustomerServiceFees } from '../lib/db/repositories/customer-service-fees';
 import { createCodOrder } from '../lib/db/repositories/orders';
 import {
   transitionAdminFulfillment,
@@ -25,7 +27,6 @@ import { readAccountingSources } from '../lib/accounting/source-queries';
 import { parseAccountingQuery } from '../lib/accounting/filters';
 import {
   feeWaiverCheckoutFixture,
-  feeWaiverContext,
   feeWaiverTerms,
 } from './helpers/fee-waiver-fixture';
 import { accountingFixture } from './helpers/accounting-fixture';
@@ -38,18 +39,7 @@ async function checkout(waived: boolean, quantity = 1, price = 10000) {
   f.sqlite.prepare('UPDATE cart_items SET quantity=?').run(quantity);
   // Mature fictional seller: isolate the net entitlement from unrelated reserve policy.
   f.sqlite.exec('UPDATE seller_profiles SET approved_at=0');
-  if (waived) {
-    const draft = await repository.mutateFeeWaiver(
-      f.database,
-      feeWaiverContext('create', 0),
-      { type: 'create', terms: feeWaiverTerms },
-    );
-    await repository.mutateFeeWaiver(
-      f.database,
-      feeWaiverContext('publish', 1),
-      { type: 'publish', campaignId: draft.id },
-    );
-  }
+  const historicalCampaign=waived ? await seedLegacyPublishedCampaign(f.database,'accounting-history',feeWaiverTerms) : null;
   await createCodOrder(
     f.database,
     'token',
@@ -59,6 +49,7 @@ async function checkout(waived: boolean, quantity = 1, price = 10000) {
     'checkout-buyer',
   );
   const order = f.sqlite.prepare('SELECT id,order_number FROM orders').get()!;
+  await seedLegacyOrderFees(f.database,String(order.id),historicalCampaign);
   const item = f.sqlite.prepare('SELECT id FROM order_items').get()!;
   return {
     ...f,
@@ -167,6 +158,9 @@ for (const waived of [false, true])
       assert.equal(breakdown.standardPaisa, 1000);
       assert.equal(breakdown.waivedPaisa, waived ? 1000 : 0);
       assert.equal(breakdown.netPaisa, waived ? 0 : 1000);
+      const buyerFee=(await readOrderCustomerServiceFees(f.database,[f.orderId])).get(f.orderId)!;
+      assert.equal(buyerFee.waivedPaisa,0,'old seller relief never becomes customer campaign relief');
+      assert.equal(buyerFee.campaign,null);
       const now = 100 * 86400000;
       const summary = await getSellerFinanceSummary(
         f.database,
@@ -402,7 +396,7 @@ for (const waived of [false, true])
     }
   });
 
-void test('promo contribution uses the net fee after waiver while preserving discount eligibility and cost', () => {
+void test('promo contribution ignores legacy seller waiver while preserving discount eligibility and cost', () => {
   const terms = {
     code: 'SAVE',
     label: 'Fictional discount',
@@ -424,10 +418,10 @@ void test('promo contribution uses the net fee after waiver while preserving dis
   });
   assert.equal(ordinary.commissionPaisa, 1000);
   assert.equal(ordinary.contributionPaisa, 500);
-  assert.equal(waived.commissionPaisa, 0);
+  assert.equal(waived.commissionPaisa, 1000);
   assert.equal(waived.standardCommissionPaisa, 1000);
-  assert.equal(waived.waivedCommissionPaisa, 1000);
-  assert.equal(waived.contributionPaisa, -500);
+  assert.equal(waived.waivedCommissionPaisa, 0);
+  assert.equal(waived.contributionPaisa, 500);
   assert.equal(waived.discountPaisa, ordinary.discountPaisa);
   assert.equal(waived.eligible, ordinary.eligible);
 });

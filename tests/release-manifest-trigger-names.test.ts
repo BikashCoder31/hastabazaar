@@ -12,6 +12,7 @@ void test('release manifest records actual guarded trigger names for native read
  try{
   const source=JSON.parse(await readFile(new URL('../deployment/babal/release-manifest.json',import.meta.url),'utf8')) as {migrations:{path:string}[]};
   for(const {path} of source.migrations){await mkdir(dirname(join(root,path)),{recursive:true});await writeFile(join(root,path),'');}
+  await writeFile(join(root,'deployment/babal/mariadb-customer-service-fee-waivers.sql'),await readFile(new URL('../deployment/babal/mariadb-customer-service-fee-waivers.sql',import.meta.url)));
   await writeFile(join(root,'deployment/babal/mariadb-schema.sql'),
    'CREATE TABLE IF NOT EXISTS users (id BIGINT PRIMARY KEY) ENGINE=InnoDB;\n'+
    'CREATE TRIGGER IF NOT EXISTS fixture_plain BEFORE INSERT ON users FOR EACH ROW SET NEW.id=1;\n'+

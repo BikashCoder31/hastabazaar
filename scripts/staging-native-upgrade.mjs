@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 // host inventory and review it separately. This function executes no SQL.
 const reviewed = ['mariadb-commission-workspace.sql','mariadb-loyalty-points.sql',
   'mariadb-company-store-maker-readiness.sql','mariadb-loyalty-scheduled-changes.sql',
-  'mariadb-marketplace-fee-waivers.sql'];
+  'mariadb-marketplace-fee-waivers.sql', 'mariadb-customer-service-fee-waivers.sql'];
 export async function stagingNativeUpgrade(project, selected = reviewed) {
   assert.ok(Array.isArray(selected) && selected.length > 0 && new Set(selected).size === selected.length, 'Select a nonempty unique reviewed delta');
   assert.ok(selected.every(name => reviewed.includes(name)), 'Unreviewed native upgrade source');

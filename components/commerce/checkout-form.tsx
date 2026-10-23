@@ -1,5 +1,6 @@
 'use client';
 import { SellerDisclosure } from './seller-disclosure';
+import { CustomerServiceFeeBreakdown } from './customer-service-fee-breakdown';
 
 import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
@@ -83,7 +84,7 @@ function money(paisa: number): string {
   }).format(paisa / 100);
 }
 
-import { PLATFORM_SERVICE_FEE_NOTICE, serviceFeeSnapshot, INITIAL_PLATFORM_SERVICE_FEE, type PlatformServiceFeeSnapshot } from '@/lib/checkout/platform-service-fee';
+import { serviceFeeSnapshot, INITIAL_PLATFORM_SERVICE_FEE, type PlatformServiceFeeSnapshot } from '@/lib/checkout/platform-service-fee';
 
 export function CheckoutForm({
   serviceFee = serviceFeeSnapshot(INITIAL_PLATFORM_SERVICE_FEE, null),
@@ -766,17 +767,13 @@ export function CheckoutForm({
             <dd>{delivery ? money(delivery.chargePaisa) : 'Enter district'}</dd>
           </div>
           <div className="flex justify-between border-t pt-4 text-base font-semibold">
-            <dt className="text-muted-foreground">Platform service fee</dt>
-            <dd>{serviceFee.enabled ? money(serviceFee.chargedPaisa) : 'Not charged'}</dd>
-          </div>
-          <div className="flex justify-between border-t pt-4 text-base font-semibold">
             <dt>
               {delivery ? 'Total on delivery' : 'Subtotal before delivery'}
             </dt>
             <dd>{money(total)}</dd>
           </div>
         </dl>
-        {serviceFee.chargedPaisa > 0 ? <p className="mt-3 text-xs leading-5 text-muted-foreground">Platform service fee: {PLATFORM_SERVICE_FEE_NOTICE}</p> : null}
+        <div className="mt-3 border-t pt-3"><CustomerServiceFeeBreakdown standardPaisa={'standardPaisa' in serviceFee ? serviceFee.standardPaisa : serviceFee.chargedPaisa} waivedPaisa={'waivedPaisa' in serviceFee ? serviceFee.waivedPaisa : 0} netPaisa={serviceFee.chargedPaisa} campaignName={'campaign' in serviceFee ? serviceFee.campaign?.name ?? null : null} source="estimate" /></div>
         {delivery ? (
           <p className="mt-4 flex gap-2 text-sm leading-6 text-muted-foreground">
             <Truck className="mt-1 size-4 shrink-0 text-primary" />

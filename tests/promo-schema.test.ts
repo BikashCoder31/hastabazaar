@@ -909,6 +909,8 @@ void test('MariaDB generator ships promo tables after canonical prerequisites an
         new URL(`../scripts/${script}`, import.meta.url),
         join(root, 'scripts', script),
       );
+    await mkdir(join(root, 'lib', 'operations'), { recursive: true });
+    await cp(new URL('../lib/operations/fee-schema-readiness.mjs', import.meta.url), join(root, 'lib', 'operations', 'fee-schema-readiness.mjs'));
     await run(
       process.execPath,
       [join(root, 'scripts', 'generate-mariadb-schema.mjs')],
@@ -1088,7 +1090,6 @@ void test('MariaDB generator ships promo tables after canonical prerequisites an
     ];
     await mkdir(join(root, 'lib', 'operations'), { recursive: true });
     await cp(new URL('../lib/operations/readiness.ts', import.meta.url), join(root, 'lib', 'operations', 'readiness.ts'));
-    await cp(new URL('../lib/operations/fee-schema-readiness.mjs', import.meta.url), join(root, 'lib', 'operations', 'fee-schema-readiness.mjs'));
     const foreignKeys=Object.entries(manifest.requiredForeignKeys).flatMap(([key,value])=>{
       const fk=value as {columns:string[];referencedTable:string;referencedColumns:string[]};
       return fk.columns.map((columnName,i)=>({tableName:key.split('.')[0],name:key.split('.')[1],columnName,position:i+1,referencedTable:fk.referencedTable,referencedColumn:fk.referencedColumns[i],referencedSchema:'fixture',databaseName:'fixture',deleteRule:'RESTRICT',updateRule:'RESTRICT'}));
@@ -1107,7 +1108,7 @@ void test('MariaDB generator ships promo tables after canonical prerequisites an
       "    else if (sql.includes('FROM information_schema.CHECK_CONSTRAINTS ')) rows = scenario.checks;",
       "    else if (sql.includes('FROM information_schema.STATISTICS ')) rows = fixture.indexes;",
       "    else if (sql.includes('FROM information_schema.KEY_COLUMN_USAGE ')) rows = fixture.foreignKeys;",
-      "    else if (sql.includes('FROM marketplace_fee_waiver_control')) rows = [{id:'default',revision:0}];",
+      "    else if (sql.includes('FROM marketplace_fee_waiver_control') || sql.includes('FROM customer_fee_waiver_control')) rows = [{id:'default',revision:0}];",
       "    else throw new Error('Unexpected readiness query: ' + sql);",
       '    return { async all() { return { results: rows }; } };',
       '  } };',

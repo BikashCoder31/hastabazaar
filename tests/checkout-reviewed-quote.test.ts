@@ -70,6 +70,59 @@ void test('reviewed quote refuses malformed, incomplete and unsafe amounts', asy
   assert.deepEqual(parseReviewedCheckoutQuote(reviewed), reviewed);
 });
 
+const waivedCustomerFee = {
+  enabled: true, amountPaisa: 1000, chargedPaisa: 0, versionId: 'fee-v1',
+  rule: 'non_refundable_except_law_v1', schemaVersion: 2, standardPaisa: 1000,
+  waivedPaisa: 1000, campaign: { id: 'customer-launch', revision: 3, name: 'Customer launch waiver' },
+};
+
+void test('reviewed customer fee totals use the charged amount and retain full waiver evidence', async () => {
+  const { parseReviewedCheckoutQuote } = await import('../lib/checkout/reviewed-quote');
+  const waived = { ...reviewed, serviceFee: waivedCustomerFee };
+  assert.deepEqual(parseReviewedCheckoutQuote(waived), waived);
+  const ordinary = {
+    ...reviewed,
+    serviceFee: { ...waivedCustomerFee, chargedPaisa: 1000, waivedPaisa: 0, campaign: null },
+    payablePaisa: 111_000,
+  };
+  assert.deepEqual(parseReviewedCheckoutQuote(ordinary), ordinary);
+  assert.throws(() => parseReviewedCheckoutQuote({ ...waived, payablePaisa: 111_000 }), /review/i);
+  assert.throws(() => parseReviewedCheckoutQuote({ ...ordinary, payablePaisa: 110_000 }), /review/i);
+});
+
+void test('reviewed checkout rejects changed campaign attribution even when the charge remains zero', async () => {
+  const { assertReviewedCheckoutQuote } = await import('../lib/checkout/reviewed-quote');
+  const quote = { ...reviewed, serviceFee: waivedCustomerFee };
+  assert.doesNotThrow(() => assertReviewedCheckoutQuote(quote, quote));
+  for (const attribution of [
+    { id: 'replacement-campaign' }, { revision: 4 }, { name: 'Revised customer waiver' },
+  ]) assert.throws(() => assertReviewedCheckoutQuote(quote, {
+    ...quote,
+    serviceFee: { ...waivedCustomerFee, campaign: { ...waivedCustomerFee.campaign, ...attribution } },
+  }), /review/i);
+  for (const serviceFee of [
+    { ...waivedCustomerFee, versionId: 'fee-v2' },
+    { ...waivedCustomerFee, amountPaisa: 1500, standardPaisa: 1500, waivedPaisa: 1500 },
+    { ...waivedCustomerFee, enabled: false, standardPaisa: 0, waivedPaisa: 0, campaign: null },
+  ]) assert.throws(() => assertReviewedCheckoutQuote(quote, { ...quote, serviceFee }), /review/i);
+});
+
+void test('reviewed waived fees still compare the full cart, discounts, delivery and policy context', async () => {
+  const { assertReviewedCheckoutQuote } = await import('../lib/checkout/reviewed-quote');
+  const quote = { ...reviewed, serviceFee: waivedCustomerFee };
+  for (const changed of [
+    { ...quote, lines: [{ ...quote.lines[0], pricePaisa: 120_000 }], payablePaisa: 130_000 },
+    { ...quote, lines: [{ ...quote.lines[0], quantity: 2 }], payablePaisa: 210_000 },
+    { ...quote, lines: [{ ...quote.lines[0], sellerId: 'replacement-seller' }] },
+    { ...quote, deliveryPaisa: 16_000, payablePaisa: 111_000 },
+    { ...quote, walletPaisa: 1000, payablePaisa: 109_000 },
+    { ...quote, referralPaisa: 2500, payablePaisa: 112_500 },
+    { ...quote, promoPaisa: 1000, payablePaisa: 109_000 },
+    { ...quote, policyContext: 'b'.repeat(64) },
+    { ...quote, referralCampaign: { ...reviewed.referralCampaign, rewardPaisa: 3000 } },
+  ]) assert.throws(() => assertReviewedCheckoutQuote(quote, changed), /review/i);
+});
+
 async function fixture() {
   const f = await historicalCommissionDatabase(true);
   await seedCheckoutBuyer(f.database);

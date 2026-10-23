@@ -8,9 +8,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { existsSync } from 'node:fs';
 import {
   feeWaiverCheckoutFixture,
-  feeWaiverContext,
   feeWaiverTerms,
 } from './helpers/fee-waiver-fixture';
+import {seedLegacyPublishedCampaign,seedLegacyRevision,seedLegacyOrderFees} from './helpers/legacy-fee-history-fixture';
 import * as repo from '../lib/db/repositories/fee-waivers';
 import { createCodOrder } from '../lib/db/repositories/orders';
 import { getCommissionReport } from '../lib/db/repositories/commission-reporting';
@@ -118,16 +118,7 @@ void test('order and commission views read campaign name from immutable checkout
   );
   const f = await feeWaiverCheckoutFixture();
   try {
-    const draft = await repo.mutateFeeWaiver(
-      f.database,
-      feeWaiverContext('visible-create', 0),
-      { type: 'create', terms: feeWaiverTerms },
-    );
-    const published = await repo.mutateFeeWaiver(
-      f.database,
-      feeWaiverContext('visible-publish', 1),
-      { type: 'publish', campaignId: draft.id },
-    );
+    const published = await seedLegacyPublishedCampaign(f.database,'visible-history',feeWaiverTerms);
     const order = await createCodOrder(
       f.database,
       'token',
@@ -136,15 +127,9 @@ void test('order and commission views read campaign name from immutable checkout
       100,
       'checkout-buyer',
     );
-    await repo.mutateFeeWaiver(
-      f.database,
-      feeWaiverContext('visible-rename', 2),
-      {
-        type: 'revise',
-        campaignId: draft.id,
-        terms: { ...feeWaiverTerms, name: 'Renamed later' },
-      },
-    );
+    const savedOrder=f.sqlite.prepare('SELECT id FROM orders WHERE order_number=?').get(order.orderNumber)!;
+    await seedLegacyOrderFees(f.database,String(savedOrder.id),published);
+    await seedLegacyRevision(f.database,{...published,revision:3,name:'Renamed later'});
     const ids = (
       await f.database
         .prepare(
@@ -173,7 +158,7 @@ void test('order and commission views read campaign name from immutable checkout
     await f.dispose();
   }
 });
-void test('seller current-fee notice keeps accepted 10% terms and identifies the active full waiver and net 0%', async () => {
+void test('seller current-fee notice keeps accepted 10% terms without legacy campaign relief', async () => {
   const { SellerMarketplaceFeeNotice } = await renderModule(
     'components/seller/commission-fee-notice.tsx',
   );
@@ -191,11 +176,10 @@ void test('seller current-fee notice keeps accepted 10% terms and identifies the
     }),
   );
   assert.match(html, /Standard marketplace fee: 10%/);
-  assert.match(html, /Full fee waiver.*Seller launch/);
-  assert.match(html, /Net marketplace fee: 0%/);
-  assert.match(html, /Nepal time/);
+  assert.doesNotMatch(html, /Full fee waiver|Seller launch/);
+  assert.match(html, /Net marketplace fee: 10%/);
 });
-void test('actual promo manager forwards waiver through the authorized inner editor', async () => {
+void test('actual promo manager ignores legacy relief in the authorized inner editor', async () => {
   const { PromoCodeManager } = await renderModule(
     'components/admin/promo-code-manager.tsx',
   );
@@ -241,6 +225,7 @@ void test('actual promo manager forwards waiver through the authorized inner edi
       },
     }),
   );
-  assert.match(html, /Preview launch/);
+  assert.doesNotMatch(html, /Preview launch/);
+  assert.match(html, /data-promo-preview-commission-paisa="10000"/);
   assert.match(html, /10\.00/);
 });

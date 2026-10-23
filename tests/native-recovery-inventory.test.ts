@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {captureNativeInventory,normalizeNativeView} from '../scripts/recovery/native-inventory.mjs';
 import * as nativeInventory from '../scripts/recovery/native-inventory.mjs';
+import {customerFeeCheckoutFixture,AT,terms,feeWaiverContext} from './helpers/customer-fee-waiver-fixture';
+import {seedNativeLegacyHistory} from './helpers/customer-fee-native-fixture';
+import {mutateCustomerFeeWaiver} from '../lib/db/repositories/customer-fee-waivers';
+import {createCodOrder} from '../lib/db/repositories/orders';
+import {saveBusinessSettingChange} from '../lib/db/repositories/business-settings';
 
 function fixture(database:string,view='loyalty_latest_claims',suffix='',relationDatabase=database){
  return {async query(sql:string){
@@ -28,10 +33,30 @@ void test('native recovery compares the reviewed view definition across owned sc
 
 void test('native encrypted recovery requires populated durable fee revisions, receipts and line evidence in its compared inventory', () => {
   assert.equal(typeof nativeInventory.assertFeeRecoveryEvidence, 'function');
-  const tables = ['marketplace_fee_waiver_control', 'marketplace_fee_waiver_campaigns', 'marketplace_fee_waiver_revisions', 'marketplace_fee_waiver_requests', 'order_item_marketplace_fees'].map(name => ({ name, classification: 'durable', rows: name === 'marketplace_fee_waiver_revisions' || name === 'marketplace_fee_waiver_requests' ? 2 : 1, sha256: 'a'.repeat(64) }));
+  const tables = ['customer_fee_waiver_control', 'customer_fee_waiver_campaigns', 'customer_fee_waiver_revisions', 'customer_fee_waiver_requests', 'order_customer_service_fees', 'marketplace_fee_waiver_control', 'marketplace_fee_waiver_campaigns', 'marketplace_fee_waiver_revisions', 'marketplace_fee_waiver_requests', 'order_item_marketplace_fees'].map(name => ({ name, classification: 'durable', rows: name.endsWith('_revisions') || name.endsWith('_requests') ? 2 : 1, sha256: 'a'.repeat(64) }));
   const inspect = nativeInventory.assertFeeRecoveryEvidence;
   assert.deepEqual(inspect({ tables }), tables);
-  for (const altered of [tables.slice(1), tables.map(row => ({ ...row, rows: 0 })), tables.map(row => ({ ...row, classification: 'transient' })), tables.map(row => ({ ...row, sha256: '' }))]) assert.throws(() => inspect({ tables: altered }));
+  for (const row of tables) assert.throws(() => inspect({tables:tables.filter(other=>other!==row)}),/populated durable fee evidence/);
+  for (const altered of [tables.map(row => ({ ...row, rows: 0 })), tables.map(row => ({ ...row, classification: 'transient' })), tables.map(row => ({ ...row, sha256: '' })),tables.map(row=>({...row,rows:row.name.endsWith('_control')?2:row.rows}))]) assert.throws(() => inspect({ tables: altered }));
+});
+
+void test('fictional recovery fixture contains both nonempty fee histories and actual published commercial policies without rewriting a new order',async(t)=>{
+ t.mock.method(Date,'now',()=>AT);
+ const f=await customerFeeCheckoutFixture();
+ try{
+  await saveBusinessSettingChange(f.database,{key:'platform_service_fee_policy',value:{enabled:true,amountPaisa:1000},actorId:'owner',reason:'Fictional native recovery policy',requestId:'recovery-policy',now:AT-1,effectiveFrom:null,expectedVersion:0});
+  const original=await seedNativeLegacyHistory(f.database);
+  const history=f.sqlite.prepare('SELECT * FROM order_item_marketplace_fees').all();
+  const draft=await mutateCustomerFeeWaiver(f.database,feeWaiverContext('recovery-create',0,{now:AT}),{type:'create',terms});
+  await mutateCustomerFeeWaiver(f.database,feeWaiverContext('recovery-publish',1,{now:AT}),{type:'publish',campaignId:draft.id});
+  const receipt=await createCodOrder(f.database,'token','receipt',f.input,AT,'checkout-buyer');
+  const current=f.sqlite.prepare('SELECT i.commission_bps,i.commission_paisa,f.standard_paisa,f.waived_paisa,f.net_paisa,f.policy_version_id FROM order_customer_service_fees f JOIN orders o ON o.id=f.order_id JOIN order_items i ON i.order_id=o.id WHERE o.order_number=?').get(receipt.orderNumber)!;
+  assert.deepEqual([current.commission_bps,current.commission_paisa,current.standard_paisa,current.waived_paisa,current.net_paisa],[1200,12000,1000,1000,0]);
+  assert.ok(current.policy_version_id);
+  assert.deepEqual(f.sqlite.prepare('SELECT * FROM order_item_marketplace_fees').all(),history);
+  assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM order_customer_service_fees WHERE order_id=?').get(original.orderId)?.n,0);
+  for(const key of ['independent_seller_commission_bps','managed_sale_linked_platform_retention_bps','platform_service_fee_policy'])assert.ok(f.sqlite.prepare("SELECT 1 FROM business_setting_versions WHERE setting_key=? AND status='published'").get(key));
+ }finally{await f.dispose();}
 });
 
 void test('native view rejects comma relations disguised as aliases and schema-qualified routines',()=>{

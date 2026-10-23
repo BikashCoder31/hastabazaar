@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { customerFeeMariaMigration, customerFeeRequiredTables } from '../lib/operations/fee-schema-readiness.mjs';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const snapshotPath = resolve(projectRoot, 'drizzle/meta/0020_snapshot.json');
@@ -64,6 +65,9 @@ const commissionWorkspaceSql = await readFile(resolve(projectRoot, 'deployment/b
 const makerReadinessSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-company-store-maker-readiness.sql'), 'utf8');
 const loyaltyScheduledSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-loyalty-scheduled-changes.sql'), 'utf8');
 const feeWaiversSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-marketplace-fee-waivers.sql'), 'utf8');
+const customerFeeWaiversSql = await readFile(resolve(projectRoot, 'deployment/babal', customerFeeMariaMigration), 'utf8');
+const customerFeeTables = [...customerFeeWaiversSql.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map(match => match[1]);
+if (JSON.stringify(customerFeeTables) !== JSON.stringify(Object.keys(customerFeeRequiredTables))) throw new Error('Customer fee schema registry differs from the reviewed contract');
 const managedFixedSupplySql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-managed-fixed-supply.sql'),
   'utf8',
@@ -457,6 +461,7 @@ output.push(
   makerReadinessSql.trim(),
   loyaltyScheduledSql.trim(),
   feeWaiversSql.trim(),
+  customerFeeWaiversSql.trim(),
   '',
   '-- Babal.Host password authentication and server-side sessions.',
   'CREATE TABLE IF NOT EXISTS `user_credentials` (',
@@ -544,6 +549,7 @@ await mkdir(dirname(outputPath), { recursive: true });
 const schemaSql = output.join('\n').replace(/\r\n/g, '\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
+  ...Object.keys(customerFeeRequiredTables).reverse(),
   'order_item_marketplace_fees',
   'marketplace_fee_waiver_requests',
   'marketplace_fee_waiver_revisions',

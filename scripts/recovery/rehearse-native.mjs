@@ -73,7 +73,7 @@ export async function rehearseNativeRecovery({docker,marker,owned,source,workspa
   await nativeProcess(docker,['exec','-i',marker.name,'sh','-c','MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb --user=root --binary-mode=1 --comments "$1"','native-restore',targetName],resolve(target,'database.sql'),'restore');
   restored=await mysql.createConnection({host:marker.host,port:marker.port,user:'root',password:marker.password,database:targetName});
   const after=await captureNativeInventory(restored);assert.deepEqual(after,before,'Native restored records/schema/triggers differ');
-  assert.deepEqual(assertFeeRecoveryEvidence(after),feeEvidence,'Encrypted recovery lost fee campaign revisions, receipts or line evidence');
+  assert.deepEqual(assertFeeRecoveryEvidence(after),feeEvidence,'Encrypted recovery lost historical seller or customer campaign revisions, receipts or order evidence');
   const adapter={dialect:'mariadb',prepare(sql){let values=[];return{bind(...next){values=next;return this;},async first(){const [results]=await restored.query(sql,values);return results[0]??null;},async all(){const [results]=await restored.query(sql,values);return{results};}};}};
   assert.deepEqual(await inspectReadiness(adapter),{ready:true,missing:[]});
   const [security]=await restored.query("SELECT `key`,value FROM marketplace_settings WHERE `key`='auth-private:manifest:v1' OR `key` LIKE 'auth-private:account:%' ORDER BY BINARY `key`");

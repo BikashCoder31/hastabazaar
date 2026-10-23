@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 
-void test('actual promo server page quotes the current waiver and forwards campaign with unchanged standard rate', async () => {
+void test('actual promo server page does not quote legacy relief and forwards unchanged standard rate', async () => {
   const campaign = {
     id: 'fixture',
     revision: 2,
@@ -83,10 +83,51 @@ void test('actual promo server page quotes the current waiver and forwards campa
     }
   }
   visit(tree);
-  assert.equal(calls.length, 1);
-  assert.ok(calls[0] > Date.now() - 10000);
+  assert.equal(calls.length, 0);
   const manager = props.find((p) => 'initialPage' in p);
   assert.ok(manager);
-  assert.equal(manager.feeWaiver, campaign);
+  assert.equal(manager.feeWaiver, undefined);
   assert.equal(manager.defaultCommissionBps, 1000);
 });
+
+for (const path of ['app/cart/page.tsx', 'app/checkout/page.tsx'])
+  void test(`${path} forwards the server customer fee snapshot including campaign relief`, async () => {
+    const snapshot = {enabled:true,amountPaisa:2500,chargedPaisa:0,versionId:'future-policy',rule:'non_refundable_except_law_v1',schemaVersion:2,standardPaisa:2500,waivedPaisa:2500,campaign:{id:'customer',revision:2,name:'Customer launch'}};
+    const calls:number[]=[];
+    const output=await build({entryPoints:[path],bundle:true,write:false,platform:'node',format:'cjs',external:['react','react/*'],plugins:[{name:'customer-page',setup(b){
+      // Exercise the actual corrected wrapper and its default current-time read.
+      b.onResolve({filter:/^\.\/customer-service-fees$/},args=>args.importer.endsWith('platform-service-fee.ts')?{path:'@/lib/db/repositories/customer-service-fees',namespace:'fixture'}:undefined);
+      b.onResolve({filter:/^(cloudflare:workers|next\/headers|@\/components\/|@\/lib\/(db\/|auth\/|checkout\/policy-context))/},args=>args.path.endsWith('/platform-service-fee')?undefined:{path:args.path,namespace:'fixture'});
+      b.onLoad({filter:/.*/,namespace:'fixture'},args=>{
+        const p=args.path;
+        const contents=p==='cloudflare:workers'?'export const env={DB:{fixture:true}}'
+          :p==='next/headers'?'export async function cookies(){return {get(){return null}}}'
+          :p.endsWith('/d1')?'export const requireDatabase=e=>e.DB'
+          :p.endsWith('/customer-service-fees')?'export async function quoteCustomerServiceFee(db,at){if(!db.fixture)throw Error("Wrong database");globalThis.quoteCalls.push(at);return {snapshot:globalThis.snapshot}}'
+          :p.endsWith('/delivery-rates')?'export async function getDeliveryRates(){return {}}'
+          :p.endsWith('/customer')?'export async function getCustomerUser(){return null}'
+          :p.endsWith('/contact-verification')?'export async function getContactVerificationStatus(){return null};export const resolveCheckoutContactPolicy=()=>"email_and_phone"'
+          :p.endsWith('/wallet')?'export async function getWallet(){return null}'
+          :p.endsWith('/customers')?'export async function listCustomerAddresses(){return []}'
+          :p.endsWith('/policy-context')?'export async function getCheckoutPolicyContext(){return "reviewed-policy"}'
+          :'export function CartView(){};export function CheckoutForm(){};export function CheckoutSteps(){};export function SiteFooter(){};export function SiteHeader(){}';
+        return {loader:'js',contents};
+      });
+    }}]});
+    const result={exports:{} as {default:()=>Promise<unknown>}};
+    runInNewContext(output.outputFiles[0].text,{module:result,exports:result.exports,require:createRequire(import.meta.url),process,snapshot,quoteCalls:calls});
+    const tree=await result.exports.default();
+    const found:Record<string,unknown>[]=[];
+    function visit(node:unknown) {
+      if(!node || typeof node!=='object')return;
+      const props=(node as {props?:Record<string,unknown>}).props;
+      if(!props)return;
+      if('serviceFee' in props)found.push(props);
+      const children=props.children;
+      if(Array.isArray(children))children.forEach(visit);else visit(children);
+    }
+    visit(tree);
+    assert.equal(calls.length,1);assert.ok(calls[0]>Date.now()-10000);
+    assert.equal(found.length,1);assert.equal(found[0].serviceFee,snapshot);
+    if(path.includes('checkout'))assert.equal(found[0].policyContext,'reviewed-policy');
+  });

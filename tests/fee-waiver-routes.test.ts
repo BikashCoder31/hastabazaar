@@ -26,7 +26,7 @@ registerHooks({
       : nextResolve(specifier, context);
   },
 });
-const url = 'http://localhost:3018/api/admin/fee-waivers';
+const url = 'http://localhost:3018/api/admin/customer-fee-waivers';
 const request = (body: unknown, origin = 'http://localhost:3018') =>
   new Request(url, {
     method: 'POST',
@@ -40,13 +40,14 @@ const terms = {
   endsAt: 253402300799999,
 };
 const create = {
+  feeTarget: 'customer_service_fee',
   command: { type: 'create', terms },
   expectedRevision: 0,
   requestId: 'route-create',
 };
 
 void test('fee waiver routes enforce live Super Admin, origin, input allowlist and private responses', async () => {
-  const route = await import('../app/api/admin/fee-waivers/route');
+  const route = await import('../app/api/admin/customer-fee-waivers/route');
   const f = await feeWaiverFixture();
   globalThis.waiverHttpDb = f.database;
   try {
@@ -94,7 +95,7 @@ void test('fee waiver routes enforce live Super Admin, origin, input allowlist a
     assert.equal(state.campaigns[0].displayState, 'draft');
     const audit = await f.database
       .prepare(
-        "SELECT actor_id,created_at FROM audit_logs WHERE action='marketplace.fee-waiver.create'",
+        "SELECT actor_id,created_at FROM audit_logs WHERE action='customer.service-fee-waiver.create'",
       )
       .first<{ actor_id: string; created_at: number }>();
     assert.equal(audit?.actor_id, 'owner');
@@ -115,7 +116,7 @@ void test('fee waiver routes enforce live Super Admin, origin, input allowlist a
 });
 
 void test('fee waiver route catches authority races and storage outage without partial writes', async () => {
-  const route = await import('../app/api/admin/fee-waivers/route');
+  const route = await import('../app/api/admin/customer-fee-waivers/route');
   const f = await feeWaiverFixture();
   globalThis.waiverHttpActor = {
     id: 'owner',
@@ -132,7 +133,7 @@ void test('fee waiver route catches authority races and storage outage without p
     assert.equal(
       (
         await f.database
-          .prepare('SELECT COUNT(*) n FROM marketplace_fee_waiver_campaigns')
+          .prepare('SELECT COUNT(*) n FROM customer_fee_waiver_campaigns')
           .first<{ n: number }>()
       )?.n,
       0,

@@ -2,15 +2,11 @@ import { env } from 'cloudflare:workers';
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { readBoundedJsonObject } from '@/lib/http/form-json-body';
-import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import {
   FeeWaiverError,
-  type FeeWaiverCommand,
 } from '@/lib/marketplace/fee-waivers';
 import {
   getAuthorizedFeeWaiverState,
-  mutateFeeWaiver,
 } from '@/lib/db/repositories/fee-waivers';
 import { presentFeeWaiverState } from '@/lib/marketplace/fee-waiver-presentation';
 
@@ -32,7 +28,7 @@ function failure(error: unknown) {
           ? 422
           : 409,
     );
-  if (error instanceof SyntaxError || error instanceof BodyTooLargeError)
+  if (error instanceof SyntaxError)
     return json(
       { error: 'Review the campaign request.', code: 'invalid' },
       422,
@@ -73,28 +69,8 @@ export async function POST(request: Request) {
     return json({ error: 'Cross-site requests are not allowed.' }, 403);
   try {
     const { db, ...actor } = await context();
-    const body = await readBoundedJsonObject(request);
-    if (
-      Object.keys(body).some(
-        (key) => !['command', 'expectedRevision', 'requestId'].includes(key),
-      ) ||
-      !Number.isSafeInteger(body.expectedRevision) ||
-      Number(body.expectedRevision) < 0 ||
-      typeof body.requestId !== 'string' ||
-      !/^[a-zA-Z0-9_-]{1,100}$/.test(body.requestId)
-    )
-      throw new FeeWaiverError('invalid');
-    const campaign = await mutateFeeWaiver(
-      db,
-      {
-        ...actor,
-        expectedRevision: Number(body.expectedRevision),
-        requestId: body.requestId,
-        now: Date.now(),
-      },
-      body.command as FeeWaiverCommand,
-    );
-    return json({ campaign });
+    await getAuthorizedFeeWaiverState(db, actor);
+    return json({ error: 'Seller commission waiver controls are retired. Use the explicit customer service fee controls.', code: 'retired' }, 410);
   } catch (error) {
     return failure(error);
   }

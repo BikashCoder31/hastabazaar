@@ -35,6 +35,22 @@ void test('approved receipt groups company makers together and keeps the registe
   assert.equal(JSON.stringify(original),before);
 });
 
+void test('fully waived fee evidence belongs once to the company receipt without adding the standard charge',()=>{
+  const original=snapshot();original.buyerPlatformFeePaisa=0;original.grandTotalPaisa=315000;
+  original.customerServiceFee={orderId:'saved-order',source:'customer_v2',standardPaisa:1000,waivedPaisa:1000,netPaisa:0,campaign:{id:'launch',revision:2,name:'Original launch'},policyVersionId:'saved-policy'};
+  const before=JSON.stringify(original),groups=buildReceiptGroups(original);
+  assert.deepEqual(groups.find(g=>g.issuer.kind==='company')?.customerServiceFee,original.customerServiceFee);
+  assert.equal(groups.find(g=>g.issuer.kind==='registered')?.customerServiceFee,undefined);
+  assert.equal(groups.reduce((sum,g)=>sum+g.serviceFeePaisa,0),0);
+  assert.equal(groups.reduce((sum,g)=>sum+g.totalPaisa,0),315000);
+  assert.equal(JSON.stringify(original),before);
+  original.items=original.items.filter(item=>item.issuer?.kind==='registered');
+  original.itemSubtotalPaisa=100000;original.deliveryChargePaisa=0;original.grandTotalPaisa=100000;
+  const registered=buildReceiptGroups(original);
+  assert.equal(registered.find(g=>g.scope==='order_charges')?.totalPaisa,0);
+  assert.equal(registered.find(g=>g.scope==='order_charges')?.customerServiceFee?.waivedPaisa,1000);
+});
+
 void test('legacy documents and incomplete or incompatible issuer evidence never gain a new receipt identity',()=>{
   const legacy=snapshot(); delete legacy.billing;
   assert.deepEqual(buildReceiptGroups(legacy),[]);

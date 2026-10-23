@@ -34,6 +34,8 @@ import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-sett
 import { can } from '@/lib/marketplace/permissions';
 import { readOrderMarketplaceFeeViews } from '@/lib/db/repositories/fee-waivers';
 import { OrderMarketplaceFees } from '@/components/seller/order-marketplace-fees';
+import { readOrderCustomerServiceFees } from '@/lib/db/repositories/customer-service-fees';
+import { CustomerServiceFeeBreakdown } from '@/components/commerce/customer-service-fee-breakdown';
 
 export const dynamic = 'force-dynamic';
 const invoiceSettingsObservedAt = () => Date.now();
@@ -64,7 +66,11 @@ export default async function AdminOrderPage({
   if (!order) notFound();
   const address = order.address;
   const db = requireDatabase(env as unknown as { DB?: D1Database });
-  const marketplaceFees = await readOrderMarketplaceFeeViews(db,order.items.map(item=>item.id));
+  const [marketplaceFees, customerFees] = await Promise.all([
+    readOrderMarketplaceFeeViews(db,order.items.map(item=>item.id)),
+    readOrderCustomerServiceFees(db,[id]),
+  ]);
+  const customerFee=customerFees.get(id);
   const codReview = await getFirstCodReview(db, id);
   const feeSummary = staff.role==='super_admin' ? await serviceFeeRefundSummary(db,id) : null;
   const codPending =
@@ -132,6 +138,12 @@ export default async function AdminOrderPage({
   const visibleParcels = staff.role === 'super_admin' ? parcels : parcels.filter(p => p.method !== 'own_rider').map(p => ({ ...p, riderUserId: null, latitude: null, longitude: null, accuracy: null, positionAt: null, riderFinanceSnapshotJson: null }));
   return (
     <div>
+      {customerFee?<section className="mb-6 rounded-2xl border bg-card p-6">
+        <h2 className="mb-3 font-heading text-xl">Customer service fee at placement</h2>
+        <CustomerServiceFeeBreakdown {...customerFee} campaignName={customerFee.campaign?.name??null}
+          source={customerFee.source==='legacy_recorded'?'historical':'recorded'}/>
+        <p className="mt-3 text-sm">Customer service fee after cancellations: {money(order.buyerPlatformFeePaisa)}.</p>
+      </section>:null}
       {feeSummary && feeSummary.chargedPaisa > 0 ? <div className="mb-6"><PlatformServiceFeeRefund orderId={id} {...feeSummary}/></div> : null}
       <CancellationReviewSection db={db} orderId={id} />
       <StaffFormHistoryLinks

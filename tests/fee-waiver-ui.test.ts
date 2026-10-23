@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { resolve, join } from 'node:path';
 import postcss from 'postcss';
 import tailwind from '@tailwindcss/postcss';
 import { FORM_REGISTRY } from '../lib/forms/registry';
@@ -12,9 +13,9 @@ import {
   feeWaiverContext,
 } from './helpers/fee-waiver-fixture';
 import {
-  getFeeWaiverState,
-  mutateFeeWaiver,
-} from '../lib/db/repositories/fee-waivers';
+  getCustomerFeeWaiverState as getFeeWaiverState,
+  mutateCustomerFeeWaiver as mutateFeeWaiver,
+} from '../lib/db/repositories/customer-fee-waivers';
 import { FeeWaiverError } from '../lib/marketplace/fee-waivers';
 import { presentFeeWaiverState } from '../lib/marketplace/fee-waiver-presentation';
 import type { FixturePage } from './helpers/browser-fixture-types';
@@ -123,7 +124,7 @@ void test('mobile keyboard editor persists Nepal schedule, pause/resume/end, ove
     await page.route('**/*', async (route) => {
       const r = route.request();
       assert.equal(new URL(r.url()).origin, 'https://waiver.test');
-      if (new URL(r.url()).pathname === '/api/admin/fee-waivers') {
+      if (new URL(r.url()).pathname === '/api/admin/customer-fee-waivers') {
         if (r.method() === 'POST') {
           const body = JSON.parse(r.postData()!);
           posts.push(body);
@@ -192,6 +193,7 @@ void test('mobile keyboard editor persists Nepal schedule, pause/resume/end, ove
       .getByRole('button', { name: 'Pause First launch', exact: true })
       .press('Enter');
     await page.getByRole('button',{name:'Resume First launch',exact:true}).waitFor();
+    assert.equal(posts[0].feeTarget, 'customer_service_fee');
     assert.deepEqual(posts[0].command, { type: 'pause', campaignId: first.id });
     await page.getByText(/Applying: Second launch/).waitFor();
     await page
@@ -299,9 +301,9 @@ void test('mobile keyboard editor persists Nepal schedule, pause/resume/end, ove
       1,
       'Only the deliberately exercised stale request reports a network conflict',
     );
-    await mkdir('output/fee-waiver-ui', { recursive: true });
+    const screenshotDirectory=await mkdtemp(join(tmpdir(),'hastabazaar-customer-fee-ui-'));
     await nativePage.screenshot({
-      path: resolve('output/fee-waiver-ui/mobile.png'),
+      path: join(screenshotDirectory,'mobile.png'),
       fullPage: true,
     });
     await nativePage.setViewportSize({ width: 1440, height: 1000 });
@@ -312,7 +314,7 @@ void test('mobile keyboard editor persists Nepal schedule, pause/resume/end, ove
       true,
     );
     await nativePage.screenshot({
-      path: resolve('output/fee-waiver-ui/desktop.png'),
+      path: join(screenshotDirectory,'desktop.png'),
       fullPage: true,
     });
   } finally {

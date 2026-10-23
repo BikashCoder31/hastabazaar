@@ -51,11 +51,22 @@ void test('legacy maker/loyalty additive upgrade preserves every row and leaves 
     assert.equal(inspectReadinessUpgrade(sqlite, 'existing-super').migrationNeeded, true);
     assert.deepEqual(applyReadinessUpgrade(sqlite, manifest, 'existing-super', 100), { migrations: 2, forms: 4, audits: 4 });
     assert.deepEqual(inspectLocalFeatureSchema(sqlite), {ready: false, missing: [
+      'customer_fee_waiver_control', 'customer_fee_waiver_campaigns', 'customer_fee_waiver_revisions',
+      'customer_fee_waiver_requests', 'order_customer_service_fees',
       'marketplace_fee_waiver_control', 'marketplace_fee_waiver_campaigns', 'marketplace_fee_waiver_revisions',
       'marketplace_fee_waiver_requests', 'order_item_marketplace_fees',
       'marketplace_fee_waiver_revisions_no_update', 'marketplace_fee_waiver_revisions_no_delete',
       'marketplace_fee_waiver_requests_no_update', 'marketplace_fee_waiver_requests_no_delete',
       'marketplace_fee_waiver_campaigns_no_delete', 'order_item_marketplace_fees_no_update', 'order_item_marketplace_fees_no_delete',
+      'table:customer_fee_waiver_control', 'table:customer_fee_waiver_campaigns', 'table:customer_fee_waiver_revisions',
+      'table:customer_fee_waiver_requests', 'table:order_customer_service_fees',
+      'index:idx_customer_fee_waiver_history', 'index:idx_order_customer_service_fees_campaign',
+      'trigger:customer_fee_waiver_revisions_no_replace', 'trigger:customer_fee_waiver_requests_no_replace',
+      'trigger:order_customer_service_fees_no_replace', 'trigger:customer_fee_waiver_revisions_no_update',
+      'trigger:customer_fee_waiver_revisions_no_delete', 'trigger:customer_fee_waiver_requests_no_update',
+      'trigger:customer_fee_waiver_requests_no_delete', 'trigger:customer_fee_waiver_campaigns_no_delete',
+      'trigger:order_customer_service_fees_no_update', 'trigger:order_customer_service_fees_no_delete',
+      'trigger:order_customer_service_fees_match_order', 'trigger:orders_preserve_customer_service_fee',
     ]});
     assert.deepEqual({...sqlite.prepare('SELECT scheduled_revision,scheduled_for,scheduled_unpause FROM loyalty_config').get()},
       {scheduled_revision:null,scheduled_for:null,scheduled_unpause:0});

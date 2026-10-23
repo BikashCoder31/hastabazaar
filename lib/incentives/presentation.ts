@@ -97,7 +97,7 @@ export function promoCostPreview(
   terms: PromoTerms,
   subtotalPaisa: number,
   commissionBps: number,
-  feeWaiver: FeeWaiverCampaign | null = null,
+  _historicalFeeWaiver: FeeWaiverCampaign | null = null,
 ) {
   positiveInteger(subtotalPaisa, 'product subtotal', true);
   positiveInteger(commissionBps, 'commission percentage', true);
@@ -116,7 +116,7 @@ export function promoCostPreview(
   const calculated = calculatePromoDiscount(amountTerms, subtotalPaisa);
   const eligible = subtotalPaisa >= terms.minimumSubtotalPaisa;
   const discountPaisa = eligible ? calculated : 0;
-  const fee = calculateMarketplaceFee(subtotalPaisa, commissionBps, feeWaiver);
+  const fee = calculateMarketplaceFee(subtotalPaisa, commissionBps, null);
   const commissionPaisa = fee.netPaisa;
   return {
     eligible,

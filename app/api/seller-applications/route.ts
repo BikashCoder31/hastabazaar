@@ -3,7 +3,9 @@ import { parseCurrentSellerApplication, pendingPayoutReference } from '@/lib/sel
 import { getContactVerificationStatus } from '@/lib/auth/contact-verification';
 import { normalizeNepalMobile } from '@/lib/auth/nepal-phone';
 import { getRegisteredSellerTerms, SellerCommissionTermsChangedError } from '@/lib/db/repositories/marketplace-settings';
-import { ManagedMakerTermsChangedError } from '@/lib/db/repositories/managed-maker-details';
+import { getManagedMakerApplicationTerms, ManagedMakerTermsChangedError } from '@/lib/db/repositories/managed-maker-details';
+import { CommissionRateUnavailableError } from '@/lib/db/repositories/business-settings';
+import { MANAGED_SUPPLIER_AGREEMENT_VERSION } from '@/lib/sellers/managed-identity';
 import { readBoundedForm, BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
 import { getCustomerUser, CustomerAuthorizationError } from '@/lib/auth/customer';
@@ -127,12 +129,21 @@ export async function POST(request: Request): Promise<Response> {
   if (!contacts.emailVerified || !contacts.phoneVerified || contacts.phone !== applicationPhone)
     return json({ error: 'Verify your account email and phone at /account/profile, then use that verified phone in this application.' }, 409);
   let registeredAgreementContext: string | undefined;
-  if (parsed.input.participationRoute === 'registered_seller') {
-    const shown=formData.getAll('sellerAgreementContext');
-    if (shown.length!==1 || typeof shown[0]!=='string' || !/^[a-f0-9]{64}$/.test(shown[0])) return json({error:'Reload and review the current seller commission terms.'},400);
-    registeredAgreementContext=shown[0];
-    const current=await getRegisteredSellerTerms(database);
-    if (registeredAgreementContext!==current.context) return json({error:'Seller commission terms have changed. Reload and review the current terms.'},409);
+  try {
+    if (parsed.input.participationRoute === 'registered_seller') {
+      const shown=formData.getAll('sellerAgreementContext');
+      if (shown.length!==1 || typeof shown[0]!=='string' || !/^[a-f0-9]{64}$/.test(shown[0])) return json({error:'Reload and review the current seller commission terms.'},400);
+      registeredAgreementContext=shown[0];
+      const current=await getRegisteredSellerTerms(database);
+      if (registeredAgreementContext!==current.context) return json({error:'Seller commission terms have changed. Reload and review the current terms.'},409);
+    } else {
+      // Check only this route before private uploads. The repository still binds and
+      // transactionally guards the exact displayed context and setting source IDs.
+      await getManagedMakerApplicationTerms(database,Date.now(),MANAGED_SUPPLIER_AGREEMENT_VERSION);
+    }
+  } catch (error) {
+    if (!(error instanceof CommissionRateUnavailableError)) throw error;
+    return json({error:'The selected application route terms are unavailable. Please return when published terms are effective.'},503);
   }
   let form;
   try {
@@ -268,6 +279,8 @@ export async function POST(request: Request): Promise<Response> {
     // A lost commit/replay response cannot prove that these private objects are unused.
     // Retain them for exact recovery once a database mutation has been attempted.
     if (bucket && !mutationAttempted) await Promise.allSettled(uploadedKeys.map((key) => bucket.delete(key)));
+    if (error instanceof CommissionRateUnavailableError)
+      return json({error:'The selected application route terms are unavailable. Please return when published terms are effective.'},503);
     if (error instanceof SellerCommissionTermsChangedError || registeredAgreementContext && (await getRegisteredSellerTerms(database)).context!==registeredAgreementContext)
       return json({error:'Seller commission terms have changed. Reload and review the current terms.'},409);
     const message = error instanceof Error ? error.message : '';

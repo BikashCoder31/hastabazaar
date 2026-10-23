@@ -1,5 +1,8 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { customerFeeMariaMigration, customerFeeRequiredTables, customerFeeTriggerDefinitions,
+  customerFeeRequiredExactChecks, customerFeeRequiredForeignKeys,
+  customerFeeRequiredUniqueIndexes, customerFeeRequiredColumnCollations } from '../lib/operations/fee-schema-readiness.mjs';
 const release = (
   process.env.HASTABAZAAR_RELEASE_ID ?? 'local-unversioned-candidate'
 ).trim();
@@ -62,6 +65,7 @@ const migrationNames = [
   'mariadb-company-store-maker-readiness.sql',
   'mariadb-loyalty-scheduled-changes.sql',
   'mariadb-marketplace-fee-waivers.sql',
+  customerFeeMariaMigration,
 ];
 const tables = {},
   triggers = {},
@@ -222,11 +226,16 @@ const requiredForeignKeys = {
   'order_item_marketplace_fees.fee_evidence_item_fk': { columns: ['order_item_id'], referencedTable: 'order_items', referencedColumns: ['id'] },
   'order_item_marketplace_fees.fee_evidence_revision_fk': { columns: ['campaign_id', 'campaign_revision'], referencedTable: 'marketplace_fee_waiver_revisions', referencedColumns: ['campaign_id', 'revision'] },
 };
+for (const [table, columns] of Object.entries(customerFeeRequiredTables)) {
+  if (!columns.every(column => tables[table]?.includes(column))) throw new Error('Customer fee source is missing reviewed columns: ' + table);
+}
 const manifest = {
-  requiredExactChecks,
-  requiredForeignKeys,
-  requiredTriggerShapes,
+  requiredExactChecks: { ...requiredExactChecks, ...customerFeeRequiredExactChecks },
+  requiredForeignKeys: { ...requiredForeignKeys, ...customerFeeRequiredForeignKeys },
+  requiredTriggerShapes: { ...requiredTriggerShapes, ...Object.fromEntries(Object.entries(customerFeeTriggerDefinitions).map(([name, { table, event, timing }]) => [name, { table, event, timing }])) },
+  requiredExactTriggerDefinitions: Object.fromEntries(Object.entries(customerFeeTriggerDefinitions).map(([name, shape]) => [name, shape.mariadb])),
   requiredUniqueIndexes: {
+    ...customerFeeRequiredUniqueIndexes,
     'managed_payout_allocations.managed_allocation_one_reservation': ['reserved_entitlement_key'],
     'marketplace_fee_waiver_control.PRIMARY': ['id'],
     'marketplace_fee_waiver_campaigns.PRIMARY': ['id'],
@@ -237,6 +246,7 @@ const manifest = {
   },
   requiredGeneratedColumns: { 'managed_payout_allocations.reserved_entitlement_key': ["case when binary disposition='reserved' then entitlement_id else null end"] },
   requiredColumnCollations: {
+    ...customerFeeRequiredColumnCollations,
     'managed_payout_allocations.reserved_entitlement_key': 'utf8mb4_unicode_ci',
     'marketplace_fee_waiver_campaigns.id': 'utf8mb4_bin',
     'marketplace_fee_waiver_revisions.campaign_id': 'utf8mb4_bin',
@@ -249,14 +259,14 @@ const manifest = {
     'users.id': 'utf8mb4_unicode_ci',
     'order_items.id': 'utf8mb4_unicode_ci',
   },
-  requiredChecks,
+  requiredChecks: { ...requiredChecks, ...Object.fromEntries(Object.entries(customerFeeRequiredExactChecks).map(([name, definition]) => [name, [definition.toLowerCase()]])) },
   release,
   startup: 'app.cjs',
   hosting: 'Babal.Host',
   requiredNodeMajor: 22,
   migrations,
   requiredTables: tables,
-  requiredTriggers: triggers,
+  requiredTriggers: { ...triggers, ...Object.fromEntries(Object.entries(customerFeeTriggerDefinitions).map(([name, shape]) => [name, ['signal sqlstate', '45000', shape.mariadb.match(/MESSAGE_TEXT='([^']+)'/)[1]]])) },
 };
 await writeFile(
   'deployment/babal/release-manifest.json',

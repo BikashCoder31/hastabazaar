@@ -157,6 +157,9 @@ function definitions(q: AccountingQuery, now: number): Definition[] {
   m('sellers', 'seller_original_waived_commission', 'Original marketplace fee waivers', originalFeeSource,
     'COALESCE(f.waived_paisa,0)', `${independentItem} AND ${flow('o.created_at')}`, 'period_flow', ['order_item'],
     'Original checkout fee relief, including subsequently cancelled/refunded lines. Evidence only, not a cash expense or earned commission.');
+  const customerFeeSource = 'orders o LEFT JOIN order_customer_service_fees f ON f.order_id=o.id';
+  m('service_fees', 'service_fee_standard', 'Standard customer service fees', customerFeeSource, 'COALESCE(f.standard_paisa,o.buyer_platform_fee_paisa)', flow('o.created_at'), 'period_flow', ['order_service_fee'], 'Original standard fee once per order; legacy orders use only the recorded charge. Not an additional cash charge or revenue.');
+  m('service_fees', 'service_fee_campaign_waived', 'Customer campaign fee waivers', customerFeeSource, 'COALESCE(f.waived_paisa,0)', flow('o.created_at'), 'period_flow', ['order_service_fee'], 'Original customer campaign relief once per order, including zero-net orders. Not a refund, commission waiver or cash expense.');
   m('service_fees', 'service_fee_charged', 'Platform service fees at checkout', 'orders', 'buyer_platform_fee_paisa', flow('created_at'), 'period_flow', ['order_service_fee'], 'Original saved customer fees, once per order. Includes pending/uncollected charges; not collected revenue or seller commission.');
   m('service_fees', 'service_fee_current', 'Platform service fees after cancellations', 'orders', currentPlatformServiceFeeSql(), flow('created_at'), 'period_flow', ['order_service_fee'], 'Saved order charges after uncollected COD cancellation waivers. Not proof of cash collection; lawful refunds are reported separately.');
   m(
@@ -457,7 +460,7 @@ function sourceRows(group: AccountingGroup): string[] {
     return `SELECT ${quote(kind)} AS sourceKind,${text(id)} AS sourceId,${at} AS recordedAt,${amount === 'NULL' ? 'NULL' : text(amount)} AS amount,${points === 'NULL' ? 'NULL' : text(points)} AS points,${state} AS state,${model} AS model,${text(reference)} AS reference FROM ${table}`;
   }
   switch (group) {
-    case 'service_fees': return [row('order_service_fee', 'orders WHERE buyer_platform_fee_paisa>0', 'id', 'buyer_platform_fee_paisa', 'created_at', 'payment_status', "'customer service fee'", 'order_number')];
+    case 'service_fees': return [row('order_service_fee', 'orders o LEFT JOIN order_customer_service_fees f ON f.order_id=o.id LEFT JOIN customer_fee_waiver_revisions r ON r.campaign_id=f.campaign_id AND r.revision=f.campaign_revision WHERE o.buyer_platform_fee_paisa>0 OR f.waived_paisa>0', 'o.id', 'o.buyer_platform_fee_paisa', 'o.created_at', 'o.payment_status', "COALESCE(r.name,'recorded customer service fee')", 'o.order_number')];
     case 'sellers':
       return [
         row(

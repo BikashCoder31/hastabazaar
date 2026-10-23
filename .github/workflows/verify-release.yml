@@ -11,8 +11,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/staging-readiness-20261021') && 'accept-staging-fixed-39684716989' || format('verify-{0}-{1}', github.workflow, github.ref) }}
-  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/staging-readiness-20261021') && github.ref != 'refs/heads/main' }}
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 defaults:
   run:
@@ -20,7 +20,6 @@ defaults:
 
 jobs:
   quality:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/staging-readiness-20261021') }}
     name: Lint and Types
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -37,7 +36,6 @@ jobs:
       - run: npm run typecheck
 
   tests:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/staging-readiness-20261021') }}
     name: Tests ${{ matrix.shard }}/4
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -63,7 +61,6 @@ jobs:
       - run: node --import tsx --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/4 tests/*.test.ts
 
   native:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/staging-readiness-20261021') }}
     name: Native Release and Recovery Rehearsal
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -93,7 +90,7 @@ jobs:
   package:
     name: Linux Babal Package
     needs: [quality, tests, native]
-    if: ${{ github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/staging-readiness-20261021') }}
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
@@ -132,7 +129,7 @@ jobs:
   staging:
     name: Deploy Isolated Staging
     needs: [package]
-    if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/staging-readiness-20261021') }}
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:
@@ -168,82 +165,3 @@ jobs:
           cd ..
           node scripts/deployment/send-staging.mjs verified-release
           printf '### Staging deployed\n\nhttps://staging.hastabazaar.com\n\nProduction and business data were not deployed or reset.\n' >> "$GITHUB_STEP_SUMMARY"
-
-  accept_existing_staging:
-    name: Accept Exact Existing Staging Artifact
-    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/staging-readiness-20261021' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      actions: read
-    concurrency:
-      group: babal-staging
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: 27b0d15100123783da8fe0a59589a1aaef31e06a
-          persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: '22.23.2'
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: hastabazaar-release-ci-39684716989-1
-          path: verified-release
-          run-id: 39684716989
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-      - name: Verify fixed existing artifact before credentials
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = '27b0d15100123783da8fe0a59589a1aaef31e06a'
-          node --input-type=module <<'NODE'
-          import assert from 'node:assert/strict';
-          import {readFile,lstat,realpath,writeFile} from 'node:fs/promises';
-          import {createHash} from 'node:crypto';
-          import {resolve} from 'node:path';
-          const folder=resolve('verified-release'),release='hastabazaar-release-ci-39684716989-1',commit='27b0d15100123783da8fe0a59589a1aaef31e06a';
-          assert.equal(await realpath(folder),folder);
-          const archive=folder+'/'+release+'.tar.gz',inventory=folder+'/inventory.json';
-          for(const path of [archive,inventory]){assert.equal(await realpath(path),path);assert.ok((await lstat(path)).isFile());}
-          const inventoryBytes=await readFile(inventory),archiveBytes=await readFile(archive),sha=b=>createHash('sha256').update(b).digest('hex');
-          assert.equal(sha(inventoryBytes),'865a44baae531e1f50e479c162f47bd5c243ad3c0af81d8586f090e67492a533');
-          assert.equal(sha(archiveBytes),'944338c2d1a280cccfbc11fcec58b983df1374a15854a1bb6c683eacb986e6bf');
-          const identity=JSON.parse(inventoryBytes);assert.equal(identity.release,release);assert.equal(identity.commit,commit);assert.equal(identity.archive,release+'.tar.gz');assert.equal(identity.platform,'linux');assert.equal(identity.arch,'x64');assert.equal(identity.archiveBytes,41726312);assert.equal(archiveBytes.length,identity.archiveBytes);assert.equal(identity.archiveSha256,sha(archiveBytes));assert.equal(identity.fileCount,3938);assert.equal(identity.files.length,3938);
-          await writeFile('staging-acceptance-sender-identity.json',JSON.stringify({sourceRun:39684716989,release,commit,archiveBytes:archiveBytes.length,archiveSha256:sha(archiveBytes),inventorySha256:sha(inventoryBytes),rebuilt:false},null,2)+'\n',{flag:'wx',mode:0o600});
-          NODE
-      - name: Send exact verified artifact through unchanged staging gateway
-        env:
-          BABAL_STAGING_SSH_KEY: ${{ secrets.BABAL_STAGING_SSH_KEY }}
-        run: |
-          set -euo pipefail
-          umask 077
-          test -n "$BABAL_STAGING_SSH_KEY"
-          private_dir="$(mktemp -d)"
-          trap 'rm -rf -- "$private_dir"' EXIT
-          printf '%s\n' "$BABAL_STAGING_SSH_KEY" > "$private_dir/key"
-          printf '%s\n' 'fishtail.mysecurecloudserver.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHsNe1SdfRCausNrtNOco4hpzy6rxNc/+zX/bNpFrd8/' > "$private_dir/known_hosts"
-          chmod 600 "$private_dir/key" "$private_dir/known_hosts"
-          export STAGING_KEY_FILE="$private_dir/key" STAGING_KNOWN_HOSTS="$private_dir/known_hosts"
-          node scripts/deployment/send-staging.mjs verified-release | tee staging-acceptance-gateway.jsonl
-      - name: Verify exact normal gateway receipt
-        run: |
-          set -euo pipefail
-          node --input-type=module <<'NODE'
-          import assert from 'node:assert/strict';
-          import {readFile} from 'node:fs/promises';
-          const lines=(await readFile('staging-acceptance-gateway.jsonl','utf8')).trim().split('\n');assert.equal(lines.length,1);const receipt=JSON.parse(lines[0]);
-          assert.equal(receipt.staging,'https://staging.hastabazaar.com');assert.equal(receipt.release,'hastabazaar-release-ci-39684716989-1');assert.equal(receipt.commit,'27b0d15100123783da8fe0a59589a1aaef31e06a');assert.equal(receipt.productionUntouched,true);assert.equal(receipt.databaseMigrations,0);assert.match(receipt.productionRelease,/^hastabazaar-release-[a-z0-9._-]+$/);
-          NODE
-      - name: Retain sender identity and raw gateway output
-        if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: staging-acceptance-39684716989-${{ github.run_id }}
-          path: |
-            staging-acceptance-sender-identity.json
-            staging-acceptance-gateway.jsonl
-          if-no-files-found: warn
-          retention-days: 14

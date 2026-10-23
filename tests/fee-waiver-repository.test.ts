@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  mutateFeeWaiver,
-  getFeeWaiverState,
-} from '../lib/db/repositories/fee-waivers';
+  mutateCustomerFeeWaiver as mutateFeeWaiver,
+  getCustomerFeeWaiverState as getFeeWaiverState,
+} from '../lib/db/repositories/customer-fee-waivers';
+import { seedLegacyRevision } from './helpers/legacy-fee-history-fixture';
 import { selectFeeWaiver } from '../lib/marketplace/fee-waivers';
 import {
   feeWaiverFixture,
@@ -44,7 +45,7 @@ for (const changed of [false, true])
       assert.equal((await getFeeWaiverState(f.database)).revision, 1);
       assert.equal(
         f.sqlite
-          .prepare('SELECT COUNT(*) n FROM marketplace_fee_waiver_requests')
+          .prepare('SELECT COUNT(*) n FROM customer_fee_waiver_requests')
           .get()?.n,
         1,
       );
@@ -69,7 +70,7 @@ void test('unexpected audit failure retains its diagnostic error and rolls back 
     assert.equal((await getFeeWaiverState(f.database)).revision, 0);
     assert.equal(
       f.sqlite
-        .prepare('SELECT COUNT(*) n FROM marketplace_fee_waiver_requests')
+        .prepare('SELECT COUNT(*) n FROM customer_fee_waiver_requests')
         .get()?.n,
       0,
     );
@@ -114,12 +115,12 @@ void test('global control cannot contain extra null or non-default rows', async 
   try {
     assert.throws(() =>
       f.sqlite.exec(
-        'INSERT INTO marketplace_fee_waiver_control(id,revision) VALUES (NULL,0)',
+        'INSERT INTO customer_fee_waiver_control(id,revision) VALUES (NULL,0)',
       ),
     );
     assert.throws(() =>
       f.sqlite.exec(
-        "INSERT INTO marketplace_fee_waiver_control(id,revision) VALUES ('other',0)",
+        "INSERT INTO customer_fee_waiver_control(id,revision) VALUES ('other',0)",
       ),
     );
   } finally {
@@ -169,23 +170,23 @@ void test('multiple campaigns publish and pause/resume selects the next overlap,
     assert.equal(
       f.sqlite
         .prepare(
-          'SELECT name FROM marketplace_fee_waiver_revisions WHERE campaign_id=? AND revision=2',
+          'SELECT name FROM customer_fee_waiver_revisions WHERE campaign_id=? AND revision=2',
         )
         .get(a.id)?.name,
       'Global launch',
     );
     assert.throws(() =>
       f.sqlite.exec(
-        "UPDATE marketplace_fee_waiver_revisions SET name='changed'",
+        "UPDATE customer_fee_waiver_revisions SET name='changed'",
       ),
     );
     assert.throws(() =>
-      f.sqlite.exec('DELETE FROM marketplace_fee_waiver_revisions'),
+      f.sqlite.exec('DELETE FROM customer_fee_waiver_revisions'),
     );
     assert.equal(
       f.sqlite
         .prepare(
-          "SELECT COUNT(*) n FROM audit_logs WHERE action LIKE 'marketplace.fee-waiver.%'",
+          "SELECT COUNT(*) n FROM audit_logs WHERE action LIKE 'customer.service-fee-waiver.%'",
         )
         .get()?.n,
       7,
@@ -240,7 +241,7 @@ void test('replay returns original response only for identical actor, revision a
     );
     assert.equal(
       f.sqlite
-        .prepare('SELECT COUNT(*) n FROM marketplace_fee_waiver_requests')
+        .prepare('SELECT COUNT(*) n FROM customer_fee_waiver_requests')
         .get()?.n,
       2,
     );
@@ -270,9 +271,9 @@ void test('audit failure, unauthorized identity, stale revision and revoked live
     });
     await assert.rejects(mutateFeeWaiver(raced, ctx('revoked', 0), command));
     for (const table of [
-      'marketplace_fee_waiver_campaigns',
-      'marketplace_fee_waiver_revisions',
-      'marketplace_fee_waiver_requests',
+      'customer_fee_waiver_campaigns',
+      'customer_fee_waiver_revisions',
+      'customer_fee_waiver_requests',
       'staff_permission_guards',
     ])
       assert.equal(
@@ -282,7 +283,7 @@ void test('audit failure, unauthorized identity, stale revision and revoked live
     assert.equal(
       f.sqlite
         .prepare(
-          "SELECT COUNT(*) n FROM audit_logs WHERE action LIKE 'marketplace.fee-waiver.%'",
+          "SELECT COUNT(*) n FROM audit_logs WHERE action LIKE 'customer.service-fee-waiver.%'",
         )
         .get()?.n,
       0,
@@ -306,7 +307,7 @@ void test('racing identical requests replay once and a replay checks role again 
     );
     assert.equal(
       f.sqlite
-        .prepare('SELECT COUNT(*) n FROM marketplace_fee_waiver_revisions')
+        .prepare('SELECT COUNT(*) n FROM customer_fee_waiver_revisions')
         .get()?.n,
       1,
     );
@@ -325,10 +326,7 @@ void test('fee evidence enforces one immutable full waiver or no waiver with int
     await seedIncentiveInventory(f.database);
     await incentiveOrder(f.database, 'order').run();
     await incentiveItem(f.database, 'line', 'order').run();
-    const campaign = await mutateFeeWaiver(f.database, ctx('create', 0), {
-      type: 'create',
-      terms,
-    });
+    const campaign = await seedLegacyRevision(f.database, {...terms,id:'legacy-constraint',revision:1,state:'draft'});
     const insert = (
       standard: number,
       waived: number,
@@ -413,7 +411,7 @@ void test('a concurrent publish or pause wins once and stale changes cannot over
     );
     assert.equal(
       f.sqlite
-        .prepare('SELECT COUNT(*) n FROM marketplace_fee_waiver_requests')
+        .prepare('SELECT COUNT(*) n FROM customer_fee_waiver_requests')
         .get()?.n,
       3,
     );

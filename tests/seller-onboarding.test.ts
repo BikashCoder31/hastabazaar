@@ -5,8 +5,8 @@ import { sellerDocumentsForApplication } from '../lib/sellers/application';
 import { managedIdentityFields } from './helpers/managed-identity-fixture';
 import { MANAGED_SUPPLIER_AGREEMENT_VERSION } from '../lib/sellers/managed-identity';
 import { companyStoreMakerFixture } from './helpers/company-store-maker-fixture';
-import { getManagedMakerApplicationTerms } from '../lib/db/repositories/managed-maker-details';
-import { createCurrentSellerApplication as createSellerApplication, reviewSellerApplication, updateSellerParticipationPublicProfile } from '../lib/db/repositories/seller-applications';
+import { getManagedMakerApplicationTerms, getManagedMakerDetailsForReview } from '../lib/db/repositories/managed-maker-details';
+import { createCurrentSellerApplication as createSellerApplication, getSellerParticipationProfile, reviewSellerApplication, updateSellerParticipationPublicProfile } from '../lib/db/repositories/seller-applications';
 import { getRegisteredSellerTerms } from '../lib/db/repositories/marketplace-settings';
 import { activateManagedMakerForSimulation } from '../lib/managed-commerce/activation';
 import { resolveRuntimeEnvironment } from '../lib/staging/environment';
@@ -14,6 +14,9 @@ import { sellerDisclosure } from '../lib/sellers/disclosure';
 import { getManagedTermsOffers } from '../lib/managed-commerce/accepted-terms';
 import { validateSellerMultipartStructure } from '../lib/forms/submission';
 import { startSellerRegistration } from '../lib/db/repositories/seller-commercial-access';
+import { createBusinessSettingDraft, publishBusinessSettingDraft } from '../lib/db/repositories/business-settings';
+import { prepareManagedPayout } from '../lib/db/repositories/managed-settlements';
+import { currentManagedSaleEvidence } from '../lib/products/managed-sale-evidence';
 
 function form(route: 'yes' | 'no' = 'no') {
   const data = new FormData();
@@ -77,18 +80,24 @@ void test('public multipart intake rejects forged verification/clearance control
   const data=form();data.append('personalPan','987654321');assert.throws(()=>validateSellerMultipartStructure(data,'seller.application'),/Duplicate/);
 });
 
-void test('prospective repository intake retains private evidence, queues review, and blocks both commercial models without clearance', async () => {
+void test('personal-PAN managed intake at published 12% retains private evidence and blocks sales, payouts and both models without clearance', async () => {
   const f = await companyStoreMakerFixture();
   try {
     const retainedBefore=f.sqlite.prepare("SELECT * FROM managed_maker_application_details WHERE seller_id='maker'").all();
+    const draft=await createBusinessSettingDraft(f.db,{key:'managed_sale_linked_platform_retention_bps',value:1200,actorId:'reviewer',
+      reason:'SIMULATED Task 6 private managed intake',requestId:'personal-pan-twelve-draft',now:f.now});
+    await publishBusinessSettingDraft(f.db,{id:draft.id,actorId:'reviewer',expectedRevision:1,effectiveFrom:f.now,
+      reason:'SIMULATED Task 6 private managed intake',requestId:'personal-pan-twelve-publish',now:f.now});
     f.sqlite.exec(`INSERT INTO users(id,auth_subject,email,phone,display_name,status,created_at,updated_at)
       VALUES ('new-applicant','new-applicant','maker@example.test','9800000002','Fictional Maker','active',1,1);
       INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('new-applicant','customer',1);
       INSERT INTO account_email_verifications(user_id,email,verified_at) VALUES ('new-applicant','maker@example.test',1);
       INSERT INTO account_phone_verifications(user_id,phone,verified_at) VALUES ('new-applicant','+9779800000002',1);`);
     const terms = await getManagedMakerApplicationTerms(f.db, f.now, MANAGED_SUPPLIER_AGREEMENT_VERSION);
-    const data = form(); data.set('managedAgreementContext', terms.context); data.set('phone','9800000002');
+    assert.equal(terms.platformRetentionBps,1200);
+    const data = form(); data.set('managedAgreementContext', terms.context); data.set('phone','9800000002');data.set('governmentIdDescription','TASK6-PRIVATE-GOV-ID');
     const input = parseCurrentSellerApplication(data).input!;
+    assert.equal(input.participationRoute,'managed_maker');assert.equal(input.taxRegistrationNumber,'');assert.equal(input.taxMode,'NONE');
     const documents = sellerDocumentsForApplication(input).map(d => ({ id: crypto.randomUUID(), kind: d.kind,
       objectKey: 'private/seller-documents/new-seller/' + crypto.randomUUID(), originalName: 'fictional.pdf', mimeType: 'application/pdf', sizeBytes: 20 }));
     const options = {userId:'new-applicant',existingAccount:true,sellerId:'new-seller',applicationReference:'NEW-TEST-ONLY',input,documents,now:f.now};
@@ -112,6 +121,18 @@ void test('prospective repository intake retains private evidence, queues review
     await createSellerApplication(f.db, options);
     assert.equal(f.sqlite.prepare("SELECT status FROM seller_profiles WHERE id='new-seller'").get()?.status, 'submitted');
     assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM user_roles WHERE user_id='new-applicant' AND role='seller'").get()?.n,0);
+    const details=await getManagedMakerDetailsForReview(f.db,'new-seller','reviewer');
+    assert.equal(details?.personalPan,'123456789');assert.equal(details?.governmentIdDescription,'TASK6-PRIVATE-GOV-ID');
+    assert.equal(JSON.parse(details!.agreementSnapshotJson).settingVersionIds.retention,draft.id);
+    await assert.rejects(()=>getManagedMakerDetailsForReview(f.db,'new-seller','new-applicant'),/Super Admin|authority|permission/i);
+    const publicProfile=await getSellerParticipationProfile(f.db,'new-seller');
+    const publicTerms=await getManagedTermsOffers(f.db,'new-seller',f.now);
+    assert.doesNotMatch(JSON.stringify({publicProfile,publicTerms}),/123456789|TASK6-PRIVATE-GOV-ID|123456789012/);
+    assert.equal(f.sqlite.prepare(`SELECT s.id FROM seller_profiles s WHERE s.id='new-seller' AND EXISTS(SELECT 1 ${currentManagedSaleEvidence('s.id','s.user_id',f.now)})`).get(),undefined);
+    await assert.rejects(()=>prepareManagedPayout(f.db,{sellerId:'new-seller',actorId:'reviewer',destinationReference:'UNREVIEWED-REFERENCE',
+      requestId:'personal-pan-no-payout',scheduledFor:f.now,now:f.now,
+      environment:resolveRuntimeEnvironment({runtimeEnvironment:'local_staging',nodeEnvironment:'development',appOrigin:'http://localhost:3018'})}),/reviewed receiving reference/);
+    assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM managed_payouts WHERE seller_id='new-seller'").get()?.n,0);
     const audits = f.sqlite.prepare("SELECT next_json FROM audit_logs WHERE subject_id='new-seller'").all();
     assert.ok(!JSON.stringify(audits).includes('123456789012'), 'bank details must never enter audit snapshots');
     assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM seller_operational_addresses WHERE seller_id='new-seller' AND purpose IN ('pickup','returns')").get()?.n,2);

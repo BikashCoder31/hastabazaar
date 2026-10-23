@@ -17,6 +17,7 @@ import { confirmFirstCodReview, getFirstCodReview } from '../lib/orders/first-co
 import { cancellationPreview, cancelSelectedParcels } from '../lib/cancellation/repository';
 import { getOrderReceipt } from '../lib/db/repositories/orders';
 import { SELLER_AGREEMENT_VERSION } from '../lib/content/legal-policies';
+import { parseServiceFeeSnapshot, serviceFeeSnapshot, type LegacyPlatformServiceFeeSnapshot } from '../lib/checkout/platform-service-fee';
 
 async function orderFixture() {
   const f = await historicalCommissionDatabase(true);
@@ -250,4 +251,72 @@ void test('reviewed total includes one saved service fee and rejects tampering o
   assert.throws(() => parseReviewedCheckoutQuote({ ...quote, serviceFee: { ...serviceFee, chargedPaisa: 0 } }), /review/i);
   assert.throws(() => assertReviewedCheckoutQuote(quote, { ...quote, serviceFee: { ...serviceFee, versionId: 'new-version' } }), /review/i);
   assert.deepEqual(parseReviewedCheckoutQuote(legacy), legacy, 'Historical replay digest shape must stay unchanged');
+});
+
+const customerFee = {
+  enabled: true, amountPaisa: 1000, chargedPaisa: 0, versionId: 'fee-v1',
+  rule: 'non_refundable_except_law_v1', schemaVersion: 2, standardPaisa: 1000,
+  waivedPaisa: 1000, campaign: { id: 'customer-launch', revision: 3, name: 'Customer launch waiver' },
+};
+
+void test('saved customer fees parse full waiver, ordinary, disabled and zero snapshots', () => {
+  for (const saved of [
+    customerFee,
+    { ...customerFee, amountPaisa: 1500, standardPaisa: 1500, waivedPaisa: 1500 },
+    { ...customerFee, chargedPaisa: 1000, waivedPaisa: 0, campaign: null },
+    { ...customerFee, enabled: false, standardPaisa: 0, waivedPaisa: 0, campaign: null },
+    { ...customerFee, amountPaisa: 0, standardPaisa: 0, waivedPaisa: 0, campaign: null },
+  ]) assert.deepEqual(parseServiceFeeSnapshot(saved), saved);
+});
+
+void test('saved customer fees reject malformed amounts and incomplete or unexplained attribution', () => {
+  for (const invalid of [
+    null, [], {},
+    { ...customerFee, extra: true },
+    { ...customerFee, schemaVersion: 1 },
+    { ...customerFee, schemaVersion: undefined },
+    { ...customerFee, standardPaisa: undefined },
+    { ...customerFee, waivedPaisa: undefined },
+    { ...customerFee, campaign: undefined },
+    { ...customerFee, versionId: '' },
+    { ...customerFee, rule: 'refundable' },
+    { ...customerFee, enabled: false },
+    { ...customerFee, standardPaisa: 999 },
+    { ...customerFee, waivedPaisa: 999, chargedPaisa: 1 },
+    { ...customerFee, waivedPaisa: 1001, chargedPaisa: -1 },
+    { ...customerFee, chargedPaisa: 1000 },
+    { ...customerFee, campaign: null },
+    { ...customerFee, waivedPaisa: 0, chargedPaisa: 1000 },
+    { ...customerFee, amountPaisa: 0, standardPaisa: 0, waivedPaisa: 0 },
+    { ...customerFee, campaign: { ...customerFee.campaign, revision: undefined } },
+    { ...customerFee, campaign: { ...customerFee.campaign, revision: 0 } },
+    { ...customerFee, campaign: { ...customerFee.campaign, revision: 1.5 } },
+    { ...customerFee, campaign: { ...customerFee.campaign, revision: Number.MAX_SAFE_INTEGER + 1 } },
+    { ...customerFee, campaign: { ...customerFee.campaign, name: '  ' } },
+    { ...customerFee, campaign: { ...customerFee.campaign, id: '' } },
+    { ...customerFee, campaign: { ...customerFee.campaign, extra: true } },
+  ]) assert.throws(() => parseServiceFeeSnapshot(invalid), JSON.stringify(invalid));
+  for (const field of ['amountPaisa', 'standardPaisa', 'waivedPaisa', 'chargedPaisa'])
+    for (const amount of [-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1, '1000'])
+      assert.throws(() => parseServiceFeeSnapshot({ ...customerFee, [field]: amount }), field + ': ' + String(amount));
+});
+
+void test('legacy fee snapshots retain exactly their original five fields and reject unexplained zero charges', () => {
+  const original: LegacyPlatformServiceFeeSnapshot = serviceFeeSnapshot({ enabled: true, amountPaisa: 1000 }, null);
+  assert.deepEqual(original, {
+    enabled: true, amountPaisa: 1000, chargedPaisa: 1000,
+    versionId: null, rule: 'non_refundable_except_law_v1',
+  });
+  assert.deepEqual(parseServiceFeeSnapshot(original), original);
+  for (const saved of [
+    { ...original, enabled: false, chargedPaisa: 0 },
+    { ...original, amountPaisa: 0, chargedPaisa: 0 },
+  ]) assert.deepEqual(parseServiceFeeSnapshot(saved), saved);
+  for (const invalid of [
+    { ...original, chargedPaisa: 0 },
+    { ...original, standardPaisa: 1000 },
+    { ...original, waivedPaisa: 1000 },
+    { ...original, campaign: customerFee.campaign },
+    { ...original, extra: true },
+  ]) assert.throws(() => parseServiceFeeSnapshot(invalid));
 });

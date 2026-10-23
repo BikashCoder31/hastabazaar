@@ -2,6 +2,11 @@
 export const accountingColumns: Record<string, string> = {
   orders: 'id,order_number,status,payment_status,created_at,delivered_at,buyer_platform_fee_paisa',
   order_cancellation_events: 'order_id,version,next_json',
+  customer_fee_waiver_control: 'id,revision',
+  customer_fee_waiver_campaigns: 'id,revision,created_at,updated_at',
+  customer_fee_waiver_revisions: 'campaign_id,revision,state,name,description,starts_at,ends_at,created_by,request_id,created_at',
+  customer_fee_waiver_requests: 'request_id,actor_id,auth_subject,command_json,response_json,created_at',
+  order_customer_service_fees: 'order_id,policy_enabled,policy_amount_paisa,policy_version_id,standard_paisa,waived_paisa,net_paisa,campaign_id,campaign_revision,created_at',
   audit_logs: 'id,subject_type,subject_id,action,next_json,created_at',
   order_items:
     'id,order_id,seller_id,commission_rule_version,commission_paisa,fulfillment_status',
@@ -39,7 +44,7 @@ export const accountingColumns: Record<string, string> = {
   managed_supplier_obligations: 'id,status',
 };
 export const accountingGroups = {
-  service_fees: ['orders','order_cancellation_events'],
+  service_fees: ['orders','order_cancellation_events','order_customer_service_fees','customer_fee_waiver_control','customer_fee_waiver_campaigns','customer_fee_waiver_revisions','customer_fee_waiver_requests'],
   sellers: [
     'orders',
     'order_items',

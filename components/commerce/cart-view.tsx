@@ -1,5 +1,6 @@
 'use client';
 import { SellerDisclosure } from './seller-disclosure';
+import { CustomerServiceFeeBreakdown } from './customer-service-fee-breakdown';
 
 import Image from 'next/image';
 import Link from 'next/link';
@@ -12,7 +13,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { PLATFORM_SERVICE_FEE_NOTICE, type PlatformServiceFeeSnapshot } from '@/lib/checkout/platform-service-fee';
+import { type PlatformServiceFeeSnapshot } from '@/lib/checkout/platform-service-fee';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -264,7 +265,7 @@ export function CartView({serviceFee}:{serviceFee?:PlatformServiceFeeSnapshot} =
           <span className="text-muted-foreground">Delivery</span>
           <span>At checkout</span>
         </div>
-        {serviceFee ? <div className="mt-3 flex justify-between gap-3 text-sm"><span>Platform service fee</span><span>{serviceFee.enabled ? money(serviceFee.chargedPaisa) : 'Not charged'}</span></div> : null}
+        {serviceFee ? <div className="mt-3"><CustomerServiceFeeBreakdown standardPaisa={'standardPaisa' in serviceFee ? serviceFee.standardPaisa : serviceFee.chargedPaisa} waivedPaisa={'waivedPaisa' in serviceFee ? serviceFee.waivedPaisa : 0} netPaisa={serviceFee.chargedPaisa} campaignName={'campaign' in serviceFee ? serviceFee.campaign?.name ?? null : null} source="estimate" /></div> : null}
         <div className="mt-5 flex justify-between gap-3 border-t pt-5 font-semibold">
           <span>Subtotal before delivery</span>
           <span>{money(cart.itemSubtotalPaisa+(serviceFee?.chargedPaisa??0))}</span>
@@ -274,7 +275,6 @@ export function CartView({serviceFee}:{serviceFee?:PlatformServiceFeeSnapshot} =
           Pay on delivery. Your final total includes delivery, calculated at
           checkout.
         </p>
-        {serviceFee && serviceFee.chargedPaisa>0 ? <p className="mt-3 text-xs leading-5 text-muted-foreground">Platform service fee: {PLATFORM_SERVICE_FEE_NOTICE} The final fee is confirmed at checkout.</p> : null}
         <Button
           nativeButton={cart.hasUnavailableItems || busy !== null}
           render={

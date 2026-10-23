@@ -74,7 +74,8 @@ void test('connected acceptance surfaces use the current policy wording and link
   assert.match(checkout, /href="\/terms"/);
   assert.doesNotMatch(checkout, /accept the Version 3/);
   const seller = readFileSync('components/seller/seller-application-form.tsx', 'utf8');
-  assert.match(seller, /registeredTerms\?\.percent/);
+  assert.match(seller, /registrationAnswer === 'yes' && registeredTerms/);
+  assert.match(seller, /\{registeredTerms\.percent\}% commission/);
   assert.doesNotMatch(seller, /9% commission/);
   assert.match(seller, /href="\/seller-agreement"/);
   assert.match(seller, /href="\/prohibited-products"/);

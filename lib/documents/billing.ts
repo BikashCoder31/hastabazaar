@@ -1,5 +1,6 @@
 import type { NepalAddress } from '../shipping/provider';
 import type { OrderDocumentSnapshot } from '../db/repositories/orders';
+import type { OrderCustomerFeeView } from '../db/repositories/customer-service-fees';
 
 export const APPROVED_BILLING_VERSION = 'approved-2026-10-21' as const;
 export interface BillingIssuer {
@@ -46,6 +47,7 @@ export interface ReceiptGroup {
   goodsPaisa: number;
   deliveryPaisa: number;
   serviceFeePaisa: number;
+  customerServiceFee?: OrderCustomerFeeView;
   promotionPaisa: number;
   walletPaisa: number;
   totalPaisa: number;
@@ -119,7 +121,7 @@ export function buildReceiptGroups(snapshot: OrderDocumentSnapshot): ReceiptGrou
   // Keep the full collected amount evidenced even when all goods belong to
   // independent sellers. This is a separate company charge receipt, not their goods bill.
   if (!result.some(group=>group.issuer.kind==='company') &&
-      (snapshot.deliveryChargePaisa>0||snapshot.buyerPlatformFeePaisa>0)) {
+      (snapshot.deliveryChargePaisa>0||snapshot.buyerPlatformFeePaisa>0||(snapshot.customerServiceFee?.waivedPaisa??0)>0)) {
     const issuer=snapshot.billing!.company;
     result.push({key:issuer.reference,issuer:{...issuer},scope:'order_charges',billNumber:null,items:[],goodsPaisa:0,
       deliveryPaisa:0,serviceFeePaisa:0,promotionPaisa:0,walletPaisa:0,totalPaisa:0});
@@ -142,7 +144,8 @@ export function buildReceiptGroups(snapshot: OrderDocumentSnapshot): ReceiptGrou
   if (companyGroups.length>1) throw new Error('Different company issuers need charge allocation review.');
   for (const group of result) {
     // Independent sellers' goods receipts never duplicate platform delivery/service charges.
-    if (group===companyGroups[0]) {group.deliveryPaisa=snapshot.deliveryChargePaisa;group.serviceFeePaisa=snapshot.buyerPlatformFeePaisa;}
+    if (group===companyGroups[0]) {group.deliveryPaisa=snapshot.deliveryChargePaisa;group.serviceFeePaisa=snapshot.buyerPlatformFeePaisa;
+      if(snapshot.customerServiceFee)group.customerServiceFee=snapshot.customerServiceFee;}
     group.promotionPaisa=promotions[group.key]??0;group.walletPaisa=wallets[group.key]??0;
     group.totalPaisa=receiptSum([group.goodsPaisa,group.deliveryPaisa,group.serviceFeePaisa,-group.promotionPaisa,-group.walletPaisa]);
   }

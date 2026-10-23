@@ -1,5 +1,4 @@
-import { serviceFeeSnapshot } from '../../checkout/platform-service-fee';
-import { getEffectiveBusinessSetting } from './business-settings';
+import { quoteCustomerServiceFee } from './customer-service-fees';
 
 /** Read the recorded cancellation waiver, never infer a fee from tax or totals. */
 export function currentPlatformServiceFeeSql(alias='orders') {
@@ -24,6 +23,5 @@ export function postCancellationGrossSql(alias='orders') {
 }
 
 export async function getPlatformServiceFee(database: D1Database, now = Date.now()) {
-  const setting = await getEffectiveBusinessSetting(database, 'platform_service_fee_policy', now);
-  return serviceFeeSnapshot(setting.value, setting.versionId);
+  return (await quoteCustomerServiceFee(database, now)).snapshot;
 }

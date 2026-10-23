@@ -12,13 +12,14 @@ import {
 import { feeWaiverDisplayState } from '@/lib/marketplace/fee-waiver-presentation';
 
 type State = {
+  feeTarget: 'customer_service_fee';
   revision: number;
   campaigns: FeeWaiverCampaign[];
   evaluatedAt: number;
 };
 const field =
   'mt-1 block min-h-11 w-full rounded-xl border bg-background px-3 py-2';
-export function FeeWaiverManager({ initialState }: { initialState: State }) {
+export function FeeWaiverManager({ initialState, legacyHistory }: { initialState: State; legacyHistory?: { revision: number; campaigns: FeeWaiverCampaign[] } }) {
   const [state, setState] = useState(initialState);
   const [now, setNow] = useState(initialState.evaluatedAt);
   const [editing, setEditing] = useState<FeeWaiverCampaign | null>(null);
@@ -48,11 +49,12 @@ export function FeeWaiverManager({ initialState }: { initialState: State }) {
     setNotice('');
   }
   async function refresh() {
-    const response = await fetch('/api/admin/fee-waivers', {
+    const response = await fetch('/api/admin/customer-fee-waivers', {
       cache: 'no-store',
     });
     const result = (await response.json()) as State & { error?: string };
     if (!response.ok) throw new Error(result.error ?? 'Refresh failed.');
+    if (result.feeTarget !== 'customer_service_fee') throw new Error('Review the customer fee controls before continuing.');
     setState(result);
     setNow(result.evaluatedAt);
     return result as State;
@@ -63,10 +65,11 @@ export function FeeWaiverManager({ initialState }: { initialState: State }) {
     setError('');
     setNotice('');
     try {
-      const response = await fetch('/api/admin/fee-waivers', {
+      const response = await fetch('/api/admin/customer-fee-waivers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          feeTarget: 'customer_service_fee',
           command,
           expectedRevision: state.revision,
           requestId: crypto.randomUUID(),
@@ -135,7 +138,7 @@ export function FeeWaiverManager({ initialState }: { initialState: State }) {
           {selected
             ? `Applying: ${selected.name}.`
             : 'No campaign is applying.'}{' '}
-          Only one full waiver applies; overlapping waivers do not stack.
+          Only one full customer service fee waiver applies; overlapping waivers do not stack.
         </p>
         <ul className="mt-3 space-y-2 text-sm">
           {active.map((c) => (
@@ -152,7 +155,7 @@ export function FeeWaiverManager({ initialState }: { initialState: State }) {
         data-form-id="staff.fee-waivers"
         onSubmit={save}
         className="grid min-w-0 gap-4 rounded-2xl border p-5"
-        aria-label="Fee waiver campaign"
+        aria-label="Customer service fee waiver campaign"
       >
         <h2 className="font-heading text-2xl">
           {editing ? 'Edit campaign' : 'New campaign'}
@@ -345,6 +348,16 @@ export function FeeWaiverManager({ initialState }: { initialState: State }) {
           );
         })}
       </ul>
+      {legacyHistory ? <section className="space-y-3 rounded-2xl border p-5" aria-labelledby="legacy-fee-history">
+        <h2 id="legacy-fee-history" className="font-heading text-2xl">Historical seller commission campaigns</h2>
+        <p className="text-sm text-muted-foreground">Read-only history. These campaigns cannot affect new orders. Original order fee evidence and accepted commission terms stay recorded.</p>
+        <ul className="space-y-3">{legacyHistory.campaigns.map(c=><li key={c.id} className="space-y-1 text-sm">
+          <h3 className="break-words font-semibold">{c.name} · {c.state}</h3>
+          <p className="whitespace-pre-wrap break-words">{c.description}</p>
+          <p>{commissionDate(c.startsAt)} – {commissionDate(c.endsAt)} (Nepal time)</p>
+        </li>)}</ul>
+        {legacyHistory.campaigns.length === 0 ? <p className="text-sm">No historical seller commission campaigns.</p> : null}
+      </section> : null}
     </div>
   );
 }

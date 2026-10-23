@@ -3,6 +3,23 @@ import test from 'node:test';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
 import { stubFixtureLink } from './helpers/browser-fixture-link';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { CustomerServiceFeeBreakdown } from '../components/commerce/customer-service-fee-breakdown';
+
+void test('recorded and historical zero fee presentation never states the current policy or invents historical relief', () => {
+ for (const source of ['recorded','historical'] as const) {
+  const html=renderToStaticMarkup(createElement(CustomerServiceFeeBreakdown,{source,standardPaisa:0,waivedPaisa:0,netPaisa:0,campaignName:null}));
+  assert.doesNotMatch(html,/currently charged|Full customer fee waiver/);
+  assert.match(html,/recorded/i);
+  if(source==='historical') {
+   assert.match(html,/Recorded customer service fee/);
+   assert.doesNotMatch(html,/Standard customer service fee|Net customer service fee/);
+  }
+ }
+ const estimated=renderToStaticMarkup(createElement(CustomerServiceFeeBreakdown,{source:'estimate',standardPaisa:0,waivedPaisa:0,netPaisa:0,campaignName:null}));
+ assert.match(estimated,/currently charged/);
+});
 
 // Browser plugin not available. This isolated mounted component uses fictional
 // .test routes only; no current website, credentials or retained storage.
