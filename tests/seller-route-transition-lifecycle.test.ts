@@ -35,7 +35,7 @@ async function fixture(baseNow?:number){
     agreementLanguage:'en' as const,agreementAcceptedAt:f.financialNow,registeredTermsContext:terms.context,requestId:'transition-fictional-submit',now:f.financialNow,environment:f.context.environment};
   return {...f,input,terms};
 }
-void test('PAN transition changes only new transactions at the reviewed effective time',async()=>{
+void test('PAN transition changes only new transactions at the reviewed effective time',async(context)=>{
   const f=await fixture();
   try {
     const old=JSON.stringify(f.sqlite.prepare('SELECT * FROM managed_commercial_snapshots ORDER BY id').all());
@@ -61,12 +61,20 @@ void test('PAN transition changes only new transactions at the reviewed effectiv
     await transitionManagedPayout(f.db,{...f.context,payoutId,action:'mark_paid',providerReference:'SIM-HISTORICAL-MANAGED-PAID',now:f.financialNow+60002,requestId:'record-historical-managed-payment'});
     assert.equal(f.sqlite.prepare('SELECT amount_paisa FROM managed_payouts WHERE id=?').get(payoutId)?.amount_paisa,91000);
     await addCartItem(f.db,'registered-route-cart','cup',1,f.financialNow+60003);
+    context.mock.method(Date,'now',()=>f.financialNow+60003);
+    assert.ok(Date.now()>=f.financialNow+60000,'The new order placement clock must reach the reviewed effective instant');
+    assert.ok(Date.now()>=f.input.agreementAcceptedAt,'The new order placement clock must reach the preserved acceptance instant');
     await createCodOrder(f.db,'registered-route-cart','registered-route-receipt',{customerEmail:'buyer@local.hastabazaar.test',customerPhone:'9811111111',customerAuthSubject:'buyer',locale:'en-NP',termsAccepted:true,idempotencyKey:'registered-route-order',
       address:{recipientName:'Fictional buyer',phone:'9811111111',province:'Bagmati',district:'Kathmandu',municipality:'Kathmandu',locality:'Fictional street'}},f.financialNow+60003,'buyer');
     assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM managed_entitlements').get()?.n,1,'The new independent order must not create another managed earning');
     assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM managed_commercial_snapshots').get()?.n,1);
     assert.equal(f.sqlite.prepare('SELECT commission_bps FROM order_items WHERE order_id<>?').get(f.orderId)?.commission_bps,f.terms.basisPoints);
     const independentOrder=String(f.sqlite.prepare('SELECT id FROM orders WHERE id<>?').get(f.orderId)?.id);
+    const placedAt=Number(f.sqlite.prepare('SELECT placed_at FROM orders WHERE id=?').get(independentOrder)?.placed_at);
+    const acceptedAt=Number(f.sqlite.prepare('SELECT accepted_at FROM seller_agreement_acceptance_history WHERE seller_id=?').get(f.sellerId)?.accepted_at);
+    assert.equal(acceptedAt,f.input.agreementAcceptedAt,'The transition must preserve the original acceptance instant');
+    assert.ok(placedAt>=f.financialNow+60000,'Recorded new-order placement must reach the reviewed effective instant');
+    assert.ok(placedAt>=acceptedAt,'Recorded new-order placement must reach the preserved acceptance instant');
     f.sqlite.prepare("UPDATE orders SET status='delivered',payment_status='paid',delivered_at=? WHERE id=?").run(f.financialNow+60004,independentOrder);
     f.sqlite.prepare("UPDATE order_items SET fulfillment_status='delivered' WHERE order_id=?").run(independentOrder);
     const maturity=f.financialNow+100*86400000;

@@ -37,7 +37,7 @@ const terms = {
   name: 'Fictional launch',
   description: 'All Registered Sellers',
   startsAt: 0,
-  endsAt: 253402300799999,
+  endsAt: 253402280099999,
 };
 const create = {
   feeTarget: 'customer_service_fee',

@@ -161,6 +161,99 @@ void test('portable cleanup refusal continues other owners and retains private o
   } finally { await cleanupFixtures(children); await rm(root, { recursive: true, force: true }); }
 });
 
+void test('portable cleanup diagnostics surface nested causes, omit private content and attempt every owner', async () => {
+  const privateValues = ['private-argv-cookie-nonce-path-record', '/private/ownership/record', 'UNKNOWN_PRIVATE_CODE'];
+  const errno = Object.assign(new Error(privateValues.join(' ')), { code: 'ESRCH', path: privateValues[1],
+    cause: Object.assign(new Error(privateValues[0]), { code: 'EACCES' }) });
+  const assertion = new assert.AssertionError({ message: privateValues[0], actual: privateValues[1], expected: privateValues[0] });
+  const attempted: string[] = [];
+  let innerClosed = false, outerClosed = false;
+  let failure: unknown;
+  await assert.rejects(packagedBrowser.closeOwnedResources([
+    { async close() {
+      attempted.push('nested');
+      await packagedBrowser.closeOwnedResources([
+        { async close() { attempted.push('errno'); throw new AggregateError([errno], privateValues[0]); } },
+        { async close() { attempted.push('inner-safe'); } },
+      ], async () => { innerClosed = true; });
+    } },
+    { async close() { attempted.push('assertion'); throw assertion; } },
+    { async close() { attempted.push('unknown'); throw Object.assign(new Error(privateValues[0]), { code: privateValues[2] }); } },
+    { async close() { attempted.push('outer-safe'); } },
+  ], async () => { outerClosed = true; }), (error: unknown) => { failure = error; return true; });
+  assert.deepEqual(attempted, ['nested', 'errno', 'inner-safe', 'assertion', 'unknown', 'outer-safe']);
+  assert.equal(innerClosed, false); assert.equal(outerClosed, false);
+  assert.ok(failure instanceof AggregateError);
+  assert.equal(failure.errors.length, 3, 'Each refused owner remains a failure, including ESRCH');
+  assert.match(failure.message, /resource-close:ESRCH/);
+  assert.match(failure.message, /resource-close:EACCES/);
+  assert.match(failure.message, /resource-close:assertion/);
+  assert.match(failure.message, /resource-close:unknown/);
+  assert.ok(failure.message.length <= 512, 'The terminal reporting boundary must remain bounded');
+  assert.ok((failure.message.match(/resource-close:/g) ?? []).length <= 8);
+  const publicErrors = failure.errors as Error[];
+  const diagnostic = publicErrors.map((error) => error.message).join('\n');
+  assert.match(diagnostic, /resource-close:ESRCH/);
+  assert.match(diagnostic, /resource-close:EACCES/);
+  assert.match(diagnostic, /resource-close:assertion/);
+  assert.match(diagnostic, /resource-close:unknown/);
+  for (const error of [failure, ...publicErrors]) {
+    assert.equal(error.cause, undefined, 'No original private cause object may escape');
+    const publicState = [JSON.stringify(error), error.message, error.stack ?? ''].join('\n');
+    for (const value of privateValues) assert.equal(publicState.includes(value), false);
+  }
+});
+
+void test('portable cleanup diagnostics bound nested aggregates and reject arbitrary error codes', async () => {
+  const privateValue = 'private-diagnostic-content';
+  let nested: Error = Object.assign(new Error(privateValue), { code: 'EPERM' });
+  for (let index = 0; index < 20; index++) nested = new AggregateError(Array.from({ length: 20 }, () => nested), privateValue);
+  const attempted: string[] = [];
+  let closed = false;
+  const failure = await packagedBrowser.closeOwnedResources([
+    { async close() { attempted.push('nested'); throw nested; } },
+    { async close() { attempted.push('unknown'); throw Object.assign(new Error(privateValue), { code: 'EACCES ' + privateValue }); } },
+    { async close() { attempted.push('safe'); } },
+  ], async () => { closed = true; }).then(() => assert.fail('Nested failures must remain rejected'), (error: unknown) => error);
+  assert.deepEqual(attempted, ['nested', 'unknown', 'safe']); assert.equal(closed, false);
+  assert.ok(failure instanceof AggregateError);
+  assert.equal(failure.errors.length, 2);
+  assert.match(failure.message, /resource-close:unknown/);
+  assert.doesNotMatch(failure.message, /EPERM|resource-close:EACCES/, 'Truncated or unallowlisted causes must not be claimed');
+  assert.ok((failure.message.match(/resource-close:/g) ?? []).length <= 8);
+  for (const error of [failure, ...failure.errors as Error[]]) {
+    assert.ok(error.message.length <= 512, 'Public classification is bounded independently of input size');
+    assert.match(error.message, /resource-close:unknown/);
+    assert.equal(error.message.includes(privateValue), false);
+    assert.equal(error.cause, undefined);
+  }
+});
+
+void test('portable cleanup classification cannot abandon owners for hostile error shapes', async () => {
+  const privateValue = 'private-hostile-error-shape';
+  const getter = Object.defineProperties({}, {
+    code: { get() { throw new Error(privateValue); } },
+    cause: { get() { throw new Error(privateValue); } },
+    errors: { get() { throw new Error(privateValue); } },
+  });
+  const proxy = new Proxy({}, { getOwnPropertyDescriptor() { throw new Error(privateValue); }, getPrototypeOf() { throw new Error(privateValue); } });
+  const shapes: unknown[] = [getter, proxy, null, privateValue];
+  const attempted: number[] = [];
+  let closed = false;
+  const failure = await packagedBrowser.closeOwnedResources([
+    ...shapes.map((shape, index) => ({ async close() { attempted.push(index); throw shape; } })),
+    { async close() { attempted.push(shapes.length); } },
+  ], async () => { closed = true; }).then(() => assert.fail('All refusals must be retained'), (error: unknown) => error);
+  assert.deepEqual(attempted, [0, 1, 2, 3, 4]); assert.equal(closed, false);
+  assert.ok(failure instanceof AggregateError); assert.equal(failure.errors.length, shapes.length);
+  assert.match(failure.message, /resource-close:unknown/);
+  assert.ok(failure.message.length <= 512, 'Hostile inputs cannot expand the terminal reporting boundary');
+  for (const error of [failure, ...failure.errors as Error[]]) {
+    assert.match(error.message, /resource-close:unknown/);
+    assert.equal(error.message.includes(privateValue), false); assert.equal(error.cause, undefined);
+  }
+});
+
 void test('browser ownership refuses malformed or changed Linux start identity before signaling', () => {
   const identity = { pid: 231, uid: 1000, pgid: 231, session: 231, startTicks: '123456' };
   assertRecordedIdentity(identity, { ...identity });

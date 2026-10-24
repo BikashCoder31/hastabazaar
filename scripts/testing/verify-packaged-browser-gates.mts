@@ -46,13 +46,55 @@ export function safeChildEnvironment(source: Record<string, string | undefined>)
 
 type OwnedChild = { process: ChildProcess; output: string; exited: Promise<number | null>; error?: Error; truncated?: boolean };
 
+type CleanupStage = 'resource-close' | 'ownership-records' | 'ownership-record' | 'leader-identity' |
+  'leader-executable' | 'leader-arguments' | 'leader-transition' | 'proc-enumeration' | 'proc-identity' |
+  'group-identity' | 'group-signal' | 'group-stopped' | 'helper-finalize';
+const cleanupErrnos = new Set(['ENOENT', 'ESRCH', 'EACCES', 'EPERM', 'EIO', 'ENOTDIR', 'ELOOP', 'EBADF',
+  'EINVAL', 'EMFILE', 'ENFILE', 'ENOMEM', 'EBUSY', 'ENOSYS', 'ETIMEDOUT', 'EINTR']);
+const classifiedCleanupFailures = new WeakMap<object, readonly string[]>();
+
+/** Read only own data properties: even hostile error getters/proxies cannot interrupt other owners. */
+function cleanupFailure(stage: CleanupStage, failure: unknown): Error {
+  const diagnostics = new Set<string>(), seen = new WeakSet<object>();
+  const property = (value: object, key: string): unknown => {
+    try { const descriptor = Object.getOwnPropertyDescriptor(value, key); return descriptor && 'value' in descriptor ? descriptor.value : undefined; }
+    catch { return undefined; }
+  };
+  const visit = (value: unknown, depth: number) => {
+    if (diagnostics.size >= 8) return;
+    if (value === null || (typeof value !== 'object' && typeof value !== 'function')) { diagnostics.add(`${stage}:unknown`); return; }
+    if (seen.has(value)) return;
+    seen.add(value);
+    const known = classifiedCleanupFailures.get(value);
+    if (known) { for (const diagnostic of known) { if (diagnostics.size >= 8) break; diagnostics.add(diagnostic); } return; }
+    const code = property(value, 'code');
+    diagnostics.add(`${stage}:${code === 'ERR_ASSERTION' ? 'assertion' : typeof code === 'string' && cleanupErrnos.has(code) ? code : 'unknown'}`);
+    if (depth >= 3) return;
+    const nested = property(value, 'errors');
+    try {
+      if (Array.isArray(nested)) for (let index = 0; index < 4; index++) {
+        const child = property(nested, String(index)); if (child !== undefined) visit(child, depth + 1);
+      }
+    } catch { diagnostics.add(`${stage}:unknown`); }
+    const cause = property(value, 'cause'); if (cause !== undefined) visit(cause, depth + 1);
+  };
+  visit(failure, 0);
+  const result = new Error(`An owned resource could not be safely closed [${[...diagnostics].join(',')}]`);
+  classifiedCleanupFailures.set(result, [...diagnostics]);
+  return result;
+}
+async function atCleanupStage<T>(stage: CleanupStage, work: () => Promise<T>): Promise<T> {
+  try { return await work(); } catch (error) { throw cleanupFailure(stage, error); }
+}
+
 /** A refusal for one owner cannot abandon another owner or discard private state. */
 export async function closeOwnedResources(resources: readonly { close(): Promise<unknown> }[], onClosed?: () => Promise<void>): Promise<void> {
   const errors: Error[] = [];
   for (const resource of resources) {
-    try { await resource.close(); } catch { errors.push(new Error('An owned resource could not be safely closed')); }
+    try { await resource.close(); } catch (error) { errors.push(cleanupFailure('resource-close', error)); }
   }
-  if (errors.length) throw new AggregateError(errors, 'Owned process cleanup failed; private ownership state retained');
+  if (errors.length) throw new AggregateError(errors,
+    `Owned process cleanup failed; private ownership state retained: ${cleanupFailure('resource-close', { errors }).message}`);
   await onClosed?.();
 }
 
@@ -196,57 +238,66 @@ exec ${quote(binary)} "$@"
           assert.equal(`${record.pid}.pid`, name); assert.equal(record.uid, uid); assertRecordedIdentity(record, record);
           records.push(record);
         } finally { await handle.close(); }
-      } catch (error) { errors.push(error); }
+      } catch (error) { errors.push(cleanupFailure('ownership-record', error)); }
     }
     return { records, errors };
   };
   const members = async (record: LinuxIdentity) => {
-    let leader: LinuxIdentity | undefined;
-    try { leader = await linuxIdentity(record.pid); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-    if (leader) {
-      assertRecordedIdentity(record, leader);
-      const currentExecutable = await readlink(`/proc/${record.pid}/exe`).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; return ''; });
-      if (currentExecutable) {
-        const arguments_ = await readFile(`/proc/${record.pid}/cmdline`).then((bytes) => bytes.toString().split('\0')).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; return []; });
-        if (arguments_.length && currentExecutable !== binary && !(currentExecutable === shell && arguments_[1] === wrapper)) {
-          // exec can occur between reading exe and cmdline. Authenticate the same
-          // start identity again and permit only the known shell -> binary transition.
-          try {
-            assertRecordedIdentity(record, await linuxIdentity(record.pid));
-            assert.equal(await readlink(`/proc/${record.pid}/exe`), binary, 'Recorded browser executable changed');
-          } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    let stage: CleanupStage = 'leader-identity';
+    try {
+      let leader: LinuxIdentity | undefined;
+      try { leader = await linuxIdentity(record.pid); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+      if (leader) {
+        assertRecordedIdentity(record, leader);
+        stage = 'leader-executable';
+        const currentExecutable = await readlink(`/proc/${record.pid}/exe`).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; return ''; });
+        if (currentExecutable) {
+          stage = 'leader-arguments';
+          const arguments_ = await readFile(`/proc/${record.pid}/cmdline`).then((bytes) => bytes.toString().split('\0')).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; return []; });
+          if (arguments_.length && currentExecutable !== binary && !(currentExecutable === shell && arguments_[1] === wrapper)) {
+            // exec can occur between reading exe and cmdline. Authenticate the same
+            // start identity again and permit only the known shell -> binary transition.
+            stage = 'leader-transition';
+            try {
+              assertRecordedIdentity(record, await linuxIdentity(record.pid));
+              assert.equal(await readlink(`/proc/${record.pid}/exe`), binary, 'Recorded browser executable changed');
+            } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+          }
         }
       }
-    }
-    const result: LinuxIdentity[] = [];
-    for (const name of await readdir('/proc')) if (/^[1-9][0-9]*$/.test(name)) {
-      let current: LinuxIdentity;
-      try { current = await linuxIdentity(Number(name)); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue; throw error; }
-      if (current.pgid !== record.pgid) continue;
-      assert.ok(current.uid === record.uid && current.session === record.session && BigInt(current.startTicks) >= BigInt(record.startTicks), 'Recorded browser group identity is uncertain');
-      result.push(current);
-    }
-    return result;
+      stage = 'proc-enumeration';
+      const result: LinuxIdentity[] = [];
+      for (const name of await readdir('/proc')) if (/^[1-9][0-9]*$/.test(name)) {
+        stage = 'proc-identity';
+        let current: LinuxIdentity;
+        try { current = await linuxIdentity(Number(name)); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue; throw error; }
+        if (current.pgid !== record.pgid) continue;
+        stage = 'group-identity';
+        assert.ok(current.uid === record.uid && current.session === record.session && BigInt(current.startTicks) >= BigInt(record.startTicks), 'Recorded browser group identity is uncertain');
+        result.push(current);
+      }
+      return result;
+    } catch (error) { throw cleanupFailure(stage, error); }
   };
   let cleanup: Promise<number> | undefined;
   return { executablePath: wrapper, close() {
     return cleanup ??= (async () => {
-      const { records, errors } = await readRecords();
+      const { records, errors } = await atCleanupStage('ownership-records', readRecords);
       await closeOwnedResources([
         ...errors.map((error) => ({ async close() { throw error; } })),
-        ...records.map((record) => ({ close: async () => {
+        ...records.map((record) => ({ close: () => atCleanupStage('group-stopped', async () => {
           if (!(await members(record)).length) return;
           // Re-read start identity, UID, PGID/session and executable immediately before each signal.
           const signal = async (value: NodeJS.Signals) => {
             if (!(await members(record)).length) return;
-            try { process.kill(-record.pgid, value); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; }
+            try { process.kill(-record.pgid, value); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw cleanupFailure('group-signal', error); }
           };
           await signal('SIGTERM');
           for (let attempt = 0; attempt < 50 && (await members(record)).length; attempt++) await delay(100);
           if ((await members(record)).length) await signal('SIGKILL');
           for (let attempt = 0; attempt < 50 && (await members(record)).length; attempt++) await delay(100);
           assert.equal((await members(record)).length, 0, 'Recorded owned browser group survived cleanup');
-        } })),
+        }) })),
       ]);
       return records.length;
     })();
@@ -502,7 +553,7 @@ async function main() {
       }
       if (processesStopped) await cleanup(() => rm(root!, { recursive: true, force: true }));
     }
-    assert.equal(cleanupErrors.length, 0, 'Owned browser helper cleanup failed; acceptance is refused');
+    assert.equal(cleanupErrors.length, 0, cleanupErrors.length ? cleanupFailure('helper-finalize', new AggregateError(cleanupErrors)).message : 'Owned browser helper cleanup failed; acceptance is refused');
   }
   assert.ok(evidence && verification);
   await writeFile(resolve(evidence, 'verification.json'), JSON.stringify(verification, null, 2), { flag: 'wx', mode: 0o600 });
