@@ -120,6 +120,7 @@ export async function POST(request: Request): Promise<Response> {
     now,
   });
   let token: string;
+  let staffSignIn = false;
   try {
     const security = env as unknown as SecurityPolicyBindings;
     const staff = await database
@@ -128,6 +129,7 @@ export async function POST(request: Request): Promise<Response> {
       )
       .bind(credential.accountId)
       .first();
+    staffSignIn = Boolean(staff);
     token = await createHostedSessionForUser(
       database,
       credential.accountId,
@@ -173,7 +175,10 @@ export async function POST(request: Request): Promise<Response> {
   return new Response(null, {
     status: 303,
     headers: {
-      Location: returnTo,
+      // Public destinations cannot enforce the pending staff MFA ceremony.
+      Location: staffSignIn && returnTo !== '/auth/continue'
+        ? `/auth/continue?return_to=${encodeURIComponent(returnTo)}`
+        : returnTo,
       'Set-Cookie': hostedSessionCookie(token),
       'Cache-Control': 'no-store',
     },

@@ -484,7 +484,9 @@ export function BusinessSettingsManager({
               <h3 className="text-sm font-semibold">Change preview</h3>
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 <div className="min-w-0"><h4 className="mb-2 text-sm font-semibold">Current value</h4><SettingValuePreview value={selected.effective.value} summary={displayValue(selected.key, selected.effective.value)} /></div>
-                <div className="min-w-0"><h4 className="mb-2 text-sm font-semibold">Proposed value</h4><SettingValuePreview value={parseEditorValue(selected.key, editorValue)} summary={displayValue(selected.key, parseEditorValue(selected.key, editorValue))} /></div>
+                <div className="min-w-0"><h4 className="mb-2 text-sm font-semibold">Proposed value</h4>{valueError
+                  ? <p className="text-sm text-muted-foreground">Enter a valid value to preview this change.</p>
+                  : <SettingValuePreview value={parseEditorValue(selected.key, editorValue)} summary={displayValue(selected.key, parseEditorValue(selected.key, editorValue))} />}</div>
               </div>
               <p className="mt-3 text-sm font-semibold">Affected areas</p>
               <p className="mt-1 text-sm text-muted-foreground">{selected.affectedSurfaces.map(area=>affectedAreaLabels[area]??area.replaceAll('_',' ')).join(', ')}</p>

@@ -603,6 +603,24 @@ function loginRequest(requestId: string, password: string) {
   });
 }
 
+for (const role of ['admin', 'super_admin'] as const) void test(`password sign-in from a public page sends ${role} through the authenticated continuation`, async () => {
+  const { sqlite } = fixture();
+  try {
+    const register = await import('../app/api/auth/register/route');
+    await register.POST(registration(`register-public-${role}`));
+    const userId = sqlite.prepare("SELECT id FROM users WHERE email='new@example.test'").get()?.id;
+    sqlite.prepare('INSERT INTO user_roles(user_id,role,assigned_at) VALUES (?,?,1)').run(userId!, role);
+    const { POST } = await import('../app/api/auth/login/route');
+    const response = await POST(identityPost('/api/auth/login', {
+      email: 'new@example.test', password: 'strong-pass-123', formVersion: '1',
+      requestId: `login-public-${role}`, return_to: '/sell?route=business',
+    }));
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), '/auth/continue?return_to=%2Fsell%3Froute%3Dbusiness');
+    assert.match(response.headers.get('set-cookie') ?? '', /hastabazaar_session=/);
+  } finally { sqlite.close(); }
+});
+
 void test('login records an answer only for a verified credential and a committed session', async () => {
   const { sqlite } = fixture();
   try {
