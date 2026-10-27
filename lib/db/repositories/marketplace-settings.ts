@@ -1,4 +1,5 @@
 import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
+import { resolveCommissionConsent } from './commission-continuity-proof';
 
 /** @deprecated Read-only identifier retained for old audit/test references. */
 export const sellerCommissionSettingKey = 'independent_seller_commission_bps';
@@ -27,9 +28,8 @@ export async function setMarketplaceCommission(database:D1Database,options:{basi
   throw new RangeError('Marketplace commission is managed only through controlled Business Settings.');
 }
 
-export async function sellerAcceptedCommissionVersion(database:D1Database,sellerId:string,versionId:string|null):Promise<boolean>{
-  if(versionId===null)return true;
-  return Boolean(await database.prepare('SELECT 1 FROM seller_agreement_acceptance_history WHERE seller_id=? AND commission_setting_version_id=? LIMIT 1').bind(sellerId,versionId).first());
+export async function sellerAcceptedCommissionVersion(database:D1Database,sellerId:string,setting:CommissionSetting|null,at=Date.now()):Promise<boolean>{
+  return setting!==null && Boolean(await resolveCommissionConsent(database,sellerId,setting,at));
 }
 
 export class SellerCommissionTermsChangedError extends Error {}

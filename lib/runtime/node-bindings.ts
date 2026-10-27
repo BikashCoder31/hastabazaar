@@ -278,6 +278,33 @@ class MariaDbD1Database {
       if(typeof issuer!=='string'||!issuer||issuer.length>191)throw new Error('Billing issuer lock is invalid.');
       return issuer;
     }))].sort();
+    // Only explicitly declared legacy-continuity batches enter this protocol.
+    // Row locks protect mutable evidence from successful guards through commit.
+    const continuityEvidence=statements.filter(s=>s.sql.startsWith('/* commission-continuity-evidence-lock */'));
+    const continuitySettings=statements.filter(s=>s.sql.startsWith('/* commission-continuity-setting-lock */'));
+    function continuityId(value:SqlValue|undefined,nullable=false):string|null {
+      if(nullable&&value===null)return null;
+      if(typeof value!=='string'||!value||value.length>191)throw new Error('Continuity lock identity is invalid.');
+      return value;
+    }
+    const continuityUsers=new Set<string>(),continuitySellers=new Set<string>(),continuityAudits=new Set<string>();
+    for(const statement of continuityEvidence){
+      if(statement.bindings.length!==3)throw new Error('Continuity evidence lock is invalid.');
+      continuityUsers.add(continuityId(statement.bindings[0])!);
+      const seller=continuityId(statement.bindings[1],true),audit=continuityId(statement.bindings[2],true);
+      if(seller)continuitySellers.add(seller);if(audit)continuityAudits.add(audit);
+    }
+    const continuityKeys=[...new Set(continuitySettings.map(statement=>{
+      if(statement.bindings.length!==1)throw new Error('Continuity setting lock is invalid.');
+      const key=continuityId(statement.bindings[0])!;
+      if(!['independent_seller_commission_bps','managed_sale_linked_platform_retention_bps'].includes(key))throw new Error('Continuity setting lock is invalid.');
+      return key;
+    }))].sort();
+    const continuityCutoffs=[...new Set(statements.filter(s=>s.sql.startsWith('/* commission-continuity-cutoff */')).map(statement=>{
+      const cutoff=statement.bindings[0];
+      if(statement.bindings.length!==1||typeof cutoff!=='number'||!Number.isSafeInteger(cutoff)||cutoff<=0)throw new Error('Continuity cutoff is invalid.');
+      return cutoff;
+    }))].sort((a,b)=>a-b);
     const connection = await databasePool().getConnection();
     const locks: string[] = [];
     try {
@@ -318,10 +345,33 @@ class MariaDbD1Database {
         await connection.execute('SELECT id FROM seller_profiles WHERE user_id=? AND id=? FOR UPDATE', mysqlBindings(statement.bindings));
         await connection.execute("SELECT id FROM business_setting_versions WHERE setting_key='independent_seller_commission_bps' FOR UPDATE");
       }
+      if(continuityEvidence.length||continuityKeys.length){
+        // Supplement writers already acquire this control row. Keep their
+        // selection stable alongside the registered seller's legacy evidence.
+        await connection.execute("SELECT id FROM commission_control WHERE id='default' FOR UPDATE");
+        const users=[...continuityUsers].sort(),sellers=[...continuitySellers].sort();
+        for(const id of users)await connection.execute('SELECT id FROM users WHERE id=? FOR UPDATE',[id]);
+        for(const id of users)await connection.execute('SELECT role FROM user_roles WHERE user_id=? ORDER BY role FOR UPDATE',[id]);
+        for(const id of sellers)await connection.execute('SELECT id FROM seller_profiles WHERE id=? FOR UPDATE',[id]);
+        for(const id of sellers)await connection.execute('SELECT seller_id FROM seller_participation_profiles WHERE seller_id=? FOR UPDATE',[id]);
+        for(const id of [...continuityAudits].sort())await connection.execute('SELECT id FROM audit_logs WHERE id=? FOR UPDATE',[id]);
+        for(const key of continuityKeys)await connection.execute('SELECT id FROM business_setting_versions WHERE setting_key=? ORDER BY id FOR UPDATE',[key]);
+      }
+      const checkContinuityClock=async()=>{
+        for(const cutoff of continuityCutoffs){
+          const [rows]=await connection.execute<RowDataPacket[]>('SELECT CASE WHEN UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000 < ? THEN 1 ELSE 0 END AS valid',[cutoff]);
+          if(Number(rows[0]?.valid)!==1)throw new Error('operation_transaction_guards valid: commission continuity expired; review checkout again.');
+        }
+      };
+      // Pool, named and evidence-lock waits must settle before this clock read.
+      if(continuityCutoffs.length)await checkContinuityClock();
       const responses: D1LikeResult<T>[] = [];
       for (const statement of statements) {
         responses.push(await executeStatement<T>(connection, statement.sql, statement.bindings));
       }
+      // Later statements can also wait (customer control, inventory, forms).
+      // Refuse the entire batch if those waits crossed the exclusive cutoff.
+      if(continuityCutoffs.length)await checkContinuityClock();
       await connection.commit();
       return responses;
     } catch (error) {

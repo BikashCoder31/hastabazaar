@@ -83,7 +83,7 @@ export async function getSellerEarnings(
           : Promise.resolve(null),
       ])
     : [null, null, null];
-  const commissionAccepted = baseCommission ? await sellerAcceptedCommissionVersion(database, sellerId, baseCommission.versionId) : false;
+  const commissionAccepted = baseCommission ? await sellerAcceptedCommissionVersion(database, sellerId, baseCommission, now) : false;
   return {
     registered,
     marketplaceFees: {

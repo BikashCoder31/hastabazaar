@@ -7,6 +7,7 @@ import { promoQuoteIntent } from '@/lib/incentives/quote-intent';
 import { allocatePromoDiscount } from '@/lib/incentives/promo-policy';
 import { getDeliveryRates, rateVersionGuard } from './delivery-rates';
 import { getSellerCommissionTerms, getCommissionCheckoutAcceptance, commissionCheckoutGuards } from './commission-rates';
+import type { CommissionConsentProof } from './commission-continuity-proof';
 import { quoteCustomerServiceFee, customerFeeCheckoutGuards, customerFeeEvidenceInsert, readOrderCustomerServiceFees, type OrderCustomerFeeView } from './customer-service-fees';
 import { calculateMarketplaceFee, type FeeBreakdown } from '../../marketplace/fee-waivers';
 import { buildFormAnswerInsert } from './form-answers';
@@ -360,7 +361,7 @@ export async function createCodOrder(
   const commissionSetting = await getCommissionSetting(database, now);
   const sellerCommissionBps = commissionSetting.basisPoints;
   const sellerCommissionTerms = Object.fromEntries(await Promise.all([...new Set(items.filter(item => item.participationRoute !== 'managed_maker').map(item => item.sellerId))].map(async sellerId => [sellerId, await getSellerCommissionTerms(database, sellerId, now)] as const)));
-  const sellerCommissionAcceptances: Record<string, string> = {};
+  const sellerCommissionAcceptances: Record<string, CommissionConsentProof> = {};
   for (const sellerId of Object.keys(sellerCommissionTerms)) {
     const acceptanceId = await getCommissionCheckoutAcceptance(database, sellerId, commissionSetting, now);
     if (!acceptanceId) {

@@ -40,6 +40,7 @@ import { CommissionRateUnavailableError } from '@/lib/db/repositories/business-s
 
 export const dynamic = 'force-dynamic';
 export default async function SellerDashboardPage() {
+  const now = Date.now();
   const seller = await requireSellerPage('/seller');
   const db = requireDatabase(env as unknown as { DB?: D1Database });
   const [products, work, earnings, orders, commission, managedProgram, cases] =
@@ -48,12 +49,12 @@ export default async function SellerDashboardPage() {
       getSellerWorkSummary(db, seller.sellerId),
       getSellerEarnings(db, seller.sellerId),
       listOrdersForSeller(db, seller.sellerId, 4),
-      getRegisteredSellerTerms(db).catch(error => { if (error instanceof CommissionRateUnavailableError) return null; throw error; }),
+      getRegisteredSellerTerms(db, now).catch(error => { if (error instanceof CommissionRateUnavailableError) return null; throw error; }),
       getManagedProgramWorkspace(db, seller.sellerId),
       getSellerActionCaseCounts(db, seller.sellerId),
     ]);
   const [currentCommissionAccepted, displayedOrders] = await Promise.all([
-    commission ? sellerAcceptedCommissionVersion(db, seller.sellerId, commission.versionId) : Promise.resolve(false),
+    commission ? sellerAcceptedCommissionVersion(db, seller.sellerId, commission, now) : Promise.resolve(false),
     withFirstCodPresentation(db, orders),
   ]);
   const hasProgramHistory =

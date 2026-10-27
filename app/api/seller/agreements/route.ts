@@ -36,7 +36,7 @@ export async function POST(request: Request): Promise<Response> {
     const requestId = request.headers.get('cf-ray') ?? request.headers.get('x-request-id') ?? crypto.randomUUID();
     const {terms:commission,snapshot:registeredTermsSnapshot,statements:acceptance}=await prepareSellerCommissionAcceptance(database,{sellerId:seller.sellerId,actorId:seller.userId,context:body.termsContext,requestId,now,language});
     checked={database,context:body.termsContext,sellerId:seller.sellerId,actorId:seller.userId,language,versionId:commission.versionId};
-    if (seller.sellerAgreementVersion === SELLER_AGREEMENT_VERSION && await sellerAcceptedCommissionVersion(database,seller.sellerId,commission.versionId))
+    if (seller.sellerAgreementVersion === SELLER_AGREEMENT_VERSION && await sellerAcceptedCommissionVersion(database,seller.sellerId,commission,now))
       return json({ status: 'already_accepted' }, 200);
     await database.batch([
       database

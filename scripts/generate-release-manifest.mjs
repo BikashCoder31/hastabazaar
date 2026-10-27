@@ -6,6 +6,7 @@ import { customerFeeMariaMigration, customerFeeRequiredTables, customerFeeTrigge
 const release = (
   process.env.HASTABAZAAR_RELEASE_ID ?? 'local-unversioned-candidate'
 ).trim();
+const explicitSchemaInput=process.argv.find(arg=>arg.startsWith('--schema-input='))?.slice('--schema-input='.length);
 if (!/^[a-z0-9][a-z0-9._-]{2,127}$/i.test(release))
   throw new Error(
     'HASTABAZAAR_RELEASE_ID must be a filesystem-safe identifier between 3 and 128 characters.',
@@ -66,13 +67,14 @@ const migrationNames = [
   'mariadb-loyalty-scheduled-changes.sql',
   'mariadb-marketplace-fee-waivers.sql',
   customerFeeMariaMigration,
+  'mariadb-commission-continuity.sql',
 ];
 const tables = {},
   triggers = {},
   migrations = [];
 for (const name of migrationNames) {
   const path = 'deployment/babal/' + name,
-    sql = await readFile(path, 'utf8');
+    sql = await readFile(name==='mariadb-schema.sql' && explicitSchemaInput ? explicitSchemaInput : path, 'utf8');
   migrations.push({
     path,
     sha256: createHash('sha256').update(sql).digest('hex'),
@@ -114,6 +116,9 @@ triggers.managed_allocation_preserve_identity = ['old.disposition', 'released', 
 triggers.managed_payout_preserve_identity = ['destination_reference', 'amount_paisa', 'payout_number', '<=>'];
 triggers.managed_payout_preserve_terminal = ['paid', 'rejected', 'reversed', 'provider_reference', '<=>'];
 const requiredTriggerShapes = {};
+for(const table of ['operations','settings','sellers'])for(const event of ['update','delete','replace']){
+  triggers[`commission_continuity_${table}_no_${event}`]=['signal sqlstate','45000','continuity_immutable',...(event==='replace'?['if exists','new.']:[])];
+}
 for (const [table, message, events] of [
   ['marketplace_fee_waiver_revisions', 'fee_waiver_revision_immutable', ['UPDATE', 'DELETE']],
   ['marketplace_fee_waiver_requests', 'fee_waiver_request_immutable', ['UPDATE', 'DELETE']],
@@ -230,11 +235,36 @@ for (const [table, columns] of Object.entries(customerFeeRequiredTables)) {
   if (!columns.every(column => tables[table]?.includes(column))) throw new Error('Customer fee source is missing reviewed columns: ' + table);
 }
 const manifest = {
-  requiredExactChecks: { ...requiredExactChecks, ...customerFeeRequiredExactChecks },
-  requiredForeignKeys: { ...requiredForeignKeys, ...customerFeeRequiredForeignKeys },
+  requiredExactChecks: { ...requiredExactChecks, ...customerFeeRequiredExactChecks,
+    'commission_continuity_operations.continuity_operation_rate':'basis_points = 900',
+    'commission_continuity_operations.continuity_operation_interval':'ends_at = 1794334500000 AND started_at < ends_at',
+    'commission_continuity_operations.continuity_operation_recorded':'recorded_at = started_at',
+    'commission_continuity_settings.continuity_setting_key':"setting_key IN ('independent_seller_commission_bps','managed_sale_linked_platform_retention_bps')",
+  },
+  requiredForeignKeys: { ...requiredForeignKeys, ...customerFeeRequiredForeignKeys,
+    ...Object.fromEntries([
+      ['operations','operation_actor','actor_id','users'],
+      ['settings','setting_operation','operation_id','commission_continuity_operations'],
+      ['settings','setting_current','setting_id','business_setting_versions'],
+      ['settings','setting_successor','successor_id','business_setting_versions'],
+      ['sellers','seller_operation','operation_id','commission_continuity_operations'],
+      ['sellers','seller_setting','setting_id','commission_continuity_settings'],
+      ['sellers','seller_profile','seller_id','seller_profiles'],
+      ['sellers','seller_owner','owner_id','users'],
+      ['sellers','seller_audit','audit_id','audit_logs'],
+    ].map(([table,name,column,parent])=>[`commission_continuity_${table}.continuity_${name}_fk`,{columns:[column],referencedTable:parent,referencedColumns:[parent==='commission_continuity_settings'?'setting_id':'id']}]))
+  },
   requiredTriggerShapes: { ...requiredTriggerShapes, ...Object.fromEntries(Object.entries(customerFeeTriggerDefinitions).map(([name, { table, event, timing }]) => [name, { table, event, timing }])) },
   requiredExactTriggerDefinitions: Object.fromEntries(Object.entries(customerFeeTriggerDefinitions).map(([name, shape]) => [name, shape.mariadb])),
   requiredUniqueIndexes: {
+    'commission_continuity_operations.PRIMARY':['id'],
+    'commission_continuity_settings.PRIMARY':['setting_id'],
+    'commission_continuity_settings.continuity_setting_successor':['successor_id'],
+    'commission_continuity_settings.continuity_operation_key':['operation_id','setting_key'],
+    'commission_continuity_sellers.PRIMARY':['id'],
+    'commission_continuity_sellers.continuity_seller_identity':['seller_id'],
+    'commission_continuity_sellers.continuity_seller_audit':['audit_id'],
+    'commission_continuity_sellers.continuity_operation_seller':['operation_id','seller_id'],
     ...customerFeeRequiredUniqueIndexes,
     'managed_payout_allocations.managed_allocation_one_reservation': ['reserved_entitlement_key'],
     'marketplace_fee_waiver_control.PRIMARY': ['id'],
@@ -246,6 +276,11 @@ const manifest = {
   },
   requiredGeneratedColumns: { 'managed_payout_allocations.reserved_entitlement_key': ["case when binary disposition='reserved' then entitlement_id else null end"] },
   requiredColumnCollations: {
+    ...Object.fromEntries([
+      ...['request_json','source_release','source_commit','capture_sha256','selection_sha256'].map(c=>'commission_continuity_operations.'+c),
+      ...['setting_key','current_json','successor_json'].map(c=>'commission_continuity_settings.'+c),
+      ...['agreement_version','audit_json'].map(c=>'commission_continuity_sellers.'+c),
+    ].map(c=>[c,'utf8mb4_bin'])),
     ...customerFeeRequiredColumnCollations,
     'managed_payout_allocations.reserved_entitlement_key': 'utf8mb4_unicode_ci',
     'marketplace_fee_waiver_campaigns.id': 'utf8mb4_bin',
@@ -269,7 +304,7 @@ const manifest = {
   requiredTriggers: { ...triggers, ...Object.fromEntries(Object.entries(customerFeeTriggerDefinitions).map(([name, shape]) => [name, ['signal sqlstate', '45000', shape.mariadb.match(/MESSAGE_TEXT='([^']+)'/)[1]]])) },
 };
 await writeFile(
-  'deployment/babal/release-manifest.json',
+  process.argv.find(arg=>arg.startsWith('--output='))?.slice('--output='.length) ?? 'deployment/babal/release-manifest.json',
   JSON.stringify(manifest, null, 2) + '\n',
 );
 console.log(

@@ -6,10 +6,12 @@ import { customerFeeMariaMigration, customerFeeRequiredTables } from '../lib/ope
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const snapshotPath = resolve(projectRoot, 'drizzle/meta/0020_snapshot.json');
-const outputPath = resolve(projectRoot, 'deployment/babal/mariadb-schema.sql');
+const explicitOutputDirectory=process.argv.find(arg=>arg.startsWith('--output-directory='))?.slice('--output-directory='.length);
+const schemaOutputDirectory=explicitOutputDirectory?resolve(projectRoot,explicitOutputDirectory):resolve(projectRoot,'deployment/babal');
+const outputPath = resolve(schemaOutputDirectory, 'mariadb-schema.sql');
 const recoveryOutputPath = resolve(
-  projectRoot,
-  'deployment/babal/mariadb-reset-empty-import.sql',
+  schemaOutputDirectory,
+  'mariadb-reset-empty-import.sql',
 );
 const snapshot = JSON.parse(await readFile(snapshotPath, 'utf8'));
 const deliveryLocationsSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-delivery-locations.sql'), 'utf8');
@@ -62,6 +64,7 @@ const recentlyViewedSql = await readFile(
 );
 const managedMakerIdentitySql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-managed-maker-identity.sql'), 'utf8');
 const commissionWorkspaceSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-commission-workspace.sql'), 'utf8');
+const commissionContinuitySql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-commission-continuity.sql'), 'utf8');
 const makerReadinessSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-company-store-maker-readiness.sql'), 'utf8');
 const loyaltyScheduledSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-loyalty-scheduled-changes.sql'), 'utf8');
 const feeWaiversSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-marketplace-fee-waivers.sql'), 'utf8');
@@ -462,6 +465,7 @@ output.push(
   loyaltyScheduledSql.trim(),
   feeWaiversSql.trim(),
   customerFeeWaiversSql.trim(),
+  commissionContinuitySql.trim(),
   '',
   '-- Babal.Host password authentication and server-side sessions.',
   'CREATE TABLE IF NOT EXISTS `user_credentials` (',
@@ -549,6 +553,9 @@ await mkdir(dirname(outputPath), { recursive: true });
 const schemaSql = output.join('\n').replace(/\r\n/g, '\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
+  'commission_continuity_sellers',
+  'commission_continuity_settings',
+  'commission_continuity_operations',
   ...Object.keys(customerFeeRequiredTables).reverse(),
   'order_item_marketplace_fees',
   'marketplace_fee_waiver_requests',
