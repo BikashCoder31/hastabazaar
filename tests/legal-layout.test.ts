@@ -131,7 +131,7 @@ async function fixture(kind: Kind, width: number) {
             ? 'Legal & Policies'
             : kind === 'terms'
               ? 'Terms & Conditions'
-              : 'Welcome to HastaBazaar',
+              : 'Welcome to Hastabazaar',
         exact: true,
       })
       .waitFor();

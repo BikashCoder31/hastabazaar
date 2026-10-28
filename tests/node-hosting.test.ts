@@ -65,7 +65,7 @@ void test('Node email and Google bindings read cPanel configuration at runtime',
     process.env.SMTP_HOST = 'mail.hastabazaar.com';
     process.env.SMTP_USER = 'no-reply@hastabazaar.com';
     process.env.SMTP_PASSWORD = 'test-only-password';
-    process.env.EMAIL_FROM = 'HastaBazaar <no-reply@hastabazaar.com>';
+    process.env.EMAIL_FROM = 'Hastabazaar <no-reply@hastabazaar.com>';
     assert.equal(hostedEnv.APP_ORIGIN, 'https://hastabazaar.com');
     assert.equal(hostedEnv.GOOGLE_CLIENT_ID, 'client-id');
     assert.equal(hostedEnv.GOOGLE_CLIENT_SECRET, 'client-secret');

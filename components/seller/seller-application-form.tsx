@@ -132,7 +132,7 @@ export function SellerApplicationForm({
       name: 'prepare_seller_application',
       title: 'Prepare seller application',
       description:
-        'Fill the main HastaBazaar seller application fields. The applicant must review the form, attach verification documents, accept the terms, and submit it.',
+        'Fill the main Hastabazaar seller application fields. The applicant must review the form, attach verification documents, accept the terms, and submit it.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -239,7 +239,7 @@ export function SellerApplicationForm({
         <CheckCircle2 className="size-10 text-primary" aria-hidden="true" />
         <h2 className="mt-5 font-heading text-3xl">Under review</h2>
         <p className="mt-3 max-w-xl leading-7 text-muted-foreground">
-          Keep this reference for future communication. HastaBazaar will verify
+          Keep this reference for future communication. Hastabazaar will verify
           the business and documents before seller access is enabled.
         </p>
         <p className="mt-6 inline-flex rounded-full bg-secondary px-4 py-2 font-mono text-sm font-bold text-secondary-foreground">
@@ -285,14 +285,14 @@ export function SellerApplicationForm({
               onChange={(event) => setRegistrationAnswer(event.target.value as 'yes' | 'no')}
               required
             >
-              <NativeSelectOption value="no" disabled={!managedTerms}>Sell through HastaBazaar{!managedTerms ? ' (unavailable)' : ''}</NativeSelectOption>
+              <NativeSelectOption value="no" disabled={!managedTerms}>Sell through Hastabazaar{!managedTerms ? ' (unavailable)' : ''}</NativeSelectOption>
               <NativeSelectOption value="yes" disabled={!registeredTerms}>Registered business seller{!registeredTerms ? ' (unavailable)' : ''}</NativeSelectOption>
             </NativeSelect>
             <FieldDescription>
               Registered businesses, including sole proprietors, must provide registration and business PAN. Personal PAN alone does not qualify.
               {registrationAnswer === 'yes'
                 ? 'Registered Seller: provide only the registration evidence that applies to the selected status.'
-                : 'Sell through HastaBazaar is an application for reviewed supply to the company. Personal PAN, its certificate, government ID and bank evidence are required. Registration and tax duties still need legal/accounting review before activation.'}
+                : 'Sell through Hastabazaar is an application for reviewed supply to the company. Personal PAN, its certificate, government ID and bank evidence are required. Registration and tax duties still need legal/accounting review before activation.'}
             </FieldDescription>
           </Field>
           {registrationAnswer === 'yes' ? (

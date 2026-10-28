@@ -529,6 +529,13 @@ void test('real enrolled Super Admin/Admin MFA and saved financial history survi
       passwordVerifiedAt: NOW + 1_000,
       now: NOW + 1_000,
     });
+    // An abandoned password login is temporary ceremony state, never backup data.
+    await createHostedSessionForUser(source.db, owner.id, NOW + 120_000, {
+      passwordHash: credentials.get(owner.id)!.hash,
+      securityKey: key,
+      initialized: true,
+    });
+    assert.equal(source.sqlite.prepare("SELECT COUNT(*) AS n FROM marketplace_settings WHERE `key` LIKE 'auth-private:challenge:password:%'").get()!.n, 1);
     const accountBefore = (await sourceStore.readAccount(owner.id))!;
     assert.equal(accountBefore.value.status, 'active');
     assert.equal(accountBefore.value.recovery!.hashes.length, 9);
@@ -808,7 +815,7 @@ void test('real enrolled Super Admin/Admin MFA and saved financial history survi
     assert.equal(
       destination.sqlite
         .prepare(
-          "SELECT COUNT(*) AS n FROM marketplace_settings WHERE `key` LIKE 'auth-private:session:%'",
+          "SELECT COUNT(*) AS n FROM marketplace_settings WHERE `key` LIKE 'auth-private:session:%' OR `key` LIKE 'auth-private:challenge:%'",
         )
         .get()!.n,
       0,

@@ -109,6 +109,153 @@ void test('staff navigation exposes security, and only Super Admin sees complete
   );
 });
 
+void test('recent password sign-in shows one factor field, accepts grouped codes and falls back on expiry', async () => {
+  const posts: Record<string, unknown>[] = [];
+  let expired = false;
+  await withFixture(
+    'SecurityWorkspace',
+    async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/api/security/status') {
+        await route.fulfill({
+          json: {
+            ...fixtureStatus,
+            status: 'verify',
+            passwordVerified: true,
+            canDisable: true,
+            canManage: false,
+          },
+        });
+        return true;
+      }
+      if (path === '/api/security/verify') {
+        posts.push(route.request().postDataJSON());
+        await route.fulfill({
+          status: 422,
+          json: {
+            code: expired ? 'PASSWORD_REQUIRED' : 'INVALID_CODE',
+            error: expired
+              ? 'Password check expired. Enter your password again.'
+              : 'Use a fresh code.',
+          },
+        });
+        return true;
+      }
+      return false;
+    },
+    async (page) => {
+      await page
+        .getByRole('heading', { name: 'Complete your sign-in' })
+        .waitFor();
+      assert.equal(await page.locator('input[type=password]').count(), 0);
+      assert.equal(
+        await page.locator('input[autocomplete="one-time-code"]').count(),
+        1,
+      );
+      assert.equal(
+        await page.getByRole('heading', { name: 'Turn off MFA' }).count(),
+        0,
+      );
+      const code = page.getByLabel('Authenticator code', { exact: true });
+      for (const value of ['012 345', '012\u00a0345', '012-345']) {
+        await code.fill(value);
+        assert.equal(await code.inputValue(), '012345');
+      }
+      await code.fill('1234567');
+      assert.equal(
+        await code.evaluate((input) =>
+          (input as HTMLInputElement).checkValidity(),
+        ),
+        false,
+      );
+      await code.fill('012345');
+      await page.getByRole('button', { name: 'Verify and continue' }).click();
+      await page
+        .getByRole('alert')
+        .filter({ hasText: 'Use a fresh code.' })
+        .waitFor();
+      assert.equal(posts[0].code, '012345');
+      assert.ok(!posts[0].password);
+      await page.getByRole('button', { name: 'Use a recovery code' }).click();
+      const recovery = page.getByLabel('Recovery code', { exact: true });
+      await recovery.fill('ABCD-EFGH-IJKL-MNOP');
+      expired = true;
+      await page.getByRole('button', { name: 'Verify and continue' }).click();
+      await page.getByLabel('Current password', { exact: true }).waitFor();
+      assert.equal(posts[1].recovery, true);
+      assert.equal(posts[1].code, 'ABCD-EFGH-IJKL-MNOP');
+      assert.equal(await page.locator('input[type=password]').count(), 1);
+    },
+  );
+});
+
+for (const state of ['optional', 'recovery'] as const)
+  void test(`seller security presents ${state} enrollment with a seller return destination`, async () => {
+    await withFixture(
+      'SecurityWorkspace',
+      async (route) => {
+        if (
+          new URL(route.request().url()).pathname === '/api/security/status'
+        ) {
+          await route.fulfill({
+            json: {
+              ...fixtureStatus,
+              user: { ...fixtureStatus.user, role: 'seller' },
+              status: state,
+              mfaRequired: state === 'recovery',
+            },
+          });
+          return true;
+        }
+        return false;
+      },
+      async (page) => {
+        await page
+          .getByRole('heading', { name: 'Protect your seller account' })
+          .waitFor();
+        assert.equal(
+          await page
+            .getByRole('heading', { name: 'Complete your sign-in' })
+            .count(),
+          0,
+        );
+        assert.equal(
+          await page
+            .getByRole('button', { name: 'Continue with password' })
+            .count(),
+          0,
+        );
+        assert.equal(
+          await page
+            .getByRole('link', { name: 'Return to seller dashboard' })
+            .getAttribute('href'),
+          '/seller',
+        );
+        assert.equal(
+          await page
+            .locator('form[data-form-id="system.seller-mfa-setup"]')
+            .count(),
+          1,
+        );
+        await page
+          .getByRole('heading', {
+            name:
+              state === 'optional'
+                ? 'Add an authenticator'
+                : 'Replace your authenticator',
+            exact: true,
+          })
+          .waitFor();
+        await page.setViewportSize({ width: 390, height: 844 });
+        assert.ok(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= innerWidth,
+          ),
+        );
+      },
+    );
+  });
+
 void test('MFA enrollment needs a code and saved recovery confirmation before activation, with no browser persistence', async () => {
   let status = { ...fixtureStatus };
   const posts: { path: string; body: Record<string, unknown> }[] = [];

@@ -37,12 +37,12 @@ export default async function StaffAccessDeniedPage() {
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
           {user
             ? `${user.email} is signed in, but does not have permission to access this page.`
-            : 'Sign in with the email address invited by a HastaBazaar Super Admin.'}
+            : 'Sign in with the email address invited by a Hastabazaar Super Admin.'}
         </p>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
           If you are accepting a new staff invitation, verify your email by signing in with
           an email code or Google. Password registration alone does not verify
-          an invitation. This area is for HastaBazaar Admins and Super Admins.
+          an invitation. This area is for Hastabazaar Admins and Super Admins.
           Sellers use a separate dashboard and do not need a staff invitation.
           Seller applications are reviewed by the marketplace team.
         </p>

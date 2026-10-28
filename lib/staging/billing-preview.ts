@@ -13,7 +13,7 @@ export function billingPreviewSnapshot(kind:'company'|'registered'|'mixed'='mixe
     municipality:'Birgunj Metropolitan City',ward:'11',locality:'Sample Delivery Lane (sample)',landmark:'Near sample community centre'};
   const item=(second:boolean)=>({orderItemId:second?'fixture-line-b':'fixture-line-a',productId:second?'fixture-product-b':'fixture-product-a',
     sellerId:second?'fixture-supplier-b':'fixture-supplier-a',productName:second?'Handwoven bamboo basket':'Mithila hand-painted notebook',
-    sellerName:kind==='registered'||(kind==='mixed'&&second)?'Bamboo Home Nepal':'HastaBazaar',
+    sellerName:kind==='registered'||(kind==='mixed'&&second)?'Bamboo Home Nepal':'Hastabazaar',
     makerName:kind==='registered'||(kind==='mixed'&&second)?null:'Mithila Craft House',
     issuer:kind==='registered'||(kind==='mixed'&&second)?other:company,
     sku:second?'SAMPLE-BK-01':'SAMPLE-NB-01',sellerSku:second?'BHN-BK-M-NT':'MCH-NB-A5-BL',

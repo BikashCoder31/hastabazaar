@@ -28,7 +28,7 @@ export async function handleBootstrap(request:Request,db:D1Database,actor:Securi
    if(actor.localSimulation)return securityResponse({localSimulation:true,code,message:'Simulated local mailbox code. This is not live email delivery.'},200,cookie(token));
    const mail=securityBindings().EMAIL;
    if(!mail?.configured)throw new SecurityRequestError('Mailbox verification is not configured. Your account and password have not changed.',503);
-   await mail.send({to:actor.email,subject:'Confirm your HastaBazaar security setup',text:`Your security setup code is ${code}. It expires in 10 minutes. Do not share it.`});
+   await mail.send({to:actor.email,subject:'Confirm your Hastabazaar security setup',text:`Your security setup code is ${code}. It expires in 10 minutes. Do not share it.`});
    return securityResponse({localSimulation:false,message:'Check your existing account mailbox.'},200,cookie(token));
  }
  if(data.action!=='complete')throw new SecurityRequestError('Choose a valid security setup action.',422);

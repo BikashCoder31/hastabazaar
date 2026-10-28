@@ -3283,7 +3283,7 @@ void test('complaint assignment, customer reply, seller isolation, escalation, a
       sellerId: 'seller-1',
       actorId: 'seller-user-1',
       response:
-        'We isolated the batch and provided the production record to HastaBazaar.',
+        'We isolated the batch and provided the production record to Hastabazaar.',
       requestId: 'complaint-seller-response',
       now,
     });

@@ -13,7 +13,7 @@ export const phaseOneMarketplacePolicy = {
   effectiveFrom: '2026-09-18',
   value: {
     identity: {
-      brandName: 'HastaBazaar',
+      brandName: 'Hastabazaar',
       operatingCountry: 'NP',
       currency: 'NPR',
       timezone: 'Asia/Kathmandu',

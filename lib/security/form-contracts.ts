@@ -36,6 +36,64 @@ function fixedSecurityForm(
 /** Source inventory only: native security and portability handlers own these controls. */
 export const SECURITY_FORM_CONTRACTS: Readonly<Record<string, FormDefinition>> =
   Object.freeze({
+    'system.assisted-recovery-request': fixedSecurityForm(
+      'system.assisted-recovery-request',
+      'super_admin',
+      '/api/security/assisted-recovery',
+      [
+        'targetId',
+        'kind',
+        'confirmedEmail',
+        'confirmedTarget',
+        'supportReference',
+        'verificationReference',
+        'verificationMethod',
+        'ownershipVerified',
+      ],
+      'Freshly MFA-verified Super Admin can authorize registered-email password or lost-authenticator recovery for an eligible seller or Admin after documented ownership verification. Invitations and credentials never enter generic form answers.',
+    ),
+    'system.assisted-recovery-complete': fixedSecurityForm(
+      'system.assisted-recovery-complete',
+      'public',
+      '/api/security/assisted-recovery/complete',
+      ['token', 'password', 'confirmation'],
+      'A valid private one-use mailbox invitation authorizes password completion or, with the current password, mandatory authenticator replacement. Live account, approval and expiry checks remain server enforced.',
+    ),
+    'system.seller-mfa-verify': fixedSecurityForm(
+      'system.seller-mfa-verify',
+      'seller',
+      '/api/security/verify',
+      ['password', 'code', 'recovery', 'returnTo'],
+      'Enrolled sellers complete a protected second-factor check. A recent session-bound password proof avoids repeated password entry.',
+    ),
+    'system.seller-mfa-setup': fixedSecurityForm(
+      'system.seller-mfa-setup',
+      'seller',
+      '/api/security/setup',
+      ['password', 'code', 'recovery', 'setupId', 'manualKey', 'otpAuthUrl'],
+      'Seller authenticator enrollment is optional unless replacement is required after assisted recovery. Existing factors protect replacements.',
+    ),
+    'system.seller-mfa-activation': fixedSecurityForm(
+      'system.seller-mfa-activation',
+      'seller',
+      '/api/security/confirm',
+      ['setupId', 'acknowledge', 'password', 'recoveryCodes'],
+      'A confirmed authenticator and saved recovery codes are required before activation and older sessions are revoked.',
+    ),
+    'system.seller-recovery-codes': fixedSecurityForm(
+      'system.seller-recovery-codes',
+      'seller',
+      '/api/security/recovery',
+      ['password', 'code', 'recovery', 'recoveryCodes'],
+      'Sellers replace their own recovery codes after current password and MFA assurance checks.',
+    ),
+    'system.seller-mfa-disable': fixedSecurityForm(
+      'system.seller-mfa-disable',
+      'seller',
+      '/api/security/disable',
+      ['password', 'code', 'recovery', 'acknowledge'],
+      'A seller can turn off their own MFA after current password, existing factor and explicit acknowledgment. Sessions and recovery codes are revoked; staff policy cannot be bypassed through a secondary seller role.',
+    ),
     'system.security-mfa-disable': fixedSecurityForm(
       'system.security-mfa-disable',
       'super_admin',
@@ -76,7 +134,7 @@ export const SECURITY_FORM_CONTRACTS: Readonly<Record<string, FormDefinition>> =
       'staff',
       '/api/security/verify',
       ['password', 'code', 'recovery', 'returnTo'],
-      'The native verification handler validates the privileged account password and, when enrolled, an authenticator or single-use recovery code. Optional unenrolled Admin and explicitly disabled Super Admin accounts receive a password-proven session. Return destinations remain validated.',
+      'The native verification handler validates the privileged account password or its single-use, session-bound proof from a password login within five minutes, plus an authenticator or single-use recovery code when enrolled. Optional unenrolled Admin and explicitly disabled Super Admin accounts receive a password-proven session. Return destinations remain validated.',
     ),
     'system.security-mfa-setup': fixedSecurityForm(
       'system.security-mfa-setup',

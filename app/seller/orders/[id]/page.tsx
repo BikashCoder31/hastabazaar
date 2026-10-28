@@ -137,7 +137,7 @@ export default async function SellerOrderPage({
               <h2 className="font-heading text-2xl">Pickup and delivery</h2>
             </div>
             <p className="mt-4 text-sm leading-7 text-muted-foreground">
-              Pack securely and keep the order number on the parcel. HastaBazaar
+              Pack securely and keep the order number on the parcel. Hastabazaar
               operations coordinates carrier collection during the controlled
               launch.
             </p>

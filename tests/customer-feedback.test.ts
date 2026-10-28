@@ -60,7 +60,7 @@ void test('feedback email escapes customer-controlled HTML', () => {
     result.feedback,
     new Date('2026-09-17T00:00:00Z'),
   );
-  assert.match(message.subject, /^\[HastaBazaar query\]/);
+  assert.match(message.subject, /^\[Hastabazaar query\]/);
   assert.doesNotMatch(message.html, /<script>/);
   assert.match(message.html, /&lt;script&gt;/);
   assert.match(message.text, /<script>alert\("x"\)<\/script>/);

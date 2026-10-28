@@ -72,7 +72,7 @@ export function ReferralShare({
                 try {
                   if (navigator.share)
                     await navigator.share({
-                      title: 'Shop with me on HastaBazaar',
+                      title: 'Shop with me on Hastabazaar',
                       url: link,
                     });
                   else {

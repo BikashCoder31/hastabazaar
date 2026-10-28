@@ -59,7 +59,7 @@ void test('customer policy navigation excludes seller commercial terms and prese
   assert.match(hub, />\s*Legal & Policies\s*</);
   assert.match(
     hub,
-    /Find the policies that explain shopping, selling, delivery and\s+personal information on HastaBazaar\./,
+    /Find the policies that explain shopping, selling, delivery and\s+personal information on Hastabazaar\./,
   );
   assert.match(hub, /href=\{`mailto:\$\{companyDetails\.supportEmail\}`\}/);
   assert.match(hub, /\{companyDetails\.supportEmail\}/);

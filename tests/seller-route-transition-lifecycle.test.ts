@@ -1,3 +1,4 @@
+import { passivePdfFixture } from './helpers/passive-pdf';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { registerHooks } from 'node:module';
@@ -122,7 +123,7 @@ void test('owned multipart transition validates private uploads, authorization, 
       VALUES(?,?,?,1,'published',?,'Fictional form publication','reviewer',1,'reviewer',1,'reviewer',1,?)`).run(`transition-http-v${version}`,formId,version,JSON.stringify({formId,fields:[]}),`transition-http-publication-${version}`);
     publish(1);
     const {GET,POST}=await import('../app/api/seller-applications/transition/route');
-    function data(requestId='transition-http-submit',fileBody='%PDF-1.4\nSIMULATED private certificate\n%%EOF') {
+    function data(requestId='transition-http-submit',fileBody=passivePdfFixture('SIMULATED private certificate')) {
       const body=new FormData();
       for(const [key,value] of Object.entries({requestId,formVersion:'1',action:'submit',legalName:f.input.legalName,registrationAuthority:f.input.registrationAuthority,
         registrationNumber:f.input.registrationNumber,taxMode:'PAN',taxRegistrationNumber:f.input.taxRegistrationNumber,payoutAccountReference:f.input.payoutAccountReference,registeredTermsContext:f.terms.context,agreementVersion:f.terms.agreementVersion,agreementLanguage:'en',acceptedTerms:'yes'}))body.set(key,value);
@@ -137,6 +138,10 @@ void test('owned multipart transition validates private uploads, authorization, 
     globalThis.transitionLifecycleIdentity={userId:'transition-auth',email:'maker@local.hastabazaar.test'};
     const duplicate=data();duplicate.append('taxMode','VAT');assert.equal((await send(duplicate)).status,400);
     assert.equal((await send(data('invalid-file-attempt','not a PDF'))).status,400);assert.equal(uploads.size,0);
+    assert.equal((await send(data('header-only-file-attempt','%PDF-1.4\nnot a real certificate\n%%EOF'))).status,400);assert.equal(uploads.size,0);
+    const mismatch=data('mismatched-file-attempt');
+    mismatch.set('panCertificate',new File([passivePdfFixture()],'fake.png',{type:'image/png'}));
+    assert.equal((await send(mismatch)).status,400);assert.equal(uploads.size,0);
     const huge=new Request('http://localhost:3018/api/seller-applications/transition',{method:'POST',headers:{origin:'http://localhost:3018','content-type':'multipart/form-data; boundary=fake','content-length':String(17*1024*1024)},body:'x'});
     assert.equal((await POST(huge)).status,413);
     f.setBeforeBatch(()=>{publish(2);});

@@ -46,7 +46,7 @@ export function ApprovedBillingDocument({snapshot,kind,documentNumber,group,stam
   return <article className="bill-paper" data-approved-billing={billing.version} data-document-reference={documentNumber}>
     <style>{styles}</style>
     <header className="bill-header">
-      {company?<img data-media-mode="contain" className="bill-logo object-contain" src="/brand/hastabazaar-logo-lockup-640.png" alt="HastaBazaar" width={64} height={64}/>:<span/>}
+      {company?<img data-media-mode="contain" className="bill-logo object-contain" src="/brand/hastabazaar-logo-lockup-640.png" alt="Hastabazaar" width={64} height={64}/>:<span/>}
       <div className="bill-company"><h2>{issuer.legalName}</h2><p>{issuer.address}</p><p>PAN: {issuer.pan}</p>
         {company?<p>billing@hastabazaar.com | www.hastabazaar.com</p>:issuer.storeName?<p>Store: {issuer.storeName}</p>:null}</div>
       {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- An inline vector barcode needs its accessible image role. */}
@@ -83,7 +83,7 @@ export function ApprovedBillingDocument({snapshot,kind,documentNumber,group,stam
         <div><dt>{customerFee.netPaisa===fee?'Net customer service fee':'Customer service fee after cancellations'}</dt><dd>{documentMoney(fee)}</dd></div>
       </>:!receipt||fee>0?<div><dt>Recorded customer service fee</dt><dd>{documentMoney(fee)}</dd></div>:null}
       <div className="bill-total"><dt>{receipt?'TOTAL (NPR)':'ORDER TOTAL (NPR)'}</dt><dd>{documentMoney(total)}</dd></div></dl></div>
-    {receipt&&!company?<div className="bill-channel"><img data-media-mode="contain" className="object-contain" src="/brand/hastabazaar-logo-lockup-640.png" alt="HastaBazaar" width={45} height={45}/><p><strong>Ordered through HastaBazaar</strong><br/>billing@hastabazaar.com | www.hastabazaar.com</p></div>:null}
+    {receipt&&!company?<div className="bill-channel"><img data-media-mode="contain" className="object-contain" src="/brand/hastabazaar-logo-lockup-640.png" alt="Hastabazaar" width={45} height={45}/><p><strong>Ordered through Hastabazaar</strong><br/>billing@hastabazaar.com | www.hastabazaar.com</p></div>:null}
     {receipt?<div className="bill-authorization">{company&&stampSource?<img data-media-mode="contain" data-company-stamp className="bill-stamp object-contain" src={stampSource} alt="Hasta Bazaar Private Limited company stamp" width={136} height={118}/>:null}<p>Authorized signature / stamp</p></div>:null}
   </article>;
 }

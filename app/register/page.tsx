@@ -35,7 +35,7 @@ export default async function RegisterPage({
   return (
     <main tabIndex={-1} id="main-content" className="grid min-h-screen place-items-center bg-muted/20 px-5 py-12">
       <section className="w-full max-w-md rounded-3xl border bg-card p-7 shadow-sm sm:p-9">
-        <Link href="/" className="text-sm font-semibold text-primary">← HastaBazaar</Link>
+        <Link href="/" className="text-sm font-semibold text-primary">← Hastabazaar</Link>
         <h1 className="mt-6 font-heading text-4xl text-foreground">Create your account</h1>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">Save favourites, track orders, and shop from Nepalese makers.</p>
         {error ? <p className="mt-5 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</p> : null}

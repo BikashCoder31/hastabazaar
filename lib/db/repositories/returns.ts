@@ -806,7 +806,7 @@ export async function respondToReturnAsSeller(
           actor_type, public_message_en, public_message_ne, internal_note,
           request_id, created_at
         ) SELECT ?, id, 'requested', 'under_investigation', 'seller_responded', ?,
-          'seller', 'Seller response received; HastaBazaar is investigating.',
+          'seller', 'Seller response received; Hastabazaar is investigating.',
           'विक्रेताको जवाफ प्राप्त भयो; हथकृति जाँच गर्दैछ।', ?, ?, ?
           FROM return_requests WHERE id = ? AND operation_request_id = ?`,
       )

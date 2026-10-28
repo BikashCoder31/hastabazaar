@@ -289,7 +289,7 @@ export function buildBusinessEmail(data: BusinessEmailData, origin: string) {
   ].join('\n\n');
   return {
     to: data.email,
-    subject: 'HastaBazaar · ' + data.subject,
+    subject: 'Hastabazaar · ' + data.subject,
     text,
     html:
       '<!doctype html><html><body><h1>' +

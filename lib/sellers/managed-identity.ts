@@ -109,7 +109,7 @@ export function managedMakerAgreementTerms(
   ];
   return [
     `I authorise ${companyDetails.legalName} (${companyDetails.brandName}) to operate the company selling account for my approved products. My maker identity and individual account remain my own.`,
-    `Compensation is sale-linked: HastaBazaar retains ${platformRetentionBps / 100}% of eligible product value and my entitlement is the remainder. Eligible value excludes separately stated tax and delivery charges and deducts maker-funded discounts. HastaBazaar-funded discounts do not reduce my agreed product value.`,
+    `Compensation is sale-linked: Hastabazaar retains ${platformRetentionBps / 100}% of eligible product value and my entitlement is the remainder. Eligible value excludes separately stated tax and delivery charges and deducts maker-funded discounts. Hastabazaar-funded discounts do not reduce my agreed product value.`,
     'Unpaid, undelivered, cancelled, disputed or refunded sales do not create payable earnings. Adjustments, the delivery hold, payout schedule, verified receiving-account requirements and legally applicable deductions still apply.',
     'I will provide truthful identity and product information, comply with applicable supplier and tax duties, and follow the Prohibited & Restricted Products Policy. Optional personal PAN at application does not remove any tax obligation or replace business PAN/VAT registration.',
     'Acceptance records this version and the company identity and retention rate shown at submission. Application approval does not enable live commerce; program, maker, product and commercial readiness checks must all pass. Changes to commercial terms require separate review and acceptance where applicable.',

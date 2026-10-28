@@ -1,4 +1,5 @@
 import { listStaffAccessHistory } from '@/lib/db/repositories/staff-access-history';
+import { AccountRecoveryAssistance } from '@/components/admin/account-recovery-assistance';
 import { StaffPermissionManager } from '@/components/admin/staff-permission-manager';
 import {
   getStaffPermissionProfile,
@@ -78,6 +79,11 @@ export default async function TeamAccessPage() {
           members.map((member) => [member.id, member.displayName]),
         )}
       />
+
+      {staff.role === 'super_admin' ? <section className="space-y-3" aria-label="Assisted account recovery">
+        <h2 className="font-heading text-xl">Assisted account recovery</h2>
+        {permissionMembers.filter(member => member.userId !== staff.id).map(member => <AccountRecoveryAssistance key={member.userId} targetId={member.userId} displayName={member.displayName} email={member.email} targetRole="admin" />)}
+      </section> : null}
 
       <Card>
         <CardHeader>

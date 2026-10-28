@@ -35,7 +35,7 @@ export function SellerCaseResponseForm({
   if (disabled)
     return (
       <p className="text-sm leading-6 text-muted-foreground">
-        No further response is requested at this stage. HastaBazaar operations
+        No further response is requested at this stage. Hastabazaar operations
         makes the final decision.
       </p>
     );

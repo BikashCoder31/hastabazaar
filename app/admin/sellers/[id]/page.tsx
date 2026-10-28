@@ -1,4 +1,5 @@
 import { AcceptedAgreementSnapshot } from '@/components/admin/accepted-agreement-snapshot';
+import { AccountRecoveryAssistance } from '@/components/admin/account-recovery-assistance';
 import { getManagedMakerDetailsForReview, getManagedMakerApplicationTerms, ManagedMakerAuthorityError, managedAgreementVersionForSeller } from '@/lib/db/repositories/managed-maker-details';
 import { MANAGED_SUPPLIER_AGREEMENT_VERSION } from '@/lib/sellers/managed-identity';
 import { CompanySellingIdentity } from '@/components/seller/managed-maker-identity-fields';
@@ -87,6 +88,9 @@ export default async function SellerApplicationPage({
     throw error;
   });
   if (!application) notFound();
+  const recoveryTarget = staff.role === 'super_admin' && application.userId !== staff.id
+    ? await database.prepare(`SELECT u.id,u.email,u.display_name AS displayName,CASE WHEN EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='admin') THEN 'admin' ELSE 'seller' END AS role FROM users u WHERE u.id=? AND u.status='active' AND EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role IN ('seller','admin')) AND NOT EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='super_admin')`).bind(application.userId).first<{id:string;email:string;displayName:string;role:'admin'|'seller'}>()
+    : null;
   const [managedDetails, managedTerms] = application.participationRoute === 'managed_maker'
     ? await Promise.all([getManagedMakerDetailsForReview(database,id,staff.id),readManagedApplicationTerms(database,id)]) : [null,null];
   const operationalAddresses=await database.prepare(`SELECT purpose,locality FROM seller_operational_addresses WHERE seller_id=? AND purpose IN ('pickup','returns') ORDER BY purpose`)
@@ -98,6 +102,7 @@ export default async function SellerApplicationPage({
 
   return (
     <div className="space-y-7">
+      {recoveryTarget ? <AccountRecoveryAssistance targetId={recoveryTarget.id} displayName={recoveryTarget.displayName} email={recoveryTarget.email} targetRole={recoveryTarget.role} /> : null}
       <StaffFormHistoryLinks entries={[{kind:'seller-review-action',subjectId:id,label:'Seller review answers'},
         ...(staff.role === 'super_admin' ? [{kind:'seller-governance' as const,subjectId:id,label:'Seller governance answers'}] : [])]} />
       <Link

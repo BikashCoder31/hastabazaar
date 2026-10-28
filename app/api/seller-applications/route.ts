@@ -1,3 +1,4 @@
+import { validateSellerDocumentContent } from '@/lib/uploads/document-content';
 import { requireSellerTermsApi, SellerTermsAuthorizationError } from '@/lib/auth/seller-commercial-access';
 import { parseCurrentSellerApplication, pendingPayoutReference } from '@/lib/sellers/onboarding';
 import { getContactVerificationStatus } from '@/lib/auth/contact-verification';
@@ -31,7 +32,7 @@ import {
   type SellerApplicationDocument,
   type SellerProfileMediaUpload,
   validateSellerDocument,
-  validateSellerDocumentContent,
+
 } from '@/lib/sellers/application';
 
 export const dynamic = 'force-dynamic';

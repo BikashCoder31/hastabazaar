@@ -196,5 +196,5 @@ void test('disclosure names the recorded company only when supplied and keeps re
   assert.deepEqual(sellerDisclosure({managed:true,supplierName:'Mithila Craft House',legalSellerName:'Hasta Bazaar Private Limited'}),
     ['Supplied by Mithila Craft House','Sold and invoiced by Hasta Bazaar Private Limited']);
   assert.match(sellerDisclosure({managed:true,supplierName:'Mithila Craft House'})[1], /require review/);
-  assert.deepEqual(sellerDisclosure({managed:false,supplierName:'Mithila Craft House'}), ['Sold by Mithila Craft House','Through HastaBazaar']);
+  assert.deepEqual(sellerDisclosure({managed:false,supplierName:'Mithila Craft House'}), ['Sold by Mithila Craft House','Through Hastabazaar']);
 });

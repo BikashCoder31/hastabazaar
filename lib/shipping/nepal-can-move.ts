@@ -17,6 +17,6 @@ export const nepalCanMoveIntegration = {
     'Keep secrets in the deployment environment, never in source control.',
     'Verify webhook signatures and make webhook processing idempotent.',
     'Retain a manual shipment fallback until integration reliability is proven.',
-    'Treat HastaBazaar as responsible to the customer even when delivery is outsourced.',
+    'Treat Hastabazaar as responsible to the customer even when delivery is outsourced.',
   ],
 } as const;

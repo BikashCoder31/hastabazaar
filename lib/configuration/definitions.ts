@@ -1,6 +1,6 @@
 import { isGregorianDate } from '../dates/nepal-calendar';
 import { INITIAL_PLATFORM_SERVICE_FEE, validatePlatformServiceFee } from '../checkout/platform-service-fee';
-import { companyDetails } from '../content/company-details';
+import { companyDetails, companyPublicContacts } from '../content/company-details';
 import { defaultProductWatermarkPolicy, validateProductWatermarkPolicy } from '../products/watermark-policy';
 import {
   businessSettingKeys,
@@ -390,14 +390,14 @@ const definitions = [
   { key: 'managed_maker_company_account', label: 'Company selling account',
     description: 'Super Admin controls the operational store, contact and return destination. Individual makers keep their own identity and login. Company legal identity and PAN come from the canonical company record.',
     defaultValue: Object.freeze({ entityReference: companyDetails.entityReference, storeName: companyDetails.brandName,
-      contactEmail: companyDetails.supportEmail, contactPhone: '', returnAddress: companyDetails.registeredOffice }),
+      contactEmail: companyDetails.supportEmail, contactPhone: companyPublicContacts.supportPhoneE164, returnAddress: companyDetails.registeredOffice }),
     sensitivity: 'operational', changeControl: 'controlled', effectiveMode: 'effective_dated', snapshotOnTransaction: true,
     affectedSurfaces: ['maker_onboarding', 'admin_review', 'managed_makers'], requiredCapability: null, validate: companyAccount,
   },
   {
     key: 'product_photo_watermark',
     label: 'Product photo watermark',
-    description: 'Adds a subtle HastaBazaar wordmark to customer photo copies. Private originals are preserved. Changes also apply to existing uploaded product photos.',
+    description: 'Adds a subtle Hastabazaar wordmark to customer photo copies. Private originals are preserved. Changes also apply to existing uploaded product photos.',
     defaultValue: defaultProductWatermarkPolicy,
     sensitivity: 'public_content',
     changeControl: 'simple',

@@ -125,7 +125,7 @@ export async function POST(request: Request): Promise<Response> {
     const security = env as unknown as SecurityPolicyBindings;
     const staff = await database
       .prepare(
-        "SELECT 1 FROM user_roles WHERE user_id=? AND role IN ('admin','super_admin') LIMIT 1",
+        "SELECT 1 FROM user_roles WHERE user_id=? AND role IN ('admin','super_admin','seller') LIMIT 1",
       )
       .bind(credential.accountId)
       .first();
@@ -175,10 +175,11 @@ export async function POST(request: Request): Promise<Response> {
   return new Response(null, {
     status: 303,
     headers: {
-      // Public destinations cannot enforce the pending staff MFA ceremony.
-      Location: staffSignIn && returnTo !== '/auth/continue'
-        ? `/auth/continue?return_to=${encodeURIComponent(returnTo)}`
-        : returnTo,
+      // Public destinations cannot enforce a pending staff or seller MFA ceremony.
+      Location:
+        staffSignIn && returnTo !== '/auth/continue'
+          ? `/auth/continue?return_to=${encodeURIComponent(returnTo)}`
+          : returnTo,
       'Set-Cookie': hostedSessionCookie(token),
       'Cache-Control': 'no-store',
     },

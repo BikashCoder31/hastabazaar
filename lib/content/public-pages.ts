@@ -1,6 +1,6 @@
 import { getManualDeliveryQuote } from '../checkout/validation';
 import { phaseOneMarketplacePolicy } from '../marketplace/policy';
-import { companyDetails } from './company-details';
+import { companyDetails, companyPublicContacts } from './company-details';
 
 type Section = {
   id: string;
@@ -22,9 +22,9 @@ const rate = (district: string) => {
 
 export const publicPages = {
   about: {
-    title: 'About HastaBazaar',
+    title: 'About Hastabazaar',
     description:
-      'Meet HastaBazaar, a marketplace for gifts and everyday finds from independent sellers.',
+      'Meet Hastabazaar, a marketplace for gifts and everyday finds from independent sellers.',
     intro:
       'Thoughtful finds. Product details to help you choose.',
     sections: [
@@ -32,8 +32,8 @@ export const publicPages = {
         id: 'marketplace',
         title: 'A place for sellers and thoughtful finds',
         paragraphs: [
-          'HastaBazaar connects customers with independent sellers offering gifts, homeware, jewellery and everyday finds. Browse the collection and read each listing for who sells it, where it comes from and how it was made.',
-          'We operate as a marketplace. Each product identifies its seller, who prepares the item. HastaBazaar provides the shopping experience and coordinates order support, delivery, returns and complaints.',
+          'Hastabazaar connects customers with independent sellers offering gifts, homeware, jewellery and everyday finds. Browse the collection and read each listing for who sells it, where it comes from and how it was made.',
+          'We operate as a marketplace. Each product identifies its seller, who prepares the item. Hastabazaar provides the shopping experience and coordinates order support, delivery, returns and complaints.',
         ],
         links: [{ label: 'Explore the collection', href: '/shop' }],
       },
@@ -77,8 +77,17 @@ export const publicPages = {
       'Start with the order or account you need help with so your request reaches the right place.',
     sections: [
       {
+        id: 'whatsapp',
+        title: 'Chat with Hastabazaar',
+        paragraphs: [`For shopping questions and seller support, contact our team on WhatsApp at ${companyPublicContacts.supportPhone}. Use your secure receipt for private order details. Never share passwords, payment PINs or verification codes.`],
+        links: [
+          { label: 'Chat on WhatsApp', href: companyPublicContacts.whatsappUrl },
+          { label: companyPublicContacts.supportPhone, href: `tel:${companyPublicContacts.supportPhoneE164}` },
+        ],
+      },
+      {
         id: 'email',
-        title: 'Email HastaBazaar support',
+        title: 'Email Hastabazaar support',
         paragraphs: [
           `For general questions, help accessing an order or a privacy enquiry, email ${companyDetails.supportEmail}. If your question concerns an order, include its order number and a clear description of the issue.`,
           'Please do not email passwords, one-time codes or private receipt links. We may ask you to verify order ownership before sharing private details.',
@@ -129,7 +138,7 @@ export const publicPages = {
         id: 'shopping',
         title: 'Before you order',
         paragraphs: [
-          'Check the product listing for preparation, materials, delivery estimates and item-specific return conditions. The pages below explain how shopping on HastaBazaar works.',
+          'Check the product listing for preparation, materials, delivery estimates and item-specific return conditions. The pages below explain how shopping on Hastabazaar works.',
         ],
         links: [
           { label: 'Shipping information', href: '/shipping' },
@@ -216,7 +225,7 @@ export const publicPages = {
         title: 'How to request a return',
         paragraphs: [
           'After delivery, open the secure receipt or My orders, select the affected item and quantity, choose a reason and preferred refund or replacement, and explain the issue. You may attach supporting evidence.',
-          'HastaBazaar reviews the request and may ask for more information. A request is not an automatic refund approval. Follow the confirmed instructions for any physical return; do not dispatch an item before arrangements are agreed.',
+          'Hastabazaar reviews the request and may ask for more information. A request is not an automatic refund approval. Follow the confirmed instructions for any physical return; do not dispatch an item before arrangements are agreed.',
           'Return shipping responsibility and any approved delivery refund depend on the case decision. Keep the item and any available packaging while the issue is reviewed.',
         ],
         links: [
@@ -244,7 +253,7 @@ export const publicPages = {
   privacy: {
     title: 'Privacy policy',
     description:
-      'How HastaBazaar uses account, order and support information and how to make a privacy request.',
+      'How Hastabazaar uses account, order and support information and how to make a privacy request.',
     intro:
       'We use personal information to run the marketplace, fulfil orders and provide support.',
     sections: [
@@ -312,15 +321,15 @@ export const publicPages = {
   terms: {
     title: 'Terms & conditions',
     description:
-      'Customer terms for using HastaBazaar, placing orders and getting support.',
+      'Customer terms for using Hastabazaar, placing orders and getting support.',
     intro:
       'Please read these terms together with the product listing, shipping information, return policy and privacy policy before placing an order.',
     sections: [
       {
         id: 'marketplace',
-        title: 'Using HastaBazaar',
+        title: 'Using Hastabazaar',
         paragraphs: [
-          'HastaBazaar is a marketplace connecting customers with independent sellers in Nepal. Listings identify the seller and item details. HastaBazaar provides marketplace operations and coordinates customer support.',
+          'Hastabazaar is a marketplace connecting customers with independent sellers in Nepal. Listings identify the seller and item details. Hastabazaar provides marketplace operations and coordinates customer support.',
           'Provide accurate account, contact and delivery information, keep account access secure and use the service lawfully. Do not impersonate others, misuse personal information, submit fraudulent orders or interfere with the service.',
         ],
       },
@@ -364,7 +373,7 @@ export const publicPages = {
         title: 'Reviews and submitted content',
         paragraphs: [
           'Submit only content you have the right to share, describe your experience honestly and avoid other people’s personal information. Reviews require a verified delivered purchase and are moderated with their photos before publication. Seller replies are also moderated.',
-          'You allow HastaBazaar to display the review content you submit for that purpose. We may withhold or hide content that violates marketplace rules or exposes private information; negative feedback is not excluded merely because it is negative.',
+          'You allow Hastabazaar to display the review content you submit for that purpose. We may withhold or hide content that violates marketplace rules or exposes private information; negative feedback is not excluded merely because it is negative.',
         ],
       },
       {

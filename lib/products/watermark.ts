@@ -8,7 +8,7 @@ import {
   ImageWorkQueueFullError,
 } from './image-work-queue';
 export const maximumProductWatermarkBytes = 5 * 1024 * 1024;
-export const productWatermarkRendererVersion = 'wordmark-v1';
+export const productWatermarkRendererVersion = 'wordmark-v2';
 export class ProductWatermarkError extends Error {
   constructor(
     message: string,
@@ -24,13 +24,13 @@ export type RenderedProductPhoto = Readonly<{
   width: number;
   height: number;
 }>;
-// Fixed vector outlines spell HastaBazaar without a runtime font or remote asset.
+// Fixed vector outlines spell Hastabazaar without a runtime font or remote asset.
 const glyphs: Record<string, string> = {
   H: 'M1 1V17M11 1V17M1 9H11',
   a: 'M10 6V17M10 9C8 3 1 5 1 11C1 18 8 19 10 13',
   s: 'M10 7C7 3 1 5 1 8C1 12 10 10 10 14C10 18 3 19 1 15',
   t: 'M5 1V14C5 18 9 18 11 16M1 6H10',
-  B: 'M1 17V1H6C13 1 13 9 6 9H1M6 9C14 9 14 17 6 17H1',
+  b: 'M1 1V17M1 9C3 3 11 5 11 11C11 18 3 19 1 13',
   z: 'M1 6H11L1 17H11',
   r: 'M1 17V6M1 10C3 5 7 4 11 6',
 };
@@ -39,7 +39,7 @@ function wordmarkSvg(
   height: number,
   opacity: number,
 ): Uint8Array {
-  const letters = 'HastaBazaar'
+  const letters = 'Hastabazaar'
     .split('')
     .map(
       (letter, index) =>

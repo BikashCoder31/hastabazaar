@@ -26,6 +26,7 @@ interface SetupOptions {
 }
 interface ClaimOptions extends SetupOptions {
   code: string;
+  expectedGeneration?: number;
   passwordVerifiedAt: number;
   targetSessionHash?: string;
   linkedStatements?: D1PreparedStatement[];
@@ -44,7 +45,9 @@ export class MfaService {
   constructor(readonly store: SecurityStore) {}
 
   /** The controller supplies live ownership/password guards, session revocation and audit atomically. */
-  async disable(options: ClaimOptions & { recovery: boolean }): Promise<void> {
+  async disable(
+    options: ClaimOptions & { recovery: boolean; optionalAccount?: boolean },
+  ): Promise<void> {
     const now = this.now(options.now);
     this.password(options.passwordVerifiedAt, now);
     this.session(options.sessionHash);
@@ -52,7 +55,7 @@ export class MfaService {
     this.consumeFactor(account.value, options.code, options.recovery, now);
     const next: AccountSecurity = {
       ...account.value,
-      status: 'disabled',
+      status: options.optionalAccount ? 'pending' : 'disabled',
       generation: account.value.generation + 1,
       updatedAt: now,
       factor: null,
@@ -421,10 +424,16 @@ export class MfaService {
       | 'targetSessionHash'
       | 'passwordVerifiedAt'
       | 'linkedStatements'
+      | 'expectedGeneration'
     >,
     now: number,
     continuation?: SecuritySnapshot<SessionProof>,
   ): Promise<SessionProof> {
+    if (
+      options.expectedGeneration !== undefined &&
+      options.expectedGeneration !== account.value.generation
+    )
+      throw new SecurityStateError('Account security changed. Sign in again.');
     const sessionHash = options.targetSessionHash ?? options.sessionHash;
     this.session(sessionHash);
     const sameSession = continuation?.value.sessionHash === sessionHash;

@@ -10,7 +10,7 @@ export interface AccountSecurity {
   kind: 'account';
   userId: string;
   generation: number;
-  status: 'pending' | 'active' | 'disabled';
+  status: 'pending' | 'active' | 'disabled' | 'recovery';
   createdAt: number;
   updatedAt: number;
   factor: { secret: string; activatedAt: number; lastCounter: number } | null;
@@ -143,7 +143,9 @@ export function validateAccount(
     value.userId !== userId ||
     !Number.isSafeInteger(value.generation) ||
     (value.generation as number) < 1 ||
-    !['pending', 'active', 'disabled'].includes(value.status as string)
+    !['pending', 'active', 'disabled', 'recovery'].includes(
+      value.status as string,
+    )
   )
     throw new SecurityStateError();
   stamp(value.createdAt);

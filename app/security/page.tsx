@@ -3,7 +3,7 @@ import { SecurityWorkspace } from '@/components/security/security-workspace';
 
 export const dynamic = 'force-dynamic';
 export const metadata = {
-  title: 'Account security · HastaBazaar',
+  title: 'Account security · Hastabazaar',
   robots: { index: false, follow: false },
 };
 
@@ -22,7 +22,7 @@ export default async function SecurityPage({
         href="/"
         className="mb-6 inline-flex min-h-11 items-center text-sm font-semibold text-primary underline underline-offset-4"
       >
-        HastaBazaar home
+        Hastabazaar home
       </Link>
       <SecurityWorkspace
         returnTo={

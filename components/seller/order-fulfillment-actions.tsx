@@ -24,7 +24,7 @@ const definitions = {
   start_packing: {
     title: 'Start packing these items?',
     description:
-      'HastaBazaar operations will see that preparation is underway.',
+      'Hastabazaar operations will see that preparation is underway.',
     label: 'Start packing',
     icon: PackageOpen,
   },

@@ -159,7 +159,7 @@ export async function createCustomerComplaint(
             actor_type, public_message_en, public_message_ne, internal_note,
             request_id, created_at
           ) SELECT ?, id, NULL, 'open', 'customer_created', NULL, 'customer',
-            'Complaint received. HastaBazaar will review it.',
+            'Complaint received. Hastabazaar will review it.',
             'गुनासो प्राप्त भयो। हथकृतिले यसको समीक्षा गर्नेछ।', NULL, ?, ?
             FROM complaints WHERE id = ? AND created_request_id = ?`,
         )

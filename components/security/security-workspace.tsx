@@ -11,10 +11,18 @@ import {
 
 type SecurityStatus = {
   user: { displayName: string; email: string; role: string };
-  status: 'pending' | 'active' | 'setup' | 'verify' | 'optional' | 'disabled';
+  status:
+    | 'pending'
+    | 'active'
+    | 'setup'
+    | 'verify'
+    | 'optional'
+    | 'disabled'
+    | 'recovery';
   mfaRequired?: boolean;
   canDisable?: boolean;
   needsPassword: boolean;
+  passwordVerified?: boolean;
   canManage: boolean;
   localSimulation: boolean;
   session: { absoluteHours: number; idleMinutes: number };
@@ -41,8 +49,17 @@ function SecretField({
       </label>
       <input
         id={id}
+        name={id}
         className="min-h-11 w-full min-w-0 rounded-xl border bg-background px-3 py-2"
         {...props}
+        maxLength={props.pattern === '[0-9]{6}' ? 64 : props.maxLength}
+        onChange={(event) => {
+          // Authenticator apps may copy grouped digits. Normalize before length
+          // validation; a six-character DOM limit cuts off the end of the code.
+          if (props.pattern === '[0-9]{6}')
+            event.target.value = event.target.value.replace(/[\s-]/g, '');
+          props.onChange?.(event);
+        }}
       />
     </div>
   );
@@ -71,10 +88,13 @@ async function securityRequest(
       ? (data as Record<string, unknown>)
       : null;
   if (!response.ok)
-    throw new Error(
-      typeof record?.error === 'string'
-        ? record.error
-        : 'Security could not be checked. Please try again.',
+    throw Object.assign(
+      new Error(
+        typeof record?.error === 'string'
+          ? record.error
+          : 'Security could not be checked. Please try again.',
+      ),
+      { code: record?.code },
     );
   if (!record)
     throw new Error(
@@ -91,9 +111,15 @@ function readStatus(value: Record<string, unknown>): SecurityStatus {
     typeof user.displayName !== 'string' ||
     typeof user.email !== 'string' ||
     typeof user.role !== 'string' ||
-    !['pending', 'active', 'setup', 'verify', 'optional', 'disabled'].includes(
-      String(value.status),
-    ) ||
+    ![
+      'pending',
+      'active',
+      'setup',
+      'verify',
+      'optional',
+      'disabled',
+      'recovery',
+    ].includes(String(value.status)) ||
     !session ||
     !Number.isFinite(session.absoluteHours) ||
     !Number.isFinite(session.idleMinutes) ||
@@ -149,7 +175,7 @@ function AuthenticatorQr({ uri }: { uri: string }) {
   );
 }
 
-function safeReturnTo(value?: string) {
+function safeReturnTo(value?: string, fallback = '/admin') {
   if (
     !value ||
     !value.startsWith('/') ||
@@ -160,16 +186,16 @@ function safeReturnTo(value?: string) {
         character.charCodeAt(0) <= 32 || character.charCodeAt(0) === 127,
     )
   )
-    return '/admin';
+    return fallback;
   try {
     const url = new URL(value, 'https://hastabazaar.invalid');
     return url.origin === 'https://hastabazaar.invalid' &&
       !url.pathname.startsWith('/api/') &&
       !url.pathname.startsWith('/security')
       ? url.pathname + url.search + url.hash
-      : '/admin';
+      : fallback;
   } catch {
-    return '/admin';
+    return fallback;
   }
 }
 
@@ -193,7 +219,8 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
   const [disableCode, setDisableCode] = useState('');
   const [disableRecovery, setDisableRecovery] = useState(false);
   const [disableAcknowledged, setDisableAcknowledged] = useState(false);
-  const destination = safeReturnTo(returnTo);
+  const seller = status?.user.role === 'seller';
+  const destination = safeReturnTo(returnTo, seller ? '/seller' : '/admin');
 
   useEffect(() => {
     const controller = new AbortController();
@@ -220,6 +247,14 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
     try {
       await action();
     } catch (error) {
+      if (
+        error instanceof Error &&
+        'code' in error &&
+        error.code === 'PASSWORD_REQUIRED'
+      )
+        setStatus((current) =>
+          current ? { ...current, passwordVerified: false } : current,
+        );
       setError(
         error instanceof Error
           ? error.message
@@ -249,7 +284,7 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
   }
 
   const privileged =
-    status && ['admin', 'super_admin'].includes(status.user.role);
+    status && ['admin', 'super_admin', 'seller'].includes(status.user.role);
   const freshSession =
     status?.status === 'active' && status.sessionVerified === true;
   const currentFactorLabel =
@@ -259,7 +294,9 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
     <div className="grid min-w-0 gap-6">
       <header>
         <p className="eyebrow">Account security</p>
-        <h1 className="section-title">Protect your Admin access</h1>
+        <h1 className="section-title">
+          {seller ? 'Protect your seller account' : 'Protect your Admin access'}
+        </h1>
         <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
           Use your password and an authenticator app. Keep recovery codes
           somewhere private so you can still sign in if your phone is
@@ -297,13 +334,15 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
               ? status.status === 'active'
                 ? 'MFA active'
                 : status.status === 'verify'
-                  ? 'Verify your Admin access'
-                  : status.status === 'optional'
-                    ? 'MFA is optional'
-                    : status.status === 'disabled'
-                      ? 'MFA is turned off'
-                      : 'MFA setup pending'
-              : 'Admin MFA is not required for this account'}
+                  ? 'Verify your account access'
+                  : status.status === 'recovery'
+                    ? 'Set up your replacement authenticator'
+                    : status.status === 'optional'
+                      ? 'MFA is optional'
+                      : status.status === 'disabled'
+                        ? 'MFA is turned off'
+                        : 'MFA setup pending'
+              : 'MFA is not available for this account'}
           </h2>
           <p className="mt-2 break-words text-sm">
             {status.user.displayName} · {status.user.email}
@@ -311,10 +350,9 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
           {privileged ? (
             <>
               <p className="mt-3 text-sm leading-6">
-                Protected Admin sessions end after{' '}
-                {status.session.absoluteHours} hours or{' '}
-                {status.session.idleMinutes} minutes without activity. Signing
-                in again requires{' '}
+                MFA-verified sessions end after {status.session.absoluteHours}{' '}
+                hours or {status.session.idleMinutes} minutes without activity.
+                Signing in again requires{' '}
                 {status.mfaRequired === false
                   ? 'your password.'
                   : 'your password and authenticator or a single-use recovery code.'}
@@ -323,9 +361,11 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
                 <p className="mt-3 text-sm leading-6">
                   {status.status === 'disabled'
                     ? 'You turned off MFA after verifying account ownership. Enable it again below to protect future sign-ins.'
-                    : status.status === 'optional'
-                      ? 'You can continue with your password or enable MFA for additional protection. Enrollment is optional for Admin.'
-                      : 'Your existing access remains available while setup is pending. Protection becomes active after you confirm your authenticator and save the recovery codes.'}
+                    : status.status === 'recovery'
+                      ? 'Your approved recovery has cleared the old authenticator. Add a replacement and save your new recovery codes before returning to your account.'
+                      : status.status === 'optional'
+                        ? 'Two-step verification is optional. Enable it to add an authenticator code to your sign-in.'
+                        : 'Your existing access remains available while setup is pending. Protection becomes active after you confirm your authenticator and save the recovery codes.'}
                 </p>
               ) : null}
               {status.status === 'active' ? (
@@ -336,8 +376,8 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
             </>
           ) : (
             <p className="mt-3 text-sm leading-6">
-              This security setup is available for existing Admin and Super
-              Admin accounts.
+              This security setup is available for existing seller and staff
+              accounts.
             </p>
           )}
           {status.localSimulation ? (
@@ -350,7 +390,22 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
         </section>
       ) : null}
 
-      {privileged && status.needsPassword ? (
+      {privileged && seller && status.needsPassword ? (
+        <section className={card}>
+          <h2 className="text-xl font-semibold">Set your account password</h2>
+          <p className="mt-2 text-sm leading-6">
+            Use your registered email to set a password before enabling two-step
+            verification.
+          </p>
+          <Link
+            className="mt-4 inline-flex min-h-11 items-center font-semibold text-primary underline"
+            href="/forgot-password?return_to=%2Fsecurity"
+          >
+            Set password through email
+          </Link>
+        </section>
+      ) : null}
+      {privileged && !seller && status.needsPassword ? (
         <section className={card}>
           <h2 className="text-xl font-semibold">Set your first password</h2>
           <p className="mt-2 text-sm leading-6">
@@ -473,12 +528,16 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
 
       {privileged &&
       !status.needsPassword &&
-      (['verify', 'optional', 'disabled'].includes(status.status) ||
-        (status.status === 'setup' && status.mfaRequired === false)) ? (
+      (status.status === 'verify' ||
+        (!seller &&
+          (['optional', 'disabled'].includes(status.status) ||
+            (status.status === 'setup' && status.mfaRequired === false)))) ? (
         <section className={card}>
           <h2 className="text-xl font-semibold">Complete your sign-in</h2>
           <form
-            data-form-id="system.security-mfa-verify"
+            data-form-id={
+              seller ? 'system.seller-mfa-verify' : 'system.security-mfa-verify'
+            }
             className="mt-5 grid max-w-xl gap-4"
             onSubmit={(event) =>
               submit(event, async () => {
@@ -498,17 +557,25 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
               })
             }
           >
-            <SecretField
-              id="security-verify-password"
-              label="Current password"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-              maxLength={256}
-              autoComplete="current-password"
-              disabled={busy}
-            />
+            {status.passwordVerified ? (
+              <p className="text-sm leading-6 text-muted-foreground">
+                Password confirmed. Enter your{' '}
+                {recoveryMode ? 'recovery' : 'authenticator'} code to finish
+                signing in.
+              </p>
+            ) : (
+              <SecretField
+                id="security-verify-password"
+                label="Current password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+                maxLength={256}
+                autoComplete="current-password"
+                disabled={busy}
+              />
+            )}
             {status.status === 'verify' ? (
               <>
                 <SecretField
@@ -520,13 +587,15 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
                   maxLength={recoveryMode ? 80 : 6}
                   pattern={recoveryMode ? undefined : '[0-9]{6}'}
                   inputMode={recoveryMode ? 'text' : 'numeric'}
-                  autoComplete="one-time-code"
+                  autoComplete={recoveryMode ? 'off' : 'one-time-code'}
+                  spellCheck={false}
+                  autoCapitalize="none"
                   disabled={busy}
                 />
                 <p className="text-sm leading-6">
                   {recoveryMode
                     ? 'A recovery code works once. Using it keeps MFA enabled.'
-                    : 'Enter the six-digit code shown in your authenticator app.'}
+                    : 'Enter or paste the six-digit code from your authenticator app. Spaces are removed automatically.'}
                 </p>
               </>
             ) : null}
@@ -569,7 +638,7 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
           <h2 className="text-xl font-semibold">
             {setup
               ? 'Connect your authenticator'
-              : replacing
+              : replacing || status.status === 'recovery'
                 ? 'Replace your authenticator'
                 : 'Add an authenticator'}
           </h2>
@@ -615,7 +684,9 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
             </p>
           )}
           <form
-            data-form-id="system.security-mfa-setup"
+            data-form-id={
+              seller ? 'system.seller-mfa-setup' : 'system.security-mfa-setup'
+            }
             className="mt-5 grid max-w-xl gap-4"
             onSubmit={(event) =>
               submit(event, async () => {
@@ -789,7 +860,11 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
             ))}
           </ul>
           <form
-            data-form-id="system.security-mfa-activation"
+            data-form-id={
+              seller
+                ? 'system.seller-mfa-activation'
+                : 'system.security-mfa-activation'
+            }
             className="mt-5 grid gap-4"
             onSubmit={(event) =>
               submit(event, async () => {
@@ -856,7 +931,11 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
               : ' Also enter your authenticator or one remaining recovery code.'}
           </p>
           <form
-            data-form-id="system.security-recovery-codes"
+            data-form-id={
+              seller
+                ? 'system.seller-recovery-codes'
+                : 'system.security-recovery-codes'
+            }
             className="mt-5 grid max-w-xl gap-4"
             onSubmit={(event) =>
               submit(event, async () => {
@@ -969,18 +1048,28 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
           </button>
         </section>
       ) : null}
-      {privileged && status.canDisable && !recovery && !replacing && !setup ? (
+      {privileged &&
+      status.status === 'active' &&
+      status.canManage &&
+      status.canDisable &&
+      !recovery &&
+      !replacing &&
+      !setup ? (
         <section className={card}>
           <h2 className="text-xl font-semibold">Turn off MFA</h2>
           <p className="mt-2 text-sm leading-6">
             Verify your password and a fresh authenticator or unused recovery
             code. This signs out all your sessions and invalidates your recovery
             codes. Future sign-ins will use your password until you enable MFA
-            again. Security-key exports still require MFA.
+            again. {seller ? '' : 'Security-key exports still require MFA.'}
           </p>
           <form
             aria-label="Disable MFA"
-            data-form-id="system.security-mfa-disable"
+            data-form-id={
+              seller
+                ? 'system.seller-mfa-disable'
+                : 'system.security-mfa-disable'
+            }
             className="mt-5 grid max-w-xl gap-4"
             onSubmit={(event) =>
               submit(event, async () => {
@@ -1061,8 +1150,8 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
       ) : null}
       {privileged ? (
         <p className="text-sm leading-6 text-muted-foreground">
-          Lost your authenticator and every recovery code? Contact the account
-          owner for a reviewed recovery process. Email sign-in alone cannot
+          Lost your authenticator and every recovery code? Contact Hastabazaar
+          support for Super Admin-reviewed recovery. Email sign-in alone cannot
           remove MFA.
         </p>
       ) : null}
@@ -1071,7 +1160,7 @@ export function SecurityWorkspace({ returnTo }: { returnTo?: string } = {}) {
           href={destination}
           className="min-h-11 py-2 text-primary underline underline-offset-4"
         >
-          Return to Admin
+          {seller ? 'Return to seller dashboard' : 'Return to Admin'}
         </Link>
         <button
           className="min-h-11 py-2 text-primary underline underline-offset-4"

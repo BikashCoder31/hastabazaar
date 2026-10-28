@@ -1,3 +1,4 @@
+import { passivePdfFixture } from './helpers/passive-pdf';
 import { getRegisteredSellerTerms } from '../lib/db/repositories/marketplace-settings';
 import { createHash } from 'node:crypto';
 import { MANAGED_SUPPLIER_AGREEMENT_VERSION, managedMakerAgreementSnapshot } from '../lib/sellers/managed-identity';
@@ -289,7 +290,7 @@ function managedApplication(current=false) {
   form.set('managedAgreementContext',createHash('sha256').update(JSON.stringify(managedMakerAgreementSnapshot(getBusinessSettingDefinition('managed_maker_company_account').defaultValue,900,MANAGED_SUPPLIER_AGREEMENT_VERSION))).digest('hex'));
   form.set('personalPan','123456789');
   addCurrentPayoutFields(form);
-  for(const key of ['personalPanCertificate','bankVerification'])form.set(key,new File(['%PDF-1.4\nFictional evidence'],key+'.pdf',{type:'application/pdf'}));
+  for(const key of ['personalPanCertificate','bankVerification'])form.set(key,new File([passivePdfFixture('Fictional evidence')],key+'.pdf',{type:'application/pdf'}));
   }
   return form;
 }
@@ -1315,7 +1316,7 @@ void test('actual registered application controller accepts displayed context an
     const parsed=parseCurrentSellerApplication(form);assert.ok(parsed.input,parsed.errors.join('; '));
     const {sellerDocumentsForApplication}=await import('../lib/sellers/application');
     for(const doc of sellerDocumentsForApplication(parsed.input).filter(doc=>doc.required)){
-      form.set(doc.field,new File(['%PDF-1.4\nFictional document'],doc.kind+'.pdf',{type:'application/pdf'}));
+      form.set(doc.field,new File([passivePdfFixture('Fictional document')],doc.kind+'.pdf',{type:'application/pdf'}));
     }
     const {POST}=await import('../app/api/seller-applications/route');
     const response=await POST(new Request('http://localhost:3000/api/seller-applications',{method:'POST',headers:{origin:'http://localhost:3000'},body:form}));

@@ -9,12 +9,12 @@ export function CompanyDisclosure() {
     ['Registered office', companyDetails.registeredOffice],
     ['Business model', 'Intermediary marketplace connecting customers with independent sellers'],
     ['PAN', companyPanDisplay],
-    ['Customer-support phone', companyPublicContacts.supportPhone || 'Not yet confirmed'],
+    ['Customer-support phone', companyPublicContacts.supportPhone],
     ['Grievance unit', companyPublicContacts.grievanceUnit],
     ['Grievance office', companyPublicContacts.grievanceAddress],
-    ['Grievance phone', companyPublicContacts.grievancePhone || 'Not yet confirmed'],
-    ['E-commerce listing number', companyPublicContacts.ecommerceListingNumber || 'Not yet confirmed'],
-  ];
+    ['Grievance phone', companyPublicContacts.grievancePhone],
+    ['E-commerce listing number', companyPublicContacts.ecommerceListingNumber],
+  ].filter(([, value]) => value.trim().length > 0);
 
   return (
     <section id="company-details" className="scroll-mt-48 rounded-2xl border p-5 sm:p-6">
@@ -32,12 +32,14 @@ export function CompanyDisclosure() {
             <a className="text-primary underline underline-offset-4" href={`mailto:${companyDetails.supportEmail}`}>
               {companyDetails.supportEmail}
             </a>
+            <a className="mt-2 block text-primary underline underline-offset-4" href={companyPublicContacts.whatsappUrl} target="_blank" rel="noopener noreferrer">
+              WhatsApp: {companyPublicContacts.supportPhone}
+            </a>
           </dd>
         </div>
       </dl>
       <p className="mt-5 text-sm leading-6 text-muted-foreground">
         Complaints receive an acknowledgement and reference, with a written decision within 15 calendar days.
-        PAN registration does not establish VAT registration.
       </p>
     </section>
   );

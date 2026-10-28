@@ -2,10 +2,13 @@ import { hostedSessionHash, hostedSessionCookie } from '../auth/hosted-session';
 import { randomUUID } from 'node:crypto';
 import { safeRelativeReturnPath } from '../http/safe-return';
 import { MfaService } from './mfa';
-import { proofIsCurrent } from './model';
+import { FRESH_PASSWORD_MS, proofIsCurrent } from './model';
+import { readPasswordChallenge } from './password-challenge';
+import { sendAccountSecurityNotice } from '../email/account-security';
 import {
   securityStore,
   staffSessionIsVerified,
+  sellerSessionIsVerified,
   passwordOnlyProofStatements,
 } from './session';
 import { handleBootstrap } from './bootstrap';
@@ -43,14 +46,18 @@ export async function securityStatus(request: Request) {
       store && actor.sessionHash && account?.value.status === 'active'
         ? await store.readProof(actor.sessionHash, actor.id)
         : null;
+    const statusTime = Date.now();
     const verified = Boolean(
       proof &&
       account &&
-      proofIsCurrent(proof.value, account.value, Date.now()) &&
-      Date.now() - proof.value.verifiedAt <= 5 * 60000,
+      proofIsCurrent(proof.value, account.value, statusTime) &&
+      statusTime - proof.value.verifiedAt <= FRESH_PASSWORD_MS &&
+      statusTime >= proof.value.passwordVerifiedAt &&
+      statusTime - proof.value.passwordVerifiedAt <= FRESH_PASSWORD_MS,
     );
     const mfaRequired =
       account?.value.status === 'active' ||
+      account?.value.status === 'recovery' ||
       (actor.role === 'super_admin' && account?.value.status !== 'disabled');
     return securityResponse({
       user: {
@@ -63,17 +70,28 @@ export async function securityStatus(request: Request) {
           ? verified
             ? 'active'
             : 'verify'
-          : account?.value.setup
-            ? 'setup'
-            : account?.value.status === 'disabled'
-              ? 'disabled'
-              : actor.role === 'admin'
-                ? 'optional'
-                : 'pending',
+          : account?.value.status === 'recovery'
+            ? 'recovery'
+            : account?.value.setup
+              ? 'setup'
+              : account?.value.status === 'disabled'
+                ? 'disabled'
+                : actor.role !== 'super_admin'
+                  ? 'optional'
+                  : 'pending',
       mfaRequired,
-      canDisable:
-        actor.role === 'super_admin' && account?.value.status === 'active',
+      canDisable: actor.role !== 'admin' && account?.value.status === 'active',
       needsPassword: !credential,
+      passwordVerified: Boolean(
+        store &&
+        !registrationRequired &&
+        (await readPasswordChallenge(
+          store,
+          actor.id,
+          actor.sessionHash,
+          Date.now(),
+        )),
+      ),
       canManage: account?.value.status !== 'active' || verified,
       sessionVerified: verified,
       localSimulation: actor.localSimulation,
@@ -96,13 +114,35 @@ export async function handleSecurityAction(
         action,
       ),
       store = requiredStore(db, key, initialized);
+    if (action === 'bootstrap' && actor.role === 'seller')
+      throw new SecurityRequestError(
+        'Use registered-email password recovery to set your password.',
+        422,
+      );
     if (action === 'bootstrap')
       return await handleBootstrap(request, db, actor, store, data);
-    if (action === 'disable' && actor.role !== 'super_admin')
+    if (action === 'disable' && actor.role === 'admin')
       throw new SecurityRequestError(
         'Only Super Admin can disable their own MFA.',
       );
-    const credential = await freshPassword(db, actor, text(data, 'password'));
+    const passwordChallenge =
+      action === 'verify' && !text(data, 'password')
+        ? await readPasswordChallenge(
+            store,
+            actor.id,
+            actor.sessionHash,
+            Date.now(),
+          )
+        : null;
+    if (action === 'verify' && !text(data, 'password') && !passwordChallenge)
+      throw new SecurityRequestError(
+        'Your password check has expired. Enter your password again to continue.',
+        422,
+        'PASSWORD_REQUIRED',
+      );
+    const credential =
+      passwordChallenge?.credential ??
+      (await freshPassword(db, actor, text(data, 'password')));
     await initializeForStaff(store, actor);
     const service = new MfaService(store),
       now = Date.now();
@@ -124,14 +164,15 @@ export async function handleSecurityAction(
         passwordVerifiedAt: now,
         code: text(data, 'code', 80),
         recovery: data.recovery === true,
+        optionalAccount: actor.role === 'seller',
         now,
         linkedStatements: [
           ...liveActorGuards(db, actor, credential.hash),
           db
             .prepare(
-              "INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM user_roles WHERE user_id=? AND role='super_admin') THEN 1 ELSE 0 END",
+              "INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM user_roles WHERE user_id=? AND role=?) AND (?='super_admin' OR NOT EXISTS(SELECT 1 FROM user_roles WHERE user_id=? AND role IN ('admin','super_admin'))) THEN 1 ELSE 0 END",
             )
-            .bind(guard, actor.id),
+            .bind(guard, actor.id, actor.role, actor.role, actor.id),
           db
             .prepare('DELETE FROM operation_transaction_guards WHERE id=?')
             .bind(guard),
@@ -152,14 +193,30 @@ export async function handleSecurityAction(
             ),
         ],
       });
+      let notificationSent = false;
+      try {
+        await sendAccountSecurityNotice(securityBindings(), {
+          email: actor.email,
+          event: 'mfa_disabled',
+        });
+        notificationSent = true;
+      } catch {
+        // The security change has committed. Never report it as failed or repeat
+        // the factor claim because its informational email could not be sent.
+      }
       return securityResponse(
-        { ok: true, status: 'disabled', returnTo: '/login' },
+        { ok: true, status: 'disabled', returnTo: '/login', notificationSent },
         200,
         hostedSessionCookie('', 0),
       );
     }
     if (action === 'verify') {
       const account = await store.readAccount(actor.id);
+      if (passwordChallenge && account?.value.status !== 'active')
+        throw new SecurityRequestError(
+          'Account security changed. Sign in again.',
+          401,
+        );
       if (
         account?.value.status === 'disabled' ||
         (actor.role === 'admin' && account?.value.status === 'pending')
@@ -197,18 +254,16 @@ export async function handleSecurityAction(
       let cookie: string | undefined;
       if (
         account?.value.status !== 'active' &&
-        (actor.role === 'admin' || account?.value.status === 'disabled') &&
+        account?.value.status !== 'recovery' &&
+        (actor.role !== 'super_admin' ||
+          account?.value.status === 'disabled') &&
         actor.raw &&
         actor.sessionHash &&
-        (await staffSessionIsVerified(
-          db,
-          actor.raw,
-          actor.sessionHash,
-          key,
-          now,
-          false,
-          initialized,
-        ))
+        (await (
+          actor.role === 'seller'
+            ? sellerSessionIsVerified
+            : staffSessionIsVerified
+        )(db, actor.raw, actor.sessionHash, key, now, false, initialized))
       ) {
         // Optional setup must not discard an existing password-proven session.
         // Activation still rotates its generation and revokes older sessions.
@@ -255,7 +310,7 @@ export async function handleSecurityAction(
               });
         cookie = session.cookie;
       }
-      const otpAuthUrl = `otpauth://totp/${encodeURIComponent('HastaBazaar:' + actor.email)}?secret=${setup.secret}&issuer=HastaBazaar&algorithm=SHA1&digits=6&period=30`;
+      const otpAuthUrl = `otpauth://totp/${encodeURIComponent('Hastabazaar:' + actor.email)}?secret=${setup.secret}&issuer=Hastabazaar&algorithm=SHA1&digits=6&period=30`;
       return securityResponse(
         { setupId: setup.setupId, manualKey: setup.secret, otpAuthUrl },
         200,
@@ -333,10 +388,14 @@ export async function handleSecurityAction(
       userId: actor.id,
       sessionHash: actor.sessionHash ?? session.hash,
       targetSessionHash: session.hash,
-      passwordVerifiedAt: now,
+      passwordVerifiedAt: passwordChallenge?.snapshot.value.verifiedAt ?? now,
+      expectedGeneration: passwordChallenge?.snapshot.value.generation,
       code: text(data, 'code', 80),
       now,
-      linkedStatements: session.statements,
+      linkedStatements: [
+        ...(passwordChallenge?.consume ?? []),
+        ...session.statements,
+      ],
     };
     if (action === 'recovery') {
       const result = await service.replaceRecovery({
@@ -373,7 +432,11 @@ export async function securityActivity(request: Request) {
       return securityResponse({ ok: true, setupPending: true });
     const now = Date.now();
     if (
-      !(await staffSessionIsVerified(
+      !(await (
+        actor.role === 'seller'
+          ? sellerSessionIsVerified
+          : staffSessionIsVerified
+      )(
         db,
         actor.raw,
         hostedSessionHash(request.headers)!,
@@ -384,7 +447,7 @@ export async function securityActivity(request: Request) {
       ))
     )
       throw new SecurityRequestError(
-        'Your Admin session ended. Sign in again.',
+        'Your account session ended. Sign in again.',
         401,
         'SESSION_EXPIRED',
       );

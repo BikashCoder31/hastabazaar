@@ -35,7 +35,7 @@ export default async function SellerAccessDeniedPage() {
         </h1>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
           {user
-            ? `${user.email} is signed in, but it is not linked to an approved HastaBazaar seller.`
+            ? `${user.email} is signed in, but it is not linked to an approved Hastabazaar seller.`
             : 'Sign in with the same email used on your approved seller application.'}
         </p>
         <div className="mt-7 flex flex-wrap justify-center gap-3">

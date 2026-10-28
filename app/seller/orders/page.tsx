@@ -23,7 +23,7 @@ export default async function SellerOrdersPage() {
       <SellerHeading
         eyebrow="Fulfilment"
         title="Your orders"
-        description="Prepare only the items from your shop. HastaBazaar coordinates dispatch and confirms delivery."
+        description="Prepare only the items from your shop. Hastabazaar coordinates dispatch and confirms delivery."
       />
       <p className="rounded-xl border bg-card p-4 text-sm leading-6 text-muted-foreground">
         Confirmed → Packing → Ready for pickup → Dispatched → Delivered. Each

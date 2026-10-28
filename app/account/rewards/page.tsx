@@ -11,7 +11,7 @@ import { getRewards } from '@/lib/db/repositories/loyalty';
 import { RewardsPanel } from '@/components/account/rewards-panel';
 
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'My Rewards | HastaBazaar' };
+export const metadata = { title: 'My Rewards | Hastabazaar' };
 
 // The server request clock is used only by the read-only repository projection.
 function readRewards(database: D1Database, customer: CustomerUser) {

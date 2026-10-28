@@ -211,7 +211,7 @@ export default async function ProductPage({
                   >
                     {product.makerName ?? product.tradingName}
                   </Link>
-                  {product.participationRoute === 'managed_maker' ? <span className="mt-2 block">{product.legalSellerName ? `Sold and invoiced by ${product.legalSellerName}` : 'Seller and invoice identity require review'}</span> : <span className="mt-2 block">Through HastaBazaar</span>}
+                  {product.participationRoute === 'managed_maker' ? <span className="mt-2 block">{product.legalSellerName ? `Sold and invoiced by ${product.legalSellerName}` : 'Seller and invoice identity require review'}</span> : <span className="mt-2 block">Through Hastabazaar</span>}
                 </dd>
               </div>
               <div>

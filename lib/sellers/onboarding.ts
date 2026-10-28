@@ -3,7 +3,7 @@ import { MANAGED_SUPPLIER_AGREEMENT_VERSION } from './managed-identity';
 
 export const CURRENT_ONBOARDING_VERSION = 'seller-onboarding-2026-10-20-v1';
 export const PENDING_PAYOUT_PREFIX = 'PENDING VERIFICATION:';
-export const managedClearanceBlock = 'Commercial activation is blocked pending documented legal/accounting clearance, supplier registration and tax assessment, and independent payout beneficiary verification. Personal PAN, government ID and agreement acceptance do not authorise unregistered trading or use of HastaBazaar’s PAN.';
+export const managedClearanceBlock = 'Commercial activation is blocked pending documented legal/accounting clearance, supplier registration and tax assessment, and independent payout beneficiary verification. Personal PAN, government ID and agreement acceptance do not authorise unregistered trading or use of Hastabazaar’s PAN.';
 export type SellerOnboarding = Readonly<{
   version: typeof CURRENT_ONBOARDING_VERSION;
   payoutBeneficiary: string; bankName: string; bankBranch: string; bankAccountNumber: string;
@@ -41,7 +41,7 @@ export function parseCurrentSellerApplication(form: FormData): ReturnType<typeof
   const errors: string[] = [];
   const route = form.get('hasBusinessTaxRegistration');
   if (typeof route!=='string' || !['yes', 'no'].includes(route))
-    errors.push('Choose Sell through HastaBazaar or Registered business seller.');
+    errors.push('Choose Sell through Hastabazaar or Registered business seller.');
   const parsed = parseSellerApplication(form);
   errors.push(...parsed.errors);
   let onboarding: SellerOnboarding | undefined;

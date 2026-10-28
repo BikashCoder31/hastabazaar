@@ -7,11 +7,11 @@ export const publicPolicyDocuments = {
 
 ${companyPolicyIdentity}
 
-Welcome to HastaBazaar. These terms govern shopping, accounts and use of our marketplace. By placing an order or registering an account, you agree to the terms presented to you at that time.
+Welcome to Hastabazaar. These terms govern shopping, accounts and use of our marketplace. By placing an order or registering an account, you agree to the terms presented to you at that time.
 
 ## Our marketplace
 
-HastaBazaar connects customers with independent sellers. Sellers are responsible for their products, listing information and fulfilment obligations. HastaBazaar manages the marketplace and supports order enquiries, complaints and resolutions. Our role as a marketplace does not remove our responsibilities to customers under law.
+Hastabazaar connects customers with independent sellers. Sellers are responsible for their products, listing information and fulfilment obligations. Hastabazaar manages the marketplace and supports order enquiries, complaints and resolutions. Our role as a marketplace does not remove our responsibilities to customers under law.
 
 The listing and order identify the seller of the goods. If a company-operated sale is offered, Hasta Bazaar Private Limited must be identified as the seller and is responsible for both the sale and its marketplace duties. A maker's identity does not replace the legal seller's identity. Approval of a Managed Maker application does not by itself activate a live selling arrangement.
 
@@ -19,7 +19,7 @@ The listing and order identify the seller of the goods. If a company-operated sa
 
 You must be at least 18 years old and legally able to enter into an agreement to open an account or place an order. Purchases for someone under 18 must be made by a parent or guardian.
 
-Provide accurate contact, delivery and payment information. Keep your account credentials confidential and tell us promptly about suspected unauthorised use. You are not responsible for losses caused by HastaBazaar's own security failures merely because they involve your account.
+Provide accurate contact, delivery and payment information. Keep your account credentials confidential and tell us promptly about suspected unauthorised use. You are not responsible for losses caused by Hastabazaar's own security failures merely because they involve your account.
 
 Fraud, impersonation, payment abuse, false orders, harassment, malicious software, unauthorised access and unlawful use of the marketplace are prohibited.
 
@@ -51,7 +51,7 @@ Checkout shows the discount, shopping credit used, delivery charge and remaining
 
 Reviews must reflect genuine experiences. Fake reviews, undisclosed paid endorsements, threats and publication of another person's private information are prohibited. A review will not be removed solely because it is negative.
 
-You retain ownership of content you submit. You give HastaBazaar permission to display, format and reproduce that content as needed to operate and promote the relevant listing or marketplace service. You must have the necessary rights to anything you upload. Private messages and verification documents are not promotional content.
+You retain ownership of content you submit. You give Hastabazaar permission to display, format and reproduce that content as needed to operate and promote the relevant listing or marketplace service. You must have the necessary rights to anything you upload. Private messages and verification documents are not promotional content.
 
 ## Account restrictions
 
@@ -71,7 +71,7 @@ Nepalese law governs these terms. Nothing here excludes a responsibility or reme
 
 ${companyPolicyIdentity}
 
-This policy applies to purchases made through HastaBazaar. Contact support@hastabazaar.com with your order number and the assistance you need.
+This policy applies to purchases made through Hastabazaar. Contact support@hastabazaar.com with your order number and the assistance you need.
 
 ## Standard returns
 
@@ -125,13 +125,13 @@ Where an order was partly paid with shopping credit, the credit used for the aff
 
 Cancellation does not automatically reset a promo or referral usage limit. A redeemed gift code remains used; the attributable credit returns to the wallet instead. See the [Rewards & Shopping Credit Terms](/rewards-terms), [Promo Code Terms](/promo-code-terms) and [Gift Card Terms](/gift-card-terms).
 
-Your bank or payment provider controls when a processed refund appears in your account. We will provide confirmation and help investigate a missing refund. Customer refunds are not postponed while HastaBazaar recovers money from a seller or delivery provider.
+Your bank or payment provider controls when a processed refund appears in your account. We will provide confirmation and help investigate a missing refund. Customer refunds are not postponed while Hastabazaar recovers money from a seller or delivery provider.
 `,
   shipping: `# Shipping & Delivery Policy
 
 ${companyPolicyIdentity}
 
-This policy explains delivery arrangements for orders placed through HastaBazaar.
+This policy explains delivery arrangements for orders placed through Hastabazaar.
 
 ## Delivery availability and charges
 
@@ -159,7 +159,7 @@ We will notify you of a known material delay and explain the available options. 
 
 When an attempt fails because the address is incorrect or the authorised recipient is unavailable, we will contact you about the next step. Any lawful redelivery cost must have been disclosed before purchase and confirmed before the additional service is arranged.
 
-You will not be charged an additional delivery fee to correct an error caused by HastaBazaar, the seller or the delivery provider.
+You will not be charged an additional delivery fee to correct an error caused by Hastabazaar, the seller or the delivery provider.
 
 ## Missing, damaged or incorrect parcels
 
@@ -173,7 +173,7 @@ Returns, replacements and refunds are handled under our Return, Exchange, Cancel
 
 ${companyPolicyIdentity}
 
-Hasta Bazaar Private Limited is responsible for the handling of personal information described in this policy. This policy explains the handling of personal information in connection with HastaBazaar accounts, seller applications, purchases and support requests.
+Hasta Bazaar Private Limited is responsible for the handling of personal information described in this policy. This policy explains the handling of personal information in connection with Hastabazaar accounts, seller applications, purchases and support requests.
 
 ## Information covered
 
@@ -239,7 +239,7 @@ Material changes to how personal information is handled will be communicated bef
 
 ${companyPolicyIdentity}
 
-This policy covers cookies and similar browser storage used in connection with HastaBazaar.
+This policy covers cookies and similar browser storage used in connection with Hastabazaar.
 
 ## What cookies do
 
@@ -272,9 +272,9 @@ Any additional optional analytics or advertising requires disclosure of its purp
 
 ## Managing storage and preferences
 
-You can inspect, block or delete cookies and website storage through your browser settings. Blocking necessary storage can interrupt sign-in, basket or checkout functions. Deleting cookies does not delete order records held separately by HastaBazaar.
+You can inspect, block or delete cookies and website storage through your browser settings. Blocking necessary storage can interrupt sign-in, basket or checkout functions. Deleting cookies does not delete order records held separately by Hastabazaar.
 
-To withdraw optional consent or ask about browser storage associated with HastaBazaar, email support@hastabazaar.com. Withdrawal stops the relevant future consent-based use; it does not by itself reverse earlier lawful processing.
+To withdraw optional consent or ask about browser storage associated with Hastabazaar, email support@hastabazaar.com. Withdrawal stops the relevant future consent-based use; it does not by itself reverse earlier lawful processing.
 
 Payment and other third-party services may provide their own cookie information when you use their services. Our Privacy Policy explains the broader handling of personal information.
 `,
@@ -282,11 +282,11 @@ Payment and other third-party services may provide their own cookie information 
 
 ${companyPolicyIdentity}
 
-Products listed on HastaBazaar must be lawful, safe and accurately described. This policy applies to product listings, images, descriptions and seller communications.
+Products listed on Hastabazaar must be lawful, safe and accurately described. This policy applies to product listings, images, descriptions and seller communications.
 
 ## Prohibited products
 
-HastaBazaar does not permit illegal, stolen, counterfeit or recalled goods; goods that unlawfully use another person's intellectual property; or products made or traded through unlawful exploitation.
+Hastabazaar does not permit illegal, stolen, counterfeit or recalled goods; goods that unlawfully use another person's intellectual property; or products made or traded through unlawful exploitation.
 
 Firearms, ammunition, explosives, weapons marketed for unlawful harm, illegal drugs, tobacco and vaping products, and alcoholic beverages are not permitted on the marketplace.
 
@@ -296,7 +296,7 @@ Sexual material involving children, non-consensual intimate material and product
 
 ## Restricted categories
 
-Products subject to licensing, safety, labelling or special handling requirements need HastaBazaar's written approval before listing. These include food, cosmetics, supplements, medicines, medical devices, electrical goods and children's safety products.
+Products subject to licensing, safety, labelling or special handling requirements need Hastabazaar's written approval before listing. These include food, cosmetics, supplements, medicines, medical devices, electrical goods and children's safety products.
 
 Approval requires the relevant legal authorisations and product evidence. A submitted listing or an open seller account does not, by itself, approve a restricted category. Marketplace approval does not replace a licence required by law.
 
@@ -320,13 +320,13 @@ Customer safety complaints follow the grievance process in the Terms & Condition
 
 ${companyPolicyIdentity}
 
-This agreement is between Hasta Bazaar Private Limited, operating as HastaBazaar, and the seller accepting it. It governs selling through HastaBazaar. A seller must accept the agreement and complete the required verification before the seller account is activated. Submitting an application does not guarantee approval.
+This agreement is between Hasta Bazaar Private Limited, operating as Hastabazaar, and the seller accepting it. It governs selling through Hastabazaar. A seller must accept the agreement and complete the required verification before the seller account is activated. Submitting an application does not guarantee approval.
 
 ## Seller eligibility and information
 
 You must be legally authorised to trade and to represent the business applying for the account. Provide accurate identity, business, tax, contact and settlement information, together with any licence required for your products. Keep these details current.
 
-HastaBazaar may request relevant evidence to verify an application or investigate a compliance issue. Seller verification documents are handled under the Privacy Policy.
+Hastabazaar may request relevant evidence to verify an application or investigate a compliance issue. Seller verification documents are handled under the Privacy Policy.
 
 ## Listings and product responsibilities
 
@@ -336,15 +336,15 @@ Do not describe an item as handmade, locally made or certified without supportin
 
 ## Commission and charges
 
-HastaBazaar charges a {{COMMISSION_PERCENT}}% commission on completed, paid product sales. There is no joining fee.
+Hastabazaar charges a {{COMMISSION_PERCENT}}% commission on completed, paid product sales. There is no joining fee.
 
-The commission base is the product selling value after seller-funded discounts, excluding separately stated product taxes and delivery charges. A discount funded entirely by HastaBazaar does not reduce the seller's agreed product value.
+The commission base is the product selling value after seller-funded discounts, excluding separately stated product taxes and delivery charges. A discount funded entirely by Hastabazaar does not reduce the seller's agreed product value.
 
 Commission = commission base x {{COMMISSION_PERCENT}}%.
 
 For example, when the commission base is NPR 1,000, the commission is NPR {{COMMISSION_EXAMPLE_FEE}}. The remaining product proceeds are NPR {{COMMISSION_EXAMPLE_NET}} before any applicable, separately disclosed tax or agreed adjustment. Delivery charges are not included in this calculation.
 
-Tax legally chargeable on HastaBazaar's commission is itemised separately. Additional optional services require the seller's prior agreement to their charges. No undisclosed fee is deducted.
+Tax legally chargeable on Hastabazaar's commission is itemised separately. Additional optional services require the seller's prior agreement to their charges. No undisclosed fee is deducted.
 
 Commission is not charged on cancelled or unfulfilled sales. When an item payment is refunded, the corresponding commission is reversed; partial refunds receive a proportional reversal.
 
@@ -352,15 +352,15 @@ Commission is not charged on cancelled or unfulfilled sales. When an item paymen
 
 Fulfil accepted orders within the preparation and dispatch periods agreed with the customer. Package products safely and include the required invoice, receipt, labels and instructions.
 
-The legal seller must be correctly identified on the order and applicable invoice. Company PAN registration alone does not establish VAT registration or authorise charging VAT. An operational order statement is not a substitute for a legally required tax invoice. Product invoices and any invoice for HastaBazaar's commission must use the appropriate issuer and lawful tax treatment.
+The legal seller and their registered tax details must be correctly identified on the order and applicable invoice. Hastabazaar's company PAN is shown in the company details above. An operational order statement is not a substitute for a legally required tax invoice. Product invoices and any invoice for Hastabazaar's commission must use the appropriate issuer and lawful tax treatment.
 
-Do not substitute products, alter an accepted price, misstate dispatch or delivery, or move a marketplace order off-platform to avoid commission. Notify HastaBazaar promptly when an order cannot be fulfilled or a delay arises.
+Do not substitute products, alter an accepted price, misstate dispatch or delivery, or move a marketplace order off-platform to avoid commission. Notify Hastabazaar promptly when an order cannot be fulfilled or a delay arises.
 
 ## Returns, refunds and customer remedies
 
-You must comply with HastaBazaar's Return, Exchange, Cancellation & Refund Policy and applicable consumer rights. Do not require an unboxing video as the only acceptable evidence, insist on store credit in place of a monetary refund, or reject a claim solely because a product is custom-made.
+You must comply with Hastabazaar's Return, Exchange, Cancellation & Refund Policy and applicable consumer rights. Do not require an unboxing video as the only acceptable evidence, insist on store credit in place of a monetary refund, or reject a claim solely because a product is custom-made.
 
-You are responsible for refunds and reasonable direct costs attributable to your defective products, inaccurate listings, fulfilment errors or other breaches. Responsibility for loss or damage must follow the evidence and applicable law; a seller is not automatically liable for an error caused by HastaBazaar or an unrelated delivery provider.
+You are responsible for refunds and reasonable direct costs attributable to your defective products, inaccurate listings, fulfilment errors or other breaches. Responsibility for loss or damage must follow the evidence and applicable law; a seller is not automatically liable for an error caused by Hastabazaar or an unrelated delivery provider.
 
 Cooperate with customer remedies without waiting for a separate dispute about responsibility to be resolved.
 
@@ -384,11 +384,11 @@ Application approval or a local test account does not confirm that these live re
 
 Use customer information only to fulfil the relevant order, provide after-sales support and meet legal duties. Do not sell it, add customers to marketing lists without valid consent or disclose it to unrelated parties.
 
-You retain ownership of your listing content. You grant HastaBazaar a non-exclusive licence to display, format and reproduce that content to operate and promote your listings and the marketplace. Verification documents and private customer information are excluded from this licence.
+You retain ownership of your listing content. You grant Hastabazaar a non-exclusive licence to display, format and reproduce that content to operate and promote your listings and the marketplace. Verification documents and private customer information are excluded from this licence.
 
 ## Restrictions, closure and disputes
 
-HastaBazaar may pause listings or restrict an account for unlawful products, misleading information, serious service failures, fraud or breaches of this agreement. We will explain the reason and provide a review route unless doing so is legally prohibited or would compromise an investigation.
+Hastabazaar may pause listings or restrict an account for unlawful products, misleading information, serious service failures, fraud or breaches of this agreement. We will explain the reason and provide a review route unless doing so is legally prohibited or would compromise an investigation.
 
 You may request account closure after resolving open orders and obligations. Closure or suspension does not forfeit undisputed earnings or cancel customer refunds, lawful recordkeeping duties or existing claims.
 

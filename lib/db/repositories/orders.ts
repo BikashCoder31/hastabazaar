@@ -181,7 +181,7 @@ function checkoutTermsSnapshot(sellerCommissionBps: number): Record<string, unkn
     privacy:
       'Order and contact data is used to fulfil the order, provide support, prevent abuse, and meet approved retention duties.',
     grievancePath:
-      'Use the secure order page or Help page to contact HastaBazaar.',
+      'Use the secure order page or Help page to contact Hastabazaar.',
   };
 }
 

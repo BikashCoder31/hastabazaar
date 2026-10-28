@@ -82,7 +82,7 @@ export default async function OrderDocumentPage({
         <div className="mx-auto max-w-4xl rounded-2xl border bg-white p-6 shadow-sm sm:p-10 print:border-0 print:shadow-none">
           <div className="flex flex-wrap items-start justify-between gap-5 border-b pb-7">
             <div>
-              <p className="eyebrow">HastaBazaar marketplace</p>
+              <p className="eyebrow">Hastabazaar marketplace</p>
               <h1 className="mt-2 font-heading text-4xl">
                 {snapshot.documentTitle}
               </h1>
@@ -126,7 +126,7 @@ export default async function OrderDocumentPage({
                         SKU {item.sku}
                       </span>
                     </td>
-                    <td className="py-4 pr-4">{item.makerName ? <><span className="block">Supplied by {item.makerName}</span><span className="block text-xs">{item.legalSellerName ? `Sold and invoiced by ${item.legalSellerName}` : `Recorded seller: ${item.sellerName} · Invoice identity requires review`}</span></> : <>Sold by {item.sellerName}<span className="block text-xs">Through HastaBazaar</span>{item.legalSellerName ? <span className="block text-xs">Legal seller and invoice issuer: {item.legalSellerName}</span> : null}</>}</td>
+                    <td className="py-4 pr-4">{item.makerName ? <><span className="block">Supplied by {item.makerName}</span><span className="block text-xs">{item.legalSellerName ? `Sold and invoiced by ${item.legalSellerName}` : `Recorded seller: ${item.sellerName} · Invoice identity requires review`}</span></> : <>Sold by {item.sellerName}<span className="block text-xs">Through Hastabazaar</span>{item.legalSellerName ? <span className="block text-xs">Legal seller and invoice issuer: {item.legalSellerName}</span> : null}</>}</td>
                     <td className="py-4 pr-4">{item.quantity}</td>
                     <td className="py-4 pr-4 text-right">
                       {money(item.unitPricePaisa)}
@@ -187,7 +187,7 @@ export default async function OrderDocumentPage({
             <p className="mt-2 text-muted-foreground">
               This operational document preserves the order and payment
               snapshot. It is not a PAN/VAT tax invoice. Tax invoicing remains
-              disabled until HastaBazaar’s approved legal identity and invoice
+              disabled until Hastabazaar’s approved legal identity and invoice
               format are configured.
             </p>
           </div>

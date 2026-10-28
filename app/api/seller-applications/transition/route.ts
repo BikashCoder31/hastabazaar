@@ -1,3 +1,4 @@
+import { validateSellerDocumentContent } from '@/lib/uploads/document-content';
 import { env } from 'cloudflare:workers';
 import { requireCustomerApi,CustomerAuthorizationError } from '@/lib/auth/customer';
 import { getManagedMakerAuthority,ManagedMakerAuthorizationError } from '@/lib/managed-commerce/maker-authority';
@@ -11,7 +12,7 @@ import { FormValidationError } from '@/lib/forms/validation';
 import { registeredTransitionFormId,registeredTransitionKeys } from '@/lib/managed-commerce/transition-contract';
 import { submitRegisteredSellerTransition,resubmitRegisteredSellerTransition,validateRegisteredTransitionInput,RouteTransitionError } from '@/lib/managed-commerce/route-transition';
 import { resolveRuntimeEnvironment,assertSimulationAllowed } from '@/lib/staging/environment';
-import { validateSellerDocument,validateSellerDocumentContent,type SellerApplicationDocument } from '@/lib/sellers/application';
+import { validateSellerDocument,type SellerApplicationDocument } from '@/lib/sellers/application';
 
 export const dynamic='force-dynamic';
 const reply=(body:unknown,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'private, no-store',Vary:'Cookie'}});

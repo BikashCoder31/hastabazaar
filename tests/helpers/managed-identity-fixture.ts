@@ -1,3 +1,4 @@
+import { passivePdfFixture } from './passive-pdf';
 import { createHash } from 'node:crypto';
 import { getBusinessSettingDefinition } from '../../lib/configuration/definitions';
 import {
@@ -37,7 +38,7 @@ export function addManagedIdentityUpload(form: FormData) {
     form.set(key, value);
   form.set(
     'representativeIdentity',
-    new File(['%PDF-1.4\nSIMULATED-ID'], 'SIMULATED-identity.pdf', {
+    new File([passivePdfFixture('SIMULATED-ID')], 'SIMULATED-identity.pdf', {
       type: 'application/pdf',
     }),
   );

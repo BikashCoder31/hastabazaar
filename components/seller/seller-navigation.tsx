@@ -15,6 +15,7 @@ import {
   UserRound,
   ChevronDown,
   FileText,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -41,6 +42,11 @@ const links = [
   },
   { href: '/seller/notifications', label: 'Notifications', icon: Bell },
   { href: '/seller/profile', label: 'Shop profile', icon: UserRound },
+  {
+    href: '/security?return_to=%2Fseller',
+    label: 'Account security',
+    icon: ShieldCheck,
+  },
 ];
 
 const primaryPaths = [

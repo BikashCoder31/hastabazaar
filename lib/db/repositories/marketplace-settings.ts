@@ -43,8 +43,31 @@ export async function getRegisteredSellerTerms(database: D1Database, now=Date.no
   return {...setting,document,context,agreementVersion:SELLER_AGREEMENT_VERSION};
 }
 export type RegisteredSellerTerms = Awaited<ReturnType<typeof getRegisteredSellerTerms>>;
+/** Match only the exact recorded offer or its former brand spelling. */
+export async function retainedRegisteredSellerTerms(current: RegisteredSellerTerms, accepted: {
+  context:string;agreementVersion:string;commissionSettingVersionId:string|null;commissionBps:number;document:string;
+}): Promise<RegisteredSellerTerms|null> {
+  if(accepted.agreementVersion!==current.agreementVersion || accepted.commissionSettingVersionId!==current.versionId || accepted.commissionBps!==current.basisPoints) return null;
+  if(accepted.context===current.context && accepted.document===current.document) return current;
+  const document=current.document.replace(/\bHastabazaar\b/g,'HastaBazaar');
+  if(accepted.document!==document) return null;
+  const snapshot={agreementVersion:current.agreementVersion,commissionSettingVersionId:current.versionId,commissionBps:current.basisPoints,document};
+  const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(snapshot)));
+  const context=Array.from(new Uint8Array(hash),byte=>byte.toString(16).padStart(2,'0')).join('');
+  return accepted.context===context?{...current,document,context}:null;
+}
 export async function prepareSellerCommissionAcceptance(database: D1Database, options: {sellerId:string;actorId:string;context:string;requestId:string;now:number;language?:'en'|'ne';mode?:'application'|'approved_seller'|'managed_transition';transitionId?:string;acceptedAt?:number}) {
-  const terms=await getRegisteredSellerTerms(database,options.now);
+  let terms=await getRegisteredSellerTerms(database,options.now);
+  if(options.mode==='managed_transition' && options.transitionId && options.context!==terms.context) {
+    const row=await database.prepare(`SELECT registered_terms_snapshot_json AS json FROM seller_route_transition_applications
+      WHERE id=? AND seller_id=? AND requested_by=? AND status='scheduled'`).bind(options.transitionId,options.sellerId,options.actorId).first<{json:string}>();
+    if(row) {
+      const recorded=JSON.parse(row.json);
+      if(recorded.context===options.context && recorded.acceptedAt===options.acceptedAt && recorded.acceptedBy===options.actorId) {
+        terms=await retainedRegisteredSellerTerms(terms,recorded)??terms;
+      }
+    }
+  }
   if (options.context!==terms.context) throw new SellerCommissionTermsChangedError('Seller commission terms have changed. Reload and review the current terms before accepting.');
   const snapshot={schema:1,context:terms.context,agreementVersion:terms.agreementVersion,
     commissionSettingVersionId:terms.versionId,commissionBps:terms.basisPoints,document:terms.document,

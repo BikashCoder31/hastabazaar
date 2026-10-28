@@ -357,7 +357,7 @@ export function LegalPolicyPage({
       <main id="main-content">
         <div className="border-b bg-secondary/30">
           <div className="shell py-6 sm:py-14">
-            <p className="eyebrow">HastaBazaar · Legal & Policies</p>
+            <p className="eyebrow">Hastabazaar · Legal & Policies</p>
             <h1 className="mt-2 max-w-4xl font-heading text-3xl leading-tight tracking-tight sm:mt-3 sm:text-5xl">
               {policy.title}
             </h1>

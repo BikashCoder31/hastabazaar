@@ -1,8 +1,11 @@
 import { mailboxClaimStatements } from './mailbox-verification';
 import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { ADMIN_ABSOLUTE_MS } from '../security/model';
+import { SecurityStore } from '../security/store';
+import { passwordChallengeStatements } from '../security/password-challenge';
 import {
   staffSessionIsVerified,
+  sellerSessionIsVerified,
   passwordOnlyProofStatements,
 } from '../security/session';
 
@@ -126,10 +129,10 @@ export async function createHostedSessionForUser(
 ): Promise<string> {
   const user = await database
     .prepare(
-      "SELECT id, EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=users.id AND r.role IN ('admin','super_admin')) AS isStaff FROM users WHERE id = ? AND status = 'active' LIMIT 1",
+      "SELECT id, EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=users.id AND r.role IN ('admin','super_admin')) AS isStaff, EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=users.id AND r.role='seller') AS isSeller FROM users WHERE id = ? AND status = 'active' LIMIT 1",
     )
     .bind(userId)
-    .first<{ id: string; isStaff: number }>();
+    .first<{ id: string; isStaff: number; isSeller: number }>();
   if (!user) throw new Error('The account is not available.');
 
   const token = Buffer.from(randomBytes(32)).toString('base64url');
@@ -172,18 +175,37 @@ export async function createHostedSessionForUser(
       ),
   );
   const sessionIndex = statements.length - 1;
-  if (user.isStaff && proof.passwordHash && proof.securityKey)
+  if (
+    (user.isStaff || user.isSeller) &&
+    proof.passwordHash &&
+    proof.securityKey
+  ) {
+    if (user.isStaff)
+      statements.push(
+        ...(await passwordOnlyProofStatements(
+          database,
+          user.id,
+          tokenHash(token),
+          proof.passwordHash,
+          proof.securityKey,
+          proof.initialized ?? false,
+          now,
+        )),
+      );
     statements.push(
-      ...(await passwordOnlyProofStatements(
-        database,
+      ...(await passwordChallengeStatements(
+        new SecurityStore(
+          database,
+          proof.securityKey,
+          proof.initialized ?? false,
+        ),
         user.id,
         tokenHash(token),
         proof.passwordHash,
-        proof.securityKey,
-        proof.initialized ?? false,
         now,
       )),
     );
+  }
   if (linkedStatement) {
     // Fail the whole batch if the credential or active-account proof changed
     // after the initial read. A request ID never grants a session.
@@ -208,6 +230,7 @@ export type HostedSessionIdentity = HostedIdentity & {
   createdAt: number;
   expiresAt: number;
   isStaff: number;
+  isSeller?: number;
 };
 
 /** Raw first-factor session for the restricted security ceremony only. No activity touch. */
@@ -224,6 +247,7 @@ export async function readHostedSession(
         users.email, users.display_name AS fullName,
         user_sessions.last_seen_at AS lastSeenAt, user_sessions.created_at AS createdAt, user_sessions.expires_at AS expiresAt,
         EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=users.id AND r.role IN ('admin','super_admin')) AS isStaff,
+        EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=users.id AND r.role='seller') AS isSeller,
         EXISTS(SELECT 1 FROM account_email_verifications v WHERE v.user_id=users.id AND v.email=lower(users.email)) AS mailboxVerified
        FROM user_sessions
        INNER JOIN users ON users.id = user_sessions.user_id
@@ -251,6 +275,20 @@ export async function getHostedIdentity(
   if (
     row.isStaff &&
     !(await staffSessionIsVerified(
+      database,
+      row,
+      hostedSessionHash(requestHeaders)!,
+      options.securityKey,
+      now,
+      options.activity ?? true,
+      options.initialized,
+    ))
+  )
+    return null;
+  if (
+    !row.isStaff &&
+    row.isSeller &&
+    !(await sellerSessionIsVerified(
       database,
       row,
       hostedSessionHash(requestHeaders)!,

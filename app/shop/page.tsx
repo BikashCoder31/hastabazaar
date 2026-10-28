@@ -193,7 +193,7 @@ export default async function ShopPage({
                 <p className="mx-auto mt-3 max-w-lg leading-7 text-muted-foreground">
                   {isFiltered
                     ? 'Try clearing one filter or searching with a broader phrase.'
-                    : 'Approved products will appear here as soon as HastaBazaar’s catalogue review is complete.'}
+                    : 'Approved products will appear here as soon as Hastabazaar’s catalogue review is complete.'}
                 </p>
                 {isFiltered ? (
                   <Link
@@ -245,7 +245,7 @@ export default async function ShopPage({
                     </div>
                     <p className="mt-4 text-sm font-semibold text-primary">
                       {product.tradingName}
-                      {product.participationRoute === 'managed_maker' ? <span className="block text-xs text-muted-foreground">Supplied by {product.makerName??product.tradingName}<span className="block">{product.legalSellerName ? `Sold and invoiced by ${product.legalSellerName}` : 'Seller and invoice identity require review'}</span></span> : <span className="block text-xs text-muted-foreground">Sold by {product.tradingName} · Through HastaBazaar</span>}
+                      {product.participationRoute === 'managed_maker' ? <span className="block text-xs text-muted-foreground">Supplied by {product.makerName??product.tradingName}<span className="block">{product.legalSellerName ? `Sold and invoiced by ${product.legalSellerName}` : 'Seller and invoice identity require review'}</span></span> : <span className="block text-xs text-muted-foreground">Sold by {product.tradingName} · Through Hastabazaar</span>}
                     </p>
                     <h2 className="mt-1 line-clamp-2 text-base font-semibold leading-6">
                       {product.nameEn}

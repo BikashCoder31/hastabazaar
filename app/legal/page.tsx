@@ -11,7 +11,7 @@ export const metadata = {
   alternates: { canonical: 'https://hastabazaar.com/legal' },
   title: 'Legal & Policies',
   description:
-    'Find policies about shopping, selling, delivery and personal information on HastaBazaar.',
+    'Find policies about shopping, selling, delivery and personal information on Hastabazaar.',
 };
 
 export default function LegalPage() {
@@ -26,7 +26,7 @@ export default function LegalPage() {
             </h1>
             <p className="mt-5 max-w-3xl text-lg leading-8 text-muted-foreground">
               Find the policies that explain shopping, selling, delivery and
-              personal information on HastaBazaar.
+              personal information on Hastabazaar.
             </p>
           <p className="mt-4 text-sm text-muted-foreground">Updated {LEGAL_POLICY_DATE_LABEL} · Nepal time</p>
           <p className="mt-5 text-base leading-7 text-muted-foreground">

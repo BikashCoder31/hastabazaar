@@ -1,7 +1,8 @@
+import { validateSellerDocumentContent } from '@/lib/uploads/document-content';
 import { parseManagedMakerIdentity, MANAGED_SUPPLIER_AGREEMENT_VERSION } from '@/lib/sellers/managed-identity';
 import { managedAgreementVersionForSeller } from '@/lib/db/repositories/managed-maker-details';
 import { parseSellerOnboardingForm, pendingPayoutReference } from '@/lib/sellers/onboarding';
-import { maximumApplicationBytes, validateSellerDocument, validateSellerDocumentContent, type SellerApplicationDocument } from '@/lib/sellers/application';
+import { maximumApplicationBytes, validateSellerDocument,  type SellerApplicationDocument } from '@/lib/sellers/application';
 import { ManagedMakerTermsChangedError } from '@/lib/db/repositories/managed-maker-details';
 import { resolvePublishedForm } from '@/lib/forms/runtime';
 import { configuredMultipartAnswers, digestMultipartRequest, formRequestReplay } from '@/lib/forms/submission';

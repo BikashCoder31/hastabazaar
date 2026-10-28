@@ -25,7 +25,7 @@ export default async function ResetPasswordPage({
     <main tabIndex={-1} id="main-content" className="grid min-h-screen place-items-center bg-muted/20 px-5 py-12">
       <section className="w-full max-w-md rounded-3xl border bg-card p-7 shadow-sm sm:p-9">
         <Link href="/" className="text-sm font-semibold text-primary">
-          ← HastaBazaar
+          ← Hastabazaar
         </Link>
         <h1 className="mt-6 font-heading text-4xl">Reset your password</h1>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">

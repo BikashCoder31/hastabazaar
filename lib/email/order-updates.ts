@@ -93,19 +93,19 @@ export function buildOrderEmail(data: OrderEmailData, origin: string) {
     ...(data.trackingCode ? [`Delivery reference: ${data.trackingCode}`] : []),
     'Track your order using your order number and the email address used at checkout.',
     trackingUrl.toString(),
-    'Updates appear when HastaBazaar or the delivery team records progress. Tracking is not a live location service.',
+    'Updates appear when Hastabazaar or the delivery team records progress. Tracking is not a live location service.',
     `Need help? ${new URL('/help', url)}`,
   ];
   return {
     to: data.email,
-    subject: `HastaBazaar · ${data.orderNumber} · ${progress.label}`,
+    subject: `Hastabazaar · ${data.orderNumber} · ${progress.label}`,
     text: lines.join('\n\n'),
     html: `<!doctype html><html><body style="margin:0;background:#f5f7fb;color:#17345f;font-family:Arial,sans-serif"><div style="max-width:580px;margin:auto;padding:32px 16px"><div style="background:white;border:1px solid #dfe5ef;border-radius:18px;padding:28px"><p style="font-weight:bold;letter-spacing:2px">HASTABAZAAR</p><h1 style="font-size:28px">${escape(progress.label)}</h1>${lines
       .filter((l) => l !== trackingUrl.toString())
       .map((l) => `<p style="line-height:1.6">${escape(l)}</p>`)
       .join(
         '',
-      )}<p style="margin-top:28px"><a href="${escape(trackingUrl.toString())}" style="display:inline-block;background:#17345f;color:white;padding:14px 22px;border-radius:10px;text-decoration:none;font-weight:bold">Track your order</a></p><p style="font-size:12px;color:#68758a">This is an order update from HastaBazaar. Please use our Help page for support.</p></div></div></body></html>`,
+      )}<p style="margin-top:28px"><a href="${escape(trackingUrl.toString())}" style="display:inline-block;background:#17345f;color:white;padding:14px 22px;border-radius:10px;text-decoration:none;font-weight:bold">Track your order</a></p><p style="font-size:12px;color:#68758a">This is an order update from Hastabazaar. Please use our Help page for support.</p></div></div></body></html>`,
   };
 }
 

@@ -132,6 +132,7 @@ export async function staffSessionIsVerified(
 ): Promise<boolean> {
   const store = await securityStore(database, key, initialized);
   const account = store ? await store.readAccount(row.accountId) : null;
+  if (account?.value.status === 'recovery') return false;
   if (
     store &&
     account &&
@@ -176,6 +177,44 @@ export async function staffSessionIsVerified(
     }
   }
   return true;
+}
+
+/** Sellers opt in. Once registered, missing state must never silently opt them out. */
+export async function sellerMfaRequired(
+  database: D1Database,
+  userId: string,
+  key?: string,
+  initialized = false,
+): Promise<boolean> {
+  const store = await securityStore(database, key, initialized);
+  const manifest = store ? await store.readManifest() : null;
+  if (!store || !manifest?.value.userIds.includes(userId)) return false;
+  const account = await store.readAccount(userId);
+  return (
+    account?.value.status === 'active' || account?.value.status === 'recovery'
+  );
+}
+
+export async function sellerSessionIsVerified(
+  database: D1Database,
+  row: HostedSessionIdentity,
+  sessionHash: string,
+  key: string | undefined,
+  now: number,
+  activity = false,
+  initialized = false,
+): Promise<boolean> {
+  if (!(await sellerMfaRequired(database, row.accountId, key, initialized)))
+    return true;
+  return staffSessionIsVerified(
+    database,
+    row,
+    sessionHash,
+    key,
+    now,
+    activity,
+    initialized,
+  );
 }
 
 export function interactiveNavigation(headers: Headers): boolean {

@@ -46,7 +46,7 @@ export default async function SellerProfilePage({ searchParams }: {
         <LockKeyhole className="mt-1 size-5 shrink-0 text-primary" />
         <p>
           Registration, tax, and payout details remain locked to your reviewed
-          application. Changes need verification by HastaBazaar operations.
+          application. Changes need verification by Hastabazaar operations.
         </p>
       </div>
       <SellerProfileForm profile={profile} sellerId={seller.sellerId} />

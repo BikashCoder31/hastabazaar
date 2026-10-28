@@ -35,7 +35,7 @@ void test('authenticated permission denial offers workspace recovery without cla
   const html = await renderDeniedPage({ userId: 'qa-admin', displayName: 'Fictional QA Admin',
     email: 'qa-staging+admin@hastabazaar.com', fullName: 'Fictional QA Admin', mailboxVerified: true });
   assert.match(html, /qa-staging\+admin@hastabazaar\.com/);
-  assert.doesNotMatch(html, /has not been granted HastaBazaar staff access|<h1[^>]*>Staff invitation required/);
+  assert.doesNotMatch(html, /has not been granted Hastabazaar staff access|<h1[^>]*>Staff invitation required/);
   assert.match(html, /permission[^<]*this page/);
   assert.match(html, /<a[^>]*href="\/auth\/continue"[^>]*>Return to your workspace<\/a>/);
   const logoutForm = html.match(/<form[^>]*data-form-id="identity.logout"[^>]*>/)?.[0] ?? '';
@@ -47,7 +47,7 @@ void test('authenticated permission denial offers workspace recovery without cla
 
 void test('anonymous denial retains invitation verification and sign-in instead of authenticated recovery', async () => {
   const html = await renderDeniedPage(null);
-  assert.match(html, /Sign in with the email address invited by a HastaBazaar Super Admin/);
+  assert.match(html, /Sign in with the email address invited by a Hastabazaar Super Admin/);
   assert.match(html, /email code or Google/);
   assert.match(html, /Password registration alone does not verify/);
   assert.match(html, /<a[^>]*href="\/login\?return_to=%2Fadmin"[^>]*target="_top"[^>]*>Staff sign in<\/a>/);

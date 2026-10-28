@@ -8,6 +8,7 @@ import {
 import { requireDatabase, requireMediaBucket } from '@/lib/db/d1';
 import { getSellerDocumentForStaff } from '@/lib/db/repositories/seller-applications';
 import { PENDING_PAYOUT_PREFIX } from '@/lib/sellers/onboarding';
+import { evidenceFileDisposition } from '@/lib/http/content-disposition';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,9 +48,6 @@ export async function GET(
         {headers:{'Cache-Control':'private, no-store, max-age=0',Vary:'Cookie','X-Content-Type-Options':'nosniff'}});
     }
 
-    const safeName = document.originalName
-      .replace(/[^\x20-\x7e]/g, '_')
-      .replace(/[\r\n"\\]/g, '_');
     const safeMimeType = new Set([
       'application/pdf',
       'image/jpeg',
@@ -61,9 +59,9 @@ export async function GET(
       headers: {
         'Cache-Control': 'private, no-store, max-age=0',
         'Content-Type': safeMimeType,
-        'Content-Disposition': `inline; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(document.originalName)}`,
+        'Content-Disposition': evidenceFileDisposition(document.originalName, safeMimeType),
         'X-Content-Type-Options': 'nosniff',
-        'Content-Security-Policy': "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'",
+        'Content-Security-Policy': "sandbox; default-src 'none'; frame-ancestors 'none'",
         ETag: object.httpEtag,
       },
     });

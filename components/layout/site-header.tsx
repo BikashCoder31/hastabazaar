@@ -45,8 +45,8 @@ export async function SiteHeader() {
             <MobileNavigation />
             <Link
               href="/"
-              aria-label="HastaBazaar home"
-              title="HastaBazaar home"
+              aria-label="Hastabazaar home"
+              title="Hastabazaar home"
               className="site-header-brand flex min-h-11 min-w-0 items-center gap-2 rounded-lg sm:gap-3"
             >
               <Image

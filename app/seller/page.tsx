@@ -203,7 +203,7 @@ export default async function SellerDashboardPage() {
         >
           <h2 className="font-heading text-2xl">Returns & complaints</h2>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            Review cases for your items. HastaBazaar reviews the final outcome.
+            Review cases for your items. Hastabazaar reviews the final outcome.
           </p>
           <span className="section-link mt-3">
             Open cases

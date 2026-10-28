@@ -62,7 +62,7 @@ export default async function SellerFinancePage() {
           <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
             Registered Seller commission is charged on the product selling value
             after seller-funded discounts, excluding separately stated product
-            taxes and delivery charges. Discounts funded entirely by HastaBazaar
+            taxes and delivery charges. Discounts funded entirely by Hastabazaar
             do not reduce the seller&apos;s agreed product value. Taxes legally
             chargeable on the commission are itemised separately.{' '}
             <Link

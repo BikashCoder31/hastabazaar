@@ -256,7 +256,7 @@ export default async function CommissionPage({
         <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
           Commission is calculated on product selling value after seller-funded
           discounts. Separately stated product taxes and delivery are excluded.
-          HastaBazaar-funded discounts do not reduce the agreed product value.
+          Hastabazaar-funded discounts do not reduce the agreed product value.
           Earnings and refund reversals use the original order and ledger
           snapshots. No joining fee.
         </p>

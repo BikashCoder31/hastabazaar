@@ -102,7 +102,7 @@ void test('new managed application requires personal PAN while retained correcti
       .locator('[name="hasBusinessTaxRegistration"]')
       .selectOption('no');
     await page
-      .getByText('Company selling account: HastaBazaar', { exact: true })
+      .getByText('Company selling account: Hastabazaar', { exact: true })
       .waitFor();
     assert.match(
       await page.locator('form').innerText(),

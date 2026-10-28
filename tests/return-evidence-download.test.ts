@@ -6,6 +6,7 @@ import { hashOpaqueToken, RECEIPT_COOKIE } from '../lib/cart/session';
 const fixture = {
   name: 'नेपाली.jpg',
   receiptHash: '',
+  mimeType: 'image/jpeg',
   bytes: new Uint8Array([255, 216, 255, 217]),
 };
 (
@@ -16,7 +17,7 @@ registerHooks({
     const modules: Record<string, string> = {
       'cloudflare:workers': `export const env={DB:{prepare(){}},MEDIA:{async get(){return {body:new Response(globalThis.evidenceDownloadFixture.bytes).body}}}};`,
       '@/app/auth': 'export async function getAuthenticatedUser(){return null}',
-      '@/lib/db/repositories/returns': `export async function getReturnEvidenceAccess(){const f=globalThis.evidenceDownloadFixture;return {objectKey:'private/evidence',originalName:f.name,mimeType:'image/jpeg',receiptTokenHash:f.receiptHash,sellerId:'seller'}}`,
+      '@/lib/db/repositories/returns': `export async function getReturnEvidenceAccess(){const f=globalThis.evidenceDownloadFixture;return {objectKey:'private/evidence',originalName:f.name,mimeType:f.mimeType,receiptTokenHash:f.receiptHash,sellerId:'seller'}}`,
       '@/lib/db/repositories/staff-permissions':
         'export async function hasStaffPermissionBySubject(){return false}',
     };
@@ -70,4 +71,24 @@ void test('authorized return evidence preserves Nepali names in a valid UTF-8 do
     { params: Promise.resolve({ id: 'e' }) },
   );
   assert.equal(denied.status, 403);
+});
+
+void test('private PDF evidence downloads with sandbox protection and unknown types never render as HTML', async () => {
+  fixture.receiptHash = await hashOpaqueToken('fictional-evidence-receipt');
+  const { GET } = await import('../app/api/return-evidence/[id]/route');
+  try {
+    fixture.name = 'certificate.cmd';
+    for (const mime of ['application/pdf','text/html']) {
+      fixture.mimeType = mime;
+      const response = await GET(new Request('https://example.test/api/return-evidence/e', {
+        headers:{cookie:`${RECEIPT_COOKIE}=fictional-evidence-receipt`},
+      }), {params:Promise.resolve({id:'e'})});
+      assert.equal(response.status,200);
+      assert.equal(response.headers.get('content-type'),mime === 'application/pdf' ? mime : 'application/octet-stream');
+      assert.match(response.headers.get('content-disposition')!,/^attachment;/);
+      assert.match(response.headers.get('content-disposition')!,mime === 'application/pdf' ? /certificate\.cmd\.pdf/ : /certificate\.cmd\.bin/);
+      assert.match(response.headers.get('content-security-policy')!,/sandbox/);
+      assert.equal(response.headers.get('x-content-type-options'),'nosniff');
+    }
+  } finally {fixture.mimeType='image/jpeg';}
 });

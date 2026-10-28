@@ -18,3 +18,13 @@ export function inlineFileDisposition(originalName: string): string {
   );
   return `inline; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
+
+/** Keep the downloaded extension consistent with the response type, including legacy names. */
+export function evidenceFileDisposition(originalName: string, mimeType: string): string {
+  const extension = ({'image/jpeg':'.jpg','image/png':'.png','image/webp':'.webp','application/pdf':'.pdf'} as Record<string,string>)[mimeType] ?? '.bin';
+  let name = Array.from(originalName).slice(0,180).join('');
+  if (!name.toLowerCase().endsWith(extension) && !(mimeType === 'image/jpeg' && name.toLowerCase().endsWith('.jpeg')))
+    name += extension;
+  const disposition = inlineFileDisposition(name);
+  return ['image/jpeg','image/png','image/webp'].includes(mimeType) ? disposition : disposition.replace(/^inline;/,'attachment;');
+}

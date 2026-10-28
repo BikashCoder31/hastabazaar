@@ -96,7 +96,7 @@ export function buildEarningsAccrualStatements(
       ) SELECT lower(hex(randomblob(16))), order_items.seller_id, order_items.id,
         NULL, NULL, 'commission', -order_items.commission_paisa,
         COALESCE(orders.delivered_at, ?) + ${offset('deliveryHoldDays')},
-        'HastaBazaar commission', COALESCE(orders.delivered_at, ?)
+        'Hastabazaar commission', COALESCE(orders.delivered_at, ?)
         ${base}`,
       )
       .bind(options.now, availableOffset, options.now, ...orderBindings),

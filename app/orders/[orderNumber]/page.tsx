@@ -264,7 +264,7 @@ export default async function OrderReceiptPage({
                           {item.productName} × {item.quantity}
                         </strong>
                         <span className="text-muted-foreground">
-                          {item.makerName ? <>Supplied by {item.makerName}<span className="block text-xs">{item.legalSellerName ? `Sold and invoiced by ${item.legalSellerName}` : `Recorded seller: ${item.sellerName} · Invoice identity requires review`}</span></> : <>Sold by {item.sellerName}<span className="block text-xs">Through HastaBazaar</span></>}
+                          {item.makerName ? <>Supplied by {item.makerName}<span className="block text-xs">{item.legalSellerName ? `Sold and invoiced by ${item.legalSellerName}` : `Recorded seller: ${item.sellerName} · Invoice identity requires review`}</span></> : <>Sold by {item.sellerName}<span className="block text-xs">Through Hastabazaar</span></>}
                         </span>
                         <span className="mt-2 block">
                           <OrderStatusBadge
@@ -369,7 +369,7 @@ export default async function OrderReceiptPage({
               </span>
             </div>
             <p className="mt-6 text-sm leading-6 text-muted-foreground">
-              A HastaBazaar operations member or delivery representative may
+              A Hastabazaar operations member or delivery representative may
               call to confirm the address.{' '}
               {receipt.paymentStatus === 'paid'
                 ? 'COD payment is recorded as collected.'

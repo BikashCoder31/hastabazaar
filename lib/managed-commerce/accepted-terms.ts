@@ -77,6 +77,14 @@ export async function getAcceptedManagedTerms(db: D1Database, sellerId: string, 
   return findAcceptedOffer(db,sellerId,offer,now);
 }
 async function findAcceptedOffer(db:D1Database,sellerId:string,offer:ManagedTermsOffer,now:number):Promise<AcceptedManagedTerms|null> {
+  // This spelling-only brand correction must not require renewed consent.
+  // Compare against one exact earlier rendering of this same offer, including
+  // all commercial fields and setting versions; never normalize stored evidence.
+  const previousBrandContext = offer.snapshot.company.brandName === 'Hastabazaar'
+    ? await managedMakerAgreementContext({ ...offer.snapshot,
+      company: { ...offer.snapshot.company, brandName: 'HastaBazaar' },
+      terms: offer.snapshot.terms.map(term => term.replace(/\bHastabazaar\b/g, 'HastaBazaar')),
+    }) : null;
   const rows = await db.prepare(`SELECT d.id,d.agreement_snapshot_json AS snapshotJson,
       d.agreement_accepted_by AS acceptedBy,d.agreement_accepted_at AS acceptedAt,
       d.agreement_language AS language,d.agreement_form_version_id AS formVersionId
@@ -93,9 +101,12 @@ async function findAcceptedOffer(db:D1Database,sellerId:string,offer:ManagedTerm
     const base: Agreement = { version: stored.version, company: stored.company, companyAccount: stored.companyAccount,
       commercialModel: stored.commercialModel, platformRetentionBps: stored.platformRetentionBps, terms: stored.terms };
     const sources = stored.settingVersionIds ?? { account: null, retention: null };
-    if (await managedMakerAgreementContext(base) === offer.context &&
+    const context = await managedMakerAgreementContext(base);
+    if ((context === offer.context || context === previousBrandContext) &&
       sources.account === offer.settingVersionIds.account && sources.retention === offer.settingVersionIds.retention) {
-      return { ...offer, detailId: row.id, sellerId, acceptedBy: row.acceptedBy,
+      return { ...offer, snapshot: base, context,
+        id: await digestFormRequest({ context, settingVersionIds: offer.settingVersionIds }),
+        detailId: row.id, sellerId, acceptedBy: row.acceptedBy,
         acceptedAt: row.acceptedAt, language: 'en', formVersionId: row.formVersionId };
     }
   }
