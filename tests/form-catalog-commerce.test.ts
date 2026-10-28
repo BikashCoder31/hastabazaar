@@ -615,6 +615,12 @@ void test('return route hashes validated evidence bytes and cleans retry uploads
   try {
     const route = await import('../app/orders/[orderNumber]/returns/route');
     const context = { params: Promise.resolve({ orderNumber: 'HK-TEST' }) };
+    const { sharp } = await import('../lib/reviews/image-processor');
+    const images = await Promise.all([1, 2].map(red => sharp({ create: {
+      width: 2, height: 2, channels: 3, background: { r: red, g: 0, b: 0 },
+    } }).png({ compressionLevel: 0 }).toBuffer()));
+    assert.equal(images[0].length, images[1].length, 'valid fixtures retain equal byte lengths');
+    assert.notDeepEqual(images[0], images[1], 'the changed-content fixture must have distinct bytes');
     const post = (lastByte: number, name = 'proof.png') => {
       const form = new FormData();
       for (const [key, value] of Object.entries({ orderItemId: 'item', quantity: '1',
@@ -622,7 +628,7 @@ void test('return route hashes validated evidence bytes and cleans retry uploads
         detail: 'The item has a manufacturing defect.', locale: 'en-NP',
         idempotencyKey: 'return-route-evidence-1', formVersion: '1', customAnswers: '[]' }))
         form.set(key, value);
-      form.set('evidence', new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, lastByte])],
+      form.set('evidence', new File([new Uint8Array(images[lastByte - 1])],
         name, { type: 'image/png' }));
       return route.POST(new Request('http://localhost:3000/orders/HK-TEST/returns', {
         method: 'POST', headers: { origin: 'http://localhost:3000',
