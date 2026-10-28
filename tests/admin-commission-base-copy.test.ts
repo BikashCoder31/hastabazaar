@@ -11,7 +11,7 @@ async function renderCommission(hasSupplement: boolean) {
     entryPoints: ['app/admin/commission/page.tsx'], bundle: true, write: false,
     platform: 'node', format: 'cjs', external: ['react', 'react/*'],
     plugins: [{ name: 'commission-page-boundaries', setup(b) {
-      b.onResolve({ filter: /^(cloudflare:workers|next\/link|@\/lib\/auth\/staff|@\/components\/admin\/commission-(settings|report)|@\/lib\/db\/repositories\/(commission-rates|commission-reporting|marketplace-settings))$/ }, args => ({ path: args.path, namespace: 'commission-page' }));
+      b.onResolve({ filter: /^(cloudflare:workers|next\/link|@\/lib\/auth\/staff|@\/components\/admin\/commission-(settings|report)|@\/lib\/db\/repositories\/(commission-rates|commission-reporting|marketplace-settings|business-settings))$/ }, args => ({ path: args.path, namespace: 'commission-page' }));
       b.onLoad({ filter: /.*/, namespace: 'commission-page' }, args => {
         const sources: Record<string, string> = {
           'cloudflare:workers': 'exports.env={DB:{}};',
@@ -21,6 +21,7 @@ async function renderCommission(hasSupplement: boolean) {
           '@/components/admin/commission-report': 'exports.CommissionReport=()=>null;',
           '@/lib/db/repositories/commission-reporting': 'exports.getCommissionReport=async()=>({});',
           '@/lib/db/repositories/marketplace-settings': 'exports.getCommissionSetting=async()=>({basisPoints:725,percent:7.25,versionId:"saved-base",updatedAt:1,updatedByName:"Staff",effectiveFrom:1});',
+          '@/lib/db/repositories/business-settings': 'exports.listBusinessSettingHistory=async()=>[];',
           '@/lib/db/repositories/commission-rates': `exports.getCommissionRateState=async()=>({asOf:2000,revision:1,approvedSellers:2,
             current:{basisPoints:${hasSupplement ? 1200 : 725},version:'${hasSupplement ? 'supplement' : 'saved-base'}',acceptedAt:null},
             history:${hasSupplement ? "[{id:'supplement',basisPoints:1200,effectiveAt:1000,agreementVersion:'existing-version',termsText:'Published fee terms',reason:'Isolated supplement',createdAt:1,createdByName:'Staff',acceptedSellers:1,status:'active',cancelledAt:null,cancelledByName:null,cancellationReason:null}]" : '[]'}});`,

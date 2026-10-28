@@ -48,6 +48,9 @@ export default async function AdminLegalPoliciesPage() {
 
       <section className="rounded-3xl border bg-card p-6">
         <h2 className="font-heading text-2xl">Public policy set</h2>
+        <Link href="/legal/history" className="mt-3 inline-flex min-h-11 items-center font-semibold text-primary underline underline-offset-4">
+          View archived policy wording (staff only)
+        </Link>
         <div className="mt-4 flex flex-wrap gap-2">
           {publicLegalPolicyNavigation.map((policy) => (
             <Link

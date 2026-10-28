@@ -365,10 +365,7 @@ export function LegalPolicyPage({
               {policy.description}
             </p>
             <p className="mt-3 text-sm text-muted-foreground">
-              Updated and effective {LEGAL_POLICY_DATE_LABEL} · Nepal time ·{' '}
-              <Link href={`/legal/history?policy=${policyKey}`} className="font-semibold text-primary underline underline-offset-4">
-                Previous wording
-              </Link>
+              Updated and effective {LEGAL_POLICY_DATE_LABEL} · Nepal time
             </p>
             {summary ? (
               <section

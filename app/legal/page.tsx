@@ -28,7 +28,7 @@ export default function LegalPage() {
               Find the policies that explain shopping, selling, delivery and
               personal information on HastaBazaar.
             </p>
-          <p className="mt-4 text-sm text-muted-foreground">Updated {LEGAL_POLICY_DATE_LABEL} · Nepal time · <Link href="/legal/history" className="font-semibold text-primary underline underline-offset-4">Policy history</Link></p>
+          <p className="mt-4 text-sm text-muted-foreground">Updated {LEGAL_POLICY_DATE_LABEL} · Nepal time</p>
           <p className="mt-5 text-base leading-7 text-muted-foreground">
             Questions about our policies? Contact{' '}
             <a

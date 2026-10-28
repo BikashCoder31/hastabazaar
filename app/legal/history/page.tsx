@@ -4,21 +4,21 @@ import { LegalDocumentContent } from '@/components/layout/legal-policy-page';
 import { SiteHeader } from '@/components/layout/site-header';
 import { SiteFooter } from '@/components/layout/site-footer';
 import { archivedLegalPolicies, getArchivedLegalPolicy, publicLegalPolicies } from '@/lib/content/legal-policies';
-import { requireSellerTermsPage } from '@/lib/auth/seller-commercial-access';
+import { requireStaffPage } from '@/lib/auth/staff';
 
-export const metadata = { title: 'Policy history', robots: { index: false, follow: true } };
+export const dynamic = 'force-dynamic';
+export const metadata = { title: 'Policy history', robots: { index: false, follow: false } };
 
 export default async function Page({ searchParams }: {
   searchParams: Promise<{ sha256?: string | string[]; policy?: string | string[] }>;
 }) {
+  await requireStaffPage('/legal/history', 'audit_log.view');
   const params = await searchParams;
   if (params.policy !== undefined && (typeof params.policy !== 'string' || !Object.hasOwn(publicLegalPolicies, params.policy)))
     notFound();
   const selected = typeof params.sha256 === 'string' ? getArchivedLegalPolicy(params.sha256) : null;
   if (params.sha256 !== undefined && !selected) notFound();
   const filter = typeof params.policy === 'string' ? params.policy : null;
-  if (selected?.key === 'seller-agreement' || filter === 'seller-agreement')
-    await requireSellerTermsPage('/legal/history?policy=seller-agreement');
   const previous = archivedLegalPolicies.filter((policy) => filter === null || policy.key === filter);
   return <div className="min-h-screen bg-background">
     <SiteHeader />

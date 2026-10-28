@@ -10,6 +10,7 @@ import { requireDatabase } from '@/lib/db/d1';
 import { getCommissionRateState } from '@/lib/db/repositories/commission-rates';
 import { getCommissionReport } from '@/lib/db/repositories/commission-reporting';
 import { getCommissionSetting } from '@/lib/db/repositories/marketplace-settings';
+import { listBusinessSettingHistory } from '@/lib/db/repositories/business-settings';
 import {
   commissionDate,
   type CommissionFilters,
@@ -36,7 +37,7 @@ export default async function CommissionPage({
   };
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const rateState = getCommissionRateState(database);
-  const [state, result, base] = await Promise.all([
+  const [state, result, base, baseHistory] = await Promise.all([
     rateState,
     getCommissionReport(database, filters)
       .then((report) => ({ report, error: '' }))
@@ -48,12 +49,18 @@ export default async function CommissionPage({
         };
       }),
     rateState.then((state) => getCommissionSetting(database, state.asOf)),
+    listBusinessSettingHistory(database, 'independent_seller_commission_bps'),
   ]);
   const { report, error: filterError } = result;
   const now = state.asOf;
-  const scheduled = state.history.find(
-    (change) => change.status === 'scheduled',
-  );
+  const scheduledBase = baseHistory
+    .filter((change) => change.status === 'published' && change.effectiveFrom !== null &&
+      Number.isSafeInteger(change.effectiveFrom) && change.effectiveFrom > now &&
+      (change.effectiveUntil === null || change.effectiveUntil > change.effectiveFrom))
+    .sort((a, b) => Number(a.effectiveFrom) - Number(b.effectiveFrom) || b.version - a.version)[0];
+  const scheduled = state.history
+    .filter((change) => change.status === 'scheduled')
+    .sort((a, b) => a.effectiveAt - b.effectiveAt || b.createdAt - a.createdAt)[0];
   const currentSupplement = state.history.find(
     (change) => change.id === state.current.version && change.status === 'active',
   );
@@ -85,7 +92,7 @@ export default async function CommissionPage({
           ))}
         </nav>
       </div>
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <section className="rounded-2xl border bg-card p-5 sm:p-6">
           <h2 className="text-sm font-semibold text-muted-foreground">
             Current saved base rate
@@ -116,7 +123,30 @@ export default async function CommissionPage({
         </section>
         <section className="rounded-2xl border bg-card p-5 sm:p-6">
           <h2 className="text-sm font-semibold text-muted-foreground">
-            Next scheduled change
+            Next scheduled base rate
+          </h2>
+          {scheduledBase ? (
+            <>
+              <p className="mt-2 font-heading text-4xl">
+                {scheduledBase.value / 100}%
+              </p>
+              <p className="mt-2 text-sm">
+                {commissionDate(Number(scheduledBase.effectiveFrom))} · Nepal time
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Scheduled in Business Settings. Seller acceptance requirements
+                still apply.
+              </p>
+            </>
+          ) : (
+            <p className="mt-2 font-heading text-2xl">
+              No base rate change scheduled
+            </p>
+          )}
+        </section>
+        <section className="rounded-2xl border bg-card p-5 sm:p-6">
+          <h2 className="text-sm font-semibold text-muted-foreground">
+            Next scheduled fee supplement
           </h2>
           {scheduled ? (
             <>
@@ -134,7 +164,7 @@ export default async function CommissionPage({
           ) : (
             <>
               <p className="mt-2 font-heading text-2xl">
-                No rate change scheduled
+                No fee supplement scheduled
               </p>
               <a
                 href="#rate-management"

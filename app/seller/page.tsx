@@ -39,8 +39,11 @@ import { withFirstCodPresentation } from '@/lib/orders/first-cod-review';
 import { CommissionRateUnavailableError } from '@/lib/db/repositories/business-settings';
 
 export const dynamic = 'force-dynamic';
+// This dynamic server page uses one request-time snapshot for terms and consent.
+const sellerDashboardObservedAt = () => Date.now();
+
 export default async function SellerDashboardPage() {
-  const now = Date.now();
+  const now = sellerDashboardObservedAt();
   const seller = await requireSellerPage('/seller');
   const db = requireDatabase(env as unknown as { DB?: D1Database });
   const [products, work, earnings, orders, commission, managedProgram, cases] =
