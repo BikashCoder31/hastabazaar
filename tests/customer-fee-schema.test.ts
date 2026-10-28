@@ -209,6 +209,8 @@ void test('local and central SQLite readiness require every duplicate-insert gua
 void test('read-only local and central readiness reject missing or weakened customer storage', async () => {
   const db = await legacyDatabase();
   try {
+    // This fixture tests missing 0074, not the later continuity schema.
+    db.exec(await readFile(new URL('../drizzle/0075_commission_continuity.sql', import.meta.url), 'utf8'));
     assert.equal(inspectLocalFeatureSchema(db).ready, false, 'missing 0074 must stop the local launcher');
     assert.equal((await inspectReadiness(adapter(db))).ready, false);
     await applyCustomer(db);
