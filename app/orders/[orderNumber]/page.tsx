@@ -30,6 +30,7 @@ import {
 } from '@/lib/cart/session';
 import { requireDatabase } from '@/lib/db/d1';
 import { getOrderReceipt } from '@/lib/db/repositories/orders';
+import { CustomerServiceFeeBreakdown } from '@/components/commerce/customer-service-fee-breakdown';
 import { listFormAnswersForSubjectPage } from '@/lib/db/repositories/form-answers';
 import { authorizeFormAnswerRead } from '@/lib/forms/access';
 import { listReturnsForCustomerReceipt } from '@/lib/db/repositories/returns';
@@ -263,8 +264,7 @@ export default async function OrderReceiptPage({
                           {item.productName} × {item.quantity}
                         </strong>
                         <span className="text-muted-foreground">
-                          Sold by {item.sellerName}
-                          {item.makerName ? <span className="block text-xs">Made by {item.makerName}{item.legalSellerName ? ` · Company seller: ${item.legalSellerName}` : ''}</span> : null}
+                          {item.makerName ? <>Supplied by {item.makerName}<span className="block text-xs">{item.legalSellerName ? `Sold and invoiced by ${item.legalSellerName}` : `Recorded seller: ${item.sellerName} · Invoice identity requires review`}</span></> : <>Sold by {item.sellerName}<span className="block text-xs">Through Hastabazaar</span></>}
                         </span>
                         <span className="mt-2 block">
                           <OrderStatusBadge
@@ -322,10 +322,22 @@ export default async function OrderReceiptPage({
                     <dd>{money(receipt.deliveryChargePaisa)}</dd>
                   </div>
                   <div className="flex justify-between border-t pt-3 text-base font-semibold">
+                    <dt>Customer service fee after cancellations</dt>
+                    <dd>{money(receipt.buyerPlatformFeePaisa)}</dd>
+                  </div>
+                  <div className="flex justify-between border-t pt-3 text-base font-semibold">
                     <dt>Order total</dt>
                     <dd>{money(receipt.grandTotalPaisa)}</dd>
                   </div>
                 </dl>
+                <div className="mt-4 border-t pt-4">
+                  <h3 className="mb-2 text-sm font-semibold">Customer service fee at placement</h3>
+                  <CustomerServiceFeeBreakdown {...receipt.customerServiceFee}
+                    campaignName={receipt.customerServiceFee.campaign?.name??null}
+                    source={receipt.customerServiceFee.source==='legacy_recorded'?'historical':'recorded'}/>
+                </div>
+                {receipt.buyerPlatformFeePaisa > 0 ? <p className="mt-3 text-xs text-muted-foreground">Platform service fee is non-refundable, except where required by law.</p> : null}
+                {receipt.refundedPlatformServiceFeePaisa > 0 ? <p className="mt-3 text-xs text-muted-foreground">Legally required Platform service fee refund recorded: {money(receipt.refundedPlatformServiceFeePaisa)}.</p> : null}
                 <p className="mt-3 text-xs leading-5 text-muted-foreground">
                   {receipt.deliveryPricing
                     ? `Calculated for ${receipt.deliveryPricing.currentStoreCount} ${receipt.deliveryPricing.currentStoreCount === 1 ? 'remaining store' : 'remaining stores'}: ${money(receipt.deliveryPricing.baseChargePaisa)} for the first store, plus 50% of that base for each additional store.`
@@ -357,7 +369,7 @@ export default async function OrderReceiptPage({
               </span>
             </div>
             <p className="mt-6 text-sm leading-6 text-muted-foreground">
-              A HastaBazaar operations member or delivery representative may
+              A Hastabazaar operations member or delivery representative may
               call to confirm the address.{' '}
               {receipt.paymentStatus === 'paid'
                 ? 'COD payment is recorded as collected.'
@@ -393,7 +405,7 @@ export default async function OrderReceiptPage({
                         />
                       }
                     >
-                      {document.kind === 'payment_receipt'
+                      {document.formatVersion==='approved-2026-10-21' ? (document.kind==='payment_receipt'?'Receipts':'Order Invoice') : document.kind === 'payment_receipt'
                         ? 'Payment receipt'
                         : document.kind === 'simulated_invoice'
                           ? 'Simulated issuer invoice'

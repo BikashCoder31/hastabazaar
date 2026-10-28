@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
 import { TrafficBeacon } from '@/components/analytics/traffic-beacon';
+import { SupportAssistant } from '@/components/support/support-assistant';
 import './globals.css';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://hastabazaar.com'),
   title: {
-    default: 'HastaBazaar — Handmade with a human story',
-    template: '%s · HastaBazaar',
+    default: 'Hastabazaar — Handmade with a human story',
+    template: '%s · Hastabazaar',
   },
   description:
     'A considered marketplace for handmade craft, jewellery, textiles, and homeware.',
@@ -31,6 +32,7 @@ export default function RootLayout({
           Skip to main content
         </a>
         {children}
+        <SupportAssistant />
         <TrafficBeacon />
       </body>
     </html>

@@ -6,10 +6,11 @@ import test from 'node:test';
 import { build } from 'esbuild';
 import { getBusinessSettingDefinition } from '../lib/configuration/definitions';
 import { managedIdentityFields } from './helpers/managed-identity-fixture';
+import { MANAGED_SUPPLIER_AGREEMENT_VERSION, managedMakerAgreementContext, managedMakerAgreementSnapshot } from '../lib/sellers/managed-identity';
 const playwrightPath =
   process.env.PLAYWRIGHT_MODULE ??
   'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
-void test('managed application and correction UI require government evidence and separate unchecked acceptance while personal PAN stays optional', async () => {
+void test('new managed application requires personal PAN while retained correction terms keep separate unchecked acceptance', async () => {
   // Browser plugin not available: use the repository's bundled Playwright fixture workflow.
   const { chromium } = (await import(playwrightPath)) as {
     chromium: {
@@ -20,12 +21,13 @@ void test('managed application and correction UI require government evidence and
       }): Promise<any>;
     };
   };
-  const terms = {
+  const legacyTerms = {
     account: getBusinessSettingDefinition('managed_maker_company_account')
       .defaultValue,
     platformRetentionBps: 900,
     context: managedIdentityFields().managedAgreementContext,
   };
+  const terms={...legacyTerms,version:MANAGED_SUPPLIER_AGREEMENT_VERSION,context:await managedMakerAgreementContext(managedMakerAgreementSnapshot(legacyTerms.account,900,MANAGED_SUPPLIER_AGREEMENT_VERSION))};
   const bundle = await build({
     stdin: {
       resolveDir: process.cwd(),
@@ -35,8 +37,8 @@ void test('managed application and correction UI require government evidence and
     import React from 'react';import {createRoot} from 'react-dom/client';
     import {SellerApplicationForm} from './components/seller/seller-application-form';
     import {MakerApplicationProfileForm} from './components/seller/maker-application-profile-form';
-    const root=createRoot(document.getElementById('root'));const terms=${JSON.stringify(terms)};
-    window.mountCorrection=()=>root.render(<MakerApplicationProfileForm managedTerms={terms} profile={{sellerId:'maker',version:1,publicName:'Fictional Studio',publicCity:'Birgunj',craftExperience:[],socialLinks:{},participationRoute:'managed_maker',applicationStage:'changes_requested'}}/>);
+    const root=createRoot(document.getElementById('root'));const terms=${JSON.stringify(terms)};const legacyTerms=${JSON.stringify(legacyTerms)};
+    window.mountCorrection=()=>root.render(<MakerApplicationProfileForm managedTerms={legacyTerms} profile={{sellerId:'maker',version:1,publicName:'Fictional Studio',publicCity:'Birgunj',craftExperience:[],socialLinks:{},participationRoute:'managed_maker',applicationStage:'changes_requested'}}/>);
     root.render(<SellerApplicationForm managedTerms={terms}/>);`,
     },
     bundle: true,
@@ -100,11 +102,11 @@ void test('managed application and correction UI require government evidence and
       .locator('[name="hasBusinessTaxRegistration"]')
       .selectOption('no');
     await page
-      .getByText('Company selling account: HastaBazaar', { exact: true })
+      .getByText('Company selling account: Hastabazaar', { exact: true })
       .waitFor();
     assert.match(
       await page.locator('form').innerText(),
-      /cannot upload its certificate now, choose Yes/,
+      /Personal PAN alone does not qualify/,
     );
     assert.equal(
       await page
@@ -114,13 +116,13 @@ void test('managed application and correction UI require government evidence and
     );
     assert.equal(
       await page.locator('[name="personalPan"]').getAttribute('required'),
-      null,
+      '',
     );
     assert.equal(
       await page
         .locator('[name="personalPanCertificate"]')
         .getAttribute('required'),
-      null,
+      '',
     );
     assert.equal(
       await page.locator('[name="managedAgreementAccepted"]').isChecked(),

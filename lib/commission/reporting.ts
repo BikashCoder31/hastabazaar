@@ -9,6 +9,9 @@ export interface CommissionFilters {
 }
 
 export interface CommissionTotals {
+  /** Original checkout snapshots, including cancelled/refunded lines; not earned revenue. */
+  originalStandardPaisa: number;
+  originalWaivedPaisa: number;
   earnedPaisa: number;
   reversedPaisa: number;
   netPaisa: number;
@@ -17,6 +20,8 @@ export interface CommissionTotals {
 }
 
 export interface CommissionOrderRow extends CommissionTotals {
+  /** Names from the immutable campaign revisions referenced by these items. */
+  campaignNames?: string[];
   orderId: string;
   orderNumber: string;
   sellerId: string;
@@ -24,6 +29,7 @@ export interface CommissionOrderRow extends CommissionTotals {
   placedAt: number;
   eligibleBasePaisa: number;
   originalCommissionPaisa: number;
+  /** Recorded standard rates, before any checkout waiver. */
   minRateBps: number;
   maxRateBps: number;
   itemCount: number;

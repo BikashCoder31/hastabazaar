@@ -6,6 +6,7 @@ import { parseSellerApplication } from '../lib/sellers/application';
 import { createSellerApplication } from '../lib/db/repositories/seller-applications';
 import { acceptManagedTerms, getAcceptedManagedTerms, getManagedTermsOffers, managedTermsFormId } from '../lib/managed-commerce/accepted-terms';
 import { currentManagedSaleEvidence } from '../lib/products/managed-sale-evidence';
+import { managedMakerAgreementContext, managedMakerAgreementSnapshot, MANAGED_MAKER_AGREEMENT_VERSION, MANAGED_SUPPLIER_AGREEMENT_VERSION } from '../lib/sellers/managed-identity';
 
 void test('native D1 supports real maker IDs and exact private-document boundaries', async (t) => {
   const f = await createIncentiveDb();
@@ -32,11 +33,14 @@ void test('native D1 supports real maker IDs and exact private-document boundari
       SELECT 1 ${currentManagedSaleEvidence('s.id', 's.user_id', now)})`).bind(id).first();
   }
   try {
-    await application(sellerId);
     await f.db.batch([
       f.db.prepare("INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES('native-reviewer','reviewer@local.hastabazaar.test','SIMULATED reviewer','active',1,1)"),
       f.db.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES('native-reviewer','super_admin',1)"),
+      f.db.prepare(`INSERT INTO business_setting_versions(id,setting_key,version,value_json,status,revision,change_control,effective_from,reason,created_by,created_at,last_request_id)
+        VALUES('native-historical-retention','managed_sale_linked_platform_retention_bps',1,'900','published',1,'controlled',1,
+          'Explicit historical native terms','native-reviewer',1,'native-historical-retention')`),
     ]);
+    await application(sellerId);
     await t.test('full UUID application acceptance loads in the native runtime', async () => {
       assert.equal(sellerId.length, 36);
       const offers = await getManagedTermsOffers(f.db, sellerId, now);
@@ -47,6 +51,44 @@ void test('native D1 supports real maker IDs and exact private-document boundari
     });
     await t.test('public sale evidence accepts the same full UUID', async () => {
       assert.equal((await publicEvidence(sellerId))?.id, sellerId);
+    });
+    await t.test('brand spelling alone preserves accepted maker evidence for both agreement versions', async () => {
+      for (const version of [MANAGED_MAKER_AGREEMENT_VERSION, MANAGED_SUPPLIER_AGREEMENT_VERSION] as const) {
+        for (const variant of ['brand-only', 'rate', 'pan', 'terms', 'source']) {
+          const id = crypto.randomUUID();
+          await application(id);
+          const saved = await f.db.prepare('SELECT id,identity_document_id AS documentId,agreement_snapshot_json AS json FROM managed_maker_application_details WHERE seller_id=?').bind(id).first<{id:string;documentId:string;json:string}>();
+          assert.ok(saved);
+          const original = JSON.parse(saved.json);
+          const current = managedMakerAgreementSnapshot(original.companyAccount, 900, version);
+          const previous = { ...current, company: {...current.company, brandName: 'HastaBazaar'}, terms: current.terms.map(term => term.replace(/\bHastabazaar\b/g, 'HastaBazaar')) };
+          const stored = {...previous, settingVersionIds: original.settingVersionIds};
+          if (variant === 'rate') stored.platformRetentionBps = 1000;
+          if (variant === 'pan') stored.company.pan = '999999999';
+          if (variant === 'terms') stored.terms = [...stored.terms,'A new obligation'];
+          if (variant === 'source') stored.settingVersionIds = {...stored.settingVersionIds,retention:'different-setting'};
+          const json = JSON.stringify(stored);
+          // Append an independent historical fixture; real evidence stays immutable.
+          const documentId = crypto.randomUUID(), detailId = crypto.randomUUID();
+          const documentColumns = (await f.db.prepare('PRAGMA table_info(seller_documents)').all<{name:string}>()).results.map(row=>row.name);
+          const documentOverrides:Record<string,string> = {id:documentId,object_key:`private/seller-documents/${id}/historical-brand-evidence`};
+          await f.db.prepare(`INSERT INTO seller_documents(${documentColumns.join(',')}) SELECT ${documentColumns.map(column=>Object.hasOwn(documentOverrides,column)?'?':column).join(',')} FROM seller_documents WHERE id=?`).bind(...documentColumns.filter(column=>Object.hasOwn(documentOverrides,column)).map(column=>documentOverrides[column]),saved.documentId).run();
+          await f.db.prepare("UPDATE seller_documents SET status='rejected' WHERE id=?").bind(saved.documentId).run();
+          const detailColumns = (await f.db.prepare('PRAGMA table_info(managed_maker_application_details)').all<{name:string}>()).results.map(row=>row.name);
+          const overrides:Record<string,string> = {id:detailId, identity_document_id:documentId, agreement_version:version, agreement_snapshot_json:json};
+          await f.db.prepare(`INSERT INTO managed_maker_application_details(${detailColumns.join(',')}) SELECT ${detailColumns.map(column=>Object.hasOwn(overrides,column)?'?':column).join(',')} FROM managed_maker_application_details WHERE id=?`).bind(...detailColumns.filter(column=>Object.hasOwn(overrides,column)).map(column=>overrides[column]),saved.id).run();
+          const accepted = await getAcceptedManagedTerms(f.db,id,now);
+          if (variant === 'brand-only') {
+            assert.ok(accepted,version);
+            assert.deepEqual(accepted.snapshot,previous);
+            assert.equal(accepted.context,await managedMakerAgreementContext(previous));
+            assert.equal((await getManagedTermsOffers(f.db,id,now)).current.accepted,true);
+          } else {
+            assert.equal(accepted,null,`${version}: ${variant}`);
+          }
+          assert.equal((await f.db.prepare('SELECT agreement_snapshot_json AS json FROM managed_maker_application_details WHERE id=?').bind(detailId).first<{json:string}>())?.json,json);
+        }
+      }
     });
     await t.test('renewed acceptance commits with the full private path and exact replay', async () => {
       await f.db.prepare(`INSERT INTO form_config_versions(id,form_id,version,status,config_json,reason,

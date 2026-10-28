@@ -23,8 +23,8 @@ void test('managed retention and independent seller commission are different reg
   );
 
   assert.notEqual(independent.key, managed.key);
-  assert.equal(independent.defaultValue, 900);
-  assert.equal(managed.defaultValue, 900);
+  assert.equal(independent.defaultValue, null);
+  assert.equal(managed.defaultValue, null);
   assert.match(managed.label, /platform retention/i);
   assert.doesNotMatch(managed.label, /maker entitlement rate/i);
   assert.equal(independent.changeControl, 'controlled');
@@ -126,6 +126,7 @@ void test('only supported, validated controls exist and demonstration defaults r
     businessSettingDefinitions.map((definition) => definition.key),
   );
   const requiredKeys: readonly BusinessSettingKey[] = [
+    'platform_service_fee_policy',
     'independent_seller_commission_bps',
     'managed_sale_linked_platform_retention_bps',
     'managed_maker_program_mode',
@@ -323,7 +324,7 @@ void test('unknown keys, executable formulas, and invalid financial values fail 
     /0 through 10,000/i,
   );
   assert.throws(
-    () => calculateManagedSaleLinkedAmounts({ eligibleBasePaisa: -1 }),
+    () => calculateManagedSaleLinkedAmounts({ eligibleBasePaisa: -1, platformRetentionBps: 900 }),
     RangeError,
   );
 });

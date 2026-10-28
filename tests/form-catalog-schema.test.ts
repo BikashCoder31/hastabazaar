@@ -136,9 +136,10 @@ void test('identifier equality stays case and trailing-space sensitive in D1 and
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE subject_id='profile-1'").get()?.count, 2);
 
     const projectRoot = new URL('../', import.meta.url);
-    const folders = ['scripts', 'drizzle/meta', 'deployment/babal'];
+    const folders = ['scripts', 'drizzle/meta', 'deployment/babal', 'lib/operations'];
     for (const folder of folders) await mkdir(join(reviewRoot, folder), { recursive: true });
     await copyFile(new URL('../scripts/generate-mariadb-schema.mjs', import.meta.url), join(reviewRoot, 'scripts/generate-mariadb-schema.mjs'));
+    await copyFile(new URL('../lib/operations/fee-schema-readiness.mjs', import.meta.url), join(reviewRoot, 'lib/operations/fee-schema-readiness.mjs'));
     await copyFile(new URL('../drizzle/meta/0020_snapshot.json', import.meta.url), join(reviewRoot, 'drizzle/meta/0020_snapshot.json'));
     for (const name of await readdir(new URL('deployment/babal/', projectRoot))) {
       if (name.startsWith('mariadb-') && name.endsWith('.sql')) {

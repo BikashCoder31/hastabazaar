@@ -1,4 +1,5 @@
 import { isRiderPortalEnabled } from '../riders/availability';
+import { companyDetails } from '../content/company-details';
 import { riderNotificationSourceSql } from './rider-notification-access';
 import {
   can,
@@ -284,11 +285,11 @@ export function buildBusinessEmail(data: BusinessEmailData, origin: string) {
     data.body,
     instructions,
     link.toString(),
-    'Need help? support@hastabazaar.com',
+    `Need help? ${companyDetails.supportEmail}`,
   ].join('\n\n');
   return {
     to: data.email,
-    subject: 'HastaBazaar · ' + data.subject,
+    subject: 'Hastabazaar · ' + data.subject,
     text,
     html:
       '<!doctype html><html><body><h1>' +
@@ -299,7 +300,9 @@ export function buildBusinessEmail(data: BusinessEmailData, origin: string) {
       escape(instructions) +
       '</p><p><a href="' +
       escape(link.toString()) +
-      '">Open record</a></p><p>Need help? support@hastabazaar.com</p></body></html>',
+      '">Open record</a></p><p>Need help? ' +
+      escape(companyDetails.supportEmail) +
+      '</p></body></html>',
   };
 }
 const supportedTemplates = [

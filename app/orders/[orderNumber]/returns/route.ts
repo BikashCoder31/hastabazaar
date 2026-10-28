@@ -1,3 +1,4 @@
+import { validateEvidenceContent } from '@/lib/uploads/document-content';
 import { readBoundedForm, BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
 
@@ -23,7 +24,7 @@ import {
   maximumReturnRequestBytes,
   parseReturnRequest,
   validateEvidenceFile,
-  validateEvidenceContent,
+
 } from '@/lib/returns/validation';
 
 export const dynamic = 'force-dynamic';

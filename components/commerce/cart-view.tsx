@@ -1,4 +1,6 @@
 'use client';
+import { SellerDisclosure } from './seller-disclosure';
+import { CustomerServiceFeeBreakdown } from './customer-service-fee-breakdown';
 
 import Image from 'next/image';
 import Link from 'next/link';
@@ -11,6 +13,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { type PlatformServiceFeeSnapshot } from '@/lib/checkout/platform-service-fee';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -27,6 +30,7 @@ interface CartItem {
   slug: string;
   nameEn: string;
   tradingName: string;
+  makerName?: string | null;
   participationRoute?: string;
   storeName?: string | null;
   legalSellerName?: string | null;
@@ -51,7 +55,7 @@ function money(paisa: number): string {
   }).format(paisa / 100);
 }
 
-export function CartView() {
+export function CartView({serviceFee}:{serviceFee?:PlatformServiceFeeSnapshot} = {}) {
   const [cart, setCart] = useState<CartData | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -176,7 +180,7 @@ export function CartView() {
               <div>
                 <p className="text-sm font-semibold text-primary">
                   {item.tradingName}
-                  {item.participationRoute === 'managed_maker' ? <span className="block text-xs">Made by this maker · Sold by {item.storeName ?? 'company store — terms review pending'}</span> : null}
+                  <SellerDisclosure managed={item.participationRoute === 'managed_maker'} supplierName={item.makerName ?? item.tradingName} legalSellerName={item.legalSellerName} />
                 </p>
                 <Link
                   href={`/products/${item.slug}`}
@@ -261,9 +265,10 @@ export function CartView() {
           <span className="text-muted-foreground">Delivery</span>
           <span>At checkout</span>
         </div>
+        {serviceFee ? <div className="mt-3"><CustomerServiceFeeBreakdown standardPaisa={'standardPaisa' in serviceFee ? serviceFee.standardPaisa : serviceFee.chargedPaisa} waivedPaisa={'waivedPaisa' in serviceFee ? serviceFee.waivedPaisa : 0} netPaisa={serviceFee.chargedPaisa} campaignName={'campaign' in serviceFee ? serviceFee.campaign?.name ?? null : null} source="estimate" /></div> : null}
         <div className="mt-5 flex justify-between gap-3 border-t pt-5 font-semibold">
-          <span>Subtotal</span>
-          <span>{money(cart.itemSubtotalPaisa)}</span>
+          <span>Subtotal before delivery</span>
+          <span>{money(cart.itemSubtotalPaisa+(serviceFee?.chargedPaisa??0))}</span>
         </div>
         <p className="mt-4 flex items-start gap-2 text-sm leading-6 text-muted-foreground">
           <Banknote className="mt-1 size-5 shrink-0 text-primary" />

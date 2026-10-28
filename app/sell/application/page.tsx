@@ -1,4 +1,5 @@
-import { getManagedMakerApplicationTerms } from '@/lib/db/repositories/managed-maker-details';
+import { getManagedMakerApplicationTerms, managedAgreementVersionForSeller } from '@/lib/db/repositories/managed-maker-details';
+import { managedClearanceBlock } from '@/lib/sellers/onboarding';
 import { getAcceptedManagedTerms, getManagedTermsOffers } from '@/lib/managed-commerce/accepted-terms';
 import { getManagedMakerAuthority } from '@/lib/managed-commerce/maker-authority';
 import { MakerProductWorkspace } from '@/components/seller/maker-product-workspace';
@@ -84,7 +85,7 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
     getManagedTermsOffers(database, profile.sellerId, Number(clock?.now ?? 0)),
     getAcceptedManagedTerms(database, profile.sellerId, Number(clock?.now ?? 0)),
   ]) : [null, null];
-  const managedTerms = profile.participationRoute === 'managed_maker' && profile.applicationStage === 'changes_requested' ? await getManagedMakerApplicationTerms(database) : undefined;
+  const managedTerms = profile.participationRoute === 'managed_maker' && profile.applicationStage === 'changes_requested' ? await getManagedMakerApplicationTerms(database, Number(clock?.now ?? 0), await managedAgreementVersionForSeller(database,profile.sellerId)) : undefined;
   const finance = profile.participationRoute === 'managed_maker' || Boolean(await database.prepare('SELECT 1 FROM managed_entitlements WHERE seller_id=? LIMIT 1').bind(profile.sellerId).first())
     ? await getManagedFinanceSummary(database, profile.sellerId)
     : null;
@@ -108,11 +109,13 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
     return `/sell/application?${link.toString()}`;
   })();
   const [nextAction, responsible] = stageGuidance[profile.applicationStage];
+  const displayedStage = profile.applicationStage==='submitted' ? 'Under review (queued)' : profile.applicationStage.replaceAll('_', ' ');
   return <div className="min-h-screen bg-background"><SiteHeader /><main className="shell space-y-8 py-10" id="main-content" tabIndex={-1}>
-    <header><p className="eyebrow">Application progress</p><h1 className="mt-2 font-heading text-4xl">{profile.participationRoute === 'managed_maker' ? managedMakerDisplayName(profile.publicName) : profile.publicName}</h1><p className="mt-3 text-muted-foreground">Route: {profile.participationRoute === 'managed_maker' ? 'Hastabazaar Managed Maker' : 'Registered Seller'} · Stage: {profile.applicationStage.replaceAll('_', ' ')}</p></header>
+    <header><p className="eyebrow">Application progress</p><h1 className="mt-2 font-heading text-4xl">{profile.participationRoute === 'managed_maker' ? managedMakerDisplayName(profile.publicName) : profile.publicName}</h1><p className="mt-3 text-muted-foreground">Route: {profile.participationRoute === 'managed_maker' ? 'Hastabazaar Managed Maker' : 'Registered Seller'} · Stage: {displayedStage}</p></header>
     <section className="grid gap-4 md:grid-cols-3">
+      {profile.participationRoute==='managed_maker' ? <p className="rounded-xl border p-4 text-sm md:col-span-3">{managedClearanceBlock} Existing incomplete applications and their accepted terms remain recorded. Staff can request missing evidence; nothing is deleted or treated as accepted for you.</p> : null}
       <StatusCard title="Program readiness" state={program.value.replaceAll('_',' ')} body={program.value === 'applications_only' ? 'Profiles, review progress, and private product drafts are available. Selling and live commercial agreements remain disabled.' : 'The implemented simulated route is available only in guarded local staging; production remains blocked.'} />
-      <StatusCard title="Maker readiness" state={profile.applicationStage.replaceAll('_', ' ')} body={`Responsible: ${responsible}. Next: ${nextAction}`} />
+      <StatusCard title="Maker readiness" state={displayedStage} body={`Responsible: ${responsible}. Next: ${nextAction}`} />
       <StatusCard title="Product readiness" state="Separate product review" body="Drafts stay private. Submit a complete product for review; staff publish only after maker and product approval." />
     </section>
     {finance ? <section className="rounded-2xl border bg-card p-6"><h2 className="font-heading text-2xl">Managed Maker settlement</h2><p className="mt-2 text-sm text-muted-foreground">Simulated amounts keep calculated, earned, held, eligible, and paid states separate. Delivery cash reconciliation is tracked separately.</p><dl className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">{[

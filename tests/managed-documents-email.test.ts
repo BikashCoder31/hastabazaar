@@ -16,6 +16,7 @@ import { SIMULATED_RECORD_LABEL } from '../lib/staging/environment';
 
 function fixture(){
   const sqlite=new DatabaseSync(':memory:');sqlite.exec(`
+    CREATE TABLE order_documents(id TEXT PRIMARY KEY,order_id TEXT,kind TEXT,snapshot_json TEXT);
     CREATE TABLE shipping_jobs(id TEXT PRIMARY KEY,order_id TEXT NOT NULL);
     CREATE TABLE shipping_parcels(shipping_job_id TEXT PRIMARY KEY REFERENCES shipping_jobs(id),cod_due_paisa INTEGER NOT NULL CHECK(cod_due_paisa>=0),collected_paisa INTEGER NOT NULL DEFAULT 0 CHECK(collected_paisa>=0 AND collected_paisa<=cod_due_paisa));
     CREATE TABLE orders(id TEXT PRIMARY KEY,order_number TEXT,customer_email TEXT,payment_status TEXT,currency TEXT,delivered_at INTEGER,status TEXT);

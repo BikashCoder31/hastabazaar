@@ -72,6 +72,7 @@ void test('staff classification keeps an opaque request across lost response and
     await page.getByRole('button', { name: 'Save classification' }).click();
     await fourthResponse;
     assert.notEqual(requests[3].idempotencyKey, original);
+    await page.getByText('Classification saved.', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => Object.values(sessionStorage).length), 0);
   } finally { await page.close(); await browser.close(); }
 });

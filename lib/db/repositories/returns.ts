@@ -1,4 +1,6 @@
 import { buildManagedRefundAdjustmentStatements } from './managed-settlements';
+import { lawfulServiceFeeRefundTotalSql } from './platform-service-fee-refunds';
+import { payableOrderTotalSql } from './platform-service-fee';
 import { caseBusinessNotificationStatements } from '../../operations/business-notifications';
 import { buildFormAnswerInsert } from './form-answers';
 import { assertCommerceFormReplay, type CommerceForm } from './commerce-form-replay';
@@ -804,7 +806,7 @@ export async function respondToReturnAsSeller(
           actor_type, public_message_en, public_message_ne, internal_note,
           request_id, created_at
         ) SELECT ?, id, 'requested', 'under_investigation', 'seller_responded', ?,
-          'seller', 'Seller response received; HastaBazaar is investigating.',
+          'seller', 'Seller response received; Hastabazaar is investigating.',
           'विक्रेताको जवाफ प्राप्त भयो; हथकृति जाँच गर्दैछ।', ?, ?, ?
           FROM return_requests WHERE id = ? AND operation_request_id = ?`,
       )
@@ -1923,7 +1925,7 @@ export async function advanceReturnAsAdmin(
       database
         .prepare(
           `UPDATE orders SET payment_status = CASE
-            WHEN CASE WHEN promo_discount_paisa>0 THEN (SELECT COALESCE(SUM(item_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= item_subtotal_paisa-COALESCE((SELECT SUM(item_removed_paisa) FROM order_cancellation_events WHERE order_id=orders.id),0) AND (SELECT COALESCE(SUM(delivery_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= delivery_charge_paisa+buyer_platform_fee_paisa-COALESCE((SELECT SUM(json_extract(previous_json,'$.delivery')-json_extract(next_json,'$.delivery')) FROM order_cancellation_events WHERE order_id=orders.id),0) ELSE (SELECT COALESCE(SUM(amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= COALESCE(current_total_paisa,grand_total_paisa)+COALESCE(current_wallet_paisa,wallet_credit_paisa)+COALESCE(current_discount_paisa,referral_discount_paisa) END THEN 'refunded'
+            WHEN CASE WHEN promo_discount_paisa>0 THEN (SELECT COALESCE(SUM(item_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= item_subtotal_paisa-COALESCE((SELECT SUM(item_removed_paisa) FROM order_cancellation_events WHERE order_id=orders.id),0) AND (SELECT COALESCE(SUM(delivery_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid')+${lawfulServiceFeeRefundTotalSql()} >= delivery_charge_paisa+buyer_platform_fee_paisa-COALESCE((SELECT SUM(json_extract(previous_json,'$.delivery')-json_extract(next_json,'$.delivery')) FROM order_cancellation_events WHERE order_id=orders.id),0) ELSE (SELECT COALESCE(SUM(amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid')+${lawfulServiceFeeRefundTotalSql()} >= ${payableOrderTotalSql()}+COALESCE(current_wallet_paisa,wallet_credit_paisa)+COALESCE(current_discount_paisa,referral_discount_paisa) END THEN 'refunded'
             ELSE 'part_refunded' END, updated_at = ? WHERE id = ?`,
         )
         .bind(options.now, current.orderId),
@@ -1933,7 +1935,7 @@ export async function advanceReturnAsAdmin(
       database
         .prepare(
           `UPDATE orders SET payment_status = CASE
-            WHEN CASE WHEN promo_discount_paisa>0 THEN (SELECT COALESCE(SUM(item_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= item_subtotal_paisa-COALESCE((SELECT SUM(item_removed_paisa) FROM order_cancellation_events WHERE order_id=orders.id),0) AND (SELECT COALESCE(SUM(delivery_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= delivery_charge_paisa+buyer_platform_fee_paisa-COALESCE((SELECT SUM(json_extract(previous_json,'$.delivery')-json_extract(next_json,'$.delivery')) FROM order_cancellation_events WHERE order_id=orders.id),0) ELSE (SELECT COALESCE(SUM(amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= COALESCE(current_total_paisa,grand_total_paisa)+COALESCE(current_wallet_paisa,wallet_credit_paisa)+COALESCE(current_discount_paisa,referral_discount_paisa) END THEN 'refunded'
+            WHEN CASE WHEN promo_discount_paisa>0 THEN (SELECT COALESCE(SUM(item_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= item_subtotal_paisa-COALESCE((SELECT SUM(item_removed_paisa) FROM order_cancellation_events WHERE order_id=orders.id),0) AND (SELECT COALESCE(SUM(delivery_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid')+${lawfulServiceFeeRefundTotalSql()} >= delivery_charge_paisa+buyer_platform_fee_paisa-COALESCE((SELECT SUM(json_extract(previous_json,'$.delivery')-json_extract(next_json,'$.delivery')) FROM order_cancellation_events WHERE order_id=orders.id),0) ELSE (SELECT COALESCE(SUM(amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid')+${lawfulServiceFeeRefundTotalSql()} >= ${payableOrderTotalSql()}+COALESCE(current_wallet_paisa,wallet_credit_paisa)+COALESCE(current_discount_paisa,referral_discount_paisa) END THEN 'refunded'
             ELSE 'part_refunded' END, updated_at = ? WHERE id = ?`,
         )
         .bind(options.now, current.orderId),

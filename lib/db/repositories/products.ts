@@ -3,6 +3,7 @@ import { productClosurePredicate } from './product-closure';
 import { businessNotificationStatements } from '../../operations/business-notifications';
 import type { FeaturedProduct } from '@/lib/catalog/featured-products';
 import { createProductSku } from '@/lib/products/submission';
+import { normalizeSellerSku, sellerSkuSql } from '../../products/stock-codes';
 import { publicProductEligibility } from '@/lib/products/eligibility';
 import { publicSellingIdentityColumns, type PublicSellingIdentity } from '../../products/selling-identity';
 import { productTransitions } from '@/lib/marketplace/workflows';
@@ -18,6 +19,24 @@ import { staffMutationGuard } from './staff-mutation-guard';
 import { getManagedMakerAuthority, makerMutationGuards, ManagedMakerAuthorizationError } from '../../managed-commerce/maker-authority';
 
 type SellerProductFormLink = { requestId: string; versionId: string; answers: FormAnswerSnapshot; digest?: string };
+
+async function stockAnswers(database: D1Database, options: {productId: string; sellerId: string;
+  input: ProductSubmissionInput; form?: SellerProductFormLink}, revision = false): Promise<FormAnswerSnapshot | undefined> {
+  if (!options.form) {
+    if (options.input.sellerSku) throw new Error('Seller SKU requires a recorded product submission.');
+    return undefined;
+  }
+  const previous = revision && options.input.sellerSku === undefined
+    ? await database.prepare(`SELECT ${sellerSkuSql()} AS sellerSku FROM products WHERE id=? AND seller_id=?`)
+      .bind(options.productId, options.sellerId).first<{sellerSku: string | null}>() : null;
+  const count=await database.prepare(`SELECT COUNT(*) AS n FROM form_answer_sets a JOIN seller_profiles owner
+    ON owner.id=? AND owner.user_id=a.actor_id WHERE a.form_id='seller.product-submission'
+    AND a.subject_type='product' AND a.subject_id=?`).bind(options.sellerId,options.productId).first<{n:number}>();
+  return {...options.form.answers, productIdentity: {
+    sellerSku: normalizeSellerSku(options.input.sellerSku === undefined ? previous?.sellerSku ?? null : options.input.sellerSku),
+    revision:(count?.n??0)+1,
+  }};
+}
 
 function makerProductGuards(db: D1Database, options: { sellerId: string; actorId: string; now: number;
   productId: string; input: ProductSubmissionInput }) {
@@ -167,6 +186,7 @@ async function insertProductSubmission(
   },
 ): Promise<void> {
   const { productId, sellerId, actorId, slug, input, images, now } = options;
+  const answers = await stockAnswers(database, options);
   const productStatus = options.intent === 'draft' ? 'draft' : 'submitted';
   if (options.workspaceMode === 'maker' && images.some(media => !media.objectKey.startsWith(`private/product-media/${sellerId}/${productId}/`)))
     throw new ManagedMakerAuthorizationError('Product media must belong to this maker and product.');
@@ -302,7 +322,7 @@ async function insertProductSubmission(
   if (productStatus === 'submitted') statements.push(...await businessNotificationStatements(database,{eventId:productId,sourceType:'product',sourceId:productId,status:'submitted',actorId,now,kind:'submitted'}));
   if (options.form) statements.push(buildFormAnswerInsert(database, {
     formId: 'seller.product-submission', requestId: options.form.requestId, versionId: options.form.versionId,
-    subjectType: 'product', subjectId: productId, actorId, answers: options.form.answers, now,
+    subjectType: 'product', subjectId: productId, actorId, answers: answers!, now,
   }));
   await database.batch(statements);
 }
@@ -311,6 +331,7 @@ export interface SellerProductRow {
   id: string;
   slug: string;
   sku: string;
+  sellerSku?: string | null;
   nameEn: string;
   nameNe: string | null;
   pricePaisa: number;
@@ -352,7 +373,7 @@ export async function listSellerProducts(
   }
   const result = await database
     .prepare(
-      `SELECT products.id, products.slug, products.sku,
+      `SELECT products.id, products.slug, products.sku, ${sellerSkuSql()} AS sellerSku,
         products.name_en AS nameEn, products.name_ne AS nameNe,
         products.price_paisa AS pricePaisa,
         products.inventory_quantity AS inventoryQuantity,
@@ -376,6 +397,7 @@ export interface SellerProductRevision {
   id: string;
   categoryId: string;
   sku: string;
+  sellerSku?: string | null;
   nameEn: string;
   nameNe: string | null;
   descriptionEn: string;
@@ -432,7 +454,7 @@ export async function getSellerProductForRevision(
 ): Promise<SellerProductRevision | null> {
   const row = await database
     .prepare(
-      `SELECT products.id, products.category_id AS categoryId, products.sku,
+      `SELECT products.id, products.category_id AS categoryId, products.sku, ${sellerSkuSql()} AS sellerSku,
           products.name_en AS nameEn, products.name_ne AS nameNe,
           products.description_en AS descriptionEn,
           products.description_ne AS descriptionNe,
@@ -539,6 +561,7 @@ export async function reviseAndResubmitProduct(
   if (options.form && await formRequestReplay(database, { formId: 'seller.product-submission',
     requestId: options.form.requestId, actorId: options.actorId, action: 'product.resubmitted',
     digest: catalogDigest!, subjectId: options.productId })) return 'replayed';
+  const answers = await stockAnswers(database, options, true);
   const mutationId = crypto.randomUUID();
   const addedPhotos=options.images.filter(m=>m.mimeType.startsWith('image/')).length;
   const addedVideos=options.images.filter(m=>m.mimeType==='video/mp4').length;
@@ -743,7 +766,7 @@ export async function reviseAndResubmitProduct(
       THEN 1 ELSE json_extract('invalid', '$') END`).bind(options.productId, options.sellerId, mutationId),
     buildFormAnswerInsert(database, { formId: 'seller.product-submission', requestId: options.form.requestId,
       versionId: options.form.versionId, subjectType: 'product', subjectId: options.productId,
-      actorId: options.actorId, answers: options.form.answers, now: options.now }),
+      actorId: options.actorId, answers: answers!, now: options.now }),
   );
   let results;
   try { results = await database.batch(statements); }
@@ -997,6 +1020,7 @@ export interface ProductModerationEventRow {
 }
 
 export interface ProductReviewDetail extends ProductReviewQueueRow {
+  sellerSku?: string | null;
   sellerId: string;
   sellerUserId: string;
   descriptionEn: string;
@@ -1040,7 +1064,7 @@ export async function getProductForReview(
   const product = await database
     .prepare(
       `SELECT products.id, products.seller_id AS sellerId,
-        seller_profiles.user_id AS sellerUserId, products.category_id AS categoryId, products.slug, products.sku,
+        seller_profiles.user_id AS sellerUserId, products.category_id AS categoryId, products.slug, products.sku, ${sellerSkuSql()} AS sellerSku,
         products.name_en AS nameEn, products.name_ne AS nameNe,
         products.description_en AS descriptionEn,
         products.description_ne AS descriptionNe,
@@ -1357,6 +1381,8 @@ export async function reviewProduct(
 }
 
 export interface PublicProductRow extends Partial<PublicSellingIdentity> {
+  sku?: string;
+  sellerSku?: string | null;
   id: string;
   sellerId: string;
   slug: string;
@@ -2081,7 +2107,7 @@ export async function getPublishedProductBySlug(
 ): Promise<(PublicProductRow & PublicSellingIdentity & { media: readonly ProductMediaRow[] }) | null> {
   const product = await database
     .prepare(
-      `SELECT ${publicSellingIdentityColumns()}, products.id, products.slug, products.name_en AS nameEn,
+      `SELECT ${publicSellingIdentityColumns()}, products.id, products.slug, products.sku, ${sellerSkuSql()} AS sellerSku, products.name_en AS nameEn,
         products.seller_id AS sellerId,
         products.name_ne AS nameNe, products.description_en AS descriptionEn,
         products.price_paisa AS pricePaisa,

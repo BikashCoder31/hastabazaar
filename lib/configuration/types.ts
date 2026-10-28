@@ -1,8 +1,10 @@
 import type { ProductWatermarkPolicy } from '../products/watermark-policy';
 import type { HomepageHeroSlides } from '../homepage/hero-slides';
 import type { HomepageOccasionSlides } from '../homepage/occasion-slides';
+import type { PlatformServiceFeePolicy } from '../checkout/platform-service-fee';
 
 export const businessSettingKeys = [
+  'platform_service_fee_policy',
   'independent_seller_commission_bps',
   'managed_sale_linked_platform_retention_bps',
   'managed_maker_program_mode',
@@ -84,6 +86,7 @@ export type ManagedMakerCompanyAccount = Readonly<{
 }>;
 
 export type BusinessSettingValues = Readonly<{
+  platform_service_fee_policy: PlatformServiceFeePolicy;
   independent_seller_commission_bps: number;
   managed_sale_linked_platform_retention_bps: number;
   managed_maker_program_mode: ManagedMakerProgramMode;
@@ -126,7 +129,7 @@ export type BusinessSettingDefinition<
   key: K;
   label: string;
   description: string;
-  defaultValue: BusinessSettingValue<K>;
+  defaultValue: K extends 'independent_seller_commission_bps' | 'managed_sale_linked_platform_retention_bps' ? null : BusinessSettingValue<K>;
   sensitivity: BusinessSettingSensitivity;
   changeControl: BusinessSettingChangeControl;
   effectiveMode: BusinessSettingEffectiveMode;

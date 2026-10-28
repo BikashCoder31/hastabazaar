@@ -210,6 +210,17 @@ void test('saved draft renders NPR amounts, Nepal dates and a commission cost il
   );
 });
 
+void test('promo illustration uses the supplied commission and assumes none when it is absent', async () => {
+  const {PromoCodeManager} = await editor();
+  for (const [rate, amount] of [[0,0],[725,7250],[1250,12500]]) {
+    const html = renderToStaticMarkup(createElement(PromoCodeManager,{role:'super_admin',initialPage:page(),defaultCommissionBps:rate}));
+    assert.match(html,new RegExp('data-promo-preview-commission-paisa="'+amount+'"'));
+  }
+  const missing = renderToStaticMarkup(createElement(PromoCodeManager,{role:'super_admin',initialPage:page()}));
+  assert.match(missing,/current saved commission rate is unavailable/);
+  assert.doesNotMatch(missing,/data-promo-preview-commission-paisa=/);
+});
+
 void test('saved percentage displays an ordinary percent and NPR cap in the editor and cost preview', async () => {
   const { PromoCodeManager } = await editor();
   const terms: PromoTerms = {
@@ -229,6 +240,7 @@ void test('saved percentage displays an ordinary percent and NPR cap in the edit
     createElement(PromoCodeManager, {
       role: 'super_admin',
       initialPage: page(terms),
+      defaultCommissionBps: 1375,
     }),
   );
   assert.match(html, /id="promo-percentBps"[^>]*value="12\.35"/);

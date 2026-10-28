@@ -1,4 +1,5 @@
 import { seedVerifiedCheckoutContact } from './helpers/checkout-contact';
+import { historicalCommissionFixture } from './helpers/historical-commission-fixture';
 import type { FixtureBrowser } from './helpers/browser-fixture-types';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -13,6 +14,8 @@ import { respondToReturnAsSeller } from '../lib/db/repositories/returns';
 import { createCustomerComplaint, respondToComplaintAsSeller } from '../lib/db/repositories/complaints';
 import { createCodOrder } from '../lib/db/repositories/orders';
 import { getDeliveryRates } from '../lib/db/repositories/delivery-rates';
+import { getCheckoutPolicyContext } from '../lib/checkout/policy-context';
+import { getPlatformServiceFee } from '../lib/db/repositories/platform-service-fee';
 import { SELLER_AGREEMENT_VERSION } from '../lib/content/legal-policies';
 import { build } from 'esbuild';
 import { FORM_REGISTRY } from '../lib/forms/registry';
@@ -44,6 +47,15 @@ function checkoutInput() {
     address: { recipientName: 'Maya Buyer', phone: '9811111111',
       province: 'Bagmati', district: 'Kathmandu', municipality: 'Kathmandu',
       locality: 'Test locality' },
+  };
+}
+
+async function reviewedFixtureQuote(db:D1Database,now:number) {
+  const serviceFee=await getPlatformServiceFee(db,now);
+  return {
+    lines: [{ id:'cart-item',sellerId:'seller-profile',pricePaisa:100000,quantity:1 }],
+    deliveryPaisa:15000,walletPaisa:0,referralPaisa:0,promoPaisa:0,payablePaisa:115000+serviceFee.chargedPaisa,serviceFee,
+    referralCampaign:null,policyContext:await getCheckoutPolicyContext(),
   };
 }
 
@@ -245,6 +257,7 @@ function caseDatabase(custom = true) {
   sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('seller','seller',1)").run();
   sqlite.prepare(`INSERT INTO seller_profiles(id,user_id,legal_name,trading_name,registration_authority,registration_number,tax_mode,tax_registration_number,representative_name,support_phone,support_email,province,district,municipality,locality,payout_account_reference,status,approved_at,created_at,updated_at)
     VALUES ('seller-profile','seller','Seller','Shop','Local','REG-1','PAN','PAN-1','Seller','9800000000','seller@example.test','Madhesh','Dhanusha','Janakpur','Ward 1','BANK','approved',1,1,1)`).run();
+  historicalCommissionFixture(sqlite, 'sa', true);
   sqlite.prepare("INSERT INTO categories(id,slug,name_en,is_active,sort_order,created_at,updated_at) VALUES ('cat','test','Test',1,1,1,1)").run();
   sqlite.prepare(`INSERT INTO products(id,seller_id,category_id,slug,sku,name_en,description_en,price_paisa,inventory_quantity,producer,country_of_origin,materials,return_eligible,status,created_at,updated_at)
     VALUES ('product','seller-profile','cat','product','product','Product','Description',100000,10,'Maker','NP','Fibre',1,'published',1,1)`).run();
@@ -602,6 +615,12 @@ void test('return route hashes validated evidence bytes and cleans retry uploads
   try {
     const route = await import('../app/orders/[orderNumber]/returns/route');
     const context = { params: Promise.resolve({ orderNumber: 'HK-TEST' }) };
+    const { sharp } = await import('../lib/reviews/image-processor');
+    const images = await Promise.all([1, 2].map(red => sharp({ create: {
+      width: 2, height: 2, channels: 3, background: { r: red, g: 0, b: 0 },
+    } }).png({ compressionLevel: 0 }).toBuffer()));
+    assert.equal(images[0].length, images[1].length, 'valid fixtures retain equal byte lengths');
+    assert.notDeepEqual(images[0], images[1], 'the changed-content fixture must have distinct bytes');
     const post = (lastByte: number, name = 'proof.png') => {
       const form = new FormData();
       for (const [key, value] of Object.entries({ orderItemId: 'item', quantity: '1',
@@ -609,7 +628,7 @@ void test('return route hashes validated evidence bytes and cleans retry uploads
         detail: 'The item has a manufacturing defect.', locale: 'en-NP',
         idempotencyKey: 'return-route-evidence-1', formVersion: '1', customAnswers: '[]' }))
         form.set(key, value);
-      form.set('evidence', new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, lastByte])],
+      form.set('evidence', new File([new Uint8Array(images[lastByte - 1])],
         name, { type: 'image/png' }));
       return route.POST(new Request('http://localhost:3000/orders/HK-TEST/returns', {
         method: 'POST', headers: { origin: 'http://localhost:3000',
@@ -639,6 +658,7 @@ void test('checkout answer joins the committed order and cannot be added by a du
       .run(`${formId}-v1`, formId, JSON.stringify({ formId, fields: [{ id: 'context_note', key: 'context_note', label: 'Context note', type: 'short_text', required: true, order: 0, status: 'active' }] }), `seed-${formId}`);
     const rates = await getDeliveryRates(db);
     const parsed = parseCheckoutInput({ ...checkoutInput(), deliveryRateVersion: rates.version,
+      reviewedQuote: await reviewedFixtureQuote(db,now),
       formVersion: 1, customAnswers: [{ fieldId: 'context_note', value: 'Call first' }] });
     assert.ok(parsed.value, parsed.errors.join(' '));
     parsed.value.customerAuthSubject = 'buyer';
@@ -698,6 +718,7 @@ void test('versioned checkout route links its answer to the created order', asyn
       method: 'POST', headers: { origin: 'http://localhost:3000', cookie: 'hastabazaar_cart=cart-hash',
         'content-type': 'application/json' },
       body: JSON.stringify({ ...checkoutInput(), deliveryRateVersion: rates.version,
+        reviewedQuote: await reviewedFixtureQuote(db,now),
         formVersion: 1, customAnswers: [] }),
     }));
     assert.equal(response.status, 201);
@@ -941,7 +962,8 @@ void test('checkout client submits the published answer with the core order payl
       import React from 'react';
       import { createRoot } from 'react-dom/client';
       import { CheckoutForm } from './components/commerce/checkout-form';
-      createRoot(document.getElementById('root')!).render(<CheckoutForm customerId="customer-fixture" />);
+      createRoot(document.getElementById('root')!).render(<CheckoutForm policyContext={'a'.repeat(64)} customerId="customer-fixture" customerEmail="buyer@example.test" customerPhone="9811111111"
+        savedAddresses={[{id:'fixture-address',label:'Home',isDefault:1,recipientName:'Fixture Buyer',phone:'9811111111',province:'Madhesh',district:'Dhanusha',municipality:'Janakpur',locality:'Fixture locality',ward:null,landmark:null,postalCode:null}]} />);
     `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'checkout-stubs', setup(bundler) {
@@ -991,8 +1013,6 @@ void test('checkout client submits the published answer with the core order payl
     const form = page.locator('form[data-form-id="commerce.checkout"]');
     await form.getByLabel('Recipient name').fill('Maya Buyer');
     await form.getByLabel('Recipient phone').fill('9811111111');
-    await form.getByLabel('Order email').fill('buyer@example.test');
-    await form.getByLabel('Contact phone').fill('9811111111');
     await form.getByLabel('District').fill('Dhanusha');
     await form.getByLabel('Municipality / rural municipality').fill('Janakpur');
     await form.getByLabel('Street, tole or locality').fill('Ward 1');
@@ -1000,7 +1020,7 @@ void test('checkout client submits the published answer with the core order payl
     await form.locator('label[for="checkout-terms"]').click({ timeout: 3000 });
     await form.getByRole('button', { name: 'Place COD order' }).click();
     await page.getByText('Correct the delivery details.').waitFor();
-    await form.getByLabel('Contact phone').fill('9822222222');
+    await form.getByLabel('Recipient phone').fill('9822222222');
     await form.getByRole('button', { name: 'Place COD order' }).click();
     await form.getByText(/differs from the prior attempt/).waitFor();
     assert.equal(payloads.length, 1, 'changed intent must not reuse an uncertain order attempt');

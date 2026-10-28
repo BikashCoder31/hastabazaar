@@ -41,18 +41,41 @@ export function buildEarningsAccrualStatements(
   const availableOffset = payoutPolicy.deliveryHoldDays * dayMs;
   const reserveReleaseOffset = payoutPolicy.reserveReleaseAfterDays * dayMs;
   const reserveWindow = payoutPolicy.reserveAppliesForDays * dayMs;
+  // Existing orders without this evidence retain the original launch rule. New orders
+  // carry their own prospective terms; never substitute today's settings here.
+  const evidence = `(SELECT p.terms_snapshot_json FROM order_policy_acceptances p WHERE p.order_id=orders.id LIMIT 1)`;
+  const maria = (database as D1Database & { dialect?: string }).dialect === 'mariadb';
+  const typeAt = (field = '') => maria
+    ? `LOWER(JSON_TYPE(JSON_EXTRACT(${evidence},'$.registeredSettlementTerms${field ? '.'+field : ''}')))`
+    : `json_type(${evidence},'$.registeredSettlementTerms${field ? '.'+field : ''}')`;
+  const present = `${typeAt()} IS NOT NULL`;
+  const value = (field: string) => `json_extract(${evidence},'$.registeredSettlementTerms.${field}')`;
+  const offset = (field: string) => `(CASE WHEN ${present} THEN ${value(field)} * ${dayMs} ELSE ? END)`;
+  const reserveBps = `(CASE WHEN ${present} THEN ${value('reserveBps')} ELSE ? END)`;
+  // Refund state describes the later reversal, not the absence of the original
+  // sale. Require capture evidence and keep the full-remittance gate below.
   const base = `
     FROM order_items
     INNER JOIN orders ON orders.id = order_items.order_id
     INNER JOIN seller_profiles ON seller_profiles.id = order_items.seller_id
-    WHERE orders.status = 'delivered' AND orders.payment_status = 'paid'
+    WHERE orders.status = 'delivered'
+      AND (orders.payment_status = 'paid' OR (orders.payment_status IN ('part_refunded','refunded')
+        AND (EXISTS(SELECT 1 FROM payments payment WHERE payment.order_id=orders.id AND payment.status='captured')
+          OR EXISTS(SELECT 1 FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id WHERE j.order_id=orders.id))
+        AND NOT EXISTS(SELECT 1 FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id
+          WHERE j.order_id=orders.id AND p.collected_paisa<>p.cod_due_paisa)))
       AND order_items.fulfillment_status = 'delivered'
       AND NOT EXISTS(SELECT 1 FROM managed_commercial_snapshots m WHERE m.order_item_id=order_items.id)
       AND COALESCE(order_items.commission_rule_version,'') NOT LIKE 'managed-%'
       AND NOT EXISTS(SELECT 1 FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id WHERE j.order_id=orders.id AND ((j.status NOT IN ('delivered','cancelled')) OR p.remitted_paisa<>p.cod_due_paisa))
       ${orderFilter}`;
 
+  const valid = `${value('schemaVersion')}=1 AND ${['deliveryHoldDays','reserveBps','reserveAppliesForDays','reserveReleaseAfterDays'].map(field => `${typeAt(field)}='integer' AND ${value(field)}>=0`).join(' AND ')} AND ${value('deliveryHoldDays')}<=365 AND ${value('reserveBps')}<=10000
+    AND ${typeAt('holdSettingVersionId')} IN ('null','${maria ? 'string' : 'text'}')
+    AND ${typeAt('reserveSettingVersionId')} IN ('null','${maria ? 'string' : 'text'}')`;
+  const guardId = crypto.randomUUID();
   return [
+    database.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 ${base} AND ${present} AND NOT(COALESCE((${valid}),0))) THEN 0 ELSE 1 END`).bind(guardId,...orderBindings),
     database
       .prepare(
         `INSERT OR IGNORE INTO seller_ledger_entries (
@@ -60,7 +83,7 @@ export function buildEarningsAccrualStatements(
         available_at, description, created_at
       ) SELECT lower(hex(randomblob(16))), order_items.seller_id, order_items.id,
         NULL, NULL, 'sale', order_items.line_total_paisa,
-        COALESCE(orders.delivered_at, ?) + ?,
+        COALESCE(orders.delivered_at, ?) + ${offset('deliveryHoldDays')},
         'Delivered item sale', COALESCE(orders.delivered_at, ?)
         ${base}`,
       )
@@ -72,8 +95,8 @@ export function buildEarningsAccrualStatements(
         available_at, description, created_at
       ) SELECT lower(hex(randomblob(16))), order_items.seller_id, order_items.id,
         NULL, NULL, 'commission', -order_items.commission_paisa,
-        COALESCE(orders.delivered_at, ?) + ?,
-        'HastaBazaar commission', COALESCE(orders.delivered_at, ?)
+        COALESCE(orders.delivered_at, ?) + ${offset('deliveryHoldDays')},
+        'Hastabazaar commission', COALESCE(orders.delivered_at, ?)
         ${base}`,
       )
       .bind(options.now, availableOffset, options.now, ...orderBindings),
@@ -84,10 +107,11 @@ export function buildEarningsAccrualStatements(
         available_at, description, created_at
       ) SELECT lower(hex(randomblob(16))), order_items.seller_id, order_items.id,
         NULL, NULL, 'reserve_hold',
-        -CAST(ROUND((order_items.line_total_paisa - order_items.commission_paisa) * ? / 10000.0) AS INTEGER),
-        COALESCE(orders.delivered_at, ?) + ?,
+        -CAST(ROUND((order_items.line_total_paisa - order_items.commission_paisa) * ${reserveBps} / 10000.0) AS INTEGER),
+        COALESCE(orders.delivered_at, ?) + ${offset('deliveryHoldDays')},
         'New seller reserve hold', COALESCE(orders.delivered_at, ?)
-        ${base} AND (seller_profiles.approved_at IS NULL OR seller_profiles.approved_at + ? > COALESCE(orders.delivered_at, ?))`,
+        ${base} AND (CASE WHEN ${present} THEN ${value('reserveBps')} ELSE ${payoutPolicy.newSellerReserveBps} END)>0
+        AND (seller_profiles.approved_at IS NULL OR seller_profiles.approved_at + ${offset('reserveAppliesForDays')} > COALESCE(orders.delivered_at, ?))`,
       )
       .bind(
         payoutPolicy.newSellerReserveBps,
@@ -105,10 +129,11 @@ export function buildEarningsAccrualStatements(
         available_at, description, created_at
       ) SELECT lower(hex(randomblob(16))), order_items.seller_id, order_items.id,
         NULL, NULL, 'reserve_release',
-        CAST(ROUND((order_items.line_total_paisa - order_items.commission_paisa) * ? / 10000.0) AS INTEGER),
-        COALESCE(orders.delivered_at, ?) + ?,
+        CAST(ROUND((order_items.line_total_paisa - order_items.commission_paisa) * ${reserveBps} / 10000.0) AS INTEGER),
+        COALESCE(orders.delivered_at, ?) + ${offset('reserveReleaseAfterDays')},
         'New seller reserve release', COALESCE(orders.delivered_at, ?)
-        ${base} AND (seller_profiles.approved_at IS NULL OR seller_profiles.approved_at + ? > COALESCE(orders.delivered_at, ?))`,
+        ${base} AND (CASE WHEN ${present} THEN ${value('reserveBps')} ELSE ${payoutPolicy.newSellerReserveBps} END)>0
+        AND (seller_profiles.approved_at IS NULL OR seller_profiles.approved_at + ${offset('reserveAppliesForDays')} > COALESCE(orders.delivered_at, ?))`,
       )
       .bind(
         payoutPolicy.newSellerReserveBps,
@@ -119,6 +144,24 @@ export function buildEarningsAccrualStatements(
         reserveWindow,
         options.now,
       ),
+    // A refund may complete before remittance makes the original sale eligible.
+    // Its saved reversal is posted only after that commission exists; the unique
+    // refund/type key also makes accrual retries safe after ordinary refund posting.
+    database.prepare(`INSERT OR IGNORE INTO seller_ledger_entries (
+      id,seller_id,order_item_id,refund_id,payout_id,type,amount_paisa,available_at,description,created_at
+    ) SELECT lower(hex(randomblob(16))),order_items.seller_id,order_items.id,refunds.id,NULL,
+      'commission_reversal',refunds.commission_reversal_paisa,COALESCE(refunds.processed_at,?),
+      ${maria ? "CONCAT('Commission reversal for paid refund ',refunds.id)" : "'Commission reversal for paid refund ' || refunds.id"},COALESCE(refunds.processed_at,?)
+      FROM refunds JOIN return_requests ON return_requests.id=refunds.return_request_id
+      JOIN order_items ON order_items.id=return_requests.order_item_id
+      JOIN orders ON orders.id=order_items.order_id
+      WHERE refunds.status='paid' AND refunds.commission_reversal_paisa>0
+        AND NOT EXISTS(SELECT 1 FROM managed_commercial_snapshots m WHERE m.order_item_id=order_items.id)
+        AND COALESCE(order_items.commission_rule_version,'') NOT LIKE 'managed-%'
+        AND EXISTS(SELECT 1 FROM seller_ledger_entries original WHERE original.order_item_id=order_items.id AND original.type='commission')
+        AND NOT EXISTS(SELECT 1 FROM seller_ledger_entries reversal WHERE reversal.refund_id=refunds.id AND reversal.type='commission_reversal')
+        ${orderFilter}`).bind(options.now,options.now,...orderBindings),
+    database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(guardId),
   ];
 }
 
@@ -339,6 +382,7 @@ export async function listPayoutCandidates(
      WHERE seller_profiles.status = 'approved'
        AND seller_profiles.payout_account_reference IS NOT NULL
        AND trim(seller_profiles.payout_account_reference) != ''
+       AND instr(trim(seller_profiles.payout_account_reference),'PENDING VERIFICATION:') != 1
        AND seller_ledger_entries.available_at <= ?
        AND ${standardLedgerEligibility('seller_ledger_entries')}
        AND payout_entries.ledger_entry_id IS NULL
@@ -694,7 +738,7 @@ export async function prepareSellerPayout(
     .prepare(
       `SELECT payout_account_reference AS destinationReference FROM seller_profiles
      WHERE id = ? AND status = 'approved' AND payout_account_reference IS NOT NULL
-       AND trim(payout_account_reference) != '' LIMIT 1`,
+       AND trim(payout_account_reference) != '' AND instr(trim(payout_account_reference),'PENDING VERIFICATION:') != 1 LIMIT 1`,
     )
     .bind(options.sellerId)
     .first<{ destinationReference: string }>();

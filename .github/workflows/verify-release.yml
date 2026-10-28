@@ -56,13 +56,16 @@ jobs:
       - name: Configure portable browser fixtures
         run: |
           printf 'PLAYWRIGHT_MODULE=file://%s/node_modules/playwright/index.mjs\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          printf 'FRONTEND_RECOVERY_EVIDENCE_ROOT=%s/frontend-recovery-%s\n' "$RUNNER_TEMP" '${{ matrix.shard }}' >> "$GITHUB_ENV"
           node --input-type=module -e "import {chromium} from 'playwright'; console.log('CHROME_PATH='+chromium.executablePath())" >> "$GITHUB_ENV"
       - run: node --import tsx --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/4 tests/*.test.ts
 
   native:
-    name: MariaDB Staging Compatibility
+    name: Native Release and Recovery Rehearsal
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
+    env:
+      HASTABAZAAR_RELEASE_ID: hastabazaar-release-ci-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -72,7 +75,38 @@ jobs:
           node-version: '22.23.2'
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: node --import tsx scripts/verify-staging-native.mjs
+      - run: npx playwright install --with-deps chromium
+      - name: Configure required packaged browser gates
+        run: |
+          printf 'PLAYWRIGHT_MODULE=file://%s/node_modules/playwright/index.mjs\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          node --input-type=module -e "import {chromium} from 'playwright'; console.log('CHROME_PATH='+chromium.executablePath())" >> "$GITHUB_ENV"
+      - run: npm run build:babal
+      - run: npm run package:babal:ci -- "$HASTABAZAAR_RELEASE_ID"
+      - name: Require native journeys and isolated recovery of the exact artifact
+        run: HASTABAZAAR_NATIVE_ARTIFACT_DIRECTORY="$GITHUB_WORKSPACE/outputs/$HASTABAZAAR_RELEASE_ID" node --import tsx scripts/verify-staging-native.mjs
+      - name: Retain enumerated non-secret browser acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: browser-gates-${{ env.HASTABAZAAR_RELEASE_ID }}
+          path: |
+            outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/browser-evidence/catalog.tap
+            outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/browser-evidence/summary.tap
+            outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/browser-evidence/contact-232.png
+            outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/browser-evidence/catalog-232.png
+            outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/browser-evidence/summary-1280.png
+            outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/browser-evidence/summary-390.png
+            outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/browser-evidence/verification.json
+            outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/browser-evidence/failure.json
+          if-no-files-found: warn
+          retention-days: 14
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: native-verified-${{ env.HASTABAZAAR_RELEASE_ID }}
+          path: outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
 
   package:
     name: Linux Babal Package
@@ -92,11 +126,15 @@ jobs:
         with:
           node-version: '22.23.2'
           cache: npm
-      - run: npm ci --no-audit --no-fund
       - id: identity
         run: printf 'release_id=%s\n' "$HASTABAZAAR_RELEASE_ID" >> "$GITHUB_OUTPUT"
-      - run: npm run build:babal
-      - run: npm run package:babal:ci -- "$HASTABAZAAR_RELEASE_ID"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: native-verified-${{ env.HASTABAZAAR_RELEASE_ID }}
+          path: outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/
+      - name: Verify the artifact that passed native recovery
+        working-directory: outputs/${{ env.HASTABAZAAR_RELEASE_ID }}
+        run: sha256sum --check SHA256SUMS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ env.HASTABAZAAR_RELEASE_ID }}

@@ -17,6 +17,25 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   return specifier === 'next/link' ? { url: 'data:text/javascript,export default function Link({children,...props}){return globalThis.settingsPresentationCreateElement("a",props,children)}', shortCircuit: true } : nextResolve(specifier, context);
 } });
 
+void test('an unpublished commission renders a blank editor and validation message instead of crashing or inventing zero', () => {
+  const html = renderToStaticMarkup(createElement(BusinessSettingsManager, {
+    asOf: 2_000,
+    initialSettings: [{
+      key: 'independent_seller_commission_bps', label: 'Independent seller commission',
+      description: 'Published seller commission.', sensitivity: 'financial',
+      changeControl: 'controlled', effectiveMode: 'effective_dated',
+      snapshotOnTransaction: true, affectedSurfaces: ['seller'], requiredCapability: null,
+      effective: {key:'independent_seller_commission_bps', value:null, source:'unconfigured',
+        version:null, versionId:null, effectiveFrom:null, approvedBy:null},
+      history: [],
+    }],
+  }));
+  assert.match(html, /Enter an explicit numeric value/);
+  assert.match(html, /role="alert"/);
+  assert.match(html, /disabled=""[^>]*>Save changes/);
+  assert.doesNotMatch(html, /0% commission/);
+});
+
 void test('Business Settings presents current, draft, scheduled, preview, impact, and immutable history', () => {
   const html = renderToStaticMarkup(
     createElement(BusinessSettingsManager, {
@@ -110,6 +129,17 @@ void test('Program Management honestly keeps both Managed Maker models in Applic
     assert.match(html, new RegExp(text, 'i'));
   }
   assert.doesNotMatch(html, /Activate now/i);
+});
+
+void test('Program Management uses supplied retention and never fills a missing rate', async () => {
+  const {ProgramManagement} = await import('../components/admin/program-management');
+  const props = {programMode:'applications_only' as const,activeModel:null,capabilities:managedMakerCapabilities};
+  const supplied = renderToStaticMarkup(createElement(ProgramManagement,{...props,platformRetentionBps:1375}));
+  assert.match(supplied,/13\.75% platform retention/);
+  assert.match(supplied,/86\.25% maker entitlement/);
+  const missing = renderToStaticMarkup(createElement(ProgramManagement,props));
+  assert.match(missing,/current saved retention rate is unavailable/);
+  assert.doesNotMatch(missing,/9% platform retention|91% maker entitlement/);
 });
 
 void test('implemented commercial models are staging-selectable but remain blocked for live use', () => {

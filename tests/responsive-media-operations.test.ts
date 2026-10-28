@@ -177,13 +177,16 @@ void test('admin product review wraps generated SKU text at the 320px boundary',
     new URL('../app/admin/products/[id]/page.tsx', import.meta.url),
     'utf8',
   );
-  const sku = review.match(/<p\b[^>]*>SKU \{product\.sku\}<\/p>/)?.[0];
+  const sku = review.match(/<p\b[^>]*>Platform SKU: \{product\.sku\}<\/p>/)?.[0];
   assert.ok(sku, 'The product identifier remains visible for reviewers.');
   assert.match(
     sku,
     /break-all|\[overflow-wrap:anywhere\]/,
     'Long generated SKU text must wrap inside the phone viewport.',
   );
+  const sellerSku=review.match(/<p\b[^>]*>Seller SKU: [\s\S]*?<\/p>/)?.[0];
+  assert.ok(sellerSku,'The separate seller stock code remains visible.');
+  assert.match(sellerSku,/break-all|\[overflow-wrap:anywhere\]/);
 });
 
 void test('seller product scroll container also contains absolute accessible labels', async () => {

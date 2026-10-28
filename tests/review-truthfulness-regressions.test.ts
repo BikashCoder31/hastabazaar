@@ -5,6 +5,8 @@ import { getPublishedProductBySlug } from '../lib/db/repositories/products';
 import { createCodOrder, getOrderDocument, getOrderReceipt } from '../lib/db/repositories/orders';
 import { getCart } from '../lib/db/repositories/cart';
 import { SELLER_AGREEMENT_VERSION } from '../lib/content/legal-policies';
+import { historicalCommissionFixture } from './helpers/historical-commission-fixture';
+import { withReviewedPromoQuote } from './helpers/promo-checkout-fixture';
 
 const importedName = 'Beige & Brown Handmade Crochet Bow Wallet';
 const publicName = 'Beige & Brown Crochet Bow Wallet';
@@ -35,11 +37,12 @@ async function fixture() {
   `);
   f.sqlite.prepare("UPDATE seller_profiles SET seller_agreement_version=?,seller_agreement_accepted_at=1 WHERE id='seller'")
     .run(SELLER_AGREEMENT_VERSION);
-  const input = {
+  historicalCommissionFixture(f.sqlite, 'buyer', true);
+  const input = await withReviewedPromoQuote(f.db, 'cart', {
     customerEmail: 'buyer@example.invalid', customerPhone: '9811111111', customerAuthSubject: 'buyer-subject',
     locale: 'en-NP' as const, termsAccepted: true, idempotencyKey: crypto.randomUUID(),
     address: {recipientName:'Fictional buyer',phone:'9811111111',province:'Bagmati',district:'Kathmandu',municipality:'Kathmandu',locality:'Ward 1'},
-  };
+  }, now);
   return {...f,input};
 }
 

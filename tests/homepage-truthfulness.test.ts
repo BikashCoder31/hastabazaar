@@ -95,7 +95,7 @@ void test('homepage top products take priority over the approved promotion fallb
 void test('homepage shows eligible promotion products as featured when top products are empty', async () => {
   const section = topSection(await homepage([], [product('promotion-only')]));
   assert.ok(section);
-  assert.match(section, /Featured by HastaBazaar/);
+  assert.match(section, /Featured by Hastabazaar/);
   assert.match(section, /href="\/products\/promotion-only"/);
   assert.doesNotMatch(
     section,

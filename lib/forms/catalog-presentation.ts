@@ -1,16 +1,20 @@
 import type { FormDefinition } from './types';
 import { formGuide } from './plain-language';
+import { SECURITY_FORM_CONTRACTS } from '../security/form-contracts';
 
 // This policy affects the administration catalog only. Registry and runtime
 // configuration readers retain every form and its previously published config.
 const universalFormIds: ReadonlySet<string> = new Set([
+  ...Object.keys(SECURITY_FORM_CONTRACTS),
+  'system.support-assistant',
+  'system.platform-service-fee-refund',
   'account.profile', 'account.address', 'account.daily-reward', 'account.points-redemption',
   'commerce.add-to-cart', 'commerce.order-tracking', 'commerce.promo-quote', 'commerce.gift-card-redeem',
   'system.local-testing-role', 'staff.staff-invitation', 'staff.staff-permission-1', 'staff.staff-permission-2',
   'rider.code-verify', 'staff.homepage-hero-manager', 'staff.homepage-occasion-manager',
   'staff.homepage-visibility', 'staff.business-settings-manager', 'staff.delivery-rate',
   'staff.promo-code', 'staff.loyalty-settings', 'staff.referral-settings',
-  'staff.commission-schedule', 'staff.commission-cancel',
+  'staff.commission-schedule', 'staff.commission-cancel', 'staff.fee-waivers',
 ]);
 
 export function isFormCatalogEditable(form: FormDefinition): boolean {

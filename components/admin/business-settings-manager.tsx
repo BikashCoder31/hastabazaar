@@ -29,6 +29,7 @@ import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { configuredMultipartAnswers } from '@/lib/forms/submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 import { validateBusinessSettingValue } from '@/lib/configuration/definitions';
+import { businessSettingPublicationLimitation } from '@/lib/configuration/capabilities';
 import type {
   EffectiveBusinessSetting,
   BusinessSettingVersion,
@@ -92,6 +93,11 @@ function scalarString(value: unknown): string {
 }
 
 function displayValue(key: BusinessSettingKey, value: unknown): string {
+  if (key === 'platform_service_fee_policy' && value && typeof value === 'object') {
+    const policy = value as { enabled: boolean; amountPaisa: number };
+    return `${policy.enabled ? 'Enabled' : 'Disabled'} · NPR ${(policy.amountPaisa / 100).toFixed(2)} per order`;
+  }
+  if ((key === 'independent_seller_commission_bps' || key === 'managed_sale_linked_platform_retention_bps') && value === null) return 'Not configured — no current rate is assumed';
   if (
     (key === 'independent_seller_commission_bps' ||
       key === 'new_seller_reserve_bps') &&
@@ -142,7 +148,10 @@ function displayValue(key: BusinessSettingKey, value: unknown): string {
 }
 
 function parseEditorValue(key: BusinessSettingKey, value: unknown): unknown {
-  if (numericKeys.has(key)) return Number(value);
+  if (numericKeys.has(key)) {
+    if (value === null || value === undefined || typeof value === 'string' && value.trim() === '') throw new RangeError('Enter an explicit numeric value.');
+    return Number(value);
+  }
   if (listKeys.has(key)) {
     return scalarString(value)
       .split(',')
@@ -232,8 +241,10 @@ export function BusinessSettingsManager({
   }
 
   let valueError = '';
+  let publicationLimitation: string | null = null;
   try { validateBusinessSettingValue(selected.key, parseEditorValue(selected.key, editorValue)); }
   catch (cause) { valueError = cause instanceof Error ? cause.message : 'Review the proposed value.'; }
+  if (!valueError) publicationLimitation = businessSettingPublicationLimitation(selected.key, parseEditorValue(selected.key, editorValue));
   const visibleSettings = settings.filter(item => query.trim().toLowerCase().split(/\s+/).filter(Boolean).every(term => (item.label+' '+item.description+' '+settingGroup(item.key)).toLowerCase().includes(term)));
   const drafts = selected.history.filter((item) => item.status === 'draft');
   const scheduled = selected.history.filter(
@@ -431,6 +442,7 @@ export function BusinessSettingsManager({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
+            {publicationLimitation ? <output className="block rounded-xl border p-3 text-sm">{publicationLimitation} You may retain a draft for review.</output> : null}
             {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={['setting']} /> : null}
             {!catalog.canSubmit ? <output aria-live="polite" className="block text-sm">{catalog.message || 'Loading form configuration…'}</output> : null}
             <SettingValueEditor
@@ -472,7 +484,9 @@ export function BusinessSettingsManager({
               <h3 className="text-sm font-semibold">Change preview</h3>
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 <div className="min-w-0"><h4 className="mb-2 text-sm font-semibold">Current value</h4><SettingValuePreview value={selected.effective.value} summary={displayValue(selected.key, selected.effective.value)} /></div>
-                <div className="min-w-0"><h4 className="mb-2 text-sm font-semibold">Proposed value</h4><SettingValuePreview value={parseEditorValue(selected.key, editorValue)} summary={displayValue(selected.key, parseEditorValue(selected.key, editorValue))} /></div>
+                <div className="min-w-0"><h4 className="mb-2 text-sm font-semibold">Proposed value</h4>{valueError
+                  ? <p className="text-sm text-muted-foreground">Enter a valid value to preview this change.</p>
+                  : <SettingValuePreview value={parseEditorValue(selected.key, editorValue)} summary={displayValue(selected.key, parseEditorValue(selected.key, editorValue))} />}</div>
               </div>
               <p className="mt-3 text-sm font-semibold">Affected areas</p>
               <p className="mt-1 text-sm text-muted-foreground">{selected.affectedSurfaces.map(area=>affectedAreaLabels[area]??area.replaceAll('_',' ')).join(', ')}</p>
@@ -493,7 +507,7 @@ export function BusinessSettingsManager({
             <div className="flex flex-wrap gap-2">
             <Button
               type="button"
-              disabled={busy || !catalog.canSubmit || reason.trim().length < 8 || Boolean(valueError)}
+              disabled={busy || !catalog.canSubmit || reason.trim().length < 8 || Boolean(valueError) || Boolean(publicationLimitation)}
               onClick={() => saveSetting('save')}
             >
               {busy ? 'Saving…' : effectiveFrom ? 'Save and schedule' : 'Save changes'}
@@ -540,7 +554,7 @@ export function BusinessSettingsManager({
                         <Button
                           size="sm"
                           type="button"
-                          disabled={busy || !catalog.canSubmit || reason.trim().length < 8 || Boolean(valueError)}
+                          disabled={busy || !catalog.canSubmit || reason.trim().length < 8 || Boolean(valueError) || Boolean(businessSettingPublicationLimitation(selected.key, version.value))}
                           onClick={() =>
                             changeVersion(
                               version,
@@ -621,6 +635,16 @@ function SettingValueEditor({
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
+  if (settingKey === 'platform_service_fee_policy') {
+    const policy = value as { enabled: boolean; amountPaisa: number };
+    return <div className="space-y-4">
+      <label className="flex min-h-11 items-center gap-3"><input className="size-4 accent-primary" type="checkbox" checked={policy.enabled} onChange={event => onChange({ ...policy, enabled: event.target.checked })} />Enable Platform service fee</label>
+      <div className="space-y-2"><Label htmlFor="service-fee-amount">Amount per order (NPR)</Label>
+        <Input id="service-fee-amount" type="number" min={0} max={1000} step="0.01" value={Number.isFinite(policy.amountPaisa) ? policy.amountPaisa / 100 : ''}
+          onChange={event => onChange({ ...policy, amountPaisa: event.target.value === '' ? NaN : Math.round(Number(event.target.value) * 100) })} /></div>
+      <p className="text-sm text-muted-foreground">When disabled, new orders pay no Platform service fee. The amount is kept for re-enabling. Changes apply to newly reviewed orders only. Existing orders keep their saved charge and refund terms. Non-refundable except where required by law.</p>
+    </div>;
+  }
   if (numericKeys.has(settingKey)) {
     return (
       <div className="space-y-2">
@@ -710,7 +734,7 @@ function SettingValueEditor({
       <div className="space-y-2"><Label htmlFor="watermark-position">Position</Label><NativeSelect id="watermark-position" className="w-full" value={policy.position} onChange={event => update({ position: event.target.value as ProductWatermarkPolicy['position'] })}>{(['bottom-right','bottom-left','top-right','top-left'] as const).map(position => <NativeSelectOption key={position} value={position}>{position.replaceAll('-', ' ')}</NativeSelectOption>)}</NativeSelect></div>
       <div className="space-y-2"><Label htmlFor="watermark-size">Width (% of photo, 8–35)</Label><Input id="watermark-size" type="number" min={8} max={35} step={1} value={policy.sizePercent} onChange={event => update({ sizePercent: Number(event.target.value) })}/></div>
       <div className="space-y-2"><Label htmlFor="watermark-opacity">Opacity (%, 10–80)</Label><Input id="watermark-opacity" type="number" min={10} max={80} step={1} value={policy.opacityPercent} onChange={event => update({ opacityPercent: Number(event.target.value) })}/></div>
-      <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">Customer copies carry the HastaBazaar wordmark. Originals stay private. Saving updates existing uploaded product photos as well as new uploads; videos, category images, homepage media, and customer reviews are unaffected. Sellers see the current customer photo before submitting.</p>
+      <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">Customer copies carry the Hastabazaar wordmark. Originals stay private. Saving updates existing uploaded product photos as well as new uploads; videos, category images, homepage media, and customer reviews are unaffected. Sellers see the current customer photo before submitting.</p>
     </div>;
   }
   if (settingKey === 'official_social_links') {

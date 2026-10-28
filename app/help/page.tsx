@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { DELIVERY_ESTIMATE_NOTICE } from '@/lib/checkout/delivery-presentation';
+import { orderHelpTopics as topics } from '@/lib/content/help-topics';
+import { SupportContactCard } from '@/components/support/support-contact-card';
 
 import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
@@ -8,31 +9,8 @@ import { SiteHeader } from '@/components/layout/site-header';
 export const metadata: Metadata = {
   alternates:{canonical:'https://hastabazaar.com/help'},
   title: 'Customer help',
-  description: 'Shipping, tracking, returns, refunds, and complaint guidance for HastaBazaar orders.',
+  description: 'Shipping, tracking, returns, refunds, and complaint guidance for Hastabazaar orders.',
 };
-
-const topics = [
-  {
-    id: 'shipping',
-    title: 'Shipping',
-    body: 'Review delivery charges and the estimated delivery period at checkout before placing an order. ' + DELIVERY_ESTIMATE_NOTICE + ' Items from different sellers may ship separately, with one order total and receipt.',
-  },
-  {
-    id: 'tracking',
-    title: 'Track an order',
-      body: 'Use Track an order with your order number and the email used at checkout. You can see preparation, dispatch, and delivery progress without signing in. Order emails also link to tracking. For cancellations, returns, or full details, use your secure receipt or sign in to My orders.',
-  },
-  {
-    id: 'returns',
-    title: 'Returns & refunds',
-    body: 'After delivery, open the secure receipt and choose the affected item. Eligibility is checked against the policy saved with that order. You can add a reason, preferred resolution, quantity, and supporting photos. Approved COD refunds are recorded and handled through the verified manual refund process.',
-  },
-  {
-    id: 'complaints',
-    title: 'Complaints',
-    body: 'Open the secure order receipt to create an item-specific or order-level complaint. HastaBazaar can assign, investigate, escalate, request more information, and record the resolution without exposing unnecessary customer details to a seller.',
-  },
-] as const;
 
 export default function HelpPage() {
   return (
@@ -51,7 +29,7 @@ export default function HelpPage() {
             </article>
           ))}
         </section>
-        <div className="shell pb-12"><Link href="/contact" className="inline-flex min-h-11 items-center font-semibold text-primary underline underline-offset-4">Contact & support →</Link></div>
+        <div className="shell pb-12"><SupportContactCard /><Link href="/contact-us" className="inline-flex min-h-11 items-center font-semibold text-primary underline underline-offset-4">Contact & support →</Link></div>
       </main>
       <SiteFooter compact />
     </div>

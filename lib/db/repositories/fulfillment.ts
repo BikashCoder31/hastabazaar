@@ -1,4 +1,5 @@
 import { publicTrackingReferenceSql } from '../../riders/public-tracking';
+import { currentPlatformServiceFeeSql, payableOrderTotalSql } from './platform-service-fee';
 import { assertFirstCodFulfillmentAllowed } from '../../orders/first-cod-review';
 import {
   cancellationChoices,
@@ -20,6 +21,8 @@ import { buildFormAnswerInsert } from './form-answers';
 import { digestFormRequest } from '@/lib/forms/submission';
 import type { FormAnswerSnapshot } from '@/lib/forms/types';
 import { companyDetails } from '@/lib/content/company-details';
+import { APPROVED_BILLING_VERSION, mergeRecordedReceiptItems, withReceiptGroups } from '../../documents/billing';
+import { receiptNumberStatements } from './billing-documents';
 
 export type ItemFulfillmentStatus =
   | 'confirmed'
@@ -74,6 +77,7 @@ export interface FulfillmentOrderDetail {
   address: NepalAddress;
   itemSubtotalPaisa: number;
   deliveryChargePaisa: number;
+  buyerPlatformFeePaisa: number;
   grandTotalPaisa: number;
   paymentMode: string;
   paymentStatus: string;
@@ -121,7 +125,8 @@ async function loadOrderBase(
           (SELECT COUNT(DISTINCT current_items.seller_id) FROM order_items current_items WHERE current_items.order_id=orders.id AND current_items.fulfillment_status<>'cancelled') AS currentStoreCount,
           COALESCE(orders.current_subtotal_paisa,orders.item_subtotal_paisa) AS itemSubtotalPaisa,
           COALESCE(orders.current_delivery_paisa,orders.delivery_charge_paisa) AS deliveryChargePaisa,
-          COALESCE(orders.current_total_paisa,orders.grand_total_paisa) AS grandTotalPaisa,
+          ${currentPlatformServiceFeeSql()} AS buyerPlatformFeePaisa,
+          ${payableOrderTotalSql()} AS grandTotalPaisa,
           orders.payment_mode AS paymentMode, orders.payment_status AS paymentStatus,
           orders.placed_at AS placedAt, orders.delivered_at AS deliveredAt,
           orders.cancelled_at AS cancelledAt, shipments.id AS shipmentId,
@@ -648,9 +653,9 @@ export async function transitionAdminFulfillment(
         promo_campaign_id AS promoCampaignId,promo_revision AS promoRevision,promo_code AS promoCode,promo_label AS promoLabel,
         COALESCE(current_subtotal_paisa,item_subtotal_paisa) AS itemSubtotalPaisa,
         COALESCE(current_delivery_paisa,delivery_charge_paisa) AS deliveryChargePaisa,
-        buyer_platform_fee_paisa AS buyerPlatformFeePaisa,
+        ${currentPlatformServiceFeeSql()} AS buyerPlatformFeePaisa,
         tax_total_paisa AS taxTotalPaisa,
-        COALESCE(current_total_paisa,grand_total_paisa) AS grandTotalPaisa
+        ${payableOrderTotalSql()} AS grandTotalPaisa
        FROM orders WHERE id = ? LIMIT 1`,
     )
     .bind(options.orderId)
@@ -730,7 +735,7 @@ export async function transitionAdminFulfillment(
   if (options.action === 'deliver') {
     const receiptItems = await database
       .prepare(
-        `SELECT product_name_snapshot AS productName,
+        `SELECT id AS orderItemId, product_name_snapshot AS productName,
         seller_name_snapshot AS sellerName, sku_snapshot AS sku,
         unit_price_paisa AS unitPricePaisa, quantity,
         line_total_paisa AS lineTotalPaisa
@@ -769,6 +774,13 @@ export async function transitionAdminFulfillment(
           }
         : {}),
     };
+    const recorded=await database.prepare("SELECT snapshot_json AS json FROM order_documents WHERE order_id=? AND kind='order_statement'")
+      .bind(options.orderId).first<{json:string}>();
+    const original=recorded?JSON.parse(recorded.json) as OrderDocumentSnapshot:null;
+    if(original?.billing?.version===APPROVED_BILLING_VERSION) paymentReceiptSnapshot=withReceiptGroups({
+      ...original,...paymentReceiptSnapshot,billing:original.billing,
+      items:mergeRecordedReceiptItems(original.items,paymentReceiptSnapshot.items),
+    });
   }
   const results = await database.batch([
     database
@@ -938,6 +950,8 @@ export async function transitionAdminFulfillment(
               options.orderId,
               options.requestId,
             ),
+          ...await receiptNumberStatements(database,{snapshot:paymentReceiptSnapshot,
+            requestId:`${options.requestId}:payment-receipt`,now:options.now}),
         ]
       : []),
     ...(options.action === 'deliver'

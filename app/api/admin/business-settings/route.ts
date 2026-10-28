@@ -9,7 +9,7 @@ import { requireDatabase } from '@/lib/db/d1';
 import {
   BusinessSettingConflictError,
   createBusinessSettingDraft,
-  getEffectiveBusinessSetting,
+  getBusinessSettingForManagement,
   saveBusinessSettingChange,
   validateBusinessSettingForm,
 } from '@/lib/db/repositories/business-settings';
@@ -54,7 +54,7 @@ export async function GET(): Promise<Response> {
         snapshotOnTransaction: definition.snapshotOnTransaction,
         affectedSurfaces: definition.affectedSurfaces,
         requiredCapability: definition.requiredCapability,
-        effective: await getEffectiveBusinessSetting(
+        effective: await getBusinessSettingForManagement(
           database,
           definition.key,
           now,

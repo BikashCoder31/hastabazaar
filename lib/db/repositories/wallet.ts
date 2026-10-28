@@ -156,6 +156,7 @@ export async function quoteOrderCredit(
     merchandiseDiscountPaisa?: number;
     phone: string;
     now: number;
+    readOnly?: boolean;
   },
 ) {
   const { userId, subtotalPaisa, now } = options;
@@ -176,10 +177,11 @@ export async function quoteOrderCredit(
       rewardPaisa: 0,
       waitDays: 7,
       phoneKey: '',
+      campaignSnapshot: null,
     };
   }
   // Promo checkout provisions its wallet in the order batch; financial preflight stays read-only.
-  if (options.merchandiseDiscountPaisa === undefined) {
+  if (options.merchandiseDiscountPaisa === undefined && !options.readOnly) {
     await ensureWallet(db, userId, now);
     await releaseReferralRewards(db, userId, now);
   }
@@ -251,6 +253,7 @@ export async function quoteOrderCredit(
     rewardPaisa: campaign.rewardPaisa,
     waitDays: campaign.returnWindowDays,
     phoneKey,
+    campaignSnapshot: campaign,
   };
 }
 

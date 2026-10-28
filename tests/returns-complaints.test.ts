@@ -1,5 +1,8 @@
 import { seedCheckoutBuyer, seedVerifiedCheckoutContact } from './helpers/checkout-contact';
+import { historicalCommissionFixture } from './helpers/historical-commission-fixture';
 import assert from 'node:assert/strict';
+import {billingPreviewSnapshot} from '../lib/staging/billing-preview';
+import type {OrderDocumentSnapshot} from '../lib/db/repositories/orders';
 import { readdir, readFile } from 'node:fs/promises';
 import {
   DatabaseSync,
@@ -34,6 +37,22 @@ async function resetAuthFixture(db: D1Database) {
     )
     .run();
 }
+
+void test('disabling then reactivating an account cannot reactivate its previous hosted sessions', async () => {
+  const fixture = await databaseFixture();
+  const db = fixture.database as unknown as D1Database;
+  try {
+    await resetAuthFixture(db);
+    await db.prepare("INSERT INTO user_sessions VALUES ('revoked-on-disable','admin-1',?,?,?)").bind(now + 8 * 3600000, now, now).run();
+    await db.prepare("INSERT INTO user_sessions VALUES ('other-owner-session','super-1',?,?,?)").bind(now + 8 * 3600000, now, now).run();
+    await performGovernanceAction(db, { actorId:'super-1', actorRole:'super_admin', action:'user.status', requestId:'fixture-disable', data:{id:'admin-1',status:'disabled'}, now });
+    assert.equal(await db.prepare("SELECT token_hash FROM user_sessions WHERE user_id='admin-1'").first(), null);
+    await performGovernanceAction(db, { actorId:'super-1', actorRole:'super_admin', action:'user.status', requestId:'fixture-reactivate', data:{id:'admin-1',status:'active'}, now:now+1 });
+    assert.equal(await db.prepare("SELECT token_hash FROM user_sessions WHERE user_id='admin-1'").first(), null);
+    assert.ok(await db.prepare("SELECT token_hash FROM user_sessions WHERE user_id='super-1'").first());
+    assert.equal((await db.prepare("SELECT status FROM users WHERE id='admin-1'").first<{status:string}>())?.status,'active');
+  } finally { await fixture.dispose(); }
+});
 
 void test('password reset consumes a distinct challenge, replaces credentials and revokes sessions atomically', async () => {
   const fixture = await databaseFixture();
@@ -646,6 +665,7 @@ void test('referral checkout rewards only collected, delivered orders after the 
   const f = await databaseFixture();
   const db = f.database as unknown as D1Database;
   try {
+    historicalCommissionFixture(f.sqlite, 'super-1', true);
     await db.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('admin-1','customer',?),('seller-user-1','customer',?)").bind(now, now).run();
     await seedVerifiedCheckoutContact(db, 'admin-1', '9822222222', now);
     await seedVerifiedCheckoutContact(db, 'seller-user-1', '9833333333', now);
@@ -1193,7 +1213,7 @@ async function databaseFixture(includeApprovalUpgrade = true) {
       )
       .run();
   }
-  return { database, dispose: async () => sqlite.close() };
+  return { sqlite, database, dispose: async () => sqlite.close() };
 }
 
 class TestD1PreparedStatement {
@@ -1277,18 +1297,21 @@ void test('seller overview counts distinct owned orders and keeps list data priv
       packing: 0,
       ready: 0,
       needsChanges: 1,
+      awaitingConfirmation: 0,
     });
     assert.deepEqual(await getSellerWorkSummary(db, 'seller-2'), {
       toPack: 0,
       packing: 1,
       ready: 0,
       needsChanges: 0,
+      awaitingConfirmation: 0,
     });
     assert.deepEqual(await getSellerWorkSummary(db, 'missing-seller'), {
       toPack: 0,
       packing: 0,
       ready: 0,
       needsChanges: 0,
+      awaitingConfirmation: 0,
     });
     const list = await listOrdersForSeller(db, 'seller-1');
     assert.equal(list.length, 1);
@@ -1719,6 +1742,7 @@ void test('mixed-seller checkout includes preparation, adds half the base and pr
   const fixture = await databaseFixture();
   const db = fixture.database as unknown as D1Database;
   try {
+    historicalCommissionFixture(fixture.sqlite, 'super-1', true);
     await seedCheckoutBuyer(db, 'checkout-buyer', 'buyer@example.test', '9811111111', now);
     const before = await db
       .prepare('SELECT id, return_policy_snapshot_json FROM orders ORDER BY id')
@@ -1842,6 +1866,7 @@ void test('checkout retains accepted terms and issues immutable order and COD do
   const fixture = await databaseFixture();
   const db = fixture.database as unknown as D1Database;
   try {
+    historicalCommissionFixture(fixture.sqlite, 'super-1', true);
     await seedCheckoutBuyer(db, 'checkout-buyer', 'buyer@example.test', '9811111111', now);
     await db
       .prepare(
@@ -3258,7 +3283,7 @@ void test('complaint assignment, customer reply, seller isolation, escalation, a
       sellerId: 'seller-1',
       actorId: 'seller-user-1',
       response:
-        'We isolated the batch and provided the production record to HastaBazaar.',
+        'We isolated the batch and provided the production record to Hastabazaar.',
       requestId: 'complaint-seller-response',
       now,
     });
@@ -3848,6 +3873,55 @@ import {
   transitionAdminFulfillment as parcelLegacyTransition,
 } from '../lib/db/repositories/fulfillment';
 import { emailQueueSummary } from '../lib/operations/email-queue';
+
+void test('approved parcel receipts preserve captured SKUs after cancellation and collection rollback/replay',async()=>{
+  const f=await parcelFixture(),db=f.db;
+  try{
+    const snapshot=billingPreviewSnapshot('mixed',now);
+    snapshot.orderNumber='HK-TEST-1';snapshot.billing!.receiptIssuance='pending_clearance';
+    delete snapshot.billing!.receiptGroups;
+    snapshot.items=snapshot.items.map((item,index)=>({...item,orderItemId:`item-${index+1}`,sellerId:`seller-${index+1}`,
+      quantity:1,unitPricePaisa:index?2000000:100000,lineTotalPaisa:index?2000000:100000,listPricePaisa:index?2000000:100000,
+      billingPromotionPaisa:0,billingWalletPaisa:0}));
+    snapshot.itemSubtotalPaisa=2100000;snapshot.deliveryChargePaisa=15000;snapshot.buyerPlatformFeePaisa=0;snapshot.grandTotalPaisa=2115000;
+    const original=JSON.stringify(snapshot);
+    await db.prepare(`INSERT INTO order_documents(id,order_id,kind,document_number,snapshot_json,status,request_id,issued_at)
+      VALUES ('approved-original','order-1','order_statement','CONFIRMATION',?,'issued','approved-original',?)`).bind(original,now).run();
+    const access={orderNumber:'HK-TEST-1',actorId:'admin-1'};
+    const preview=await cancellationPreview(db,access,['seller-1']);
+    await cancelSelectedParcels(db,access,{sellerIds:['seller-1'],fingerprint:preview.fingerprint,requestId:'approved-cancel',note:'Fictional supplier cancellation.',now});
+    const parcel=(await listParcels(db,'order-1')).find(p=>p.sellerId==='seller-2')!;
+    let sequence=0;
+    const op=async(action:string,extra:Record<string,unknown>={})=>{
+      const current=(await listParcels(db,'order-1')).find(p=>p.id===parcel.id)!;
+      const input={jobId:parcel.id,actorId:'admin-1',action,version:current.version,note:'Fictional parcel evidence.',requestId:'approved-parcel-'+sequence++,now,...extra};
+      await operateParcel(db,input);return input;
+    };
+    await op('assign',{method:'courier',courierName:'Fictional courier',trackingCode:'FIXTURE-TRACK'});
+    await db.prepare("UPDATE order_items SET fulfillment_status='ready_for_pickup' WHERE id='item-2'").run();
+    await op('dispatch');await op('deliver');
+    const remaining=(await listParcels(db,'order-1')).find(p=>p.id===parcel.id)!;
+    await op('collect',{amountPaisa:1,reference:'FIXTURE-PARTIAL'});
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM order_documents WHERE order_id='order-1' AND kind='payment_receipt'").first<{n:number}>())?.n,0);
+    const latest=(await listParcels(db,'order-1')).find(p=>p.id===parcel.id)!;
+    const final={jobId:parcel.id,actorId:'admin-1',action:'collect',version:latest.version,note:'Fictional final collection.',
+      requestId:'approved-final-collect',now,amountPaisa:remaining.codDuePaisa-1,reference:'FIXTURE-FINAL'};
+    const broken={prepare:db.prepare.bind(db),batch:(statements:D1PreparedStatement[])=>db.batch([...statements,
+      db.prepare("INSERT INTO operation_transaction_guards(id,valid) VALUES ('approved-rollback',0)")])} as D1Database;
+    await assert.rejects(operateParcel(broken,final));
+    assert.equal((await listParcels(db,'order-1')).find(p=>p.id===parcel.id)!.collectedPaisa,1);
+    await operateParcel(db,final);await operateParcel(db,final);
+    const receipts=await db.prepare("SELECT snapshot_json AS json FROM order_documents WHERE order_id='order-1' AND kind='payment_receipt'").all<{json:string}>();
+    assert.equal(receipts.results.length,1);
+    const receipt=JSON.parse(receipts.results[0]!.json) as OrderDocumentSnapshot;
+    assert.equal(receipt.items.length,1);assert.equal(receipt.items[0]!.orderItemId,'item-2');
+    assert.equal(receipt.items[0]!.sellerSku,snapshot.items[1]!.sellerSku);
+    assert.equal(receipt.items[0]!.issuer!.legalName,snapshot.items[1]!.issuer!.legalName);
+    assert.equal(receipt.billing!.receiptGroups!.reduce((sum,g)=>sum+g.totalPaisa,0),receipt.grandTotalPaisa);
+    assert.ok(receipt.billing!.receiptGroups!.some(g=>g.scope==='order_charges'));
+    assert.equal((await db.prepare("SELECT snapshot_json AS json FROM order_documents WHERE id='approved-original'").first<{json:string}>())?.json,original);
+  }finally{await f.dispose();}
+});
 
 async function parcelFixture() {
   const fixture = await databaseFixture();
@@ -6085,6 +6159,7 @@ void test('F02 competing standard delivery approvals fail for capacity and roll 
 void test('F03 checkout consuming the last replacement unit rolls back outcome inventory log and notifications', async () => {
   const f = await databaseFixture(), db = f.database as unknown as D1Database;
   try {
+    historicalCommissionFixture(f.sqlite, 'super-1', true);
     const created = await auditReturn(db);
     await reviewReturnAsAdmin(db, { ...auditReview(created.id, 'audit-replacement-approve'), outcome: 'replacement' });
     await db.prepare("UPDATE products SET inventory_quantity=1 WHERE id='product-1'").run();

@@ -3,6 +3,7 @@ import { access, readFile, realpath } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseEnv } from 'node:util';
+import { sameFeeSqlDefinition, customerFeeRequiredTables, customerFeeSqliteDefinitionProblems, customerFeeControlProblems } from '../lib/operations/fee-schema-readiness.mjs';
 
 const localSettings = Object.freeze({
   HASTABAZAAR_RUNTIME_ENV: 'local_staging',
@@ -14,6 +15,7 @@ const localSettings = Object.freeze({
   CHECKOUT_CONTACT_POLICY: 'email_only',
   HOST: 'localhost',
   PORT: '3018',
+  CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'true',
 });
 
 const forbiddenSettings = /^(?:DEPLOY_TARGET|VERCEL(?:_.*)?|CF_PAGES(?:_.*)?|CLOUDFLARE_ENV|NODE_OPTIONS|VITE_USER_NODE_ENV|HASTABAZAAR_LOCAL_RIDER_DECODER|MEDIA_ROOT|DB_.*|DATABASE_URL|SMTP_.*|CLOUDFLARE_API_.*|CLOUDFLARE_ACCOUNT_ID|CF_API_.*|CF_ACCOUNT_ID|R2_.*|S3_.*|AWS_.*|GOOGLE_CLIENT_.*|STRIPE_.*|PAYPAL_.*|ESEWA_.*|KHALTI_.*|RESEND_.*|SENDGRID_.*|MAILGUN_.*|ORDER_EMAIL_JOB_SECRET|GIT_DIR|GIT_WORK_TREE|GIT_COMMON_DIR|GIT_CONFIG.*|GIT_INDEX_FILE|GIT_OBJECT_DIRECTORY|GIT_ALTERNATE_OBJECT_DIRECTORIES)$/;
@@ -78,8 +80,10 @@ export async function verifyLocalEnvironmentFiles(projectRoot) {
       if (error.code === 'ENOENT') continue;
       throw new Error(`Cannot read local environment file ${name}.`);
     }
+    if(name.startsWith('.dev.vars'))throw new Error(`${name} would shadow the protected Worker key. The checked local preview loads that key from its private installation file; review this environment file separately.`);
     try {
       const values = parseEnv(contents);
+      if(Object.keys(values).some(name=>name.toUpperCase()==='HASTABAZAAR_SECURITY_KEY'))throw new Error('The security key must stay in the protected installation file, not an environment file.');
       createLocalEnvironment(values);
       assertStagingRoot(projectRoot, values);
     } catch (error) { throw new Error(`${name}: ${error.message}`); }
@@ -96,7 +100,7 @@ export function assertLocalCheckout(checkout) {
   }
   for (const name of ['projectRoot', 'cwd', 'gitRoot']) {
     if (!checkout[name] || !samePath(checkout[name], checkout.configuredRoot)) {
-      throw new Error('Wrong checkout or working directory. Start the canonical Desktop/Hatskala project.');
+      throw new Error('Wrong checkout or working directory. Start the canonical Desktop/HastaBazaar project.');
     }
   }
   if (!checkout.baselineIsAncestor) {
@@ -138,6 +142,12 @@ export async function readLocalCheckout(projectRoot, cwd) {
 
 export function inspectLocalFeatureSchema(sqlite) {
   const required = {
+    ...customerFeeRequiredTables,
+    marketplace_fee_waiver_control: ['id', 'revision'],
+    marketplace_fee_waiver_campaigns: ['id', 'revision', 'created_at', 'updated_at'],
+    marketplace_fee_waiver_revisions: ['campaign_id', 'revision', 'state', 'name', 'description', 'starts_at', 'ends_at', 'created_by', 'request_id', 'created_at'],
+    marketplace_fee_waiver_requests: ['request_id', 'actor_id', 'auth_subject', 'command_json', 'response_json', 'created_at'],
+    order_item_marketplace_fees: ['order_item_id', 'standard_bps', 'base_paisa', 'standard_paisa', 'waived_paisa', 'net_paisa', 'campaign_id', 'campaign_revision', 'created_at'],
     commission_control: ['id', 'revision'],
     commission_rate_changes: ['id', 'basis_points', 'effective_at', 'agreement_version', 'terms_text', 'reason', 'created_by', 'created_at'],
     commission_rate_cancellations: ['rate_id', 'request_id', 'reason', 'cancelled_by', 'cancelled_at'],
@@ -164,6 +174,25 @@ export function inspectLocalFeatureSchema(sqlite) {
     if (!sqlite.prepare('SELECT 1 FROM sqlite_master WHERE name=?').get(name)) missing.push(name);
   }
   if (!missing.includes('commission_control') && !sqlite.prepare("SELECT 1 FROM commission_control WHERE id='default'").get()) missing.push('commission_control.default');
+  if (!missing.some(name => name === 'marketplace_fee_waiver_control' || name.startsWith('marketplace_fee_waiver_control.'))) {
+    const controls = sqlite.prepare('SELECT id,revision FROM marketplace_fee_waiver_control').all();
+    if (controls.length !== 1 || controls[0].id !== 'default' || !Number.isSafeInteger(controls[0].revision) || controls[0].revision < 0) missing.push('marketplace_fee_waiver_control.default');
+  }
+  for (const [table, message, events] of [
+    ['marketplace_fee_waiver_revisions', 'fee_waiver_revision_immutable', ['update', 'delete']],
+    ['marketplace_fee_waiver_requests', 'fee_waiver_request_immutable', ['update', 'delete']],
+    ['marketplace_fee_waiver_campaigns', 'fee_waiver_campaign_retained', ['delete']],
+    ['order_item_marketplace_fees', 'marketplace_fee_snapshot_immutable', ['update', 'delete']],
+  ]) for (const event of events) {
+    const name = `${String(table)}_no_${event}`;
+    const definition = sqlite.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?").get(name)?.sql;
+    if (!definition) missing.push(name);
+    else if (!sameFeeSqlDefinition(definition,`CREATE TRIGGER ${name} BEFORE ${event} ON ${String(table)} BEGIN SELECT RAISE(ABORT,'${String(message)}'); END`)) missing.push(`${name}.version`);
+  }
+  const definitions = sqlite.prepare("SELECT type,name,sql AS definition FROM sqlite_master WHERE type IN ('table','index','trigger')").all();
+  missing.push(...customerFeeSqliteDefinitionProblems(definitions));
+  if (!missing.some(name => name === 'customer_fee_waiver_control' || name.startsWith('customer_fee_waiver_control.') || name.endsWith(':customer_fee_waiver_control')))
+    missing.push(...customerFeeControlProblems(sqlite.prepare('SELECT id,revision FROM customer_fee_waiver_control').all()));
   return { ready: missing.length === 0, missing };
 }
 
@@ -189,7 +218,8 @@ export async function checkLocalData(projectRoot, environment) {
       if (!readiness.ready) {
         throw new Error(`Local forms/sign-in data is incomplete: ${readiness.readyForms}/${readiness.requiredForms} forms ready. ${readiness.errors.join(' ')}`);
       }
-      return { databasePath, readiness };
+      const hasSecurityRecords=Boolean(sqlite.prepare("SELECT 1 FROM marketplace_settings WHERE substr(`key`,1,13)='auth-private:' LIMIT 1").get());
+      return { databasePath, readiness, hasSecurityRecords };
     } finally { sqlite.close(); }
   } catch (error) {
     throw new Error(`Local staging data check failed: ${error.message} No data was created, restored, migrated, or seeded.`);
@@ -214,6 +244,10 @@ async function main() {
     console.log('Local check passed. No server started; no data changed.');
     return;
   }
+  const {provisionLocalSecurityKey}=await import('./staging/security-key.mjs');
+  const securityKey=await provisionLocalSecurityKey(projectRoot,data.hasSecurityRecords);
+  if(environment.HASTABAZAAR_SECURITY_KEY && environment.HASTABAZAAR_SECURITY_KEY!==securityKey)throw new Error('Inherited security key conflicts with this local installation.');
+  environment.HASTABAZAAR_SECURITY_KEY=securityKey;
   // strictPort is enforced by the local-staging server settings in vite.config.ts.
   // Vinext accepts --hostname and --port, but does not implement --strictPort.
   const child = spawn(process.execPath, [cli, 'dev', '--hostname', 'localhost', '--port', '3018'], {

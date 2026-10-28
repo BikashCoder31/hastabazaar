@@ -14,7 +14,6 @@ function fixture() {
   for (const f of readdirSync('drizzle')
     .filter((f) => /^\d+.*\.sql$/.test(f))
     .sort()) {
-    if (Number(f.slice(0, 4)) > 36) continue;
     sqlite.exec(readFileSync('drizzle/' + f, 'utf8'));
   }
   for (const [id, role] of [

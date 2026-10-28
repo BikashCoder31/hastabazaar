@@ -223,12 +223,3 @@ export function validateEvidenceFile(file: File): string | null {
   }
   return null;
 }
-
-export async function validateEvidenceContent(file: File): Promise<string | null> {
-  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
-  const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-  const png = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
-  const webp = String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF' && String.fromCharCode(...bytes.slice(8, 12)) === 'WEBP';
-  const pdf = String.fromCharCode(...bytes.slice(0, 5)) === '%PDF-';
-  return jpeg || png || webp || pdf ? null : 'The file contents do not match an accepted image or PDF.';
-}

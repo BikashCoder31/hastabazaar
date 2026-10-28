@@ -71,7 +71,7 @@ export function CustomerContactForm({
       setMessage(
         kind === 'feedback'
           ? `Thank you for your feedback.${reference ? ` Reference: ${reference}.` : ''}`
-          : `Thank you. Your message has been sent to the HastaBazaar support team.${reference ? ` Reference: ${reference}.` : ''}`,
+          : `Thank you. Your message has been sent to the Hastabazaar support team.${reference ? ` Reference: ${reference}.` : ''}`,
       );
     } catch (caught) {
       setError(
@@ -214,7 +214,7 @@ export function CustomerContactForm({
           className="mt-1 size-4 accent-primary"
         />
         <span>
-          I understand that HastaBazaar will use these details to respond, as
+          I understand that Hastabazaar will use these details to respond, as
           described in the{' '}
           <Link
             href="/privacy"

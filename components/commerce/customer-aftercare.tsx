@@ -376,7 +376,7 @@ export function CustomerAftercare({
                     />
                     <span>
                       This product was supplied with an original seal and that
-                      seal is still intact. HastaBazaar will verify this for the
+                      seal is still intact. Hastabazaar will verify this for the
                       15-calendar-day sealed-goods window.
                     </span>
                   </label>
@@ -459,7 +459,7 @@ export function CustomerAftercare({
                     <option value="delivery">Delivery</option>
                     <option value="seller">Seller</option>
                     <option value="refund">Refund</option>
-                    <option value="service">HastaBazaar service</option>
+                    <option value="service">Hastabazaar service</option>
                     <option value="safety">Safety or urgent concern</option>
                     <option value="other">Other</option>
                   </select>

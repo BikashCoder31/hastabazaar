@@ -19,10 +19,13 @@ function fixtureBundle() {
       contents: `
       import React from 'react'; import {createRoot} from 'react-dom/client';
       import {CheckoutForm} from './components/commerce/checkout-form';
-      createRoot(document.getElementById('root')).render(<CheckoutForm
+      const root = createRoot(document.getElementById('root'));
+      function renderCheckout(policyContext){root.render(<CheckoutForm
+        policyContext={policyContext}
         customerId="fictional-customer" customerEmail="buyer@example.test" customerPhone="9811111111"
         customerDisplayName="Fictional Buyer" contactStatus={{email:'buyer@example.test',phone:'+9779811111111',emailVerified:true,phoneVerified:true}}
-        savedAddresses={[{id:'fictional-address',isDefault:true,recipientName:'Fictional Buyer',phone:'9811111111',province:'Madhesh',district:'Dhanusha',municipality:'Janakpur',locality:'Fictional locality'}]}/>);
+        savedAddresses={[{id:'fictional-address',isDefault:true,recipientName:'Fictional Buyer',phone:'9811111111',province:'Madhesh',district:'Dhanusha',municipality:'Janakpur',locality:'Fictional locality'}]}/>);}
+      window.reviseCheckoutPolicy=renderCheckout;renderCheckout('a'.repeat(64));
     `,
     },
     bundle: true,
@@ -80,7 +83,7 @@ function config(version: number) {
     },
   };
 }
-async function mounted(failure?: ConfigFailure) {
+async function mounted(failure?: ConfigFailure, changedQuote = false) {
   const { chromium } = (await import(
     process.env.PLAYWRIGHT_MODULE ??
       'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs'
@@ -105,6 +108,10 @@ async function mounted(failure?: ConfigFailure) {
   let version = 1;
   let heldConfig: FixtureRoute | undefined;
   let holdNextConfig = false;
+  let holdNextCheckout = false;
+  let heldCheckout: FixtureRoute | undefined;
+  let checkoutHeld: (() => void) | undefined;
+  const checkoutHeldSignal = new Promise<void>(resolve => { checkoutHeld = resolve; });
   await page.route('https://checkout-recovery.test/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/')
@@ -183,12 +190,13 @@ async function mounted(failure?: ConfigFailure) {
       });
     if (path === '/api/checkout') {
       checkoutRequests.push(JSON.parse(route.request().postData() ?? '{}'));
+      if (holdNextCheckout) { holdNextCheckout = false; heldCheckout = route; checkoutHeld?.(); return; }
       return route.fulfill({
         status: checkoutRequests.length === 1 ? 409 : 503,
         contentType: 'application/json',
         body: JSON.stringify(
           checkoutRequests.length === 1
-            ? { error: 'Checkout was updated.', code: 'stale_version' }
+            ? { error: 'Checkout was updated.', code: changedQuote ? 'quote_changed' : 'stale_version' }
             : { error: 'Fictional order result remains uncertain.' },
         ),
       });
@@ -201,6 +209,9 @@ async function mounted(failure?: ConfigFailure) {
     browser,
     page,
     checkoutRequests,
+    holdCheckout: () => { holdNextCheckout = true; },
+    waitForHeldCheckout: () => checkoutHeldSignal,
+    finishHeldCheckout: async () => { await heldCheckout?.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"Fictional order result remains uncertain."}' }); },
     configCount: () => configRequests,
     holdConfig: () => {
       holdNextConfig = true;
@@ -359,6 +370,8 @@ void test('stale checkout refresh retains custom answers and original idempotent
     await retry.waitFor();
     assert.equal(h.checkoutRequests.length, 1);
     const first = h.checkoutRequests[0];
+    assert.equal((first.reviewedQuote as {policyContext:string}).policyContext, 'a'.repeat(64));
+    assert.equal((first.reviewedQuote as {lines:unknown[]}).lines.length, 1);
     assert.equal(first.formVersion, 1);
     assert.deepEqual(first.customAnswers, [
       { fieldId: 'delivery_note', value: 'Call before delivery' },
@@ -412,6 +425,15 @@ void test('stale checkout refresh retains custom answers and original idempotent
       1,
       'new published version must not silently replace original intent',
     );
+    await h.page.evaluate(() => {
+      (window as unknown as {reviseCheckoutPolicy(context:string):void}).reviseCheckoutPolicy('b'.repeat(64));
+    });
+    await h.page.waitForFunction(() => {
+      const boxes = document.querySelectorAll('[role="checkbox"]');
+      return boxes[boxes.length - 1]?.getAttribute('aria-checked') === 'false';
+    });
+    assert.equal(h.checkoutRequests.length, 1, 'changed policy must not automatically submit a new order');
+    await h.page.locator('label[for="checkout-terms"]').click();
     await h.page
       .getByRole('button', { name: 'Retry prior order attempt', exact: true })
       .click();
@@ -447,4 +469,23 @@ void test('stale checkout refresh retains custom answers and original idempotent
   } finally {
     await h.browser.close();
   }
+});
+
+void test('quote review cannot clear original retry identity while a checkout retry is pending', async () => {
+  const h = await mounted(undefined, true);
+  try {
+    await h.page.getByLabel('Delivery note').fill('Call before delivery');
+    await h.page.locator('label[for="checkout-terms"]').click();
+    await h.page.getByRole('button', { name: 'Place COD order', exact: true }).click();
+    const review = h.page.getByRole('button', { name: 'Review updated checkout', exact: true });
+    await review.waitFor();
+    const before = await h.page.evaluate(() => Object.entries(sessionStorage).sort(([a],[b]) => a.localeCompare(b)));
+    h.holdCheckout();
+    await h.page.getByRole('button', { name: 'Retry prior order attempt', exact: true }).click();
+    await h.waitForHeldCheckout();
+    assert.equal(await review.isDisabled(), true);
+    assert.deepEqual(await h.page.evaluate(() => Object.entries(sessionStorage).sort(([a],[b]) => a.localeCompare(b))), before);
+    assert.deepEqual(h.checkoutRequests[1], h.checkoutRequests[0]);
+    await h.finishHeldCheckout();
+  } finally { await h.browser.close(); }
 });

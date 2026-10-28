@@ -7,6 +7,8 @@ import { staffMutationGuard } from '@/lib/db/repositories/staff-mutation-guard';
 import { digestFormRequest } from '@/lib/forms/submission';
 import type { FormAnswerSnapshot } from '@/lib/forms/types';
 import { acceptedManagedTermsGuards, getAcceptedManagedTerms } from './accepted-terms';
+import { MANAGED_SUPPLIER_AGREEMENT_VERSION } from '../sellers/managed-identity';
+import { managedClearanceBlock, PENDING_PAYOUT_PREFIX, isPendingPayoutReference } from '../sellers/onboarding';
 
 export interface ManagedActivationAssessment {
   environment: RuntimeEnvironment;
@@ -99,6 +101,13 @@ export async function activateManagedMakerForSimulation(
     return;
   }
   const formDigest = options.form ? await digestAt(options.agreementAcceptedAt) : null;
+  // No clearance is inferred from identity, PAN, acceptance, staff notes or simulation references.
+  // A separately reviewed, evidence-bound clearance workflow is required before this contract can activate.
+  const prospective = await database.prepare(`SELECT 1 FROM seller_profiles s WHERE s.id=? AND
+    (instr(s.payout_account_reference,?)=1 OR EXISTS(SELECT 1 FROM managed_maker_application_details d
+      WHERE d.seller_id=s.id AND d.agreement_version=?))`).bind(options.sellerId,PENDING_PAYOUT_PREFIX,MANAGED_SUPPLIER_AGREEMENT_VERSION).first();
+  if (prospective) throw new ManagedActivationError(managedClearanceBlock);
+  if (isPendingPayoutReference(options.payoutBeneficiaryReference)) throw new ManagedActivationError('An independently verified payout destination is required.');
   const accepted = options.model === 'managed_sale_linked_percentage_v1'
     ? await getAcceptedManagedTerms(database, options.sellerId, options.now) : null;
   if (options.model === 'managed_sale_linked_percentage_v1' && (!accepted ||
@@ -136,8 +145,10 @@ export async function activateManagedMakerForSimulation(
       SELECT 1 FROM seller_participation_profiles p JOIN seller_profiles s ON s.id=p.seller_id
       JOIN users u ON u.id=s.user_id WHERE p.seller_id=? AND p.participation_route='managed_maker'
         AND p.application_stage='approved_for_activation' AND u.status='active' AND s.user_id<>?
+        AND COALESCE(instr(s.payout_account_reference,?),0)<>1
+        AND NOT EXISTS(SELECT 1 FROM managed_maker_application_details d WHERE d.seller_id=s.id AND d.agreement_version=?)
         AND EXISTS(SELECT 1 FROM products WHERE seller_id=s.id AND status='approved')) THEN 1 ELSE 0 END`)
-      .bind(stageGuardId, options.sellerId, options.actorId),
+      .bind(stageGuardId, options.sellerId, options.actorId, PENDING_PAYOUT_PREFIX, MANAGED_SUPPLIER_AGREEMENT_VERSION),
     database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(stageGuardId),
     ...(accepted ? acceptedManagedTermsGuards(database, accepted, options.now) : []),
   ];

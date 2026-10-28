@@ -5,6 +5,7 @@ import { requireCustomerPage } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
 import { getWallet } from '@/lib/db/repositories/wallet';
 import { ReferralShare } from '@/components/account/referral-share';
+import { referralInvitationLink } from '@/lib/referrals/invitation-link';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Refer & earn' };
@@ -52,7 +53,13 @@ export default async function ReferralsPage() {
               Share your link or code. Your friend signs in, adds their first
               order and checks the referral code at checkout.
             </p>
-            <ReferralShare code={wallet.referralCode} />
+            <ReferralShare
+              code={wallet.referralCode}
+              invitationLink={referralInvitationLink(
+                wallet.referralCode,
+                (env as unknown as { APP_ORIGIN?: string }).APP_ORIGIN,
+              )}
+            />
           </>
         ) : (
           <output className="block mt-4 leading-7">

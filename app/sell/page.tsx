@@ -12,19 +12,19 @@ import { getSellerTermsViewer } from '@/lib/auth/seller-commercial-access';
 export const metadata: Metadata = {
   title: 'Sell with us',
   description:
-    'Apply to become a verified seller on HastaBazaar.',
+    'Apply to become a verified seller on Hastabazaar.',
 };
 
 const steps = [
   {
     icon: Store,
     title: 'Choose the applicable route',
-    body: 'Answer one Yes/No registration question to open either Registered Seller or Hastabazaar Managed Maker onboarding.',
+    body: 'Choose Sell through Hastabazaar for reviewed company supply, or Registered business seller for your registered business, including a sole proprietorship.',
   },
   {
     icon: FileCheck2,
     title: 'Provide verification',
-    body: 'Registered Sellers provide applicable business evidence. Managed Makers without business PAN provide personal details, government ID and explicit company selling terms; personal PAN is optional.',
+    body: 'Company suppliers provide personal PAN and certificate, government ID, verified contacts and bank evidence. Business sellers provide registration, business PAN and applicable VAT evidence.',
   },
   {
     icon: ClipboardCheck,
@@ -45,7 +45,7 @@ export default async function SellPage() {
             <div className="mt-4 grid gap-8 lg:grid-cols-[1fr_0.9fr] lg:items-end">
               <div>
                 <h1 className="max-w-3xl font-heading text-5xl leading-[1.02] tracking-tight sm:text-6xl">
-                  Bring your work to HastaBazaar.
+                  Bring your work to Hastabazaar.
                 </h1>
                 <p className="mt-5 max-w-2xl text-lg leading-8 text-muted-foreground">
                   Established businesses and individual makers share one maker-profile foundation. No listing goes live until the applicable program, maker, and product requirements are approved.
@@ -60,6 +60,10 @@ export default async function SellPage() {
         </section>
 
         <section className="shell py-10 lg:py-14">
+          <div className="mb-8 grid gap-5 md:grid-cols-2">
+            <article className="rounded-2xl border bg-card p-6"><h2 className="font-heading text-2xl">Sell through Hastabazaar</h2><p className="mt-3 text-sm leading-6">For individual makers and suppliers without business PAN, subject to legal/accounting clearance. Hasta Bazaar Private Limited must genuinely be the seller and invoice issuer. Personal PAN and ID do not waive registration or tax duties, or permit use of the company PAN.</p><p className="mt-3 text-sm leading-6">Public example: Mithila Craft House · Supplied by Mithila Craft House · Sold and invoiced by Hasta Bazaar Private Limited.</p><p className="mt-3 text-sm font-semibold">Applications are Under review. Commercial activation remains blocked until required clearance is documented.</p></article>
+            <article className="rounded-2xl border bg-card p-6"><h2 className="font-heading text-2xl">Registered business seller</h2><p className="mt-3 text-sm leading-6">For registered sole proprietors, firms, companies and organisations with business PAN. A limited company is not required. Provide applicable registration, business PAN, VAT details where applicable, authorised representative ID, bank and pickup/return details, and accept the seller agreement.</p><p className="mt-3 text-sm leading-6">Public example: Sold by Mithila Craft House · Through Hastabazaar. The business remains the legal seller and invoice issuer for its own sales.</p><p className="mt-3 text-sm font-semibold">Personal PAN alone does not qualify. Staff review and Super Admin approval are required.</p></article>
+          </div>
           <ol className="grid gap-px overflow-hidden rounded-3xl border border-border bg-border md:grid-cols-3">
             {steps.map(({ icon: Icon, title, body }, index) => (
               <li key={title} className="bg-card p-6 sm:p-7">

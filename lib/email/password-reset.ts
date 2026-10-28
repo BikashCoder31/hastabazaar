@@ -17,7 +17,7 @@ export async function sendPasswordResetCode(
   const message = buildEmailLoginCodeMessage({ email, code });
   await env.EMAIL.send({
     to: email,
-    subject: 'Reset your HastaBazaar password',
+    subject: 'Reset your Hastabazaar password',
     text: message.text.replaceAll('sign-in code', 'password reset code'),
     html: message.html
       .replaceAll('sign-in code', 'password reset code')

@@ -134,6 +134,12 @@ export function CommissionReport({
           </Link>
         </div>
       </form>
+      <dl className="grid gap-3 rounded-xl border p-4 text-sm sm:grid-cols-3">
+        <div><dt>Original standard marketplace fees</dt><dd>{commissionMoney(report.totals.originalStandardPaisa)}</dd></div>
+        <div><dt>Original marketplace fees waived</dt><dd>{commissionMoney(report.totals.originalWaivedPaisa)}</dd></div>
+        <div><dt>Original net marketplace fees</dt><dd>{commissionMoney(report.totals.originalStandardPaisa-report.totals.originalWaivedPaisa)}</dd></div>
+      </dl>
+      <p className="text-sm text-muted-foreground">Original order amounts include cancelled and refunded items. Earned fees and refund reversals below describe the ledger separately.</p>
       {error ? (
         <p
           role="alert"
@@ -244,8 +250,13 @@ export function CommissionReport({
                           : `${row.minRateBps / 100}–${row.maxRateBps / 100}%`}
                       </span>
                       <p className="mt-1 whitespace-nowrap text-xs text-muted-foreground">
-                        {commissionMoney(row.originalCommissionPaisa)} at
-                        placement
+                        Standard: {commissionMoney(row.originalStandardPaisa)}
+                      </p>
+                      <p className="mt-1 break-words text-xs text-muted-foreground">
+                        {row.campaignNames?.length ? `Full fee waiver · ${row.campaignNames.join(', ')}` : 'No campaign waiver'}: {commissionMoney(row.originalWaivedPaisa)}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Original net fee: {commissionMoney(row.originalCommissionPaisa)} at placement
                       </p>
                     </td>
                     <td className="whitespace-nowrap px-4 py-4 tabular-nums">

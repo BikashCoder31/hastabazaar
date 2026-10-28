@@ -1,7 +1,7 @@
 export const metadata = {
   alternates: { canonical: 'https://hastabazaar.com/' },
   openGraph: {
-    title: 'HastaBazaar — Thoughtful finds for everyday life',
+    title: 'Hastabazaar — Thoughtful finds for everyday life',
     url: 'https://hastabazaar.com/',
     type: 'website',
   },
@@ -411,7 +411,7 @@ export default async function Home() {
                 <h2 className="section-heading mt-3">
                   {topProducts.length > 0
                     ? 'Top products right now.'
-                    : 'Featured by HastaBazaar.'}
+                    : 'Featured by Hastabazaar.'}
                 </h2>
               </div>
               <Link href="/shop" className="section-link">
@@ -456,7 +456,7 @@ export default async function Home() {
 
         <section id="our-standard" className="shell py-10 sm:py-14">
           <div className="max-w-2xl">
-            <p className="eyebrow">The HastaBazaar promise</p>
+            <p className="eyebrow">The Hastabazaar promise</p>
             <h2 className="section-heading mt-3">
               Good craft. Thoughtful care.
             </h2>
@@ -495,7 +495,7 @@ export default async function Home() {
           <div className="shell py-12 sm:py-16">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
-                <p className="eyebrow">Your HastaBazaar</p>
+                <p className="eyebrow">Your Hastabazaar</p>
                 <h2 className="section-heading mt-3">
                   Everything, a little closer.
                 </h2>

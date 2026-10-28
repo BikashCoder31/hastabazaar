@@ -1,5 +1,7 @@
 import { AcceptedAgreementSnapshot } from '@/components/admin/accepted-agreement-snapshot';
-import { getManagedMakerDetailsForReview, getManagedMakerApplicationTerms, ManagedMakerAuthorityError } from '@/lib/db/repositories/managed-maker-details';
+import { AccountRecoveryAssistance } from '@/components/admin/account-recovery-assistance';
+import { getManagedMakerDetailsForReview, getManagedMakerApplicationTerms, ManagedMakerAuthorityError, managedAgreementVersionForSeller } from '@/lib/db/repositories/managed-maker-details';
+import { MANAGED_SUPPLIER_AGREEMENT_VERSION } from '@/lib/sellers/managed-identity';
 import { CompanySellingIdentity } from '@/components/seller/managed-maker-identity-fields';
 import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import { env } from 'cloudflare:workers';
@@ -28,12 +30,18 @@ import { getSellerApplicationForReview } from '@/lib/db/repositories/seller-appl
 import { getSellerGovernance } from '@/lib/db/repositories/seller-governance';
 import { can } from '@/lib/marketplace/permissions';
 import { managedMakerDisplayName } from '@/lib/sellers/participation';
+import { isPendingPayoutReference, managedClearanceBlock } from '@/lib/sellers/onboarding';
 import { getManagedProgramWorkspace } from '@/lib/managed-commerce/program-workspace';
 
 export const dynamic = 'force-dynamic';
 
 function readAcceptedManagedTerms(database: D1Database, sellerId: string) {
   return getAcceptedManagedTerms(database, sellerId, Date.now());
+}
+
+async function readManagedApplicationTerms(database: D1Database, sellerId: string) {
+  const version = await managedAgreementVersionForSeller(database, sellerId);
+  return getManagedMakerApplicationTerms(database, Date.now(), version);
 }
 
 const dateTimeFormatter = new Intl.DateTimeFormat('en-NP', {
@@ -59,7 +67,7 @@ function Detail({
       <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
         {label}
       </dt>
-      <dd className="mt-1 text-sm leading-6">{children || '—'}</dd>
+      <dd className="mt-1 break-words text-sm leading-6">{children || '—'}</dd>
     </div>
   );
 }
@@ -80,8 +88,13 @@ export default async function SellerApplicationPage({
     throw error;
   });
   if (!application) notFound();
+  const recoveryTarget = staff.role === 'super_admin' && application.userId !== staff.id
+    ? await database.prepare(`SELECT u.id,u.email,u.display_name AS displayName,CASE WHEN EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='admin') THEN 'admin' ELSE 'seller' END AS role FROM users u WHERE u.id=? AND u.status='active' AND EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role IN ('seller','admin')) AND NOT EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='super_admin')`).bind(application.userId).first<{id:string;email:string;displayName:string;role:'admin'|'seller'}>()
+    : null;
   const [managedDetails, managedTerms] = application.participationRoute === 'managed_maker'
-    ? await Promise.all([getManagedMakerDetailsForReview(database,id,staff.id),getManagedMakerApplicationTerms(database)]) : [null,null];
+    ? await Promise.all([getManagedMakerDetailsForReview(database,id,staff.id),readManagedApplicationTerms(database,id)]) : [null,null];
+  const operationalAddresses=await database.prepare(`SELECT purpose,locality FROM seller_operational_addresses WHERE seller_id=? AND purpose IN ('pickup','returns') ORDER BY purpose`)
+    .bind(id).all<{purpose:string;locality:string}>();
   const governance = await getSellerGovernance(database, id);
   const managedProgram = await getManagedProgramWorkspace(database, id);
   const acceptedManagedTerms = application.participationRoute === 'managed_maker'
@@ -89,6 +102,7 @@ export default async function SellerApplicationPage({
 
   return (
     <div className="space-y-7">
+      {recoveryTarget ? <AccountRecoveryAssistance targetId={recoveryTarget.id} displayName={recoveryTarget.displayName} email={recoveryTarget.email} targetRole={recoveryTarget.role} /> : null}
       <StaffFormHistoryLinks entries={[{kind:'seller-review-action',subjectId:id,label:'Seller review answers'},
         ...(staff.role === 'super_admin' ? [{kind:'seller-governance' as const,subjectId:id,label:'Seller governance answers'}] : [])]} />
       <Link
@@ -115,6 +129,7 @@ export default async function SellerApplicationPage({
         {[['seller-readiness','Readiness'],['seller-identity','Identity & terms'],['seller-registration','Registration'],['seller-evidence','Documents'],['seller-decision','Application decision'],['seller-history','Review history']].filter(([target])=>target!=='seller-identity'||application.participationRoute==='managed_maker').map(([target,label])=><a key={target} href={'#'+target} className="inline-flex min-h-11 items-center rounded-full border bg-card px-4 text-sm font-semibold hover:bg-muted">{label}</a>)}
       </nav>
       <div id="seller-readiness" className="scroll-mt-28 grid gap-4 md:grid-cols-3">
+          {application.participationRoute==='managed_maker' ? <p className="rounded-xl border p-4 text-sm md:col-span-3">{managedClearanceBlock}</p> : null}
         <Card>
           <CardHeader><CardTitle>Selected route</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
@@ -295,7 +310,7 @@ export default async function SellerApplicationPage({
                       )
                     : '—'}
                 </Detail>
-                <Detail label="Verified receiving account reference">
+                  <Detail label={isPendingPayoutReference(application.payoutAccountReference??'') ? 'Submitted bank details — pending verification' : 'Verified receiving account reference'}>
                   {application.payoutAccountReference}
                 </Detail>
                 <Detail label="Written settlement terms reference">
@@ -344,6 +359,7 @@ export default async function SellerApplicationPage({
                 {application.municipality}, {application.district},{' '}
                 {application.province}, Nepal
               </p>
+              <dl className="mt-4 space-y-3">{operationalAddresses.results.map(address=><Detail key={address.purpose} label={address.purpose==='pickup'?'Private pickup address':'Private return address'}>{address.locality}</Detail>)}</dl>
             </CardContent>
           </Card>
 
@@ -370,6 +386,7 @@ export default async function SellerApplicationPage({
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
+                    {document.kind==='bank_verification' ? <a href={`/api/admin/seller-documents/${document.id}?details=payout`} target="_blank" rel="noreferrer" className="text-sm font-semibold text-primary underline">Submitted bank details</a> : null}
                     <StatusBadge status={document.status} />
                     <a
                       href={`/api/admin/seller-documents/${document.id}`}
@@ -398,7 +415,7 @@ export default async function SellerApplicationPage({
                 participationRoute={application.participationRoute}
                 applicationStage={application.applicationStage}
               />
-              {application.participationRoute === 'managed_maker' && application.applicationStage === 'approved_for_activation' ? (
+              {application.participationRoute === 'managed_maker' && application.applicationStage === 'approved_for_activation' && managedTerms?.version!==MANAGED_SUPPLIER_AGREEMENT_VERSION ? (
                 <div className="mt-5"><ManagedMakerActivationForm sellerId={application.id} companyAccount={managedTerms?.account} acceptedTerms={acceptedManagedTerms ? { detailId: acceptedManagedTerms.detailId, retentionBps: acceptedManagedTerms.retentionBps, agreementVersion: acceptedManagedTerms.agreementVersion } : null}/></div>
               ) : null}
             </CardContent>

@@ -1,4 +1,5 @@
 import { publicProductName } from '@/lib/products/truthful-presentation';
+import { payableOrderTotalSql } from './platform-service-fee';
 import {normalizeProvince,normalizeDistrict,districtBelongsToProvince,validWard} from '@/lib/checkout/nepal-address';
 import {normalizeNepalMobile} from '@/lib/auth/nepal-phone';
 import { publicProductEligibility } from '@/lib/products/eligibility';
@@ -127,7 +128,7 @@ export async function listPublishedProductsByMaker(database: D1Database, sellerI
 export async function listCustomerOrders(database: D1Database, userId: string, limit = 100): Promise<readonly CustomerOrderRow[]> {
   const result = await database.prepare(
     `SELECT orders.order_number AS orderNumber, orders.status,
-      orders.payment_status AS paymentStatus, COALESCE(orders.current_total_paisa,orders.grand_total_paisa) AS grandTotalPaisa,
+      orders.payment_status AS paymentStatus, ${payableOrderTotalSql()} AS grandTotalPaisa,
       orders.placed_at AS placedAt, orders.delivered_at AS deliveredAt,
       COALESCE(SUM(order_items.quantity), 0) AS itemCount
      FROM orders LEFT JOIN order_items ON order_items.order_id = orders.id

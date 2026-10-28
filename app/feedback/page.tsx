@@ -5,7 +5,7 @@ import { SiteHeader } from '@/components/layout/site-header';
 
 export const metadata: Metadata = {
   title: 'Share your feedback',
-  description: 'Share feedback about your HastaBazaar experience.',
+  description: 'Share feedback about your Hastabazaar experience.',
   alternates: { canonical: 'https://hastabazaar.com/feedback' },
 };
 
@@ -22,7 +22,7 @@ export default function FeedbackPage() {
             </h1>
             <p className="mt-4 max-w-2xl text-lg leading-8 text-muted-foreground">
               Tell us what worked, what did not, or what you would like
-              HastaBazaar to improve.
+              Hastabazaar to improve.
             </p>
           </div>
         </section>

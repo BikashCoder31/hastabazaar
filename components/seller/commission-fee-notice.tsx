@@ -7,6 +7,14 @@ import { Button } from '@/components/ui/button';
 import type { CommissionRateChange } from '@/lib/commission/rates';
 import { commissionDate } from '@/lib/commission/reporting';
 
+export function SellerMarketplaceFeeNotice({basisPoints}:{basisPoints:number}) {
+  return <section className="mb-7 space-y-2 rounded-2xl border bg-card p-5 text-sm" aria-label="Current marketplace fees">
+    <h2 className="font-heading text-2xl">Marketplace fees for new orders</h2>
+    <p>Standard marketplace fee: {basisPoints/100}%. Existing acceptance requirements apply.</p>
+    <p>Net marketplace fee: {basisPoints/100}%. Customer service fee campaigns do not change seller commission.</p>
+  </section>;
+}
+
 type Notice = Pick<
   CommissionRateChange,
   'id' | 'basisPoints' | 'effectiveAt' | 'termsText' | 'agreementVersion'

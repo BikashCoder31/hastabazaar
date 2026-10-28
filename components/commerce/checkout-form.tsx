@@ -1,4 +1,6 @@
 'use client';
+import { SellerDisclosure } from './seller-disclosure';
+import { CustomerServiceFeeBreakdown } from './customer-service-fee-breakdown';
 
 import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
@@ -40,10 +42,12 @@ import {
   NEPAL_PROVINCES,
 } from '@/lib/checkout/validation';
 import { DELIVERY_ESTIMATE_NOTICE } from '@/lib/checkout/delivery-presentation';
+import { normalizeNepalMobile } from '@/lib/auth/nepal-phone';
 import type { CustomerAddressRow } from '@/lib/db/repositories/customers';
 import type { CheckoutPromoQuote } from '@/lib/incentives/types';
 import { normalizePromoCode } from '@/lib/incentives/promo-policy';
 import type { ReferralCampaign } from '@/lib/db/repositories/wallet';
+import { parseReviewedCheckoutQuote, type ReviewedCheckoutQuote } from '@/lib/checkout/reviewed-quote';
 
 interface CartData {
   items: {
@@ -51,6 +55,7 @@ interface CartData {
     sellerId: string;
     nameEn: string;
     tradingName: string;
+    makerName?: string | null;
     participationRoute?: string;
     storeName?: string | null;
     legalSellerName?: string | null;
@@ -79,7 +84,10 @@ function money(paisa: number): string {
   }).format(paisa / 100);
 }
 
+import { serviceFeeSnapshot, INITIAL_PLATFORM_SERVICE_FEE, type PlatformServiceFeeSnapshot } from '@/lib/checkout/platform-service-fee';
+
 export function CheckoutForm({
+  serviceFee = serviceFeeSnapshot(INITIAL_PLATFORM_SERVICE_FEE, null),
   deliveryRates = DEFAULT_DELIVERY_RATES,
   customerEmail,
   customerPhone,
@@ -91,7 +99,9 @@ export function CheckoutForm({
   walletBalancePaisa = 0,
   referralCampaign,
   initialReferralCode = '',
+  policyContext,
 }: {
+  serviceFee?: PlatformServiceFeeSnapshot;
   deliveryRates?: DeliveryRates;
   customerEmail?: string;
   customerPhone?: string;
@@ -103,6 +113,7 @@ export function CheckoutForm({
   walletBalancePaisa?: number;
   referralCampaign?: ReferralCampaign;
   initialReferralCode?: string;
+  policyContext?: string;
 }) {
   const published = usePublishedFormConfig('commerce.checkout', { enabled: Boolean(customerId) });
   const initialAddress =
@@ -121,20 +132,25 @@ export function CheckoutForm({
   const [referralCode, setReferralCode] = useState(
     customerEmail ? initialReferralCode : '',
   );
-  const [province, setProvince] = useState(
-    normalizeProvince(initialAddress?.province ?? '') ?? 'Madhesh',
+  const [province, setProvince] = useState<string>(
+    normalizeProvince(initialAddress?.province ?? '') ?? '',
   );
   const [district, setDistrict] = useState(
     normalizeDistrict(initialAddress?.district ?? '') ??
       initialAddress?.district ??
       '',
   );
-  const [accepted, setAccepted] = useState(false);
+  const [acceptedPolicyContext, setAcceptedPolicyContext] = useState<string | null>(null);
+  const accepted = Boolean(policyContext) && acceptedPolicyContext === policyContext;
   const [submitting, setSubmitting] = useState(false);
   const [currentContacts,setCurrentContacts]=useState<ContactVerificationStatus|null>(contactStatus??null);
-  const contactsVerified=currentContacts?.emailVerified===true&&
+  const accountPhone = normalizeNepalMobile(customerPhone ?? '');
+  const contactsVerified=Boolean(accountPhone)&&
+    normalizeNepalMobile(currentContacts?.phone ?? '') === accountPhone &&
+    currentContacts?.emailVerified===true&&
     (contactPolicy==='email_only'||currentContacts?.phoneVerified===true);
   const [error, setError] = useState('');
+  const [quoteChanged, setQuoteChanged] = useState(false);
   const errorSummary = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
     if (error && cart) errorSummary.current?.focus();
@@ -146,6 +162,8 @@ export function CheckoutForm({
     CustomerAddressRow | undefined
   >(initialAddress);
   const [deliveryFor, setDeliveryFor] = useState<'self' | 'other'>('self');
+  const [recipientEmail, setRecipientEmail] = useState('');
+  // Keep these legacy controls available only when reconstructing a retained request.
   const [saveAddressForFuture, setSaveAddressForFuture] = useState(false);
 
   useEffect(() => {
@@ -182,6 +200,13 @@ export function CheckoutForm({
         : null,
     [district, province, cart, deliveryRates],
   );
+
+  const itemSubtotal = cart?.itemSubtotalPaisa ?? 0;
+  const referralDiscount = !currentPromoQuote && referralCode.trim() && referralCampaign?.enabled &&
+    itemSubtotal >= referralCampaign.minimumSubtotalPaisa ? referralCampaign.friendDiscountPaisa : 0;
+  const walletUsed = useWallet
+    ? Math.min(walletBalancePaisa, itemSubtotal - referralDiscount - (currentPromoQuote?.discountPaisa ?? 0)) : 0;
+  const total = itemSubtotal + (delivery?.chargePaisa ?? 0) + serviceFee.chargedPaisa - referralDiscount - (currentPromoQuote?.discountPaisa ?? 0) - walletUsed;
 
   async function submit(event: {
     preventDefault(): void;
@@ -232,6 +257,13 @@ export function CheckoutForm({
       deliveryRateVersion: retryPrior ? retainedRetry?.deliveryRateVersion : deliveryRates.version,
       useWallet: retryPrior ? retainedRetry?.useWallet : useWallet,
       referralCode: requestPromo ? undefined : referralCode.trim().toUpperCase(),
+      reviewedQuote: retryPrior ? retainedRetry?.reviewedQuote : {
+        lines: cart.items.map(item => ({ id: item.id, sellerId: item.sellerId, pricePaisa: item.pricePaisa, quantity: item.quantity })),
+        deliveryPaisa: delivery?.chargePaisa ?? 0, walletPaisa: walletUsed,
+        referralPaisa: referralDiscount, promoPaisa: currentPromoQuote?.discountPaisa ?? 0,
+        payablePaisa: total, policyContext, serviceFee,
+        referralCampaign: !requestPromo && referralCode.trim() ? referralCampaign ?? null : null,
+      },
       ...(requestPromo ? {promoCode:requestPromo.code,promoRevision:requestPromo.revision,promoQuoteIntent:requestPromo.quoteIntent} : {}),
       address: {
         recipientName: data.get('recipientName'),
@@ -277,7 +309,7 @@ export function CheckoutForm({
         if (typeof parsed.value.formVersion !== 'number' || !Number.isSafeInteger(parsed.value.formVersion) || typeof parsed.value.deliveryRateVersion !== 'string')
           throw new Error('Order version information is unavailable. Refresh before submitting.');
         const metadata:CheckoutRetryMetadata = {version:1,requestId,intentHash,formVersion:parsed.value.formVersion,
-          deliveryRateVersion:parsed.value.deliveryRateVersion,useWallet:parsed.value.useWallet===true,...(requestPromo?{promo:requestPromo}:{})};
+          deliveryRateVersion:parsed.value.deliveryRateVersion,useWallet:parsed.value.useWallet===true,reviewedQuote:parsed.value.reviewedQuote,...(requestPromo?{promo:requestPromo}:{})};
         saveCheckoutRetry(checkoutAttemptKey,metadata);
       }
       checkoutIntent.current = intent;
@@ -292,6 +324,7 @@ export function CheckoutForm({
         ? decoded as Record<string, unknown> : null;
       if (response.status === 409 && result?.code === 'stale_version')
         published.handleSubmissionResponse(response);
+      if (response.status === 409 && result?.code === 'quote_changed') setQuoteChanged(true);
       if (!response.ok)
         throw new Error(typeof result?.error === 'string' ? result.error : 'Order could not be placed.');
       if (typeof result?.orderNumber !== 'string' || result.orderNumber.trim().length === 0 || result.orderNumber.length > 100)
@@ -340,21 +373,6 @@ export function CheckoutForm({
       </div>
     );
 
-  const referralDiscount =
-    !currentPromoQuote && referralCode.trim() &&
-    referralCampaign?.enabled &&
-    cart.itemSubtotalPaisa >= referralCampaign.minimumSubtotalPaisa
-      ? referralCampaign.friendDiscountPaisa
-      : 0;
-  const walletUsed = useWallet
-    ? Math.min(walletBalancePaisa, cart.itemSubtotalPaisa - referralDiscount - (currentPromoQuote?.discountPaisa ?? 0))
-    : 0;
-  const total =
-    cart.itemSubtotalPaisa +
-    (delivery?.chargePaisa ?? 0) -
-    referralDiscount -
-    (currentPromoQuote?.discountPaisa ?? 0) -
-    walletUsed;
   return (
     <form
       ref={checkoutFormRef}
@@ -375,6 +393,7 @@ export function CheckoutForm({
             </span>
             <h2 className="font-heading text-2xl">Where should it go?</h2>
           </div>
+          <p className="mt-3 text-sm text-muted-foreground">Fields marked required must be completed. Optional fields can be left blank.</p>
           <fieldset className="mt-5 grid gap-3 sm:grid-cols-2">
             <legend className="mb-2 text-sm font-medium">Who will receive this order?</legend>
             {(['self', 'other'] as const).map((value) => (
@@ -403,7 +422,7 @@ export function CheckoutForm({
                   );
                   setSelectedAddress(address);
                   setProvince(
-                    normalizeProvince(address?.province ?? '') ?? 'Madhesh',
+                    normalizeProvince(address?.province ?? '') ?? '',
                   );
                   setDistrict(
                     normalizeDistrict(address?.district ?? '') ??
@@ -422,7 +441,7 @@ export function CheckoutForm({
             </div>
           ) : null}
           <div
-            key={`${selectedAddress?.id ?? 'new'}:${deliveryFor}`}
+            key={selectedAddress?.id ?? 'new'}
             className="mt-6 grid gap-5 sm:grid-cols-2"
           >
             <Field
@@ -440,6 +459,8 @@ export function CheckoutForm({
                   type="email"
                   autoComplete="email"
                   aria-describedby="recipient-email-help"
+                  value={recipientEmail}
+                  onChange={event => setRecipientEmail(event.target.value)}
                 />
                 <p id="recipient-email-help" className="text-xs leading-5 text-muted-foreground">
                   Used only for delivery authorization messages. It does not give access to your account, invoice, or order history. A recipient does not need an email account; you can authorize delivery instead.
@@ -464,24 +485,33 @@ export function CheckoutForm({
               readOnly={Boolean(customerEmail)}
               required
             />
-            <Field
-              id="customerPhone"
-              label="Contact phone"
-              type="tel"
-              autoComplete="tel"
-              placeholder="98XXXXXXXX"
-              defaultValue={customerPhone ?? selectedAddress?.phone}
-              readOnly={Boolean(customerEmail)}
-              required
-            />
             <div className="space-y-2">
-              <Label htmlFor="province">Province</Label>
+              <Field
+                id="customerPhone"
+                label="Contact phone"
+                type="tel"
+                autoComplete="tel"
+                placeholder="98XXXXXXXX"
+                defaultValue={customerPhone ?? ''}
+                readOnly={Boolean(customerEmail)}
+                aria-describedby="checkout-contact-phone-help"
+                required
+              />
+              <p id="checkout-contact-phone-help" className="text-xs leading-5 text-muted-foreground">
+                {accountPhone ? 'Uses the Nepal mobile saved in your account.' : 'Add a valid Nepal mobile to your account before ordering.'}{' '}
+                <Link href="/account/profile" className="underline">Update contact phone</Link>.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <FieldLabel htmlFor="province" required>Province</FieldLabel>
               <Select
-                value={province}
-                onValueChange={(value) => setProvince(value ?? 'Madhesh')}
+                name="province"
+                required
+                value={province || null}
+                onValueChange={(value) => setProvince(value ?? '')}
               >
-                <SelectTrigger id="province" className="h-11 w-full">
-                  <SelectValue />
+                <SelectTrigger id="province" aria-required="true" className="h-11 w-full">
+                  <SelectValue placeholder="Select a province" />
                 </SelectTrigger>
                 <SelectContent>
                   {NEPAL_PROVINCES.map((name) => (
@@ -503,13 +533,12 @@ export function CheckoutForm({
                   district && !districtBelongsToProvince(district, province),
                 )}
                 value={district}
+                disabled={!normalizeProvince(province)}
                 onChange={(event) => setDistrict(event.target.value)}
                 required
               />
               <datalist id="checkout-districts">
-                {DISTRICTS_BY_PROVINCE[
-                  normalizeProvince(province) ?? 'Madhesh'
-                ].map((name) => (
+                {(normalizeProvince(province) ? DISTRICTS_BY_PROVINCE[normalizeProvince(province)!] : []).map((name) => (
                   <option key={name} value={name}>
                     {name}
                   </option>
@@ -519,7 +548,7 @@ export function CheckoutForm({
                 id="district-help"
                 className="text-xs leading-5 text-muted-foreground"
               >
-                {district && !districtBelongsToProvince(district, province)
+                {!province ? 'Select a province first, then choose your district.' : district && !districtBelongsToProvince(district, province)
                   ? 'Choose a district in this province. Nawalparasi and Rukum need East or West.'
                   : `Choose or type your district. ${DELIVERY_ESTIMATE_NOTICE}`}
               </p>
@@ -574,8 +603,12 @@ export function CheckoutForm({
               placeholder="Optional"
               defaultValue={selectedAddress?.postalCode ?? ''}
             />
-            {customerEmail && !selectedAddress ? (
+            <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
+              Your delivery address is saved automatically after your order is placed. An unchanged saved address is reused. Edited details are saved as a new address; existing saved addresses stay unchanged.
+            </p>
+            {retainedAttempt && customerEmail && !selectedAddress ? (
               <div className="space-y-3 sm:col-span-2 rounded-xl border bg-muted/25 p-4">
+                <p className="text-xs leading-5 text-muted-foreground">For an older order retry, restore its original save choice and label. New delivery addresses are now saved automatically.</p>
                 <label htmlFor="save-address-for-future" className="flex items-start gap-3 text-sm">
                   <Checkbox
                     id="save-address-for-future"
@@ -593,10 +626,6 @@ export function CheckoutForm({
                   <Field id="saveAddressLabel" label="Address label" maxLength={80} placeholder="Home, workshop, gift recipient…" required />
                 ) : null}
               </div>
-            ) : selectedAddress ? (
-              <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
-                Changes made here apply to this order only. Update the saved entry from My account if you want to reuse those changes.
-              </p>
             ) : null}
           </div>
         </section>
@@ -642,7 +671,7 @@ export function CheckoutForm({
           </section>
         ) : null}
       </div>
-      <aside className="h-fit rounded-2xl border bg-card p-6 lg:sticky lg:top-40">
+      <aside className="h-fit self-start rounded-2xl border bg-card p-6">
         <h2 className="font-heading text-2xl">Your order</h2>
         <Link href="/cart" className="section-link mt-1">
           Edit your cart →
@@ -656,7 +685,7 @@ export function CheckoutForm({
                 </strong>
                 <span className="text-muted-foreground">
                   {item.tradingName}
-                  {item.participationRoute === 'managed_maker' ? <span className="block text-xs">Made by this maker · Sold by {item.storeName ?? 'company store — terms review pending'}</span> : null}
+                  <SellerDisclosure managed={item.participationRoute === 'managed_maker'} supplierName={item.makerName ?? item.tradingName} legalSellerName={item.legalSellerName} />
                 </span>
               </span>
               <span className="shrink-0 whitespace-nowrap font-semibold">
@@ -699,7 +728,7 @@ export function CheckoutForm({
               <span>
                 Use shopping credit · {money(walletBalancePaisa)} available
                 <span className="mt-1 block text-xs text-muted-foreground">
-                  Applies to products. Delivery remains payable in cash.
+                  Applies to products. Delivery and any Platform service fee remain payable in cash.
                 </span>
               </span>
             </label>
@@ -744,6 +773,7 @@ export function CheckoutForm({
             <dd>{money(total)}</dd>
           </div>
         </dl>
+        <div className="mt-3 border-t pt-3"><CustomerServiceFeeBreakdown standardPaisa={'standardPaisa' in serviceFee ? serviceFee.standardPaisa : serviceFee.chargedPaisa} waivedPaisa={'waivedPaisa' in serviceFee ? serviceFee.waivedPaisa : 0} netPaisa={serviceFee.chargedPaisa} campaignName={'campaign' in serviceFee ? serviceFee.campaign?.name ?? null : null} source="estimate" /></div>
         {delivery ? (
           <p className="mt-4 flex gap-2 text-sm leading-6 text-muted-foreground">
             <Truck className="mt-1 size-4 shrink-0 text-primary" />
@@ -758,7 +788,7 @@ export function CheckoutForm({
           <Checkbox
             id="checkout-terms"
             checked={accepted}
-            onCheckedChange={setAccepted}
+            onCheckedChange={(value) => setAcceptedPolicyContext(value === true ? policyContext ?? null : null)}
             className="mt-1"
           />
           <span>
@@ -770,7 +800,7 @@ export function CheckoutForm({
             >
               Terms & Conditions
             </Link>
-            .
+            . <span className="text-xs text-muted-foreground">(required)</span>
           </span>
         </label>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
@@ -811,9 +841,14 @@ export function CheckoutForm({
             before placing the order.
           </p>
         ) : null}
+        {quoteChanged ? <Button type="button" variant="outline" className="mt-3 w-full" disabled={submitting} onClick={() => {
+          if (submittingRef.current) return;
+          clearCheckoutRetry(checkoutAttemptKey);
+          window.location.reload();
+        }}>Review updated checkout</Button> : null}
         <Button
           type="submit"
-          disabled={submitting || promoPending || cart.items.length === 0 || cart.hasUnavailableItems || !published.canSubmit || !contactsVerified}
+          disabled={submitting || promoPending || cart.items.length === 0 || cart.hasUnavailableItems || !published.canSubmit || !contactsVerified || !accepted || !delivery}
           className="mt-6 h-12 w-full rounded-full text-base"
         >
           <LockKeyhole /> {submitting ? 'Placing order…' : 'Place COD order'}
@@ -824,7 +859,7 @@ export function CheckoutForm({
         </div> : null}
         <Button type="button" variant="outline" className="mt-3 w-full" disabled={submitting} onClick={() => {
           if (!window.confirm("The prior order may already have completed. Check your orders before starting a new attempt to avoid duplicates.")) return;
-          clearCheckoutRetry(checkoutAttemptKey); freshAttempts.current.clear(); checkoutIntent.current = null; setAttemptRevision(value=>value+1); setError(""); published.refresh();
+          clearCheckoutRetry(checkoutAttemptKey); freshAttempts.current.clear(); checkoutIntent.current = null; setAttemptRevision(value=>value+1); setError(""); setQuoteChanged(false); published.refresh();
         }}>Start a new order attempt</Button>
         <p className="mt-3 text-center text-xs leading-5 text-muted-foreground">
           Availability and price are verified again before confirmation.
@@ -837,14 +872,24 @@ export function CheckoutForm({
 function Field({
   id,
   label,
+  required,
   ...props
 }: { id: string; label: string } & React.ComponentProps<typeof Input>) {
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
-      <Input id={id} name={id} className="h-11 text-base" {...props} />
+      <FieldLabel htmlFor={id} required={required}>{label}</FieldLabel>
+      <Input id={id} name={id} className="h-11 text-base" required={required} {...props} />
     </div>
   );
+}
+
+function FieldLabel({ htmlFor, required, children }: { htmlFor: string; required?: boolean; children: React.ReactNode }) {
+  const alreadyOptional = typeof children === 'string' && /\(optional\)/i.test(children);
+  return <Label htmlFor={htmlFor}>
+    {children}
+    {required ? <><span aria-hidden="true"> *</span><span className="text-xs text-muted-foreground">(required)</span></>
+      : !alreadyOptional ? <span className="text-xs text-muted-foreground">(optional)</span> : null}
+  </Label>;
 }
 
 /** Mounted only for authenticated checkout. Guests do not load quote configuration. */
@@ -917,16 +962,20 @@ interface CheckoutRetryMetadata {
   deliveryRateVersion: string;
   useWallet: boolean;
   promo?: { code: string; revision: number; quoteIntent: string };
+  reviewedQuote?: ReviewedCheckoutQuote;
 }
 function validCheckoutRetry(value: unknown, requestId: string): value is CheckoutRetryMetadata {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const metadata = value as Record<string,unknown>;
-  if (Object.keys(metadata).some(key=>!['version','requestId','intentHash','formVersion','deliveryRateVersion','useWallet','promo'].includes(key)) ||
+  if (Object.keys(metadata).some(key=>!['version','requestId','intentHash','formVersion','deliveryRateVersion','useWallet','promo','reviewedQuote'].includes(key)) ||
     metadata.version !== 1 || typeof metadata.useWallet !== 'boolean' || metadata.requestId !== requestId || !/^[0-9a-f-]{36}$/i.test(requestId) ||
     typeof metadata.intentHash !== 'string' || !/^[0-9a-f]{64}$/.test(metadata.intentHash) ||
     typeof metadata.formVersion !== 'number' || !Number.isSafeInteger(metadata.formVersion) || metadata.formVersion < 1 ||
     typeof metadata.deliveryRateVersion !== 'string' || !metadata.deliveryRateVersion.trim() || metadata.deliveryRateVersion.length > 120)
     return false;
+  if (metadata.reviewedQuote !== undefined) {
+    try { parseReviewedCheckoutQuote(metadata.reviewedQuote); } catch { return false; }
+  }
   if (metadata.promo === undefined) return true;
   if (!metadata.promo || typeof metadata.promo !== 'object' || Array.isArray(metadata.promo)) return false;
   const promo = metadata.promo as Record<string,unknown>;
@@ -939,7 +988,7 @@ function readCheckoutRetry(key: string, requestId: string): CheckoutRetryMetadat
   try {
     const raw = sessionStorage.getItem(key+':retry-metadata');
     if (raw === null) return null;
-    if (raw.length > 1024) throw new Error();
+    if (raw.length > 16384) throw new Error();
     const decoded:unknown = JSON.parse(raw);
     if (!validCheckoutRetry(decoded,requestId)) throw new Error();
     return decoded;
@@ -951,7 +1000,7 @@ function saveCheckoutRetry(key: string, metadata: CheckoutRetryMetadata): void {
   try {
     if (!validCheckoutRetry(metadata,metadata.requestId)) throw new Error();
     const raw = JSON.stringify(metadata);
-    if (raw.length > 1024) throw new Error();
+    if (raw.length > 16384) throw new Error();
     sessionStorage.setItem(key+':retry-metadata',raw);
   } catch {
     throw new Error('Browser session storage could not retain this order attempt. No order was sent. Enable storage before retrying.');

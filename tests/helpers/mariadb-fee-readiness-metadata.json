@@ -1,0 +1,333 @@
+{
+  "checks": [
+    {
+      "tableName": "marketplace_fee_waiver_campaigns",
+      "name": "created_at",
+      "definition": "`created_at` between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "marketplace_fee_waiver_campaigns",
+      "name": "revision",
+      "definition": "`revision` between 1 and 9007199254740991"
+    },
+    {
+      "tableName": "marketplace_fee_waiver_campaigns",
+      "name": "updated_at",
+      "definition": "`updated_at` between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "marketplace_fee_waiver_control",
+      "name": "id",
+      "definition": "`id` = 'default'"
+    },
+    {
+      "tableName": "marketplace_fee_waiver_control",
+      "name": "revision",
+      "definition": "`revision` between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "marketplace_fee_waiver_requests",
+      "name": "command_json",
+      "definition": "json_valid(`command_json`) and json_type(`command_json`) = 'OBJECT'"
+    },
+    {
+      "tableName": "marketplace_fee_waiver_requests",
+      "name": "created_at",
+      "definition": "`created_at` between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "marketplace_fee_waiver_requests",
+      "name": "request_id",
+      "definition": "char_length(`request_id`) between 1 and 191"
+    },
+    {
+      "tableName": "marketplace_fee_waiver_requests",
+      "name": "response_json",
+      "definition": "json_valid(`response_json`) and json_type(`response_json`) = 'OBJECT'"
+    },
+    {
+      "tableName": "marketplace_fee_waiver_revisions",
+      "name": "created_at",
+      "definition": "`created_at` between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "marketplace_fee_waiver_revisions",
+      "name": "description",
+      "definition": "char_length(`description`) <= 1000"
+    },
+    {
+      "tableName": "marketplace_fee_waiver_revisions",
+      "name": "ends_at",
+      "definition": "`ends_at` between 1 and 9007199254740991 and `ends_at` > `starts_at`"
+    },
+    {
+      "tableName": "marketplace_fee_waiver_revisions",
+      "name": "name",
+      "definition": "char_length(trim(`name`)) between 1 and 100"
+    },
+    {
+      "tableName": "marketplace_fee_waiver_revisions",
+      "name": "revision",
+      "definition": "`revision` between 1 and 9007199254740991"
+    },
+    {
+      "tableName": "marketplace_fee_waiver_revisions",
+      "name": "starts_at",
+      "definition": "`starts_at` between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "marketplace_fee_waiver_revisions",
+      "name": "state",
+      "definition": "`state` in ('draft','published','paused','ended')"
+    },
+    {
+      "tableName": "order_item_marketplace_fees",
+      "name": "base_paisa",
+      "definition": "`base_paisa` between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "order_item_marketplace_fees",
+      "name": "created_at",
+      "definition": "`created_at` between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "order_item_marketplace_fees",
+      "name": "marketplace_fee_full_waiver",
+      "definition": "`campaign_id` is null and `campaign_revision` is null and `waived_paisa` = 0 or `campaign_id` is not null and `campaign_revision` is not null and `waived_paisa` = `standard_paisa` and `net_paisa` = 0"
+    },
+    {
+      "tableName": "order_item_marketplace_fees",
+      "name": "marketplace_fee_reconciled",
+      "definition": "`standard_paisa` - `waived_paisa` = `net_paisa`"
+    },
+    {
+      "tableName": "order_item_marketplace_fees",
+      "name": "net_paisa",
+      "definition": "`net_paisa` between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "order_item_marketplace_fees",
+      "name": "standard_bps",
+      "definition": "`standard_bps` between 0 and 10000"
+    },
+    {
+      "tableName": "order_item_marketplace_fees",
+      "name": "standard_paisa",
+      "definition": "`standard_paisa` between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "order_item_marketplace_fees",
+      "name": "waived_paisa",
+      "definition": "`waived_paisa` between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "customer_fee_waiver_control",
+      "name": "revision",
+      "definition": "revision between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "customer_fee_waiver_campaigns",
+      "name": "revision",
+      "definition": "revision between 1 and 9007199254740991"
+    },
+    {
+      "tableName": "customer_fee_waiver_campaigns",
+      "name": "created_at",
+      "definition": "created_at between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "customer_fee_waiver_campaigns",
+      "name": "updated_at",
+      "definition": "updated_at between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "customer_fee_waiver_revisions",
+      "name": "revision",
+      "definition": "revision between 1 and 9007199254740991"
+    },
+    {
+      "tableName": "customer_fee_waiver_revisions",
+      "name": "starts_at",
+      "definition": "starts_at between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "customer_fee_waiver_revisions",
+      "name": "ends_at",
+      "definition": "ends_at between 1 and 9007199254740991 and ends_at > starts_at"
+    },
+    {
+      "tableName": "customer_fee_waiver_revisions",
+      "name": "created_at",
+      "definition": "created_at between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "customer_fee_waiver_requests",
+      "name": "created_at",
+      "definition": "created_at between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "order_customer_service_fees",
+      "name": "standard_paisa",
+      "definition": "standard_paisa between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "order_customer_service_fees",
+      "name": "waived_paisa",
+      "definition": "waived_paisa between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "order_customer_service_fees",
+      "name": "net_paisa",
+      "definition": "net_paisa between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "order_customer_service_fees",
+      "name": "created_at",
+      "definition": "created_at between 0 and 9007199254740991"
+    },
+    {
+      "tableName": "customer_fee_waiver_control",
+      "name": "id",
+      "definition": "id = 'default'"
+    },
+    {
+      "tableName": "customer_fee_waiver_revisions",
+      "name": "state",
+      "definition": "state in ('draft','published','paused','ended')"
+    },
+    {
+      "tableName": "customer_fee_waiver_revisions",
+      "name": "name",
+      "definition": "char_length(trim(name)) between 1 and 100"
+    },
+    {
+      "tableName": "customer_fee_waiver_revisions",
+      "name": "description",
+      "definition": "char_length(description) <= 1000"
+    },
+    {
+      "tableName": "customer_fee_waiver_requests",
+      "name": "request_id",
+      "definition": "char_length(request_id) between 1 and 191"
+    },
+    {
+      "tableName": "customer_fee_waiver_requests",
+      "name": "command_json",
+      "definition": "json_valid(command_json) and json_type(command_json) = 'OBJECT'"
+    },
+    {
+      "tableName": "customer_fee_waiver_requests",
+      "name": "response_json",
+      "definition": "json_valid(response_json) and json_type(response_json) = 'OBJECT'"
+    },
+    {
+      "tableName": "order_customer_service_fees",
+      "name": "policy_enabled",
+      "definition": "policy_enabled in (0,1)"
+    },
+    {
+      "tableName": "order_customer_service_fees",
+      "name": "policy_amount_paisa",
+      "definition": "policy_amount_paisa between 0 and 100000"
+    },
+    {
+      "tableName": "order_customer_service_fees",
+      "name": "campaign_revision",
+      "definition": "campaign_revision is null or campaign_revision between 1 and 9007199254740991"
+    },
+    {
+      "tableName": "order_customer_service_fees",
+      "name": "customer_fee_policy_standard",
+      "definition": "policy_enabled = 1 and standard_paisa = policy_amount_paisa or policy_enabled = 0 and standard_paisa = 0"
+    },
+    {
+      "tableName": "order_customer_service_fees",
+      "name": "customer_fee_reconciled",
+      "definition": "standard_paisa - waived_paisa = net_paisa"
+    },
+    {
+      "tableName": "order_customer_service_fees",
+      "name": "customer_fee_full_waiver",
+      "definition": "campaign_id is null and campaign_revision is null and waived_paisa = 0 or campaign_id is not null and campaign_revision is not null and standard_paisa > 0 and waived_paisa = standard_paisa and net_paisa = 0"
+    }
+  ],
+  "triggers": [
+    {
+      "name": "marketplace_fee_waiver_campaigns_no_delete",
+      "definition": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fee_waiver_campaign_retained'"
+    },
+    {
+      "name": "marketplace_fee_waiver_requests_no_delete",
+      "definition": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fee_waiver_request_immutable'"
+    },
+    {
+      "name": "marketplace_fee_waiver_requests_no_update",
+      "definition": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fee_waiver_request_immutable'"
+    },
+    {
+      "name": "marketplace_fee_waiver_revisions_no_delete",
+      "definition": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fee_waiver_revision_immutable'"
+    },
+    {
+      "name": "marketplace_fee_waiver_revisions_no_update",
+      "definition": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fee_waiver_revision_immutable'"
+    },
+    {
+      "name": "order_item_marketplace_fees_no_delete",
+      "definition": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='marketplace_fee_snapshot_immutable'"
+    },
+    {
+      "name": "order_item_marketplace_fees_no_update",
+      "definition": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='marketplace_fee_snapshot_immutable'"
+    },
+    {
+      "name": "customer_fee_waiver_revisions_no_update",
+      "definition": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_waiver_revision_immutable'"
+    },
+    {
+      "name": "customer_fee_waiver_revisions_no_delete",
+      "definition": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_waiver_revision_immutable'"
+    },
+    {
+      "name": "customer_fee_waiver_requests_no_update",
+      "definition": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_waiver_request_immutable'"
+    },
+    {
+      "name": "customer_fee_waiver_requests_no_delete",
+      "definition": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_waiver_request_immutable'"
+    },
+    {
+      "name": "customer_fee_waiver_campaigns_no_delete",
+      "definition": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_waiver_campaign_retained'"
+    },
+    {
+      "name": "order_customer_service_fees_no_update",
+      "definition": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_snapshot_immutable'"
+    },
+    {
+      "name": "order_customer_service_fees_no_delete",
+      "definition": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_snapshot_immutable'"
+    },
+    {
+      "name": "order_customer_service_fees_match_order",
+      "definition": "BEGIN IF NOT EXISTS(SELECT 1 FROM orders WHERE id=NEW.order_id AND buyer_platform_fee_paisa=NEW.net_paisa) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_order_mismatch'; END IF; END"
+    },
+    {
+      "name": "orders_preserve_customer_service_fee",
+      "definition": "BEGIN IF EXISTS(SELECT 1 FROM order_customer_service_fees WHERE order_id=OLD.id AND (NEW.id<>OLD.id OR net_paisa<>NEW.buyer_platform_fee_paisa)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_order_mismatch'; END IF; END"
+    },
+    {
+      "name": "customer_fee_waiver_revisions_no_replace",
+      "definition": "BEGIN IF EXISTS(SELECT 1 FROM customer_fee_waiver_revisions WHERE (campaign_id=NEW.campaign_id AND revision=NEW.revision) OR request_id=NEW.request_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_waiver_revision_immutable'; END IF; END"
+    },
+    {
+      "name": "customer_fee_waiver_requests_no_replace",
+      "definition": "BEGIN IF EXISTS(SELECT 1 FROM customer_fee_waiver_requests WHERE request_id=NEW.request_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_waiver_request_immutable'; END IF; END"
+    },
+    {
+      "name": "order_customer_service_fees_no_replace",
+      "definition": "BEGIN IF EXISTS(SELECT 1 FROM order_customer_service_fees WHERE order_id=NEW.order_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_snapshot_immutable'; END IF; END"
+    }
+  ],
+  "customerFeeSyntheticExpectations": "Only new customer entries are synthetic MariaDB CHECK_CLAUSE/trigger expectations. Actual server introspection and enforcement remain a mandatory Task 7 gate; all historical fixture entries are preserved."
+}

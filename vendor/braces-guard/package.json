@@ -1,0 +1,29 @@
+{
+  "name": "@hastabazaar/braces-guard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reviewed local brace-parser derivative with bounded nesting, AST traversal and parent chains",
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "lib",
+    "LICENSE",
+    "README.md",
+    "UPSTREAM-README.md"
+  ],
+  "dependencies": {
+    "fill-range": "7.1.1"
+  },
+  "upstream": {
+    "name": "@dieub/braces-depth-guard",
+    "version": "3.0.3-pn.3",
+    "originalName": "braces",
+    "originalVersion": "3.0.3",
+    "repository": "https://github.com/dieub/braces-depth-guard",
+    "commit": "305a2e4bfe324bb53c336c1b03387ee1251c926f",
+    "integrity": "sha512-QY+Uq4s42STyIMPoRkBuUZfYyvz0uZuwuUburLwMx5N+lWqnHHaBxcKPtgKVKjTyFnS1q4ivKu9Wxi4VG7FE9Q==",
+    "ancestorGuardReference": "https://github.com/awslabs/cli-agent-orchestrator/blob/main/patches/%40dieub%2Bbraces-depth-guard%2B3.0.3-pn.3.patch"
+  }
+}

@@ -297,6 +297,9 @@ export async function requireStaffPage(
   if (!staff || (permission && !can(staff, permission))) {
     redirect('/staff-access-denied');
   }
+  // Invitation acceptance can promote an identity during this request. Run the
+  // central assurance check again after that change before returning staff data.
+  if(!(await getAuthenticatedUser()))redirect(`/security?return_to=${encodeURIComponent(returnTo)}`);
   return staff;
 }
 
@@ -317,5 +320,6 @@ export async function requireStaffApi(
     if(staff)await recordStaffAuthorizationOutcome(database,{actorId:staff.id,permission,outcome:'denied'});
     throw new StaffAuthorizationError('Staff access is not permitted.', 403);
   }
+  if(!(await getAuthenticatedUser()))throw new StaffAuthorizationError('Complete account security verification.',401);
   return staff;
 }

@@ -63,6 +63,13 @@ const staticAssets = new Map<string, { objectKey: string; path: string }>([
   ],
 ]);
 
+/** The same fixed registry used by rendering and portable read-only backups. */
+export function homepageHeroStaticAssets() {
+  return Object.freeze(
+    [...staticAssets].map(([id, asset]) => Object.freeze({ id, ...asset })),
+  );
+}
+
 function safeIdentifier(label: string, value: string): string {
   const normalized = value.trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]{3,79}$/.test(normalized)) {
@@ -71,7 +78,11 @@ function safeIdentifier(label: string, value: string): string {
   return normalized;
 }
 
-function positiveInteger(label: string, value: number, maximum: number): number {
+function positiveInteger(
+  label: string,
+  value: number,
+  maximum: number,
+): number {
   if (!Number.isSafeInteger(value) || value < 1 || value > maximum) {
     throw new RangeError(`${label} must be a positive bounded integer.`);
   }
@@ -96,14 +107,18 @@ function normalizeInput(
 ): Omit<HomepageHeroMediaRecord, 'archivedAt'> {
   const id = safeIdentifier('Hero media ID', input.id);
   if (!input.objectKey.startsWith('private/homepage-hero/')) {
-    throw new RangeError('Uploaded media must use a private homepage hero object key.');
+    throw new RangeError(
+      'Uploaded media must use a private homepage hero object key.',
+    );
   }
   if (
     !/^private\/homepage-hero\/[A-Za-z0-9][A-Za-z0-9_-]{3,79}$/.test(
       input.objectKey,
     )
   ) {
-    throw new RangeError('Uploaded media must use a private homepage hero object key.');
+    throw new RangeError(
+      'Uploaded media must use a private homepage hero object key.',
+    );
   }
   if (input.objectKey !== `private/homepage-hero/${id}`) {
     throw new RangeError('Hero media identity and object key must match.');
@@ -120,13 +135,18 @@ function normalizeInput(
     throw new RangeError('Hero media type must be WebP or MP4.');
   }
   if (!input.createdBy) {
-    throw new RangeError('Uploaded hero media requires its authenticated creator.');
+    throw new RangeError(
+      'Uploaded hero media requires its authenticated creator.',
+    );
   }
   const duration = input.durationSeconds;
   if (
     (input.mimeType === 'image/webp' && duration !== null) ||
     (input.mimeType === 'video/mp4' &&
-      (duration === null || !Number.isFinite(duration) || duration <= 0 || duration > 15))
+      (duration === null ||
+        !Number.isFinite(duration) ||
+        duration <= 0 ||
+        duration > 15))
   ) {
     throw new RangeError('Hero media duration does not match its media type.');
   }
@@ -135,7 +155,11 @@ function normalizeInput(
     objectKey: input.objectKey,
     originalName,
     mimeType: input.mimeType,
-    sizeBytes: positiveInteger('Hero media size', input.sizeBytes, 20 * 1024 * 1024),
+    sizeBytes: positiveInteger(
+      'Hero media size',
+      input.sizeBytes,
+      20 * 1024 * 1024,
+    ),
     width: positiveInteger('Hero media width', input.width, 10_000),
     height: positiveInteger('Hero media height', input.height, 10_000),
     durationSeconds: duration,
@@ -164,7 +188,7 @@ async function mediaById(
 }
 
 export function homepageHeroStaticAssetPath(
-  media: HomepageHeroMediaRecord,
+  media: Pick<HomepageHeroMediaRecord, 'id' | 'objectKey' | 'mimeType'>,
 ): string | null {
   const expected = staticAssets.get(media.id);
   return expected &&
@@ -204,7 +228,8 @@ export async function createHomepageHeroMedia(
     throw new Error('Homepage hero media conflicts with an existing upload.');
   }
   const created = await mediaById(database, value.id, true);
-  if (!created) throw new Error('Homepage hero media creation could not be verified.');
+  if (!created)
+    throw new Error('Homepage hero media creation could not be verified.');
   return created;
 }
 
@@ -284,7 +309,11 @@ export async function archiveHomepageHeroMedia(
   const actorId = safeIdentifier('Archive actor', input.actorId);
   const archiveReason = reason(input.reason);
   const operationId = requestId(input.requestId);
-  const now = positiveInteger('Archive time', input.now, Number.MAX_SAFE_INTEGER);
+  const now = positiveInteger(
+    'Archive time',
+    input.now,
+    Number.MAX_SAFE_INTEGER,
+  );
   const replay = await database
     .prepare(
       `SELECT id FROM audit_logs
@@ -312,12 +341,16 @@ export async function archiveHomepageHeroMedia(
       slides = validateHomepageHeroDraft(JSON.parse(version.valueJson));
     } catch {
       if (version.valueJson.includes(`"${id}"`)) {
-        throw new Error('Media referenced by a retained version cannot be archived.');
+        throw new Error(
+          'Media referenced by a retained version cannot be archived.',
+        );
       }
       continue;
     }
     if (referencedMediaIds(slides).has(id)) {
-      throw new Error('Media referenced by a retained version cannot be archived.');
+      throw new Error(
+        'Media referenced by a retained version cannot be archived.',
+      );
     }
   }
 
@@ -357,10 +390,14 @@ export async function archiveHomepageHeroMedia(
           operationId,
           now,
         ),
-      database.prepare('DELETE FROM business_setting_guards WHERE id=?').bind(guardId),
+      database
+        .prepare('DELETE FROM business_setting_guards WHERE id=?')
+        .bind(guardId),
     ]);
   } catch {
-    throw new Error('Media referenced by a retained version cannot be archived.');
+    throw new Error(
+      'Media referenced by a retained version cannot be archived.',
+    );
   }
 }
 
@@ -373,7 +410,8 @@ export async function assertHomepageHeroMediaReady(
     // slide identity bypasses image lookup; all other media stays validated.
     if (!slide.enabled || isNativeSellerRegistrationSlide(slide)) continue;
     const media = await mediaById(database, slide.mediaId, false);
-    const requiredMime = slide.mediaType === 'video' ? 'video/mp4' : 'image/webp';
+    const requiredMime =
+      slide.mediaType === 'video' ? 'video/mp4' : 'image/webp';
     if (!media || media.mimeType !== requiredMime) {
       throw new RangeError(
         `Homepage hero media ${slide.mediaId} is missing, archived, or has the wrong type.`,

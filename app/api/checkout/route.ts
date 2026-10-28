@@ -28,6 +28,7 @@ import { FormRuntimeError } from '@/lib/forms/runtime';
 import { IncentiveError } from '@/lib/incentives/types';
 import { FormValidationError } from '@/lib/forms/validation';
 import { ContactVerificationError, resolveCheckoutContactPolicy } from '@/lib/auth/contact-verification';
+import { ReviewedCheckoutChangedError } from '@/lib/checkout/reviewed-quote';
 
 export const dynamic = 'force-dynamic';
 
@@ -106,6 +107,8 @@ export async function POST(request: Request): Promise<Response> {
     }
     return response;
   } catch (error) {
+    if (error instanceof ReviewedCheckoutChangedError)
+      return json({ error: error.message, code: 'quote_changed' }, 409);
     if (error instanceof ContactVerificationError)
       return json({error:error.message,code:'contact_verification_required'},error.status);
     if (

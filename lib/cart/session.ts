@@ -7,7 +7,10 @@ const RECEIPT_MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
 function toBase64Url(bytes: Uint8Array): string {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+  return btoa(binary)
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replace(/=+$/, '');
 }
 
 export function createOpaqueToken(): string {
@@ -15,15 +18,23 @@ export function createOpaqueToken(): string {
 }
 
 export async function hashOpaqueToken(token: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(token),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, '0'),
+  ).join('');
 }
 
 export function readCookie(request: Request, name: string): string | null {
   return readCookieHeader(request.headers.get('cookie'), name);
 }
 
-export function readCookieHeader(cookieHeader: string | null, name: string): string | null {
+export function readCookieHeader(
+  cookieHeader: string | null,
+  name: string,
+): string | null {
   if (!cookieHeader) return null;
   for (const part of cookieHeader.split(';')) {
     const separator = part.indexOf('=');
@@ -40,7 +51,19 @@ export function readCookieHeader(cookieHeader: string | null, name: string): str
 }
 
 function secureAttribute(request: Request): string {
-  return new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+  // TLS may terminate before Node. Trust deployment configuration, never
+  // caller-supplied forwarded headers; the checked HTTP preview stays usable.
+  let publicHttps = false;
+  try {
+    publicHttps = new URL(process.env.APP_ORIGIN ?? '').protocol === 'https:';
+  } catch {
+    /* No configured public origin. */
+  }
+  return process.env.NODE_ENV === 'production' ||
+    publicHttps ||
+    new URL(request.url).protocol === 'https:'
+    ? '; Secure'
+    : '';
 }
 
 export function cartCookie(request: Request, token: string): string {

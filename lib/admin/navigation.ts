@@ -15,6 +15,29 @@ const destinations: readonly {
   role?: 'super_admin';
 }[] = [
   {
+    href: '/security',
+    label: 'Account security',
+    group: 'Controls',
+    icon: 'governance',
+    permission: 'account.self.manage',
+  },
+  {
+    href: '/admin/backup-transfer',
+    label: 'Backup & Transfer',
+    group: 'Controls',
+    icon: 'governance',
+    permission: 'audit_log.view',
+    role: 'super_admin',
+  },
+  {
+    href: '/admin/accounting',
+    label: 'Accounting',
+    group: 'Controls',
+    icon: 'analytics',
+    permission: 'audit_log.view',
+    role: 'super_admin',
+  },
+  {
     href: '/admin/forms',
     label: 'Form catalog',
     group: 'Controls',
@@ -43,6 +66,13 @@ const destinations: readonly {
     group: 'Controls',
     icon: 'reviews',
     permission: 'admin.invite',
+  },
+  {
+    href: '/admin/legal-policies/active',
+    label: 'Active staff procedure',
+    group: 'Controls',
+    icon: 'governance',
+    permission: 'support.manage',
   },
   {
     href: '/admin/exceptions',
@@ -92,6 +122,14 @@ const destinations: readonly {
     group: 'Controls',
     icon: 'commission',
     permission: 'admin.invite',
+    role: 'super_admin',
+  },
+  {
+    href: '/admin/fee-waivers',
+    label: 'Marketplace fee waivers',
+    group: 'Controls',
+    icon: 'commission',
+    permission: 'commercial_policy.manage',
     role: 'super_admin',
   },
   {
@@ -267,6 +305,30 @@ export type AdminTaskGuide = Readonly<{
 const taskGuides: Readonly<
   Record<string, readonly [string, readonly string[]]>
 > = {
+  '/security': [
+    'Set up your authenticator, save recovery codes and verify protected Admin access.',
+    [
+      'Confirm your own password and connect an authenticator you control.',
+      'Save recovery codes privately before activating MFA.',
+      'Use a single-use recovery code if your authenticator is unavailable.',
+    ],
+  ],
+  '/admin/backup-transfer': [
+    'Prepare and inspect encrypted records, uploads and separate security-key recovery for a future hosting move.',
+    [
+      'Verify recent Admin security and check export readiness.',
+      'Download the encrypted backup and protect the key recovery bundle separately.',
+      'Inspect the saved package; restore only to a separately reviewed empty compatible destination.',
+    ],
+  ],
+  '/admin/accounting': [
+    'Read existing seller, maker, cash and incentive records without changing money or settings.',
+    [
+      'Choose a Nepal reporting period and a section.',
+      'Check the source, date basis and any unavailable or review messages.',
+      'Open the existing finance work area when a recorded amount needs investigation.',
+    ],
+  ],
   '/admin/staff-form-history': [
     'Inspect retained form answers and the version used for a recorded task.',
     [
@@ -435,6 +497,10 @@ const taskGuides: Readonly<
       'Schedule the change without rewriting historical orders.',
     ],
   ],
+  '/admin/fee-waivers': [
+    'Schedule full marketplace fee waivers for Registered Seller orders and review overlapping campaigns.',
+    ['Create a named campaign with Nepal start and end times.', 'Publish or schedule, pause, resume or end a campaign.', 'Check active overlaps; only one full waiver applies to each new eligible order.'],
+  ],
   '/admin/delivery-rates': [
     'Review delivery prices and service-area settings.',
     [
@@ -542,6 +608,7 @@ const taskGuides: Readonly<
 };
 const taskOrder: readonly string[] = [
   '/admin',
+  '/admin/accounting',
   '/admin/orders',
   '/admin/shipping',
   '/admin/cases',
@@ -561,6 +628,7 @@ const taskOrder: readonly string[] = [
   '/admin/referrals',
   '/admin/business-settings',
   '/admin/commission',
+  '/admin/fee-waivers',
   '/admin/delivery-rates',
   '/admin/promo-codes',
   '/admin/loyalty',
@@ -571,7 +639,10 @@ const taskOrder: readonly string[] = [
   '/admin/analytics',
   '/admin/privacy',
   '/admin/legal-policies',
+  '/admin/legal-policies/active',
   '/admin/governance',
+  '/admin/backup-transfer',
+  '/security',
   '/admin/activity',
   '/admin/staff-form-history',
   '/admin/form-submissions',

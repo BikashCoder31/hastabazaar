@@ -70,7 +70,7 @@ export default async function WalletPage({ searchParams }: {
     <div className="space-y-7">
       <section className="rounded-3xl bg-[#17345f] p-6 text-white sm:p-8">
         <Wallet className="size-7 text-[#f4c46b]" />
-        <h1 className="mt-4 font-heading text-4xl">Your HastaBazaar wallet</h1>
+        <h1 className="mt-4 font-heading text-4xl">Your Hastabazaar wallet</h1>
         <p className="mt-3 text-white/75">
           A little thank-you for bringing good people to good finds.
         </p>

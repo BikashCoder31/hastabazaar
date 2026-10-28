@@ -27,7 +27,7 @@ export default async function NewProductPage() {
           Submit a product
         </h1>
         <p className="mt-2 max-w-2xl text-base leading-7 text-muted-foreground">
-          Provide enough information for customers and HastaBazaar’s reviewer to
+          Provide enough information for customers and Hastabazaar’s reviewer to
           understand exactly what is being sold.
         </p>
       </div>

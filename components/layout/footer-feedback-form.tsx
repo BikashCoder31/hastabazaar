@@ -86,7 +86,7 @@ export function FooterFeedbackForm() {
       clearFeedbackAttemptId('public.footer-feedback');
       setState({
         kind: 'success',
-        message: 'Thank you. Your query has been sent to the HastaBazaar team.',
+        message: 'Thank you. Your query has been sent to the Hastabazaar team.',
       });
     } catch (reason) {
       setState({
@@ -222,7 +222,7 @@ export function FooterFeedbackForm() {
               className="mt-1 size-4 shrink-0 accent-[#f4c46b]"
             />
             <span>
-              I understand that HastaBazaar will use these details to respond to
+              I understand that Hastabazaar will use these details to respond to
               my query, as described in the{' '}
               <Link
                 href="/privacy"

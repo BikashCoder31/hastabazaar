@@ -7,10 +7,11 @@ import {
 } from '../lib/db/repositories/orders';
 function fixture() {
   const sqlite = new DatabaseSync(':memory:');
-  sqlite.exec(`CREATE TABLE orders(id TEXT,order_number TEXT,status TEXT,customer_email TEXT,customer_phone TEXT,current_total_paisa INTEGER,grand_total_paisa INTEGER,payment_mode TEXT,placed_at INTEGER,created_at INTEGER);
+  sqlite.exec(`CREATE TABLE orders(id TEXT,order_number TEXT,status TEXT,customer_email TEXT,customer_phone TEXT,current_total_paisa INTEGER,grand_total_paisa INTEGER,buyer_platform_fee_paisa INTEGER NOT NULL,payment_mode TEXT,placed_at INTEGER,created_at INTEGER);
  CREATE TABLE order_items(order_id TEXT,quantity INTEGER);
  CREATE TABLE first_cod_reviews(order_id TEXT,status TEXT);
- INSERT INTO orders VALUES('older','HB-SEARCH-1','confirmed','buyer@fictional.test','98001',NULL,10000,'cod',1,1),('newer','HB-SEARCH-2','confirmed','second@fictional.test','98002',8000,10000,'cod',2,2),('delivered','HB-SEARCH-3','delivered','third@fictional.test','98003',NULL,12000,'cod',3,3);
+ CREATE TABLE order_cancellation_events(order_id TEXT,version INTEGER,next_json TEXT);
+ INSERT INTO orders VALUES('older','HB-SEARCH-1','confirmed','buyer@fictional.test','98001',NULL,10000,0,'cod',1,1),('newer','HB-SEARCH-2','confirmed','second@fictional.test','98002',8000,10000,0,'cod',2,2),('delivered','HB-SEARCH-3','delivered','third@fictional.test','98003',NULL,12000,0,'cod',3,3);
  INSERT INTO order_items VALUES('older',1),('newer',2),('delivered',1);
  INSERT INTO first_cod_reviews VALUES('newer','pending');`);
   const database = {
@@ -31,7 +32,7 @@ function fixture() {
       };
     },
   } as unknown as D1Database;
-  return { database, dispose: () => sqlite.close() };
+  return { sqlite, database, dispose: () => sqlite.close() };
 }
 void test('order reference search finds a record outside the first page', async () => {
   const s = fixture();
@@ -106,6 +107,24 @@ void test('filtered order totals stay aligned with pagination and COD presentati
       (await listOrdersForOperations(s.database, 1, {}, 2)).map((o) => o.id),
       ['newer'],
     );
+  } finally {
+    s.dispose();
+  }
+});
+
+void test('order queue cash totals preserve saved fees and the latest cancellation waiver', async () => {
+  const s = fixture();
+  try {
+    const totals = async () => Object.fromEntries(
+      (await listOrdersForOperations(s.database)).map((order) => [order.id, order.grandTotalPaisa]),
+    );
+    assert.deepEqual(await totals(), { older: 10000, newer: 8000, delivered: 12000 });
+    s.sqlite.exec(`UPDATE orders SET buyer_platform_fee_paisa=1000,grand_total_paisa=11000
+      WHERE id IN ('older','newer');`);
+    assert.deepEqual(await totals(), { older: 11000, newer: 9000, delivered: 12000 });
+    s.sqlite.exec(`INSERT INTO order_cancellation_events VALUES
+      ('newer',1,'{"platformServiceFeePaisa":1000}'),('newer',2,'{"platformServiceFeePaisa":0}');`);
+    assert.deepEqual(await totals(), { older: 11000, newer: 8000, delivered: 12000 });
   } finally {
     s.dispose();
   }

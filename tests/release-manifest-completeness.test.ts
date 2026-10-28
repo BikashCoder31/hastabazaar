@@ -118,6 +118,11 @@ void test('release generator covers the maintained non-reset SQL inventory', asy
       'form, privacy, contact, and COD readiness objects are discoverable',
       () => {
         const columns: Record<string, string[]> = {
+          marketplace_fee_waiver_control: ['id', 'revision'],
+          marketplace_fee_waiver_campaigns: ['id', 'revision', 'created_at', 'updated_at'],
+          marketplace_fee_waiver_revisions: ['campaign_id', 'revision', 'state', 'name', 'description', 'starts_at', 'ends_at', 'created_by', 'request_id', 'created_at'],
+          marketplace_fee_waiver_requests: ['request_id', 'actor_id', 'auth_subject', 'command_json', 'response_json', 'created_at'],
+          order_item_marketplace_fees: ['order_item_id', 'standard_bps', 'base_paisa', 'standard_paisa', 'waived_paisa', 'net_paisa', 'campaign_id', 'campaign_revision', 'created_at'],
           loyalty_config: ['scheduled_revision', 'scheduled_for', 'scheduled_unpause'],
           loyalty_revisions: ['weekly_points_json', 'grace_enabled'],
           loyalty_daily_claims: ['cycle_day', 'cycle_number', 'grace_used', 'grace_applied', 'cycle_reset_reason'],

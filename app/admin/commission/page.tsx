@@ -9,6 +9,8 @@ import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { getCommissionRateState } from '@/lib/db/repositories/commission-rates';
 import { getCommissionReport } from '@/lib/db/repositories/commission-reporting';
+import { getCommissionSetting } from '@/lib/db/repositories/marketplace-settings';
+import { listBusinessSettingHistory } from '@/lib/db/repositories/business-settings';
 import {
   commissionDate,
   type CommissionFilters,
@@ -34,8 +36,9 @@ export default async function CommissionPage({
     page: Number(first('page') ?? 1),
   };
   const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const [state, result] = await Promise.all([
-    getCommissionRateState(database),
+  const rateState = getCommissionRateState(database);
+  const [state, result, base, baseHistory] = await Promise.all([
+    rateState,
     getCommissionReport(database, filters)
       .then((report) => ({ report, error: '' }))
       .catch(async (error) => {
@@ -45,11 +48,21 @@ export default async function CommissionPage({
           error: error.message,
         };
       }),
+    rateState.then((state) => getCommissionSetting(database, state.asOf)),
+    listBusinessSettingHistory(database, 'independent_seller_commission_bps'),
   ]);
   const { report, error: filterError } = result;
   const now = state.asOf;
-  const scheduled = state.history.find(
-    (change) => change.status === 'scheduled',
+  const scheduledBase = baseHistory
+    .filter((change) => change.status === 'published' && change.effectiveFrom !== null &&
+      Number.isSafeInteger(change.effectiveFrom) && change.effectiveFrom > now &&
+      (change.effectiveUntil === null || change.effectiveUntil > change.effectiveFrom))
+    .sort((a, b) => Number(a.effectiveFrom) - Number(b.effectiveFrom) || b.version - a.version)[0];
+  const scheduled = state.history
+    .filter((change) => change.status === 'scheduled')
+    .sort((a, b) => a.effectiveAt - b.effectiveAt || b.createdAt - a.createdAt)[0];
+  const currentSupplement = state.history.find(
+    (change) => change.id === state.current.version && change.status === 'active',
   );
   return (
     <div className="space-y-7">
@@ -79,23 +92,61 @@ export default async function CommissionPage({
           ))}
         </nav>
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <section className="rounded-2xl border bg-card p-5 sm:p-6">
           <h2 className="text-sm font-semibold text-muted-foreground">
-            Current published rate
+            Current saved base rate
           </h2>
           <p className="mt-2 font-heading text-4xl">
-            {state.current.basisPoints / 100}%
+            {base.percent}%
           </p>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Applies to future orders for sellers who accepted this fee schedule.
-            Other sellers retain their previous accepted rate; the launch rate
-            is 9%.
+            The current base in Business Settings applies when no accepted,
+            effective fee supplement applies to the seller. Existing orders
+            retain their recorded rates.
           </p>
         </section>
         <section className="rounded-2xl border bg-card p-5 sm:p-6">
           <h2 className="text-sm font-semibold text-muted-foreground">
-            Next scheduled change
+            Current published fee supplement
+          </h2>
+          <p className={`mt-2 font-heading ${currentSupplement ? 'text-4xl' : 'text-2xl'}`}>
+            {currentSupplement
+              ? `${currentSupplement.basisPoints / 100}%`
+              : 'No published fee supplement'}
+          </p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            A supplement applies to future orders only after its effective date
+            and the seller&apos;s acceptance. An earlier accepted, effective supplement
+            can still apply to a seller who has not accepted the latest one.
+          </p>
+        </section>
+        <section className="rounded-2xl border bg-card p-5 sm:p-6">
+          <h2 className="text-sm font-semibold text-muted-foreground">
+            Next scheduled base rate
+          </h2>
+          {scheduledBase ? (
+            <>
+              <p className="mt-2 font-heading text-4xl">
+                {scheduledBase.value / 100}%
+              </p>
+              <p className="mt-2 text-sm">
+                {commissionDate(Number(scheduledBase.effectiveFrom))} · Nepal time
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Scheduled in Business Settings. Seller acceptance requirements
+                still apply.
+              </p>
+            </>
+          ) : (
+            <p className="mt-2 font-heading text-2xl">
+              No base rate change scheduled
+            </p>
+          )}
+        </section>
+        <section className="rounded-2xl border bg-card p-5 sm:p-6">
+          <h2 className="text-sm font-semibold text-muted-foreground">
+            Next scheduled fee supplement
           </h2>
           {scheduled ? (
             <>
@@ -113,7 +164,7 @@ export default async function CommissionPage({
           ) : (
             <>
               <p className="mt-2 font-heading text-2xl">
-                No rate change scheduled
+                No fee supplement scheduled
               </p>
               <a
                 href="#rate-management"
@@ -189,10 +240,11 @@ export default async function CommissionPage({
             </article>
           ))}
           <article className="rounded-xl border border-dashed p-4">
-            <h3 className="font-semibold">9% launch commission</h3>
+            <h3 className="font-semibold">Original recorded terms</h3>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              The original rate continues for sellers until a later fee schedule
-              takes effect and they accept it.
+              The current saved base and published supplements are shown above.
+              Historical orders and agreements retain their original recorded
+              commission terms.
             </p>
           </article>
         </div>
@@ -204,7 +256,7 @@ export default async function CommissionPage({
         <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
           Commission is calculated on product selling value after seller-funded
           discounts. Separately stated product taxes and delivery are excluded.
-          HastaBazaar-funded discounts do not reduce the agreed product value.
+          Hastabazaar-funded discounts do not reduce the agreed product value.
           Earnings and refund reversals use the original order and ledger
           snapshots. No joining fee.
         </p>

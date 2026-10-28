@@ -35,6 +35,7 @@ import {ReviewPhotos,PublicSellerReply} from '@/components/commerce/review-attac
 import {getReviewExtras} from '@/lib/db/repositories/review-extras';
 import { signInPath } from '@/app/auth';
 import { RecentlyViewed } from '@/components/catalog/recently-viewed';
+import { formatNepalDateOnly } from '@/lib/dates/nepal-calendar';
 
 export const dynamic = 'force-dynamic';
 
@@ -151,7 +152,7 @@ export default async function ProductPage({
                 className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
               >
                 <Store className="size-4" />
-                {product.participationRoute === 'managed_maker' ? 'Made by' : 'By'} {product.tradingName}
+                {product.participationRoute === 'managed_maker' ? 'Supplied by' : 'Sold by'} {product.makerName ?? product.tradingName}
               </Link>
               {reviews.length ? (
                 <Link
@@ -203,15 +204,23 @@ export default async function ProductPage({
               <div>
                 <dt className="font-semibold">{product.participationRoute === 'managed_maker' ? 'Maker and company seller' : product.producer ? 'Maker or brand' : 'Seller'}</dt>
                 <dd className="mt-1 text-muted-foreground">
-                  {product.participationRoute === 'managed_maker' ? 'Made by ' : product.producer ? product.producer + ' · sold by ' : 'Sold by '}
+                  {product.participationRoute === 'managed_maker' ? 'Supplied by ' : product.producer ? product.producer + ' · sold by ' : 'Sold by '}
                   <Link
                     href={`/makers/${product.sellerId}`}
                     className="font-semibold text-primary hover:underline"
                   >
-                    {product.tradingName}
+                    {product.makerName ?? product.tradingName}
                   </Link>
-                  {product.participationRoute === 'managed_maker' ? <span className="mt-2 block">Sold by {product.storeName ?? 'company store — terms review pending'}{product.legalSellerName ? ` · ${product.legalSellerName}` : ''}</span> : null}
+                  {product.participationRoute === 'managed_maker' ? <span className="mt-2 block">{product.legalSellerName ? `Sold and invoiced by ${product.legalSellerName}` : 'Seller and invoice identity require review'}</span> : <span className="mt-2 block">Through Hastabazaar</span>}
                 </dd>
+              </div>
+              <div>
+                <dt className="font-semibold">Platform SKU</dt>
+                <dd className="mt-1 break-all text-muted-foreground">{product.sku || '—'}</dd>
+              </div>
+              <div>
+                <dt className="font-semibold">Seller SKU</dt>
+                <dd className="mt-1 break-all text-muted-foreground">{product.sellerSku || '—'}</dd>
               </div>
               <div>
                 <dt className="font-semibold">Origin</dt>
@@ -276,21 +285,19 @@ export default async function ProductPage({
                   </dd>
                 </div>
               ) : null}
-              {product.manufacturedAt ? (
+              {product.manufacturedAt != null ? (
                 <div>
                   <dt className="font-semibold">Manufactured</dt>
                   <dd className="mt-1 text-muted-foreground">
-                    {new Date(product.manufacturedAt).toLocaleDateString(
-                      'en-NP',
-                    )}
+                    {formatNepalDateOnly(product.manufacturedAt)}
                   </dd>
                 </div>
               ) : null}
-              {product.expiresAt ? (
+              {product.expiresAt != null ? (
                 <div>
                   <dt className="font-semibold">Expiry</dt>
                   <dd className="mt-1 text-muted-foreground">
-                    {new Date(product.expiresAt).toLocaleDateString('en-NP')}
+                    {formatNepalDateOnly(product.expiresAt)}
                   </dd>
                 </div>
               ) : null}

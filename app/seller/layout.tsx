@@ -7,9 +7,13 @@ import { SellerNavigation } from '@/components/seller/seller-navigation';
 import { requireSellerPage } from '@/lib/auth/seller';
 import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
-import { getSellerCommissionNotices } from '@/lib/db/repositories/commission-rates';
-import { CommissionFeeNotice } from '@/components/seller/commission-fee-notice';
+import { getSellerCommissionNotices, getSellerCommissionTerms } from '@/lib/db/repositories/commission-rates';
+import { CommissionFeeNotice, SellerMarketplaceFeeNotice } from '@/components/seller/commission-fee-notice';
+import { CommissionRateUnavailableError } from '@/lib/db/repositories/business-settings';
 import { mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
+import { AccountSessionActivity } from '@/components/security/session-activity';
+import { sellerMfaRequired } from '@/lib/security/session';
+import { readSecurityInitialization, type SecurityPolicyBindings } from '@/lib/security/runtime-policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,10 +22,14 @@ export default async function SellerLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const seller = await requireSellerPage('/seller');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
+  const security = env as unknown as SecurityPolicyBindings;
+  const mfaEnabled = await sellerMfaRequired(database, seller.userId, security.HASTABAZAAR_SECURITY_KEY, await readSecurityInitialization(security));
   const participation = await database.prepare('SELECT participation_route AS route FROM seller_participation_profiles WHERE seller_id=?').bind(seller.sellerId).first<{route:string}>();
   const notices = participation?.route === 'managed_maker' ? [] : await getSellerCommissionNotices(database, seller.sellerId);
+  const currentFees = participation?.route === 'managed_maker' ? null : await getSellerCommissionTerms(database,seller.sellerId).catch(error=>{if(error instanceof CommissionRateUnavailableError)return null;throw error;});
   return (
     <div className="min-h-screen bg-secondary/35">
+      {mfaEnabled ? <AccountSessionActivity accountLabel="seller" returnTo="/seller" /> : null}
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-xl focus:bg-background focus:p-4"
@@ -80,6 +88,7 @@ export default async function SellerLayout({
           />
         </aside>
         <main tabIndex={-1} id="main-content" className="min-w-0 pb-10">
+          {currentFees?<SellerMarketplaceFeeNotice basisPoints={currentFees.basisPoints}/>:null}
           {notices.map(notice => <CommissionFeeNotice key={notice.id} notice={notice} agreementAccepted={seller.sellerAgreementVersion === notice.agreementVersion} />)}
           {children}
         </main>

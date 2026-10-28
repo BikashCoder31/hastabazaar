@@ -2,6 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {allocateCancellationItems,calculateCancellation} from '../lib/cancellation/accounting';
 import {DELIVERY_PRICING_POLICY} from '../lib/checkout/delivery-rates';
+void test('one customer service fee stays separate on partial cancellation and uncollected full cancellation waives it', () => {
+ const items=allocateCancellationItems([{id:'a',sellerId:'a',amount:100000},{id:'b',sellerId:'b',amount:100000}],0,0);
+ const partial=calculateCancellation(items,new Set(['a']),15000,1000);
+ assert.equal(partial.total,116000);assert.equal(partial.platformServiceFeePaisa,1000);
+ assert.equal(partial.parcels.reduce((n,p)=>n+p.amount,0),partial.total);
+ const full=calculateCancellation(items,new Set(['a','b']),15000,1000);
+ assert.equal(full.total,0);assert.equal(full.platformServiceFeePaisa,0);assert.equal(full.uncollectedServiceFeeWaivedPaisa,1000);
+});
 void test('approved Option 1 retains one delivery fee and restores only cancelled credit',()=>{const items=allocateCancellationItems([{id:'a',sellerId:'a',amount:100000},{id:'b',sellerId:'b',amount:100000}],10000,5000);const result=calculateCancellation(items,new Set(['a']),15000);assert.equal(result.total,107500);assert.equal(result.walletRestored,5000);assert.equal(result.discountRemoved,2500);assert.equal(result.delivery,15000);assert.deepEqual(result.parcels,[{sellerId:'b',amount:107500}]);});
 void test('full cancellation removes delivery, restores all credit, and has no COD',()=>{const items=allocateCancellationItems([{id:'a',sellerId:'a',amount:1},{id:'b',sellerId:'b',amount:2}],1,1);const result=calculateCancellation(items,new Set(['a','b']),15000);assert.equal(result.total,0);assert.equal(result.delivery,0);assert.equal(result.walletRestored,1);assert.equal(result.discountRemoved,1);});
 void test('new delivery policy recalculates from the remaining distinct stores',()=>{const items=allocateCancellationItems([{id:'a1',sellerId:'a',amount:100000},{id:'a2',sellerId:'a',amount:50000},{id:'b',sellerId:'b',amount:100000},{id:'c',sellerId:'c',amount:100000}],0,0);const pricing={pricingPolicy:DELIVERY_PRICING_POLICY,baseChargePaisa:15000} as unknown as number;assert.equal(calculateCancellation(items,new Set(),pricing).delivery,30000);assert.equal(calculateCancellation(items,new Set(['a']),pricing).delivery,22500);assert.equal(calculateCancellation(items,new Set(['a','b']),pricing).delivery,15000);assert.equal(calculateCancellation(items,new Set(['a','b','c']),pricing).delivery,0);});

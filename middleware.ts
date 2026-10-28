@@ -1,10 +1,10 @@
 import {NextResponse, type NextRequest} from 'next/server';
-import {isDiscoverablePath} from './lib/seo/discovery';
+import {isDiscoverablePath, permitsPublicIndexing} from './lib/seo/discovery';
 import {marketplaceSecurityHeaders} from './lib/http/security-headers';
 export function middleware(request: NextRequest) {
  const response=NextResponse.next();
  const path=request.nextUrl.pathname;
- if(!isDiscoverablePath(path) || (path==='/shop' && request.nextUrl.search)) response.headers.set('X-Robots-Tag','noindex, nofollow');
+ if(!permitsPublicIndexing(request.url, process.env.APP_ORIGIN) || !isDiscoverablePath(path) || (path==='/shop' && request.nextUrl.search)) response.headers.set('X-Robots-Tag','noindex, nofollow');
  // Public HTML also contains the signed-in navigation. Do not share-cache it.
  response.headers.set('Cache-Control','private, no-store');
  if(process.env.NODE_ENV!=='production') return response;

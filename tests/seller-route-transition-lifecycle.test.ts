@@ -1,3 +1,4 @@
+import { passivePdfFixture } from './helpers/passive-pdf';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { registerHooks } from 'node:module';
@@ -35,7 +36,7 @@ async function fixture(baseNow?:number){
     agreementLanguage:'en' as const,agreementAcceptedAt:f.financialNow,registeredTermsContext:terms.context,requestId:'transition-fictional-submit',now:f.financialNow,environment:f.context.environment};
   return {...f,input,terms};
 }
-void test('PAN transition changes only new transactions at the reviewed effective time',async()=>{
+void test('PAN transition changes only new transactions at the reviewed effective time',async(context)=>{
   const f=await fixture();
   try {
     const old=JSON.stringify(f.sqlite.prepare('SELECT * FROM managed_commercial_snapshots ORDER BY id').all());
@@ -61,12 +62,20 @@ void test('PAN transition changes only new transactions at the reviewed effectiv
     await transitionManagedPayout(f.db,{...f.context,payoutId,action:'mark_paid',providerReference:'SIM-HISTORICAL-MANAGED-PAID',now:f.financialNow+60002,requestId:'record-historical-managed-payment'});
     assert.equal(f.sqlite.prepare('SELECT amount_paisa FROM managed_payouts WHERE id=?').get(payoutId)?.amount_paisa,91000);
     await addCartItem(f.db,'registered-route-cart','cup',1,f.financialNow+60003);
+    context.mock.method(Date,'now',()=>f.financialNow+60003);
+    assert.ok(Date.now()>=f.financialNow+60000,'The new order placement clock must reach the reviewed effective instant');
+    assert.ok(Date.now()>=f.input.agreementAcceptedAt,'The new order placement clock must reach the preserved acceptance instant');
     await createCodOrder(f.db,'registered-route-cart','registered-route-receipt',{customerEmail:'buyer@local.hastabazaar.test',customerPhone:'9811111111',customerAuthSubject:'buyer',locale:'en-NP',termsAccepted:true,idempotencyKey:'registered-route-order',
       address:{recipientName:'Fictional buyer',phone:'9811111111',province:'Bagmati',district:'Kathmandu',municipality:'Kathmandu',locality:'Fictional street'}},f.financialNow+60003,'buyer');
     assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM managed_entitlements').get()?.n,1,'The new independent order must not create another managed earning');
     assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM managed_commercial_snapshots').get()?.n,1);
     assert.equal(f.sqlite.prepare('SELECT commission_bps FROM order_items WHERE order_id<>?').get(f.orderId)?.commission_bps,f.terms.basisPoints);
     const independentOrder=String(f.sqlite.prepare('SELECT id FROM orders WHERE id<>?').get(f.orderId)?.id);
+    const placedAt=Number(f.sqlite.prepare('SELECT placed_at FROM orders WHERE id=?').get(independentOrder)?.placed_at);
+    const acceptedAt=Number(f.sqlite.prepare('SELECT accepted_at FROM seller_agreement_acceptance_history WHERE seller_id=?').get(f.sellerId)?.accepted_at);
+    assert.equal(acceptedAt,f.input.agreementAcceptedAt,'The transition must preserve the original acceptance instant');
+    assert.ok(placedAt>=f.financialNow+60000,'Recorded new-order placement must reach the reviewed effective instant');
+    assert.ok(placedAt>=acceptedAt,'Recorded new-order placement must reach the preserved acceptance instant');
     f.sqlite.prepare("UPDATE orders SET status='delivered',payment_status='paid',delivered_at=? WHERE id=?").run(f.financialNow+60004,independentOrder);
     f.sqlite.prepare("UPDATE order_items SET fulfillment_status='delivered' WHERE order_id=?").run(independentOrder);
     const maturity=f.financialNow+100*86400000;
@@ -86,6 +95,11 @@ void test('registered seller transition requires private receiving evidence befo
 void test('a PAN transition preserves populated invoices refunds settlement entries and paid allocation histories',async()=>{
  const f=await fixture();
  try {
+  // This scenario intentionally predates the approved format; keep the legacy
+  // invoice populated so the transition proves preservation of historical records.
+  const statement=f.sqlite.prepare("SELECT snapshot_json AS json FROM order_documents WHERE order_id=? AND kind='order_statement'").get(f.orderId);
+  const historical=JSON.parse(String(statement?.json));delete historical.billing;
+  f.sqlite.prepare("UPDATE order_documents SET snapshot_json=? WHERE order_id=? AND kind='order_statement'").run(JSON.stringify(historical),f.orderId);
   await issueManagedInvoiceGroups(f.db,{orderId:f.orderId,requestId:'history-invoice',now:f.financialNow});
   await refund(f);
   const payoutId=await prepareManagedPayout(f.db,{...f.context,requestId:'history-prepare'});
@@ -109,7 +123,7 @@ void test('owned multipart transition validates private uploads, authorization, 
       VALUES(?,?,?,1,'published',?,'Fictional form publication','reviewer',1,'reviewer',1,'reviewer',1,?)`).run(`transition-http-v${version}`,formId,version,JSON.stringify({formId,fields:[]}),`transition-http-publication-${version}`);
     publish(1);
     const {GET,POST}=await import('../app/api/seller-applications/transition/route');
-    function data(requestId='transition-http-submit',fileBody='%PDF-1.4\nSIMULATED private certificate\n%%EOF') {
+    function data(requestId='transition-http-submit',fileBody=passivePdfFixture('SIMULATED private certificate')) {
       const body=new FormData();
       for(const [key,value] of Object.entries({requestId,formVersion:'1',action:'submit',legalName:f.input.legalName,registrationAuthority:f.input.registrationAuthority,
         registrationNumber:f.input.registrationNumber,taxMode:'PAN',taxRegistrationNumber:f.input.taxRegistrationNumber,payoutAccountReference:f.input.payoutAccountReference,registeredTermsContext:f.terms.context,agreementVersion:f.terms.agreementVersion,agreementLanguage:'en',acceptedTerms:'yes'}))body.set(key,value);
@@ -124,6 +138,10 @@ void test('owned multipart transition validates private uploads, authorization, 
     globalThis.transitionLifecycleIdentity={userId:'transition-auth',email:'maker@local.hastabazaar.test'};
     const duplicate=data();duplicate.append('taxMode','VAT');assert.equal((await send(duplicate)).status,400);
     assert.equal((await send(data('invalid-file-attempt','not a PDF'))).status,400);assert.equal(uploads.size,0);
+    assert.equal((await send(data('header-only-file-attempt','%PDF-1.4\nnot a real certificate\n%%EOF'))).status,400);assert.equal(uploads.size,0);
+    const mismatch=data('mismatched-file-attempt');
+    mismatch.set('panCertificate',new File([passivePdfFixture()],'fake.png',{type:'image/png'}));
+    assert.equal((await send(mismatch)).status,400);assert.equal(uploads.size,0);
     const huge=new Request('http://localhost:3018/api/seller-applications/transition',{method:'POST',headers:{origin:'http://localhost:3018','content-type':'multipart/form-data; boundary=fake','content-length':String(17*1024*1024)},body:'x'});
     assert.equal((await POST(huge)).status,413);
     f.setBeforeBatch(()=>{publish(2);});

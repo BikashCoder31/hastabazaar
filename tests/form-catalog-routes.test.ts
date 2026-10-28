@@ -288,6 +288,12 @@ void test('every staff form keeps its page or receiver permission, including ret
       'staff.managed-maker-activation', 'staff.managed-adjustment', 'staff.payout-2',
       'staff.referral-settings', 'staff.rider-control-1', 'staff.rider-control-2', 'commerce.gift-card-issue',
       'staff.homepage-visibility', 'staff.seller-governance',
+      // Native MFA handlers support Admin and Super Admin. This generic config
+      // endpoint has no per-form Admin grant for these fixed security controls,
+      // so its existing default Super Admin guard still applies to reads here.
+      'system.security-password-bootstrap', 'system.security-mfa-verify',
+      'system.security-mfa-setup', 'system.security-mfa-activation',
+      'system.security-recovery-codes',
     ];
     const registered = Object.values(FORM_REGISTRY).filter((form) => form.audience === 'staff').map((form) => form.id).sort();
     assert.deepEqual([...adminForms, ...superAdminForms].sort(), registered);
@@ -426,6 +432,7 @@ void test('well-formed draft conflicting with historical field identity remains 
 });
 
 const universalFormIds = [
+  'staff.fee-waivers',
   'identity.register', 'identity.login-password', 'identity.email-code-request',
   'identity.email-code-verify', 'identity.password-reset-request', 'identity.password-reset-complete',
   'account.profile', 'account.address', 'account.daily-reward', 'account.points-redemption',
@@ -436,6 +443,9 @@ const universalFormIds = [
   'staff.staff-permission-2', 'rider.code-verify', 'staff.homepage-hero-manager',
   'staff.homepage-occasion-manager', 'staff.homepage-visibility', 'staff.business-settings-manager',
   'staff.delivery-rate', 'staff.promo-code', 'staff.loyalty-settings', 'staff.referral-settings',
+  'system.backup-export', 'system.backup-key-recovery', 'system.backup-inspect',
+  'system.security-password-bootstrap', 'system.security-mfa-verify',
+  'system.security-mfa-setup', 'system.security-mfa-activation', 'system.security-recovery-codes',
 ] as const;
 
 void test('catalog simplification lists business forms with friendly names and excludes universal controls', async () => {

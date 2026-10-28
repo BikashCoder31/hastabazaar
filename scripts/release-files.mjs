@@ -3,7 +3,7 @@ import { lstat, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const required = [
-  'app.cjs', 'server.js', 'package.json',
+  'app.cjs', 'server.js', 'package.json', 'hosted-security.mjs',
   'deployment/babal/release-manifest.json',
   'dist/client/vinext-client-entry-manifest.json',
 ];

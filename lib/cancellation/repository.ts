@@ -1,4 +1,5 @@
 import { cancellationNotifications } from './notifications';
+import { currentPlatformServiceFeeSql, payableOrderTotalSql } from '../db/repositories/platform-service-fee';
 import { riderNotifications } from '../riders/repository';
 import { createHash } from 'node:crypto';
 import { allocateCancellationItems, calculateCancellation } from './accounting';
@@ -7,6 +8,12 @@ import { staffMutationGuard } from '../db/repositories/staff-mutation-guard';
 import { buildFormAnswerInsert } from '../db/repositories/form-answers';
 import { digestFormRequest } from '../forms/submission';
 import type { FormAnswerSnapshot } from '../forms/types';
+import { APPROVED_BILLING_VERSION, mergeRecordedReceiptItems, withReceiptGroups } from '../documents/billing';
+import type { OrderDocumentSnapshot } from '../db/repositories/orders';
+import { receiptNumberStatements } from '../db/repositories/billing-documents';
+import { buildEarningsAccrualStatements } from '../db/repositories/payouts';
+import { accrueManagedEntitlements } from '../db/repositories/managed-settlements';
+import { issueManagedInvoiceGroups } from '../db/repositories/managed-documents';
 export class CancellationConflictError extends Error {}
 export interface CancellationAccess {
   orderNumber: string;
@@ -22,6 +29,7 @@ interface Order {
   customerId: string | null;
   subtotal: number;
   delivery: number;
+  serviceFee: number;
   wallet: number;
   discount: number;
   referral: number;
@@ -75,7 +83,7 @@ async function source(db: D1Database, a: CancellationAccess) {
     );
   const order = await db
     .prepare(
-      'SELECT id,status,customer_id AS customerId,item_subtotal_paisa AS subtotal,delivery_charge_paisa AS delivery,wallet_credit_paisa AS wallet,referral_discount_paisa+promo_discount_paisa AS discount,referral_discount_paisa AS referral,promo_discount_paisa AS promo,grand_total_paisa AS total,cancellation_version AS version,COALESCE(current_total_paisa,grand_total_paisa) AS currentTotal,payment_mode AS paymentMode,delivery_rate_snapshot_json AS deliverySnapshot FROM orders WHERE order_number=? AND (? IS NOT NULL OR (? IS NOT NULL AND customer_id=?) OR (? IS NOT NULL AND receipt_token_hash=?))',
+      `SELECT id,status,customer_id AS customerId,item_subtotal_paisa AS subtotal,delivery_charge_paisa AS delivery,buyer_platform_fee_paisa AS serviceFee,wallet_credit_paisa AS wallet,referral_discount_paisa+promo_discount_paisa AS discount,referral_discount_paisa AS referral,promo_discount_paisa AS promo,grand_total_paisa AS total,cancellation_version AS version,${payableOrderTotalSql()} AS currentTotal,payment_mode AS paymentMode,delivery_rate_snapshot_json AS deliverySnapshot FROM orders WHERE order_number=? AND (? IS NOT NULL OR (? IS NOT NULL AND customer_id=?) OR (? IS NOT NULL AND receipt_token_hash=?))`,
     )
     .bind(
       a.orderNumber,
@@ -168,7 +176,7 @@ export async function cancellationPreview(
   if (
     BigInt(order.total) !==
     BigInt(order.subtotal) +
-      BigInt(order.delivery) -
+      BigInt(order.delivery) + BigInt(order.serviceFee) -
       BigInt(order.wallet) -
       BigInt(order.discount)
   )
@@ -202,13 +210,20 @@ export async function cancellationPreview(
     allocations,
     previousCancelled,
     pricing,
+    order.serviceFee,
   );
   selected.forEach((id) => previousCancelled.add(id));
   const next = calculateCancellation(
     allocations,
     previousCancelled,
     pricing,
+    order.serviceFee,
   );
+  // Delivery may precede collection. An unpaid parcel can still receive its
+  // recalculated COD balance, but collected cash must never acquire a new due.
+  if (parcels.some(p => !selected.includes(p.sellerId) && p.collected > 0 &&
+    (next.parcels.find(r => r.sellerId === p.sellerId)?.amount ?? 0) > p.due))
+    throw new CancellationConflictError('Collected parcel cash cannot be increased. Staff must reconcile the collected charges before cancellation.');
   if (
     parcels.some(
       (p) =>
@@ -259,6 +274,11 @@ export async function cancellationChoices(
     ),
   }));
 }
+async function finishCancellationSettlement(db: D1Database, orderId: string, actorId: string | null, requestId: string, now: number) {
+  await accrueManagedEntitlements(db, { orderId, actorId, requestId: requestId + ':managed-accrue', now });
+  await issueManagedInvoiceGroups(db, { orderId, requestId: requestId + ':managed-invoice', now });
+}
+
 export async function cancelSelectedParcels(
   db: D1Database,
   a: CancellationAccess,
@@ -364,6 +384,10 @@ export async function cancelSelectedParcels(
         throw new CancellationConflictError('Request reference already used.');
     }
     await assertFormReplay('order_cancellation_event');
+    // Cancellation and its receipt commit together. A verified retry resumes
+    // only the idempotent managed hooks if a post-commit dependency failed.
+    if (authorizedSource.order.status === 'delivered')
+      await finishCancellationSettlement(db, authorizedSource.order.id, actorId, o.requestId, o.now);
     return { status: 'cancelled', id: o.requestId };
   }
   const priorReview = await db
@@ -703,7 +727,7 @@ export async function cancelSelectedParcels(
       )
       .bind(
         status,
-        p.next.total,
+        p.next.total-(p.next.platformServiceFeePaisa??0),
         p.next.subtotal,
         p.next.delivery,
         p.next.wallet,
@@ -753,6 +777,48 @@ export async function cancelSelectedParcels(
         o.now,
       ),
   );
+  if (status === 'delivered') {
+    // Removing the last pending seller may complete an already collected order.
+    // Capture from remaining parcel cash in the same guarded transaction; do
+    // not require another collection/remittance event to discover completion.
+    statements.push(
+      db.prepare(`UPDATE orders SET payment_status='paid' WHERE id=? AND status='delivered'
+        AND EXISTS(SELECT 1 FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id WHERE j.order_id=orders.id)
+        AND NOT EXISTS(SELECT 1 FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id
+          WHERE j.order_id=orders.id AND p.collected_paisa<>p.cod_due_paisa)`).bind(p.order.id),
+      db.prepare(`UPDATE payments SET status='captured',updated_at=? WHERE order_id=?
+        AND EXISTS(SELECT 1 FROM orders WHERE id=? AND status='delivered' AND payment_status='paid')`)
+        .bind(o.now, p.order.id, p.order.id),
+    );
+    const document = await db.prepare("SELECT snapshot_json AS snapshot FROM order_documents WHERE order_id=? AND kind='order_statement' LIMIT 1")
+      .bind(p.order.id).first<{ snapshot: string }>();
+    if (document) {
+      const original = JSON.parse(document.snapshot) as OrderDocumentSnapshot;
+      const remainingIds = new Set(remaining.map(item => item.id));
+      const rows = (await db.prepare(`SELECT id AS orderItemId,product_name_snapshot AS productName,
+        seller_name_snapshot AS sellerName,sku_snapshot AS sku,unit_price_paisa AS unitPricePaisa,
+        quantity,line_total_paisa AS lineTotalPaisa FROM order_items WHERE order_id=? ORDER BY id`)
+        .bind(p.order.id).all<OrderDocumentSnapshot['items'][number]>()).results.filter(item => remainingIds.has(item.orderItemId!));
+      const snapshot = withReceiptGroups({ ...original, documentTitle: 'Cash on delivery payment receipt',
+        paymentStatus: 'paid', issuedAt: o.now,
+        items: original.billing?.version === APPROVED_BILLING_VERSION ? mergeRecordedReceiptItems(original.items, rows) : rows,
+        itemSubtotalPaisa: p.next.subtotal, deliveryChargePaisa: p.next.delivery,
+        buyerPlatformFeePaisa: p.next.platformServiceFeePaisa ?? 0, grandTotalPaisa: p.next.total,
+        walletCreditPaisa: p.next.wallet, referralDiscountPaisa: p.next.discount - p.next.promoDiscount,
+        promoDiscountPaisa: p.next.promoDiscount, currentPromoDiscountPaisa: p.next.promoDiscount,
+        originalPromoDiscountPaisa: p.order.promo,
+      });
+      const receiptRequestId = o.requestId + ':payment-receipt';
+      statements.push(
+        db.prepare(`INSERT OR IGNORE INTO order_documents(id,order_id,kind,document_number,snapshot_json,status,request_id,issued_at)
+          SELECT ?,id,'payment_receipt',?,?,'issued',?,? FROM orders WHERE id=? AND status='delivered' AND payment_status='paid'
+          AND NOT EXISTS(SELECT 1 FROM order_documents d WHERE d.order_id=orders.id AND d.kind='payment_receipt')`)
+          .bind(crypto.randomUUID(), 'RCPT-PARCEL-' + p.order.id, JSON.stringify(snapshot), receiptRequestId, o.now, p.order.id),
+        ...await receiptNumberStatements(db, { snapshot, requestId: receiptRequestId, now: o.now }),
+      );
+    }
+    statements.push(...buildEarningsAccrualStatements(db, { orderId: p.order.id, now: o.now }));
+  }
   statements.push(
     ...(await cancellationNotifications(
       db,
@@ -829,6 +895,8 @@ export async function cancelSelectedParcels(
       'The order changed. Refresh the cancellation review before trying again.',
     );
   }
+  if (status === 'delivered')
+    await finishCancellationSettlement(db, p.order.id, actorId, o.requestId, o.now);
   return { status: 'cancelled', id: o.requestId };
 }
 export async function rejectCancellationReview(
@@ -925,11 +993,12 @@ export async function currentReceiptSnapshot(
 ) {
   const order = await db
     .prepare(
-      'SELECT cancellation_version AS version,current_total_paisa AS total,current_subtotal_paisa AS subtotal,current_delivery_paisa AS delivery,current_wallet_paisa AS wallet,current_referral_discount_paisa AS discount,current_promo_discount_paisa AS promo,promo_discount_paisa AS originalPromo,refunded_promo_discount_paisa AS refundedPromo FROM orders WHERE id=?',
+      `SELECT ${currentPlatformServiceFeeSql()} AS serviceFee,cancellation_version AS version,${payableOrderTotalSql()} AS total,current_subtotal_paisa AS subtotal,current_delivery_paisa AS delivery,current_wallet_paisa AS wallet,current_referral_discount_paisa AS discount,current_promo_discount_paisa AS promo,promo_discount_paisa AS originalPromo,refunded_promo_discount_paisa AS refundedPromo FROM orders WHERE id=?`,
     )
     .bind(orderId)
     .first<{
       version: number;
+      serviceFee: number;
       total: number;
       subtotal: number;
       delivery: number;
@@ -943,17 +1012,19 @@ export async function currentReceiptSnapshot(
   const items = (
     await db
       .prepare(
-        "SELECT product_name_snapshot AS productName,seller_name_snapshot AS sellerName,sku_snapshot AS sku,unit_price_paisa AS unitPricePaisa,quantity,line_total_paisa AS lineTotalPaisa FROM order_items WHERE order_id=? AND fulfillment_status<>'cancelled' ORDER BY id",
+        "SELECT id AS orderItemId,product_name_snapshot AS productName,seller_name_snapshot AS sellerName,sku_snapshot AS sku,unit_price_paisa AS unitPricePaisa,quantity,line_total_paisa AS lineTotalPaisa FROM order_items WHERE order_id=? AND fulfillment_status<>'cancelled' ORDER BY id",
       )
       .bind(orderId)
-      .all()
+      .all<OrderDocumentSnapshot['items'][number]>()
   ).results;
   return {
     ...original,
-    items,
+    items:(original.billing as {version?:string}|undefined)?.version===APPROVED_BILLING_VERSION && Array.isArray(original.items)
+      ? mergeRecordedReceiptItems(original.items,items) : items,
     itemSubtotalPaisa: order.subtotal,
     deliveryChargePaisa: order.delivery,
     grandTotalPaisa: order.total,
+    buyerPlatformFeePaisa: order.serviceFee,
     walletCreditPaisa: order.wallet,
     referralDiscountPaisa: order.discount,
     promoDiscountPaisa: order.promo,

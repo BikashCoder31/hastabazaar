@@ -110,7 +110,7 @@ export default async function SellerReturnCasePage({
         <aside className="rounded-2xl border bg-card p-6">
           <h2 className="font-heading text-2xl">Your response</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Share only facts relevant to the item and fulfilment. HastaBazaar
+            Share only facts relevant to the item and fulfilment. Hastabazaar
             makes the final decision.
           </p>
           <div className="mt-5">

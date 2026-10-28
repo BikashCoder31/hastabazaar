@@ -139,7 +139,7 @@ export async function deliverContactCode(
       );
     return;
   }
-  const text = `Your HastaBazaar ${message.channel === 'email' ? 'email' : 'phone'} verification code is ${message.code}. It expires in 10 minutes and can be used only once.`;
+  const text = `Your Hastabazaar ${message.channel === 'email' ? 'email' : 'phone'} verification code is ${message.code}. It expires in 10 minutes and can be used only once.`;
   if (message.channel === 'phone') {
     if (!environment.SMS?.configured)
       throw new ContactVerificationError(
@@ -159,7 +159,7 @@ export async function deliverContactCode(
       );
     await environment.EMAIL.send({
       to: message.contact,
-      subject: 'Verify your HastaBazaar email',
+      subject: 'Verify your Hastabazaar email',
       text,
       html: `<p>${text}</p>`,
     });

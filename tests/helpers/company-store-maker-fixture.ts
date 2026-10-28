@@ -3,6 +3,7 @@ import { incentiveReportDatabase } from './incentive-report-database';
 import { managedIdentityDocument, managedIdentityFields } from './managed-identity-fixture';
 import { parseSellerApplication } from '../../lib/sellers/application';
 import { createSellerApplication } from '../../lib/db/repositories/seller-applications';
+import { historicalCommissionFixture } from './historical-commission-fixture';
 
 export const makerNow = Date.now() - 60_000;
 export async function companyStoreMakerFixture(now = makerNow) {
@@ -11,6 +12,7 @@ export async function companyStoreMakerFixture(now = makerNow) {
   sqlite.exec(`INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES
     ('reviewer','reviewer@local.hastabazaar.test','Fictional reviewer','active',1,1);
     INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('reviewer','super_admin',1);`);
+  historicalCommissionFixture(sqlite, 'reviewer');
   const form = new FormData();
   for (const [key, value] of Object.entries({
     hasBusinessTaxRegistration: 'no', applicantType: 'individual', legalName: 'Fictional Maker',

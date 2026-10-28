@@ -40,7 +40,7 @@ export default async function LoginPage({
   return (
     <main tabIndex={-1} id="main-content" className="grid min-h-screen place-items-center bg-muted/20 px-5 py-12">
       <section className="w-full max-w-md rounded-3xl border bg-card p-7 shadow-sm sm:p-9">
-        <Link href="/" className="text-sm font-semibold text-primary">← HastaBazaar</Link>
+        <Link href="/" className="text-sm font-semibold text-primary">← Hastabazaar</Link>
         <h1 className="mt-6 font-heading text-4xl text-foreground">Welcome back</h1>
         {query.reset === 'success' ? <output className="block mt-4 rounded-xl bg-secondary p-3 text-sm">Your password has been reset. Sign in with your new password.</output> : null}
         <p className="mt-2 text-sm leading-6 text-muted-foreground">Sign in to view orders, saved products, and your marketplace account. If you first verify your email with Google or an email code, you may need to use Forgot password to set a verified password.</p>
@@ -79,7 +79,7 @@ export default async function LoginPage({
         </form> : <p className="text-sm text-muted-foreground">Email-code sign-in is temporarily unavailable.</p>}
 
         <GoogleSignIn returnTo={returnTo} />
-        <p className="mt-6 text-center text-sm text-muted-foreground">New to HastaBazaar? <Link className="font-semibold text-primary" href={`/register?return_to=${encodeURIComponent(returnTo)}`}>Create an account</Link></p>
+        <p className="mt-6 text-center text-sm text-muted-foreground">New to Hastabazaar? <Link className="font-semibold text-primary" href={`/register?return_to=${encodeURIComponent(returnTo)}`}>Create an account</Link></p>
       </section>
     </main>
   );

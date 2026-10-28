@@ -5,7 +5,7 @@ import { ProgramManagement } from '@/components/admin/program-management';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { managedMakerCapabilities } from '@/lib/configuration/capabilities';
 import { requireDatabase } from '@/lib/db/d1';
-import { getEffectiveBusinessSetting, listBusinessSettingHistory } from '@/lib/db/repositories/business-settings';
+import { CommissionRateUnavailableError, getBusinessSettingForManagement, getEffectiveBusinessSetting, listBusinessSettingHistory } from '@/lib/db/repositories/business-settings';
 import { businessSettingDefinitions } from '@/lib/configuration/definitions';
 import { BusinessSettingsManager, type BusinessSettingsAdminItem } from '@/components/admin/business-settings-manager';
 import { getProgramManagementWorkspace } from '@/lib/managed-commerce/program-management';
@@ -28,13 +28,13 @@ export default async function ProgramsPage({searchParams = Promise.resolve({})}:
   const [programMode, activeModel, retention, initialSettings] = await Promise.all([
     getEffectiveBusinessSetting(database, 'managed_maker_program_mode', now),
     getEffectiveBusinessSetting(database, 'managed_maker_active_model', now),
-    getEffectiveBusinessSetting(database, 'managed_sale_linked_platform_retention_bps', now),
+    getEffectiveBusinessSetting(database, 'managed_sale_linked_platform_retention_bps', now).catch(error => { if (error instanceof CommissionRateUnavailableError) return null; throw error; }),
     Promise.all(businessSettingDefinitions.filter((definition) => settingKeys.includes(definition.key)).map(async (definition) => ({
       key: definition.key, label: definition.label, description: definition.description,
       sensitivity: definition.sensitivity, changeControl: definition.changeControl,
       effectiveMode: definition.effectiveMode, snapshotOnTransaction: definition.snapshotOnTransaction,
       affectedSurfaces: definition.affectedSurfaces, requiredCapability: definition.requiredCapability,
-      effective: await getEffectiveBusinessSetting(database, definition.key, now),
+      effective: await getBusinessSettingForManagement(database, definition.key, now),
       history: await listBusinessSettingHistory(database, definition.key),
     }))),
   ]);
@@ -68,7 +68,7 @@ export default async function ProgramsPage({searchParams = Promise.resolve({})}:
         capabilities={managedMakerCapabilities}
         environment={environment}
         environmentVerified={Boolean(bindings.HASTABAZAAR_RUNTIME_ENV?.trim())}
-        platformRetentionBps={retention.value}
+        platformRetentionBps={retention?.value}
         workspace={workspace}
       />
       <ManagedSettlementControls ownerId={staff.id} workspace={finance} asOf={now}

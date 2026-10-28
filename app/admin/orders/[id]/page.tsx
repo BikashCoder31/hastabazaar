@@ -1,4 +1,6 @@
 import { FirstCodConfirmation } from '@/components/admin/first-cod-confirmation';
+import { PlatformServiceFeeRefund } from '@/components/admin/platform-service-fee-refund';
+import { serviceFeeRefundSummary } from '@/lib/db/repositories/platform-service-fee-refunds';
 import { getFirstCodReview } from '@/lib/orders/first-cod-review';
 import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import { CancellationReviewSection } from '@/components/admin/cancellation-review-section';
@@ -30,6 +32,10 @@ import { getOperationsOrderDetail } from '@/lib/db/repositories/fulfillment';
 import { listManagedInvoiceGroupsForOrder } from '@/lib/db/repositories/managed-documents';
 import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
 import { can } from '@/lib/marketplace/permissions';
+import { readOrderMarketplaceFeeViews } from '@/lib/db/repositories/fee-waivers';
+import { OrderMarketplaceFees } from '@/components/seller/order-marketplace-fees';
+import { readOrderCustomerServiceFees } from '@/lib/db/repositories/customer-service-fees';
+import { CustomerServiceFeeBreakdown } from '@/components/commerce/customer-service-fee-breakdown';
 
 export const dynamic = 'force-dynamic';
 const invoiceSettingsObservedAt = () => Date.now();
@@ -60,7 +66,13 @@ export default async function AdminOrderPage({
   if (!order) notFound();
   const address = order.address;
   const db = requireDatabase(env as unknown as { DB?: D1Database });
+  const [marketplaceFees, customerFees] = await Promise.all([
+    readOrderMarketplaceFeeViews(db,order.items.map(item=>item.id)),
+    readOrderCustomerServiceFees(db,[id]),
+  ]);
+  const customerFee=customerFees.get(id);
   const codReview = await getFirstCodReview(db, id);
+  const feeSummary = staff.role==='super_admin' ? await serviceFeeRefundSummary(db,id) : null;
   const codPending =
     codReview?.status === 'pending' && order.status !== 'cancelled';
   const companyPreparation = staff.role==='super_admin' && !codPending
@@ -126,6 +138,13 @@ export default async function AdminOrderPage({
   const visibleParcels = staff.role === 'super_admin' ? parcels : parcels.filter(p => p.method !== 'own_rider').map(p => ({ ...p, riderUserId: null, latitude: null, longitude: null, accuracy: null, positionAt: null, riderFinanceSnapshotJson: null }));
   return (
     <div>
+      {customerFee?<section className="mb-6 rounded-2xl border bg-card p-6">
+        <h2 className="mb-3 font-heading text-xl">Customer service fee at placement</h2>
+        <CustomerServiceFeeBreakdown {...customerFee} campaignName={customerFee.campaign?.name??null}
+          source={customerFee.source==='legacy_recorded'?'historical':'recorded'}/>
+        <p className="mt-3 text-sm">Customer service fee after cancellations: {money(order.buyerPlatformFeePaisa)}.</p>
+      </section>:null}
+      {feeSummary && feeSummary.chargedPaisa > 0 ? <div className="mb-6"><PlatformServiceFeeRefund orderId={id} {...feeSummary}/></div> : null}
       <CancellationReviewSection db={db} orderId={id} />
       <StaffFormHistoryLinks
         entries={[
@@ -152,6 +171,7 @@ export default async function AdminOrderPage({
           },
         ]}
       />
+      <OrderMarketplaceFees fees={marketplaceFees}/>
       <Link
         href="/admin/orders"
         className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
@@ -378,6 +398,14 @@ export default async function AdminOrderPage({
               <div className="flex justify-between border-t pt-3 font-semibold">
                 <dt>COD total</dt>
                 <dd>{money(order.grandTotalPaisa)}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt>Platform service fee (included)</dt>
+                <dd>{money(order.buyerPlatformFeePaisa)}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt>Legally required fee refunds</dt>
+                <dd>{money(feeSummary?.refundedPaisa??0)}</dd>
               </div>
               <div className="flex justify-between">
                 <dt>Payment</dt>

@@ -58,6 +58,8 @@ void test('Promo cost preview respects minimum, discount caps, commission base a
     eligible: true,
     discountPaisa: 10000,
     commissionPaisa: 9000,
+    standardCommissionPaisa: 9000,
+    waivedCommissionPaisa: 0,
     contributionPaisa: -1000,
     customerSubtotalPaisa: 90000,
   });

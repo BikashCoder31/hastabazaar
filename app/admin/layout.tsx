@@ -7,6 +7,7 @@ import { AdminNavigation } from '@/components/admin/admin-navigation';
 import { AdminWorkspaceReady } from '@/components/admin/admin-workspace-ready';
 import { BrandWordmark } from '@/components/layout/brand-wordmark';
 import { requireStaffPage } from '@/lib/auth/staff';
+import {AdminSessionActivity} from '@/components/security/session-activity';
 import { mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
 
 export const dynamic = 'force-dynamic';
@@ -16,6 +17,7 @@ export default async function AdminLayout({
   const staff = await requireStaffPage('/admin');
   return (
     <div className="min-h-screen bg-secondary/35">
+      <AdminSessionActivity />
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-xl focus:bg-background focus:p-4"

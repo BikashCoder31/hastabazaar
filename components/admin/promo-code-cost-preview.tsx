@@ -11,6 +11,7 @@ import {
   promoCostPreview,
 } from '@/lib/incentives/presentation';
 import type { PromoTerms } from '@/lib/incentives/types';
+import type { FeeWaiverCampaign } from '@/lib/marketplace/fee-waivers';
 
 export function PromoCodeCostPreview({
   terms,
@@ -20,12 +21,13 @@ export function PromoCodeCostPreview({
 }: {
   terms: PromoTerms | null;
   error?: string;
-  defaultCommissionBps: number;
+  defaultCommissionBps?: number;
+  feeWaiver?: FeeWaiverCampaign | null;
   disabled?: boolean;
 }) {
   const [subtotal, setSubtotal] = useState('1000.00');
   const [commission, setCommission] = useState(() =>
-    moneyInput(defaultCommissionBps),
+    defaultCommissionBps === undefined ? '' : moneyInput(defaultCommissionBps),
   );
   let result: ReturnType<typeof promoCostPreview> | null = null;
   let message = error;
@@ -51,6 +53,7 @@ export function PromoCodeCostPreview({
           A registered-seller illustration using the unsaved discount and
           minimum subtotal above.
         </p>
+        {defaultCommissionBps === undefined ? <output className="mt-2 block text-sm">The current saved commission rate is unavailable. Enter an explicit illustration rate or review Business Settings. No replacement rate is assumed.</output> : null}
       </div>
       <fieldset disabled={disabled} className="grid gap-4 sm:grid-cols-2">
         <legend className="sr-only">Illustration assumptions</legend>
@@ -115,7 +118,7 @@ export function PromoCodeCostPreview({
               </div>
               <div>
                 <dt className="text-xs text-muted-foreground">
-                  Estimated commission revenue
+                  Estimated net commission revenue
                 </dt>
                 <dd
                   className="mt-1 font-semibold tabular-nums"
@@ -162,7 +165,8 @@ export function PromoCodeCostPreview({
       <p className="text-xs leading-relaxed text-muted-foreground">
         Excludes delivery, taxes and other fees. Commission is calculated on the
         products subtotal before the Hatskala-funded promo, assuming a
-        completed, paid sale. Contribution is commission less promo cost.
+        completed, paid sale. Customer service fee campaigns do not change this commission.
+        Contribution is net commission less promo cost.
         Campaign dates, usage limits, remaining budget and customer eligibility
         are not verified here. Changing these assumptions only updates this
         illustration.

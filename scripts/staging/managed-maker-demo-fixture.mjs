@@ -33,6 +33,8 @@ function initializeBaseSchema(sqlite) {
     CREATE TABLE staff_permission_guards (id TEXT PRIMARY KEY, valid INTEGER NOT NULL CHECK(valid = 1));
     CREATE TABLE seller_profiles (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id));
     CREATE TABLE seller_participation_profiles (id TEXT PRIMARY KEY);
+    CREATE TABLE order_documents (id TEXT PRIMARY KEY, order_id TEXT NOT NULL,
+      kind TEXT NOT NULL, snapshot_json TEXT NOT NULL);
     CREATE TABLE orders (
       id TEXT PRIMARY KEY, order_number TEXT NOT NULL UNIQUE, customer_email TEXT NOT NULL,
       customer_id TEXT, receipt_token_hash TEXT, status TEXT NOT NULL, payment_status TEXT NOT NULL,

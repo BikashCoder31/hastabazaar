@@ -1,5 +1,6 @@
 import { parseManagedMakerIdentity, type ManagedMakerIdentity } from './managed-identity';
 import { SELLER_AGREEMENT_VERSION } from '@/lib/content/legal-policies';
+import type { SellerOnboarding } from './onboarding';
 import {
   parseCraftExperience,
   parseMakerSocialLinks,
@@ -21,7 +22,18 @@ export function sellerDocumentsForApplication(input: {
   taxMode: 'PAN' | 'VAT' | 'BOTH' | 'NONE';
   participationRoute?: ParticipationRoute;
   hasBusinessTaxRegistration?: boolean;
+  onboarding?: Pick<SellerOnboarding, 'version'>;
 }) {
+  if (input.onboarding) {
+    const managed = input.participationRoute === 'managed_maker';
+    return [
+      ...(!managed ? [{ field: 'businessRegistration', kind: 'business_registration' as const, label: 'Business registration certificate (including sole proprietors)', required: true }] : []),
+      { field: managed ? 'personalPanCertificate' : 'panCertificate', kind: 'pan_certificate' as const, label: managed ? 'Personal PAN certificate' : 'Business PAN certificate', required: true },
+      ...(!managed && input.taxMode !== 'PAN' ? [{ field: 'vatCertificate', kind: 'vat_certificate' as const, label: 'VAT certificate', required: true }] : []),
+      { field: 'representativeIdentity', kind: 'representative_identity' as const, label: managed ? 'Government-issued identity document' : 'Authorised representative identity document', required: true },
+      { field: 'bankVerification', kind: 'bank_verification' as const, label: 'Bank evidence showing beneficiary, bank and account number', required: true },
+    ];
+  }
   if (input.participationRoute === 'managed_maker' || input.taxMode === 'NONE') {
     return [
       { field: 'personalPanCertificate', kind: 'pan_certificate' as const, label: 'Personal PAN certificate (optional)', required: false },
@@ -87,6 +99,7 @@ export function sellerDocumentsForApplication(input: {
 }
 
 export interface SellerApplicationInput {
+  onboarding?: SellerOnboarding;
   managedIdentity?: ManagedMakerIdentity;
   participationRoute: ParticipationRoute;
   hasBusinessTaxRegistration: boolean;
@@ -213,11 +226,11 @@ export function parseSellerApplication(formData: FormData): {
     legalName: textField(formData, 'legalName'),
     tradingName: textField(formData, 'tradingName'),
     registrationAuthority:
-      participationRoute === 'registered_seller' && applicantType === 'company'
+      participationRoute === 'registered_seller' && (applicantType === 'company' || usesNewRouteQuestion)
         ? textField(formData, 'registrationAuthority')
         : '',
     registrationNumber:
-      participationRoute === 'registered_seller' && applicantType === 'company'
+      participationRoute === 'registered_seller' && (applicantType === 'company' || usesNewRouteQuestion)
         ? textField(formData, 'registrationNumber')
         : '',
     taxMode: resolvedTaxMode,
@@ -349,37 +362,6 @@ export function validateSellerDocument(file: File): string | null {
     return 'Documents must be PDF, JPG, or PNG files.';
   }
   return null;
-}
-
-export async function validateSellerDocumentContent(
-  file: File,
-): Promise<string | null> {
-  const bytes = new Uint8Array(await file.slice(0, 8).arrayBuffer());
-  const isPdf =
-    bytes[0] === 0x25 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x44 &&
-    bytes[3] === 0x46 &&
-    bytes[4] === 0x2d;
-  const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-  const isPng =
-    bytes[0] === 0x89 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x4e &&
-    bytes[3] === 0x47 &&
-    bytes[4] === 0x0d &&
-    bytes[5] === 0x0a &&
-    bytes[6] === 0x1a &&
-    bytes[7] === 0x0a;
-
-  const matchesDeclaredType =
-    (file.type === 'application/pdf' && isPdf) ||
-    (file.type === 'image/jpeg' && isJpeg) ||
-    (file.type === 'image/png' && isPng);
-
-  return matchesDeclaredType
-    ? null
-    : 'The file content does not match its PDF, JPG, or PNG type.';
 }
 
 export function createSellerApplicationReference(now = new Date()): string {

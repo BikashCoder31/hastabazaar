@@ -1096,9 +1096,11 @@ void test('global send budget prevents transport costs across different users an
 
 void test('legacy guest and signed-in receipt replays survive new contact requirements without changing records', async () => {
   const { createCodOrder } = await import('../lib/db/repositories/orders');
-  for (const customerId of [null, 'buyer']) {
+  const { parseCheckoutInput } = await import('../lib/checkout/validation');
+  for (const {customerId, parserShape} of [null, 'buyer'].flatMap(customerId =>
+    [false, true].map(parserShape => ({customerId, parserShape})))) {
     const f = fixture();
-    const input = {
+    const originalInput = {
       customerEmail: 'buyer@local.hastabazaar.test',
       customerPhone: '9811111111',
       locale: 'en-NP' as const,
@@ -1113,8 +1115,29 @@ void test('legacy guest and signed-in receipt replays survive new contact requir
         locality: 'Legacy locality',
       },
     };
+    // Frozen historical parser shape: changing today's defaults must not change
+    // the stored old digest and its expected replay together.
+    const historicalInput = parserShape ? {
+      customerEmail: originalInput.customerEmail,
+      customerPhone: originalInput.customerPhone,
+      deliveryFor: 'self' as const,
+      recipientEmail: undefined,
+      selectedAddressId: undefined,
+      saveAddressForFuture: false,
+      saveAddressLabel: undefined,
+      locale: originalInput.locale,
+      termsAccepted: true,
+      idempotencyKey: originalInput.idempotencyKey,
+      deliveryRateVersion: undefined,
+      useWallet: false,
+      referralCode: '',
+      formVersion: undefined,
+      customAnswers: undefined,
+      address: { ...originalInput.address, ward: undefined, landmark: undefined, postalCode: undefined, location: undefined },
+    } : originalInput;
+    const input = parserShape ? parseCheckoutInput(originalInput).value! : originalInput;
     const digest = createHash('sha256')
-      .update(JSON.stringify({ customerId, ...input }))
+      .update(JSON.stringify({ customerId, ...historicalInput }))
       .digest('hex');
     try {
       f.sqlite
@@ -1188,6 +1211,8 @@ async function realCart(f: ReturnType<typeof fixture>) {
       "UPDATE seller_profiles SET seller_agreement_version=?,seller_agreement_accepted_at=1 WHERE id='seller'",
     )
     .run(SELLER_AGREEMENT_VERSION);
+  const { historicalCommissionFixture } = await import('./helpers/historical-commission-fixture');
+  historicalCommissionFixture(f.sqlite,'buyer',true);
   const { getDeliveryRates } =
     await import('../lib/db/repositories/delivery-rates');
   const rates = await getDeliveryRates(f.db);

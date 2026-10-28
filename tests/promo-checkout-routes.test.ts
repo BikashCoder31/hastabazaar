@@ -1,5 +1,9 @@
 import { SELLER_AGREEMENT_VERSION } from '../lib/content/legal-policies';
-import {seedVerifiedCheckoutContact} from './helpers/checkout-contact';
+import { seedVerifiedCheckoutContact } from './helpers/checkout-contact';
+import {
+  seedPromoCommissionAcceptance,
+  withReviewedPromoQuote,
+} from './helpers/promo-checkout-fixture';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { registerHooks } from 'node:module';
@@ -84,6 +88,7 @@ void test('actual quote derives live cart/customer/time, records no financial st
     await seedIncentiveCustomer(f.db);
     await seedIncentiveCustomer(f.db, 'super');
     await seedIncentiveInventory(f.db);
+    await seedPromoCommissionAcceptance(f.db, 900);
     await f.db
       .prepare(
         "INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('super','super_admin',1)",
@@ -250,31 +255,36 @@ void test('actual quote derives live cart/customer/time, records no financial st
         "SELECT version_id FROM delivery_rate_current WHERE id='default'",
       )
       .first<{ version_id: string }>();
-    const payload = {
-      customerEmail: 'forged@example.test',
-      customerPhone: '9811111111',
-      locale: 'en-NP',
-      termsAccepted: true,
-      idempotencyKey: crypto.randomUUID(),
-      deliveryRateVersion: rate!.version_id,
-      promoCode: 'SAVE10',
-      promoRevision: 1,
-      promoQuoteIntent: updated.quoteIntent,
-      formVersion: 1,
-      customAnswers: [],
-      address: {
-        recipientName: 'Fixture Buyer',
-        phone: '9811111111',
-        province: 'Bagmati',
-        district: 'Kathmandu',
-        municipality: 'Kathmandu',
-        locality: 'Fixture locality',
+    const payload = await withReviewedPromoQuote(
+      f.db,
+      'cart',
+      {
+        customerEmail: 'forged@example.test',
+        customerPhone: '9811111111',
+        locale: 'en-NP',
+        termsAccepted: true,
+        idempotencyKey: crypto.randomUUID(),
+        deliveryRateVersion: rate!.version_id,
+        promoCode: 'SAVE10',
+        promoRevision: 1,
+        promoQuoteIntent: updated.quoteIntent,
+        formVersion: 1,
+        customAnswers: [],
+        address: {
+          recipientName: 'Fixture Buyer',
+          phone: '9811111111',
+          province: 'Bagmati',
+          district: 'Kathmandu',
+          municipality: 'Kathmandu',
+          locality: 'Fixture locality',
+        },
+        discountPaisa: 999999,
+        subtotalPaisa: 1,
+        customerId: 'super',
+        now: 100,
       },
-      discountPaisa: 999999,
-      subtotalPaisa: 1,
-      customerId: 'super',
-      now: 100,
-    };
+      Date.now(),
+    );
     const mainReq = (body: unknown) =>
       new Request('http://localhost:3000/api/checkout', {
         method: 'POST',
@@ -294,7 +304,7 @@ void test('actual quote derives live cart/customer/time, records no financial st
     globalThis.checkoutPromoActor = null;
     assert.equal((await main.POST(mainReq(payload))).status, 401);
     globalThis.checkoutPromoActor = actor;
-    await seedVerifiedCheckoutContact(f.db,'customer');
+    await seedVerifiedCheckoutContact(f.db, 'customer');
     const placed = await main.POST(mainReq(payload));
     assert.equal(placed.status, 201);
     const result = (await placed.json()) as { grandTotalPaisa: number };

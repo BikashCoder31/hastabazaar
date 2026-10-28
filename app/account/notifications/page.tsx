@@ -19,7 +19,7 @@ export default async function CustomerNotificationsPage() {
       <AccountHeading
         eyebrow="Your latest updates"
         title="Keep in the know."
-        description="Updates from HastaBazaar, ready when you are."
+        description="Updates from Hastabazaar, ready when you are."
       />
       <NotificationList
         workspace="customer"

@@ -4,7 +4,9 @@ export const PUBLIC_PAGES = [
   '/',
   '/shop',
   '/about',
-  '/contact',
+  '/contact-us',
+  '/categories',
+  '/occasions',
   '/legal',
   '/shipping',
   '/returns',
@@ -16,8 +18,15 @@ export const PUBLIC_PAGES = [
 ];
 export function isDiscoverablePath(path: string): boolean {
   return (
-    PUBLIC_PAGES.includes(path) || /^\/(?:products|makers)\/[^/]+$/.test(path)
+    PUBLIC_PAGES.includes(path) || /^\/(?:products|makers)\/[^/]+$/.test(path) || /^\/api\/product-media\/[^/]+$/.test(path)
   );
+}
+export function permitsPublicIndexing(requestUrl: string, configuredOrigin?: string): boolean {
+  // Preview/staging hosts must never inherit production indexing policy.
+  try {
+    return new URL(requestUrl).origin === PUBLIC_ORIGIN &&
+      (!configuredOrigin || new URL(configuredOrigin).origin === PUBLIC_ORIGIN);
+  } catch { return false; }
 }
 export function publicUrl(path: string): string {
   return PUBLIC_ORIGIN + path;

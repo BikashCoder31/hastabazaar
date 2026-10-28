@@ -32,6 +32,7 @@ import {
   percentageToBps,
 } from '@/lib/incentives/presentation';
 import { PromoCodeCostPreview } from '@/components/admin/promo-code-cost-preview';
+import type { FeeWaiverCampaign } from '@/lib/marketplace/fee-waivers';
 import type {
   PromoCampaignPage,
   PromoRedemptionPage,
@@ -190,11 +191,13 @@ export function PromoCodeManager(props: {
   role: string;
   initialPage: PromoCampaignPage;
   defaultCommissionBps?: number;
+  feeWaiver?: FeeWaiverCampaign | null;
 }) {
   return props.role === 'super_admin' ? (
     <AuthorizedPromoCodeManager
       initialPage={props.initialPage}
-      defaultCommissionBps={props.defaultCommissionBps ?? 900}
+      defaultCommissionBps={props.defaultCommissionBps}
+      feeWaiver={props.feeWaiver}
     />
   ) : (
     <p role="alert">Super Admin access is required.</p>
@@ -203,9 +206,11 @@ export function PromoCodeManager(props: {
 function AuthorizedPromoCodeManager({
   initialPage,
   defaultCommissionBps,
+  feeWaiver,
 }: {
   initialPage: PromoCampaignPage;
-  defaultCommissionBps: number;
+  defaultCommissionBps?: number;
+  feeWaiver?: FeeWaiverCampaign | null;
 }) {
   const router = useRouter();
   const published = usePublishedFormConfig('staff.promo-code');
@@ -848,6 +853,7 @@ function AuthorizedPromoCodeManager({
           financial terms until publication.
         </p>
         <PromoCodeCostPreview
+          feeWaiver={feeWaiver}
           terms={previewTerms}
           error={previewError}
           defaultCommissionBps={defaultCommissionBps}

@@ -1,6 +1,6 @@
 # Start Hastabazaar locally
 
-The active project is **C:\Users\abinash\Desktop\Hatskala**.
+The active project is **C:\Users\abinash\Desktop\HastaBazaar**.
 
 1. Open that folder and double-click **START-HASTABAZAAR.cmd**.
 2. Keep its terminal window open. It shows the project folder, branch, commit, local database, and website address before starting.
@@ -18,8 +18,12 @@ The launcher uses local staging with no live email or payment services. Its conf
 - **Wrong folder or older revision:** return to the Desktop folder above. The launcher checks its resolved location and requires the current commit to include the approved baseline `d9056dc10fee13dc11d15f24a14f63b003befe0b`.
 - **Missing project configuration:** stop and have the local setup reviewed. The machine's Git settings `hastabazaar.localProjectRoot` and `hastabazaar.localBaseline` identify the approved project. Do not change these settings just to get another copy to start.
 - **Missing or incomplete local data:** keep the error message and have the saved data reviewed. The launcher never creates an empty replacement database, seeds data, restores a backup, or applies migrations.
-- **Commission or weekly loyalty storage is incomplete:** the launcher stops when the required tables, reward fields or validation guards are missing. Have the feature upgrade reviewed separately; do not bypass this check or replace the database.
+- **Commission, weekly loyalty or marketplace fee waiver storage is incomplete:** the launcher stops when required tables, fields, control state or validation guards are missing. The additive local fee source is `drizzle/0073_marketplace_fee_waivers.sql`; have its exact destination, preservation backup and rollback limits reviewed separately before any upgrade. Do not bypass this check or replace the database. See `docs/marketplace-fee-waivers.md`.
 - **Conflicting environment settings or remote credentials:** use a terminal without those settings, and review the named local environment file if one is reported. Error messages show setting names, never secret values.
 - **Port 3018 already in use:** stop the known existing local preview in its terminal, then try again. Do not start another copy on a different port.
 
 Older worktrees and dated copies are historical references. The ZIP files in **C:\Users\abinash\Desktop\Hatskala-backups** are recovery archives and cannot be launched normally. Keep using the active Desktop folder; restore an archive only as a separately reviewed recovery operation.
+
+## Project move
+
+This is the active folder from 2026-10-16. The former C:\Users\abinash\Desktop\Hatskala folder is retired. Its launcher stops with a message directing you here. Existing recovery archives and old reports stay outside this active project. Open this new folder in Codex or your editor for future work.

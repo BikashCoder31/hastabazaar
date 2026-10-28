@@ -242,7 +242,7 @@ function ProductRow({
                 {product.categoryName}
               </p>
               <p className="mt-1 break-all text-xs text-muted-foreground">
-                SKU {product.sku}
+                Platform SKU: {product.sku}<span className="block">Seller SKU: {product.sellerSku || '—'}</span>
               </p>
             </div>
           </div>

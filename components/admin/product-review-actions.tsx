@@ -31,8 +31,8 @@ const subscribeToAttempt = () => () => undefined;
 const definitions = {
   start_review: { label: 'Start review', title: 'Start reviewing this product?', description: 'The listing will move into active review.', variant: 'default', icon: SearchCheck },
   request_changes: { label: 'Request changes', title: 'Return this listing for changes?', description: 'The seller will see your review note and must correct the listing.', variant: 'outline', icon: FilePenLine },
-  approve: { label: 'Approve product', title: 'Approve this product?', description: 'Approval confirms the listing meets HastaBazaar’s catalogue requirements. It remains private until published.', variant: 'default', icon: CheckCircle2 },
-  publish: { label: 'Publish product', title: 'Publish this product?', description: 'The product will immediately become visible in the public HastaBazaar shop.', variant: 'default', icon: Globe2 },
+  approve: { label: 'Approve product', title: 'Approve this product?', description: 'Approval confirms the listing meets Hastabazaar’s catalogue requirements. It remains private until published.', variant: 'default', icon: CheckCircle2 },
+  publish: { label: 'Publish product', title: 'Publish this product?', description: 'The product will immediately become visible in the public Hastabazaar shop.', variant: 'default', icon: Globe2 },
   unpublish: { label: 'Unpublish product', title: 'Unpublish this product?', description: 'The product will leave the storefront and return to review. Existing orders remain unchanged.', variant: 'destructive', icon: XCircle },
   reject: { label: 'Reject product', title: 'Reject this product?', description: 'The listing will be closed with your reason in its permanent review history.', variant: 'destructive', icon: XCircle },
 } as const;

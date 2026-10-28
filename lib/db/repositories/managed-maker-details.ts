@@ -2,6 +2,8 @@ import { getEffectiveBusinessSetting } from './business-settings';
 import { staffMutationGuard } from './staff-mutation-guard';
 import {
   managedMakerAgreementContext,
+  MANAGED_MAKER_AGREEMENT_VERSION,
+  MANAGED_SUPPLIER_AGREEMENT_VERSION,
   managedMakerAgreementSnapshot,
   validateManagedMakerIdentity,
   type ManagedMakerIdentity,
@@ -53,6 +55,7 @@ export async function buildManagedMakerDetailStatements(
   const snapshot = managedMakerAgreementSnapshot(
     account.value,
     retention.value,
+    identity.managedAgreementVersion,
   );
   if (
     identity.managedAgreementContext !==
@@ -130,6 +133,7 @@ export async function getManagedMakerDetailsForReview(
 export async function getManagedMakerApplicationTerms(
   database: D1Database,
   now = Date.now(),
+  version: ManagedMakerIdentity['managedAgreementVersion'] = MANAGED_MAKER_AGREEMENT_VERSION,
 ) {
   const [account, retention] = await Promise.all([
     getEffectiveBusinessSetting(database, 'managed_maker_company_account', now),
@@ -142,8 +146,10 @@ export async function getManagedMakerApplicationTerms(
   const snapshot = managedMakerAgreementSnapshot(
     account.value,
     retention.value,
+    version,
   );
   return {
+    version,
     account: account.value,
     platformRetentionBps: retention.value,
     context: await managedMakerAgreementContext(snapshot),
@@ -152,3 +158,9 @@ export async function getManagedMakerApplicationTerms(
 export type ManagedMakerApplicationTerms = Awaited<
   ReturnType<typeof getManagedMakerApplicationTerms>
 >;
+
+export async function managedAgreementVersionForSeller(database: D1Database, sellerId: string) {
+  const prospective = await database.prepare(`SELECT 1 FROM managed_maker_application_details WHERE seller_id=? AND agreement_version=? LIMIT 1`)
+    .bind(sellerId,MANAGED_SUPPLIER_AGREEMENT_VERSION).first();
+  return prospective ? MANAGED_SUPPLIER_AGREEMENT_VERSION : MANAGED_MAKER_AGREEMENT_VERSION;
+}
