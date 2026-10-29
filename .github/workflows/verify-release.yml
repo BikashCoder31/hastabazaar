@@ -58,7 +58,7 @@ jobs:
           printf 'PLAYWRIGHT_MODULE=file://%s/node_modules/playwright/index.mjs\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
           printf 'FRONTEND_RECOVERY_EVIDENCE_ROOT=%s/frontend-recovery-%s\n' "$RUNNER_TEMP" '${{ matrix.shard }}' >> "$GITHUB_ENV"
           node --input-type=module -e "import {chromium} from 'playwright'; console.log('CHROME_PATH='+chromium.executablePath())" >> "$GITHUB_ENV"
-      - run: node --import tsx --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/4 tests/*.test.ts
+      - run: node --import tsx --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/4 tests/*.test.ts tests/seller-registration-browser.test.mjs
 
   native:
     name: Native Release and Recovery Rehearsal

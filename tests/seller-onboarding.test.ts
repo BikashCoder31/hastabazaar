@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseCurrentSellerApplication, CURRENT_ONBOARDING_VERSION, pendingPayoutReference } from '../lib/sellers/onboarding';
+import { parseCurrentSellerApplication, parseSellerOnboardingForm, CURRENT_ONBOARDING_VERSION, pendingPayoutReference } from '../lib/sellers/onboarding';
 import { sellerDocumentsForApplication } from '../lib/sellers/application';
 import { managedIdentityFields } from './helpers/managed-identity-fixture';
 import { MANAGED_SUPPLIER_AGREEMENT_VERSION } from '../lib/sellers/managed-identity';
@@ -35,42 +35,43 @@ function form(route: 'yes' | 'no' = 'no') {
   return data;
 }
 
-void test('new managed applications require personal PAN, payout beneficiary, bank and both operational addresses', () => {
+void test('completed managed applications require personal PAN and addresses while deferring bank details', () => {
   assert.ok(parseCurrentSellerApplication(form()).input);
-  for (const field of ['personalPan', 'payoutBeneficiary', 'bankName', 'bankBranch', 'bankAccountNumber', 'pickupAddress', 'returnAddress']) {
+  for (const field of ['personalPan', 'pickupAddress', 'returnAddress']) {
     const data = form(); data.delete(field);
     assert.equal(parseCurrentSellerApplication(data).input, undefined, field);
   }
   const parsed = parseCurrentSellerApplication(form()).input!;
   assert.equal(parsed.onboarding?.version, CURRENT_ONBOARDING_VERSION);
-  assert.ok(pendingPayoutReference(parsed.onboarding!).startsWith('PENDING VERIFICATION:'));
+  assert.equal(parsed.onboarding!.bankDetailsDeferred, true);
+  assert.throws(() => pendingPayoutReference(parsed.onboarding!), /Bank details must be added/);
   const required = sellerDocumentsForApplication(parsed).filter(d => d.required).map(d => d.kind);
-  assert.deepEqual(required, ['pan_certificate', 'representative_identity', 'bank_verification']);
+  assert.deepEqual(required, ['pan_certificate', 'representative_identity']);
 });
 
-void test('new registered sole proprietors retain registration and require business PAN and representative/bank evidence', () => {
+void test('completed registered sole proprietors require business PAN and representative evidence, with bank details deferred', () => {
   const parsed = parseCurrentSellerApplication(form('yes')).input!;
   assert.ok(parsed);
   assert.equal(parsed.registrationNumber, 'FIRM-123');
   assert.equal(parsed.registrationAuthority, 'Private firm registration office');
   assert.deepEqual(sellerDocumentsForApplication(parsed).filter(d => d.required).map(d => d.kind),
-    ['business_registration', 'pan_certificate', 'representative_identity', 'bank_verification']);
+    ['business_registration', 'pan_certificate', 'representative_identity']);
   for (const key of ['hasBusinessTaxRegistration', 'registrationNumber', 'registrationAuthority', 'taxRegistrationNumber']) {
     const data = form('yes'); data.delete(key);
     assert.equal(parseCurrentSellerApplication(data).input, undefined, key);
   }
   const vat = form('yes'); vat.set('taxStatus', 'vat_registered');
   assert.deepEqual(sellerDocumentsForApplication(parseCurrentSellerApplication(vat).input!).filter(d => d.required).map(d => d.kind),
-    ['business_registration', 'pan_certificate', 'vat_certificate', 'representative_identity', 'bank_verification']);
+    ['business_registration', 'pan_certificate', 'vat_certificate', 'representative_identity']);
 });
 
 void test('invalid bank account text is rejected and a beneficiary mismatch remains pending review', () => {
   const data = form(); data.set('bankAccountNumber', 'password <script>');
-  assert.equal(parseCurrentSellerApplication(data).input, undefined);
+  assert.throws(() => parseSellerOnboardingForm(data), /bankAccountNumber|bank account/);
   data.set('bankAccountNumber', '123456789012'); data.set('payoutBeneficiary', 'Different beneficiary');
-  const parsed = parseCurrentSellerApplication(data).input!;
+  const parsed = parseSellerOnboardingForm(data);
   assert.ok(parsed); // A mismatch is evidence for review, never an automatic rejection or approval.
-  assert.match(pendingPayoutReference(parsed.onboarding!), /PENDING VERIFICATION/);
+  assert.match(pendingPayoutReference(parsed), /PENDING VERIFICATION/);
 });
 
 void test('public multipart intake rejects forged verification/clearance controls and duplicated protected values',()=>{
@@ -102,11 +103,12 @@ void test('personal-PAN managed intake at published 12% retains private evidence
       objectKey: 'private/seller-documents/new-seller/' + crypto.randomUUID(), originalName: 'fictional.pdf', mimeType: 'application/pdf', sizeBytes: 20 }));
     const options = {userId:'new-applicant',existingAccount:true,sellerId:'new-seller',applicationReference:'NEW-TEST-ONLY',input,documents,now:f.now};
     await assert.rejects(()=>createSellerApplication(f.db,{...options,input:{...input,onboarding:undefined}}),/Current onboarding/);
-    await assert.rejects(() => createSellerApplication(f.db, {...options,documents:documents.filter(d=>d.kind!=='bank_verification')}), /Bank evidence/);
+    await assert.rejects(() => createSellerApplication(f.db, {...options,documents:documents.filter(d=>d.kind!=='pan_certificate')}), /PAN/i);
     f.sqlite.exec("DELETE FROM account_phone_verifications WHERE user_id='new-applicant'");
+    f.sqlite.exec("DELETE FROM account_email_verifications WHERE user_id='new-applicant'");
     await assert.rejects(() => createSellerApplication(f.db, options), /guard|CHECK/i);
     assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM seller_profiles WHERE id='new-seller'").get()?.n, 0);
-    f.sqlite.exec("INSERT INTO account_phone_verifications(user_id,phone,verified_at) VALUES ('new-applicant','+9779800000002',1)");
+    f.sqlite.exec("INSERT INTO account_email_verifications(user_id,email,verified_at) VALUES ('new-applicant','maker@example.test',1)");
     for (const [mutation,restore] of [
       ["DELETE FROM user_roles WHERE user_id='new-applicant' AND role='customer'", "INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('new-applicant','customer',1)"],
       ["UPDATE users SET auth_subject='rotated' WHERE id='new-applicant'", "UPDATE users SET auth_subject='new-applicant' WHERE id='new-applicant'"],
@@ -119,6 +121,8 @@ void test('personal-PAN managed intake at published 12% retains private evidence
         assert.equal(f.sqlite.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE seller_id='new-seller'`).get()?.n,0,table);
     }
     await createSellerApplication(f.db, options);
+    assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM account_phone_verifications WHERE user_id='new-applicant'").get()?.n, 0);
+    assert.equal(f.sqlite.prepare("SELECT support_phone FROM seller_profiles WHERE id='new-seller'").get()?.support_phone, '+9779800000002');
     assert.equal(f.sqlite.prepare("SELECT status FROM seller_profiles WHERE id='new-seller'").get()?.status, 'submitted');
     assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM user_roles WHERE user_id='new-applicant' AND role='seller'").get()?.n,0);
     const details=await getManagedMakerDetailsForReview(f.db,'new-seller','reviewer');
@@ -149,15 +153,15 @@ void test('personal-PAN managed intake at published 12% retains private evidence
     const correction={sellerId:'new-seller',actorId:'new-applicant',expectedVersion:1,publicName:'Mithila Craft House',publicCity:'Birgunj',
       craftExperience:[],socialLinks:{},requestId:'current-correction',now:f.now+1,
       managedCorrection:{identity:input.managedIdentity!,documents:replacementDocuments,onboarding:input.onboarding}};
-    await assert.rejects(()=>updateSellerParticipationPublicProfile(f.db,{...correction,managedCorrection:{...correction.managedCorrection,onboarding:undefined}}),/current supplier contract/);
+    await assert.rejects(()=>updateSellerParticipationPublicProfile(f.db,{...correction,managedCorrection:{...correction.managedCorrection,onboarding:undefined}}),/current supplier contract|bank-detail submission policy/);
     await updateSellerParticipationPublicProfile(f.db,correction);
-    assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM seller_documents WHERE seller_id='new-seller'").get()?.n,6,'corrections append documents and retain old evidence');
+    assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM seller_documents WHERE seller_id='new-seller'").get()?.n,4,'corrections append documents and retain old evidence');
     assert.equal((await getManagedTermsOffers(f.db,'new-seller',f.now+1)).current.agreementVersion,MANAGED_SUPPLIER_AGREEMENT_VERSION);
     assert.deepEqual(f.sqlite.prepare("SELECT * FROM managed_maker_application_details WHERE seller_id='maker'").all(),retainedBefore,'historical v1 identity, agreement, rate and snapshot stay byte-for-byte unchanged');
   } finally { f.dispose(); }
 });
 
-void test('new sole proprietor approval requires Super Admin, a reviewed payout reference and evidence that remains valid at commit', async () => {
+void test('new sole proprietor approval requires Super Admin and valid evidence but permits deferred payouts', async () => {
   const f=await companyStoreMakerFixture();
   try {
     f.sqlite.exec(`INSERT INTO users(id,auth_subject,email,phone,display_name,status,created_at,updated_at)
@@ -176,9 +180,9 @@ void test('new sole proprietor approval requires Super Admin, a reviewed payout 
       applicationReference:'BUSINESS-TEST',input,documents,now:f.now});
     await reviewSellerApplication(f.db,{sellerId:'business-seller',actorId:'reviewer',action:'start_review',reason:'Review fictional business evidence',requestId:'business-start',now:f.now+1});
     const approval={sellerId:'business-seller',actorId:'reviewer',action:'approve' as const,reason:'Review all fictional required evidence independently',
-      payoutAccountReference:'VERIFIED-BUSINESS-BENEFICIARY',settlementTermsReference:'WRITTEN-BUSINESS-TERMS',requestId:'business-approve',now:f.now+2};
+      settlementTermsReference:'WRITTEN-BUSINESS-TERMS',requestId:'business-approve',now:f.now+2};
     await assert.rejects(()=>reviewSellerApplication(f.db,{...approval,actorId:'ordinary'}),/Super Admin/);
-    await assert.rejects(()=>reviewSellerApplication(f.db,{...approval,payoutAccountReference:pendingPayoutReference(input.onboarding!)}),/pending/i);
+    await assert.rejects(()=>reviewSellerApplication(f.db,{...approval,payoutAccountReference:pendingPayoutReference(parseSellerOnboardingForm(data))}),/pending/i);
     for(const document of documents) {
       f.setBeforeBatch(()=>{f.sqlite.prepare("UPDATE seller_documents SET status='rejected' WHERE id=?").run(document.id);});
       await assert.rejects(()=>reviewSellerApplication(f.db,approval),/changed|guard|CHECK/i);
@@ -188,7 +192,7 @@ void test('new sole proprietor approval requires Super Admin, a reviewed payout 
     }
     await reviewSellerApplication(f.db,approval);
     assert.equal(f.sqlite.prepare("SELECT status FROM seller_profiles WHERE id='business-seller'").get()?.status,'approved');
-    assert.equal(f.sqlite.prepare("SELECT payout_account_reference FROM seller_profiles WHERE id='business-seller'").get()?.payout_account_reference,approval.payoutAccountReference);
+    assert.equal(f.sqlite.prepare("SELECT payout_account_reference FROM seller_profiles WHERE id='business-seller'").get()?.payout_account_reference,null);
   } finally {f.dispose();}
 });
 

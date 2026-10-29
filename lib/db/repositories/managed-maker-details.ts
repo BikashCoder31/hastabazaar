@@ -162,5 +162,7 @@ export type ManagedMakerApplicationTerms = Awaited<
 export async function managedAgreementVersionForSeller(database: D1Database, sellerId: string) {
   const prospective = await database.prepare(`SELECT 1 FROM managed_maker_application_details WHERE seller_id=? AND agreement_version=? LIMIT 1`)
     .bind(sellerId,MANAGED_SUPPLIER_AGREEMENT_VERSION).first();
-  return prospective ? MANAGED_SUPPLIER_AGREEMENT_VERSION : MANAGED_MAKER_AGREEMENT_VERSION;
+  const intake = !prospective && await database.prepare(`SELECT 1 FROM audit_logs WHERE subject_id=? AND subject_type='seller' AND action='seller.application.submitted'
+    AND json_extract(next_json,'$.registrationIntake')=true LIMIT 1`).bind(sellerId).first();
+  return prospective || intake ? MANAGED_SUPPLIER_AGREEMENT_VERSION : MANAGED_MAKER_AGREEMENT_VERSION;
 }

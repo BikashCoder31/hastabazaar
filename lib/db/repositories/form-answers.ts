@@ -105,7 +105,7 @@ function validateInput(formId: FormId, raw: unknown): FormAnswerSnapshot {
 // snapshots abort the parent action instead of leaving an unlinked write.
 // Materialize the validation stages to stay below D1's SQLite expression-depth
 // limit without dropping any checks from the native parent transaction.
-const validAgainstVersion = `WITH current_version AS MATERIALIZED (
+const validAgainstVersion = (optionalRegistration = false) => `WITH current_version AS MATERIALIZED (
   SELECT v.config_json FROM form_config_versions v
   WHERE v.id=? AND v.form_id=? AND v.status='published' AND v.version=?
     AND json_type(v.config_json,'$.formId')='text' AND json_extract(v.config_json,'$.formId')=v.form_id
@@ -158,7 +158,7 @@ SELECT EXISTS(SELECT 1 FROM current_version)
     OR json_extract(answer.field_json,'$.type') IS NOT json_extract(answer.answer_json,'$.type')
     OR json_extract(answer.field_json,'$.status') IS NOT 'active'
     OR (json_extract(answer.field_json,'$.type')='checkbox'
-      AND (json_extract(answer.field_json,'$.required')!=1
+      AND (${optionalRegistration ? '1' : "json_extract(answer.field_json,'$.required')!=1"}
         OR json_type(answer.answer_json,'$.value')='true') IS NOT 1)
     OR (json_extract(answer.field_json,'$.type') IN ('single_choice','multiple_choice')
       AND json_type(answer.answer_json,'$.choiceLabels') IS NOT NULL
@@ -189,7 +189,7 @@ SELECT EXISTS(SELECT 1 FROM current_version)
   ))
   AND NOT EXISTS (SELECT 1 FROM current_version v,json_each(v.config_json,'$.fields') required_field
     WHERE json_extract(required_field.value,'$.status')='active'
-      AND json_extract(required_field.value,'$.required')=1
+      AND ${optionalRegistration ? '0' : "json_extract(required_field.value,'$.required')=1"}
       AND NOT EXISTS (SELECT 1 FROM json_each(?) built_in
         WHERE built_in.value=lower(replace(json_extract(required_field.value,'$.key'),'_','')))
       AND NOT EXISTS (SELECT 1 FROM json_each(?,'$.answers') given
@@ -199,7 +199,7 @@ SELECT EXISTS(SELECT 1 FROM current_version)
 // MariaDB has no MATERIALIZED hint or json_each. JSON_TABLE provides the same
 // array rows. String type guards and binary scalar comparisons preserve both
 // JSON types and text identity; JSON_VALUE alone coerces numbers into text.
-const mariaValidAgainstVersion = `WITH current_version AS (
+const mariaValidAgainstVersion = (optionalRegistration = false) => `WITH current_version AS (
   SELECT v.config_json FROM form_config_versions v
   WHERE v.id=? AND v.form_id=? AND v.status='published' AND v.version=?
     AND JSON_TYPE(JSON_EXTRACT(v.config_json,'$.formId'))='STRING'
@@ -256,7 +256,7 @@ SELECT EXISTS(SELECT 1 FROM current_version)
     OR NOT (BINARY JSON_VALUE(answer.field_json,'$.type') <=> BINARY JSON_VALUE(answer.answer_json,'$.type'))
     OR NOT (BINARY JSON_VALUE(answer.field_json,'$.status') <=> BINARY 'active')
     OR (JSON_VALUE(answer.field_json,'$.type')='checkbox'
-      AND (NULLIF(JSON_EXTRACT(answer.field_json,'$.required'),'null')!='true'
+      AND (${optionalRegistration ? 'TRUE' : "NULLIF(JSON_EXTRACT(answer.field_json,'$.required'),'null')!='true'"}
         OR JSON_EXTRACT(answer.answer_json,'$.value')='true') IS NOT TRUE)
     OR (JSON_VALUE(answer.field_json,'$.type') IN ('single_choice','multiple_choice')
       AND JSON_TYPE(JSON_EXTRACT(answer.answer_json,'$.choiceLabels')) IS NOT NULL
@@ -289,7 +289,7 @@ SELECT EXISTS(SELECT 1 FROM current_version)
   ))
   AND NOT EXISTS (SELECT 1 FROM current_version v,JSON_TABLE(v.config_json,'$.fields[*]' COLUMNS (value JSON PATH '$')) required_field
     WHERE JSON_VALUE(required_field.value,'$.status')='active'
-      AND JSON_EXTRACT(required_field.value,'$.required')='true'
+      AND ${optionalRegistration ? 'FALSE' : "JSON_EXTRACT(required_field.value,'$.required')='true'"}
       AND NOT EXISTS (SELECT 1 FROM JSON_TABLE(?,'$[*]' COLUMNS (value LONGTEXT PATH '$')) built_in
         WHERE BINARY built_in.value=BINARY LOWER(REPLACE(JSON_VALUE(required_field.value,'$.key'),'_','')))
       AND NOT EXISTS (SELECT 1 FROM JSON_TABLE(?,'$.answers[*]' COLUMNS (value JSON PATH '$')) given
@@ -300,6 +300,7 @@ SELECT EXISTS(SELECT 1 FROM current_version)
 export function buildFormAnswerInsert(db: D1Database, input: {
   formId: FormId; requestId: string; versionId: string; subjectType: string; subjectId: string;
   actorId: string | null; answers: FormAnswerSnapshot; now: number;
+  optionalRegistration?: boolean;
 }): D1PreparedStatement {
   const formId = required(input.formId, 'Form ID', 191);
   const requestId = required(input.requestId, 'Request ID', 191);
@@ -315,13 +316,16 @@ export function buildFormAnswerInsert(db: D1Database, input: {
   const json = JSON.stringify(snapshot);
   if (new TextEncoder().encode(json).length > 131072) throw new FormAnswerRepositoryError('Answer snapshot is too large.');
   const maria = (db as D1Database & { dialect?: string }).dialect === 'mariadb';
-  const validation = maria ? mariaValidAgainstVersion : validAgainstVersion;
+  const optionalRegistration = input.optionalRegistration === true;
+  if (optionalRegistration && (formId !== 'seller.application' || subjectType !== 'seller' || !actorId)) throw new FormAnswerRepositoryError();
+  const validation = (maria ? mariaValidAgainstVersion : validAgainstVersion)(optionalRegistration);
+  const intakeGuard = optionalRegistration ? ' AND EXISTS(SELECT 1 FROM seller_registration_intakes WHERE seller_id=? AND user_id=?)' : '';
   const failure = maria ? 'NULL' : "json_extract('invalid', '$')";
   return db.prepare(`${maria ? '/* form-answer-insert */ ' : ''}INSERT INTO form_answer_sets
     (id,form_id,request_id,config_version_id,subject_type,subject_id,actor_id,answers_json,created_at)
-    VALUES (?,?,?,?,?,?,?,CASE WHEN (${validation}) THEN ? ELSE ${failure} END,?)`)
+    VALUES (?,?,?,?,?,?,?,CASE WHEN (${validation})${intakeGuard} THEN ? ELSE ${failure} END,?)`)
     .bind(crypto.randomUUID(), formId, requestId, versionId, subjectType, subjectId, actorId,
-      versionId, formId, snapshot.version, json, builtInKeys, builtInKeys, json, json, input.now);
+      versionId, formId, snapshot.version, json, builtInKeys, builtInKeys, json, ...(optionalRegistration ? [subjectId, actorId] : []), json, input.now);
 }
 
 type AnswerRow = Omit<StoredFormAnswer, 'answers' | 'historicalFieldIds'> & {

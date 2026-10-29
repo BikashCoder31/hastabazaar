@@ -15,6 +15,25 @@ import {
 const id = (name = 'id') => text(name).primaryKey();
 const timestamp = (name: string) => integer(name, { mode: 'timestamp_ms' });
 
+// Private registration progress is durable across devices and hosting transfers.
+export const sellerApplicationDrafts = sqliteTable('seller_application_drafts', {
+  userId: text('user_id').primaryKey().references(() => users.id),
+  revision: text('revision').notNull(), attemptId: text('attempt_id').notNull(), formVersion: integer('form_version').notNull(),
+  answersJson: text('answers_json').notNull(), filesJson: text('files_json').notNull(),
+  updatedAt: timestamp('updated_at').notNull(), expiresAt: timestamp('expires_at').notNull(),
+}, table => [index('seller_application_drafts_expiry').on(table.expiresAt)]);
+export const sellerApplicationDraftUploads = sqliteTable('seller_application_draft_uploads', {
+  id: id(), userId: text('user_id').notNull().references(() => users.id), objectKey: text('object_key').notNull().unique(),
+  status: text('status', { enum: ['uploading', 'ready', 'deleting'] }).notNull(), expiresAt: timestamp('expires_at').notNull(),
+}, table => [index('seller_application_draft_uploads_expiry').on(table.status, table.expiresAt),
+  check('seller_application_draft_uploads_status', sql`${table.status} IN ('uploading','ready','deleting')`)]);
+export const sellerRegistrationIntakes = sqliteTable('seller_registration_intakes', {
+  sellerId: text('seller_id').primaryKey().references(() => sellerProfiles.id),
+  userId: text('user_id').notNull().unique().references(() => users.id), version: integer('version').notNull(),
+  answersJson: text('answers_json').notNull(), documentsJson: text('documents_json').notNull(),
+  reviewReady: integer('review_ready', { mode: 'boolean' }).notNull(), updatedAt: timestamp('updated_at').notNull(),
+}, table => [check('seller_registration_intakes_ready', sql`${table.reviewReady} IN (0,1)`)]);
+
 export const users = sqliteTable(
   'users',
   {

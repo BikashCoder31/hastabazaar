@@ -60,5 +60,8 @@ void test('checked localhost listener keeps its exact transport and server-only 
     const response=await fetch(origin+'/__staging/product-watermark',{method:'POST',body:new Uint8Array(input),headers});
     assert.equal(response.status,200);
     assert.equal((await sharp(new Uint8Array(await response.arrayBuffer())).metadata()).format,'webp');
+    const simultaneous=await Promise.all(Array.from({length:4},()=>fetch(origin+'/__staging/product-watermark',{method:'POST',body:new Uint8Array(input),headers})));
+    assert.deepEqual(simultaneous.map(item=>item.status),[200,200,200,200],'four required product photos should queue instead of failing after the first two');
+    for(const item of simultaneous)assert.equal((await sharp(new Uint8Array(await item.arrayBuffer())).metadata()).format,'webp');
   } finally { await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve())); }
 });

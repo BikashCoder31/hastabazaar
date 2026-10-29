@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
 import { StartSellerRegistration } from '@/components/seller/start-seller-registration';
+import { SellerRegistrationVideo } from '@/components/seller/seller-registration-video';
 import { getSellerTermsViewer } from '@/lib/auth/seller-commercial-access';
 
 export const metadata: Metadata = {
@@ -23,8 +24,8 @@ const steps = [
   },
   {
     icon: FileCheck2,
-    title: 'Provide verification',
-    body: 'Company suppliers provide personal PAN and certificate, government ID, verified contacts and bank evidence. Business sellers provide registration, business PAN and applicable VAT evidence.',
+    title: 'Submit now, complete details later',
+    body: 'Add the details you have and submit your application. Complete missing identity, tax and address information from your dashboard for review. Bank details can be added later before payouts.',
   },
   {
     icon: ClipboardCheck,
@@ -89,7 +90,8 @@ export default async function SellPage() {
               Start verification
             </h2>
           </div>
-          <p className="mb-5 max-w-2xl text-muted-foreground">Seller registration starts only when you choose to apply. You can review the applicable commercial terms before submitting an application.</p>
+          <p className="mb-5 max-w-2xl text-muted-foreground">Registration fields are optional at submission. Your progress saves to your account, and you can complete missing details from your dashboard. Verify your account email before submitting; phone OTP is not required.</p>
+          <div className="mb-6 max-w-2xl"><SellerRegistrationVideo /></div>
           {viewer ? <Link href="/sell/apply" className="inline-flex rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground">Continue seller registration</Link>
             : identity ? <StartSellerRegistration />
             : <Link href="/login?return_to=%2Fsell" className="inline-flex rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground">Sign in to start seller registration</Link>}

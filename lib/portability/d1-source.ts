@@ -96,7 +96,7 @@ export interface ApplicationMedia {
 }
 type ApplicationMediaMap = ReadonlyMap<string, ApplicationMedia>;
 
-// Reviewed against migrations 0000–0074, db/schema.ts and hosted-auth readiness.
+// Reviewed against migrations 0000–0077, db/schema.ts and hosted-auth readiness.
 // Discovery remains dynamic: a new/unknown table stops export until its policy
 // is deliberately added here. No suffix or broad durable fallback grants trust.
 const REVIEWED_TABLE_GROUPS: Readonly<
@@ -221,6 +221,9 @@ const REVIEWED_TABLE_GROUPS: Readonly<
     'seller_agreement_acceptance_history',
     'seller_deletion_preflights',
     'seller_documents',
+    'seller_application_drafts',
+    'seller_application_draft_uploads',
+    'seller_registration_intakes',
     'seller_ledger_entries',
     'seller_operational_addresses',
     'seller_participation_profiles',
@@ -319,6 +322,7 @@ export function classifySqlTransferTable(
 const MEDIA_REFERENCE_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   product_media: ['object_key'],
   seller_documents: ['object_key'],
+  seller_application_draft_uploads: ['object_key'],
   seller_profile_media: ['object_key'],
   category_media: ['object_key'],
   return_evidence: ['object_key'],

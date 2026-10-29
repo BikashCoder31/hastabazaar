@@ -68,6 +68,8 @@ const migrationNames = [
   'mariadb-marketplace-fee-waivers.sql',
   customerFeeMariaMigration,
   'mariadb-commission-continuity.sql',
+  'mariadb-seller-application-drafts.sql',
+  'mariadb-seller-registration-intakes.sql',
 ];
 const tables = {},
   triggers = {},
@@ -84,7 +86,7 @@ for (const name of migrationNames) {
         : 'additive-maintenance',
   });
   for (const match of sql.matchAll(
-    /CREATE TABLE IF NOT EXISTS\s+`?(\w+)`?\s*\(([\s\S]*?)\)\s*ENGINE/gi,
+    /CREATE TABLE(?: IF NOT EXISTS)?\s+`?(\w+)`?\s*\(([\s\S]*?)\)\s*ENGINE/gi,
   )) {
     const columns = [
       ...match[2].matchAll(

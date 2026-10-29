@@ -2,7 +2,6 @@ import { validateSellerDocumentContent } from '@/lib/uploads/document-content';
 import { requireSellerTermsApi, SellerTermsAuthorizationError } from '@/lib/auth/seller-commercial-access';
 import { parseCurrentSellerApplication, pendingPayoutReference } from '@/lib/sellers/onboarding';
 import { getContactVerificationStatus } from '@/lib/auth/contact-verification';
-import { normalizeNepalMobile } from '@/lib/auth/nepal-phone';
 import { getRegisteredSellerTerms, SellerCommissionTermsChangedError } from '@/lib/db/repositories/marketplace-settings';
 import { getManagedMakerApplicationTerms, ManagedMakerTermsChangedError } from '@/lib/db/repositories/managed-maker-details';
 import { CommissionRateUnavailableError } from '@/lib/db/repositories/business-settings';
@@ -78,7 +77,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   // Recover exact retained submissions before enforcing new application requirements.
-  let parsed = parseSellerApplication(formData);
+  let parsed = parseSellerApplication(formData, { deferDashboardFields: true });
   if (!parsed.input) {
     return json({ error: parsed.errors[0], errors: parsed.errors }, 400);
   }
@@ -126,9 +125,8 @@ export async function POST(request: Request): Promise<Response> {
   parsed = parseCurrentSellerApplication(formData);
   if (!parsed.input) return json({ error: parsed.errors[0], errors: parsed.errors }, 400);
   const contacts = await getContactVerificationStatus(database, customer);
-  const applicationPhone = normalizeNepalMobile(parsed.input.phone);
-  if (!contacts.emailVerified || !contacts.phoneVerified || contacts.phone !== applicationPhone)
-    return json({ error: 'Verify your account email and phone at /account/profile, then use that verified phone in this application.' }, 409);
+  if (!contacts.emailVerified)
+    return json({ error: 'Verify your account email at /account/profile, then return here to submit. Your contact phone does not require OTP verification.', code: 'email_verification_required' }, 409);
   let registeredAgreementContext: string | undefined;
   try {
     if (parsed.input.participationRoute === 'registered_seller') {
@@ -152,7 +150,7 @@ export async function POST(request: Request): Promise<Response> {
     const submitted = configuredMultipartAnswers(formData, config);
     form = await validateSellerFormSubmission(database, 'seller.application', submitted.version,
       submitted.customAnswers, undefined, { tradingName: parsed.input.tradingName,
-        businessDescription: parsed.input.businessDescription });
+        businessDescription: parsed.input.businessDescription }, { deferRegistrationDescription: true });
   } catch (error) {
     if (error instanceof FormRuntimeError) return json({ error: error.message, code: error.code }, error.code === 'stale_version' ? 409 : 503);
     if (error instanceof FormValidationError) return json({ error: error.message, fieldId: error.fieldId }, 400);
@@ -192,6 +190,8 @@ export async function POST(request: Request): Promise<Response> {
     kind: SellerProfileMediaUpload['kind'];
   }> = [];
   const profileImage = formData.get('profileImage');
+  if (profileImage instanceof File && profileImage.size || formData.get('makerVideo') instanceof File && (formData.get('makerVideo') as File).size)
+    return json({ error: 'Add your photo and video from the public maker profile in your dashboard after registration.' }, 400);
   if (profileImage instanceof File && profileImage.size > 0) {
     const error = validateProductImage(profileImage) ?? await validateProductImageContent(profileImage);
     if (error) fileErrors.push(`Logo or maker photograph: ${error}`);

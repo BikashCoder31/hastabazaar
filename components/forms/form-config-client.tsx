@@ -103,8 +103,8 @@ export function parsePublishedFormConfig(formId: string, payload: unknown): Publ
   return value as unknown as PublishedFormConfig;
 }
 
-export function submissionFeedback(status: number): { stale: boolean; message: string } {
-  return status === 409
+export function submissionFeedback(status: number, code?: string): { stale: boolean; message: string } {
+  return status === 409 && code === 'stale_version'
     ? { stale: true, message: 'This form changed while you were filling it out. Refresh the form and review your answers before submitting again.' }
     : { stale: false, message: 'The form could not be submitted. Please try again.' };
 }
@@ -140,8 +140,9 @@ export function usePublishedFormConfig(formId: string, { enabled = true }: { ena
     setRefreshIndex((index) => index + 1);
   }, [formId, enabled]);
   const handleSubmissionResponse = useCallback((response: Response, code?: string) => {
-    if (enabled && response.status === 409 && code !== 'request_id_conflict') setState((current) => current.enabled && current.formId === formId
-      ? { ...current, status: 'stale', message: submissionFeedback(409).message } : current);
+    const feedback = submissionFeedback(response.status, code);
+    if (enabled && feedback.stale) setState((current) => current.enabled && current.formId === formId
+      ? { ...current, status: 'stale', message: feedback.message } : current);
     return response.ok;
   }, [formId, enabled]);
   const current = !enabled ? { formId, enabled: false, config: null, status: 'inactive' as const, message: '' }

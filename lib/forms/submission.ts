@@ -91,7 +91,8 @@ export async function isValidatedFormVersionStale(db: D1Database, formId: FormId
 }
 
 export async function validateSellerFormSubmission(db: D1Database, formId: FormId,
-  version: unknown, raw: unknown, replayRequestId?: string, builtInValues: Readonly<Record<string, unknown>> = {}) {
+  version: unknown, raw: unknown, replayRequestId?: string, builtInValues: Readonly<Record<string, unknown>> = {},
+  options: { deferRegistrationDescription?: boolean; optionalRegistration?: boolean } = {}) {
   let config = await resolvePublishedForm(db, formId);
   if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 1)
     throw new FormRuntimeError('stale_version', 'This form changed. Refresh it and review your answers.');
@@ -134,7 +135,15 @@ export async function validateSellerFormSubmission(db: D1Database, formId: FormI
     FORM_REGISTRY[formId].baseFields.some((baseField) => baseField.key === field.key && baseField.capability !== 'protected') &&
     Object.hasOwn(builtInValues, field.key))
     .map((field) => ({ fieldId: field.id, value: builtInValues[field.key] }));
-  const answers = validateAnswersForDefinition(FORM_REGISTRY[formId], config, [...raw, ...builtInAnswers]);
+  // Registration no longer collects the product/work description. Preserve
+  // historical published definitions and all custom-field validation; only
+  // this explicitly moved built-in is omitted from the new intake contract.
+  let validationConfig = formId === 'seller.application' && options.deferRegistrationDescription
+    ? { ...config, fields: config.fields.filter(field => field.key !== 'businessDescription') } : config;
+  if (formId === 'seller.application' && options.optionalRegistration)
+    validationConfig = { ...validationConfig, fields: validationConfig.fields.map(field => ({ ...field, required: false })) };
+  const answers = validateAnswersForDefinition(FORM_REGISTRY[formId], validationConfig,
+    [...raw, ...builtInAnswers.filter(answer => validationConfig.fields.some(field => field.id === answer.fieldId))]);
   if (!row) throw new FormRuntimeError('config_unavailable', 'Published form version unavailable');
   return { versionId: row.id, answers, config };
 }
@@ -185,7 +194,7 @@ export function configuredMultipartAnswers(form: FormData, config: PublishedForm
 const applicationMultipartKeys = new Set([
   'formVersion', 'requestId', 'hasBusinessTaxRegistration', 'applicantType', 'legalName',
   'tradingName', 'registrationAuthority', 'registrationNumber', 'taxStatus', 'taxMode',
-  'taxRegistrationNumber', 'representativeName', 'email', 'phone', 'province', 'district',
+  'taxRegistrationNumber', 'representativeName', 'email', 'phone', 'phoneCountry', 'province', 'district',
   'municipality', 'ward', 'locality', 'publicCity', 'productCategories', 'businessDescription',
   'experienceCraft', 'experienceBand', 'profileImage', 'makerVideo', 'facebookUrl',
   'instagramUrl', 'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl', 'acceptedTerms',

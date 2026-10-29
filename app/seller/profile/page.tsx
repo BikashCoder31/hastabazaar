@@ -3,6 +3,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { LockKeyhole } from 'lucide-react';
 import { SellerProfileForm } from '@/components/seller/seller-profile-form';
+import { MakerApplicationProfileForm } from '@/components/seller/maker-application-profile-form';
+import { getSellerParticipationProfile } from '@/lib/db/repositories/seller-applications';
+import { publicProfileEditableAt } from '@/lib/sellers/public-profile';
 import { AnswerDetails } from '@/components/forms/answer-details';
 import { SellerHeading } from '@/components/seller/workspace-ui';
 import { requireSellerPage } from '@/lib/auth/seller';
@@ -22,6 +25,7 @@ export default async function SellerProfilePage({ searchParams }: {
     seller.sellerId,
   );
   if (!profile) notFound();
+  const [makerProfile, editableAt] = await Promise.all([getSellerParticipationProfile(db, seller.sellerId), publicProfileEditableAt(db, seller.sellerId)]);
   const query = await searchParams;
   const at = query?.historyAt ? Number(query.historyAt) : NaN;
   const after = Number.isSafeInteger(at) && at >= 0 && query?.historyId && query.historyId.length <= 191
@@ -50,6 +54,7 @@ export default async function SellerProfilePage({ searchParams }: {
         </p>
       </div>
       <SellerProfileForm profile={profile} sellerId={seller.sellerId} />
+      {makerProfile ? <section className="mt-8"><h2 className="font-heading text-2xl">Your public maker profile</h2><MakerApplicationProfileForm profile={makerProfile} editableAt={editableAt} /></section> : null}
       {answers.length ? <section className="mt-8 space-y-4" aria-label="Shop profile answer history">
         <h2 className="font-heading text-2xl">Previous shop profile answers</h2>
         {answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)}

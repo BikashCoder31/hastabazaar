@@ -46,6 +46,8 @@ const sellerGovernanceSql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-seller-governance.sql'),
   'utf8',
 );
+const sellerDraftsSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-seller-application-drafts.sql'), 'utf8');
+const sellerIntakesSql = await readFile(resolve(projectRoot, 'deployment/babal/mariadb-seller-registration-intakes.sql'), 'utf8');
 const firstPartyAnalyticsSql = await readFile(
   resolve(projectRoot, 'deployment/babal/mariadb-first-party-analytics.sql'),
   'utf8',
@@ -545,6 +547,8 @@ output.push(
   checkoutContactVerificationSql.trim(),
   firstCodReviewSql.trim(),
   firstCodEvidenceGuardsSql.trim(),
+  sellerDraftsSql.trim(),
+  sellerIntakesSql.trim(),
   'SET FOREIGN_KEY_CHECKS = 1;',
   '',
 );
@@ -553,6 +557,9 @@ await mkdir(dirname(outputPath), { recursive: true });
 const schemaSql = output.join('\n').replace(/\r\n/g, '\n');
 await writeFile(outputPath, schemaSql, 'utf8');
 const resetTables = [
+  'seller_registration_intakes',
+  'seller_application_draft_uploads',
+  'seller_application_drafts',
   'commission_continuity_sellers',
   'commission_continuity_settings',
   'commission_continuity_operations',

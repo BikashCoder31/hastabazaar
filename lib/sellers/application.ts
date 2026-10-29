@@ -22,7 +22,7 @@ export function sellerDocumentsForApplication(input: {
   taxMode: 'PAN' | 'VAT' | 'BOTH' | 'NONE';
   participationRoute?: ParticipationRoute;
   hasBusinessTaxRegistration?: boolean;
-  onboarding?: Pick<SellerOnboarding, 'version'>;
+  onboarding?: Pick<SellerOnboarding, 'version' | 'bankDetailsDeferred'>;
 }) {
   if (input.onboarding) {
     const managed = input.participationRoute === 'managed_maker';
@@ -31,7 +31,7 @@ export function sellerDocumentsForApplication(input: {
       { field: managed ? 'personalPanCertificate' : 'panCertificate', kind: 'pan_certificate' as const, label: managed ? 'Personal PAN certificate' : 'Business PAN certificate', required: true },
       ...(!managed && input.taxMode !== 'PAN' ? [{ field: 'vatCertificate', kind: 'vat_certificate' as const, label: 'VAT certificate', required: true }] : []),
       { field: 'representativeIdentity', kind: 'representative_identity' as const, label: managed ? 'Government-issued identity document' : 'Authorised representative identity document', required: true },
-      { field: 'bankVerification', kind: 'bank_verification' as const, label: 'Bank evidence showing beneficiary, bank and account number', required: true },
+      ...(!input.onboarding.bankDetailsDeferred ? [{ field: 'bankVerification', kind: 'bank_verification' as const, label: 'Bank evidence showing beneficiary, bank and account number', required: true }] : []),
     ];
   }
   if (input.participationRoute === 'managed_maker' || input.taxMode === 'NONE') {
@@ -114,6 +114,7 @@ export interface SellerApplicationInput {
   representativeName: string;
   email: string;
   phone: string;
+  phoneCountry?: string;
   province: string;
   district: string;
   municipality: string;
@@ -158,7 +159,7 @@ function textField(formData: FormData, name: string): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-export function parseSellerApplication(formData: FormData): {
+export function parseSellerApplication(formData: FormData, options: { deferDashboardFields?: boolean } = {}): {
   input?: SellerApplicationInput;
   errors: readonly string[];
 } {
@@ -285,6 +286,7 @@ export function parseSellerApplication(formData: FormData): {
     );
 
   for (const [field, label] of requiredFields) {
+    if (options.deferDashboardFields && (field === 'businessDescription' || field === 'productCategories')) continue;
     if (!input[field]) errors.push(`${label} is required.`);
   }
 

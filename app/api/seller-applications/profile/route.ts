@@ -121,13 +121,13 @@ export async function POST(request: Request): Promise<Response> {
     const contractVersion = await managedAgreementVersionForSeller(database,participation.sellerId);
     if (contractVersion===MANAGED_SUPPLIER_AGREEMENT_VERSION && (identity.managedAgreementVersion!==contractVersion || !/^\d{9}$/.test(identity.personalPan)))
       throw new Error('Keep the current supplier agreement and required personal PAN when correcting this application.');
-    const onboarding = contractVersion===MANAGED_SUPPLIER_AGREEMENT_VERSION ? parseSellerOnboardingForm(data) : undefined;
+    const onboarding = contractVersion===MANAGED_SUPPLIER_AGREEMENT_VERSION ? parseSellerOnboardingForm(data, await hasDeferredBankDetails(database, participation.sellerId)) : undefined;
     const config = await resolvePublishedForm(database,'seller.maker-profile');
     const submitted = configuredMultipartAnswers(data,config);
     const form = await validateSellerFormSubmission(database,'seller.maker-profile',submitted.version,submitted.customAnswers,requestId,
       {publicName:text('publicName'),publicCity:text('publicCity')});
     const files: Array<{file: File;kind: SellerApplicationDocument['kind']}> = [];
-    for (const [field,kind] of [['representativeIdentity','representative_identity'],['personalPanCertificate','pan_certificate'],...(onboarding ? [['bankVerification','bank_verification']] as const : [])] as const) {
+    for (const [field,kind] of [['representativeIdentity','representative_identity'],['personalPanCertificate','pan_certificate'],...(onboarding && !onboarding.bankDetailsDeferred ? [['bankVerification','bank_verification']] as const : [])] as const) {
       const file=data.get(field);
       if (!(file instanceof File)||file.size===0) {
         if (field==='representativeIdentity'||contractVersion===MANAGED_SUPPLIER_AGREEMENT_VERSION) throw new Error('Government ID and the required personal PAN certificate must be supplied.');
@@ -173,3 +173,4 @@ export async function POST(request: Request): Promise<Response> {
     return reply({error:error instanceof Error?error.message:'The maker correction could not be saved.'},400);
   }
 }
+import { hasDeferredBankDetails } from '@/lib/sellers/onboarding';

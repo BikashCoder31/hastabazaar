@@ -1,6 +1,7 @@
 import { buildFormAnswerInsert } from './form-answers';
 import type { FormAnswerSnapshot } from '@/lib/forms/types';
 import { digestFormRequest, formRequestReplay } from '@/lib/forms/submission';
+import { publicProfileCooldownMs, publicProfileEditableAt } from '@/lib/sellers/public-profile';
 
 export class SellerProfileConflictError extends Error {}
 
@@ -40,15 +41,26 @@ export async function updateSellerProfile(database: D1Database, options: { selle
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.supportEmail)) throw new SellerProfileConflictError('Enter a valid support email.');
   if (!/^(?:\+?977)?9[678]\d{8}$/.test(input.supportPhone.replace(/[\s-]/g, ''))) throw new SellerProfileConflictError('Enter a valid Nepal support number.');
   if ((input.businessDescription?.length ?? 0) > 2000 || (input.productCategories?.length ?? 0) > 1000) throw new SellerProfileConflictError('Profile description is too long.');
-  const current = await database.prepare(`SELECT id FROM seller_profiles WHERE id = ? AND status = 'approved'`).bind(options.sellerId).first();
+  const current = await database.prepare(`SELECT id, trading_name AS tradingName FROM seller_profiles WHERE id = ? AND user_id = ? AND status = 'approved'`).bind(options.sellerId, options.actorId).first<{ id: string; tradingName: string }>();
   if (!current) throw new SellerProfileConflictError('Approved seller profile not found.');
+  const nameChanged = current.tradingName !== input.tradingName;
+  if (nameChanged && options.now < await publicProfileEditableAt(database, options.sellerId)) throw new SellerProfileConflictError('Your public maker profile can be changed once every 7 days.');
+  const cooldownGuard = crypto.randomUUID();
   try { await database.batch([
+    ...(nameChanged ? [database.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN NOT EXISTS(
+      SELECT 1 FROM audit_logs WHERE subject_type='seller_profile' AND subject_id=? AND action='seller.public_profile.saved' AND created_at>?) THEN 1 ELSE 0 END`)
+      .bind(cooldownGuard, options.sellerId, options.now - publicProfileCooldownMs)] : []),
     ...(options.form ? [database.prepare(`SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
       THEN 1 ELSE json_extract('invalid', '$') END`).bind(options.form.requestId)] : []),
     database.prepare(
       `UPDATE seller_profiles SET trading_name = ?, business_description = ?, product_categories = ?, support_phone = ?, support_email = ?, province = ?, district = ?, municipality = ?, ward = ?, locality = ?, updated_at = ? WHERE id = ? AND user_id = ? AND status = 'approved'`,
     ).bind(input.tradingName, input.businessDescription || null, input.productCategories || null, input.supportPhone, input.supportEmail.toLowerCase(), input.province, input.district, input.municipality, input.ward || null, input.locality, options.now, options.sellerId, options.actorId),
     database.prepare(`SELECT CASE WHEN changes() = 1 THEN 1 ELSE json_extract('invalid', '$') END`),
+    ...(nameChanged ? [database.prepare(`UPDATE seller_participation_profiles SET public_name=?,version=version+1,updated_at=? WHERE seller_id=?`)
+      .bind(input.tradingName, options.now, options.sellerId),
+      database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,created_at) VALUES (?,?,'seller.public_profile.saved','seller_profile',?,'Seller updated public shop name',?)`)
+        .bind(crypto.randomUUID(), options.actorId, options.sellerId, options.now),
+      database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(cooldownGuard)] : []),
     database.prepare(
       `INSERT INTO audit_logs (id, actor_id, action, subject_type, subject_id, reason, previous_json, next_json, request_id, ip_hash, created_at)
        VALUES (?, ?, 'seller.profile.updated', 'seller_profile', ?, 'Seller updated public support and workshop profile fields', NULL, ?, ?, NULL, ?)`,

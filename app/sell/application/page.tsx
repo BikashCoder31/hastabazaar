@@ -2,6 +2,11 @@ import { getManagedMakerApplicationTerms, managedAgreementVersionForSeller } fro
 import { managedClearanceBlock } from '@/lib/sellers/onboarding';
 import { getAcceptedManagedTerms, getManagedTermsOffers } from '@/lib/managed-commerce/accepted-terms';
 import { getManagedMakerAuthority } from '@/lib/managed-commerce/maker-authority';
+import { publicProfileEditableAt } from '@/lib/sellers/public-profile';
+import { hasDeferredBankDetails } from '@/lib/sellers/onboarding';
+import { SellerProductsDescription } from '@/components/seller/seller-products-description';
+import { SellerRegistrationDetails } from '@/components/seller/seller-registration-intake-form';
+import { loadSellerApplicationTerms } from '@/lib/sellers/application-terms';
 import { MakerProductWorkspace } from '@/components/seller/maker-product-workspace';
 import { ManagedTermsAcceptance } from '@/components/seller/managed-terms-acceptance';
 import { ManagedTermsRecovery } from '@/components/seller/managed-terms-recovery';
@@ -51,6 +56,7 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const profile = await getSellerParticipationForUser(database, customer.userId);
   if (!profile) redirect('/sell');
+  const [profileEditableAt, deferBank] = await Promise.all([publicProfileEditableAt(database, profile.sellerId), hasDeferredBankDetails(database, profile.sellerId)]);
   const query = await searchParams;
   const [applications, makerProfiles] = await Promise.all([
     listFormAnswersForSubjectPage(database, { subjectType: 'seller', subjectId: profile.sellerId,
@@ -75,6 +81,7 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
   };
   const clock = await database.prepare("SELECT unixepoch('now') * 1000 AS now").first<{ now: number }>();
   const program = await getEffectiveBusinessSetting(database, 'managed_maker_program_mode', Number(clock?.now ?? 0));
+  const intakeTerms = await loadSellerApplicationTerms(database, Number(clock?.now ?? 0));
   const capabilities = applicationCapabilities(profile.applicationStage, program.value);
   let makerCanWrite = false;
   if (profile.participationRoute === 'managed_maker') {
@@ -118,10 +125,15 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
       <StatusCard title="Maker readiness" state={displayedStage} body={`Responsible: ${responsible}. Next: ${nextAction}`} />
       <StatusCard title="Product readiness" state="Separate product review" body="Drafts stay private. Submit a complete product for review; staff publish only after maker and product approval." />
     </section>
+    <SellerBankDetailsForm />
+    <SellerRegistrationDetails accountId={customer.userId} accountEmail={customer.email}
+      managedTerms={intakeTerms.managed.status === 'ready' ? intakeTerms.managed.terms : undefined}
+      registeredTerms={intakeTerms.registered.status === 'ready' ? intakeTerms.registered.terms : undefined} />
+    <SellerProductsDescription />
     {finance ? <section className="rounded-2xl border bg-card p-6"><h2 className="font-heading text-2xl">Managed Maker settlement</h2><p className="mt-2 text-sm text-muted-foreground">Simulated amounts keep calculated, earned, held, eligible, and paid states separate. Delivery cash reconciliation is tracked separately.</p><dl className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">{[
       ['Calculated',finance.calculatedPaisa],['Earned',finance.earnedPaisa],['Held',finance.heldPaisa],['Eligible',finance.eligiblePaisa],['Paid',finance.paidPaisa],
     ].map(([label,value])=><div key={String(label)}><dt className="text-xs uppercase text-muted-foreground">{label}</dt><dd className="mt-1 font-semibold">NPR {(Number(value)/100).toFixed(2)}</dd></div>)}</dl></section> : null}
-    {capabilities.editProfile && (profile.participationRoute !== 'managed_maker' || makerCanWrite) ? <section><h2 className="font-heading text-2xl">Shared maker profile</h2><MakerApplicationProfileForm profile={profile} managedTerms={managedTerms} /></section> : null}
+    {capabilities.editProfile && (profile.participationRoute !== 'managed_maker' || makerCanWrite) ? <section><h2 className="font-heading text-2xl">Your public maker profile</h2><MakerApplicationProfileForm profile={profile} managedTerms={managedTerms} editableAt={profileEditableAt} deferBank={deferBank} /></section> : null}
     {offers && makerCanWrite ? <><ManagedTermsAcceptance key={`${customer.userId}:${profile.sellerId}:${offers.current.id}`} ownerId={customer.userId} sellerId={profile.sellerId} offer={offers.current} future={false} alreadyAccepted={Boolean(accepted)} />
       {offers.upcoming.map(offer => <ManagedTermsAcceptance key={offer.id} ownerId={customer.userId} sellerId={profile.sellerId} offer={offer} future alreadyAccepted={Boolean(offer.accepted)} />)}</> : null}
     {offers&&makerCanWrite?<ManagedTermsRecovery ownerId={customer.userId} sellerId={profile.sellerId} visibleOfferIds={[offers.current.id,...offers.upcoming.map(offer=>offer.id)]}/>:null}
@@ -145,3 +157,4 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
 function StatusCard({ title, state, body }: { title: string; state: string; body: string }) {
   return <article className="rounded-2xl border bg-card p-5"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p><h2 className="mt-2 text-lg font-bold capitalize">{state}</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">{body}</p></article>;
 }
+import { SellerBankDetailsForm } from '@/components/seller/bank-details-form';

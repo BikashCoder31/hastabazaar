@@ -88,6 +88,7 @@ export default async function SellerApplicationPage({
     throw error;
   });
   if (!application) notFound();
+  const bank = staff.role === 'super_admin' ? await sellerBankState(database, id) : null;
   const recoveryTarget = staff.role === 'super_admin' && application.userId !== staff.id
     ? await database.prepare(`SELECT u.id,u.email,u.display_name AS displayName,CASE WHEN EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='admin') THEN 'admin' ELSE 'seller' END AS role FROM users u WHERE u.id=? AND u.status='active' AND EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role IN ('seller','admin')) AND NOT EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='super_admin')`).bind(application.userId).first<{id:string;email:string;displayName:string;role:'admin'|'seller'}>()
     : null;
@@ -155,6 +156,7 @@ export default async function SellerApplicationPage({
 
       <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.4fr)_minmax(20rem,0.6fr)]">
         <div className="space-y-6">
+          {bank?.status === 'pending' ? <SellerBankReview sellerId={id} revision={bank.revision} /> : null}
           {managedTerms ? <CompanySellingIdentity terms={managedTerms}/> : null}
           {application.participationRoute === 'managed_maker' ? <Card id="seller-identity" className="scroll-mt-28"><CardHeader><CardTitle>Private Managed Maker agreement and identity</CardTitle></CardHeader><CardContent>
             {managedDetails ? <dl className="grid gap-4 sm:grid-cols-2"><Detail label="Government ID">{managedDetails.governmentIdType.replaceAll('_',' ')} {managedDetails.governmentIdDescription}</Detail>
@@ -460,3 +462,5 @@ export default async function SellerApplicationPage({
     </div>
   );
 }
+import { SellerBankReview } from '@/components/admin/seller-bank-review';
+import { sellerBankState } from '@/lib/sellers/bank-details';

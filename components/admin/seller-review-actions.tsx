@@ -239,7 +239,7 @@ export function SellerReviewActions({
             placeholder="Signed agreement or approved record reference"
           />
           <p className="text-xs text-muted-foreground">
-            Both references and bank evidence are required only when approving a seller. Do not enter full bank credentials here.
+            The settlement-terms reference is required for approval. New applications may add bank details later in their dashboard; leave the receiving-account reference empty until verified. Payouts remain blocked. Older applications retain their recorded evidence requirements. Do not enter full bank credentials here.
           </p>
           </> : <p className="text-xs text-muted-foreground">Managed Maker approval records maker readiness only. Commercial model, legal seller, invoice issuer, supplier/payment requirements, and the reviewed agreement remain separate activation conditions.</p>}
         </div>

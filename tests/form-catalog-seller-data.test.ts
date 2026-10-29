@@ -1051,8 +1051,6 @@ void test('signed-in application batch race responds with the winning reference,
     requestForm.set('requestId', 'application-route-race');
     requestForm.set('formVersion', '1');
     requestForm.set('custom.workshop_note', 'Fictional answer');
-    requestForm.set('profileImage', new File([validPhotoBytes],
-      'maker.jpg', { type: 'image/jpeg' }));
     const digest = await digestMultipartRequest(requestForm);
     const parsed = parseCurrentSellerApplication(requestForm);
     assert.ok(parsed.input, parsed.errors.join('; '));
@@ -1067,7 +1065,7 @@ void test('signed-in application batch race responds with the winning reference,
     const response = await send(requestForm);
     assert.equal(response.status, 201);
     assert.equal((await response.json() as { applicationReference: string }).applicationReference, 'HB-WINNING');
-    assert.equal(globalThis.sellerCatalogMedia.stored.length, 4);
+    assert.equal(globalThis.sellerCatalogMedia.stored.length, 2);
     assert.deepEqual(globalThis.sellerCatalogMedia.deleted, globalThis.sellerCatalogMedia.stored,
       'the losing application must remove private media uploaded before its DB race');
     const changed = managedApplication(true);
@@ -1089,8 +1087,6 @@ for (const signedIn of [false, true]) {
       form.set('requestId', requestId);
       form.set('formVersion', '1');
       form.set('custom.workshop_note', 'Fictional answer');
-      form.set('profileImage', new File([validPhotoBytes],
-        'maker.jpg', { type: 'image/jpeg' }));
       const parsed = parseCurrentSellerApplication(form);
       assert.ok(parsed.input, parsed.errors.join('; '));
       const digest = await digestMultipartRequest(form);
@@ -1119,7 +1115,7 @@ for (const signedIn of [false, true]) {
       }
       assert.equal(response.status, 201);
       assert.equal((await response.json() as { applicationReference: string }).applicationReference, 'HB-WINNING-PREBATCH');
-      assert.equal(globalThis.sellerCatalogMedia.stored.length, 4);
+      assert.equal(globalThis.sellerCatalogMedia.stored.length, 2);
       assert.deepEqual(globalThis.sellerCatalogMedia.deleted, globalThis.sellerCatalogMedia.stored,
         'the private losing upload must be removed when the pre-batch replay finds a winner');
       assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM seller_profiles').get() as { count: number }).count, 1);
@@ -1130,7 +1126,6 @@ for (const signedIn of [false, true]) {
       changed.set('requestId', requestId);
       changed.set('formVersion', '1');
       changed.set('custom.workshop_note', 'Changed answer');
-      changed.set('profileImage', form.get('profileImage') as File);
       const changedResponse = await send(changed);
       assert.equal(changedResponse.status, 409);
       assert.doesNotMatch(await changedResponse.text(), /HB-WINNING-PREBATCH/);
@@ -1337,11 +1332,11 @@ void test('lost committed application response preserves private evidence and ex
     const {POST}=await import('../app/api/seller-applications/route');
     const send=()=>POST(new Request('http://localhost:3000/api/seller-applications',{method:'POST',headers:{origin:'http://localhost:3000'},body:form}));
     assert.equal((await send()).status,500);
-    assert.equal((sqlite.prepare('SELECT COUNT(*) AS n FROM seller_documents').get() as {n:number}).n,3);
-    assert.equal(globalThis.sellerCatalogMedia.stored.length,3);assert.equal(globalThis.sellerCatalogMedia.deleted.length,0);
+    assert.equal((sqlite.prepare('SELECT COUNT(*) AS n FROM seller_documents').get() as {n:number}).n,2);
+    assert.equal(globalThis.sellerCatalogMedia.stored.length,2);assert.equal(globalThis.sellerCatalogMedia.deleted.length,0);
     outage=false;db.batch=originalBatch;
     assert.equal((await send()).status,201);
-    assert.equal(globalThis.sellerCatalogMedia.stored.length,3,'exact replay recovers before uploads');
+    assert.equal(globalThis.sellerCatalogMedia.stored.length,2,'exact replay recovers before uploads');
     assert.equal(globalThis.sellerCatalogMedia.deleted.length,0);
     assert.ok(database);
   }finally{sqlite.close();}

@@ -507,7 +507,7 @@ function sellerDefinition(id: 'seller.application' | 'seller.maker-profile' | 's
   if (id === 'seller.application') {
     route = '/api/seller-applications';
     fields = [displayField('tradingName', 'short_text', true), displayField('businessDescription', 'long_text', true),
-      ...['legalName', 'representativeName', 'email', 'phone', 'applicantType', 'taxMode', 'taxRegistrationNumber',
+      ...['legalName', 'representativeName', 'email', 'phone', 'phoneCountry', 'applicantType', 'taxMode', 'taxRegistrationNumber',
         'registrationNumber', 'registrationAuthority', 'document', 'profileImage', 'makerVideo', 'applicationAcknowledgement', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'personalPanCertificate',
         'participationRoute', 'website', 'hasBusinessTaxRegistration', 'taxStatus', 'sellerAgreementContext', 'acceptedTerms',
         'province', 'district', 'municipality', 'ward', 'locality', 'publicCity', 'productCategories',
@@ -519,7 +519,7 @@ function sellerDefinition(id: 'seller.application' | 'seller.maker-profile' | 's
   } else if (id === 'seller.maker-profile') {
     route = '/api/seller-applications/profile';
     fields = [displayField('publicName', 'short_text', true), displayField('publicCity', 'short_text', true),
-      ...['sellerId', 'expectedVersion', 'experienceCraft', 'experienceBand', 'facebookUrl', 'instagramUrl',
+      ...['sellerId', 'expectedVersion', 'profileImage', 'makerVideo', 'experienceCraft', 'experienceBand', 'facebookUrl', 'instagramUrl',
         'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl', 'legalName', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'representativeIdentity', 'personalPanCertificate', 'bankVerification', 'payoutBeneficiary', 'bankName', 'bankBranch', 'bankAccountNumber', 'pickupAddress', 'returnAddress'].map((key) =>
         protectedField(key, 'Ownership, version, legal identity, social-link and craft validation stay server enforced.')),
       ...common];

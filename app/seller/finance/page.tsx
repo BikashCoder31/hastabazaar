@@ -21,6 +21,7 @@ import {
 import { PayoutRequestForm } from '@/components/seller/payout-request-form';
 import { getSellerEarnings } from '@/lib/seller/earnings';
 import { SellerEarningsSummary } from '@/components/seller/seller-earnings-summary';
+import { SellerBankDetailsForm } from '@/components/seller/bank-details-form';
 
 export const dynamic = 'force-dynamic';
 const money = (paisa: number) =>
@@ -83,6 +84,7 @@ export default async function SellerFinancePage() {
         </p>
       </div>
       <SellerEarningsSummary earnings={earnings} />
+      <SellerBankDetailsForm />
       {showRegistered ? (
         <PayoutRequestForm
           sellerId={seller.sellerId}

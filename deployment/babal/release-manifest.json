@@ -49,7 +49,11 @@
     "order_customer_service_fees.campaign_revision": "campaign_revision IS NULL OR campaign_revision BETWEEN 1 AND 9007199254740991",
     "order_customer_service_fees.customer_fee_policy_standard": "policy_enabled = 1 AND standard_paisa = policy_amount_paisa OR policy_enabled = 0 AND standard_paisa = 0",
     "order_customer_service_fees.customer_fee_reconciled": "standard_paisa - waived_paisa = net_paisa",
-    "order_customer_service_fees.customer_fee_full_waiver": "campaign_id IS NULL AND campaign_revision IS NULL AND waived_paisa = 0 OR campaign_id IS NOT NULL AND campaign_revision IS NOT NULL AND standard_paisa > 0 AND waived_paisa = standard_paisa AND net_paisa = 0"
+    "order_customer_service_fees.customer_fee_full_waiver": "campaign_id IS NULL AND campaign_revision IS NULL AND waived_paisa = 0 OR campaign_id IS NOT NULL AND campaign_revision IS NOT NULL AND standard_paisa > 0 AND waived_paisa = standard_paisa AND net_paisa = 0",
+    "commission_continuity_operations.continuity_operation_rate": "basis_points = 900",
+    "commission_continuity_operations.continuity_operation_interval": "ends_at = 1794334500000 AND started_at < ends_at",
+    "commission_continuity_operations.continuity_operation_recorded": "recorded_at = started_at",
+    "commission_continuity_settings.continuity_setting_key": "setting_key IN ('independent_seller_commission_bps','managed_sale_linked_platform_retention_bps')"
   },
   "requiredForeignKeys": {
     "marketplace_fee_waiver_revisions.fee_revision_campaign_fk": {
@@ -144,6 +148,87 @@
       "referencedColumns": [
         "campaign_id",
         "revision"
+      ]
+    },
+    "commission_continuity_operations.continuity_operation_actor_fk": {
+      "columns": [
+        "actor_id"
+      ],
+      "referencedTable": "users",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "commission_continuity_settings.continuity_setting_operation_fk": {
+      "columns": [
+        "operation_id"
+      ],
+      "referencedTable": "commission_continuity_operations",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "commission_continuity_settings.continuity_setting_current_fk": {
+      "columns": [
+        "setting_id"
+      ],
+      "referencedTable": "business_setting_versions",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "commission_continuity_settings.continuity_setting_successor_fk": {
+      "columns": [
+        "successor_id"
+      ],
+      "referencedTable": "business_setting_versions",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "commission_continuity_sellers.continuity_seller_operation_fk": {
+      "columns": [
+        "operation_id"
+      ],
+      "referencedTable": "commission_continuity_operations",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "commission_continuity_sellers.continuity_seller_setting_fk": {
+      "columns": [
+        "setting_id"
+      ],
+      "referencedTable": "commission_continuity_settings",
+      "referencedColumns": [
+        "setting_id"
+      ]
+    },
+    "commission_continuity_sellers.continuity_seller_profile_fk": {
+      "columns": [
+        "seller_id"
+      ],
+      "referencedTable": "seller_profiles",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "commission_continuity_sellers.continuity_seller_owner_fk": {
+      "columns": [
+        "owner_id"
+      ],
+      "referencedTable": "users",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "commission_continuity_sellers.continuity_seller_audit_fk": {
+      "columns": [
+        "audit_id"
+      ],
+      "referencedTable": "audit_logs",
+      "referencedColumns": [
+        "id"
       ]
     }
   },
@@ -259,6 +344,32 @@
     "orders_preserve_customer_service_fee": "BEGIN IF EXISTS(SELECT 1 FROM order_customer_service_fees WHERE order_id=OLD.id AND (NEW.id<>OLD.id OR net_paisa<>NEW.buyer_platform_fee_paisa)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_order_mismatch'; END IF; END"
   },
   "requiredUniqueIndexes": {
+    "commission_continuity_operations.PRIMARY": [
+      "id"
+    ],
+    "commission_continuity_settings.PRIMARY": [
+      "setting_id"
+    ],
+    "commission_continuity_settings.continuity_setting_successor": [
+      "successor_id"
+    ],
+    "commission_continuity_settings.continuity_operation_key": [
+      "operation_id",
+      "setting_key"
+    ],
+    "commission_continuity_sellers.PRIMARY": [
+      "id"
+    ],
+    "commission_continuity_sellers.continuity_seller_identity": [
+      "seller_id"
+    ],
+    "commission_continuity_sellers.continuity_seller_audit": [
+      "audit_id"
+    ],
+    "commission_continuity_sellers.continuity_operation_seller": [
+      "operation_id",
+      "seller_id"
+    ],
     "customer_fee_waiver_control.PRIMARY": [
       "id"
     ],
@@ -307,6 +418,16 @@
     ]
   },
   "requiredColumnCollations": {
+    "commission_continuity_operations.request_json": "utf8mb4_bin",
+    "commission_continuity_operations.source_release": "utf8mb4_bin",
+    "commission_continuity_operations.source_commit": "utf8mb4_bin",
+    "commission_continuity_operations.capture_sha256": "utf8mb4_bin",
+    "commission_continuity_operations.selection_sha256": "utf8mb4_bin",
+    "commission_continuity_settings.setting_key": "utf8mb4_bin",
+    "commission_continuity_settings.current_json": "utf8mb4_bin",
+    "commission_continuity_settings.successor_json": "utf8mb4_bin",
+    "commission_continuity_sellers.agreement_version": "utf8mb4_bin",
+    "commission_continuity_sellers.audit_json": "utf8mb4_bin",
     "customer_fee_waiver_campaigns.id": "utf8mb4_bin",
     "customer_fee_waiver_revisions.campaign_id": "utf8mb4_bin",
     "customer_fee_waiver_revisions.request_id": "utf8mb4_bin",
@@ -632,7 +753,7 @@
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "43e4231af69a141c6342397b30a61a76efabbf6f96ddc406296f19878cec7786",
+      "sha256": "439ac47ed3cbd6ce9cf9860c4a08d67af034c86072a5b7cd70b86325f8434b70",
       "usage": "empty-database-only"
     },
     {
@@ -903,6 +1024,21 @@
     {
       "path": "deployment/babal/mariadb-customer-service-fee-waivers.sql",
       "sha256": "a0959007fe16cd1d3691ecc78fd1a5f552512e273929609f98f7d0c9773dfb16",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-commission-continuity.sql",
+      "sha256": "8ba92036e85f3d6a02f7d830880a4ab4a5804c222138ea7016ad849b4dcd445c",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-seller-application-drafts.sql",
+      "sha256": "9ac63b8fc504e0048a7b7a8bf9b07ff8deb88afc743384000c6721fe285f204a",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-seller-registration-intakes.sql",
+      "sha256": "9b4f30426115aed223f2f989614eb75346aef1655167d4e0d61053721445c2be",
       "usage": "additive-maintenance"
     }
   ],
@@ -2640,6 +2776,38 @@
       "standard_paisa",
       "waived_paisa"
     ],
+    "commission_continuity_operations": [
+      "actor_id",
+      "basis_points",
+      "capture_sha256",
+      "ends_at",
+      "id",
+      "recorded_at",
+      "request_json",
+      "selection_sha256",
+      "source_commit",
+      "source_release",
+      "started_at"
+    ],
+    "commission_continuity_settings": [
+      "current_json",
+      "operation_id",
+      "setting_id",
+      "setting_key",
+      "successor_id",
+      "successor_json"
+    ],
+    "commission_continuity_sellers": [
+      "accepted_at",
+      "agreement_version",
+      "audit_id",
+      "audit_json",
+      "id",
+      "operation_id",
+      "owner_id",
+      "seller_id",
+      "setting_id"
+    ],
     "user_credentials": [
       "created_at",
       "password_hash",
@@ -2711,6 +2879,32 @@
       "request_id",
       "status",
       "total_paisa"
+    ],
+    "seller_application_drafts": [
+      "answers_json",
+      "attempt_id",
+      "expires_at",
+      "files_json",
+      "form_version",
+      "revision",
+      "updated_at",
+      "user_id"
+    ],
+    "seller_application_draft_uploads": [
+      "expires_at",
+      "id",
+      "object_key",
+      "status",
+      "user_id"
+    ],
+    "seller_registration_intakes": [
+      "answers_json",
+      "documents_json",
+      "review_ready",
+      "seller_id",
+      "updated_at",
+      "user_id",
+      "version"
     ],
     "referral_campaign": [
       "enabled",
@@ -3132,6 +3326,57 @@
       "signal sqlstate",
       "45000",
       "customer_fee_order_mismatch"
+    ],
+    "commission_continuity_operations_no_update": [
+      "signal sqlstate",
+      "45000",
+      "continuity_immutable"
+    ],
+    "commission_continuity_operations_no_delete": [
+      "signal sqlstate",
+      "45000",
+      "continuity_immutable"
+    ],
+    "commission_continuity_operations_no_replace": [
+      "signal sqlstate",
+      "45000",
+      "continuity_immutable",
+      "if exists",
+      "new."
+    ],
+    "commission_continuity_settings_no_update": [
+      "signal sqlstate",
+      "45000",
+      "continuity_immutable"
+    ],
+    "commission_continuity_settings_no_delete": [
+      "signal sqlstate",
+      "45000",
+      "continuity_immutable"
+    ],
+    "commission_continuity_settings_no_replace": [
+      "signal sqlstate",
+      "45000",
+      "continuity_immutable",
+      "if exists",
+      "new."
+    ],
+    "commission_continuity_sellers_no_update": [
+      "signal sqlstate",
+      "45000",
+      "continuity_immutable"
+    ],
+    "commission_continuity_sellers_no_delete": [
+      "signal sqlstate",
+      "45000",
+      "continuity_immutable"
+    ],
+    "commission_continuity_sellers_no_replace": [
+      "signal sqlstate",
+      "45000",
+      "continuity_immutable",
+      "if exists",
+      "new."
     ],
     "payouts_single_sa_insert": [],
     "payouts_single_sa_update": [],
