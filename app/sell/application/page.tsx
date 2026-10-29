@@ -1,6 +1,5 @@
-import { getManagedMakerApplicationTerms, managedAgreementVersionForSeller } from '@/lib/db/repositories/managed-maker-details';
+import { loadSellerDashboardTerms } from '@/lib/sellers/dashboard-terms';
 import { managedClearanceBlock } from '@/lib/sellers/onboarding';
-import { getAcceptedManagedTerms, getManagedTermsOffers } from '@/lib/managed-commerce/accepted-terms';
 import { getManagedMakerAuthority } from '@/lib/managed-commerce/maker-authority';
 import { publicProfileEditableAt } from '@/lib/sellers/public-profile';
 import { hasDeferredBankDetails } from '@/lib/sellers/onboarding';
@@ -88,11 +87,9 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
     try { await getManagedMakerAuthority(database, customer.userId, Number(clock?.now ?? 0)); makerCanWrite = true; }
     catch { /* Restricted makers retain read-only history. */ }
   }
-  const [offers, accepted] = profile.participationRoute === 'managed_maker' ? await Promise.all([
-    getManagedTermsOffers(database, profile.sellerId, Number(clock?.now ?? 0)),
-    getAcceptedManagedTerms(database, profile.sellerId, Number(clock?.now ?? 0)),
-  ]) : [null, null];
-  const managedTerms = profile.participationRoute === 'managed_maker' && profile.applicationStage === 'changes_requested' ? await getManagedMakerApplicationTerms(database, Number(clock?.now ?? 0), await managedAgreementVersionForSeller(database,profile.sellerId)) : undefined;
+  const { offers, accepted, managedTerms, unavailable: termsUnavailable } = profile.participationRoute === 'managed_maker'
+    ? await loadSellerDashboardTerms(database, profile.sellerId, Number(clock?.now ?? 0), profile.applicationStage === 'changes_requested')
+    : { offers: null, accepted: null, managedTerms: undefined, unavailable: false };
   const finance = profile.participationRoute === 'managed_maker' || Boolean(await database.prepare('SELECT 1 FROM managed_entitlements WHERE seller_id=? LIMIT 1').bind(profile.sellerId).first())
     ? await getManagedFinanceSummary(database, profile.sellerId)
     : null;
@@ -125,6 +122,7 @@ export default async function SellerApplicationProgressPage({ searchParams }: {
       <StatusCard title="Maker readiness" state={displayedStage} body={`Responsible: ${responsible}. Next: ${nextAction}`} />
       <StatusCard title="Product readiness" state="Separate product review" body="Drafts stay private. Submit a complete product for review; staff publish only after maker and product approval." />
     </section>
+    {termsUnavailable ? <output className="block rounded-xl border p-4 text-sm">Commercial terms are not available yet. You can update your registration details and prepare private product drafts. Agreement acceptance and selling remain unavailable until the required settings are published.</output> : null}
     <SellerBankDetailsForm />
     <SellerRegistrationDetails accountId={customer.userId} accountEmail={customer.email}
       managedTerms={intakeTerms.managed.status === 'ready' ? intakeTerms.managed.terms : undefined}
