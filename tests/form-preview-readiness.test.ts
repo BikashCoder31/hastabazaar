@@ -84,3 +84,11 @@ void test('a malformed publication is reported even when every required form has
     assert.equal(result.readyForms, REQUIRED_PREVIEW_FORM_IDS.length - 1);
   } finally { db.close(); }
 });
+
+void test('fixed seller dashboard controls do not require catalog publication', () => {
+  for (const id of ['seller.bank-details','staff.seller-bank-review','seller.products-description']) {
+    assert.equal(isFormCatalogEditable(FORM_REGISTRY[id]), false);
+    assert.equal(FORM_REGISTRY[id].capabilities.answerBehavior, 'none');
+    assert.equal(REQUIRED_PREVIEW_FORM_IDS.includes(id), false);
+  }
+});
