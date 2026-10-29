@@ -6,13 +6,13 @@ import './globals.css';
 export const metadata: Metadata = {
   metadataBase: new URL('https://hastabazaar.com'),
   title: {
-    default: 'Hastabazaar — Handmade with a human story',
+    default: 'Hastabazaar — Handmade Gifts & Crafts in Nepal',
     template: '%s · Hastabazaar',
   },
   description:
-    'A considered marketplace for handmade craft, jewellery, textiles, and homeware.',
+    'Shop handmade gifts, jewellery, textiles and homeware from independent makers in Nepal. Discover local crafts and the people behind them at Hastabazaar.',
   icons: {
-    icon: '/brand/hastabazaar-icon-32.png',
+    icon: { url: '/brand/hastabazaar-mark-192.png', type: 'image/png', sizes: '192x192' },
     apple: '/brand/hastabazaar-apple-touch-icon.png',
   },
 };

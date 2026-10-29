@@ -18,14 +18,26 @@ export const PUBLIC_PAGES = [
 ];
 export function isDiscoverablePath(path: string): boolean {
   return (
-    PUBLIC_PAGES.includes(path) || /^\/(?:products|makers)\/[^/]+$/.test(path) || /^\/api\/product-media\/[^/]+$/.test(path)
+    PUBLIC_PAGES.includes(path) || path === '/robots.txt' || path === '/sitemap.xml' || path === '/icon.png' ||
+    /^\/brand\/hastabazaar-(?:mark-(?:96|192|512)|icon-32|apple-touch-icon|logo(?:-lockup(?:-640)?)?)\.(?:png|webp)$/.test(path) ||
+    /^\/sitemaps\/(?:0|[1-9][0-9]{0,5})\.xml$/.test(path) ||
+    /^\/(?:products|makers)\/[^/]+$/.test(path) || /^\/api\/product-media\/[^/]+$/.test(path)
   );
 }
 export function permitsPublicIndexing(requestUrl: string, configuredOrigin?: string): boolean {
-  // Preview/staging hosts must never inherit production indexing policy.
   try {
-    return new URL(requestUrl).origin === PUBLIC_ORIGIN &&
-      (!configuredOrigin || new URL(configuredOrigin).origin === PUBLIC_ORIGIN);
+    const request = new URL(requestUrl);
+    if (request.username || request.password) return false;
+    if (configuredOrigin) {
+      const configured = new URL(configuredOrigin);
+      if (configured.origin !== PUBLIC_ORIGIN || configured.username || configured.password ||
+        configured.pathname !== '/' || configured.search || configured.hash) return false;
+    }
+    if (request.origin === PUBLIC_ORIGIN) return true;
+    // Passenger terminates TLS before Node. Permit its HTTP representation only
+    // for the exact canonical host with explicit production configuration.
+    // Never infer production from client-controlled forwarded headers.
+    return Boolean(configuredOrigin) && request.origin === 'http://hastabazaar.com';
   } catch { return false; }
 }
 export function publicUrl(path: string): string {
