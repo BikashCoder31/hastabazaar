@@ -6,6 +6,7 @@ import { SERVICE_FEE_REFUND_FORM } from '../checkout/platform-service-fee-form-c
 import { FEE_WAIVER_FORM } from '../marketplace/fee-waiver-form-contract';
 import { SECURITY_FORM_CONTRACTS } from '../security/form-contracts';
 import { SUPPORT_ASSISTANT_FORM } from '../support/form-contract';
+import { SELLER_DASHBOARD_FORM_CONTRACTS } from '../sellers/dashboard-form-contracts';
 import type { BaseFieldCapability, FormAudience, FormCapabilities, FormDefinition, FormId, FormMode } from './types';
 import { feedbackTopics } from '../feedback/customer-feedback';
 import { baseFieldCopy } from './plain-language';
@@ -19,7 +20,7 @@ export interface ImplementedFormAdapter {
 // Integrations add an entry here only when their server adapter exists and is tested.
 export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormAdapter>> = Object.freeze({
   [FEE_WAIVER_FORM.id]: { formId: FEE_WAIVER_FORM.id, route: FEE_WAIVER_FORM.route, mode: FEE_WAIVER_FORM.mode },
-  ...Object.fromEntries([...Object.values(SECURITY_FORM_CONTRACTS), SUPPORT_ASSISTANT_FORM].map((definition) => [definition.id, {
+  ...Object.fromEntries([...Object.values(SECURITY_FORM_CONTRACTS), ...Object.values(SELLER_DASHBOARD_FORM_CONTRACTS), SUPPORT_ASSISTANT_FORM].map((definition) => [definition.id, {
     formId: definition.id, route: definition.route, mode: definition.mode,
   }])),
   [SERVICE_FEE_REFUND_FORM.id]: { formId:SERVICE_FEE_REFUND_FORM.id,route:SERVICE_FEE_REFUND_FORM.route,mode:SERVICE_FEE_REFUND_FORM.mode },
@@ -676,7 +677,7 @@ const FIRST_COD_CONFIRMATION_DEFINITION = Object.freeze({
 } satisfies FormDefinition);
 
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
-  Object.assign({ [FEE_WAIVER_FORM.id]: FEE_WAIVER_FORM, ...SECURITY_FORM_CONTRACTS, [SUPPORT_ASSISTANT_FORM.id]: SUPPORT_ASSISTANT_FORM, [SERVICE_FEE_REFUND_FORM.id]:SERVICE_FEE_REFUND_FORM, [ACCOUNTING_FILTER_FORM.id]: ACCOUNTING_FILTER_FORM, ...INCENTIVE_WORKSPACE_FORM_CONTRACTS, 'staff.first-cod-confirmation': FIRST_COD_CONFIRMATION_DEFINITION, 'account.points-redemption': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.points-redemption'], adapterId: 'account.points-redemption' }), 'staff.loyalty-settings': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.loyalty-settings'], adapterId: 'staff.loyalty-settings' }), 'account.daily-reward': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.daily-reward'], adapterId: 'account.daily-reward' }), 'commerce.promo-quote': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['commerce.promo-quote'], adapterId: 'commerce.promo-quote' }), 'staff.promo-code': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.promo-code'], adapterId: 'staff.promo-code' }) }, Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
+  Object.assign({ ...SELLER_DASHBOARD_FORM_CONTRACTS, [FEE_WAIVER_FORM.id]: FEE_WAIVER_FORM, ...SECURITY_FORM_CONTRACTS, [SUPPORT_ASSISTANT_FORM.id]: SUPPORT_ASSISTANT_FORM, [SERVICE_FEE_REFUND_FORM.id]:SERVICE_FEE_REFUND_FORM, [ACCOUNTING_FILTER_FORM.id]: ACCOUNTING_FILTER_FORM, ...INCENTIVE_WORKSPACE_FORM_CONTRACTS, 'staff.first-cod-confirmation': FIRST_COD_CONFIRMATION_DEFINITION, 'account.points-redemption': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.points-redemption'], adapterId: 'account.points-redemption' }), 'staff.loyalty-settings': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.loyalty-settings'], adapterId: 'staff.loyalty-settings' }), 'account.daily-reward': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.daily-reward'], adapterId: 'account.daily-reward' }), 'commerce.promo-quote': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['commerce.promo-quote'], adapterId: 'commerce.promo-quote' }), 'staff.promo-code': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.promo-code'], adapterId: 'staff.promo-code' }) }, Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
     const item = Object.hasOwn(PROGRAMMATIC_KEYS, row.split('|')[0])
       ? programmaticDefinition(row.split('|')[0] as ProgrammaticFormId)
       : Object.hasOwn(QUERY_FIELDS, row.split('|')[0]) || row.startsWith('system.local-testing-role|')

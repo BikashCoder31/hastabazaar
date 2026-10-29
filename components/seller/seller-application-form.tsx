@@ -2,13 +2,11 @@
 import { FormGuide } from '@/components/forms/form-guide';
 import type { RegisteredSellerTerms } from '@/lib/db/repositories/marketplace-settings';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSellerDraft } from './use-seller-draft';
+import { useEffect, useRef, useState } from 'react';
 import { CompanySellingIdentity, ManagedMakerIdentityFields, ManagedMakerAgreementFields } from './managed-maker-identity-fields';
 import type { ManagedMakerApplicationTerms } from '@/lib/db/repositories/managed-maker-details';
 import { sellerDocumentsForApplication } from '@/lib/sellers/application';
 import { CURRENT_ONBOARDING_VERSION } from '@/lib/sellers/onboarding';
-import { sellerPhoneCountries } from '@/lib/sellers/contact-phone';
 import { SellerOnboardingFields } from './seller-onboarding-fields';
 import { CheckCircle2, LoaderCircle, ShieldCheck } from 'lucide-react';
 
@@ -28,12 +26,13 @@ import {
   NativeSelect,
   NativeSelectOption,
 } from '@/components/ui/native-select';
+import { Textarea } from '@/components/ui/textarea';
 import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 const catalogBaseKeys = ['tradingName', 'businessDescription', 'legalName', 'representativeName',
-  'email', 'phone', 'phoneCountry', 'applicantType', 'taxMode', 'taxRegistrationNumber', 'registrationNumber',
+  'email', 'phone', 'applicantType', 'taxMode', 'taxRegistrationNumber', 'registrationNumber',
   'registrationAuthority', 'document', 'profileImage', 'makerVideo', 'applicationAcknowledgement',
   'payoutBeneficiary', 'bankName', 'bankBranch', 'bankAccountNumber', 'pickupAddress', 'returnAddress',
   'sellerAgreementContext', 'participationRoute', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'personalPanCertificate', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'website', 'requestId', 'formVersion', 'customAnswers'];
@@ -87,12 +86,10 @@ function setFormValue(
 
 export function SellerApplicationForm({
   accountEmail,
-  accountId,
   managedTerms,
   registeredTerms,
 }: {
   accountEmail?: string;
-  accountId?: string;
   managedTerms?: ManagedMakerApplicationTerms;
   registeredTerms?: Pick<RegisteredSellerTerms, 'percent' | 'context'>;
 }) {
@@ -107,10 +104,6 @@ export function SellerApplicationForm({
   const [hasPendingAttempt, setHasPendingAttempt] = useState(false);
   const catalog = usePublishedFormConfig('seller.application');
   const [state, setState] = useState<SubmissionState>({ status: 'idle' });
-  const restoreRoute = useCallback((values: { registration: 'yes' | 'no'; applicant: 'individual' | 'company'; tax: 'business_pan_only' | 'vat_registered' }) => {
-    setRegistrationAnswer(values.registration); setApplicantType(values.applicant); setTaxStatus(values.tax);
-  }, []);
-  const draft = useSellerDraft(formRef, accountId, catalog.config, restoreRoute);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setHasPendingAttempt(hasSessionAttempt(applicationAttemptKey)), 0);
@@ -204,11 +197,8 @@ export function SellerApplicationForm({
 
     const form = event.currentTarget;
     try {
-      if (draft.status === 'conflict') throw new Error(draft.message);
-      await draft.flush();
       const formData = new FormData(form);
-      await draft.attachSavedFiles(formData);
-      formData.set('requestId', draft.attemptId() ?? getOrCreateSessionAttempt(applicationAttemptKey));
+      formData.set('requestId', getOrCreateSessionAttempt(applicationAttemptKey));
       setHasPendingAttempt(true);
       const response = await fetch('/api/seller-applications', {
         method: 'POST', body: formData, headers: { Accept: 'application/json' },
@@ -227,7 +217,6 @@ export function SellerApplicationForm({
       }
       if (!body.applicationReference) throw new Error(uncertainMessage);
 
-      await draft.confirmedSubmission();
       setState({ status: 'success', reference: body.applicationReference });
       clearSessionAttempt(applicationAttemptKey);
       setHasPendingAttempt(false);
@@ -265,17 +254,9 @@ export function SellerApplicationForm({
       data-form-id="seller.application"
       ref={formRef}
       onSubmit={submitApplication}
-      onInput={draft.changed}
-      onChange={draft.changed}
       className="space-y-10 rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-10"
     >
       <FormGuide formId="seller.application" />
-      <aside className="space-y-2 rounded-xl border bg-secondary/40 p-4" aria-label="Saved registration progress">
-        <output className="block">{draft.message}</output>
-        {draft.draft ? <p className="text-sm">Saved progress expires on {new Date(draft.draft.expiresAt).toLocaleDateString()}. Saving is separate from submitting your application.</p> : null}
-        <Button type="button" variant="outline" disabled={draft.status === 'loading' || draft.status === 'saving' || draft.status === 'conflict'} onClick={() => void draft.flush()}>Save progress now</Button>
-      </aside>
-      <fieldset disabled={!draft.canEdit} inert={state.status === 'submitting'} className="contents">
 
       <p className="text-xs text-muted-foreground">* Required field</p>
 
@@ -443,35 +424,23 @@ export function SellerApplicationForm({
             />
             <FieldDescription>
               {accountEmail
-                ? 'Use your verified account email. Submission starts review; selling access requires separate approval.'
-                : 'Sign in and verify your account email before applying.'}
+                ? 'Use your verified account email and phone. Submission starts review; selling access requires separate approval.'
+                : 'Sign in and verify your account email and phone before applying.'}
             </FieldDescription>
           </Field>
           <Field>
             <FieldLabel htmlFor="phone">
               Contact phone <span aria-hidden="true">*</span>
             </FieldLabel>
-            <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label htmlFor="phoneCountry" className="mb-1 block text-sm">Phone country</label>
-              <NativeSelect id="phoneCountry" name="phoneCountry" defaultValue="NP" required>
-                {sellerPhoneCountries.map(country => <NativeSelectOption key={country.code} value={country.code}>{country.name} (+{country.dial})</NativeSelectOption>)}
-              </NativeSelect>
-            </div>
             <Input
               id="phone"
               name="phone"
               type="tel"
               required
-              minLength={10}
-              maxLength={10}
-              pattern="[0-9]{10}"
-              inputMode="numeric"
-              autoComplete="tel-national"
-              placeholder="9800000000"
+              maxLength={20}
+              autoComplete="tel"
+              placeholder="+977 98…"
             />
-            </div>
-            <FieldDescription>Enter 10 digits without the country code. Phone OTP verification is not required to submit this application.</FieldDescription>
           </Field>
           <Field>
             <FieldLabel htmlFor="province">
@@ -529,9 +498,85 @@ export function SellerApplicationForm({
         </FieldGroup>
       </FieldSet>
 
+      <FieldSet>
+        <FieldLegend>Your products</FieldLegend>
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="productCategories">
+              Product types <span aria-hidden="true">*</span>
+            </FieldLabel>
+            <Input
+              id="productCategories"
+              name="productCategories"
+              required
+              maxLength={500}
+              placeholder="For example, textiles, jewellery, pottery"
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="businessDescription">
+              {fieldDisplay(catalog.config, 'businessDescription')?.label ?? 'Tell us about your work'}
+              <span aria-hidden="true">*</span>
+            </FieldLabel>
+            <Textarea
+              id="businessDescription"
+              name="businessDescription"
+              required
+              maxLength={1500}
+              rows={6}
+              placeholder={fieldDisplay(catalog.config, 'businessDescription')?.placeholder ?? 'Describe what you make, who makes it, your materials, and your process.'}
+              aria-describedby={fieldDisplay(catalog.config, 'businessDescription')?.helpText ? 'businessDescription-catalog-help' : undefined}
+            />
+            {fieldDisplay(catalog.config, 'businessDescription')?.helpText ? <FieldDescription id="businessDescription-catalog-help">{fieldDisplay(catalog.config, 'businessDescription')?.helpText}</FieldDescription> : null}
+          </Field>
+        </FieldGroup>
+      </FieldSet>
 
-
-      <p className="text-sm text-muted-foreground">Add your public maker profile and bank details later from your dashboard. Public profile updates have a 7-day cooldown; payouts require reviewed bank details.</p>
+      <FieldSet>
+        <FieldLegend>Your public maker profile</FieldLegend>
+        <FieldDescription>
+          These optional details are used by both Registered Sellers and Managed Makers. Empty optional sections are hidden publicly.
+        </FieldDescription>
+        <FieldGroup className="grid gap-5 md:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="experienceCraft">Craft for this experience (optional)</FieldLabel>
+            <Input id="experienceCraft" name="experienceCraft" maxLength={120} placeholder="For example, clay work" />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="experienceBand">Experience in that craft (optional)</FieldLabel>
+            <NativeSelect id="experienceBand" name="experienceBand" defaultValue="">
+              <NativeSelectOption value="">Not provided</NativeSelectOption>
+              <NativeSelectOption value="beginner">Beginner</NativeSelectOption>
+              <NativeSelectOption value="less_than_one_year">Less than one year</NativeSelectOption>
+              <NativeSelectOption value="one_to_three_years">1–3 years</NativeSelectOption>
+              <NativeSelectOption value="four_to_ten_years">4–10 years</NativeSelectOption>
+              <NativeSelectOption value="more_than_ten_years">More than 10 years</NativeSelectOption>
+            </NativeSelect>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="profileImage">Shop logo or maker photo (optional)</FieldLabel>
+            <Input id="profileImage" name="profileImage" type="file" accept="image/jpeg,image/png,image/webp" />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="makerVideo">Video about you or your workshop (optional)</FieldLabel>
+            <Input id="makerVideo" name="makerVideo" type="file" accept="video/mp4" />
+            <FieldDescription>MP4 up to 20 MB and 60 seconds. This general maker video is distinct from an optional product-specific making video.</FieldDescription>
+          </Field>
+          {[
+            ['facebookUrl', 'Facebook'],
+            ['instagramUrl', 'Instagram'],
+            ['linkedinUrl', 'LinkedIn'],
+            ['tiktokUrl', 'TikTok'],
+            ['xUrl', 'X'],
+            ['youtubeUrl', 'YouTube'],
+          ].map(([name, label]) => (
+            <Field key={name}>
+              <FieldLabel htmlFor={name}>{label} link (optional)</FieldLabel>
+              <Input id={name} name={name} type="url" maxLength={500} placeholder="https://" />
+            </Field>
+          ))}
+        </FieldGroup>
+      </FieldSet>
 
       <FieldSet>
         <FieldLegend>Documents we need to check your details</FieldLegend>
@@ -545,7 +590,7 @@ export function SellerApplicationForm({
             taxMode: registrationAnswer === 'no' ? 'NONE' : taxStatus === 'vat_registered' ? 'VAT' : 'PAN',
             participationRoute: registrationAnswer === 'yes' ? 'registered_seller' : 'managed_maker',
             hasBusinessTaxRegistration: registrationAnswer === 'yes',
-            onboarding: { version: CURRENT_ONBOARDING_VERSION, bankDetailsDeferred: true },
+            onboarding: { version: CURRENT_ONBOARDING_VERSION },
           }).map(
             (document) => (
               <DocumentField
@@ -553,16 +598,14 @@ export function SellerApplicationForm({
                 id={document.field}
                 label={document.label}
                 required={document.required}
-                savedName={draft.draft?.files[document.field]?.name}
-                onRemove={() => draft.removeFile(document.field)}
               />
             ),
           )}
         </FieldGroup>
       </FieldSet>
 
-      <SellerOnboardingFields deferBank />
-      <p className="text-sm"><a href="/account/profile" target="_blank" rel="noreferrer" className="underline">Verify your account email</a> before submitting. Your contact phone does not require OTP verification.</p>
+      <SellerOnboardingFields />
+      <p className="text-sm"><a href="/account/profile" target="_blank" rel="noreferrer" className="underline">Verify your account email and phone</a> before submitting. Return here and use the same verified phone.</p>
       {registrationAnswer === 'no' ? <ManagedMakerIdentityFields requirePersonalPan/> : null}
       {registrationAnswer === 'no' && managedTerms ? <ManagedMakerAgreementFields terms={managedTerms}/> : null}
       {registrationAnswer === 'yes' && registeredTerms ? <input type="hidden" name="sellerAgreementContext" value={registeredTerms.context} /> : null}
@@ -608,7 +651,6 @@ export function SellerApplicationForm({
 
       {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={catalogBaseKeys} /> : null}
       {catalog.status !== 'ready' ? <p role="alert" className="text-sm text-destructive">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}
-      {catalog.status === 'stale' || catalog.status === 'unavailable' ? <Button type="button" variant="outline" onClick={catalog.refresh}>Refresh form questions and keep my answers</Button> : null}
       <div className="flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
         <p className="flex max-w-lg items-start gap-2 text-sm leading-6 text-muted-foreground">
           <ShieldCheck
@@ -634,7 +676,6 @@ export function SellerApplicationForm({
           )}
         </Button>
       </div>
-      </fieldset>
     </form>
   );
 }
@@ -643,14 +684,10 @@ function DocumentField({
   id,
   label,
   required = false,
-  savedName,
-  onRemove,
 }: {
   id: string;
   label: string;
   required?: boolean;
-  savedName?: string;
-  onRemove?: () => void;
 }) {
   return (
     <Field>
@@ -663,10 +700,9 @@ function DocumentField({
         name={id}
         type="file"
         accept="application/pdf,image/jpeg,image/png"
-        required={required && !savedName}
+        required={required}
         className="h-11 py-2"
       />
-      {savedName ? <p className="text-sm">Saved: {savedName}. Choose a file above to replace it. <button type="button" className="underline" onClick={onRemove}>Remove saved file</button></p> : null}
     </Field>
   );
 }

@@ -188,7 +188,9 @@ void test('public seller landing reads no rates; private form and agreement are 
     await assert.rejects(render(apply),/REDIRECT:\/sell/);await assert.rejects(render(agreement),/REDIRECT:\/sell/);assert.equal(f.database.rateReads,0);
     const access=await import('../lib/db/repositories/seller-commercial-access');
     await access.startSellerRegistration(f.database as unknown as D1Database,{userId:'customer',requestId:'page-start',now:101});
-    const application=await render(apply);assert.match(application,/independent-seller 10% commission/);assert.match(application,/name="sellerAgreementContext"/);
+    const application=await render(apply);assert.match(application,/Seller registration/);assert.match(application,/All registration fields are optional/);
+    const terms=await settings.getRegisteredSellerTerms(f.database as unknown as D1Database,101);assert.equal(terms.percent,10);assert.ok(terms.context);
+    assert.match(application,/name="managedAgreementContext"/);
     const document=await render(agreement);assert.match(document,/10% commission/);assert.match(document,/commission is NPR 100/);assert.doesNotMatch(document,/9% commission/);
   } finally { f.sqlite.close(); }
 });

@@ -31,7 +31,7 @@ export function SellerBankDetailsForm() {
     <h2 className="font-heading text-2xl">Bank details for payouts</h2>
     <p className="text-sm text-muted-foreground">Add these details when you are ready. Staff must review the beneficiary and bank evidence before processing payouts. Never enter a banking password, PIN or OTP.</p>
     <output className="block">{message || (state?.status === 'verified' ? 'Your receiving account has been reviewed. Contact support if it needs changing.' : state?.status === 'pending' ? 'Your bank details are awaiting review. You can replace them below if corrections are needed.' : 'Bank details have not been added. Payouts are unavailable until review is complete.')}</output>
-    {state && state.status !== 'verified' ? <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+    {state && state.status !== 'verified' ? <form data-form-id="seller.bank-details" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
       {([['payoutBeneficiary', 'Account beneficiary name'], ['bankName', 'Bank name'], ['bankBranch', 'Bank branch'], ['bankAccountNumber', 'Bank account number']] as const).map(([name, label]) =>
         <label key={name} className="space-y-2 text-sm">{label} *<Input name={name} required minLength={name === 'bankAccountNumber' ? 4 : 3} maxLength={name === 'bankAccountNumber' ? 40 : 160} autoComplete="off" spellCheck={false} /></label>)}
       <label htmlFor="payout-bank-evidence" className="space-y-2 text-sm sm:col-span-2">Bank evidence showing the beneficiary and account *<Input id="payout-bank-evidence" name="bankVerification" type="file" required accept="application/pdf,image/jpeg,image/png" /><span>PDF, JPG or PNG, up to 5 MB. Stored privately.</span></label>

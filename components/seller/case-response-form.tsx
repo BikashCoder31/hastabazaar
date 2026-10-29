@@ -67,7 +67,7 @@ export function SellerCaseResponseForm({
         ? decoded as Record<string, unknown> : null;
       if (!saved.ok) {
         if (saved.status === 409 && result?.code === 'stale_version')
-          published.handleSubmissionResponse(saved);
+          published.handleSubmissionResponse(saved, 'stale_version');
         throw new Error(typeof result?.error === 'string' ? result.error : 'Response could not be saved.');
       }
       if (result?.ok !== true)

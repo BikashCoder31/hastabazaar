@@ -117,7 +117,7 @@ export function CustomerAftercare({
       const result = decoded !== null && typeof decoded === 'object' && !Array.isArray(decoded)
         ? decoded as Record<string, unknown> : null;
       if (response.status === 409 && result?.code === 'stale_version')
-        returnForm.handleSubmissionResponse(response);
+        returnForm.handleSubmissionResponse(response, 'stale_version');
       if (!response.ok)
         throw new Error(response.status >= 500 ? uncertainCaseMessage('return request') : typeof result?.error === 'string' ? result.error : 'Return request could not be sent.');
       if (!confirmedCase(result))
@@ -172,7 +172,7 @@ export function CustomerAftercare({
       const result = decoded !== null && typeof decoded === 'object' && !Array.isArray(decoded)
         ? decoded as Record<string, unknown> : null;
       if (response.status === 409 && result?.code === 'stale_version')
-        complaintForm.handleSubmissionResponse(response);
+        complaintForm.handleSubmissionResponse(response, 'stale_version');
       if (!response.ok)
         throw new Error(response.status >= 500 ? uncertainCaseMessage('complaint') : typeof result?.error === 'string' ? result.error : 'Complaint could not be sent.');
       if (!confirmedCase(result))

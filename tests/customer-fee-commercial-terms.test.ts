@@ -33,11 +33,12 @@ async function page(db: D1Database) {
   const state = {db};
   const compiled = await build({entryPoints:['app/sell/apply/page.tsx'],bundle:true,write:false,platform:'node',format:'cjs',
     external:['react','react/*','react-dom','react-dom/*'],plugins:[{name:'application-provider-boundaries',setup(b) {
-      b.onResolve({filter:/^(cloudflare:workers|next\/link|@\/lib\/auth\/seller-commercial-access|@\/components\/layout\/(site-header|site-footer))$/}, args=>({path:args.path,namespace:'application-fixture'}));
+      b.onResolve({filter:/^(cloudflare:workers|next\/(link|navigation)|@\/lib\/auth\/seller-commercial-access|@\/components\/layout\/(site-header|site-footer))$/}, args=>({path:args.path,namespace:'application-fixture'}));
       b.onLoad({filter:/.*/,namespace:'application-fixture'},args=>({loader:'js',contents:({
         'cloudflare:workers':'exports.env={get DB(){return __fixture.db}};',
         'next/link':"module.exports=function Link(props){return require('react').createElement('a',props)};",
-        '@/lib/auth/seller-commercial-access':"exports.requireSellerTermsPage=async()=>({identity:{email:'applicant@local.hastabazaar.test'}});",
+        'next/navigation':'exports.useRouter=()=>({refresh(){}});',
+        '@/lib/auth/seller-commercial-access':"exports.requireSellerTermsPage=async()=>({userId:'applicant',identity:{email:'applicant@local.hastabazaar.test'}});",
         '@/components/layout/site-header':'exports.SiteHeader=()=>null;',
         '@/components/layout/site-footer':'exports.SiteFooter=()=>null;',
       } as Record<string,string>)[args.path]}));
@@ -57,21 +58,17 @@ for (const [registered,managed] of [[true,false],[false,true],[true,true],[false
       if(registered)await publish(f,'independent_seller_commission_bps');
       if(managed)await publish(f,'managed_sale_linked_platform_retention_bps');
       const html=await page(f.db);
-      assert.match(html,/Start verification/);
-      if(registered) {
-        assert.match(html,/independent-seller 12% commission/);
-        assert.match(html,/name="sellerAgreementContext" value="[a-f0-9]{64}"/);
-      } else {
-        assert.match(html,/Registered Seller applications are unavailable/);
-        assert.doesNotMatch(html,/name="sellerAgreementContext"/);
-      }
-      if(!managed)assert.match(html,/Managed Maker applications are unavailable/);
-      if(managed&&!registered) {
-        assert.match(html,/<option[^>]*value="no" selected="">/);
+      assert.match(html,/Seller registration/);
+      assert.match(html,/All registration fields are optional at this stage/);
+      const terms = await loadSellerApplicationTerms(f.db, now);
+      assert.equal(terms.registered.status, registered ? 'ready' : 'unavailable');
+      assert.equal(terms.managed.status, managed ? 'ready' : 'unavailable');
+      assert.match(html,/<option[^>]*value="no" selected="">/);
+      if(managed) {
         assert.match(html,/12%/);
         assert.match(html,/name="managedAgreementContext" value="[a-f0-9]{64}"/);
-      }
-      if(!managed&&!registered)assert.match(html,/<button[^>]*type="submit"[^>]*disabled=""/);
+      } else assert.doesNotMatch(html,/name="managedAgreementContext"/);
+      assert.doesNotMatch(html,/name="acceptedTerms"[^>]*required/);
       assert.doesNotMatch(html,/independent-seller % commission/);
     } finally {f.dispose();}
   });

@@ -913,6 +913,7 @@ void test('restore commits before history refresh and keeps POST errors inside i
     await page.getByRole('button', { name: 'Confirm restore' }).focus();
     await page.keyboard.press('Enter');
     await page.getByText('Historical version restored as a new publication.').waitFor();
+    await page.getByRole('alertdialog').waitFor({ state: 'detached' });
     assert.equal(await page.getByRole('alertdialog').count(), 0);
     assert.equal(await page.locator('#gift_color-label').inputValue(), 'Original colour');
     assert.equal(await page.getByLabel('Reason for change').inputValue(), '');

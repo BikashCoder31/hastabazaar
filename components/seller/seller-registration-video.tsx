@@ -28,19 +28,22 @@ export function SellerRegistrationVideo() {
         <p lang="ne" className="text-sm leading-6 text-muted-foreground">
           खाता बनाउने, आवश्यक कागजात बुझ्ने र आवेदन पठाउने तरिका हेर्नुहोस्।
         </p>
+        <div data-media-frame="contain" className="aspect-video overflow-hidden rounded-xl bg-black">
         <video
+          data-media-mode="contain"
           ref={video}
           controls
           playsInline
           preload="none"
           poster="/guides/seller-registration-nepali.webp"
           aria-label="विक्रेता दर्ताको नेपाली भिडियो"
-          className="aspect-video w-full rounded-xl bg-black"
+          className="h-full w-full object-contain"
         >
           <source src="/guides/seller-registration-nepali.mp4" type="video/mp4" />
           <track kind="captions" src="/guides/seller-registration-nepali.vtt" srcLang="ne" label="नेपाली" />
           Your browser cannot play this video. You can download it using the link below.
         </video>
+        </div>
         <a href="/guides/seller-registration-nepali.mp4" download className="inline-flex min-h-11 items-center text-sm font-semibold text-primary underline underline-offset-4">
           <span lang="ne">भिडियो डाउनलोड गर्नुहोस्</span>
         </a>

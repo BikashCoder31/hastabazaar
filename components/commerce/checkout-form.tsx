@@ -323,7 +323,7 @@ export function CheckoutForm({
       const result = decoded !== null && typeof decoded === 'object' && !Array.isArray(decoded)
         ? decoded as Record<string, unknown> : null;
       if (response.status === 409 && result?.code === 'stale_version')
-        published.handleSubmissionResponse(response);
+        published.handleSubmissionResponse(response, 'stale_version');
       if (response.status === 409 && result?.code === 'quote_changed') setQuoteChanged(true);
       if (!response.ok)
         throw new Error(typeof result?.error === 'string' ? result.error : 'Order could not be placed.');

@@ -29,6 +29,7 @@ void test('the reviewed source inventory includes fixed security controls beside
     { path: 'components/admin/loyalty-manager.tsx', ordinal: 1, formId: 'staff.loyalty-settings' },
     { path: 'components/admin/platform-service-fee-refund.tsx', ordinal: 1, formId: 'system.platform-service-fee-refund' },
     { path: 'components/admin/promo-code-manager.tsx', ordinal: 1, formId: 'staff.promo-code' },
+    { path: 'components/admin/seller-bank-review.tsx', ordinal: 1, formId: 'staff.seller-bank-review' },
     { path: 'components/auth/assisted-recovery-form.tsx', ordinal: 1, formId: 'system.assisted-recovery-complete' },
     { path: 'components/security/backup-transfer-workspace.tsx', ordinal: 1, formId: 'system.backup-export' },
     { path: 'components/security/backup-transfer-workspace.tsx', ordinal: 2, formId: 'system.backup-key-recovery' },
@@ -39,6 +40,9 @@ void test('the reviewed source inventory includes fixed security controls beside
     { path: 'components/security/security-workspace.tsx', ordinal: 4, formIds: ['system.seller-mfa-activation', 'system.security-mfa-activation'] },
     { path: 'components/security/security-workspace.tsx', ordinal: 5, formIds: ['system.seller-recovery-codes', 'system.security-recovery-codes'] },
     { path: 'components/security/security-workspace.tsx', ordinal: 6, formIds: ['system.seller-mfa-disable', 'system.security-mfa-disable'] },
+    { path: 'components/seller/bank-details-form.tsx', ordinal: 1, formId: 'seller.bank-details' },
+    { path: 'components/seller/seller-products-description.tsx', ordinal: 1, formId: 'seller.products-description' },
+    { path: 'components/seller/seller-registration-intake-form.tsx', ordinal: 1, formId: 'seller.application' },
     { path: 'components/support/support-assistant.tsx', ordinal: 1, formId: 'system.support-assistant' },
   ] as const;
   const reviewedPaths = new Set<string>(reviewedSites.map((site) => site.path));

@@ -54,7 +54,7 @@ export function GiftCardForm({ issue = false }: { issue?: boolean }) {
         ? decoded as Record<string, unknown> : null;
       if (!response.ok) {
         if (response.status === 409 && data?.code === 'stale_version')
-          published.handleSubmissionResponse(response);
+          published.handleSubmissionResponse(response, 'stale_version');
         setError(typeof data?.error === 'string' ? data.error : 'The operation could not be completed.');
         return;
       }

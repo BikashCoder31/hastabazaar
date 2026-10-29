@@ -17,7 +17,7 @@ export function SellerBankReview({ sellerId, revision }: { sellerId: string; rev
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Reload to check the review result.'); }
     finally { setBusy(false); }
   }
-  return <form onSubmit={submit} className="space-y-3 rounded-xl border p-4">
+  return <form data-form-id="staff.seller-bank-review" onSubmit={submit} className="space-y-3 rounded-xl border p-4">
     <h3 className="font-semibold">Review submitted bank details</h3>
     <p className="text-sm">Inspect the private bank details and evidence above, independently verify the beneficiary and account, then record the verification reference.</p>
     <label htmlFor="bank-review-reference" className="block text-sm">Internal verification reference<Input id="bank-review-reference" name="reference" required minLength={4} maxLength={200} /></label>

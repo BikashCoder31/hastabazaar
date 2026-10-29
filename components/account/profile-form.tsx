@@ -59,7 +59,7 @@ export function ProfileForm(props: {
       });
       const result = await response.json().catch(() => null) as { error?: unknown; fieldId?: unknown; code?: unknown } | null;
       if (!response.ok) {
-        if (response.status === 409 && result?.code === 'stale_version') handleSubmissionResponse(response);
+        if (response.status === 409 && result?.code === 'stale_version') handleSubmissionResponse(response, 'stale_version');
         else if (response.status === 400 || response.status === 409) requestId.current = null;
         const explanation = typeof result?.error === 'string' ? result.error : 'Profile could not be saved.';
         if (typeof result?.fieldId === 'string') {

@@ -46,7 +46,7 @@ export function PrivacyRequestForm() {
         }) });
       const result = await response.json().catch(() => null) as { error?: unknown; code?: unknown; fieldId?: unknown } | null;
       if (!response.ok) {
-        if (response.status === 409 && result?.code === 'stale_version') handleSubmissionResponse(response);
+        if (response.status === 409 && result?.code === 'stale_version') handleSubmissionResponse(response, 'stale_version');
         else if (response.status === 400 || response.status === 409) requestId.current = null;
         const explanation = typeof result?.error === 'string' ? result.error : 'Request could not be submitted.';
         if (typeof result?.fieldId === 'string') {

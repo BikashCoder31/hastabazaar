@@ -27,7 +27,7 @@ export function SellerProductsDescription() {
   }
   return <section id="your-products" className="space-y-4 rounded-2xl border bg-card p-6"><h2 className="font-heading text-2xl">Your products</h2>
     <p className="text-sm text-muted-foreground">Tell customers what you make. Add individual product listings in the Products section of your dashboard.</p>
-    {values ? <form onSubmit={save} className="space-y-4">
+    {values ? <form data-form-id="seller.products-description" onSubmit={save} className="space-y-4">
       <label htmlFor="dashboard-product-types" className="block space-y-2">Product types<Input id="dashboard-product-types" name="productCategories" maxLength={500} defaultValue={values.productCategories} placeholder="For example, textiles, jewellery, pottery" /></label>
       <label htmlFor="dashboard-product-description" className="block space-y-2">Tell us about your work<Textarea id="dashboard-product-description" name="businessDescription" maxLength={1500} rows={5} defaultValue={values.businessDescription} placeholder="Describe what you make, your materials and your process." /></label>
       <Button disabled={busy} type="submit">{busy ? 'Saving…' : 'Save product details'}</Button>

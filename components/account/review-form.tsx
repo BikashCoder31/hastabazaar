@@ -69,7 +69,7 @@ export function ReviewForm({
       } | null;
       if (!response.ok || !result?.id)
       {
-        if (response.status === 409 && (result as { code?: unknown } | null)?.code === 'stale_version') handleSubmissionResponse(response);
+        if (response.status === 409 && (result as { code?: unknown } | null)?.code === 'stale_version') handleSubmissionResponse(response, 'stale_version');
         else if (response.status === 400 || response.status === 409) requestId.current = crypto.randomUUID();
         const explanation = result?.error ?? 'Review could not be submitted. Please try again.';
         if (typeof result?.fieldId === 'string') {
