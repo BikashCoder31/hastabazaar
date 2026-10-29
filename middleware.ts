@@ -1,9 +1,17 @@
 import {NextResponse, type NextRequest} from 'next/server';
-import {isDiscoverablePath, permitsPublicIndexing} from './lib/seo/discovery';
+import {isDiscoverablePath, permitsPublicIndexing, PUBLIC_ORIGIN} from './lib/seo/discovery';
 import {marketplaceSecurityHeaders} from './lib/http/security-headers';
 export function middleware(request: NextRequest) {
- const response=NextResponse.next();
  const path=request.nextUrl.pathname;
+ const origin=request.nextUrl.origin;
+ if ((request.method==='GET' || request.method==='HEAD') &&
+     (origin==='http://www.hastabazaar.com' || origin==='https://www.hastabazaar.com') &&
+     permitsPublicIndexing('http://hastabazaar.com',process.env.APP_ORIGIN) && isDiscoverablePath(path)) {
+   const canonical=new URL(PUBLIC_ORIGIN);
+   canonical.pathname=path; canonical.search=request.nextUrl.search;
+   return NextResponse.redirect(canonical,308);
+ }
+ const response=NextResponse.next();
  if(!permitsPublicIndexing(request.url, process.env.APP_ORIGIN) || !isDiscoverablePath(path) || (path==='/shop' && request.nextUrl.search)) response.headers.set('X-Robots-Tag','noindex, nofollow');
  // Public HTML also contains the signed-in navigation. Do not share-cache it.
  response.headers.set('Cache-Control','private, no-store');

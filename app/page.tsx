@@ -1,7 +1,9 @@
 export const metadata = {
   alternates: { canonical: 'https://hastabazaar.com/' },
   openGraph: {
-    title: 'Hastabazaar — Thoughtful finds for everyday life',
+    title: 'Hastabazaar — Handmade Gifts & Crafts in Nepal',
+    description: 'Discover handmade gifts, jewellery, textiles and homeware from independent makers in Nepal.',
+    siteName: 'Hastabazaar',
     url: 'https://hastabazaar.com/',
     type: 'website',
   },
@@ -51,6 +53,8 @@ import {
 } from '@/lib/db/repositories/products';
 import { CURRENT_HERO_RECOVERY_SLIDES } from '@/lib/homepage/hero-slides';
 import { CURRENT_OCCASION_RECOVERY_SLIDES } from '@/lib/homepage/occasion-slides';
+import { brandStructuredData } from '@/lib/seo/brand';
+import { safeJsonLd } from '@/lib/seo/discovery';
 
 const customerShortcuts = [
   {
@@ -184,9 +188,10 @@ export default async function Home() {
   const homepageCategories = categories;
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(brandStructuredData) }} />
       <SiteHeader />
       <main tabIndex={-1} id="main-content">
-        <h1 className="sr-only">Gifts and everyday finds from marketplace sellers</h1>
+        <h1 className="sr-only">Hastabazaar — Handmade gifts and crafts from makers in Nepal</h1>
         <HomepageHeroCarousel slides={heroSlides} />
 
         <div id="categories" className="homepage-category-wrap shell">

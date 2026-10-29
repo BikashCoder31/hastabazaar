@@ -12,6 +12,11 @@ Disallow: /checkout
 Disallow: /cart
 Disallow: /login
 Disallow: /register
+Disallow: /security
+Disallow: /recover-account
+Disallow: /forgot-password
+Disallow: /auth
+Disallow: /local-testing
 Disallow: /track
 Disallow: /api/
 Allow: /api/product-media/
