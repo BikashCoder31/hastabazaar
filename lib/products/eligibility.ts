@@ -10,7 +10,7 @@ export function publicProductVisibility(alias = 'products', now = Date.now()): s
    WHERE visible_seller.id=${alias}.seller_id AND visible_owner.status='active'
      AND visible_seller.status IN ('under_review','approved')
      AND visible_participation.participation_route='managed_maker'
-     AND visible_participation.application_stage IN ('approved_for_activation','active')
+     AND visible_participation.application_stage='approved_for_activation'
   ) AND NOT EXISTS(SELECT 1 FROM seller_restrictions r WHERE r.seller_id=${alias}.seller_id
     AND (r.mode='disabled' OR (r.mode='suspended' AND r.suspended_until>${now})))
   AND NOT EXISTS(SELECT 1 FROM product_deletions d WHERE d.product_id=${alias}.id)))`;

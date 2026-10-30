@@ -15,7 +15,7 @@
 - No simulated activation, fabricated evidence, changes to seller accounts or weakening of cart, checkout and payout checks.
 - Do not modify or seed the active local database; run tests in isolated fixtures.
 - No schema migration is required for catalogue visibility.
-- A published product appears only for an active owner with an eligible approved-for-activation or active Managed Maker, subject to restrictions and deletion checks.
+- Browse-only visibility requires an active owner and an approved-for-activation Managed Maker, subject to restrictions and deletion checks. Existing active makers retain their current-evidence checks.
 - Preserve existing registered-seller and active-maker purchasing behavior.
 
 ## Review focus
