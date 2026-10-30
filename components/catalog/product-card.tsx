@@ -59,6 +59,7 @@ export function ProductCard({
           <ArrowUpRight className="size-4 shrink-0" />
         </p>
         {product.pricePaisa ? <ProductDiscount pricePaisa={product.pricePaisa} originalPaisa={product.compareAtPricePaisa} /> : null}
+        {product.purchasable === false ? <p className="mt-1 text-sm text-muted-foreground">Not available to order yet</p> : null}
       </div>
     </Link>
   );

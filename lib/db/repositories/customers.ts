@@ -2,7 +2,7 @@ import { publicProductName } from '@/lib/products/truthful-presentation';
 import { payableOrderTotalSql } from './platform-service-fee';
 import {normalizeProvince,normalizeDistrict,districtBelongsToProvince,validWard} from '@/lib/checkout/nepal-address';
 import {normalizeNepalMobile} from '@/lib/auth/nepal-phone';
-import { publicProductEligibility } from '@/lib/products/eligibility';
+import { publicProductEligibility, publicProductVisibility } from '@/lib/products/eligibility';
 import {parseLocation} from '@/lib/delivery/validation';
 import { buildFormAnswerInsert, getFormAnswerById, type StoredFormAnswer } from './form-answers';
 import { authorizeFormAnswerRead } from '@/lib/forms/access';
@@ -57,6 +57,7 @@ export interface CustomerAddressInput {
 }
 
 export interface WishlistProductRow {
+  purchasable?: boolean;
   id: string;
   slug: string;
   nameEn: string;
@@ -102,9 +103,10 @@ export async function getPublicMakerProfile(database: D1Database, sellerId: stri
       seller_profiles.approved_at AS approvedAt, COUNT(products.id) AS productCount
      FROM seller_profiles
      LEFT JOIN seller_participation_profiles participation ON participation.seller_id = seller_profiles.id
-     LEFT JOIN products ON products.seller_id = seller_profiles.id AND ${publicProductEligibility()}
+     LEFT JOIN products ON products.seller_id = seller_profiles.id AND ${publicProductVisibility()}
      WHERE seller_profiles.id = ?
-       AND (seller_profiles.status = 'approved' OR (participation.participation_route = 'managed_maker' AND participation.application_stage = 'active'))
+       AND (seller_profiles.status = 'approved' OR (participation.participation_route = 'managed_maker' AND participation.application_stage = 'active')
+         OR (participation.participation_route = 'managed_maker' AND participation.application_stage = 'approved_for_activation' AND products.id IS NOT NULL))
        AND EXISTS(SELECT 1 FROM users maker_owner WHERE maker_owner.id=seller_profiles.user_id AND maker_owner.status='active')
      GROUP BY seller_profiles.id LIMIT 1`,
   ).bind(sellerId).first<PublicMakerProfile>()) ?? null;
@@ -112,17 +114,16 @@ export async function getPublicMakerProfile(database: D1Database, sellerId: stri
 
 export async function listPublishedProductsByMaker(database: D1Database, sellerId: string): Promise<readonly WishlistProductRow[]> {
   const result = await database.prepare(
-    `SELECT products.id, products.slug, products.name_en AS nameEn, products.name_ne AS nameNe,
+    `SELECT CASE WHEN ${publicProductEligibility()} THEN 1 ELSE 0 END AS purchasable, products.id, products.slug, products.name_en AS nameEn, products.name_ne AS nameNe,
       products.price_paisa AS pricePaisa, products.inventory_quantity AS inventoryQuantity,
       COALESCE(participation.public_name, seller_profiles.trading_name) AS tradingName, products.published_at AS savedAt,
       (SELECT product_media.id FROM product_media WHERE product_media.product_id = products.id ORDER BY product_media.sort_order LIMIT 1) AS primaryMediaId
      FROM products INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
      LEFT JOIN seller_participation_profiles participation ON participation.seller_id = seller_profiles.id
-     WHERE products.seller_id = ? AND ${publicProductEligibility()}
-       AND (seller_profiles.status = 'approved' OR (participation.participation_route = 'managed_maker' AND participation.application_stage = 'active'))
+     WHERE products.seller_id = ? AND ${publicProductVisibility()}
      ORDER BY products.published_at DESC`,
   ).bind(sellerId).all<WishlistProductRow>();
-  return result.results.map(item => ({...item,nameEn:publicProductName(item.nameEn)}));
+  return result.results.map(item => ({...item,purchasable:Number(item.purchasable) === 1,nameEn:publicProductName(item.nameEn)}));
 }
 
 export async function listCustomerOrders(database: D1Database, userId: string, limit = 100): Promise<readonly CustomerOrderRow[]> {
@@ -437,16 +438,16 @@ export async function updateCustomerProfile(database: D1Database, options: { use
 
 export async function listWishlist(database: D1Database, userId: string): Promise<readonly WishlistProductRow[]> {
   const result = await database.prepare(
-    `SELECT products.id, products.slug, products.name_en AS nameEn, products.name_ne AS nameNe,
+    `SELECT CASE WHEN ${publicProductEligibility()} THEN 1 ELSE 0 END AS purchasable, products.id, products.slug, products.name_en AS nameEn, products.name_ne AS nameNe,
       products.price_paisa AS pricePaisa, products.inventory_quantity AS inventoryQuantity,
       seller_profiles.trading_name AS tradingName, wishlist_items.created_at AS savedAt,
       (SELECT product_media.id FROM product_media WHERE product_media.product_id = products.id ORDER BY product_media.sort_order LIMIT 1) AS primaryMediaId
      FROM wishlist_items INNER JOIN products ON products.id = wishlist_items.product_id
      INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
-     WHERE wishlist_items.user_id = ? AND ${publicProductEligibility()}
+     WHERE wishlist_items.user_id = ? AND ${publicProductVisibility()}
      ORDER BY wishlist_items.created_at DESC`,
   ).bind(userId).all<WishlistProductRow>();
-  return result.results.map(item => ({...item,nameEn:publicProductName(item.nameEn)}));
+  return result.results.map(item => ({...item,purchasable:Number(item.purchasable) === 1,nameEn:publicProductName(item.nameEn)}));
 }
 
 export async function isWishlisted(database: D1Database, userId: string, productId: string): Promise<boolean> {

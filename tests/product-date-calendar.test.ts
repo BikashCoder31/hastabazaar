@@ -163,6 +163,7 @@ void test('public product dates display the Nepal calendar day on a UTC host', a
     sellerId: 'seller',
     tradingName: 'Cup maker',
     categoryName: 'Cups',
+    purchasable: false,
   };
   const stubs: Record<string, string> = {
     'cloudflare:workers': 'exports.env={};',
@@ -243,6 +244,10 @@ void test('public product dates display the Nepal calendar day on a UTC host', a
     Date: UtcHostDate,
     fixture: { product },
   });
+  product.preparationDays = 0;
+  const waitingHtml = renderToStaticMarkup(await renderedModule.exports.default({ params: Promise.resolve({ slug: product.slug }) }));
+  assert.match(waitingHtml, /Not available to order yet/);
+  assert.doesNotMatch(waitingHtml, /Ready to dispatch|Delivery estimate/);
   for (const [manufacturedAt, expiresAt, manufactureDay, expiryDay] of [
     [1792347300000, 1792433700000, '10/19/2026', '10/20/2026'],
     [473364900000, 473451300000, '1/1/1985', '1/2/1985'],

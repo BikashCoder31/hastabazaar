@@ -4,7 +4,7 @@ import { businessNotificationStatements } from '../../operations/business-notifi
 import type { FeaturedProduct } from '@/lib/catalog/featured-products';
 import { createProductSku } from '@/lib/products/submission';
 import { normalizeSellerSku, sellerSkuSql } from '../../products/stock-codes';
-import { publicProductEligibility } from '@/lib/products/eligibility';
+import { publicProductEligibility, publicProductVisibility } from '@/lib/products/eligibility';
 import { publicSellingIdentityColumns, type PublicSellingIdentity } from '../../products/selling-identity';
 import { productTransitions } from '@/lib/marketplace/workflows';
 import type { ProductStatus } from '@/lib/marketplace/types';
@@ -1020,6 +1020,8 @@ export interface ProductModerationEventRow {
 }
 
 export interface ProductReviewDetail extends ProductReviewQueueRow {
+  publiclyVisible: boolean;
+  purchasable: boolean;
   sellerSku?: string | null;
   sellerId: string;
   sellerUserId: string;
@@ -1064,6 +1066,8 @@ export async function getProductForReview(
   const product = await database
     .prepare(
       `SELECT products.id, products.seller_id AS sellerId,
+        CASE WHEN ${publicProductVisibility()} THEN 1 ELSE 0 END AS publiclyVisible,
+        CASE WHEN ${publicProductEligibility()} THEN 1 ELSE 0 END AS purchasable,
         seller_profiles.user_id AS sellerUserId, products.category_id AS categoryId, products.slug, products.sku, ${sellerSkuSql()} AS sellerSku,
         products.name_en AS nameEn, products.name_ne AS nameNe,
         products.description_en AS descriptionEn,
@@ -1144,6 +1148,8 @@ export async function getProductForReview(
   ]);
   return {
     ...product,
+    publiclyVisible: Number(product.publiclyVisible) === 1,
+    purchasable: Number(product.purchasable) === 1,
     media: mediaResult.results,
     history: historyResult.results,
   };
@@ -1381,6 +1387,7 @@ export async function reviewProduct(
 }
 
 export interface PublicProductRow extends Partial<PublicSellingIdentity> {
+  purchasable: boolean;
   sku?: string;
   sellerSku?: string | null;
   id: string;
@@ -1430,6 +1437,7 @@ export interface PublicCatalogueFilters {
 }
 
 interface HomepageProductQueryRow extends Partial<PublicSellingIdentity> {
+  purchasable?: number;
   slug: string;
   name: string;
   pricePaisa: number;
@@ -1491,6 +1499,7 @@ function homepageProduct(
     image: `/api/product-media/${row.mediaId}`,
     imageAlt: publicProductName(row.name),
     tradingName: row.tradingName,
+    purchasable: row.purchasable === undefined ? undefined : Number(row.purchasable) === 1,
     makerName: row.makerName, storeName: row.storeName, legalSellerName: row.legalSellerName, participationRoute: row.participationRoute,
     label,
   };
@@ -1595,7 +1604,7 @@ export async function listHomepageLatestProducts(
   homepageLimit(limit);
   const result = await database
     .prepare(
-      `SELECT ${publicSellingIdentityColumns()}, products.slug, products.name_en AS name,
+      `SELECT ${publicSellingIdentityColumns()}, CASE WHEN ${publicProductEligibility()} THEN 1 ELSE 0 END AS purchasable, products.slug, products.name_en AS name,
         products.price_paisa AS pricePaisa,
         products.compare_at_price_paisa AS compareAtPricePaisa,
         categories.name_en AS category, seller_profiles.trading_name AS tradingName,
@@ -1609,7 +1618,7 @@ export async function listHomepageLatestProducts(
            AND candidate_media.mime_type LIKE 'image/%'
          ORDER BY candidate_media.sort_order ASC, candidate_media.id ASC LIMIT 1
        )
-       WHERE ${publicProductEligibility()}
+       WHERE ${publicProductVisibility()}
          AND categories.is_active = 1 AND products.inventory_quantity > 0
          AND products.published_at IS NOT NULL
          AND NOT EXISTS (
@@ -1951,7 +1960,7 @@ export async function listPublishedProducts(
   }[sort];
   if (!orderBy) throw new RangeError('Catalogue sort is invalid.');
   const conditions = [
-    `${publicProductEligibility()}`,
+    `${publicProductVisibility()}`,
     `categories.is_active = 1`,
   ];
   const bindings: Array<string | number> = [];
@@ -2011,7 +2020,7 @@ export async function listPublishedProducts(
   if (sort === 'newest') bindings.push(Date.now(), Date.now());
   const result = await database
     .prepare(
-      `SELECT ${publicSellingIdentityColumns()}, products.id, products.slug, products.name_en AS nameEn,
+      `SELECT ${publicSellingIdentityColumns()}, CASE WHEN ${publicProductEligibility()} THEN 1 ELSE 0 END AS purchasable, products.id, products.slug, products.name_en AS nameEn,
         products.seller_id AS sellerId,
         products.name_ne AS nameNe, products.description_en AS descriptionEn,
         products.price_paisa AS pricePaisa,
@@ -2043,7 +2052,7 @@ export async function listPublishedProducts(
     )
     .bind(...bindings, limit, (page - 1) * limit)
     .all<PublicProductRow>();
-  return result.results.map(publicProductDetails);
+  return result.results.map(product => ({ ...publicProductDetails(product), purchasable: Number(product.purchasable) === 1 }));
 }
 
 export async function countPublishedProducts(
@@ -2051,7 +2060,7 @@ export async function countPublishedProducts(
   filters: Omit<PublicCatalogueFilters, 'limit' | 'page' | 'sort'> = {},
 ): Promise<number> {
   const conditions = [
-    `${publicProductEligibility()}`,
+    `${publicProductVisibility()}`,
     `categories.is_active = 1`,
   ];
   const bindings: Array<string | number> = [];
@@ -2107,7 +2116,7 @@ export async function getPublishedProductBySlug(
 ): Promise<(PublicProductRow & PublicSellingIdentity & { media: readonly ProductMediaRow[] }) | null> {
   const product = await database
     .prepare(
-      `SELECT ${publicSellingIdentityColumns()}, products.id, products.slug, products.sku, ${sellerSkuSql()} AS sellerSku, products.name_en AS nameEn,
+      `SELECT ${publicSellingIdentityColumns()}, CASE WHEN ${publicProductEligibility()} THEN 1 ELSE 0 END AS purchasable, products.id, products.slug, products.sku, ${sellerSkuSql()} AS sellerSku, products.name_en AS nameEn,
         products.seller_id AS sellerId,
         products.name_ne AS nameNe, products.description_en AS descriptionEn,
         products.price_paisa AS pricePaisa,
@@ -2134,7 +2143,7 @@ export async function getPublishedProductBySlug(
        FROM products
        INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
        INNER JOIN categories ON categories.id = products.category_id
-       WHERE products.slug = ? AND ${publicProductEligibility()} LIMIT 1`,
+       WHERE products.slug = ? AND ${publicProductVisibility()} LIMIT 1`,
     )
     .bind(slug)
     .first<PublicProductRow & PublicSellingIdentity>();
@@ -2147,7 +2156,7 @@ export async function getPublishedProductBySlug(
     )
     .bind(product.id)
     .all<ProductMediaRow>();
-  return { ...publicProductDetails(product), media: media.results.map(item => ({...item,altEn:publicProductName(item.altEn)})) };
+  return { ...publicProductDetails(product), purchasable: Number(product.purchasable) === 1, media: media.results.map(item => ({...item,altEn:publicProductName(item.altEn)})) };
 }
 
 export async function getUnavailablePublishedProductBySlug(
@@ -2160,7 +2169,7 @@ export async function getUnavailablePublishedProductBySlug(
        FROM products
        WHERE products.slug=? AND products.status='published'
          AND NOT EXISTS(SELECT 1 FROM product_deletions d WHERE d.product_id=products.id)
-         AND NOT (${publicProductEligibility()})
+         AND NOT (${publicProductVisibility()})
        LIMIT 1`,
     ).bind(slug).first<{ slug: string; nameEn: string }>()) ?? null
   );
@@ -2183,7 +2192,7 @@ export async function getProductMediaObject(
         `SELECT product_media.object_key AS objectKey,
           product_media.original_name AS originalName,
           product_media.mime_type AS mimeType,
-          CASE WHEN ${publicProductEligibility()} THEN 'published' ELSE 'archived' END AS productStatus, products.seller_id AS sellerId
+          CASE WHEN ${publicProductVisibility()} THEN 'published' ELSE 'archived' END AS productStatus, products.seller_id AS sellerId
          FROM product_media
          INNER JOIN products ON products.id = product_media.product_id
          WHERE product_media.id = ? LIMIT 1`,

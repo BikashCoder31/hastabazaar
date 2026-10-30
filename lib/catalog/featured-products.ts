@@ -4,6 +4,7 @@ export type FeaturedProduct = Partial<PublicSellingIdentity> & {
   name: string;
   price: string;
   pricePaisa?: number;
+  purchasable?: boolean;
   compareAtPricePaisa?: number | null;
   category: string;
   categorySlug?: string;

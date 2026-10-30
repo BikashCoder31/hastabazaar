@@ -140,9 +140,9 @@ export default async function ProductPage({
             </p>
             <ProductDiscount pricePaisa={product.pricePaisa} originalPaisa={product.compareAtPricePaisa} />
             <p
-              className={`mt-4 inline-flex rounded-full px-3 py-1.5 text-sm font-semibold ${product.inventoryQuantity > 0 ? 'bg-emerald-50 text-emerald-800' : 'bg-muted text-muted-foreground'}`}
+              className={`mt-4 inline-flex rounded-full px-3 py-1.5 text-sm font-semibold ${product.purchasable && product.inventoryQuantity > 0 ? 'bg-emerald-50 text-emerald-800' : 'bg-muted text-muted-foreground'}`}
             >
-              {product.inventoryQuantity > 0
+              {!product.purchasable ? 'Not available to order yet' : product.inventoryQuantity > 0
                 ? `${product.inventoryQuantity} available`
                 : 'Currently unavailable'}
             </p>
@@ -176,10 +176,10 @@ export default async function ProductPage({
                 </details>
               </div>
             </section>
-            <AddToCart
+            {product.purchasable ? <AddToCart
               productId={product.id}
               available={product.inventoryQuantity}
-            />
+            /> : <p className="mt-5 rounded-xl border bg-muted p-4 text-sm">This product is being prepared for sale. Ordering will be available after the required checks are complete.</p>}
             <div className="mt-3">
               <WishlistButton
                 productId={product.id}
@@ -191,9 +191,9 @@ export default async function ProductPage({
                 }
               />
             </div>
-            <section aria-label="Delivery estimate" className="mt-5 rounded-2xl border bg-secondary/30 p-4 sm:p-5">
+            {product.purchasable ? <section aria-label="Delivery estimate" className="mt-5 rounded-2xl border bg-secondary/30 p-4 sm:p-5">
               <ProductDelivery rates={deliveryRates} preparationDays={product.preparationDays} madeToOrder={Boolean(product.madeToOrder)} />
-            </section>
+            </section> : null}
             <h2 className="mt-8 border-t pt-7 font-heading text-2xl">
               Product description
             </h2>
@@ -255,10 +255,10 @@ export default async function ProductPage({
               <div>
                 <dt className="font-semibold">Preparation</dt>
                 <dd className="mt-1 text-muted-foreground">
-                  {product.madeToOrder ? 'Made to order · ' : ''}
+                  {!product.purchasable ? 'Ordering is not available yet.' : <>{product.madeToOrder ? 'Made to order · ' : ''}
                   {product.preparationDays === 0
                     ? 'Ready to dispatch'
-                    : `${product.preparationDays} day${product.preparationDays === 1 ? '' : 's'} before dispatch`}
+                    : `${product.preparationDays} day${product.preparationDays === 1 ? '' : 's'} before dispatch`}</>}
                 </dd>
               </div>
               {product.careInstructions ? (

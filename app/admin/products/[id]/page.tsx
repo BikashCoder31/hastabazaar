@@ -276,6 +276,10 @@ export default async function ProductReviewPage({
               <CardTitle>Review decision</CardTitle>
             </CardHeader>
             <CardContent>
+              {product.status === 'published' ? <p className="mb-4 rounded-xl border bg-muted p-3 text-sm">
+                {product.publiclyVisible ? 'Visible in the public catalogue.' : 'Not visible in the public catalogue because seller eligibility is incomplete or restricted.'}{' '}
+                {product.purchasable ? 'Commercial eligibility is met; stock and checkout checks still apply.' : 'Customers cannot order until commercial eligibility is met.'}
+              </p> : null}
               <ProductReviewActions
                 productId={product.id}
                 canUnpublish={staff.role === 'super_admin'}

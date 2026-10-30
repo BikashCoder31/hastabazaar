@@ -1,6 +1,6 @@
 import type { FeaturedProduct } from '@/lib/catalog/featured-products';
 import type { RecentlyViewedPolicy } from '@/lib/configuration/types';
-import { publicProductEligibility } from '@/lib/products/eligibility';
+import { publicProductEligibility, publicProductVisibility } from '@/lib/products/eligibility';
 import { publicProductName } from '@/lib/products/truthful-presentation';
 
 export type RecentlyViewedProduct = FeaturedProduct & Readonly<{
@@ -14,6 +14,7 @@ export type RecentlyViewedProduct = FeaturedProduct & Readonly<{
 type ProductRow = Readonly<{
   id: string; slug: string; name: string; pricePaisa: number;
   compareAtPricePaisa: number | null; inventoryQuantity: number;
+  purchasable: number;
   category: string; tradingName: string; mediaId: string;
   lastViewedAt: number | null;
 }>;
@@ -31,7 +32,7 @@ function asProduct(row: ProductRow): RecentlyViewedProduct {
     image: `/api/product-media/${row.mediaId}`,
     imageAlt: publicProductName(row.name),
     tradingName: row.tradingName,
-    available: Number(row.inventoryQuantity) > 0,
+    available: Number(row.purchasable) === 1 && Number(row.inventoryQuantity) > 0,
     lastViewedAt: row.lastViewedAt === null ? null : Number(row.lastViewedAt),
   };
 }
@@ -47,7 +48,7 @@ export async function recordRecentlyViewedProduct(
 ): Promise<boolean> {
   validatePolicy(options.policy);
   const eligible = await database.prepare(
-    `SELECT 1 FROM products WHERE products.id=? AND ${publicProductEligibility('products', options.now)} LIMIT 1`,
+    `SELECT 1 FROM products WHERE products.id=? AND ${publicProductVisibility('products', options.now)} LIMIT 1`,
   ).bind(options.productId).first();
   if (!eligible) return false;
   await database.batch([
@@ -71,7 +72,7 @@ export async function recordRecentlyViewedProduct(
 }
 
 function productSelect(historyJoin: string, orderBy: string, now: number): string {
-  return `SELECT products.id,products.slug,products.name_en AS name,
+  return `SELECT CASE WHEN ${publicProductEligibility('products', now)} THEN 1 ELSE 0 END AS purchasable,products.id,products.slug,products.name_en AS name,
    products.price_paisa AS pricePaisa,products.compare_at_price_paisa AS compareAtPricePaisa,
    products.inventory_quantity AS inventoryQuantity,categories.name_en AS category,
    seller_profiles.trading_name AS tradingName,media.id AS mediaId,
@@ -82,7 +83,7 @@ function productSelect(historyJoin: string, orderBy: string, now: number): strin
   INNER JOIN product_media media ON media.id=(SELECT candidate.id FROM product_media candidate
     WHERE candidate.product_id=products.id AND candidate.mime_type LIKE 'image/%'
     ORDER BY candidate.sort_order ASC,candidate.id ASC LIMIT 1)
-  WHERE ${publicProductEligibility('products', now)} AND categories.is_active=1 ${orderBy}`;
+  WHERE ${publicProductVisibility('products', now)} AND categories.is_active=1 ${orderBy}`;
 }
 
 export async function listRecentlyViewedProducts(

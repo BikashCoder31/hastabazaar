@@ -42,7 +42,7 @@ export function SavedProductGrid({
               ) : (
                 <Package className="absolute left-1/2 top-1/2 size-10 -translate-x-1/2 -translate-y-1/2 text-muted-foreground" />
               )}
-              {item.inventoryQuantity < 1 ? (
+              {item.purchasable === false || item.inventoryQuantity < 1 ? (
                 <span className="absolute left-3 top-3 rounded-full bg-background/95 px-3 py-1.5 text-xs font-semibold">
                   Currently unavailable
                 </span>

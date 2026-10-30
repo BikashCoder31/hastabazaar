@@ -110,6 +110,7 @@ export default async function MakerPage({
                   ) : null}
                 </div>
                 <h3 className="mt-4 font-semibold">{product.nameEn}</h3>
+                {product.purchasable === false ? <p className="mt-1 text-sm text-muted-foreground">Not available to order yet</p> : null}
                 <p className="mt-1 font-heading text-xl">
                   {money(product.pricePaisa)}
                 </p>

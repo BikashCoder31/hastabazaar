@@ -256,7 +256,7 @@ export default async function ShopPage({
                     </p>
                     <ProductDiscount pricePaisa={product.pricePaisa} originalPaisa={product.compareAtPricePaisa} />
                     <p className="mt-2 text-sm text-muted-foreground">
-                      {product.inventoryQuantity > 0
+                      {!product.purchasable ? 'Not available to order yet' : product.inventoryQuantity > 0
                         ? `${product.inventoryQuantity} available`
                         : 'Currently unavailable'}
                     </p>
