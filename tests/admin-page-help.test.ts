@@ -133,10 +133,10 @@ void test('page help supports keyboard dismissal, collision handling, and reduce
     await popover.waitFor();
     assert.equal(await popover.evaluate(popup => getComputedStyle(popup).animationName), 'none');
     const bounds = await popover.evaluate(popup => {
-      const { left, right } = popup.getBoundingClientRect();
-      return { left, right, width: innerWidth, scrollWidth: document.documentElement.scrollWidth };
+      const { left, right, bottom } = popup.getBoundingClientRect();
+      return { left, right, bottom, width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth };
     });
-    assert.ok(bounds.left >= 0 && bounds.right <= bounds.width && bounds.scrollWidth === bounds.width, JSON.stringify(bounds));
+    assert.deepEqual(bounds, { left: 0, right: 390, bottom: 844, width: 390, height: 844, scrollWidth: 390 });
     await page.getByRole('heading', { name: 'Overview', exact: true }).click({ position: { x: 1, y: 1 }, timeout: 5_000 });
     await popover.waitFor({ state: 'hidden' });
     assert.deepEqual(errors, []);

@@ -382,7 +382,7 @@ void test('privacy controls expose explicit actions only for an assigned approve
     assignedToCurrentStaff: true, canDecide: true,
   }));
   assert.match(eligibleDeletion, /Erase profile answers/);
-  assert.match(eligibleDeletion, /Linked seller, rider, order, and case records remain/);
+  assert.match(eligibleDeletion, /Linked seller, delivery, order, and case records remain/);
 });
 
 void test('mounted access export can start a fresh attempt after an audited-ID conflict', async () => {

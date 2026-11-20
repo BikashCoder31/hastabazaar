@@ -75,11 +75,9 @@ void test('customer, seller, and staff navigation wrap labels instead of truncat
     account,
     /grid-cols-1 gap-1 min-\[360px\]:grid-cols-2 sm:grid-cols-4/,
   );
-  // Three quick links and the More disclosure share the four-column mobile grid.
-  assert.match(seller, /<div className="[^"]*\bgrid grid-cols-4 gap-1\b[^"]*">\s*<nav aria-label="Seller quick links" className="col-span-3">\s*<ul className="grid grid-cols-3 gap-1">/);
-  assert.match(seller, /<li key=\{id\} className="min-w-0">/);
-  assert.match(seller, /<summary\b[^>]*data-mobile-shortcut="more"[^>]*>[\s\S]*?<span>More<\/span>\s*<\/summary>/);
-  assert.match(seller, /<nav aria-label="More seller pages"[^>]*>\s*<ul className="grid\b[^"]*\bgap-1\b[^"]*\bsm:grid-cols-2\b[^"]*">/);
+  assert.match(seller, /<nav aria-label="Seller quick links" className="seller-mobile-tabs">/);
+  assert.match(seller, /aria-label="Open seller menu" aria-haspopup="dialog"/);
+  assert.match(seller, /<nav aria-label="All seller pages"[^>]*>\s*<ul className="grid\b[^"]*\bgap-1\b[^"]*\bsm:grid-cols-2\b[^"]*">/);
   assert.match(seller, /<span className="whitespace-normal">\{section\.label\}<\/span>/);
   assert.doesNotMatch(seller, /className="[^"]*\b(?:truncate|whitespace-nowrap)\b[^"]*"/);
   // The searchable staff menu now collapses on mobile; labels must still wrap.

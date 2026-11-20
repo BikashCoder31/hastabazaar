@@ -7,9 +7,9 @@ Branch `admin-redesign`. The checked preview is at `http://localhost:3018`. Refe
 | Task | Owner | Status |
 | --- | --- | --- |
 | 0.1 Local Super Admin sign-in | Main agent | `8615cb6`. Implemented and verified in the checked preview at 390, 768, 1024 and 1440 px. Typecheck, lint and 16 focused checks passed. Full suite running. |
-| 0.2 Own delivery off, couriers on | Main agent | Checked the parked settings at 390, 768, 1024 and 1440 px and Today at 390 and 1440 px. Typecheck, lint and 22 focused checks passed, with one fixture-dependent skip. Full suite pending. |
-| 0.3 Phone and tablet shells | Main agent | In progress |
-| 0.4 Shared UI pieces | Main agent | Queued |
+| 0.2 Own delivery off, couriers on | Main agent | `b574059`. Checked the parked settings at 390, 768, 1024 and 1440 px and Today at 390 and 1440 px. Typecheck, lint and 22 focused checks passed, with one fixture-dependent skip. Full suite pending. |
+| 0.3 Phone and tablet shells | Main agent | Checked both workspaces at 390, 768, 1024 and 1440 px. Both menus restore focus on Escape. The phone help sheet fits edge to edge. Typecheck, lint and 49 focused checks passed. Full suite pending. |
+| 0.4 Shared UI pieces | Main agent | In progress |
 
 ### Local preview sign-in
 
@@ -54,4 +54,5 @@ The rows below reserve work. Only the assigned helper may edit its active alloca
 
 - The previous full suite had two missing historical MariaDB fixtures and one staff-access assertion failure counted with its parent test. This is the baseline for the redesign verification.
 - The parked rider links open historical views. The original bookmarked rider operations URL still works. Today reads courier balances from the existing COD reconciliation view.
+- The full test runner serializes several shared test-artifact paths. Full runs are coordinated so two suites do not overwrite the same fixtures. The first run spans changes made in Wave 0. The stale privacy wording assertion it surfaced was updated and passed on rerun.
 - Database migrations written and awaiting review: none.

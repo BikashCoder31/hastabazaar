@@ -3,11 +3,11 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   ArrowDownRight, ArrowUpRight, ChartNoAxesCombined, ChevronDown, House, Menu,
   MessageCircle, Package, Percent, ReceiptText, Search, SlidersHorizontal,
-  Store, Wallet,
+  Store, Wallet, X,
 } from 'lucide-react';
 import { adminNavigation } from '@/lib/admin/navigation';
 import { mediaObjectClass } from '@/lib/media/responsive-media';
@@ -28,48 +28,73 @@ function useAdminSections({ role, permissions }: AdminStaffAccess) {
   return { sections, active: activeAdminSection(sections, pathname, params)?.section };
 }
 
-export function AdminNavigation({ counts, ...access }: AdminStaffAccess & { counts: AdminNavigationCounts }) {
+type AdminNavProps = AdminStaffAccess & { counts: AdminNavigationCounts };
+type AdminAccountProps = { name: string; role: AdminStaffAccess['role']; signOut: string; procedure?: string };
+
+function SectionLink({ section, active, counts, onClick, compact = false }: {
+  section: ReturnType<typeof adminSections>[number];
+  active: boolean;
+  counts: AdminNavigationCounts;
+  onClick?: () => void;
+  compact?: boolean;
+}) {
+  const { id, label, tabs } = section;
+  const Icon = icons[id];
+  const count = counts[id];
+  return <Link href={tabs[0].href} aria-current={active ? 'location' : undefined}
+    className={compact ? undefined : 'admin-hub-link'} onClick={onClick}>
+    <Icon className="size-[18px] shrink-0" aria-hidden="true" />
+    <span className="min-w-0 whitespace-normal">{label}</span>
+    {count ? <span className="admin-nav-count" title={count.label} aria-label={count.value + ' ' + count.label}>{count.value}</span> : null}
+  </Link>;
+}
+
+export function AdminNavigation({ counts, ...access }: AdminNavProps) {
+  const { sections, active } = useAdminSections(access);
+  return <nav aria-label="Admin sections" className="hidden space-y-1 lg:block">
+    {sections.map(section => <SectionLink key={section.id} section={section} active={active?.id === section.id} counts={counts} />)}
+  </nav>;
+}
+
+export function AdminMobileNavigation({ counts, account, ...access }: AdminNavProps & { account: AdminAccountProps }) {
   const { sections, active } = useAdminSections(access);
   const mobile = sections.filter(section => mobileSections.includes(section.id));
-  const extra = sections.filter(section => !mobileSections.includes(section.id));
-  const more = useRef<HTMLDetailsElement>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const dialogId = useId();
+  const open = () => { if (!dialog.current?.open) dialog.current?.showModal(); };
+  const close = () => dialog.current?.close();
 
-  function sectionLink(section: typeof sections[number], mobileLink = false) {
-    const { id, label, tabs } = section;
-    const Icon = icons[id];
-    const count = counts[id];
-    return (
-      <Link key={id} href={tabs[0].href} aria-current={active?.id === id ? 'location' : undefined}
-        className={mobileLink ? undefined : 'admin-hub-link'} onClick={() => { if (more.current) more.current.open = false; }}>
-        <span className="relative shrink-0">
-          <Icon className="size-[18px]" aria-hidden="true" />
-        </span>
-        <span className="min-w-0 whitespace-normal">{label}</span>
-        {count ? <span className="admin-nav-count" title={count.label} aria-label={count.value + ' ' + count.label}>{count.value}</span> : null}
-      </Link>
-    );
-  }
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 64rem)');
+    const closeAtDesktop = () => { if (desktop.matches) dialog.current?.close(); };
+    desktop.addEventListener('change', closeAtDesktop);
+    return () => desktop.removeEventListener('change', closeAtDesktop);
+  }, []);
 
-  return (
-    <>
-      <nav aria-label="Admin sections" className="hidden space-y-1 lg:block">
-        {sections.map(section => sectionLink(section))}
-      </nav>
-      <div className="admin-mobile-nav lg:hidden">
-        <nav aria-label="Admin quick links" className="flex items-stretch justify-around">
-          {mobile.map(section => sectionLink(section, true))}
-          {extra.length ? <details ref={more}>
-            <summary><Menu className="size-[18px]" aria-hidden="true" />More</summary>
-            <div className="admin-mobile-menu">
-              <nav aria-label="More admin sections">
-                {extra.map(section => sectionLink(section, true))}
-              </nav>
-            </div>
-          </details> : null}
-        </nav>
+  return <div className="lg:hidden">
+    <button type="button" onClick={open} className="admin-toolbar-icon" aria-label="Open admin menu"
+      aria-haspopup="dialog" aria-controls={dialogId}><Menu className="size-5" aria-hidden="true" /></button>
+    <nav aria-label="Admin quick links" className="admin-mobile-nav md:hidden">
+      {mobile.map(section => <SectionLink key={section.id} section={section} active={active?.id === section.id} counts={counts} compact />)}
+      <button type="button" onClick={open} aria-haspopup="dialog" aria-controls={dialogId}
+        aria-current={active && !mobileSections.includes(active.id) ? 'location' : undefined}>
+        <Menu className="size-[18px]" aria-hidden="true" />More
+      </button>
+    </nav>
+    <dialog ref={dialog} id={dialogId} className="admin-mobile-menu" aria-labelledby={titleId}>
+      <div className="flex items-center justify-between gap-3">
+        <h2 id={titleId} className="font-heading text-2xl font-semibold">Operations</h2>
+        <button type="button" onClick={close} className="admin-toolbar-icon" aria-label="Close admin menu">
+          <X className="size-5" aria-hidden="true" />
+        </button>
       </div>
-    </>
-  );
+      <nav aria-label="All admin sections" className="my-4 grid gap-1">
+        {sections.map(section => <SectionLink key={section.id} section={section} active={active?.id === section.id} counts={counts} onClick={close} />)}
+      </nav>
+      <AdminAccountMenu {...account} />
+    </dialog>
+  </div>;
 }
 
 export function AdminBrand({ mobile = false, ...props }: AdminStaffAccess & { mobile?: boolean }) {
@@ -77,7 +102,8 @@ export function AdminBrand({ mobile = false, ...props }: AdminStaffAccess & { mo
   return <Link href={sections[0]?.tabs[0].href ?? '/admin'} className={mobile ? 'admin-brand admin-brand-mobile' : 'admin-brand'} aria-label={mobile ? undefined : 'Hastabazaar Operations'}>
     <Image src="/brand/hastabazaar-mark-96.png" alt="" width={32} height={32} sizes="32px"
       data-media-mode="contain" className={mediaObjectClass('contain', 'media-shrink size-8 shrink-0 rounded-md')} />
-    {mobile ? <span className="font-heading text-xl font-semibold">{active?.label ?? 'Operations'}</span>
+    {mobile ? <span className="min-w-0"><span className="block font-bold leading-tight">{active?.label ?? 'Hastabazaar'}</span>
+        <span className="block text-xs font-semibold text-[#ecc264]">Operations</span></span>
       : <span className="min-w-0"><span className="block font-heading text-lg font-semibold leading-none">Hastabazaar</span>
         <span className="text-xs font-semibold text-[#ecc264]">Operations</span></span>}
   </Link>;
@@ -124,8 +150,8 @@ export function AdminSearch({ role, permissions, settings }: AdminStaffAccess & 
   return <>
     <button type="button" onClick={open} className="admin-search-trigger" aria-haspopup="dialog" aria-label={label}>
       <Search className="size-4 shrink-0" aria-hidden="true" />
-      <span className="hidden min-w-0 flex-1 text-left sm:block">{label}</span>
-      <kbd className="hidden rounded border px-1.5 text-xs sm:block">⌘K</kbd>
+      <span className="hidden min-w-0 flex-1 text-left lg:block">{label}</span>
+      <kbd className="hidden rounded border px-1.5 text-xs lg:block">⌘K</kbd>
     </button>
     <dialog ref={dialog} className="admin-search-dialog" aria-labelledby="admin-search-title" onClose={() => setQuery('')}>
       <div className="flex items-center justify-between gap-2">
@@ -151,16 +177,15 @@ export function AdminSearch({ role, permissions, settings }: AdminStaffAccess & 
   </>;
 }
 
-export function AdminAccountMenu({ name, role, signOut, procedure }: { name: string; role: AdminStaffAccess['role']; signOut: string; procedure?: string }) {
+export function AdminAccountMenu({ name, role, signOut, procedure }: AdminAccountProps) {
   const initials = name.trim().split(/\s+/).slice(0, 2).map(part => Array.from(part)[0]).join('').toUpperCase();
   return <details className="admin-account group">
     <summary>
       <span className="admin-avatar" aria-hidden="true">{initials}</span>
-      <span className="sr-only lg:not-sr-only lg:min-w-0 lg:flex-1"><strong className="block font-semibold">{name}</strong><span className="block opacity-75">{role === 'super_admin' ? 'Super Admin' : 'Admin'}</span></span>
-      <ChevronDown className="hidden size-4 shrink-0 group-open:rotate-180 lg:block" aria-hidden="true" />
+      <span className="min-w-0 flex-1"><strong className="block font-semibold">{name}</strong><span className="block opacity-75">{role === 'super_admin' ? 'Super Admin' : 'Admin'}</span></span>
+      <ChevronDown className="size-4 shrink-0 group-open:rotate-180" aria-hidden="true" />
     </summary>
     <div className="admin-account-panel">
-      <p className="border-b p-3 font-semibold lg:hidden">{name}<span className="block text-xs font-normal">{role === 'super_admin' ? 'Super Admin' : 'Admin'}</span></p>
       <Link href="/shop">Open marketplace</Link>
       {procedure ? <Link href={procedure}>Staff procedure</Link> : null}
       <form data-form-id="identity.logout" method="POST" action={signOut} target="_top">

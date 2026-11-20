@@ -41,6 +41,7 @@ void test('the reviewed source inventory includes fixed security controls beside
     { path: 'components/security/security-workspace.tsx', ordinal: 5, formIds: ['system.seller-recovery-codes', 'system.security-recovery-codes'] },
     { path: 'components/security/security-workspace.tsx', ordinal: 6, formIds: ['system.seller-mfa-disable', 'system.security-mfa-disable'] },
     { path: 'components/seller/bank-details-form.tsx', ordinal: 1, formId: 'seller.bank-details' },
+    { path: 'components/seller/seller-navigation.tsx', ordinal: 1, formId: 'identity.logout' },
     { path: 'components/seller/seller-products-description.tsx', ordinal: 1, formId: 'seller.products-description' },
     { path: 'components/seller/seller-registration-intake-form.tsx', ordinal: 1, formId: 'seller.application' },
     { path: 'components/support/support-assistant.tsx', ordinal: 1, formId: 'system.support-assistant' },

@@ -45,7 +45,7 @@ void test('program history waits for its client controls and retains mounted dra
   assert.match(html, /Keep these unsaved notes/);
 });
 
-void test('mobile navigation uses Home Products Orders More and retains the secondary pages', async () => {
+void test('mobile navigation shows daily links and retains all pages in the menu', async () => {
   const ui = await import('../components/seller/seller-navigation');
   assert.ok(
     'SellerNavigationView' in ui,
@@ -58,21 +58,26 @@ void test('mobile navigation uses Home Products Orders More and retains the seco
       sellerId: 'owned-shop',
       canReplyToReviews:true,
       publicShopHref: '/makers/owned-shop',
+      addProductHref: '/seller/products/new',
+      openOrderCount: 3,
     }),
   );
   const quick = html.match(
     /<nav aria-label="Seller quick links"[\s\S]*?<\/nav>/,
   )?.[0];
   assert.ok(quick, 'Daily navigation must be identified');
-  assert.equal((quick.match(/<a /g) ?? []).length, 3);
-  assert.equal((html.match(/data-mobile-shortcut=/g) ?? []).length, 4);
+  assert.equal((quick.match(/<a /g) ?? []).length, 5);
+  assert.equal((html.match(/data-mobile-shortcut=/g) ?? []).length, 6);
+  assert.match(quick, /aria-label="3 orders to prepare"/);
   for (const href of [
     '/seller',
     '/seller/orders',
     '/seller/products',
+    '/seller/products/new',
+    '/seller/finance',
   ])
     assert.ok(quick.includes(`href="${href}"`));
-  assert.match(html, /<details[\s\S]*More[\s\S]*Shipping/);
+  assert.match(html, /<dialog[\s\S]*All seller pages[\s\S]*Shipping/);
   assert.match(html, /href="\/seller\/shipping"[^>]*aria-current="page"/);
   for (const href of [
     '/seller/reviews',

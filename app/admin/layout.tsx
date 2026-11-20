@@ -3,7 +3,7 @@ import { headers } from 'next/headers';
 import { ArrowUpRight } from 'lucide-react';
 import { env } from 'cloudflare:workers';
 import { signOutPath } from '@/app/auth';
-import { AdminAccountMenu, AdminBrand, AdminNavigation, AdminSearch } from '@/components/admin/admin-navigation';
+import { AdminAccountMenu, AdminBrand, AdminMobileNavigation, AdminNavigation, AdminSearch } from '@/components/admin/admin-navigation';
 import { AdminSectionTabs } from '@/components/admin/admin-section-tabs';
 import { readAdminSidebarCounts } from '@/components/admin/admin-review-data';
 import { AdminTaskContext } from '@/components/admin/admin-task-context';
@@ -50,9 +50,9 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
           <header className="admin-toolbar">
             <AdminBrand {...access} mobile />
             <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-3 lg:mr-auto lg:ml-0 lg:flex-1"><AdminSearch {...access} settings={settings} /></div>
-            {local ? <span className="hidden rounded-full bg-[#f7e7be] px-3 py-1 text-xs font-semibold text-[#744a0b] md:inline">Local staging · payments simulated</span> : null}
-            <NotificationBell workspace="staff" accountId={staff.id} />
-            <div className="lg:hidden"><AdminAccountMenu {...account} /></div>
+            {local ? <span className="hidden rounded-full bg-[#f7e7be] px-3 py-1 text-xs font-semibold text-[#744a0b] lg:inline">Local staging · payments simulated</span> : null}
+            <div className="admin-toolbar-notifications"><NotificationBell workspace="staff" accountId={staff.id} /></div>
+            <AdminMobileNavigation {...access} counts={counts} account={account} />
           </header>
           <AdminSectionTabs {...access} />
           <main

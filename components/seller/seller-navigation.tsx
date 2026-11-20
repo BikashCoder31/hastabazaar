@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import type {KeyboardEvent} from 'react';
-import { Banknote, Bell, ChevronDown, FileText, LayoutDashboard, ReceiptText, ShieldCheck, ShoppingBag, Store, UserRound, type LucideIcon } from 'lucide-react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { Banknote, Bell, FileText, House, LayoutDashboard, Menu, Package, Plus, ReceiptText, ShieldCheck, ShoppingBag, Store, UserRound, Wallet, X, type LucideIcon } from 'lucide-react';
 import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider } from '@/components/ui/sidebar';
 import { sellerWorkspaceSection, sellerWorkspaceSections, type SellerWorkspaceSection } from '@/lib/sellers/workspace-navigation';
 
@@ -11,61 +11,110 @@ const icons: Record<SellerWorkspaceSection['icon'], LucideIcon> = {
   home: LayoutDashboard, shop: Store, documents: FileText, products: ShoppingBag,
   orders: ReceiptText, earnings: Banknote, requests: Bell,
 };
-const primary = ['home', 'products', 'orders'] as const;
-const shortLabels = { home: 'Home', products: 'Products', orders: 'Orders' };
+const dailyLinks = [
+  { id: 'home', label: 'Today', icon: House },
+  { id: 'orders', label: 'Orders', icon: ReceiptText },
+  { id: 'add', label: 'Add product', icon: Plus },
+  { id: 'products', label: 'Products', icon: Package },
+  { id: 'earnings', label: 'Earnings', icon: Wallet },
+] as const;
 const isCurrent = (pathname: string, href: string) => pathname === href || (href !== '/seller' && pathname.startsWith(href + '/'));
-function closeMore(event:KeyboardEvent<HTMLElement>){
-  if(event.key!=='Escape')return;
-  const details=event.currentTarget.closest<HTMLDetailsElement>('details');
-  if(details){details.open=false;details.querySelector('summary')?.focus();}
-}
-type NavigationProps = { tradingName: string; sellerId: string | null; canReplyToReviews:boolean; publicShopHref?: string | null; previewShopHref?: string | null };
+type NavigationProps = {
+  tradingName: string;
+  sellerId: string | null;
+  canReplyToReviews: boolean;
+  publicShopHref?: string | null;
+  previewShopHref?: string | null;
+  signOut?: string;
+  addProductHref?: string;
+  openOrderCount?: number | null;
+  notifications?: ReactNode;
+  brand?: ReactNode;
+  mode?: 'mobile' | 'desktop';
+};
 const linkClass = 'flex min-h-11 items-center gap-2 rounded-xl px-3 py-3 text-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary aria-[current=page]:bg-secondary aria-[current=page]:font-semibold aria-[current=page]:text-primary';
 
 export function SellerNavigation(props: NavigationProps) {
   return <SellerNavigationView {...props} pathname={usePathname()} />;
 }
 
-export function SellerNavigationView({ pathname, tradingName, sellerId, canReplyToReviews, publicShopHref, previewShopHref }: NavigationProps & { pathname: string }) {
+export function SellerNavigationView({
+  pathname, tradingName, sellerId, canReplyToReviews, publicShopHref, previewShopHref,
+  signOut, addProductHref, openOrderCount, notifications, brand, mode,
+}: NavigationProps & { pathname: string }) {
   const active = sellerWorkspaceSection(pathname);
-  const sections=sellerWorkspaceSections.map(section=>({...section,links:section.links.filter(link=>canReplyToReviews||link.href!=='/seller/reviews')}));
-  const secondary = sections.flatMap(section => primary.some(id => id === section.id)
-    ? section.links : [{ href: section.href, label: section.label }, ...section.links]);
+  const sections = sellerWorkspaceSections.map(section => ({
+    ...section,
+    links: section.links.filter(link => canReplyToReviews || link.href !== '/seller/reviews'),
+  }));
   const publicHref = publicShopHref && /^\/makers\/[a-zA-Z0-9_-]+$/.test(publicShopHref) ? publicShopHref : null;
   const previewHref = previewShopHref?.startsWith('/seller/') ? previewShopHref : null;
-  const shopLink = publicHref ? <Link href={publicHref} onKeyDown={closeMore} className="section-link">View public shop →</Link>
-    : previewHref ? <Link href={previewHref} onKeyDown={closeMore} className="section-link">Private shop preview →</Link>
+  const shopLink = publicHref ? <Link href={publicHref} className="section-link">View public shop →</Link>
+    : previewHref ? <Link href={previewHref} className="section-link">Private shop preview →</Link>
     : <p className="text-xs text-muted-foreground">Your shop is not public yet.</p>;
-  const reviewHelp=!canReplyToReviews?<p className="text-xs text-muted-foreground">Public customer-review replies are not available for this account. <Link href="/seller/requests" onKeyDown={closeMore} className="inline-flex min-h-11 items-center font-semibold underline">Ask for help in Requests &amp; help</Link>.</p>:null;
+  const reviewHelp = !canReplyToReviews ? <p className="text-xs text-muted-foreground">Public customer-review replies are not available for this account. <Link href="/seller/requests" className="inline-flex min-h-11 items-center font-semibold underline">Ask for help in Requests &amp; help</Link>.</p> : null;
+  const productHref = addProductHref ?? (sellerId ? '/sell/application/products/new' : '/seller/registration');
+  const dialog = useRef<HTMLDialogElement>(null);
+  const dialogId = useId();
+  const titleId = useId();
+  const close = () => dialog.current?.close();
+  useEffect(() => {
+    if (mode === 'desktop') return;
+    const desktop = window.matchMedia('(min-width: 64rem)');
+    const closeAtDesktop = () => { if (desktop.matches) dialog.current?.close(); };
+    desktop.addEventListener('change', closeAtDesktop);
+    return () => desktop.removeEventListener('change', closeAtDesktop);
+  }, [mode]);
   return <>
-    <div className="relative grid grid-cols-4 gap-1 rounded-2xl border bg-card p-2 xl:hidden">
-      <nav aria-label="Seller quick links" className="col-span-3">
-        <ul className="grid grid-cols-3 gap-1">{primary.map(id => {
-          const section = sections.find(item => item.id === id)!;
-          const Icon = icons[section.icon];
-          return <li key={id} className="min-w-0"><Link href={section.href} data-mobile-shortcut={id}
-            aria-current={active?.id === id ? 'page' : undefined}
-            className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${active?.id === id ? 'bg-secondary text-primary' : 'text-muted-foreground hover:bg-muted'}`}>
-            <Icon aria-hidden="true" className="size-5 shrink-0" /><span>{shortLabels[id]}</span>
-          </Link></li>;
-        })}</ul>
+    {mode !== 'desktop' ? <div className="seller-mobile-shell lg:hidden">
+      <div className="seller-mobile-toolbar">
+        <Link href="/seller" className="flex min-h-11 min-w-0 flex-1 items-center gap-2">
+          {brand ?? <Store className="size-7 shrink-0 rounded-md bg-secondary p-1.5" aria-hidden="true" />}
+          <span className="min-w-0"><strong className="block break-words leading-tight">{tradingName || 'Your shop'}</strong>
+            <span className="block text-xs font-semibold text-[#A8232E]">Seller Studio</span></span>
+        </Link>
+        {notifications}
+        <button type="button" data-mobile-shortcut="menu" aria-label="Open seller menu" aria-haspopup="dialog"
+          aria-controls={dialogId} onClick={() => dialog.current?.showModal()} className="grid size-11 shrink-0 place-items-center rounded-lg">
+          <Menu className="size-5" aria-hidden="true" />
+        </button>
+      </div>
+      <nav aria-label="Seller quick links" className="seller-mobile-tabs">
+        {dailyLinks.map(({ id, label, icon: Icon }) => {
+          const section = sections.find(item => item.id === id);
+          return <Link key={id} href={section?.href ?? productHref} data-mobile-shortcut={id}
+            aria-label={id === 'add' ? label : undefined}
+            aria-current={active?.id === id ? 'page' : undefined}>
+            <Icon className="size-5 shrink-0" aria-hidden="true" />
+            {id === 'add' ? <span className="sr-only">{label}</span> : <span>{label}</span>}
+            {id === 'orders' && openOrderCount ? <span className="seller-mobile-count" aria-label={openOrderCount + ' orders to prepare'}>{openOrderCount}</span> : null}
+          </Link>;
+        })}
       </nav>
-      <details key={pathname} className="group">
-        <summary onKeyDown={closeMore} data-mobile-shortcut="more" className="flex min-h-14 cursor-pointer list-none flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
-          <ChevronDown aria-hidden="true" className="size-5 group-open:rotate-180" /><span>More</span>
-        </summary>
-        <nav aria-label="More seller pages" className="absolute inset-x-0 top-full z-30 mt-2 rounded-xl border bg-card p-2 shadow-lg">
-          <ul className="grid max-h-[65dvh] gap-1 overflow-y-auto sm:grid-cols-2">{secondary.map(link => <li key={link.href}>
-            <Link href={link.href} onKeyDown={closeMore} aria-current={isCurrent(pathname, link.href) ? 'page' : undefined} className={linkClass}>{link.label}</Link>
-          </li>)}
-            <li className="px-3 py-3">{shopLink}{reviewHelp}</li>
-            <li><Link href="/account" prefetch={false} onKeyDown={closeMore} className={linkClass}><UserRound aria-hidden="true" className="size-4" />Customer dashboard</Link></li>
-            <li><Link href="/security?return_to=%2Fseller" onKeyDown={closeMore} className={linkClass}><ShieldCheck aria-hidden="true" className="size-4" />Account security</Link></li>
+      <dialog ref={dialog} id={dialogId} className="seller-mobile-menu" aria-labelledby={titleId}>
+        <div className="flex items-center justify-between gap-2">
+          <h2 id={titleId} className="font-heading text-2xl font-semibold">Seller Studio</h2>
+          <button type="button" aria-label="Close seller menu" onClick={close} className="grid size-11 shrink-0 place-items-center rounded-lg">
+            <X className="size-5" aria-hidden="true" />
+          </button>
+        </div>
+        <nav aria-label="All seller pages" className="py-3">
+          <ul className="grid gap-1 sm:grid-cols-2">
+            {sections.flatMap(section => [{ href: section.href, label: section.id === 'home' ? 'Today' : section.label }, ...section.links]).map(link =>
+              <li key={link.href}><Link href={link.href} onClick={close} aria-current={isCurrent(pathname, link.href) ? 'page' : undefined} className={linkClass}>{link.label}</Link></li>)}
+            <li><Link href={productHref} onClick={close} className={linkClass}><Plus aria-hidden="true" className="size-4" />Add product</Link></li>
+            <li><Link href="/account" prefetch={false} onClick={close} className={linkClass}><UserRound aria-hidden="true" className="size-4" />Customer dashboard</Link></li>
+            <li><Link href="/security?return_to=%2Fseller" onClick={close} className={linkClass}><ShieldCheck aria-hidden="true" className="size-4" />Account security</Link></li>
+            <li><Link href="/shop" onClick={close} className={linkClass}>Marketplace</Link></li>
+            <li className="min-w-0 px-3 py-2">{shopLink}{reviewHelp}</li>
           </ul>
         </nav>
-      </details>
-    </div>
-    <SidebarProvider className="hidden min-h-0 min-w-0 xl:flex">
+        {signOut ? <form data-form-id="identity.logout" method="POST" action={signOut} target="_top" className="border-t pt-2">
+          <button type="submit" className={linkClass}>Sign out</button>
+        </form> : null}
+      </dialog>
+    </div> : null}
+    {mode !== 'mobile' ? <SidebarProvider className="hidden min-h-0 min-w-0 lg:flex">
       <Sidebar collapsible="none" className="h-auto w-full rounded-2xl border bg-card text-foreground">
         <SidebarHeader className="border-b p-5">
           <span className="mb-2 flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Store aria-hidden="true" className="size-5" /></span>
@@ -73,7 +122,7 @@ export function SellerNavigationView({ pathname, tradingName, sellerId, canReply
           {sellerId ? <p className="break-all text-xs text-muted-foreground">Seller reference: {sellerId}</p> : null}
           {shopLink}{reviewHelp}
         </SidebarHeader>
-        <SidebarContent className="p-2 xl:max-h-[calc(100dvh-17rem)]">
+        <SidebarContent className="p-2 lg:max-h-[calc(100dvh-17rem)]">
           <nav aria-label="Seller workspace"><SidebarMenu>{sections.map(section => {
             const Icon = icons[section.icon];
             return <SidebarMenuItem key={section.id}>
@@ -93,6 +142,6 @@ export function SellerNavigationView({ pathname, tradingName, sellerId, canReply
           </nav>
         </SidebarContent>
       </Sidebar>
-    </SidebarProvider>
+    </SidebarProvider> : null}
   </>;
 }

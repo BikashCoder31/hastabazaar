@@ -20,6 +20,7 @@ export function PageHelp() {
         <span aria-hidden="true">?</span>
       </Popover.Trigger>
       <Popover.Portal>
+        <Popover.Backdrop className="admin-page-help-backdrop" />
         <Popover.Positioner align="start" sideOffset={6} collisionPadding={12} className="admin-page-help-positioner">
           <Popover.Popup className="admin-page-help-popup">
             <Popover.Title className="admin-page-help-heading">{help.title}</Popover.Title>

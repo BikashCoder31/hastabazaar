@@ -58,8 +58,14 @@ void test('bell preserves input and unread count through an outage, shares confi
     await panel.getByText('Older unread notice').waitFor();
     await panel.getByRole('button', { name: 'Close', exact: true }).focus(); await page.keyboard.press('Escape');
     assert.equal(await page.getByRole('button', { name: 'Notifications: 100 unread', exact: true }).evaluate((element: Element) => element === document.activeElement), true);
-    const more = page.locator('summary[data-mobile-shortcut="more"]');
-    await more.focus(); await page.keyboard.press('Enter'); assert.equal(await more.evaluate((element: Element) => element.parentElement?.hasAttribute('open')), true);
-    await page.keyboard.press('Escape'); assert.equal(await more.evaluate((element: Element) => element.parentElement?.hasAttribute('open')), false);
+    const menu = page.getByRole('button', { name: 'Open seller menu' });
+    const dialog = page.getByRole('dialog', { name: 'Seller Studio' });
+    await menu.focus();
+    await page.keyboard.press('Enter');
+    await dialog.waitFor();
+    assert.equal(await dialog.getByRole('link', { name: 'Earnings & bank' }).count(), 1);
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'hidden' });
+    assert.equal(await menu.evaluate((element: Element) => element === document.activeElement), true);
   } finally { await browser.close(); }
 });
