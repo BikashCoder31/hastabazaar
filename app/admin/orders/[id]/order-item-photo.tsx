@@ -10,7 +10,7 @@ export function OrderItemPhoto({ mediaId }: { mediaId?: string | null }) {
   return (
     <span className="grid size-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-[#F3EDE2] text-[#675B4E] sm:size-[72px]">
       {mediaId && !failed ? (
-        <Image
+        <Image data-media-mode="contain"
           src={'/api/product-media/' + encodeURIComponent(mediaId)}
           alt=""
           unoptimized

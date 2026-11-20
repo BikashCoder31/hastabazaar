@@ -7,7 +7,7 @@ import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { createElement, type ComponentType, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { stubFixtureLink } from './helpers/browser-fixture-link';
+import { stubFixtureImage, stubFixtureLink } from './helpers/browser-fixture-link';
 
 async function load(file: string, append = '', stubs: Record<string, string> = {}) {
   const compiled = await build({
@@ -16,6 +16,7 @@ async function load(file: string, append = '', stubs: Record<string, string> = {
     external: ['react', 'react/*', 'react-dom', 'react-dom/*'],
     plugins: [{ name: 'return-fixture', setup(b) {
       stubFixtureLink(b);
+      stubFixtureImage(b);
       b.onResolve({ filter: /.*/ }, ({ path }) => path in stubs ? { path, namespace: 'return-stub' } : undefined);
       b.onLoad({ filter: /.*/, namespace: 'return-stub' }, ({ path }) => ({ contents: stubs[path], loader: 'js' }));
     } }],
@@ -31,7 +32,7 @@ void test('return detail identifies the original order delivery snapshot without
     'cloudflare:workers': 'exports.env={};',
     'next/navigation': 'exports.notFound=()=>{throw new Error("Unexpected notFound")};',
     '@/lib/auth/staff': 'exports.requireStaffPage=async()=>({id:"staff-test",role:"admin",permissions:["refund.approve.standard"]});',
-    '@/lib/db/d1': 'exports.requireDatabase=()=>({});',
+    '@/lib/db/d1': 'exports.requireDatabase=()=>({prepare(sql){if(!sql.includes("JOIN product_media"))throw new Error("Unexpected read");return {bind(){return {first:async()=>null}}}}});',
     '@/lib/db/repositories/returns': `exports.getOperationsReturnDetail=async()=>(${JSON.stringify(item)});`,
     '@/lib/returns/courier-expenses': 'exports.recordedReturnCourierExpenses=async()=>({needsPricingReconciliation:true,expenses:[{id:"invoice",direction:"outbound",amountPaisa:12000,evidenceReference:"outbound-invoice",claimReference:null}]});',
     '@/lib/db/repositories/form-answers': 'exports.listFormAnswersForSubjectPage=async()=>({answers:[],next:null});',

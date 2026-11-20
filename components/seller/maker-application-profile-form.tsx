@@ -98,7 +98,7 @@ export function MakerApplicationProfileForm({ profile, managedTerms, editableAt 
   }
   return <form data-form-id="seller.maker-profile" onSubmit={(event) => void submit(event)} className="mt-5 grid gap-4 rounded-2xl border bg-card p-6 sm:grid-cols-2">
       <FormGuide formId="seller.maker-profile" />
-    <p className="text-sm sm:col-span-2">{locked ? `Next editable: ${new Date(editableAt).toLocaleString('en-NP', { timeZone: 'Asia/Kathmandu' })} (Nepal time).` : 'After you save, this public profile cannot be changed again for 7 days. Optional fields can be left empty.'}</p>
+    <p className="text-sm sm:col-span-2">{locked ? `Next editable: ${new Date(editableAt).toLocaleString('en-NP', { timeZone: 'Asia/Kathmandu' })} (Nepal time).` : 'After you save, this profile shows when you can edit it again. Optional fields can be left empty.'}</p>
     <fieldset disabled={locked} className="contents">
 
     <Field name="publicName" label={fieldDisplay(catalog.config, 'publicName')?.label ?? 'Public maker/shop name'}

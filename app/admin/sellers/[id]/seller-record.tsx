@@ -168,7 +168,7 @@ export function SellerRecord(props: RecordProps) {
       <header className="flex flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex min-w-0 items-center gap-4">
           <span className="relative grid size-16 shrink-0 place-items-center overflow-hidden rounded-[14px] border border-[#E4D7C3] bg-[#EEE5D5] text-lg font-bold">
-            {avatar ? <Image src={avatar} alt="" width={64} height={64} className="size-full object-cover" unoptimized /> : <span aria-hidden="true">{sellerInitials(name)}</span>}
+            {avatar ? <Image data-media-mode="cover" src={avatar} alt="" width={64} height={64} className="size-full object-cover" unoptimized /> : <span aria-hidden="true">{sellerInitials(name)}</span>}
           </span>
           <div className="min-w-0">
             <AdminPageTitle><h1 className="break-words font-heading text-[1.65rem] leading-tight tracking-tight xl:text-[2rem]">{name}</h1></AdminPageTitle>

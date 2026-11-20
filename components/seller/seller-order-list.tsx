@@ -32,7 +32,7 @@ export function SellerOrderList({ orders, stage, selectedId, search }: {
         <Link href={`/seller/orders?${params}#order-details`} aria-current={selectedId === order.id ? 'true' : undefined}
           className={`grid min-h-11 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-2xl border bg-card p-3 hover:border-[#14213D] md:gap-4 md:p-4 ${selectedId === order.id ? 'ring-1 ring-inset ring-[#14213D]' : ''}`}>
           <div className="flex min-w-0 items-center gap-3">
-            {first?.mediaId ? <Image src={`/api/product-media/${encodeURIComponent(first.mediaId)}`} alt="" width={56} height={56}
+            {first?.mediaId ? <Image data-media-mode="contain" src={`/api/product-media/${encodeURIComponent(first.mediaId)}`} alt="" width={56} height={56}
               unoptimized className="size-11 shrink-0 rounded-lg border object-contain md:size-14" /> : null}
             <div className="min-w-0">
               <span className="block break-words font-mono text-xs font-semibold text-muted-foreground">{order.orderNumber}</span>

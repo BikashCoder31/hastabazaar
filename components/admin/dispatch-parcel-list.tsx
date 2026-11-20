@@ -25,7 +25,7 @@ function ParcelPhoto({ mediaId }: { mediaId: string | null }) {
   return (
     <span className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-lg border border-[#E4DACA] bg-white text-[#675B4E]">
       {mediaId && !failed ? (
-        <Image
+        <Image data-media-mode="contain"
           src={'/api/product-media/' + encodeURIComponent(mediaId)}
           alt=""
           width={44}

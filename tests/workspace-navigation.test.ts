@@ -45,7 +45,12 @@ void test('all eight approved admin areas retain existing destinations and curre
     'Finance & payments', 'Fees, programs & promotions', 'Team & business policies', 'System health & records',
   ]);
   const superAdmin = adminNavigation('super_admin');
-  assert.equal(new Set(superAdmin.map(link => link.href)).size, 43);
+  const newDestinations = ['/admin/not-in-use', '/admin/orders/dispatch', '/admin/customers', '/admin/products/intakes',
+    '/admin/payments/refunds', '/admin/payments/recoveries', '/admin/payouts/run', '/admin/offers',
+    '/admin/system-health/incidents'];
+  const paths = new Set(superAdmin.map(link => link.href));
+  assert.equal(paths.size, 43 + newDestinations.length);
+  for (const path of newDestinations) assert.ok(paths.has(path), path);
   assert.deepEqual(new Set(superAdmin.map(link => link.group)), new Set(adminNavigationGroups));
   assert.equal(superAdmin.find(link => link.href === '/admin/commission')?.group, 'Fees, programs & promotions');
   assert.equal(superAdmin.find(link => link.href === '/admin/payouts')?.group, 'Finance & payments');
@@ -64,12 +69,17 @@ void test('Phase 1 exposes nine ordered hubs and preserves every original menu d
   ]);
   assert.deepEqual(sections.map(({ tabs }) => tabs[0].href), [
     '/admin', '/admin/orders', '/admin/cases', '/admin/sellers?reviewType=seller_application',
-    '/admin/products', '/admin/payments', '/admin/promo-codes', '/admin/analytics', '/admin/team',
+    '/admin/products', '/admin/payments', '/admin/offers', '/admin/analytics', '/admin/team',
   ]);
   const destinations = new Set(sections.flatMap(({ tabs }) => tabs.flatMap(({ href, related, routes }) =>
     [href, ...related.map(link => link.href), ...routes].map(value => value.split(/[?#]/)[0]))));
   for (const { href } of adminNavigation('super_admin')) assert.ok(destinations.has(href), href);
   assert.equal(activeAdminSection(sections, '/admin/products/publications/p-1')?.tab.label, 'Publishing');
+  assert.equal(activeAdminSection(sections, '/admin/governance')?.section.label, 'Settings');
+  assert.equal(activeAdminSection(sections, '/admin/backup-transfer')?.tab.label, 'System health & backups');
+  assert.equal(activeAdminSection(adminSections('admin', ['system.incidents.manage']), '/admin/system-health/incidents')?.tab.label, 'Incidents');
+  assert.equal(activeAdminSection(sections, '/admin/payments/recoveries/case-1')?.tab.label, 'Refunds & recoveries');
+  assert.equal(activeAdminSection(sections, '/admin/sellers/seller-1')?.tab.label, 'All sellers');
   assert.equal(activeAdminSection(sections, '/admin/seller-protected-changes/c-1')?.tab.label, 'Bank & owner changes');
   assert.equal(activeAdminSection(sections, '/admin/notifications', new URLSearchParams('view=money-notices'))?.section.label, 'Money');
   assert.equal(activeAdminSection(sections, '/admin/notifications', new URLSearchParams('view=reminders'))?.tab.label, 'Reminders');
@@ -78,7 +88,8 @@ void test('Phase 1 exposes nine ordered hubs and preserves every original menu d
 
 void test('delegated staff land on a permitted tab and cannot discover restricted tabs or related links', () => {
   const sections = adminSections('admin', ['product.publish', 'payout.prepare', 'seller.application.review', 'support.manage']);
-  assert.equal(sections.find(({ id }) => id === 'catalog')?.tabs[0].href, '/admin/products/publications');
+  assert.equal(sections.find(({ id }) => id === 'catalog')?.tabs[0].href, '/admin/products/intakes');
+  assert.equal(adminSections('admin', ['product.publish']).find(({ id }) => id === 'catalog')?.tabs[0].href, '/admin/products/publications');
   assert.equal(sections.find(({ id }) => id === 'money')?.tabs[0].href, '/admin/payouts');
   assert.ok(sections.find(({ id }) => id === 'settings')?.tabs.some(({ href }) => href === '/admin/legal-policies/active'));
   const tabs = sections.flatMap(({ tabs }) => tabs);

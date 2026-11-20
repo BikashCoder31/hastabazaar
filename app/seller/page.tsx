@@ -180,7 +180,7 @@ export default async function SellerDashboardPage() {
         </div>
         {lowStock?.length ? <ul className="divide-y">{lowStock.map(({ product, quantity, offerManaged }) => <li key={product.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
           <div className="flex min-w-0 items-center gap-2">
-            {product.primaryMediaId ? <Image src={`/api/product-media/${encodeURIComponent(product.primaryMediaId)}`} alt="" width={38} height={38} unoptimized className="size-9 shrink-0 rounded-md border object-contain" /> : <Package className="size-8 shrink-0 rounded-md bg-muted p-1.5" aria-hidden="true" />}
+            {product.primaryMediaId ? <Image data-media-mode="contain" src={`/api/product-media/${encodeURIComponent(product.primaryMediaId)}`} alt="" width={38} height={38} unoptimized className="size-9 shrink-0 rounded-md border object-contain" /> : <Package className="size-8 shrink-0 rounded-md bg-muted p-1.5" aria-hidden="true" />}
             <div className="min-w-0"><p className="break-words text-sm font-semibold">{product.nameEn}</p>
               <p className="mt-0.5 text-xs text-[#78551F]">{quantity === 0 ? 'Out of stock' : quantity === 1 ? 'Last one' : `${quantity} left`}</p></div>
           </div>

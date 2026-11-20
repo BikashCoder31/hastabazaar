@@ -56,6 +56,6 @@ void test('a Managed Maker can open Seller Center and resume a private product d
     assert.match(draftHome, /Next step:[^<]*Send your first product for review/);
     assert.match(draftHome, /Continue saved draft/);
     assert.match(draftHome, /Send product information/);
-    assert.match(draftHome, /Payouts have separate requirements/);
+    assert.match(draftHome, /Payouts need a verified bank account/);
   } finally { f.dispose(); }
 });

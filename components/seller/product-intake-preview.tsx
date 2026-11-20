@@ -10,7 +10,7 @@ export function ProductIntakePreview({snapshot,offer,uploads,caseId,showProposed
  const selection=offer?snapshot.offers.axes.map(axis=>axis.values.find(value=>value.id===offer.selection[axis.id])?.label).filter(Boolean).join(' · '):'';
  if(compact)return <article aria-label="Customer preview" className="min-w-0 space-y-2 rounded-xl border border-[#E4DACA] bg-[#F5EFE3] p-3">
   <div className="grid aspect-[4/3] place-items-center overflow-hidden rounded-md border border-[#EEE5D5] bg-white">
-    {imageId?<Image src={`/api/seller/product-intakes/media/${encodeURIComponent(imageId)}`} alt={name||'Product photo'} width={360} height={270} unoptimized className="h-full w-full object-contain" />:<p className="px-3 text-center text-sm text-[#46536F]">Cover photo not provided</p>}
+    {imageId?<Image data-media-mode="contain" src={`/api/seller/product-intakes/media/${encodeURIComponent(imageId)}`} alt={name||'Product photo'} width={360} height={270} unoptimized className="h-full w-full object-contain" />:<p className="px-3 text-center text-sm text-[#46536F]">Cover photo not provided</p>}
   </div>
   <h3 className="break-words font-bold">{name||'Product name not provided'}</h3>
   {tradingName?<p className="break-words text-sm text-[#665B4C]">by {tradingName}</p>:null}

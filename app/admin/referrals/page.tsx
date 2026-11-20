@@ -38,7 +38,7 @@ const href = (
   return `/admin/referrals?${params}`;
 };
 const linkClass =
-  'inline-flex min-h-10 items-center rounded-lg border px-3 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-primary';
+  'inline-flex min-h-11 items-center rounded-lg border px-3 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-primary';
 
 export default async function ReferralAdmin({
   searchParams,

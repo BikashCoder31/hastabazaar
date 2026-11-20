@@ -1977,6 +1977,8 @@
 
 .seller-shell :is(h1, .font-heading, .section-title) { font-family: var(--font-heading); }
 
+.seller-main details > summary { min-height: 2.75rem; }
+
 .seller-mobile-shell {
   position: sticky;
   z-index: 30;

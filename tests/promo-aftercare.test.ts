@@ -210,7 +210,7 @@ async function refundViews(
           b.onResolve(
             {
               filter:
-                /^next\/navigation$|^next\/link$|^cloudflare:workers$|^@\/lib\/auth\/staff$/,
+                /^next\/navigation$|^next\/link$|^next\/image$|^cloudflare:workers$|^@\/lib\/auth\/staff$/,
             },
             (args) => ({ path: args.path, namespace: 'fixture' }),
           );
@@ -221,9 +221,11 @@ async function refundViews(
                 ? "export function useRouter(){return {refresh(){}}};export function notFound(){throw new Error('Not found')}"
                 : args.path === 'next/link'
                   ? "const React=require('react');export default function Link(props){return React.createElement('a',props,props.children)}"
-                  : args.path === 'cloudflare:workers'
-                    ? 'export const env={DB:globalThis.promoAftercareDb}'
-                    : "export async function requireStaffPage(){return {id:'super',role:'super_admin',permissions:[]}}",
+                  : args.path === 'next/image'
+                    ? "const React=require('react');export default function Image({src,alt}){return React.createElement('img',{src,alt})}"
+                    : args.path === 'cloudflare:workers'
+                      ? 'export const env={DB:globalThis.promoAftercareDb}'
+                      : "export async function requireStaffPage(){return {id:'super',role:'super_admin',permissions:[]}}",
           }));
         },
       },

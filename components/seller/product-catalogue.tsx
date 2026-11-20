@@ -114,7 +114,7 @@ export function ProductCatalogue({ rows }: { rows: readonly CatalogueRow[] }) {
           </td>
           <td className="flex min-w-0 items-start gap-2.5">
             <div className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-lg border border-[#EEE5D5] bg-[#FAF7F1]">
-              {product.primaryMediaId ? <Image src={`/api/product-media/${product.primaryMediaId}`} alt="" width={48} height={48} unoptimized className="size-12 object-contain" />
+              {product.primaryMediaId ? <Image data-media-mode="cover" src={`/api/product-media/${product.primaryMediaId}`} alt="" width={48} height={48} unoptimized className="size-12 object-cover" />
                 : <ImageIcon className="size-5 text-[#46536F]" aria-label="No product image" />}
             </div>
             <div className="min-w-0">

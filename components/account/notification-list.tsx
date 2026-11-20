@@ -120,7 +120,7 @@ function ScopedNotificationList({
                 {!read && item.channel === 'in_app' ? (
                   <Button
                     variant="outline"
-                    className="mt-4 min-h-10 rounded-full"
+                    className={workspace === 'customer' ? 'mt-4 min-h-10 rounded-full' : 'mt-4 min-h-11 rounded-full'}
                     disabled={busy !== null}
                     onClick={() => void markRead(item.id)}
                   >

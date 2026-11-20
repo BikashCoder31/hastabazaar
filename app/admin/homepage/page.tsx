@@ -213,7 +213,7 @@ export default async function HomepageProductControlsPage({
                   <div className="flex flex-wrap items-center gap-2">
                     <Link
                       href={`/admin/products/${product.id}`}
-                      className="section-link underline break-words text-base"
+                      className="section-link block min-w-0 wrap-anywhere text-base underline"
                     >
                       {product.nameEn}
                     </Link>

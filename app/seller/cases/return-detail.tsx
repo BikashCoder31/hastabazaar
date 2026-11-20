@@ -33,7 +33,7 @@ function Photo({ label, url, alt }: { label: string; url?: string; alt: string }
   return <figure className="relative flex min-h-36 min-w-0 items-center justify-center rounded-xl border bg-card p-3 pt-10 md:min-h-48">
     <figcaption className="absolute top-2 left-2 rounded-full bg-[#14213D] px-2 py-1 text-xs font-semibold leading-tight text-white">{label}</figcaption>
     {url ? <a href={url} target="_blank" rel="noreferrer" className="flex min-h-11 min-w-11 items-center justify-center">
-      <Image src={url} alt={alt} width={240} height={150} unoptimized className="max-h-40 w-full object-contain" />
+      <Image data-media-mode="contain" src={url} alt={alt} width={240} height={150} unoptimized className="max-h-40 w-full object-contain" />
     </a> : <p className="flex flex-col items-center gap-2 text-center text-xs text-muted-foreground"><ImageIcon className="size-5" aria-hidden="true" />No photo available</p>}
   </figure>;
 }

@@ -96,7 +96,7 @@ void test('Super Admin homepage product titles wrap inside narrow preview cards'
 
   assert.match(
     adminHome,
-    /className="block min-w-0 break-words font-semibold hover:underline"/,
+    /className="section-link block min-w-0 wrap-anywhere text-base underline"/,
   );
   assert.doesNotMatch(
     adminHome,
