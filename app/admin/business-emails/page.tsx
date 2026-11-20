@@ -27,7 +27,7 @@ export default async function BusinessEmails() {
       </p>
       <EmailDeliveryHealth overview={overview} />
       <details className="rounded-xl border p-4">
-        <summary className="cursor-pointer font-semibold">
+        <summary className="min-h-11 content-center cursor-pointer font-semibold">
           Recovery tools
         </summary>
         <p className="my-3 text-sm">
@@ -88,7 +88,7 @@ export default async function BusinessEmails() {
                   <p>{r.subject}</p>
                   {r.sourceReference ? (
                     <Link
-                      className="mt-1 inline-flex min-h-9 items-center underline"
+                      className="section-link underline mt-1"
                       href={r.sourceReference}
                     >
                       Open authorized source

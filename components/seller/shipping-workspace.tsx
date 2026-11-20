@@ -155,9 +155,11 @@ export function SellerShippingWorkspace({
             {catalog.config ? <div className="sm:col-span-2"><ConfiguredFields config={catalog.config} baseKeys={requestBaseKeys} /></div> : null}
             {catalog.status !== 'ready' ? <p role="alert" className="sm:col-span-2 text-sm text-destructive">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}
             <Button
+              variant="workspace-decision"
+              size="workspace"
               type="submit"
               disabled={busy || !catalog.canSubmit}
-              className="min-h-11 w-fit rounded-full"
+              className="w-fit"
             >
               {busy ? 'Sending…' : 'Request coordination'}
             </Button>
@@ -301,10 +303,10 @@ function ShippingRecord({ job, sellerId }: { job: ShippingJobRow; sellerId: stri
           {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={actionBaseKeys} /> : null}
           {catalog.status !== 'ready' ? <p role="alert" className="text-sm text-destructive">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}
           <Button
+            size="workspace"
             type="submit"
-            variant="outline"
+            variant="workspace-primary"
             disabled={busy || !catalog.canSubmit || note.trim().length < 8}
-            className="min-h-11 rounded-full"
           >
             <PackageCheck />
             Confirm carrier pickup
@@ -332,8 +334,10 @@ function ShippingRecord({ job, sellerId }: { job: ShippingJobRow; sellerId: stri
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Go back</AlertDialogCancel>
+            <AlertDialogCancel variant="workspace-outline" size="workspace" disabled={busy}>Go back</AlertDialogCancel>
             <AlertDialogAction
+              variant="workspace-decision"
+              size="workspace"
               disabled={busy}
               onClick={(event) => {
                 event.preventDefault();

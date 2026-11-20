@@ -60,18 +60,18 @@ export default async function GiftCardsPage({ searchParams }: {
       <section className="space-y-4 rounded-3xl border bg-card p-6" aria-label="Your gift card issuance answers">
         <h2 className="font-heading text-2xl">Your issuance answer history</h2>
         {issues.length ? <ul className="space-y-2">{issues.map((gift) => <li key={gift.id}>
-          <Link className="underline" href={`/admin/gift-cards?giftId=${encodeURIComponent(gift.id)}`}>
+          <Link className="section-link underline" href={`/admin/gift-cards?giftId=${encodeURIComponent(gift.id)}`}>
             Issued {new Date(gift.issuedAt).toLocaleDateString('en-NP')} · {formatPaisaExact(gift.amountPaisa)}
           </Link>
         </li>)}</ul> : <p>No issued gift cards.</p>}
-        {nextIssue ? <Link className="underline" href={
+        {nextIssue ? <Link className="section-link underline" href={
           `/admin/gift-cards?beforeAt=${nextIssue.issuedAt}&beforeId=${encodeURIComponent(nextIssue.id)}`
         }>Next 50 issued cards</Link> : null}
         {selectedGift ? <div className="space-y-3 border-t pt-4">
           <h3 className="font-semibold">Issued card answers</h3>
           {history?.answers.length ? history.answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)
             : <p>No saved answers for this issuance.</p>}
-          {history?.nextCursor ? <Link className="underline" href={
+          {history?.nextCursor ? <Link className="section-link underline" href={
             `/admin/gift-cards?giftId=${encodeURIComponent(selectedGift.id)}&historyAt=${history.nextCursor.createdAt}&historyId=${encodeURIComponent(history.nextCursor.id)}`
           }>Next 50 answers</Link> : null}
         </div> : null}

@@ -50,7 +50,7 @@ export default async function AdminLegalPoliciesPage() {
 
       <section className="rounded-3xl border bg-card p-6">
         <h2 className="font-heading text-2xl">Public policy set</h2>
-        <Link href="/legal/history" className="mt-3 inline-flex min-h-11 items-center font-semibold text-primary underline underline-offset-4">
+        <Link href="/legal/history" className="section-link underline mt-3">
           View archived policy wording (staff only)
         </Link>
         <div className="mt-4 flex flex-wrap gap-2">
@@ -59,7 +59,7 @@ export default async function AdminLegalPoliciesPage() {
               key={policy.key}
               href={policy.href}
               target="_blank"
-              className="inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-semibold hover:bg-secondary"
+              className="section-link underline"
             >
               {policy.title}{' '}
               <ExternalLink className="size-3.5" aria-hidden="true" />

@@ -56,7 +56,7 @@ export default async function PromoCodesPage({
   const focusedPage=selected?{...initialPage,campaigns:[selected,...initialPage.campaigns.filter(c=>c.campaignId!==selected.campaignId)]}:initialPage;
   return (
     <div className="grid min-w-0 gap-6">
-      <Link href={safeAdminReturnTo(params.returnTo,'/admin/fees?view=discounts')} className="underline">Back to previous view</Link>
+      <Link href={safeAdminReturnTo(params.returnTo,'/admin/fees?view=discounts')} className="section-link underline">Back to previous view</Link>
       <div>
         <AdminPageTitle><h1 className="section-title">Promo codes</h1></AdminPageTitle>
         <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">

@@ -13,7 +13,7 @@ export function StaffFormHistoryLinks({ entries,returnTo }: {
       if (entry.subjectId) params.set('id', entry.subjectId);
       return <Link key={`${entry.kind}:${entry.subjectId ?? ''}`}
         href={returnTo?withAdminReturnTo(`/admin/staff-form-history?${params.toString()}`,returnTo):`/admin/staff-form-history?${params.toString()}`}
-        className="rounded border px-3 py-2 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-primary">
+        className="section-link text-[#A8232E] underline focus-visible:outline-2 focus-visible:outline-primary">
         {entry.label}
       </Link>;
     })}

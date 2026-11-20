@@ -542,8 +542,9 @@ function AuthorizedPromoCodeManager({
             />
           </div>
           <Button
+            size="workspace"
             type="button"
-            variant="outline"
+            variant="workspace-primary"
             disabled={pending}
             onClick={() => choose(null)}
           >
@@ -621,8 +622,9 @@ function AuthorizedPromoCodeManager({
                   </td>
                   <td className="p-3">
                     <Button
+                      size="workspace"
                       type="button"
-                      variant="outline"
+                      variant={selected?.campaignId === campaign.campaignId ? 'workspace-outline' : 'workspace-primary'}
                       disabled={pending}
                       aria-label={'Manage ' + campaign.terms.code}
                       aria-pressed={
@@ -654,8 +656,9 @@ function AuthorizedPromoCodeManager({
           </p>
           {nextCursor ? (
             <Button
+              size="workspace"
               type="button"
-              variant="outline"
+              variant="workspace-outline"
               disabled={pending}
               onClick={() => void moreCampaigns()}
             >
@@ -698,8 +701,9 @@ function AuthorizedPromoCodeManager({
             Cancellation and refunds do not restore campaign uses or budget.
           </p>
           <Button
+            size="workspace"
             type="button"
-            variant="outline"
+            variant="workspace-outline"
             disabled={pending}
             onClick={() => void refreshCampaign()}
           >
@@ -919,7 +923,7 @@ function AuthorizedPromoCodeManager({
         {notice ? <output aria-live="polite">{notice}</output> : null}
         {published.message ? <p role="alert">{published.message}</p> : null}
         <div className="flex flex-wrap gap-3">
-          <Button type="submit" disabled={pending || !published.canSubmit}>
+          <Button variant={action === 'publish' ? 'workspace-decision' : action === 'pause' ? 'workspace-outline' : 'workspace-primary'} size="workspace" type="submit" disabled={pending || !published.canSubmit}>
             {pending
               ? 'Saving…'
               : action === 'draft'
@@ -929,8 +933,9 @@ function AuthorizedPromoCodeManager({
                   : 'Pause campaign'}
           </Button>
           <Button
+            size="workspace"
             type="button"
-            variant="outline"
+            variant="workspace-outline"
             disabled={pending}
             onClick={() => {
               if (
@@ -951,8 +956,9 @@ function AuthorizedPromoCodeManager({
           </Button>
           {published.status !== 'ready' ? (
             <Button
+              size="workspace"
               type="button"
-              variant="outline"
+              variant="workspace-outline"
               disabled={pending}
               onClick={published.refresh}
             >
@@ -978,6 +984,8 @@ function AuthorizedPromoCodeManager({
             Customer identities and private audit reasons are excluded.
           </p>
           <Button
+            variant="workspace-outline"
+            size="workspace"
             type="button"
             disabled={
               pending ||

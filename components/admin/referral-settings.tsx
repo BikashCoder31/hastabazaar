@@ -174,11 +174,11 @@ function ReferralSettingsScope({actorId,campaign}:{actorId:string;campaign:Refer
       }}
     >
       <details className="rounded-xl border p-3 text-sm">
-        <summary className="cursor-pointer font-medium">
+        <summary className="min-h-11 content-center cursor-pointer font-medium">
           Help with this offer
         </summary>
       {retry?recovery:null}
-      {campaign.updatedAt!==sourceAt?<section className="space-y-2 rounded border p-3"><output className="block" aria-live="polite">The current offer changed. Your proposed draft is retained; it has not overwritten the saved source.</output><p>Current friend discount {incentiveMoney(campaign.friendDiscountPaisa)} · referrer reward {incentiveMoney(campaign.rewardPaisa)} · minimum {incentiveMoney(campaign.minimumSubtotalPaisa)} · release window {campaign.returnWindowDays} days.</p><Button type="button" disabled={pending||retry||!Number.isSafeInteger(campaign.updatedAt)} onClick={()=>{setSourceAt(campaign.updatedAt);setReview(null);setMessage('Current source acknowledged. Review the retained proposed values before saving.');}}>Use this current source for a reviewed draft</Button></section>:null}
+      {campaign.updatedAt!==sourceAt?<section className="space-y-2 rounded border p-3"><output className="block" aria-live="polite">The current offer changed. Your proposed draft is retained; it has not overwritten the saved source.</output><p>Current friend discount {incentiveMoney(campaign.friendDiscountPaisa)} · referrer reward {incentiveMoney(campaign.rewardPaisa)} · minimum {incentiveMoney(campaign.minimumSubtotalPaisa)} · release window {campaign.returnWindowDays} days.</p><Button variant="workspace-outline" size="workspace" type="button" disabled={pending||retry||!Number.isSafeInteger(campaign.updatedAt)} onClick={()=>{setSourceAt(campaign.updatedAt);setReview(null);setMessage('Current source acknowledged. Review the retained proposed values before saving.');}}>Use this current source for a reviewed draft</Button></section>:null}
       <FormGuide formId="staff.referral-settings" />
       </details>
 
@@ -195,7 +195,7 @@ function ReferralSettingsScope({actorId,campaign}:{actorId:string;campaign:Refer
         </label>
         <Link
           href="/admin/staff-form-history?kind=referral-settings&id=default"
-          className="block text-sm underline"
+          className="section-link underline"
         >
           View referral form history
         </Link>
@@ -271,6 +271,8 @@ function ReferralSettingsScope({actorId,campaign}:{actorId:string;campaign:Refer
         the offer here when you want to stop accepting new referral costs.
       </p>
       <Button
+        variant="workspace-primary"
+        size="workspace"
         ref={reviewButton}
         type="submit"
         disabled={pending || !!review || !catalog.canSubmit}
@@ -353,6 +355,8 @@ function ReferralSettingsScope({actorId,campaign}:{actorId:string;campaign:Refer
           </p>
           <div className="flex flex-wrap gap-3">
             <Button
+              variant="workspace-decision"
+              size="workspace"
               type="button"
               disabled={pending || !catalog.canSubmit}
               onClick={() => void saveReviewedOffer()}
@@ -360,8 +364,9 @@ function ReferralSettingsScope({actorId,campaign}:{actorId:string;campaign:Refer
               {pending ? 'Saving…' : 'Confirm and save offer'}
             </Button>
             <Button
+              size="workspace"
               type="button"
-              variant="outline"
+              variant="workspace-outline"
               disabled={pending}
               onClick={() => {
                 setReview(null);
@@ -386,8 +391,9 @@ function ReferralSettingsScope({actorId,campaign}:{actorId:string;campaign:Refer
             reference and may conflict.
           </p>
           <Button
+            size="workspace"
             type="button"
-            variant="outline"
+            variant="workspace-outline"
             disabled={pending}
             onClick={() => {
               if (

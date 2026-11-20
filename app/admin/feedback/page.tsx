@@ -67,7 +67,7 @@ export default async function AdminFeedbackPage({ searchParams }: {
       <p className="mt-3 whitespace-pre-wrap text-sm">{feedback.message}</p>
       <div className="mt-4"><AnswerDetails answer={answer} /></div>
     </article>) : <p className="rounded-2xl border bg-card p-5 text-sm text-muted-foreground">No authorized feedback submissions to review.</p>}
-    {page.nextCursor ? <a className="inline-flex min-h-11 items-center rounded-full border px-5 text-sm font-semibold"
+    {page.nextCursor ? <a className="section-link underline"
       href={`/admin/feedback?before=${encodeURIComponent(`${page.nextCursor.createdAt}:${page.nextCursor.id}`)}`}>Older submissions</a> : null}
   </div>;
 }

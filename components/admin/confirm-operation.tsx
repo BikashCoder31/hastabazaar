@@ -20,6 +20,7 @@ export function ConfirmOperation({
   onConfirm,
   confirmLabel = 'Confirm decision',
   disabled = false,
+  workspace = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -30,6 +31,7 @@ export function ConfirmOperation({
   onConfirm: () => void;
   confirmLabel?: string;
   disabled?: boolean;
+  workspace?: boolean;
 }) {
   return (
     <AlertDialog
@@ -49,8 +51,19 @@ export function ConfirmOperation({
           </p>
         ) : null}
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending}>Go back</AlertDialogCancel>
-          <AlertDialogAction disabled={pending || disabled} onClick={onConfirm}>
+          <AlertDialogCancel
+            disabled={pending}
+            size={workspace ? 'workspace' : undefined}
+            variant={workspace ? 'workspace-outline' : undefined}
+          >
+            Go back
+          </AlertDialogCancel>
+          <AlertDialogAction
+            disabled={pending || disabled}
+            size={workspace ? 'workspace' : undefined}
+            variant={workspace ? 'workspace-decision' : undefined}
+            onClick={onConfirm}
+          >
             {pending ? 'Saving…' : confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>

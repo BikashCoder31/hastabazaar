@@ -51,7 +51,7 @@ export default async function SellerProfilePage({ searchParams }: {
         description="Tell customers about your craft and keep your public support details current."
       >
         {publicShop ? (
-          <Link href={`/makers/${publicShop.id}`} className="section-link">
+          <Link href={`/makers/${publicShop.id}`} className="section-link text-[#A8232E] underline">
             View public shop →
           </Link>
         ) : null}
@@ -69,7 +69,7 @@ export default async function SellerProfilePage({ searchParams }: {
       {answers.length ? <section className="mt-8 space-y-4" aria-label="Shop profile answer history">
         <h2 className="font-heading text-2xl">Previous shop profile answers</h2>
         {answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)}
-        {nextCursor ? <Link className="section-link" href={
+        {nextCursor ? <Link className="section-link text-[#A8232E] underline" href={
           `/seller/profile?historyAt=${nextCursor.createdAt}&historyId=${encodeURIComponent(nextCursor.id)}`
         }>Next 50 answers</Link> : null}
       </section> : null}

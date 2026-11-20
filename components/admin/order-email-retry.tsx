@@ -66,6 +66,8 @@ export function OrderEmailRetry({ readyCount }: { readyCount: number }) {
           </p>
         </div>
         <Button
+          variant="workspace-primary"
+          size="workspace"
           type="button"
           disabled={busy || readyCount < 1}
           className="shrink-0"
@@ -88,6 +90,7 @@ export function OrderEmailRetry({ readyCount }: { readyCount: number }) {
         </p>
       ) : null}
       <ConfirmOperation
+        workspace
         open={confirm}
         onOpenChange={setConfirm}
         pending={busy}

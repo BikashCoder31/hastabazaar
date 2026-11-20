@@ -1,4 +1,5 @@
 'use client';
+import { Button } from '@/components/ui/button';
 import { FormGuide } from '@/components/forms/form-guide';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -96,16 +97,16 @@ export function ReviewReplyForm({
         appear after approval; editing removes the previous reply from public
         view while it is reviewed.
       </p>
-      <button
+      <Button type="submit" variant="workspace-primary" size="workspace"
         disabled={busy || !catalog.canSubmit}
-        className="mt-4 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+        className="mt-4"
       >
         {busy ? 'Submitting…' : 'Submit reply'}
-      </button>
-      {hasPendingAttempt ? <button type="button" onClick={resetAttempt} disabled={busy}
-        className="ml-3 mt-4 rounded-full border px-5 py-2.5 text-sm font-semibold disabled:opacity-60">
+      </Button>
+      {hasPendingAttempt ? <Button variant="workspace-outline" size="workspace" type="button" onClick={resetAttempt} disabled={busy}
+        className="ml-3 mt-4">
         Start a new review reply attempt
-      </button> : null}
+      </Button> : null}
       <output className="block mt-3 text-sm">
         {message}
       </output>

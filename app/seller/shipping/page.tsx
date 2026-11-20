@@ -24,8 +24,8 @@ export default async function SellerShippingPage() {
           configured.
         </p>
         <p className="mt-3 flex flex-wrap gap-4 text-sm">
-          <Link className="section-link" href="/seller/form-history?kind=shipping-request">Shipping request answers</Link>
-          <Link className="section-link" href="/seller/form-history?kind=shipping-action">Shipping action answers</Link>
+          <Link className="section-link text-[#A8232E] underline" href="/seller/form-history?kind=shipping-request">Shipping request answers</Link>
+          <Link className="section-link text-[#A8232E] underline" href="/seller/form-history?kind=shipping-action">Shipping action answers</Link>
         </p>
       </div>
       <SellerShippingWorkspace

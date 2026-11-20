@@ -194,7 +194,7 @@ export default async function OrderEmails({
                 href={queuePageHref('/admin/order-emails', {
                   status: metric.status,
                 })}
-                className="mt-2 inline-flex min-h-9 items-center gap-1 text-sm font-medium text-primary hover:underline"
+                className="section-link underline mt-2"
               >
                 View emails
                 <ChevronRight aria-hidden="true" className="size-4" />
@@ -224,7 +224,7 @@ export default async function OrderEmails({
         </div>
       ) : null}
       <details className="rounded-xl border bg-card p-4">
-        <summary className="cursor-pointer font-semibold">
+        <summary className="min-h-11 content-center cursor-pointer font-semibold">
           Recovery tools
         </summary>
         <p className="my-3 text-sm">
@@ -303,16 +303,11 @@ export default async function OrderEmails({
             </FieldGroup>
             <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
               {history.filters.q || history.filters.status ? (
-                <Button
-                  variant="outline"
-                  className="flex-1 sm:flex-none"
-                  nativeButton={false}
-                  render={<Link href="/admin/order-emails" />}
-                >
+                <Link href="/admin/order-emails" className="section-link underline">
                   Clear filters
-                </Button>
+                </Link>
               ) : null}
-              <Button type="submit" className="flex-1 sm:flex-none">
+              <Button variant="workspace-primary" size="workspace" type="submit" className="flex-1 sm:flex-none">
                 Apply filters
               </Button>
             </div>
@@ -361,7 +356,7 @@ export default async function OrderEmails({
                   <tr key={job.id}>
                     <td className="p-4 font-semibold">
                       <Link
-                        className="inline-flex min-h-11 items-center underline underline-offset-4"
+                        className="section-link underline"
                         href={`/admin/orders/${encodeURIComponent(job.orderId)}`}
                       >
                         {job.orderNumber}
@@ -437,40 +432,22 @@ export default async function OrderEmails({
             className="flex items-center justify-between gap-3 border-t p-4"
           >
             {history.page > 1 ? (
-              <Button
-                variant="outline"
-                nativeButton={false}
-                render={
-                  <Link
-                    href={queuePageHref(
-                      '/admin/order-emails',
-                      history.filters,
-                      history.page - 1,
-                    )}
-                  />
-                }
+              <Link
+                href={queuePageHref('/admin/order-emails', history.filters, history.page - 1)}
+                className="section-link underline"
               >
                 Previous
-              </Button>
+              </Link>
             ) : (
               <span />
             )}
             {history.page < history.pageCount ? (
-              <Button
-                variant="outline"
-                nativeButton={false}
-                render={
-                  <Link
-                    href={queuePageHref(
-                      '/admin/order-emails',
-                      history.filters,
-                      history.page + 1,
-                    )}
-                  />
-                }
+              <Link
+                href={queuePageHref('/admin/order-emails', history.filters, history.page + 1)}
+                className="section-link underline"
               >
                 Next
-              </Button>
+              </Link>
             ) : null}
           </nav>
         ) : null}
@@ -481,7 +458,7 @@ export default async function OrderEmails({
         excluded from sending; the next queue run records the final reason.
       </p>
       <details className="group rounded-xl border bg-card p-4">
-        <summary className="flex min-h-10 w-fit cursor-pointer list-none items-center gap-2 rounded-md py-2 pr-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
+        <summary className="flex min-h-11 w-fit cursor-pointer list-none items-center gap-2 rounded-md py-2 pr-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
           <ChevronRight
             aria-hidden="true"
             className="size-4 transition-transform group-open:rotate-90 motion-reduce:transition-none"

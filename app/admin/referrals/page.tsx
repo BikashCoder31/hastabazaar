@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
@@ -182,14 +183,14 @@ export default async function ReferralAdmin({
               in these dates, including cancelled orders.
             </p>
             <Link
-              className="font-medium text-primary underline underline-offset-4"
+              className="section-link underline"
               href={href('activity', range.period)}
             >
               View referral activity
             </Link>
           </div>
           <details className="rounded-xl border bg-card p-4 text-sm">
-            <summary className="cursor-pointer font-medium">
+            <summary className="min-h-11 content-center cursor-pointer font-medium">
               How rewards progress
             </summary>
             <p className="mt-3 leading-7 text-muted-foreground">
@@ -263,14 +264,15 @@ export default async function ReferralAdmin({
                 ))}
               </select>
             </label>
-            <button
+            <Button
+              variant="workspace-primary"
+              size="workspace"
               type="submit"
-              className={`${linkClass} bg-primary text-primary-foreground`}
             >
               Apply filters
-            </button>
+            </Button>
             <a
-              className="py-2 text-sm text-primary underline"
+              className="section-link underline"
               href={href('activity', range.period)}
             >
               Clear search
@@ -313,7 +315,7 @@ export default async function ReferralAdmin({
                       <tr key={row.orderId} className="align-top">
                         <td className="px-4 py-4">
                           <Link
-                            className="font-medium text-primary underline underline-offset-4"
+                            className="section-link underline"
                             href={`/admin/orders/${encodeURIComponent(row.orderId)}`}
                           >
                             {row.orderNumber}
@@ -377,7 +379,7 @@ export default async function ReferralAdmin({
             </p>
             {report.page > 1 ? (
               <Link
-                className={linkClass}
+                className="section-link underline"
                 href={href(
                   'activity',
                   range.period,
@@ -391,7 +393,7 @@ export default async function ReferralAdmin({
             ) : null}
             {report.page < report.pages ? (
               <Link
-                className={linkClass}
+                className="section-link underline"
                 href={href(
                   'activity',
                   range.period,
@@ -416,12 +418,12 @@ export default async function ReferralAdmin({
           </p>
           <div className="flex flex-wrap gap-3">
             <Link
-              className={linkClass}
+              className="section-link underline"
               href="/admin/staff-form-history?kind=referral-settings&id=default"
             >
               View referral form history
             </Link>
-            <Link className={linkClass} href="/admin/activity">
+            <Link className="section-link underline" href="/admin/activity">
               Open action audit
             </Link>
           </div>

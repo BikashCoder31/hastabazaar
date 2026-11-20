@@ -185,7 +185,7 @@ function HomepageHeroManagerScope({actorId,
       className="space-y-6" onSubmit={(event) => event.preventDefault()}>
       {command.recovery}
       {upload.recovery}
-      {catalog.status==='stale'&&!command.pending?<Button type="button" variant="outline" disabled={busy||upload.pending} onClick={()=>{if(command.scope.current())catalog.refresh();}}>Refresh form</Button>:null}
+      {catalog.status==='stale'&&!command.pending?<Button size="workspace" type="button" variant="workspace-outline" disabled={busy||upload.pending} onClick={()=>{if(command.scope.current())catalog.refresh();}}>Refresh form</Button>:null}
       <fieldset disabled={busy||command.pending||upload.pending} className="min-w-0 space-y-6">
       <FormGuide formId="staff.homepage-hero-manager" />
 
@@ -200,8 +200,9 @@ function HomepageHeroManagerScope({actorId,
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
+            size="workspace"
             type="button"
-            variant="outline"
+            variant="workspace-primary"
             disabled={busy || slides.length >= 8 || slides.some((slide) => slide.id === SELLER_REGISTRATION_HERO_SLIDE.id)}
             onClick={() => {
               apply(() => addSellerRegistrationSlide(slides));
@@ -211,8 +212,9 @@ function HomepageHeroManagerScope({actorId,
             <Plus aria-hidden="true" /> Add seller slide first
           </Button>
         <Button
+          size="workspace"
           type="button"
-          variant="outline"
+          variant="workspace-outline"
           disabled={slides.length >= 8}
           onClick={() =>
             apply(() => addHomepageHeroSlide(slides, crypto.randomUUID()))
@@ -270,15 +272,19 @@ function HomepageHeroManagerScope({actorId,
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             <Button
+              size="workspace"
               type="button"
-              variant={previewMode === 'desktop' ? 'secondary' : 'outline'}
+              variant="workspace-outline"
+              aria-pressed={previewMode === 'desktop'}
               onClick={() => setPreviewMode('desktop')}
             >
               Desktop preview
             </Button>
             <Button
+              size="workspace"
               type="button"
-              variant={previewMode === 'mobile' ? 'secondary' : 'outline'}
+              variant="workspace-outline"
+              aria-pressed={previewMode === 'mobile'}
               onClick={() => setPreviewMode('mobile')}
             >
               Mobile preview
@@ -358,6 +364,8 @@ function HomepageHeroManagerScope({actorId,
           </div>
           {upload.message||command.message||message ? <output aria-live="polite" className="block text-sm font-medium">{upload.message||command.message||message}</output> : null}
           <Button
+            variant="workspace-primary"
+            size="workspace"
             type="button"
             disabled={busy || !catalog.canSubmit || !readiness.draftValid || reason.trim().length < 8}
             onClick={() => void saveDraft()}
@@ -388,8 +396,8 @@ function HomepageHeroManagerScope({actorId,
                   <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
-                      size="sm"
-                      variant="outline"
+                      size="workspace"
+                      variant="workspace-outline"
                       onClick={() => {
                         setSlides(version.value.map((slide) => ({ ...slide })));
                         setPreviewId(version.value[0]?.id ?? '');
@@ -399,8 +407,9 @@ function HomepageHeroManagerScope({actorId,
                     </Button>
                     {version.status === 'draft' ? (
                       <Button
+                        variant="workspace-primary"
                         type="button"
-                        size="sm"
+                        size="workspace"
                         disabled={
                           busy ||
                           !catalog.canSubmit ||
@@ -416,8 +425,8 @@ function HomepageHeroManagerScope({actorId,
                     {version.status === 'published' ? (
                       <Button
                         type="button"
-                        size="sm"
-                        variant="outline"
+                        size="workspace"
+                        variant="workspace-outline"
                         disabled={busy || !catalog.canSubmit || reason.trim().length < 8}
                         onClick={() => void changeVersion(version, 'reverse')}
                       >
@@ -504,10 +513,10 @@ function SlideEditor({
             <CardDescription>{slide.id}</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" variant="outline" disabled={index === 0} onClick={() => onMove('up')} aria-label={`Move slide ${index + 1} up`}><ArrowUp /></Button>
-            <Button type="button" size="sm" variant="outline" disabled={index === total - 1} onClick={() => onMove('down')} aria-label={`Move slide ${index + 1} down`}><ArrowDown /></Button>
-            <Button type="button" size="sm" variant="outline" onClick={onPreview}>Preview</Button>
-            <Button type="button" size="sm" variant="destructive" onClick={onRemove}><Trash2 /> Remove</Button>
+            <Button type="button" size="workspace" variant="workspace-outline" disabled={index === 0} onClick={() => onMove('up')} aria-label={`Move slide ${index + 1} up`}><ArrowUp /></Button>
+            <Button type="button" size="workspace" variant="workspace-outline" disabled={index === total - 1} onClick={() => onMove('down')} aria-label={`Move slide ${index + 1} down`}><ArrowDown /></Button>
+            <Button type="button" size="workspace" variant="workspace-outline" onClick={onPreview}>Preview</Button>
+            <Button type="button" size="workspace" variant="workspace-destructive" onClick={() => { if (window.confirm('Remove this slide from the working draft?')) onRemove(); }}><Trash2 /> Remove</Button>
           </div>
         </div>
       </CardHeader>

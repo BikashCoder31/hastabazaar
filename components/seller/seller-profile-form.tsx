@@ -176,9 +176,11 @@ function OwnedSellerProfileForm({profile,sellerId,accountId,isCurrent}:ProfilePr
       </fieldset>
       <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
         <Button
+          variant="workspace-primary"
+          size="workspace"
           type="submit"
           disabled={busy || checkingReference || !catalog.canSubmit || (hasPendingAttempt&&!hasPendingBody)}
-          className="min-h-11 rounded-full px-6"
+          className="px-6"
         >
           {busy ? 'Saving…' : hasPendingBody ? 'Retry original workshop save' : 'Save private workshop location'}
         </Button>
@@ -192,8 +194,8 @@ function OwnedSellerProfileForm({profile,sellerId,accountId,isCurrent}:ProfilePr
       </p>
       {hasPendingAttempt ? <div className="space-y-2 sm:col-span-2">
         <p className="text-sm text-muted-foreground">The original workshop reference is retained. Reload checks its native saved outcome without reconstructing private entries.</p>
-        <Button type="button" variant="outline" disabled={busy} onClick={()=>void checkOriginal()}>Check original workshop result</Button>
-        {checkedUnconfirmed?<Button type="button" variant="outline" onClick={resetAttempt}>Start a new seller profile attempt</Button>:null}
+        <Button size="workspace" type="button" variant="workspace-outline" disabled={busy} onClick={()=>void checkOriginal()}>Check original workshop result</Button>
+        {checkedUnconfirmed?<Button size="workspace" type="button" variant="workspace-outline" onClick={resetAttempt}>Start a new seller profile attempt</Button>:null}
       </div> : null}
     </form>
   );

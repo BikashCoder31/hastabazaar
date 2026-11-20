@@ -24,7 +24,7 @@ import { RegistrationEmailVerification } from './registration-email-verification
 
 type SavedRegistration = { version: number; answers: DraftAnswers; documents: Record<string, { name: string }>; missing: string[]; editable?: boolean; approvedCompletion?: boolean; lockedFields?: string[]; lockedDocumentKinds?: string[] };
 type Props = { accountId: string; accountEmail: string; managedTerms?: ManagedMakerApplicationTerms;
-  registeredTerms?: { percent: number; context: string }; initial?: SavedRegistration; onSaved?: () => void; lockedFields?: readonly string[]; lockedDocumentKinds?: readonly string[] };
+  registeredTerms?: { percent: number; context: string }; initial?: SavedRegistration; onSaved?: () => void; lockedFields?: readonly string[]; lockedDocumentKinds?: readonly string[]; workspace?: boolean };
 const baseKeys = [...registrationFields.map(([key]) => key), 'hasBusinessTaxRegistration', 'applicantType', 'taxStatus', 'phoneCountry', 'province', 'governmentIdType', 'email',
   'businessDescription', 'productCategories', 'acceptedTerms', 'applicationAcknowledgement', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'sellerAgreementContext', 'registrationEmailChoice'];
 
@@ -38,7 +38,7 @@ function recordedIdentity(answers?: DraftAnswers): string {
   return governmentIdTypes.some(value => value === type) ? type : answers?.governmentIdDescription?.[0] ? '' : 'citizenship';
 }
 
-function OwnedSellerRegistrationIntakeForm({ accountId, accountEmail, managedTerms, registeredTerms, initial, onSaved, lockedFields=[],lockedDocumentKinds=[], isCurrent }: Props & {isCurrent: () => boolean}) {
+function OwnedSellerRegistrationIntakeForm({ accountId, accountEmail, managedTerms, registeredTerms, initial, onSaved, lockedFields=[],lockedDocumentKinds=[], workspace=false, isCurrent }: Props & {isCurrent: () => boolean}) {
   const router = useRouter(); const formRef = useRef<HTMLFormElement>(null);
   const controlId = useId();
   const [registration, setRegistration] = useState<'yes' | 'no'>(initial?.answers.hasBusinessTaxRegistration?.[0] === 'yes' ? 'yes' : 'no');
@@ -127,7 +127,7 @@ function OwnedSellerRegistrationIntakeForm({ accountId, accountEmail, managedTer
     finally { if (isCurrent()) setBusy(false); }
   }
   if (accessDenied || draft.accessDenied) return <p role="alert">Your account access changed. Refresh this page to check your current account before continuing.</p>;
-  if (reference) return <section className="space-y-4 rounded-2xl border bg-card p-6"><h2 className="font-heading text-2xl">{initial ? 'Registration details saved' : 'Application submitted'}</h2><p>{message}</p><p>Reference: <strong>{reference}</strong></p>{initial ? <Button type="button" onClick={() => { if (onSaved) onSaved(); else router.refresh(); }}>Continue editing details</Button> : <Link className="section-link" href="/seller">Open your seller dashboard →</Link>}</section>;
+  if (reference) return <section className="space-y-4 rounded-2xl border bg-card p-6"><h2 className="font-heading text-2xl">{initial ? 'Registration details saved' : 'Application submitted'}</h2><p>{message}</p><p>Reference: <strong>{reference}</strong></p>{initial ? <Button type="button" size={workspace ? 'workspace' : undefined} variant={workspace ? 'workspace-primary' : undefined} onClick={() => { if (onSaved) onSaved(); else router.refresh(); }}>Continue editing details</Button> : <Link className="section-link" href="/seller">Open your seller dashboard →</Link>}</section>;
   const value = (name: string) => initial?.answers[name]?.[0] ?? '';
   const fields = registrationFields.filter(([key]) => !registered ? !['registrationAuthority', 'registrationNumber', 'taxRegistrationNumber', 'representativeName'].includes(key) : !['governmentIdDescription', 'personalPan'].includes(key));
   // A native select fires input first. Saving there can reset its controlled value before change.
@@ -135,11 +135,11 @@ function OwnedSellerRegistrationIntakeForm({ accountId, accountEmail, managedTer
     <p className="rounded-xl bg-secondary/50 p-4 text-sm leading-6">{initial?.approvedCompletion
       ? 'You can save progress as information becomes available. Complete registration, accept the applicable agreement and have your documents and receiving details verified before payouts.'
       : 'Submit the registration information you have. You can add missing details and submit products for review from your dashboard. Payouts require completed registration and verified receiving details.'}</p>
-    <aside aria-label="Saved registration progress" className="space-y-2"><output className="block">{labelDocumentMessage(draft.message)}</output>{draft.draft ? <p className="text-sm">Draft expires {new Date(draft.draft.expiresAt).toLocaleDateString('en-NP', { timeZone: 'Asia/Kathmandu' })}.</p> : null}<Button type="button" variant="outline" disabled={draft.status === 'loading' || draft.status === 'saving' || draft.status === 'conflict'} onClick={() => void draft.flush()}>Save progress now</Button>
+    <aside aria-label="Saved registration progress" className="space-y-2"><output className="block">{labelDocumentMessage(draft.message)}</output>{draft.draft ? <p className="text-sm">Draft expires {new Date(draft.draft.expiresAt).toLocaleDateString('en-NP', { timeZone: 'Asia/Kathmandu' })}.</p> : null}<Button type="button" size={workspace ? 'workspace' : undefined} variant={workspace ? 'workspace-outline' : 'outline'} disabled={draft.status === 'loading' || draft.status === 'saving' || draft.status === 'conflict'} onClick={() => void draft.flush()}>Save progress now</Button>
       {draft.status === 'conflict' ? <div className="space-y-3 rounded-xl border p-4">
-        <Button type="button" variant="outline" onClick={() => void draft.reviewLatest()}>Review latest saved progress</Button>
+        <Button type="button" size={workspace ? 'workspace' : undefined} variant={workspace ? 'workspace-outline' : 'outline'} onClick={() => void draft.reviewLatest()}>Review latest saved progress</Button>
         {draft.conflictDraft ? <><details open><summary>Latest saved values — compare with your form below</summary><dl className="mt-3 space-y-2">{Object.entries(draft.conflictDraft.answers).map(([key, values]) => <div key={key}><dt className="font-semibold">{registrationFields.find(([name]) => name === key)?.[1] ?? key}</dt><dd className="whitespace-pre-wrap break-words">{values.join(', ') || 'Blank'}</dd></div>)}{Object.entries(draft.conflictDraft.files).map(([key, file]) => <div key={key}><dt>{key}</dt><dd>Saved file: {file.name}</dd></div>)}</dl></details>
-          <div className="flex flex-wrap gap-3"><Button type="button" variant="outline" onClick={() => draft.resolveConflict(true)}>Use saved progress</Button><Button type="button" variant="outline" onClick={() => draft.resolveConflict(false)}>Keep my current entries</Button></div>
+          <div className="flex flex-wrap gap-3"><Button type="button" size={workspace ? 'workspace' : undefined} variant={workspace ? 'workspace-outline' : 'outline'} onClick={() => draft.resolveConflict(true)}>Use saved progress</Button><Button type="button" size={workspace ? 'workspace' : undefined} variant={workspace ? 'workspace-outline' : 'outline'} onClick={() => draft.resolveConflict(false)}>Keep my current entries</Button></div>
           <p className="text-sm">Your choice updates only the private draft. Submit separately to request a registration change.</p></> : null}
       </div> : null}
     </aside>
@@ -158,7 +158,7 @@ function OwnedSellerRegistrationIntakeForm({ accountId, accountEmail, managedTer
             value={email} onChange={event => setEmail(event.target.value)} aria-describedby={controlId + 'email-help'} />
           <input type="hidden" name="registrationEmailChoice" value={normalizedEmail === accountEmail.toLowerCase() ? '' : email} />
           <p id={controlId + 'email-help'}>Use your sign-in email or enter another address. Seller updates go to the address you verify here.</p>
-          {email !== accountEmail ? <Button type="button" variant="ghost" onClick={() => {
+          {email !== accountEmail ? <Button type="button" size={workspace ? 'workspace' : undefined} variant={workspace ? 'workspace-outline' : 'ghost'} onClick={() => {
             setEmail(accountEmail);
             draft.changed();
           }}>Use sign-in email</Button> : null}
@@ -176,13 +176,15 @@ function OwnedSellerRegistrationIntakeForm({ accountId, accountEmail, managedTer
           <div className="grid gap-5 sm:grid-cols-2">{registrationFields.filter(([name]) => name === 'pickupAddress' || name === 'returnAddress').map(([name, label, maximum]) => <label key={name} className="space-y-2 text-sm">{label}<Input name={name} defaultValue={value(name)} maxLength={maximum} onInput={event => syncAddress(event.currentTarget)} /></label>)}</div>
         </div>
         <label htmlFor={controlId + 'province'} className="space-y-2 text-sm">Province<NativeSelect id={controlId + 'province'} name="province" defaultValue={value('province')}><NativeSelectOption value="">Add later</NativeSelectOption>{['Koshi', 'Madhesh', 'Bagmati', 'Gandaki', 'Lumbini', 'Karnali', 'Sudurpashchim'].map(province => <NativeSelectOption key={province} value={province}>{province}</NativeSelectOption>)}</NativeSelect></label>
-        {!registered ? <div className="space-y-2 text-sm"><input type="hidden" name="governmentIdType" value={identityType} />{identityType !== 'citizenship' ? <><p>Recorded identity type: {identityType ? identityType.replaceAll('_', ' ') : 'not specified in the saved record'}. Your recorded reference keeps this type.</p>{!lockedFields.includes('governmentIdType') && !lockedFields.includes('governmentIdDescription') ? <Button type="button" variant="outline" onClick={() => { const field = formRef.current?.elements.namedItem('governmentIdDescription'); if (field instanceof HTMLInputElement) field.value = ''; setIdentityType('citizenship'); draft.changed(); }}>Use citizenship number instead</Button> : null}</> : <p>Add your citizenship number now or later.</p>}</div> : null}
+        {!registered ? <div className="space-y-2 text-sm"><input type="hidden" name="governmentIdType" value={identityType} />{identityType !== 'citizenship' ? <><p>Recorded identity type: {identityType ? identityType.replaceAll('_', ' ') : 'not specified in the saved record'}. Your recorded reference keeps this type.</p>{!lockedFields.includes('governmentIdType') && !lockedFields.includes('governmentIdDescription') ? <Button type="button" size={workspace ? 'workspace' : undefined} variant={workspace ? 'workspace-outline' : 'outline'} onClick={() => { const field = formRef.current?.elements.namedItem('governmentIdDescription'); if (field instanceof HTMLInputElement) field.value = ''; setIdentityType('citizenship'); draft.changed(); }}>Use citizenship number instead</Button> : null}</> : <p>Add your citizenship number now or later.</p>}</div> : null}
       </div>
       <fieldset className="grid gap-4 sm:grid-cols-2"><legend className="mb-3 font-semibold">Verification documents — add now or later</legend>
         {documentFields.map(document => {
           const saved = draft.draft?.files[document.field]?.name ?? initial?.documents[document.field]?.name;
           const locked=lockedDocumentKinds.includes(document.kind);
-          return <label key={document.field} className="space-y-2 text-sm">{document.label}<Input name={document.field} type="file" accept="application/pdf,image/jpeg,image/png" disabled={locked} />{saved ? <span>Saved: {saved}. {locked?'Verified evidence is locked; use its change request below.':'Choose a file to replace it.'}{draft.draft?.files[document.field] ? <button type="button" className="ml-2 underline" onClick={() => draft.removeFile(document.field)}>Remove saved draft file</button> : null}</span> : null}</label>;
+          return <label key={document.field} className="space-y-2 text-sm">{document.label}<Input name={document.field} type="file" accept="application/pdf,image/jpeg,image/png" disabled={locked} />{saved ? <span>Saved: {saved}. {locked?'Verified evidence is locked; use its change request below.':'Choose a file to replace it.'}{draft.draft?.files[document.field] ? (workspace
+            ? <Button type="button" size="workspace" variant="workspace-destructive" className="ml-2" onClick={() => { if (window.confirm('Remove this file from your saved draft?')) draft.removeFile(document.field); }}>Remove saved draft file</Button>
+            : <button type="button" className="ml-2 underline" onClick={() => draft.removeFile(document.field)}>Remove saved draft file</button>) : null}</span> : null}</label>;
         })}<p className="text-sm text-muted-foreground sm:col-span-2">PDF, JPG or PNG; up to 5 MB each. Documents remain private.</p>
       </fieldset>
       {!initial && !currentContext ? <output className="block">Current agreement terms are unavailable. You can save your progress and try again later.</output> : null}
@@ -210,8 +212,8 @@ function OwnedSellerRegistrationIntakeForm({ accountId, accountEmail, managedTer
       {catalog.config ? <ConfiguredFields config={{ ...catalog.config, fields: catalog.config.fields.map(field => ({ ...field, required: false })) }} baseKeys={baseKeys} defaultAnswers={initial?.answers} showOptionalLabel={false} /> : null}
       <div className="sr-only" aria-hidden="true"><label>Website<input name="website" tabIndex={-1} autoComplete="off" /></label></div>
       {message ? <p role="alert" className="text-sm text-destructive">{labelDocumentMessage(message)}</p> : null}
-      {catalog.status !== 'ready' ? <div role="alert"><p>{catalog.message || 'Loading form questions…'}</p>{catalog.status !== 'loading' ? <Button type="button" onClick={catalog.refresh}>Refresh questions and keep my answers</Button> : null}</div> : null}
-      <Button type="submit" disabled={busy || !catalog.canSubmit || !draft.canEdit || (!initial && !canSubmitNew)}>{busy ? 'Submitting…' : initial ? 'Submit updated details for review' : 'Submit application'}</Button>
+      {catalog.status !== 'ready' ? <div role="alert"><p>{catalog.message || 'Loading form questions…'}</p>{catalog.status !== 'loading' ? <Button type="button" size={workspace ? 'workspace' : undefined} variant={workspace ? 'workspace-primary' : undefined} onClick={catalog.refresh}>Refresh questions and keep my answers</Button> : null}</div> : null}
+      <Button type="submit" size={workspace ? 'workspace' : undefined} variant={workspace ? 'workspace-decision' : undefined} disabled={busy || !catalog.canSubmit || !draft.canEdit || (!initial && !canSubmitNew)}>{busy ? 'Submitting…' : initial ? 'Submit updated details for review' : 'Submit application'}</Button>
     </fieldset>
   </form>;
 }

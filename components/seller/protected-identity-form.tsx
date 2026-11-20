@@ -35,6 +35,6 @@ function OwnedProtectedIdentityForm({caseId,permissionId,accountId,fields,defaul
       {evidenceKinds.map(kind=><label className="block text-sm capitalize" key={kind}>{label(kind)} proof<input type="file" name={kind} accept="image/png,image/jpeg,application/pdf" className="mt-1 block w-full"/></label>)}
       <p className="text-sm">PNG, JPEG or PDF; up to 5 MB per file. Files stay private.</p></fieldset>
     {retained&&!busy?<p className="text-sm">The result is uncertain. Your exact fields and files are retained for retry.</p>:null}
-    <Button type="submit" disabled={busy||locked}>{busy?'Saving…':retained?'Retry retained submission':'Submit for identity verification'}</Button>
-    {!retained&&!locked?<Button type="button" variant="outline" onClick={()=>router.refresh()}>Review current case</Button>:null}<output className="block text-sm" aria-live="polite">{message}</output></form>;
+    <Button variant="workspace-decision" size="workspace" type="submit" disabled={busy||locked}>{busy?'Saving…':retained?'Retry retained submission':'Submit for identity verification'}</Button>
+    {!retained&&!locked?<Button size="workspace" type="button" variant="workspace-outline" onClick={()=>router.refresh()}>Review current case</Button>:null}<output className="block text-sm" aria-live="polite">{message}</output></form>;
 }

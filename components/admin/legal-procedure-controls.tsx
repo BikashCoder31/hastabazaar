@@ -12,7 +12,6 @@ import { emptyLegalControl, type LegalControlEvent, type LegalControlWorkspace, 
 
 const endpoint = '/api/admin/legal-procedures/control';
 const labels = { approve: 'Approval', activate: 'Activation', withdraw: 'Withdrawal' };
-const actionClass = 'min-h-11 h-auto max-w-full whitespace-normal py-2';
 async function responseData<T>(response: Response): Promise<T> {
   const data = await response.json() as { error?: unknown };
   if (!response.ok) throw new Error(typeof data?.error === 'string' ? data.error : 'The procedure request failed. Review its state before continuing.');
@@ -81,9 +80,9 @@ export function LegalProcedureControls({ current, dirty, busy, onBusyChange, ini
       <div><dt className="font-semibold">Scheduled replacement</dt><dd className="mt-1 leading-6">{control.scheduled ? `Version ${control.scheduled.document.revision} · ${procedureTime(control.scheduled.effectiveAt!)} Nepal time` : 'None'}</dd></div>
     </dl>
     <div className="flex flex-wrap gap-4 text-sm font-semibold text-primary">
-      <Link href="/admin/legal-policies/active" prefetch={false} className="min-h-11 py-2 underline underline-offset-4">Open active staff procedure</Link>
-      {control.active ? <Link href="/api/admin/legal-procedures/active?download=1" prefetch={false} download className="min-h-11 py-2 underline underline-offset-4">Download active procedure</Link> : null}
-      <Button type="button" variant="outline" disabled={busy} onClick={() => void read()} className={actionClass}>Refresh approval state</Button>
+      <Link href="/admin/legal-policies/active" prefetch={false} className="section-link underline">Open active staff procedure</Link>
+      {control.active ? <Link href="/api/admin/legal-procedures/active?download=1" prefetch={false} download className="section-link underline">Download active procedure</Link> : null}
+      <Button type="button" size="workspace" variant="workspace-outline" disabled={busy} onClick={() => void read()}>Refresh approval state</Button>
     </div>
     {dirty || current.revision === 0 ? <p className="text-sm font-semibold">Save the completed text as a version before approving or activating it.</p> : null}
     <FieldGroup>
@@ -97,19 +96,19 @@ export function LegalProcedureControls({ current, dirty, busy, onBusyChange, ini
         <FieldLabel htmlFor="procedure-control-confirm" className="leading-6">I reviewed this saved version and understand the selected approval, activation or withdrawal action.</FieldLabel></Field>
     </FieldGroup>
     <div className="flex flex-wrap gap-3">
-      <Button type="button" disabled={!ready || dirty || current.revision === 0 || approved} onClick={() => void act('approve')} className={actionClass}>Approve saved version</Button>
-      <Button type="button" variant="outline" disabled={!ready || dirty || !approved} onClick={() => void act('activate')} className={actionClass}>Activate approved version</Button>
-      <Button type="button" variant="destructive" disabled={!ready || (!control.active && !control.scheduled)} onClick={() => void act('withdraw')} className={actionClass}>Withdraw active and scheduled versions</Button>
+      <Button type="button" size="workspace" variant={approved ? 'workspace-outline' : 'workspace-decision'} disabled={!ready || dirty || current.revision === 0 || approved} onClick={() => void act('approve')}>Approve saved version</Button>
+      <Button type="button" size="workspace" variant={approved ? 'workspace-decision' : 'workspace-outline'} disabled={!ready || dirty || !approved} onClick={() => void act('activate')}>Activate approved version</Button>
+      <Button type="button" size="workspace" variant="workspace-destructive" disabled={!ready || (!control.active && !control.scheduled)} onClick={() => void act('withdraw')}>Withdraw active and scheduled versions</Button>
     </div>
     {notice ? <output className="block rounded-xl border p-4 text-sm leading-6">{notice}</output> : null}
     {error ? <div role="alert" className="rounded-xl border border-destructive p-4 text-sm leading-6">{error} Your entered reason and confirmation are kept. An uncertain response may already have been recorded; retry the unchanged action or refresh its state.</div> : null}
-    <details className="min-w-0 border-t pt-4"><summary className="cursor-pointer py-2 font-semibold">Approval and activation history</summary>
+    <details className="min-w-0 border-t pt-4"><summary className="min-h-11 content-center cursor-pointer py-2 font-semibold">Approval and activation history</summary>
       {control.history.length ? <ol className="mt-3 flex flex-col gap-3">{control.history.map(entry => <li key={entry.id} className="min-w-0 rounded-xl border p-4 text-sm leading-6">
         <p className="font-semibold">{labels[entry.operation]} · version {entry.document.revision} · action {entry.sequence}</p>
         <p>{entry.actorName} · {procedureTime(entry.occurredAt)} Nepal time</p><p className="break-words">{entry.reason}</p>
-        <Button type="button" variant="outline" disabled={busy} onClick={() => void read(entry.sequence)} className={`${actionClass} mt-2`}>View action {entry.sequence}</Button>
+        <Button type="button" size="workspace" variant="workspace-outline" disabled={busy} onClick={() => void read(entry.sequence)} className="mt-2">View action {entry.sequence}</Button>
       </li>)}</ol> : <p className="mt-3 text-sm">No approval or activation has been recorded.</p>}
-      {control.nextBeforeSequence !== null ? <Button type="button" variant="outline" disabled={busy} onClick={() => void read(undefined, true)} className={`${actionClass} mt-3`}>Load older actions</Button> : null}
+      {control.nextBeforeSequence !== null ? <Button type="button" size="workspace" variant="workspace-outline" disabled={busy} onClick={() => void read(undefined, true)} className="mt-3">Load older actions</Button> : null}
       {selected ? <article className="mt-5 min-w-0 rounded-xl border p-4 text-sm leading-7">
         <h3 className="text-lg font-semibold">{labels[selected.operation]} · version {selected.document.revision} · read-only snapshot</h3>
         <p>{selected.actorName} · {procedureTime(selected.occurredAt)} Nepal time</p><p>{selected.reason}</p>

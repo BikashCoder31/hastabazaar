@@ -16,7 +16,7 @@ export default async function SellerProtectedChangePage({params}:{params:Promise
   const {id}=await params,viewer=await requireSellerCenterPage(`/seller/requests/changes/${id}`),db=requireDatabase(env as unknown as {DB?:D1Database});
   const workspace=await protectedChangeWorkspace(db,id,viewer.userId,'owner').catch(error=>{if(error instanceof ProtectedChangeError&&[403,404].includes(error.status))notFound();throw error;});
   const {record,capability}=workspace,holds=capability.holds.filter(hold=>hold.caseId===id);
-  return <div className="space-y-6"><LegacyProtectedTransitionNote transition={workspace.transition}/><Link className="section-link" href="/seller/requests">← All requests</Link><header><p className="eyebrow">Reference {record.id}</p>
+  return <div className="space-y-6"><LegacyProtectedTransitionNote transition={workspace.transition}/><Link className="section-link text-[#A8232E] underline" href="/seller/requests">← All requests</Link><header><p className="eyebrow">Reference {record.id}</p>
     <h1 className="font-heading text-3xl">{record.kind==='bank'?'Bank':'Protected identity'} change</h1><p>{record.status.replaceAll('_',' ')} · Updated {date(record.updatedAt)}</p></header>
     <section className="space-y-3 rounded-xl border p-5"><p>{record.reason}</p><p>Requested scope: {workspace.fields.join(', ')}</p>
       <p>Submitted {date(record.requestedAt)}{record.dueAt?` · First triage target ${date(record.dueAt)}`:''}</p>{record.reviewReason?<p>Review: {record.reviewReason}</p>:null}

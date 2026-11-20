@@ -58,7 +58,7 @@ export default async function StaffFormHistoryPage({ searchParams }: { searchPar
     </header>
     <nav aria-label="Staff history kinds" className="flex flex-wrap gap-2">
       {kinds.map((item) => <Link key={item.kind} href={historyHref(item.kind,undefined,undefined,undefined,returnTo)}
-        className="rounded-lg border px-3 py-2 text-sm text-primary hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary">
+        className="section-link underline">
         {item.label}
       </Link>)}
     </nav>
@@ -72,15 +72,15 @@ export default async function StaffFormHistoryPage({ searchParams }: { searchPar
           <span className="min-w-0 break-all">{item.subjectType}: {item.subjectId}<span className="block text-xs text-muted-foreground">
             {new Date(item.createdAt).toLocaleString('en-NP', { timeZone: 'Asia/Kathmandu' })} · Actor {item.actorId ?? 'Unknown'}
           </span></span>
-          <Link className="text-primary underline-offset-4 hover:underline focus-visible:underline"
+          <Link className="section-link underline"
             href={historyHref(selected.kind, item.subjectId, cursor, item.id,returnTo)}>Open saved context</Link>
         </li>)}
       </ul> : <p className="text-sm text-muted-foreground">No authorized entries on this page.</p>}
-      {history?.nextCursor ? <Link className="inline-block text-sm text-primary underline-offset-4 hover:underline"
+      {history?.nextCursor ? <Link className="section-link underline"
         href={historyHref(selected.kind, id, history.nextCursor,undefined,returnTo)}>Older entries</Link> : null}
     </section> : <p className="text-sm text-muted-foreground">Choose a history kind to browse records you can currently read.</p>}
     {answer ? <section className="space-y-4 rounded-xl border p-4 sm:p-6" aria-label="Saved form answers">
-      {selected?<Link className="section-link" href={historyHref(selected.kind,id,cursor,undefined,returnTo)}>Back to recorded entries</Link>:null}
+      {selected?<Link className="section-link underline" href={historyHref(selected.kind,id,cursor,undefined,returnTo)}>Back to recorded entries</Link>:null}
       <h2 className="font-heading text-xl">Saved context</h2>
       <p className="break-all text-xs text-muted-foreground">Record {answer.subjectId} · Submission {answer.requestId}</p>
       {answer.answers.answers.length ? <dl className="space-y-3">

@@ -153,7 +153,7 @@ export default async function HomepageProductControlsPage({
               <option value="visible">Homepage eligible</option>
               <option value="hidden">Hidden from homepage</option>
             </select>
-            <Button type="submit">Apply filters</Button>
+            <Button variant="workspace-primary" size="workspace" type="submit">Apply filters</Button>
           </form>
           {searchField.helpText ? <p id="homepage-query-help" className="text-sm text-muted-foreground">{searchField.helpText}</p> : null}
           {visibilityField.helpText ? <p id="homepage-visibility-help" className="text-sm text-muted-foreground">{visibilityField.helpText}</p> : null}
@@ -163,7 +163,7 @@ export default async function HomepageProductControlsPage({
               {result.total} published product{result.total === 1 ? '' : 's'}{' '}
               found
             </p>
-            <Link href="/" target="_blank" className="section-link">
+            <Link href="/" target="_blank" className="section-link underline">
               Open customer homepage
             </Link>
           </div>
@@ -213,7 +213,7 @@ export default async function HomepageProductControlsPage({
                   <div className="flex flex-wrap items-center gap-2">
                     <Link
                       href={`/admin/products/${product.id}`}
-                      className="block min-w-0 break-words font-semibold hover:underline"
+                      className="section-link underline break-words text-base"
                     >
                       {product.nameEn}
                     </Link>
@@ -255,23 +255,17 @@ export default async function HomepageProductControlsPage({
           className="flex items-center justify-center gap-3"
         >
           {page > 1 ? (
-            <Button
-              variant="outline"
-              render={<Link href={pageHref(page - 1, query, visibility)} />}
-            >
+            <Link href={pageHref(page - 1, query, visibility)} className="section-link underline">
               Previous
-            </Button>
+            </Link>
           ) : null}
           <span className="text-sm text-muted-foreground">
             Page {page} of {pageCount}
           </span>
           {page < pageCount ? (
-            <Button
-              variant="outline"
-              render={<Link href={pageHref(page + 1, query, visibility)} />}
-            >
+            <Link href={pageHref(page + 1, query, visibility)} className="section-link underline">
               Next
-            </Button>
+            </Link>
           ) : null}
         </nav>
       ) : null}

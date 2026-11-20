@@ -208,7 +208,7 @@ function HomepageOccasionManagerScope({actorId,
     <form ref={formRef} data-form-id="staff.homepage-occasion-manager" id="occasion-slides"
       className="space-y-6 border-t pt-8" onSubmit={(event) => event.preventDefault()}>
       {command.recovery}
-      {catalog.status==='stale'&&!command.pending?<Button type="button" variant="outline" disabled={busy} onClick={()=>{if(command.scope.current())catalog.refresh();}}>Refresh form</Button>:null}
+      {catalog.status==='stale'&&!command.pending?<Button size="workspace" type="button" variant="workspace-outline" disabled={busy} onClick={()=>{if(command.scope.current())catalog.refresh();}}>Refresh form</Button>:null}
       <fieldset disabled={busy||command.pending} className="min-w-0 space-y-6">
       <FormGuide formId="staff.homepage-occasion-manager" />
 
@@ -224,8 +224,9 @@ function HomepageOccasionManagerScope({actorId,
           </p>
         </div>
         <Button
+          size="workspace"
           type="button"
-          variant="outline"
+          variant="workspace-outline"
           disabled={slides.length >= 8}
           onClick={() =>
             apply(() => addHomepageOccasionSlide(slides, crypto.randomUUID()))
@@ -294,15 +295,19 @@ function HomepageOccasionManagerScope({actorId,
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             <Button
+              size="workspace"
               type="button"
-              variant={previewMode === 'desktop' ? 'secondary' : 'outline'}
+              variant="workspace-outline"
+              aria-pressed={previewMode === 'desktop'}
               onClick={() => setPreviewMode('desktop')}
             >
               Desktop preview
             </Button>
             <Button
+              size="workspace"
               type="button"
-              variant={previewMode === 'mobile' ? 'secondary' : 'outline'}
+              variant="workspace-outline"
+              aria-pressed={previewMode === 'mobile'}
               onClick={() => setPreviewMode('mobile')}
             >
               Mobile preview
@@ -363,6 +368,8 @@ function HomepageOccasionManagerScope({actorId,
             <output aria-live="polite" className="block text-sm font-medium">{command.message||message}</output>
           ) : null}
           <Button
+            variant="workspace-primary"
+            size="workspace"
             type="button"
             disabled={busy || !catalog.canSubmit || !readiness.draftValid || reason.trim().length < 8}
             onClick={() => void saveDraft()}
@@ -396,8 +403,8 @@ function HomepageOccasionManagerScope({actorId,
                   <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
-                      size="sm"
-                      variant="outline"
+                      size="workspace"
+                      variant="workspace-outline"
                       onClick={() => {
                         setSlides(clone(version.value));
                         setPreviewId(version.value[0]?.id ?? '');
@@ -407,8 +414,9 @@ function HomepageOccasionManagerScope({actorId,
                     </Button>
                     {version.status === 'draft' ? (
                       <Button
+                        variant="workspace-primary"
                         type="button"
-                        size="sm"
+                        size="workspace"
                         disabled={
                           busy ||
                           !catalog.canSubmit ||
@@ -424,8 +432,8 @@ function HomepageOccasionManagerScope({actorId,
                     {version.status === 'published' ? (
                       <Button
                         type="button"
-                        size="sm"
-                        variant="outline"
+                        size="workspace"
+                        variant="workspace-outline"
                         disabled={busy || !catalog.canSubmit || reason.trim().length < 8}
                         onClick={() => void changeVersion(version, 'reverse')}
                       >
@@ -520,16 +528,16 @@ function SlideEditor({
             </label>
             <Button
               type="button"
-              size="sm"
-              variant="outline"
+              size="workspace"
+              variant="workspace-outline"
               onClick={onPreview}
             >
               Preview
             </Button>
             <Button
               type="button"
-              size="icon"
-              variant="outline"
+              size="workspace"
+              variant="workspace-outline"
               disabled={index === 0}
               onClick={() => onMove('up')}
               aria-label={`Move slide ${index + 1} up`}
@@ -538,8 +546,8 @@ function SlideEditor({
             </Button>
             <Button
               type="button"
-              size="icon"
-              variant="outline"
+              size="workspace"
+              variant="workspace-outline"
               disabled={index === total - 1}
               onClick={() => onMove('down')}
               aria-label={`Move slide ${index + 1} down`}
@@ -548,9 +556,9 @@ function SlideEditor({
             </Button>
             <Button
               type="button"
-              size="icon"
-              variant="destructive"
-              onClick={onRemove}
+              size="workspace"
+              variant="workspace-destructive"
+              onClick={() => { if (window.confirm('Remove this slide from the working draft?')) onRemove(); }}
               aria-label={`Remove slide ${index + 1}`}
             >
               <Trash2 />
