@@ -4,59 +4,44 @@ import { env } from 'cloudflare:workers';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { can } from '@/lib/marketplace/permissions';
-import {readIncidentPageEvidence} from '@/lib/operations/incident-page-evidence';
+import { readIncidentPageEvidence } from '@/lib/operations/incident-page-evidence';
 import { IncidentWorkspace } from '@/components/admin/incident-workspace';
-import {safeAdminReturnTo,withAdminReturnTo} from '@/lib/admin/return-context';
+import { safeAdminReturnTo, withAdminReturnTo } from '@/lib/admin/return-context';
+
 export const dynamic = 'force-dynamic';
-export default async function IncidentsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ incident?: string; legacy?: string; returnTo?:string }>;
+const back = 'inline-flex min-h-11 items-center text-sm font-semibold underline underline-offset-4';
+
+export default async function IncidentsPage({ searchParams }: {
+  searchParams: Promise<{ incident?: string; legacy?: string; report?: string; returnTo?: string }>;
 }) {
-  const actor = await requireStaffPage('/admin/system-health/incidents'),
-    db = requireDatabase(env),
-    query = await searchParams,
-    returnTo=safeAdminReturnTo(query.returnTo,'/admin/system-health'),
-    evidence=await readIncidentPageEvidence(db,actor,{...env,NODE_ENV:process.env.NODE_ENV},query.incident);
-  if (!evidence.available)
-    return (
-      <main className="space-y-4">
-        <Link className="text-sm underline" href={returnTo}>Back to results</Link>
-        <AdminPageTitle><h1 className="text-2xl font-semibold">Incidents</h1></AdminPageTitle>
-        <p>
-          Current runtime scope is unavailable. Protected incident actions are
-          paused.
-        </p>
-      </main>
-    );
-  const {rows,detail,legacy,responders,manage,canAct}=evidence;
-  return (
-    <main className="space-y-6">
-      <div>
-        <p><Link className="text-sm underline" href={returnTo}>Back to results</Link></p>
-        {can(actor, 'system.health.view') && (
-          <Link href={withAdminReturnTo('/admin/system-health',returnTo)} className="text-sm underline">
-            System health &amp; records
-          </Link>
-        )}
-        <AdminPageTitle><h1 className="mt-2 text-2xl font-semibold">Incidents</h1></AdminPageTitle>
-        <p className="text-sm text-muted-foreground">
-          Environment: {evidence.environment}. Ownership, acknowledgment and
-          recovery evidence are recorded separately.
-        </p>
+  const [actor, query] = await Promise.all([requireStaffPage('/admin/system-health/incidents'), searchParams]);
+  const db = requireDatabase(env);
+  const returnTo = safeAdminReturnTo(query.returnTo, '/admin/system-health');
+  const evidence = await readIncidentPageEvidence(db, actor, { ...env, NODE_ENV: process.env.NODE_ENV }, query.incident);
+  const canViewHealth = can(actor, 'system.health.view');
+  const backHref = canViewHealth || returnTo !== '/admin/system-health' ? returnTo : '/admin';
+
+  return <section className="max-w-[69.75rem] min-w-0 space-y-5">
+    <header>
+      <div className="flex flex-wrap gap-x-4">
+        <Link className={back} href={backHref}>{backHref === '/admin/system-health' ? 'System health & backups' : 'Back to results'}</Link>
+        {canViewHealth && backHref !== '/admin/system-health' ? <Link className={back} href={withAdminReturnTo('/admin/system-health', backHref)}>System health &amp; backups</Link> : null}
       </div>
-      <IncidentWorkspace
-        actorId={actor.id}
-        rows={rows}
-        detail={detail}
-        legacy={legacy}
-        responders={responders}
-        manage={manage}
-        canAct={canAct}
-        superAdmin={actor.role === 'super_admin'}
-        initialLegacyId={query.legacy}
-        returnTo={returnTo}
-      />
-    </main>
-  );
+      <AdminPageTitle><h1 className="font-heading text-[28px] tracking-tight">Incidents</h1></AdminPageTitle>
+      {evidence.available ? <p className="mt-2 text-sm text-muted-foreground">Environment · {evidence.environment}. Ownership, acknowledgment and recovery evidence are recorded separately.</p> : null}
+    </header>
+    {!evidence.available ? <p role="alert" className="rounded-xl border bg-card p-4">Current runtime scope is unavailable. Protected incident actions are paused.</p> : <IncidentWorkspace
+      actorId={actor.id}
+      rows={evidence.rows}
+      detail={evidence.detail}
+      legacy={evidence.legacy}
+      responders={evidence.responders}
+      manage={evidence.manage}
+      canAct={evidence.canAct}
+      superAdmin={actor.role === 'super_admin'}
+      initialLegacyId={query.legacy}
+      initialReport={evidence.manage && query.report === '1'}
+      returnTo={backHref}
+    />}
+  </section>;
 }

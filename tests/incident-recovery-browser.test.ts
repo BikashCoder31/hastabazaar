@@ -79,7 +79,13 @@ for(const scenario of ['actor','recovery','recovery-new','form-json','form-html'
     await Promise.all([page.waitForResponse((response:BrowserResponse)=>response.url().endsWith(path)&&response.request().method()==='POST'),page.getByRole('button',{name:'Save incident action',exact:true}).click()]);assert.equal(posts[0].status,200);assert.doesNotMatch(JSON.stringify(await page.evaluate(()=>Object.entries(sessionStorage))),/PRIVATE-UNSENT-INCIDENT/);
     assert.deepEqual(errors,[]);await context.close();return;
    }
-   if(scenario==='actor'){await page.getByRole('button',{name:'Scroll current incidents',exact:true}).focus();await page.keyboard.press('Enter');await page.keyboard.press('ArrowRight');await page.waitForFunction(()=>!!document.querySelector('section[aria-label^="Current incidents"]')?.scrollLeft);}
+   if (scenario === 'actor') {
+    const list = page.getByRole('region', {name: 'Current incidents and retained episodes'});
+    assert.ok(await list.evaluate((region: HTMLElement) => region.scrollWidth <= region.clientWidth), 'Incident records should fit the 390px viewport.');
+    const incident = list.getByRole('link').first();
+    await incident.focus();
+    assert.equal(await incident.evaluate((link: HTMLElement) => document.activeElement === link), true, 'The incident link remains keyboard-focusable.');
+   }
    if(scenario==='recovery-new'){
     await page.getByText('Record a new failure or map a retained legacy incident',{exact:true}).click();
     await page.getByRole('textbox',{name:'Incident title',exact:true}).fill('Fictional additional incident');await page.getByRole('textbox',{name:'Monitored service or workflow key',exact:true}).fill('fictional.additional');await page.getByRole('textbox',{name:'Failure signature',exact:true}).fill('fictional-additional-failure');await page.getByRole('textbox',{name:'Actual affected actions and impact',exact:true}).fill('The additional fictional workflow needs an independent response.');

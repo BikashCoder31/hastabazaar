@@ -8,6 +8,7 @@ type TabDefinition = RelatedLink & {
   detailRoutes?: readonly string[];
   related?: readonly RelatedLink[];
   fallback?: string;
+  fallbackLabel?: string;
   superAdmin?: boolean;
   anyPermission?: readonly Permission[];
 };
@@ -95,8 +96,8 @@ const definitions = [
       related: [{ href: '/admin/legal-policies/active', label: 'Active staff procedure' }] },
     { href: '/admin/forms', label: 'Forms' },
     { href: '/admin/business-emails', label: 'Email delivery' },
-    { href: '/admin/system-health', label: 'System health', routes: ['/admin/governance'] },
-    { href: '/admin/backup-transfer', label: 'Backup & transfer' },
+    { href: '/admin/system-health', label: 'System health & backups', fallback: '/admin/system-health/incidents',
+      fallbackLabel: 'Incidents', routes: ['/admin/governance', '/admin/system-health/incidents', '/admin/backup-transfer'] },
     { href: '/security', label: 'Security' },
     { href: '/admin/not-in-use', label: 'Not in use yet', routes: ['/admin/riders'] },
   ] },
@@ -123,7 +124,8 @@ export function adminSections(role: string, permissions?: readonly Permission[])
       if (!href || (href === tab.fallback && !allowed.has(href))) return [];
       return [{
         href,
-        label: href === '/admin/team' && role === 'admin' ? 'My responsibilities' : tab.label,
+        label: href === '/admin/team' && role === 'admin' ? 'My responsibilities'
+          : href === tab.fallback ? tab.fallbackLabel ?? tab.label : tab.label,
         routes: tab.routes ?? [],
         detailRoutes: tab.detailRoutes ?? [],
         related: (tab.related ?? []).filter(link => link.href !== href && allowed.has(link.href)),

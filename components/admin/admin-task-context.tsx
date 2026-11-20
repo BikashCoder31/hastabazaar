@@ -35,7 +35,8 @@ export function AdminTaskContext({
     && pathname !== '/admin/products/intakes'
     && pathname !== '/admin/products/publications'
     && pathname !== '/admin/analytics'
-    && pathname !== '/admin/offers';
+    && pathname !== '/admin/offers'
+    && pathname !== '/admin/system-health';
   return (
     <AdminPageHelpProvider help={help}>
       {guide && showBreadcrumb ? <Breadcrumb className="mb-4" aria-label="Task location">

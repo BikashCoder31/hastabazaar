@@ -20,7 +20,7 @@ const areaRoutes: readonly [AdminArea, readonly string[]][] = [
   ['Finance & payments', ['/admin/payments', '/admin/payouts', '/admin/payouts/run', '/admin/payments/refunds', '/admin/payments/recoveries', '/admin/accounting']],
   ['Fees, programs & promotions', ['/admin/fees', '/admin/offers', '/admin/referrals', '/admin/promo-codes', '/admin/fee-waivers', '/admin/loyalty', '/admin/commission', '/admin/programs', '/admin/gift-cards']],
   ['Team & business policies', ['/security', '/admin/team', '/admin/business-settings', '/admin/legal-policies', '/admin/legal-policies/active', '/admin/not-in-use']],
-  ['System health & records', ['/admin/system-health', '/admin/backup-transfer', '/admin/forms', '/admin/business-emails', '/admin/order-emails', '/admin/activity', '/admin/governance', '/admin/staff-form-history', '/admin/form-submissions']],
+  ['System health & records', ['/admin/system-health', '/admin/system-health/incidents', '/admin/backup-transfer', '/admin/forms', '/admin/business-emails', '/admin/order-emails', '/admin/activity', '/admin/governance', '/admin/staff-form-history', '/admin/form-submissions']],
 ];
 const areaForRoute = new Map(areaRoutes.flatMap(([area, routes]) => routes.map(route => [route, area] as const)));
 function destinationArea(href: string): AdminArea {
@@ -39,10 +39,12 @@ const destinations: readonly {
 }[] = [
   {
     href: '/admin/system-health',
-    label: 'System health & records',
+    label: 'System health & backups',
     icon: 'governance',
     permission: 'system.health.view',
   },
+  { href: '/admin/system-health/incidents', label: 'Incidents', icon: 'governance',
+    permission: 'system.incidents.manage', alternativePermission: 'system.health.view' },
   {
     href: '/security',
     label: 'Account security',
@@ -598,6 +600,7 @@ const taskGuides: Readonly<
       'Confirm an explained change and check the retained record.',
     ],
   ],
+  '/admin/system-health/incidents': ['Review the incidents you are allowed to work on.', ['Check the latest recorded issue.', 'Open the incident to record your progress or evidence.']],
   '/admin/system-health': [
     'Review service health, incident ownership, recovery evidence and authorized records.',
     [
@@ -679,6 +682,7 @@ const taskOrder: readonly string[] = [
   '/admin/gift-cards',
   '/admin/team',
   '/admin/system-health',
+  '/admin/system-health/incidents',
   '/admin/forms',
   '/admin/business-emails',
   '/admin/analytics',

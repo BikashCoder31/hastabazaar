@@ -1,10 +1,36 @@
-import {env} from 'cloudflare:workers';
-import {requireStaffPage} from '@/lib/auth/staff';
-import {requireDatabase} from '@/lib/db/d1';
-import {formHealthRuntimeScope} from '@/lib/operations/form-health';
-import {readSystemHealthWorkspace} from '@/lib/operations/system-health-workspace';
-import {SystemHealthWorkspace} from '@/components/admin/system-health-workspace';
-import {readEmailHealthRuntimeConfig} from '@/lib/operations/email-delivery-overview';
-import {safeAdminReturnTo} from '@/lib/admin/return-context';
-export const dynamic='force-dynamic';
-export default async function SystemHealthPage(props?:{searchParams?:Promise<Record<string,string|string[]|undefined>>}){const query=await(props?.searchParams??Promise.resolve({} as Record<string,string|string[]|undefined>)),actor=await requireStaffPage('/admin/system-health','system.health.view');const bindings=env as unknown as Record<string,string|undefined>,scope=formHealthRuntimeScope(bindings),email=readEmailHealthRuntimeConfig(bindings,scope.now),raw=bindings.SYSTEM_HEALTH_EXPECTED_SINCE,expected=raw&&/^\d+$/.test(raw)?Number(raw):NaN;return <SystemHealthWorkspace returnTo={safeAdminReturnTo(query.returnTo)} overview={await readSystemHealthWorkspace(requireDatabase(env as unknown as {DB?:D1Database}),actor.id,{...scope,expectedSince:email.expectedSince,systemExpectedSince:Number.isSafeInteger(expected)&&expected>0&&expected<=scope.now?expected:null})}/>;}
+import { AdminPageHelpProvider } from '@/components/admin/page-help';
+import { SystemHealthWorkspace } from '@/components/admin/system-health-workspace';
+import { safeAdminReturnTo } from '@/lib/admin/return-context';
+import { requireStaffPage } from '@/lib/auth/staff';
+import { can } from '@/lib/marketplace/permissions';
+import { readHealthPageEvidence } from './evidence';
+
+export const dynamic = 'force-dynamic';
+
+export default async function SystemHealthPage({ searchParams }: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const path = '/admin/system-health';
+  const [actor, query] = await Promise.all([requireStaffPage(path, 'system.health.view'), searchParams]);
+  const superAdmin = actor.role === 'super_admin';
+  const evidence = await readHealthPageEvidence(actor.id, superAdmin && can(actor, 'audit_log.view'));
+  const help = {
+    pathname: path,
+    title: 'System health and backups',
+    sentences: [
+      'Check the website, database, email and photo storage. Review any open incidents and the work needed next.',
+      'Run all checks to try the current read-only probes and refresh recorded evidence. A check needs current evidence to show Working.',
+    ],
+    procedureHref: can(actor, 'support.manage') ? '/admin/legal-policies/active' : undefined,
+  };
+  return <AdminPageHelpProvider help={help}>
+    <SystemHealthWorkspace
+      {...evidence}
+      actorId={actor.id}
+      returnTo={query?.returnTo === undefined ? undefined : safeAdminReturnTo(query.returnTo)}
+      canReport={can(actor, 'system.incidents.manage')}
+      showForms={superAdmin && can(actor, 'business_settings.manage')}
+      showEmail={can(actor, 'email.delivery.manage')}
+    />
+  </AdminPageHelpProvider>;
+}

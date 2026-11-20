@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import {safeAdminReturnTo,withAdminReturnTo} from '@/lib/admin/return-context';
-import { useRef, useState, type SyntheticEvent } from 'react';
+import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
@@ -23,7 +23,8 @@ const timestamp = (value: number | null) =>
         timeStyle: 'medium',
         timeZone: 'Asia/Kathmandu',
       }).format(value) + ' Nepal time';
-const control = 'mt-1 w-full rounded-md border bg-background px-3 py-2';
+const control = 'mt-1 min-h-11 w-full min-w-0 rounded-md border bg-background px-3 py-2';
+const recordLink = 'inline-flex min-h-11 max-w-full items-center font-semibold underline underline-offset-4';
 type IncidentProps = {
   actorId:string;
   rows: Row[];
@@ -34,6 +35,7 @@ type IncidentProps = {
   canAct: boolean;
   superAdmin: boolean;
   initialLegacyId?: string;
+  initialReport?: boolean;
   returnTo?:string;
 };
 export function IncidentWorkspace(props:IncidentProps){
@@ -50,6 +52,7 @@ function OwnedIncidentWorkspace({
   canAct,
   superAdmin,
   initialLegacyId,
+  initialReport,
   returnTo,
 }: IncidentProps) {
   const returnHref=safeAdminReturnTo(returnTo,'/admin/system-health'),incidentHref=(id:string)=>withAdminReturnTo('/admin/system-health/incidents?incident='+encodeURIComponent(id),returnHref),currentHref=detail?incidentHref(detail.id):withAdminReturnTo('/admin/system-health/incidents',returnHref);
@@ -57,7 +60,11 @@ function OwnedIncidentWorkspace({
   const command=useIncidentCommand(actorId,JSON.stringify([detail?.id??'new',initialLegacyId??'']),(id,recovered)=>{if(!recovered)router.push(incidentHref(id));},response=>{form.handleSubmissionResponse(response,'stale_version');});
   const [message,setMessage]=useState(''),[requestedAction,setAction]=useState('assign'),[createAction,setCreateAction]=useState(initialLegacyId?'legacy_map':'create');
   const [reviewedVersion,setReviewedVersion]=useState(detail?.version??null),changed=(detail?.version??null)!==reviewedVersion;
-  const busy=command.busy,tableRegion=useRef<HTMLElement|null>(null);
+  const busy = command.busy;
+  const reportSummary = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (initialReport) reportSummary.current?.focus();
+  }, [initialReport]);
   const action =
     !superAdmin && (requestedAction === 'assign' || detail?.ownerId === null)
       ? 'acknowledge'
@@ -124,74 +131,50 @@ function OwnedIncidentWorkspace({
     await command.submit(payload);
   }
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6 wrap-anywhere [&_button]:min-h-11 [&_label]:min-w-0">
       {command.recovery}
       {(changed||command.confirmed)&&!command.pending?<div className="space-y-2"><output className="block">{changed?'The incident evidence changed. Your draft is retained.':'Review the displayed current evidence before starting another incident action.'}</output><Button type="button" variant="outline" disabled={busy} onClick={()=>{setReviewedVersion(detail?.version??null);command.resetConfirmation();}}>Review current incident evidence</Button></div>:null}
-      <Button type="button" variant="outline" className="sr-only focus:not-sr-only" onClick={()=>tableRegion.current?.focus()}>Scroll current incidents</Button>
-      <section
-        className="overflow-x-auto rounded-lg border"
-        ref={tableRegion}
-        tabIndex={-1}
-        aria-label="Current incidents; scroll horizontally on a narrow screen"
-      >
-        <table className="w-full min-w-[44rem] text-left text-sm">
-          <caption className="p-3 text-left font-medium">
-            Current incidents and retained episodes
-          </caption>
-          <thead>
-            <tr className="border-y">
-              <th className="p-3">Incident</th>
-              <th className="p-3">State and impact</th>
-              <th className="p-3">Owner and next action</th>
-              <th className="p-3">Original acknowledgment target</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.id} className="border-b align-top">
-                <td className="p-3">
-                  <Link
-                    className="underline"
-                    href={
-                      incidentHref(row.id)
-                    }
-                  >
-                    {row.title}
-                  </Link>
-                  <p className="text-xs">
-                    Episode {row.episode}
-                    {row.mergedInto ? ' · Linked duplicate' : ''}
-                  </p>
-                </td>
-                <td className="p-3">
-                  {row.state} · {row.severity}
-                  <p>{row.impactClass.replaceAll('_', ' ')}</p>
-                </td>
-                <td className="p-3">
-                  {responders.find((person) => person.id === row.ownerId)
-                    ?.name ??
-                    (row.ownerId
-                      ? 'Assigned technical responder'
-                      : 'Unassigned — coverage needed')}
-                  <p>
-                    {row.nextAction ??
-                      'Review actual impact and the next safe action'}
-                  </p>
-                </td>
-                <td className="p-3">{timestamp(row.acknowledgeDueAt)}</td>
-              </tr>
+      <section className="min-w-0 rounded-[15px] border bg-card" aria-labelledby="current-incidents">
+        <h2 id="current-incidents" className="px-[18px] py-3.5 font-bold">Current incidents and retained episodes</h2>
+        {rows.length ? (
+          <ul>
+            {rows.map(row => (
+              <li key={row.id} className="border-t px-[18px] py-4 text-sm">
+                <dl className="grid min-w-0 gap-x-5 gap-y-3 sm:grid-cols-2 xl:grid-cols-[1.1fr_0.8fr_1.2fr_0.9fr]">
+                  <div className="min-w-0">
+                    <dt className="sr-only">Incident</dt>
+                    <dd>
+                      <Link className={recordLink} href={incidentHref(row.id)}>{row.title}</Link>
+                      <p className="text-xs text-muted-foreground">
+                        Episode {row.episode}{row.mergedInto ? ' · Linked duplicate' : ''}
+                      </p>
+                    </dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="font-semibold">State and impact</dt>
+                    <dd>{row.state} · {row.severity}<br />{row.impactClass.replaceAll('_', ' ')}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="font-semibold">Owner and next action</dt>
+                    <dd>
+                      {responders.find(person => person.id === row.ownerId)?.name ??
+                        (row.ownerId ? 'Assigned technical responder' : 'Coverage needed')}
+                      <p>{row.nextAction ?? 'Review actual impact and the next safe action'}</p>
+                    </dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="font-semibold">Original acknowledgment target</dt>
+                    <dd>{timestamp(row.acknowledgeDueAt)}</dd>
+                  </div>
+                </dl>
+              </li>
             ))}
-          </tbody>
-        </table>
-        {!rows.length && (
-          <p className="p-4">
-            No incident episodes are recorded in this environment.
-          </p>
-        )}
+          </ul>
+        ) : <p className="border-t px-[18px] py-4 text-sm">No incident episodes are recorded in this environment.</p>}
       </section>
       {detail && (
-        <section className="space-y-4 rounded-lg border p-4">
-          <h2 className="text-xl font-semibold">{detail.title}</h2>
+        <section className="space-y-4 rounded-[15px] border bg-card p-4">
+          <h2 className="font-heading text-xl font-semibold">{detail.title}</h2>
           <p>{detail.impactSummary}</p>
           <dl className="grid gap-3 text-sm sm:grid-cols-2">
             <div>
@@ -220,7 +203,7 @@ function OwnedIncidentWorkspace({
           </p>
           {detail.mergedInto && (
             <Link
-              className="underline"
+              className={recordLink}
               href={
                 incidentHref(detail.mergedInto)
               }
@@ -468,7 +451,7 @@ function OwnedIncidentWorkspace({
               <h3 className="font-medium">Authorized linked sources</h3>
               {detail.links.map((link) => (
                 <p key={link.sourceType + link.sourceId}>
-                  <Link className="underline" href={withAdminReturnTo(link.href,currentHref)}>
+                  <Link className={recordLink} href={withAdminReturnTo(link.href,currentHref)}>
                     {link.sourceType}: {link.sourceId}
                   </Link>
                 </p>
@@ -477,16 +460,25 @@ function OwnedIncidentWorkspace({
           )}
         </section>
       )}
+      {superAdmin ? <details className="rounded-[15px] border bg-card px-4 py-2">
+        <summary className="min-h-11 cursor-pointer content-center font-semibold">Legacy incident history</summary>
+        <div className="flex flex-wrap gap-x-4 pb-2 text-sm">
+          <Link className={recordLink} href="/admin/governance">Open Governance archive</Link>
+          <Link className={recordLink} href="/admin/staff-form-history?kind=governance-incident-create">Original incident reports</Link>
+          <Link className={recordLink} href="/admin/staff-form-history?kind=governance-incident-update">Original incident updates</Link>
+        </div>
+      </details> : null}
       {manage && (
         <details
-          className="rounded-lg border p-4"
-          open={Boolean(initialLegacyId)}
+          id="report-incident"
+          className="scroll-mt-4 rounded-[15px] border bg-card px-4 py-2"
+          open={Boolean(initialLegacyId || initialReport)}
         >
-          <summary className="cursor-pointer font-medium">
+          <summary ref={reportSummary} className="min-h-11 cursor-pointer content-center font-semibold">
             Record a new failure or map a retained legacy incident
           </summary>
           <form data-form-id="staff.incident-review"
-            className="mt-4"
+            className="my-4"
             onSubmit={(event) => save(event,true,Date.now())}
           >
             <fieldset disabled={busy||command.blocked||changed} className="grid min-w-0 gap-4 sm:grid-cols-2">
