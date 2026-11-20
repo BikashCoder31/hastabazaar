@@ -1,240 +1,95 @@
-import {sellerPayoutRequestReadiness} from '@/lib/payments/payout-request-readiness';
-import {readSellerLivePayoutHistory,assertSellerWorkspaceViewer} from '@/lib/seller/workspace-tasks';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
-
+import { CalendarDays } from 'lucide-react';
 import { StatusBadge } from '@/components/admin/status-badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { requireSellerCenterPage } from '@/lib/auth/seller-center';
 import { ApplicantSection } from '@/components/seller/applicant-section';
-import { requireDatabase } from '@/lib/db/d1';
-import {
-  listSellerLedger,
-  listSellerPayouts,
-  listPayoutRequests,
-} from '@/lib/db/repositories/payouts';
-import { PayoutRequestForm } from '@/components/seller/payout-request-form';
-import { getSellerEarnings } from '@/lib/seller/earnings';
-import { SellerEarningsSummary } from '@/components/seller/seller-earnings-summary';
 import { SellerBankDetailsForm } from '@/components/seller/bank-details-form';
+import { PayoutRequestForm } from '@/components/seller/payout-request-form';
+import { SellerEarningsSummary } from '@/components/seller/seller-earnings-summary';
+import { requireSellerCenterPage } from '@/lib/auth/seller-center';
+import { requireDatabase } from '@/lib/db/d1';
+import { listPayoutRequests, listSellerLedger, listSellerPayouts } from '@/lib/db/repositories/payouts';
+import { sellerPayoutRequestReadiness } from '@/lib/payments/payout-request-readiness';
+import { getSellerEarnings } from '@/lib/seller/earnings';
+import { sellerDate, sellerMoney } from '@/lib/seller/presentation';
+import { assertSellerWorkspaceViewer, readSellerLivePayoutHistory } from '@/lib/seller/workspace-tasks';
+import { readEarningsOverview } from './overview-data';
+import { EarningsExample, financePanel, openPayoutTracker, PayoutHistory, PayoutTracker, WhereMoneyIs } from './payout-overview';
 
 export const dynamic = 'force-dynamic';
-const money = (paisa: number) =>
-  new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR' }).format(
-    paisa / 100,
-  );
-const date = (value: number) =>
-  new Intl.DateTimeFormat('en-NP', {
-    dateStyle: 'medium',
-    timeZone: 'Asia/Kathmandu',
-  }).format(new Date(value));
 
 export default async function SellerFinancePage() {
   const seller = await requireSellerCenterPage('/seller/finance');
   if (!seller.approvedSeller || !seller.sellerId) return <ApplicantSection viewer={seller} section="finance" />;
   const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const [earnings, ledger, payouts, requests, payoutReadiness] = await Promise.all([
-    getSellerEarnings(database, seller.sellerId),
-    listSellerLedger(database, seller.sellerId),
-    listSellerPayouts(database, seller.sellerId),
-    listPayoutRequests(database, seller.sellerId),
-    sellerPayoutRequestReadiness(database,seller.sellerId),
+  const now = new Date().getTime();
+  const sellerId = seller.sellerId;
+  const [earnings, ledger, payouts, requests, readiness, overview, livePayouts] = await Promise.all([
+    getSellerEarnings(database, sellerId, now),
+    listSellerLedger(database, sellerId, 150, now),
+    listSellerPayouts(database, sellerId),
+    listPayoutRequests(database, sellerId),
+    sellerPayoutRequestReadiness(database, sellerId, now).catch(() => ({
+      ready: false, maskedBeneficiary: null,
+      blocker: 'Payout eligibility could not be checked. Refresh Earnings before asking for a payout.',
+    })),
+    readEarningsOverview(database, sellerId, seller.userId, now),
+    readSellerLivePayoutHistory(database, seller.userId, sellerId),
   ]);
-  const summary = earnings.registered;
-  const livePayouts=await readSellerLivePayoutHistory(database,seller.userId,seller.sellerId);
-  const showRegistered =
-    earnings.participationRoute !== 'managed_maker' ||
-    earnings.hasRegisteredRecords;
-  await assertSellerWorkspaceViewer(database,seller.userId,seller.sellerId,seller.authSubject);
-  return (
-    <div className="space-y-8">
-      <div>
-        <p className="eyebrow">Seller finance</p>
-        <h1 className="mt-2 font-heading text-4xl tracking-tight">
-          Earnings and settlements
-        </h1>
-        <p className="mt-3 max-w-3xl text-base leading-7 text-muted-foreground">
-          See what is available, what is waiting and what has been recorded as
-          paid. All amounts come from existing financial records. Dates use
-          Nepal time.
-        </p>
-        {showRegistered ? (
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Registered Seller commission is charged on the product selling value
-            after seller-funded discounts, excluding separately stated product
-            taxes and delivery charges. Discounts funded entirely by Hastabazaar
-            do not reduce the seller&apos;s agreed product value. Taxes legally
-            chargeable on the commission are itemised separately.{' '}
-            <Link
-              href="/seller-agreement"
-              className="font-semibold text-primary underline"
-            >
-              Seller Marketplace Agreement
-            </Link>
-          </p>
-        ) : null}
-        <p className="mt-3">
-          <Link
-            className="section-link"
-            href="/seller/form-history?kind=payout-request"
-          >
-            Payout request answer history
-          </Link>
-        </p>
+  await assertSellerWorkspaceViewer(database, seller.userId, sellerId, seller.authSubject);
+  const showRegistered = earnings.participationRoute !== 'managed_maker' || earnings.hasRegisteredRecords;
+  const open = openPayoutTracker(payouts, requests);
+  const bank = overview.bank;
+  return <div className="min-w-0 space-y-5 text-[#14213D]">
+    <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E4DACA] pb-4">
+      <h1 className="font-heading text-[1.75rem] font-semibold leading-tight">Earnings</h1>
+      <p className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-[#D7C4A9] px-3 text-sm font-semibold">
+        <CalendarDays className="size-4" />{new Intl.DateTimeFormat('en-NP', { month: 'long', year: 'numeric', timeZone: 'Asia/Kathmandu' }).format(now)}
+      </p>
+    </header>
+
+    {open ? <PayoutTracker item={open} overview={overview} /> : null}
+    {showRegistered ? <WhereMoneyIs summary={earnings.registered} overview={overview} /> : null}
+    <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+      <div className="min-w-0 space-y-5">
+        {showRegistered ? <PayoutRequestForm actorId={seller.userId} sellerId={sellerId}
+          availablePaisa={earnings.registered.availablePaisa} readiness={readiness}
+          hasOpenRequest={requests.some(request => request.status === 'submitted')} /> : null}
+        <SellerBankDetailsForm accountId={seller.userId} overview
+          maskedAccount={bank ? { bankName: bank.bankName, lastFour: bank.lastFour, beneficiary: bank.beneficiary } : null} />
       </div>
-      <SellerEarningsSummary earnings={earnings} />
-      {livePayouts.length?<section className="space-y-3" aria-labelledby="live-payout-history"><h2 id="live-payout-history" className="font-heading text-2xl">Live maker payout history</h2>{livePayouts.map(payout=><article id={'live-payout-'+payout.id} key={payout.id} className="scroll-mt-28 rounded-xl border p-4"><h3 className="font-semibold">{payout.reference}</h3><p>{payout.status.replaceAll('_',' ')} · {money(payout.amountPaisa)} · {date(payout.createdAt)}</p><p className="text-sm text-muted-foreground">Approval or preparation does not confirm a completed bank transfer. Historical simulation records remain separate.</p></article>)}</section>:null}
-      <SellerBankDetailsForm accountId={seller.userId} />
-      {showRegistered ? (
-        <PayoutRequestForm
-          actorId={seller.userId}
-          sellerId={seller.sellerId}
-          availablePaisa={summary.availablePaisa}
-          readiness={payoutReadiness}
-          hasOpenRequest={requests.some(
-            (request) => request.status === 'submitted',
-          )}
-        />
-      ) : null}
-      {requests.length ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Payout requests</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {requests.map((request) => (
-              <div
-                key={request.id} id={'payout-request-'+request.id}
-                className="flex flex-wrap justify-between gap-3 border-b py-3 text-sm"
-              >
-                <span>
-                  {date(request.createdAt)} · {request.sellerNote}
-                  {request.processingNote ? (
-                    <span className="mt-2 block text-muted-foreground">
-                      Admin note: {request.processingNote}
-                    </span>
-                  ) : null}
-                </span>
-                <strong className="capitalize">{request.status}</strong>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      ) : null}
-      {showRegistered || payouts.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Registered Seller payout history</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {payouts.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No payout has been prepared yet.
-              </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Payout</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Prepared</TableHead>
-                    <TableHead>Reference</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {payouts.map((payout) => (
-                    <TableRow key={payout.id}>
-                      <TableCell className="font-semibold">
-                        {payout.payoutNumber}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={payout.status} />
-                      </TableCell>
-                      <TableCell>{money(payout.amountPaisa)}</TableCell>
-                      <TableCell>{date(payout.createdAt)}</TableCell>
-                      <TableCell>{payout.providerReference ?? '—'}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
-      {showRegistered || ledger.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Recorded ledger history</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {ledger.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No entries have accrued in this seller ledger. Managed Maker
-                amounts are shown separately above.
-              </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Order / product</TableHead>
-                    <TableHead>Availability</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {ledger.map((entry) => (
-                    <TableRow key={entry.id}>
-                      <TableCell>{date(entry.createdAt)}</TableCell>
-                      <TableCell className="capitalize">
-                        {entry.type.replaceAll('_', ' ')}
-                      </TableCell>
-                      <TableCell>
-                        <span className="block font-medium">
-                          {entry.orderNumber ??
-                            entry.payoutNumber ??
-                            'Account entry'}
-                        </span>
-                        <span className="block text-xs text-muted-foreground">
-                          {entry.productName ?? entry.description}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        {entry.payoutNumber ? (
-                          <StatusBadge
-                            status={entry.payoutStatus ?? 'prepared'}
-                          />
-                        ) : entry.isAvailable ? (
-                          'Available'
-                        ) : entry.availableAt ? (
-                          date(entry.availableAt)
-                        ) : (
-                          'Held'
-                        )}
-                      </TableCell>
-                      <TableCell
-                        className={`text-right font-semibold ${entry.amountPaisa < 0 ? 'text-destructive' : 'text-emerald-700'}`}
-                      >
-                        {money(entry.amountPaisa)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
+      <div className="min-w-0 space-y-5">
+        {showRegistered || payouts.length || requests.length ? <PayoutHistory payouts={payouts} requests={requests} /> :
+          <Link href="/seller/finance/recoveries" className="section-link inline-flex min-h-11 items-center">Recovery statements</Link>}
+        {showRegistered ? <EarningsExample earnings={earnings} overview={overview} /> : null}
+      </div>
     </div>
-  );
+
+    {livePayouts.length ? <section className={financePanel} aria-labelledby="live-payout-history">
+      <h2 id="live-payout-history" className="font-bold">Live maker payout history</h2>
+      {livePayouts.map(payout => <article id={'live-payout-' + payout.id} key={payout.id} className="scroll-mt-28 space-y-1 border-t border-[#E4DACA] pt-3 text-sm">
+        <h3 className="break-all font-semibold">{payout.reference}</h3>
+        <p className="capitalize">{payout.status.replaceAll('_', ' ')} · {sellerMoney(payout.amountPaisa)} · {sellerDate(payout.createdAt)}</p>
+      </article>)}
+    </section> : null}
+    {earnings.managed ? <SellerEarningsSummary earnings={earnings} /> : null}
+
+    {showRegistered || ledger.length > 0 ? <details className={financePanel}>
+      <summary className="min-h-11 cursor-pointer font-bold">Recorded ledger history</summary>
+      {ledger.length ? <ul className="divide-y divide-[#E4DACA]">
+        {ledger.map(entry => <li key={entry.id} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-3 py-3 text-sm md:grid-cols-[minmax(0,1.15fr)_minmax(0,1.5fr)_minmax(0,1fr)_auto]">
+          <p className="min-w-0 capitalize">{entry.type.replaceAll('_', ' ')} <span className="block text-xs text-[#46536F]">{sellerDate(entry.createdAt)}</span></p>
+          <p className="col-start-1 row-start-2 min-w-0 break-words font-medium md:col-start-auto md:row-start-auto">{entry.orderNumber ?? entry.payoutNumber ?? 'Account entry'}
+            <span className="block text-xs font-normal text-[#46536F]">{entry.productName ?? entry.description}</span></p>
+          <div className="row-start-2 text-right md:row-start-auto md:text-left">{entry.payoutNumber ? <StatusBadge status={entry.payoutStatus ?? 'prepared'} /> :
+            entry.isAvailable ? 'Available' : entry.availableAt ? sellerDate(entry.availableAt) : 'Held'}</div>
+          <p className={`col-start-2 row-start-1 text-right font-semibold md:col-start-auto md:row-start-auto ${entry.amountPaisa < 0 ? 'text-[#A8232E]' : 'text-[#236548]'}`}>{sellerMoney(entry.amountPaisa)}</p>
+        </li>)}
+      </ul> : <p className="text-sm text-[#46536F]">No entries have accrued in this seller ledger.</p>}
+    </details> : null}
+    <div className="flex flex-wrap gap-x-5">
+      <Link className="section-link inline-flex min-h-11 items-center" href="/seller/form-history?kind=payout-request">Payout request answer history</Link>
+      {showRegistered ? <Link className="section-link inline-flex min-h-11 items-center" href="/seller-agreement">Seller Marketplace Agreement</Link> : null}
+    </div>
+  </div>;
 }

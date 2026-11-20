@@ -1,7 +1,8 @@
 'use client';
 import { FormGuide } from '@/components/forms/form-guide';
 import { useState } from 'react';
-import { HandCoins } from 'lucide-react';
+import { Clock3 } from 'lucide-react';
+import { sellerMoney } from '@/lib/seller/presentation';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -30,10 +31,11 @@ export function PayoutRequestForm({
   const [submitted, setSubmitted] = useState(false);
   const command=useCaseCommand('seller.payout-request',actorId,'request',sellerId,'/api/seller/payout-requests',{created:true,onSuccess:()=>setSubmitted(true)});
   const {busy,message:error,setMessage:setError}=command;
-  const blocked = readiness.blocker ?? payoutRequestBlock(
-    availablePaisa,
-    hasOpenRequest || submitted,
-  );
+  const open = hasOpenRequest || submitted;
+  const blocked = open
+    ? 'Your payout request is with Hastabazaar. You can ask again once it’s reviewed.'
+    : readiness.blocker ?? payoutRequestBlock(availablePaisa, false);
+  const amount = sellerMoney(availablePaisa);
   async function submit(event: {
     preventDefault(): void;
     currentTarget: HTMLFormElement;
@@ -54,25 +56,20 @@ export function PayoutRequestForm({
     }
   }
   return (
-    <section className="rounded-2xl border bg-card p-6">
-      <h2 className="flex items-center gap-2 font-heading text-2xl">
-        <HandCoins className="size-5 text-primary" />Request available payout
-      </h2>
-      <p className="mt-3 text-base leading-7 text-muted-foreground">
-        We review your eligible earnings and verified bank details.
-        Submitting a request does not transfer money.
-      </p>
-      <p className="mt-3">Eligible earnings: {new Intl.NumberFormat('en-NP',{style:'currency',currency:'NPR'}).format(availablePaisa/100)} · {readiness.maskedBeneficiary??'Verified beneficiary needs review'}</p>
+    <section className="min-w-0 space-y-4 rounded-[0.9rem] border border-[#E4DACA] bg-white p-4 sm:p-5" aria-labelledby="ask-payout">
+      <h2 id="ask-payout" className="font-bold">Ask for a payout</h2>
+      <p className="flex flex-wrap items-baseline justify-between gap-2 text-sm"><span className="text-[#46536F]">Available now</span><strong className="text-xl tabular-nums">{amount}</strong></p>
       {command.saved?<div className="mt-3 space-x-3"><button disabled={busy} onClick={()=>void command.recover()}>Check original request</button>{command.canRetry?<button disabled={busy} onClick={()=>void command.retry()}>Retry unchanged request</button>:null}{command.unrecorded?<button disabled={busy} onClick={command.restart}>Review and start a new attempt</button>:null}</div>:null}
       {blocked ? (
-        <output className="mt-4 block rounded-xl bg-secondary p-4 text-sm font-semibold text-primary">
-          {blocked}
-        </output>
+        <div className="space-y-2">
+          <Button type="button" disabled aria-describedby="why-payout-blocked" className="min-h-11 w-full rounded-xl bg-[#A8232E] text-white">Ask for {amount}</Button>
+          <p id="why-payout-blocked" className="flex items-start gap-2 text-sm leading-relaxed text-[#46536F]"><Clock3 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />{blocked}</p>
+        </div>
       ) : (
-        <form onSubmit={submit} data-form-id="seller.payout-request" className="mt-5 space-y-3">
+        <form onSubmit={submit} data-form-id="seller.payout-request" className="space-y-3">
       <FormGuide formId="seller.payout-request" />
 
-<p>Purpose: Seller earnings payout</p>
+{readiness.maskedBeneficiary ? <p className="text-sm text-[#46536F]">Bank account · {readiness.maskedBeneficiary}</p> : null}
 
           <Label htmlFor="payout-note">Note (optional)</Label>
           <Textarea
@@ -90,9 +87,9 @@ export function PayoutRequestForm({
           <Button
             type="submit"
             disabled={busy || command.saved || !catalog.canSubmit}
-            className="min-h-11 rounded-full"
+            className="min-h-11 w-full rounded-xl bg-[#A8232E] text-white hover:bg-[#8D1D27]"
           >
-            {busy ? 'Submitting…' : 'Request available payout'}
+            {busy ? 'Submitting…' : 'Ask for ' + amount}
           </Button>
         </form>
       )}

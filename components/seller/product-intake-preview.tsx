@@ -1,12 +1,21 @@
 'use client';
 import Image from 'next/image';
+import { sellerMoney } from '@/lib/seller/presentation';
 import {ProposedVariantPricing} from '@/components/products/product-publication-facts';
 import {detailText,productDetailGroups} from '@/lib/products/category-fields';
 import {offerMoney,type OfferDraft} from '@/lib/products/offer-contracts';
 import type {IntakeSnapshot} from '@/lib/products/intake-workspace';
-export function ProductIntakePreview({snapshot,offer,uploads,caseId,showProposedPricing=false}:{snapshot:IntakeSnapshot;offer?:OfferDraft;uploads:readonly {id:string;mimeType:string}[];caseId?:string;showProposedPricing?:boolean}){
+export function ProductIntakePreview({snapshot,offer,uploads,caseId,showProposedPricing=false,compact=false,tradingName}:{snapshot:IntakeSnapshot;offer?:OfferDraft;uploads:readonly {id:string;mimeType:string}[];caseId?:string;showProposedPricing?:boolean;compact?:boolean;tradingName?:string|null}){
  const name=detailText(snapshot.answers,'nameEn'),description=detailText(snapshot.answers,'descriptionEn'),imageId=offer?.mediaId&&snapshot.mediaIds.includes(offer.mediaId)&&uploads.some(file=>file.id===offer.mediaId&&file.mimeType.startsWith('image/'))?offer.mediaId:snapshot.mediaIds.find(id=>uploads.some(file=>file.id===id&&file.mimeType.startsWith('image/'))),price=offer?offerMoney(offer.price):null;
  const selection=offer?snapshot.offers.axes.map(axis=>axis.values.find(value=>value.id===offer.selection[axis.id])?.label).filter(Boolean).join(' · '):'';
+ if(compact)return <article aria-label="Customer preview" className="min-w-0 space-y-2 rounded-xl border border-[#E4DACA] bg-[#F5EFE3] p-3">
+  <div className="grid aspect-[4/3] place-items-center overflow-hidden rounded-md border border-[#EEE5D5] bg-white">
+    {imageId?<Image src={`/api/seller/product-intakes/media/${encodeURIComponent(imageId)}`} alt={name||'Product photo'} width={360} height={270} unoptimized className="h-full w-full object-contain" />:<p className="px-3 text-center text-sm text-[#46536F]">Cover photo not provided</p>}
+  </div>
+  <h3 className="break-words font-bold">{name||'Product name not provided'}</h3>
+  {tradingName?<p className="break-words text-sm text-[#665B4C]">by {tradingName}</p>:null}
+  <p className="font-bold">{price===null?'Price not provided':sellerMoney(price)}</p>
+ </article>;
  return <article aria-label="Customer preview" className="min-w-0 overflow-hidden rounded-2xl border bg-card">
   <div className="grid gap-0 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]"><div className="flex aspect-square items-center justify-center border-b bg-muted/35 p-5 md:border-b-0 md:border-r">{imageId?<Image data-media-mode="contain" src={`/api/seller/product-intakes/media/${encodeURIComponent(imageId)}${caseId?'?caseId='+encodeURIComponent(caseId):''}`} alt={name||'Product photo'} width={600} height={600} unoptimized loading="eager" className="h-full w-full object-contain"/>:<p className="text-center text-sm text-muted-foreground">Cover photo not provided</p>}</div>
   <div className="min-w-0 space-y-4 p-5"><p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Customer preview · private draft</p><h3 className="break-words font-heading text-2xl">{name||'Product name not provided'}</h3><p className="whitespace-pre-wrap break-words text-sm">{description||'Description not provided'}</p>{selection&&<p className="text-sm">{selection}</p>}{showProposedPricing&&offer?.included?
