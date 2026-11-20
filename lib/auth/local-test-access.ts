@@ -1,4 +1,5 @@
 import type { AuthenticatedUser } from '@/app/auth';
+import { isLoopbackHost } from '../security/local-simulation';
 
 export const localTestRoles = [
   'customer',
@@ -55,11 +56,7 @@ const identities: Record<LocalTestRole, AuthenticatedUser> = {
 export function isLocalTestRequest(requestHeaders: Headers): boolean {
   if (process.env.NODE_ENV === 'production') return false;
 
-  const hostname = (requestHeaders.get('host') ?? '')
-    .split(':')[0]
-    .replace(/^\[|\]$/g, '')
-    .toLowerCase();
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+  return isLoopbackHost(requestHeaders.get('host') ?? '');
 }
 
 export function readLocalTestRole(requestHeaders: Headers): LocalTestRole | null {

@@ -17,6 +17,7 @@ import { requireDatabase } from '../db/d1';
 import { ADMIN_ABSOLUTE_MS } from './model';
 import { SecurityStateError } from './crypto';
 import { SecurityStore } from './store';
+import { isLocalSimulation, skipsLocalTestStaffMfa } from './local-simulation';
 import {
   readSecurityInitialization,
   type SecurityPolicyBindings,
@@ -59,6 +60,7 @@ export type SecurityActor = {
   sessionHash: string | null;
   raw: Awaited<ReturnType<typeof readHostedSession>>;
   localSimulation: boolean;
+  localTestStaffMfaSkipped: boolean;
 };
 export function text(data: Record<string, unknown>, key: string, max = 256) {
   const value = data[key];
@@ -91,18 +93,14 @@ export async function securityActor(
       `SELECT u.id,u.auth_subject AS authSubject,u.email,u.display_name AS displayName,r.role FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.auth_subject=? AND u.status='active' AND r.role IN ('admin','super_admin','seller') ORDER BY CASE r.role WHEN 'super_admin' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END LIMIT 1`,
     )
     .bind(subject)
-    .first<Omit<SecurityActor, 'sessionHash' | 'raw' | 'localSimulation'>>();
+    .first<Omit<SecurityActor, 'sessionHash' | 'raw' | 'localSimulation' | 'localTestStaffMfaSkipped'>>();
   if (!row)
     throw new SecurityRequestError(
       'An existing seller or staff account is required.',
     );
   if(hasActorIntentMismatch(request,row.id))throw new SecurityRequestError('The signed-in account changed. Reload security for the current account.',403,'ACTOR_CHANGED');
   const host = new URL(request.url).hostname;
-  const localSimulation =
-    bindings.HASTABAZAAR_RUNTIME_ENV === 'local_staging' &&
-    ['localhost', '127.0.0.1', '[::1]'].includes(host) &&
-    process.env.NODE_ENV !== 'production' &&
-    /@local\.hastabazaar\.test$/i.test(row.email);
+  const localSimulation = isLocalSimulation(bindings, host, row.email);
   return {
     db,
     key: bindings.HASTABAZAAR_SECURITY_KEY,
@@ -112,6 +110,7 @@ export async function securityActor(
       raw,
       sessionHash: raw ? hostedSessionHash(request.headers) : null,
       localSimulation,
+      localTestStaffMfaSkipped: fixture?.userId === row.authSubject && skipsLocalTestStaffMfa(bindings, host, row),
     },
   };
 }

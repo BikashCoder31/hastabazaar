@@ -1,7 +1,7 @@
 import tailwindcss from '@tailwindcss/postcss';
 import { fileURLToPath } from 'node:url';
 import vinext from 'vinext';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import { localPreviewBindings } from './lib/staging/local-preview-bindings';
 import hostingConfig from './.openai/hosting.json' with { type: 'json' };
 import {localSecurityPolicyPlugin} from './lib/staging/security-policy-plugin';
@@ -69,7 +69,10 @@ const localBindingConfig = {
     : [],
 };
 
-export default defineConfig(async ({ command }) => {
+export default defineConfig(async ({ command, mode }) => {
+  const previewEnvironment = command === 'serve' && process.env.HASTABAZAAR_RUNTIME_ENV === 'local_staging'
+    ? { ...process.env, ...loadEnv(mode, process.cwd(), 'HASTABAZAAR_LOCAL_SKIP_STAFF_MFA') }
+    : process.env;
   const localDecoderOptIn = process.env.HASTABAZAAR_LOCAL_RIDER_DECODER;
   if (localDecoderOptIn && (command !== 'serve' || process.env.NODE_ENV === 'production' || process.env.DEPLOY_TARGET))
     throw new Error('The local rider decoder is forbidden in builds and hosted runtimes.');
@@ -132,7 +135,7 @@ export default defineConfig(async ({ command }) => {
       sites(),
       cloudflare({
         viteEnvironment: { name: 'rsc', childEnvironments: ['ssr'] },
-        config: { ...localBindingConfig, vars: localPreviewBindings(process.env, command),
+        config: { ...localBindingConfig, vars: localPreviewBindings(previewEnvironment, command),
           // Secret values are loaded from the checked launcher's process environment,
           // never config.vars/client defines or a built preview .dev.vars asset.
           secrets: { required: command === 'serve' && process.env.HASTABAZAAR_RUNTIME_ENV === 'local_staging' ? ['HASTABAZAAR_SECURITY_KEY'] : [] } },

@@ -12,6 +12,7 @@ import {
 } from '@/lib/auth/hosted-session';
 import { sessionExpiredSignInPath } from '@/lib/auth/sign-in-destination';
 import { getLocalTestIdentity } from '@/lib/auth/local-test-access';
+import { skipsLocalTestStaffMfa } from '@/lib/security/local-simulation';
 import {
   interactiveNavigation,
   legacyStaffSetupAllowed,
@@ -65,14 +66,19 @@ export async function getAuthenticatedUser(
   if (localTestIdentity) {
     const account = await database
       .prepare(
-        "SELECT u.id,EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role IN ('admin','super_admin')) AS isStaff,EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='seller') AS isSeller FROM users u WHERE u.auth_subject=? AND u.status='active'",
+        "SELECT u.id,u.email,EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role IN ('admin','super_admin')) AS isStaff,EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='super_admin') AS isSuperAdmin,EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='seller') AS isSeller FROM users u WHERE u.auth_subject=? AND u.status='active'",
       )
       .bind(localTestIdentity.userId)
-      .first<{ id: string; isStaff: number; isSeller: number }>();
+      .first<{ id: string; email: string; isStaff: number; isSuperAdmin: number; isSeller: number }>();
     if (!account) return null;
     if (account.isStaff) {
       try {
         if (
+          !skipsLocalTestStaffMfa(bindings, requestHeaders.get('host') ?? '', {
+            authSubject: localTestIdentity.userId,
+            email: account.email,
+            role: account.isSuperAdmin ? 'super_admin' : 'admin',
+          }) &&
           !(await legacyStaffSetupAllowed(
             database,
             account.id,

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { headers } from 'next/headers';
 import { ArrowUpRight } from 'lucide-react';
 import { env } from 'cloudflare:workers';
 import { signOutPath } from '@/app/auth';
@@ -12,6 +13,8 @@ import { requireStaffPage } from '@/lib/auth/staff';
 import { AdminSessionActivity } from '@/components/security/session-activity';
 import { adminNavigation } from '@/lib/admin/navigation';
 import { businessSettingDefinitions } from '@/lib/configuration/definitions';
+import { localStaffMfaFlagEnabled } from '@/lib/security/local-simulation';
+import type { SecurityPolicyBindings } from '@/lib/security/runtime-policy';
 import './workspace.css';
 
 export const dynamic = 'force-dynamic';
@@ -20,8 +23,9 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
   const access = { role: staff.role, permissions: staff.permissions };
   const destinations = adminNavigation(staff.role, staff.permissions);
   const procedure = destinations.find(item => item.href === '/admin/legal-policies/active')?.href;
-  const bindings = env as { DB?: D1Database; HASTABAZAAR_RUNTIME_ENV?: string };
+  const bindings = env as SecurityPolicyBindings & { DB?: D1Database };
   const local = bindings.HASTABAZAAR_RUNTIME_ENV === 'local_staging';
+  const localMfaNotice = local && localStaffMfaFlagEnabled(bindings, (await headers()).get('host') ?? '');
   const counts = bindings.DB ? await readAdminSidebarCounts(bindings.DB, staff).catch(() => ({})) : {};
   const settings = destinations.some(item => item.href === '/admin/business-settings')
     ? businessSettingDefinitions.filter(definition => staff.role === 'super_admin' || !definition.affectedSurfaces.some(surface => surface === 'rider'))
@@ -42,6 +46,7 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
           </div>
         </aside>
         <div className="min-w-0">
+          {localMfaNotice ? <p className="border-b border-amber-200 bg-amber-100 px-4 py-2 text-sm text-amber-950">Local only: 2-step check is off for test accounts. Remove HASTABAZAAR_LOCAL_SKIP_STAFF_MFA before any deploy.</p> : null}
           <header className="admin-toolbar">
             <AdminBrand {...access} mobile />
             <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-3 lg:mr-auto lg:ml-0 lg:flex-1"><AdminSearch {...access} settings={settings} /></div>

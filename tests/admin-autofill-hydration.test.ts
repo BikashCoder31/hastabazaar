@@ -25,6 +25,7 @@ const plugin: Plugin = { name: 'admin-autofill-fixtures', setup(bundler) {
   stubFixtureLink(bundler);
   stubFixtureImage(bundler);
   bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'admin-autofill' }));
+  bundler.onResolve({ filter: /^next\/headers$/ }, () => ({ path: 'headers', namespace: 'admin-autofill' }));
   bundler.onResolve({ filter: /^cloudflare:workers$/ }, () => ({ path: 'workers', namespace: 'admin-autofill' }));
   bundler.onResolve({ filter: /^\.\/workspace\.css$/ }, () => ({ path: 'styles', namespace: 'admin-autofill' }));
   bundler.onResolve({ filter: /^@\/app\/auth$/ }, () => ({ path: 'auth', namespace: 'admin-autofill' }));
@@ -33,6 +34,7 @@ const plugin: Plugin = { name: 'admin-autofill-fixtures', setup(bundler) {
   bundler.onResolve({ filter: /^@\/components\/forms\/form-config-client$/ }, () => ({ path: 'config', namespace: 'admin-autofill' }));
   const modules: Record<string, string> = {
     navigation: "export function usePathname(){return '/admin/team'}; export function useRouter(){return {refresh(){}}}; export function useSearchParams(){return new URLSearchParams()}",
+    headers: "export async function headers(){return new Headers({host:'localhost'})}",
     workers: 'export const env = {}',
     styles: '',
     counts: 'export async function readAdminSidebarCounts(){return {}}',

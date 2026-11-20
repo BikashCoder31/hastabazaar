@@ -8,6 +8,7 @@ export interface SecurityPolicyAdapter { read(): Promise<boolean>; mark(): Promi
 export interface SecurityPolicyBindings {
   HASTABAZAAR_SECURITY_KEY?: string;
   HASTABAZAAR_RUNTIME_ENV?: string;
+  HASTABAZAAR_LOCAL_SKIP_STAFF_MFA?: string;
   HASTABAZAAR_SECURITY_INITIALIZED?: string;
   APP_ORIGIN?: string;
   /** Internal server binding for isolated fixtures or an explicitly reviewed host adapter. */

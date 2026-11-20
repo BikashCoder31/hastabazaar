@@ -57,14 +57,14 @@ export async function securityStatus(request: Request) {
       statusTime >= proof.value.passwordVerifiedAt &&
       statusTime - proof.value.passwordVerifiedAt <= FRESH_PASSWORD_MS,
     );
-    const mfaRequired =
+    const mfaRequired = !actor.localTestStaffMfaSkipped && (
       account?.value.status === 'active' ||
       account?.value.status === 'recovery' ||
-      (actor.role === 'super_admin' && account?.value.status !== 'disabled');
+      (actor.role === 'super_admin' && account?.value.status !== 'disabled'));
     const passwordChallenge = store && !registrationRequired
       ? await readPasswordChallenge(store, actor.id, actor.sessionHash, statusTime)
       : null;
-    if (!verified && !passwordChallenge && !registrationRequired && actor.raw?.isStaff && actor.sessionHash &&
+    if (!actor.localTestStaffMfaSkipped && !verified && !passwordChallenge && !registrationRequired && actor.raw?.isStaff && actor.sessionHash &&
       await staffSessionState(db, actor.raw, actor.sessionHash, key, statusTime, false, initialized) === 'expired')
       throw new SecurityRequestError(SESSION_EXPIRED_MESSAGE, 401, 'SESSION_EXPIRED');
     const current=(await securityActor(request)).actor;
@@ -437,7 +437,7 @@ export async function securityActivity(request: Request) {
     if (request.headers.get('origin') !== new URL(request.url).origin)
       throw new SecurityRequestError('Cross-site requests are not allowed.');
     const { db, actor, key, initialized } = await securityActor(request);
-    if (!actor.raw || !actor.sessionHash)
+    if (actor.localTestStaffMfaSkipped || !actor.raw || !actor.sessionHash)
       return securityResponse({ ok: true, setupPending: true });
     const now = Date.now();
     if (
