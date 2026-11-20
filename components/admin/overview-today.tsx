@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowRight, CircleAlert, ClipboardList, FileText, ListFilter, Package, Store, Undo2, Wallet } from 'lucide-react';
+import { ArrowRight, CircleAlert, ClipboardList, FileText, ListFilter, Package, Store, Undo2, UserRound, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -15,7 +15,7 @@ import {
 } from './overview-today-model';
 import { postReviewTaskAssignment, type ReviewTaskAssignment } from './review-task-assignment';
 
-const todayDate = new Intl.DateTimeFormat('en-NP', {
+const todayDate = new Intl.DateTimeFormat('en-GB', {
   weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Kathmandu',
 });
 const icons = { Today: ClipboardList, Orders: Package, Care: Undo2, Sellers: Store, Catalog: FileText, Money: Wallet, Settings: CircleAlert };
@@ -27,6 +27,10 @@ const filterKeys = { section: 'todaySection', type: 'todayType', from: 'todayFro
 function readTodayLimit(params: URLSearchParams) {
   const value = Number(params.get('todayRows'));
   return Number.isSafeInteger(value) && value > pageSize ? value : pageSize;
+}
+
+function ownerInitials(name: string) {
+  return name.trim().split(/\s+/).slice(0, 2).map(part => Array.from(part)[0]).join('').toLocaleUpperCase('en-NP');
 }
 
 function todayReturnTo(original: string, view: TodayView, filters: TodayFilters, anchor: string, visibleRows = pageSize) {
@@ -53,7 +57,7 @@ function TodayFilterPopover({ tasks, filters, onApply }: {
   const applied = Object.values(filters).filter(Boolean).length;
   return (
     <Popover open={open} onOpenChange={next => { if (next) setDraft(filters); setOpen(next); }}>
-      <PopoverTrigger className="today-button" type="button">
+      <PopoverTrigger className="today-button min-h-11!" type="button">
         <ListFilter size={16} aria-hidden="true" /> Filters{applied ? ' (' + applied + ')' : ''}
       </PopoverTrigger>
       <PopoverContent align="end" className="today-filter-popover">
@@ -230,12 +234,12 @@ export function TodayOverview({ tasks, partialSources, actorId, firstName, obser
     <div className="today-overview">
       <header className="today-heading">
         <div>
-          <AdminPageTitle><h1>{firstName ? 'Good morning, ' + firstName : 'Good morning'}</h1></AdminPageTitle>
+          <AdminPageTitle><h1 className="max-lg:text-[2rem]! max-md:text-[1.65rem]!">{firstName ? 'Good morning, ' + firstName : 'Good morning'}</h1></AdminPageTitle>
           <p>{todayDate.format(observedAt)} <span aria-hidden="true">·</span>{' '}
             <strong>{countFormat.format(open.length)} {open.length === 1 ? 'task' : 'tasks'} open</strong>, {countFormat.format(noOwner)} with no owner yet
           </p>
         </div>
-        <button type="button" className="today-button today-button-primary" disabled={!oldest || busy || pending.length > 0}
+        <button type="button" className="today-button today-button-primary min-h-11!" disabled={!oldest || busy || pending.length > 0}
           onClick={() => { if (oldest) startAssignment([oldest.id], true); }}>
           Take the oldest task <ArrowRight size={16} aria-hidden="true" />
         </button>
@@ -247,7 +251,7 @@ export function TodayOverview({ tasks, partialSources, actorId, firstName, obser
             <h2 id="today-tasks-heading">Tasks</h2>
             <fieldset className="today-chips min-w-0" aria-label="Task views">
               {todayViews.filter(([key]) => key === 'action' || queue[key].length).map(([key, label]) => (
-                <button type="button" key={key} aria-pressed={view === key}
+                <button type="button" key={key} aria-pressed={view === key} className="min-h-11!"
                   onClick={() => update(key, filters)}>{label} <span>{countFormat.format(queue[key].length)}</span></button>
               ))}
             </fieldset>
@@ -272,10 +276,16 @@ export function TodayOverview({ tasks, partialSources, actorId, firstName, obser
                 const Icon = task.section === 'Sellers' && task.type === 'Documents' ? FileText : icons[task.section];
                 const anchor = 'today-task-' + encodeURIComponent(task.id);
                 const href = withAdminReturnTo(task.href, todayReturnTo(returnTo, view, filters, anchor, limit));
-                return <li key={task.id} id={'today-task-' + task.id} className="today-task">
-                  <input type="checkbox" aria-label={'Select ' + task.title} disabled={!canAssign}
-                    checked={selected.includes(task.id) && !task.ownerId}
-                    onChange={event => setSelected(previous => event.target.checked ? [...previous, task.id] : previous.filter(id => id !== task.id))} />
+                const ownedByMe = task.ownerId === actorId;
+                const owner = ownedByMe ? 'You' : task.ownerName ?? 'Assigned';
+                const initials = ownerInitials(task.ownerName ?? (ownedByMe ? firstName : ''));
+                return <li key={task.id} id={'today-task-' + task.id} className="today-task max-lg:grid-cols-[1.38rem_2.4rem_minmax(0,1fr)]!">
+                  <label className="-ms-2.5 grid size-11 place-items-center">
+                    <input type="checkbox" aria-label={'Select ' + task.title} disabled={!canAssign}
+                      className="size-[1.2rem] accent-[#14213D] disabled:opacity-40"
+                      checked={selected.includes(task.id) && !task.ownerId}
+                      onChange={event => setSelected(previous => event.target.checked ? [...previous, task.id] : previous.filter(id => id !== task.id))} />
+                  </label>
                   <span className="today-task-icon" data-overdue={late}><Icon size={18} aria-hidden="true" /></span>
                   <div className="today-task-copy">
                     <p className="today-task-meta">{task.section} · {task.type}
@@ -284,12 +294,16 @@ export function TodayOverview({ tasks, partialSources, actorId, firstName, obser
                     <h3>{task.title}</h3>
                     <p className="today-task-context">{task.context}</p>
                   </div>
-                  <div className="today-owner">
-                    {task.ownerId ? <span>{task.ownerId === actorId ? 'You' : task.ownerName ?? 'Assigned'}</span>
-                      : task.assignment ? <button type="button" disabled={!canAssign} onClick={() => startAssignment([task.id])}>Assign to me</button>
+                  <div className="today-owner hidden lg:block">
+                    {task.ownerId ? <span className="flex items-center gap-2">
+                      <span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full bg-[#14213D] text-[0.7rem] font-semibold text-white">
+                        {initials || <UserRound size={14} />}
+                      </span>{owner}
+                    </span>
+                      : task.assignment ? <button type="button" className="min-h-11" disabled={!canAssign} onClick={() => startAssignment([task.id])}>Assign to me</button>
                         : <span>{task.state === 'done' ? 'Completed' : task.ownerKnown === false ? 'See source' : 'No owner'}</span>}
                   </div>
-                  <Link className="today-button today-task-action" href={href} data-review-open>{task.action}</Link>
+                  <Link className="today-button today-task-action min-h-11! max-lg:col-start-3! max-lg:justify-self-start!" href={href} data-review-open>{task.action}</Link>
                 </li>;
               })}
             </ul>

@@ -12,7 +12,8 @@ import { readRecentReviewDecisions, type RecentReviewDecision } from '@/lib/admi
 import type { FinanceRecentDecision } from '@/lib/admin/finance-work-items';
 import { withAdminReturnTo } from '@/lib/admin/return-context';
 import type { AdminStaffAccess } from './admin-sections';
-import { todayReviewTask, type TodayTask } from './overview-today-model';
+import { todayReviewTask, todayShortDate, type TodayTask } from './overview-today-model';
+import { readSellerPickupHandoffs, readSellerReviewHandoffs } from './overview-seller-handoff-data';
 
 const orderStages = [
   { label: 'New', status: 'confirmed' },
@@ -92,10 +93,6 @@ function isCompletedFinanceDecision(decision: FinanceRecentDecision) {
     decision.family === 'payout_packet' && decision.action === 'payout.transfer.paid';
 }
 
-const shortDate = new Intl.DateTimeFormat('en-NP', {
-  day: 'numeric', month: 'short', timeZone: 'Asia/Kathmandu',
-});
-
 export async function readTodaySources({
   db, actor, now, returnTo, tasks, financeDecisions,
 }: {
@@ -117,10 +114,18 @@ export async function readTodaySources({
   const native = tasks.filter((task): task is NativeReviewTask => !('finance' in task));
   const completed = await readRecentReviewDecisions(db, actor.id, native, returnTo, 8, { from, through: now }).catch(() => null);
   const ownerIds = [...new Set(tasks.flatMap(task => task.ownerId ? [task.ownerId] : []))];
-  const names = await displayNames(db, ownerIds).catch(() => new Map<string, string>());
+  const open = tasks.filter(reviewTaskOpen);
+  const [names, handoffs, pickups] = await Promise.all([
+    displayNames(db, ownerIds).catch(() => new Map<string, string>()),
+    readSellerReviewHandoffs(db, actor, open),
+    readSellerPickupHandoffs(db, actor, returnTo).catch(() => null),
+  ]);
   const completedTasks = new Map(native.filter(task => task.status === 'completed').map(task => [task.id, task]));
-  const rows = tasks.filter(reviewTaskOpen).map(task => todayReviewTask(task, returnTo, names.get(task.ownerId ?? '') ?? null));
+  const rows = open.map(task => todayReviewTask(task, returnTo, names.get(task.ownerId ?? '') ?? null, handoffs.copy.get(task.id)));
+  rows.push(...(pickups ?? []));
   const partial = [
+    ...(handoffs.partial ? ['Some seller action details unavailable'] : []),
+    ...(pickups === null ? ['Pickup tasks unavailable'] : []),
     ...(exceptions === null || unrecorded === null ? ['Parcel follow-up unavailable'] : []),
     ...(exceptions?.partial || unrecorded?.length === 100 ? ['Parcel follow-up shows the latest records'] : []),
     ...(cash === null ? ['Courier cash unavailable'] : []),
@@ -189,7 +194,7 @@ export async function readTodaySources({
     rows.push({
       id, section: 'Money', type: refund ? 'Refunds' : 'Payouts',
       title: refund ? 'Refund payment recorded' : decision.label ?? 'Payout request ' + decision.action.split('.').at(-1),
-      context: 'Outcome recorded ' + shortDate.format(decision.createdAt),
+      context: 'Outcome recorded ' + todayShortDate.format(decision.createdAt),
       startedAt: decision.createdAt, dueAt: null, state: 'done', ownerId: null, ownerName: null, assignment: null,
       href: decision.href, action: refund ? 'Open refund' : 'Open payout',
     });

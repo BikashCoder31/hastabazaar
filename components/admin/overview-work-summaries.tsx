@@ -28,8 +28,8 @@ export function TodayWorkSummaries({ orders, courierCash, cases, checks }: {
     health === undefined ? null : { label: 'System checks', value: healthText, detail: 'Recorded observations', warning: health === null || observed.some(row => row.tone !== 'good') },
   ].filter(row => row !== null);
   if (!metrics.length) return null;
-  return <dl className="today-panel today-metrics" aria-label="Work totals">
-    {metrics.map(row => <div key={row.label}>
+  return <dl className="today-panel today-metrics max-lg:grid-cols-1!" aria-label="Work totals">
+    {metrics.map(row => <div key={row.label} className="max-lg:border-0! max-lg:px-5! max-lg:py-5!">
       <dt>{row.label}</dt><dd data-warning={row.warning}>{row.value}</dd><dd className="today-metric-note">{row.detail}</dd>
     </div>)}
   </dl>;
@@ -40,10 +40,10 @@ export function OverviewOrdersByStage({ orders }: { orders: TodayOrders | null |
   const max = Math.max(1, ...(orders?.stages.map(stage => stage.count) ?? []));
   return <section className="today-panel today-side-panel" aria-labelledby="today-order-stages-heading">
     <div className="today-side-heading"><h2 id="today-order-stages-heading">Orders by stage</h2>
-      <Link className="section-link" href="/admin/orders">All orders</Link>
+      <Link className="section-link inline-flex min-h-11 items-center" href="/admin/orders">All orders</Link>
     </div>
     {orders === null ? <output>Order counts are unavailable.</output> : <ul className="today-stages">
-      {orders.stages.map((stage, index) => <li key={stage.label}>
+      {orders.stages.map((stage, index) => <li key={stage.label} className="max-lg:grid-cols-1!">
         <span>{stage.label}</span>
         <span className="today-stage-track" aria-hidden="true"><span data-stage={index} style={{ width: (stage.count / max) * 100 + '%' }} /></span>
         <strong>{number.format(stage.count)}</strong>

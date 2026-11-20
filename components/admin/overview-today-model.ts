@@ -20,6 +20,11 @@ export type TodayTask = {
   href: string;
   action: string;
 };
+export type TodayTaskCopy = Partial<Pick<TodayTask, 'type' | 'title' | 'context' | 'href' | 'action'>> & { sellerName?: string };
+
+export const todayShortDate = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric', month: 'short', timeZone: 'Asia/Kathmandu',
+});
 
 export const todayViews = [
   ['action', 'Needs action', 'All clear', 'Nothing needs a decision right now.'],
@@ -105,18 +110,25 @@ export function reviewTaskCanAssign(task: ReviewQueueTask) {
   return !('finance' in task) && reviewTaskOpen(task) && task.sourceType !== 'product_priority' && !task.assignmentLocked;
 }
 
-export function todayReviewTask(task: ReviewQueueTask, returnTo: string, ownerName: string | null): TodayTask {
+export function todayReviewTask(task: ReviewQueueTask, returnTo: string, ownerName: string | null, copy?: TodayTaskCopy): TodayTask {
   const [section, type, defaultAction] = presentation[task.sourceType];
   const title = reviewTitle(task);
   const pan = task.sourceType === 'seller_document' && !('finance' in task) && task.recordTitle === 'PAN document';
   const action = pan ? 'Review PAN' : defaultAction;
   const state = task.status === 'awaiting_review' ? 'action' : reviewTaskOpen(task) ? 'waiting' : 'done';
-  const source = task.sourceStatus.replaceAll('_', ' ');
+  const product = !('finance' in task) && state === 'action' &&
+    (task.sourceType === 'product_review' && ['submitted', 'under_review'].includes(task.sourceStatus) ||
+    task.sourceType === 'product_intake_review' && ['submitted', 'in_review', 'ready_for_decision'].includes(task.sourceStatus));
+  const source = copy?.context ?? (product
+    ? [task.sellerName ?? copy?.sellerName, 'Sent ' + todayShortDate.format(task.startedAt)].filter(Boolean).join(' · ')
+    : task.sourceStatus.replaceAll('_', ' '));
   const next = task.nextActor === 'You' ? 'Seller' : task.nextActor;
   return {
-    id: task.id, section, type, title: 'finance' in task || !task.sellerName || !('recordTitle' in task)
-      ? ('finance' in task ? title : reviewTaskLabels[task.sourceType] + ' · ' + title)
-      : title,
+    id: task.id, section, type: copy?.type ?? type,
+    title: copy?.title ?? (product && task.recordTitle ? 'Review product: ' + task.recordTitle
+      : 'finance' in task || !task.sellerName || !('recordTitle' in task)
+        ? ('finance' in task ? title : reviewTaskLabels[task.sourceType] + ' · ' + title)
+        : title),
     context: state === 'waiting' ? `${source} · Next: ${next}` : source,
     startedAt: task.startedAt,
     dueAt: reviewDueAt(task),
@@ -125,6 +137,6 @@ export function todayReviewTask(task: ReviewQueueTask, returnTo: string, ownerNa
     ownerName,
     ownerKnown: reviewHasAssignment(task),
     assignment: reviewTaskCanAssign(task) && !('finance' in task) ? { taskId: task.id, revision: task.revision } : null,
-    href: reviewTaskHref(task, returnTo), action,
+    href: copy?.href ?? reviewTaskHref(task, returnTo), action: copy?.action ?? (product ? 'Review' : action),
   };
 }
