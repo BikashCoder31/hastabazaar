@@ -10,10 +10,12 @@ export function AdminSectionTabs({ role, permissions }: AdminStaffAccess) {
   const current = activeAdminSection(adminSections(role, permissions), pathname, params);
   if (!current) return null;
   const { section, tab: active } = current;
+  const pageTitlesSection = (pathname === '/admin/orders' && active.href === '/admin/orders')
+    || (pathname === '/admin/payouts' && !params.has('request'));
 
   return (
     <header className="admin-section-header">
-      <p className="admin-section-title">{section.label}</p>
+      {pageTitlesSection ? null : <p className="admin-section-title">{section.label}</p>}
       <nav aria-label={section.label + ' pages'} className="admin-section-links">
         {section.tabs.map(tab => (
           <Link key={tab.href} href={tab.href} aria-current={active.href === tab.href ? 'page' : undefined}>

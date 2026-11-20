@@ -64,16 +64,15 @@ export function FirstCodConfirmation({ orderId }: { orderId: string }) {
         Awaiting COD confirmation
       </h2>
       <p className="mt-2 text-sm leading-6">
-        This buyer has no delivered order history and placed a cash-on-delivery
-        order of NPR 5,000 or more before shopping credit. Confirm the buyer and
-        order before releasing packing or delivery.
+        This customer has no delivered order history. Confirm the customer and
+        order before releasing it for packing or delivery.
       </p>
       <form
         data-form-id="staff.first-cod-confirmation"
         onSubmit={submit}
         className="mt-4 space-y-3"
       >
-      <FormGuide formId="staff.first-cod-confirmation" />
+        <FormGuide formId="staff.first-cod-confirmation" />
 
         <Label htmlFor="cod-confirmation-reason">Confirmation reason</Label>
         <Textarea
@@ -95,7 +94,7 @@ export function FirstCodConfirmation({ orderId }: { orderId: string }) {
             {error}
           </p>
         ) : null}
-        <Button type="submit" disabled={pending}>
+        <Button className="min-h-11" type="submit" disabled={pending}>
           {pending
             ? 'Saving confirmation…'
             : locked
