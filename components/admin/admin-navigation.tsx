@@ -3,13 +3,12 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import {
-  ArrowDownRight, ArrowUpRight, ChartNoAxesCombined, ChevronDown, House, Menu,
+  ChartNoAxesCombined, ChevronDown, House, Menu,
   MessageCircle, Package, Percent, ReceiptText, Search, SlidersHorizontal,
   Store, Wallet, X,
 } from 'lucide-react';
-import { adminNavigation } from '@/lib/admin/navigation';
 import { mediaObjectClass } from '@/lib/media/responsive-media';
 import { activeAdminSection, adminSections, type AdminSectionId, type AdminStaffAccess } from './admin-sections';
 
@@ -109,72 +108,14 @@ export function AdminBrand({ mobile = false, ...props }: AdminStaffAccess & { mo
   </Link>;
 }
 
-type SettingSearchItem = { key: string; label: string; description: string };
-
-export function AdminSearch({ role, permissions, settings }: AdminStaffAccess & { settings: readonly SettingSearchItem[] }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const input = useRef<HTMLInputElement>(null);
-  const [query, setQuery] = useState('');
-  const open = () => {
-    if (!dialog.current?.open) dialog.current?.showModal();
-    input.current?.focus();
-  };
-  useEffect(() => {
-    function shortcut(event: KeyboardEvent) {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') return;
-      event.preventDefault();
-      open();
-    }
-    window.addEventListener('keydown', shortcut);
-    return () => window.removeEventListener('keydown', shortcut);
-  }, []);
-  const term = query.trim();
-  const destinations = adminNavigation(role, permissions);
-  const matching = new Map([
-    ...adminNavigation(role, permissions, query).filter(({ href }) => href !== '/admin/riders')
-      .map(({ href, label }) => [href, label] as const),
-    ...adminSections(role, permissions).flatMap(section => section.tabs
-      .flatMap(tab => [tab, ...tab.related])
-      .filter(({ label }) => (section.label + ' ' + label).toLowerCase().includes(term.toLowerCase()))
-      .map(({ href, label }) => [href, label] as const)),
-  ]);
-  const searches = [
-    ['/admin/orders', 'Search orders', { q: term }],
-    ['/admin/sellers', 'Search sellers', { q: term, workspace: 'directory' }],
-    ['/admin', 'Search review tasks', { workspace: 'reviews', reviewQ: term, reviewView: 'all' }],
-  ] as const;
-  const settingMatches = term ? settings.filter(({ key, label, description }) =>
-    term.toLowerCase().split(/\s+/).every(word => (key.replaceAll('_', ' ') + ' ' + label + ' ' + description).toLowerCase().includes(word)),
-  ).slice(0, 8) : [];
+export function AdminSearch() {
   const label = 'Jump to an order, seller, phone or setting…';
-  return <>
-    <button type="button" onClick={open} className="admin-search-trigger" aria-haspopup="dialog" aria-label={label}>
-      <Search className="size-4 shrink-0" aria-hidden="true" />
-      <span className="hidden min-w-0 flex-1 text-left lg:block">{label}</span>
-      <kbd className="hidden rounded border px-1.5 text-xs lg:block">⌘K</kbd>
-    </button>
-    <dialog ref={dialog} className="admin-search-dialog" aria-labelledby="admin-search-title" onClose={() => setQuery('')}>
-      <div className="flex items-center justify-between gap-2">
-        <h2 id="admin-search-title" className="font-heading text-xl">Jump to anything</h2>
-        <button type="button" className="admin-button" onClick={() => dialog.current?.close()}>Close</button>
-      </div>
-      <input ref={input} type="search" aria-label="Find a task" placeholder="Order, seller, phone or setting"
-        className="my-3 w-full rounded-lg border bg-card px-3 py-2" value={query} maxLength={120} onChange={event => setQuery(event.target.value)} />
-      <ul className="divide-y">
-        {term && searches.filter(([href]) => destinations.some(item => item.href === href)).map(([href, label, params]) => (
-          <li key={href}><Link className="admin-search-result" href={href + '?' + new URLSearchParams(Object.entries(params))}
-            onClick={() => dialog.current?.close()}><span>{label} for “{term}”</span><ArrowDownRight className="size-4 shrink-0" /></Link></li>
-        ))}
-        {settingMatches.map(({ key, label }) => <li key={key}>
-          <Link className="admin-search-result" href={'/admin/business-settings?' + new URLSearchParams({ setting: key })} onClick={() => dialog.current?.close()}>
-            <span>{label}</span><ArrowUpRight className="size-4 shrink-0" />
-          </Link>
-        </li>)}
-        {[...matching].map(([href, label]) => <li key={href}><Link className="admin-search-result" href={href} onClick={() => dialog.current?.close()}>
-          <span>{label}</span><ArrowUpRight className="size-4 shrink-0" /></Link></li>)}
-      </ul>
-    </dialog>
-  </>;
+  return <button type="button" data-admin-command-search className="admin-search-trigger"
+    aria-haspopup="dialog" aria-label={label}>
+    <Search className="size-4 shrink-0" aria-hidden="true" />
+    <span className="hidden min-w-0 flex-1 text-left lg:block">{label}</span>
+    <kbd className="hidden rounded border px-1.5 text-xs lg:block">⌘K</kbd>
+  </button>;
 }
 
 export function AdminAccountMenu({ name, role, signOut, procedure }: AdminAccountProps) {

@@ -5,6 +5,7 @@ import { env } from 'cloudflare:workers';
 import { signOutPath } from '@/app/auth';
 import { AdminAccountMenu, AdminBrand, AdminMobileNavigation, AdminNavigation, AdminSearch } from '@/components/admin/admin-navigation';
 import { AdminSectionTabs } from '@/components/admin/admin-section-tabs';
+import { CommandSearch } from '@/components/admin/command-search';
 import { readAdminSidebarCounts } from '@/components/admin/admin-review-data';
 import { AdminTaskContext } from '@/components/admin/admin-task-context';
 import { NotificationBell } from '@/components/account/notification-bell';
@@ -13,7 +14,6 @@ import { AdminWorkspaceReady } from '@/components/admin/admin-workspace-ready';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { AdminSessionActivity } from '@/components/security/session-activity';
 import { adminNavigation } from '@/lib/admin/navigation';
-import { businessSettingDefinitions } from '@/lib/configuration/definitions';
 import { localStaffMfaFlagEnabled } from '@/lib/security/local-simulation';
 import type { SecurityPolicyBindings } from '@/lib/security/runtime-policy';
 import AdminLoading from './loading';
@@ -29,10 +29,6 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
   const local = bindings.HASTABAZAAR_RUNTIME_ENV === 'local_staging';
   const localMfaNotice = local && localStaffMfaFlagEnabled(bindings, (await headers()).get('host') ?? '');
   const counts = bindings.DB ? await readAdminSidebarCounts(bindings.DB, staff).catch(() => ({})) : {};
-  const settings = destinations.some(item => item.href === '/admin/business-settings')
-    ? businessSettingDefinitions.filter(definition => !definition.affectedSurfaces.some(surface => surface === 'rider'))
-      .map(({ key, label, description }) => ({ key, label, description }))
-    : [];
   const account = { name: staff.displayName, role: staff.role, signOut: signOutPath('/'), procedure };
   return (
     <div className="admin-shell">
@@ -59,12 +55,13 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
           {localMfaNotice ? <p className="border-b border-amber-200 bg-amber-100 px-4 py-2 text-sm text-amber-950">Local only: 2-step check is off for test accounts. Remove HASTABAZAAR_LOCAL_SKIP_STAFF_MFA before any deploy.</p> : null}
           <header className="admin-toolbar">
             <AdminBrand {...access} mobile />
-            <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-3 lg:mr-auto lg:ml-0 lg:flex-1"><AdminSearch {...access} settings={settings} /></div>
+            <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-3 lg:mr-auto lg:ml-0 lg:flex-1"><AdminSearch /></div>
             {local ? <span className="hidden rounded-full bg-[#f7e7be] px-3 py-1 text-xs font-semibold text-[#744a0b] lg:inline">Local staging · payments simulated</span> : null}
             <WorkspaceRefresh className="admin-toolbar-icon" excludePaths={['/admin/orders', '/admin/payouts']} />
             <div className="admin-toolbar-notifications"><NotificationBell workspace="staff" accountId={staff.id} /></div>
             <AdminMobileNavigation {...access} counts={counts} account={account} />
           </header>
+          <CommandSearch key={staff.id} actorId={staff.id} />
           <AdminSectionTabs {...access} />
           <main
             key={`${staff.id}:${staff.role}:${staff.permissions?.slice().sort().join(',') ?? 'default'}`}
