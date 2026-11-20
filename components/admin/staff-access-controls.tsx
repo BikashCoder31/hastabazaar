@@ -106,6 +106,7 @@ export function StaffAccessControls({
           <Input
             id={`${id}-search`}
             type="search"
+            className="min-h-11"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Find a work area"
@@ -179,7 +180,7 @@ export function StaffAccessControls({
                       <div className="min-w-0">
                         <label
                           htmlFor={`${id}-${right.permission}`}
-                          className="cursor-pointer text-sm font-medium"
+                          className="flex min-h-11 cursor-pointer items-center text-sm font-medium"
                         >
                           {right.label}
                         </label>

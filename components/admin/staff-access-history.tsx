@@ -101,6 +101,7 @@ export function StaffAccessHistory({
           <Input
             id={`${id}-search`}
             type="search"
+            className="min-h-11"
             placeholder="Name, reason or work area"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -217,7 +218,7 @@ export function StaffAccessHistory({
             ) : null}
             {entry ? (
               <details className="text-sm">
-                <summary className="cursor-pointer font-medium">
+                <summary className="min-h-11 cursor-pointer py-3 font-medium">
                   View access before and after
                 </summary>
                 <dl className="mt-2 grid gap-3 sm:grid-cols-2">

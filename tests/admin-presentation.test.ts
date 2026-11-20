@@ -54,7 +54,7 @@ void test('staff navigation denies unknown roles, exposes own responsibilities a
     ['/admin', '/admin/notifications', '/admin/team', '/security'],
   );
   assert.equal(adminNavigation('admin', []).find((item) => item.href === '/admin/team')?.label, 'My responsibilities');
-  assert.equal(adminNavigation('super_admin').find((item) => item.href === '/admin/team')?.label, 'Team & business policies');
+  assert.equal(adminNavigation('super_admin').find((item) => item.href === '/admin/team')?.label, 'Team & access');
   for (const [href, permission] of [
     ['/admin/products/publications', 'product.publish'],
     ['/admin/payments', 'payment.receipt.verify'],

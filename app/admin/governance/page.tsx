@@ -14,7 +14,7 @@ export default async function GovernancePage() {
     staff.role,
   );
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6 [overflow-wrap:anywhere] [&_[data-slot=tabs-list]]:h-auto [&_[data-slot=tabs-list]]:max-w-full [&_[data-slot=tabs-list]]:flex-wrap [&_[data-slot=tabs-list]]:justify-start [&_[data-slot=tabs-trigger]]:min-h-11 [&_[data-slot=tabs-trigger]]:flex-none">
       <div>
         <AdminPageTitle><h1 className="section-title">Marketplace controls</h1></AdminPageTitle>
       </div>
@@ -27,7 +27,7 @@ export default async function GovernancePage() {
         superAdmin={staff.role === 'super_admin'}
         actorId={staff.id}
       />
-      {(can(staff,'system.health.view')||can(staff,'system.incidents.manage'))&&<p><Link className="font-semibold underline" href="/admin/system-health/incidents">Open incidents, response plans and recovery evidence</Link></p>}
+      {(can(staff,'system.health.view')||can(staff,'system.incidents.manage'))&&<p><Link className="inline-flex min-h-11 items-center font-semibold underline" href="/admin/system-health/incidents">Open incidents, response plans and recovery evidence</Link></p>}
     </div>
   );
 }

@@ -283,7 +283,7 @@ const destinations: readonly {
   },
   {
     href: '/admin/team',
-    label: 'Team & business policies',
+    label: 'Team & access',
     icon: 'team',
     permission: 'account.self.manage',
   },
