@@ -8,8 +8,8 @@ Branch `admin-redesign`. The checked preview is at `http://localhost:3018`. Refe
 | --- | --- | --- |
 | 0.1 Local Super Admin sign-in | Main agent | `8615cb6`. Implemented and verified in the checked preview at 390, 768, 1024 and 1440 px. Typecheck, lint and 16 focused checks passed. Full suite running. |
 | 0.2 Own delivery off, couriers on | Main agent | `b574059`. Checked the parked settings at 390, 768, 1024 and 1440 px and Today at 390 and 1440 px. Typecheck, lint and 22 focused checks passed, with one fixture-dependent skip. Full suite pending. |
-| 0.3 Phone and tablet shells | Main agent | Checked both workspaces at 390, 768, 1024 and 1440 px. Both menus restore focus on Escape. The phone help sheet fits edge to edge. Typecheck, lint and 49 focused checks passed. Full suite pending. |
-| 0.4 Shared UI pieces | Main agent | In progress |
+| 0.3 Phone and tablet shells | Main agent | `cf84e71`. Checked both workspaces at 390, 768, 1024 and 1440 px. Both menus restore focus on Escape. The phone help sheet fits edge to edge. Typecheck, lint and 49 focused checks passed. Full suite pending. |
+| 0.4 Shared UI pieces | Main agent | Typecheck, lint and static component render checks passed. The admin preview fit at all four widths. Full suite pending. |
 
 ### Local preview sign-in
 
@@ -18,18 +18,24 @@ Branch `admin-redesign`. The checked preview is at `http://localhost:3018`. Refe
 3. For Seller Studio, return to the fixture selector and choose **Open Seller interface**. Role selection is stored in the browser, so keep admin and seller checks in separate browser contexts when checking both together.
 4. The flag is set in git-ignored `.env.development.local`. It is allowed only for the existing Super Admin fixture on loopback in local staging, and only when explicitly set to `1`. Remove that line before any deploy.
 
+### Shared UI for task owners
+
+- `WhoseTurn` from `components/ui/whose-turn.tsx` accepts `status` of `your-turn`, `with-hastabazaar`, `late` or `done`. Use the optional `label` for real status details.
+- `StepLine` from `components/ui/step-line.tsx` accepts ordered `steps` of `{ id, label, state, detail? }`. State is `complete`, `current` or `upcoming`. It stacks below 768 px.
+- `NextStepBox` from `components/ui/next-step-box.tsx` accepts a `title`, the explanation as children and an optional `action`. Each page supplies its actual workflow state and next available action.
+
 ## Ownership
 
 The rows below reserve work. Only the assigned helper may edit its active allocation. The main agent edits shared navigation, layouts and coordinated integrations. File overrides below take precedence over broad patterns.
 
 | Task | Helper | Files owned | Status |
 | --- | --- | --- | --- |
-| A Orders | Unassigned | `app/admin/orders/**`, `app/admin/order-responses/**`, `app/admin/shipping/**`, `app/admin/exceptions/**`; admin `order-fulfillment-actions`, `parcel-controls`, `cod-reconciliation`, `exception-order-section`, `exception-work-form`, `cancellation-review-*`, `first-cod-confirmation`, `paid-order-release`, `order-email-retry` | Queued |
-| B Money | Unassigned | `app/admin/{payouts,payments,accounting,financial-notices}/**`; admin `payout-*`, `refund-funding-review`, `customer-refund-reversal-review`, `manual-payment-review`, `accounting-workspace`, `recovery-*`, `seller-recovery-review`, `commercial-recovery` | Queued |
-| C Settings | Unassigned | `app/admin/{business-settings,commission,fees,fee-waivers,delivery-rates}/**`; admin `business-settings-manager`, `setting-value-preview`, `commission-settings`, `company-bank-accounts`, `fee-*`, `common-fee-policy`, `delivery-rate-settings` | Queued |
-| D Care, Sellers and Catalog | Unassigned | `app/admin/{cases,sellers,seller-*,products,catalog,reviews}/**`; admin `return-*`, `complaint-case-actions`, `supported-case-intake`, `seller-*` except B's `seller-recovery-review`, `document-review-workspace`, `protected-*`, `public-profile-review`, `product-*`, `review-*`, `catalog-manager`, `category-*` | Queued |
-| E Seller Today, Orders and Returns | Unassigned | `app/seller/page.tsx`, `app/seller/{orders,order-responses,cases,notifications}/**`; seller `seller-action-overview`, `seller-task-summary`, `workspace-task-list`, `seller-order-list`, `order-fulfillment-actions`, `case-response-form`, `onboarding-checklist`, `readiness-summary`; `components/commerce/order-preparation-workspace.tsx` | Queued |
-| F Seller Products and Earnings | Unassigned | `app/seller/{products,finance,analytics}/**`; seller `product-*`, `maker-product-workspace`, `inventory-editor`, `variant-editor`, `price-profit-preview`, `archive-product-button`, `seller-products-description`, `payout-request-form`, `bank-details-form`, `seller-earnings-summary`, `marketplace-fee-breakdown`, `order-marketplace-fees`, `commission-fee-notice`, `recovery-statement` | Queued |
+| A Orders | batch_orders | `app/admin/orders/**`, `app/admin/order-responses/**`, `app/admin/shipping/**`, `app/admin/exceptions/**`; admin `order-fulfillment-actions`, `parcel-controls`, `cod-reconciliation`, `exception-order-section`, `exception-work-form`, `cancellation-review-*`, `first-cod-confirmation`, `paid-order-release`, `order-email-retry` | Assigned |
+| B Money | batch_money | `app/admin/{payouts,payments,accounting,financial-notices}/**`; admin `payout-*`, `refund-funding-review`, `customer-refund-reversal-review`, `manual-payment-review`, `accounting-workspace`, `recovery-*`, `seller-recovery-review`, `commercial-recovery` | Assigned |
+| C Settings | batch_settings | `app/admin/{business-settings,commission,fees,fee-waivers,delivery-rates}/**`; admin `business-settings-manager`, `setting-value-preview`, `commission-settings`, `company-bank-accounts`, `fee-*`, `common-fee-policy`, `delivery-rate-settings` | Assigned |
+| D Care, Sellers and Catalog | batch_care_catalog | `app/admin/{cases,sellers,seller-*,products,catalog,reviews}/**`; admin `return-*`, `complaint-case-actions`, `supported-case-intake`, `seller-*` except B's `seller-recovery-review`, `document-review-workspace`, `protected-*`, `public-profile-review`, `product-*`, `review-*`, `catalog-manager`, `category-*` | Assigned |
+| E Seller Today, Orders and Returns | batch_seller_orders | `app/seller/page.tsx`, `app/seller/{orders,order-responses,cases,notifications}/**`; seller `seller-action-overview`, `seller-task-summary`, `workspace-task-list`, `seller-order-list`, `order-fulfillment-actions`, `case-response-form`, `onboarding-checklist`, `readiness-summary`; `components/commerce/order-preparation-workspace.tsx` | Assigned |
+| F Seller Products and Earnings | batch_seller_products | `app/seller/{products,finance,analytics}/**`; seller `product-*`, `maker-product-workspace`, `inventory-editor`, `variant-editor`, `price-profit-preview`, `archive-product-button`, `seller-products-description`, `payout-request-form`, `bank-details-form`, `seller-earnings-summary`, `marketplace-fee-breakdown`, `order-marketplace-fees`, `commission-fee-notice`, `recovery-statement` | Assigned |
 | G Today handoffs | Unassigned | `app/admin/page.tsx`, `components/admin/overview-*.ts(x)` | Queued |
 | H Button conventions | Unassigned | Assigned from free page files | Queued |
 | I Background loading | Unassigned | `app/{admin,seller}/loading.tsx`, free route-level loading files | Queued |
