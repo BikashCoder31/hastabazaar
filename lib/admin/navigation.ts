@@ -253,7 +253,7 @@ const destinations: readonly {
   },
   {
     href: '/admin/analytics',
-    label: 'Reports',
+    label: 'Business report',
     icon: 'analytics',
     permission: 'audit_log.view',
   },

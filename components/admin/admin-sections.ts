@@ -82,7 +82,7 @@ const definitions = [
     { href: '/admin/programs', label: 'Programs' },
   ] },
   { id: 'reports', label: 'Reports', tabs: [
-    { href: '/admin/analytics', label: 'Reports' },
+    { href: '/admin/analytics', label: 'Business report' },
     { href: '/admin/progress', label: 'Work log' },
     { href: '/admin/activity', label: 'Staff history' },
     { href: '/admin/staff-form-history', label: 'Form answers' },
