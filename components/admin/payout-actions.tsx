@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
+  DialogClose,
   DialogHeader,
   DialogTitle,
   DialogDescription,
@@ -37,6 +38,7 @@ export function AccrueEarningsButton() {
     <div>
       <Button
         variant="outline"
+        className="min-h-11"
         disabled={pending}
         onClick={() => {
           setDone(false);
@@ -91,7 +93,7 @@ export function PreparePayoutButton({
         if (!pending) setOpen(value);
       }}
     >
-      <DialogTrigger render={<Button size="sm" />}>
+      <DialogTrigger render={<Button className="min-h-11 max-w-full" />}>
         {directApproval ? 'Create approved payout' : 'Prepare payout'}
       </DialogTrigger>
       <DialogContent
@@ -207,18 +209,34 @@ const explanations: Record<PayoutOperation, string> = {
     'This records an unsuccessful payment attempt. Include the actual failure reason in your note.',
 };
 
+export function ApprovePreparedPayoutButton({ amount, ...props }: React.ComponentProps<typeof PayoutWorkflowActions> & { amount: string }) {
+  return (
+    <Dialog>
+      <DialogTrigger type="button" className="admin-decision max-w-full">Approve {amount}</DialogTrigger>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto border border-[#E3D8C7] bg-white p-5 text-[#14213D] sm:max-w-md" showCloseButton={false}>
+        <DialogTitle className="text-xl">Approve prepared payout</DialogTitle>
+        <DialogDescription>Review the prepared balance and record your decision.</DialogDescription>
+        <PayoutWorkflowActions {...props} decisionOnly="approve" />
+        <DialogClose type="button" className="min-h-11 rounded-lg border border-[#CDBFA9] px-3 font-semibold hover:bg-[#F0EBE1]">Cancel</DialogClose>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function PayoutWorkflowActions({
   payoutId,
   status,
   canApprove,
   canProcess,
   isPreparer,
+  decisionOnly,
 }: {
   payoutId: string;
   status: PayoutStatus;
   canApprove: boolean;
   canProcess: boolean;
   isPreparer: boolean;
+  decisionOnly?: 'approve' | 'reject';
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -229,7 +247,7 @@ export function PayoutWorkflowActions({
     canApprove,
     canProcess,
     isPreparer,
-  }).filter(action => !['start_processing','mark_paid','mark_failed'].includes(action));
+  }).filter(action => decisionOnly ? action === decisionOnly : !['start_processing','mark_paid','mark_failed'].includes(action));
   const [action, setAction] = useState<PayoutOperation>(
     permitted[0] ?? 'approve',
   );
@@ -276,7 +294,7 @@ export function PayoutWorkflowActions({
       <FormGuide formId="staff.payout-2" />
 
         <fieldset disabled={pending} className="space-y-4">
-          <div>
+          {decisionOnly ? null : <div>
             <Label htmlFor={id + '-action'}>Next action</Label>
             <select
               id={id + '-action'}
@@ -284,7 +302,7 @@ export function PayoutWorkflowActions({
               onChange={(event) =>
                 setAction(event.target.value as PayoutOperation)
               }
-              className="mt-2 w-full rounded-lg border bg-background px-3 py-2"
+              className="mt-2 min-h-11 w-full rounded-lg border bg-background px-3 py-2"
             >
               {permitted.map((item) => (
                 <option key={item} value={item}>
@@ -292,7 +310,7 @@ export function PayoutWorkflowActions({
                 </option>
               ))}
             </select>
-          </div>
+          </div>}
           <p className="text-sm leading-6 text-muted-foreground">
             {explanations[effectiveAction]}
           </p>
@@ -340,6 +358,7 @@ export function PayoutWorkflowActions({
           }}>Start a new attempt</Button></div> : null}
           <Button
             type="submit"
+            className="min-h-11"
             disabled={
               pending || !catalog.canSubmit ||
               note.trim().length < 8 ||

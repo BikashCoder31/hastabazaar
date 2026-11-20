@@ -16,7 +16,7 @@ import {protectedPayoutReplacementStatements} from '../../sellers/protected-payo
 
 const payoutPolicy = phaseOneMarketplacePolicy.value.payouts;
 const dayMs = 86_400_000;
-function standardLedgerEligibility(alias: string): string {
+export function standardLedgerEligibility(alias: 'seller_ledger_entries' | 'e'): string {
   return `NOT EXISTS(SELECT 1 FROM managed_commercial_snapshots m WHERE m.order_item_id=${alias}.order_item_id)
     AND NOT EXISTS(SELECT 1 FROM order_items mi WHERE mi.id=${alias}.order_item_id
       AND mi.commission_rule_version LIKE 'managed-%')`;

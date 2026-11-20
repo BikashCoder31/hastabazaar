@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
@@ -13,11 +14,11 @@ import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/cli
 import {ACTOR_INTENT_HEADER} from '@/lib/http/actor-intent';
 import {FinanceAccessNotice} from './finance-access-notice';
 const BASE_KEYS=['action','note','requestId'];
-type PayoutRequestActionProps={id:string;actorId:string;role?:'admin'|'super_admin'};
+type PayoutRequestActionProps={id:string;actorId:string;role?:'admin'|'super_admin';approvalAmount?:string};
 export function PayoutRequestActions(props:PayoutRequestActionProps){
   return <PayoutRequestActionScope key={JSON.stringify([props.actorId,props.id])} {...props}/>;
 }
-function PayoutRequestActionScope({ id, actorId, role = 'admin' }: PayoutRequestActionProps) {
+function PayoutRequestActionScope({ id, actorId, role = 'admin', approvalAmount }: PayoutRequestActionProps) {
   const router=useRouter();
   const active=useRef(true);useLayoutEffect(()=>{active.current=true;return()=>{active.current=false;};},[]);
   const [pending,setPending]=useState(false),[error,setError]=useState(''),[retryPending,setRetryPending]=useState(false),[accessDenied,setAccessDenied]=useState(false),[retained,setRetained]=useState<Record<string,unknown>|null>(null);
@@ -25,6 +26,7 @@ function PayoutRequestActionScope({ id, actorId, role = 'admin' }: PayoutRequest
   useEffect(() => { const timer = window.setTimeout(() => setRetryPending(hasSessionAttempt(attemptKey)), 0); return () => window.clearTimeout(timer); }, [attemptKey]);
   const catalog=usePublishedFormConfig('staff.payout-request-action');
   const [fieldError,setFieldError]=useState('');
+  const [open, setOpen] = useState(false);
   const fieldId = useId();
   async function save(body:Record<string,unknown>){
     if(pending||accessDenied)return;
@@ -38,7 +40,7 @@ function PayoutRequestActionScope({ id, actorId, role = 'admin' }: PayoutRequest
       if(response.status===401||response.status===403)setAccessDenied(true);
       if(!response.ok){if(response.status===409&&result?.code==='stale_version')catalog.handleSubmissionResponse(response,result.code);throw new Error(result?.error||'The payout decision could not be saved.');}
       if(result?.ok!==true)throw new Error('The response could not be verified. Retry with the same request.');
-      clearSessionAttempt(attemptKey);setRetryPending(false);router.refresh();
+      clearSessionAttempt(attemptKey);setRetryPending(false);setOpen(false);router.refresh();
     }catch(cause){if(active.current)setError(cause instanceof Error?cause.message:'The payout decision could not be saved.');}
     finally{if(active.current)setPending(false);}
   }
@@ -52,7 +54,7 @@ function PayoutRequestActionScope({ id, actorId, role = 'admin' }: PayoutRequest
     }catch(cause){if(active.current)setError(cause instanceof Error?cause.message:'The original outcome could not be checked.');}finally{if(active.current)setPending(false);}
   }
   if(accessDenied)return <FinanceAccessNotice message={error} busy={pending} onCheck={()=>void checkOriginal()}/>;
-  return (
+  const form = (
     <form
       data-form-id="staff.payout-request-action"
       onSubmit={(event) => {
@@ -76,27 +78,27 @@ function PayoutRequestActionScope({ id, actorId, role = 'admin' }: PayoutRequest
       <Link className="text-sm underline" href={`/admin/staff-form-history?kind=payout-request-action&id=${encodeURIComponent(id)}`}>View payout request form history</Link>
       <fieldset
         disabled={pending||!catalog.canSubmit}
-        className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] md:items-end"
+        className={approvalAmount ? 'mt-3 grid min-w-0 gap-3' : 'grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] md:items-end'}
       >
-        <div>
+        {approvalAmount ? <input type="hidden" name="action" value="prepare" /> : <div>
           <Label htmlFor={fieldId + '-action'}>Next action</Label>
           <select
             id={fieldId + '-action'}
             name="action"
             defaultValue={typeof retained?.action==='string'?retained.action:'prepare'}
-            className="mt-2 w-full rounded-lg border bg-background p-2"
+            className="mt-2 min-h-11 w-full rounded-lg border bg-background p-2"
           >
             <option value="prepare">{role==='super_admin'?'Create approved payout':'Prepare for Super Admin approval'}</option>
             <option value="reject">Reject request</option>
           </select>
-        </div>
+        </div>}
         <div>
           <Label htmlFor={fieldId + '-note'}>Review note</Label>
           <Input
             id={fieldId + '-note'}
             name="note"
             defaultValue={typeof retained?.note==='string'?retained.note:''}
-            className="mt-2"
+            className="mt-2 min-h-11"
             required
             minLength={8}
             maxLength={1000}
@@ -104,8 +106,8 @@ function PayoutRequestActionScope({ id, actorId, role = 'admin' }: PayoutRequest
         </div>
         {catalog.config?<div className="md:col-span-3"><ConfiguredFields config={catalog.config} baseKeys={BASE_KEYS}/></div>:null}
         {!catalog.canSubmit?<output aria-live="polite" className="md:col-span-3 text-sm">{catalog.message||'Form configuration is loading.'}</output>:null}
-        <Button type="submit" variant="outline" disabled={pending}>
-          {pending ? 'Saving…' : 'Save decision'}
+        <Button type="submit" variant={approvalAmount ? 'default' : 'outline'} className="min-h-11" disabled={pending}>
+          {pending ? 'Saving…' : approvalAmount ? 'Approve payout' : 'Save decision'}
         </Button>
       </fieldset>
       {error ? (
@@ -116,5 +118,17 @@ function PayoutRequestActionScope({ id, actorId, role = 'admin' }: PayoutRequest
       {fieldError?<p role="alert" className="mt-2 text-sm text-destructive">{fieldError}</p>:null}
       {retryPending?<div className="mt-3 space-y-2 text-sm"><p>A previous decision may have succeeded. Check the payout request before another attempt.</p><Button type="button" variant="outline" disabled={pending} onClick={()=>void checkOriginal()}>Check original saved outcome</Button>{retained?<Button type="button" variant="outline" disabled={pending} onClick={()=>retained?void save(retained):undefined}>Retry unchanged decision</Button>:null}<Button type="button" variant="outline" disabled={pending} onClick={()=>{if(!window.confirm('Starting a new attempt may duplicate a prior successful action. Check the payout request first. Continue?'))return;clearSessionAttempt(attemptKey);setRetryPending(false);setError('');if(catalog.status==='stale')catalog.refresh();}}>Start a new attempt</Button></div>:null}
     </form>
+  );
+  if (!approvalAmount) return form;
+  return (
+    <Dialog open={open} onOpenChange={next => { if (!pending) setOpen(next); }}>
+      <DialogTrigger type="button" className="admin-decision max-w-full">Approve available balance</DialogTrigger>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto border border-[#E3D8C7] bg-white p-5 text-[#14213D] sm:max-w-md" showCloseButton={false}>
+        <DialogTitle className="text-xl">Approve seller payout</DialogTitle>
+        <DialogDescription>The current eligible balance is {approvalAmount}. The final amount is checked when you approve. Record why you are approving the payout.</DialogDescription>
+        {form}
+        <DialogClose type="button" className="min-h-11 rounded-lg border border-[#CDBFA9] px-3 font-semibold hover:bg-[#F0EBE1] disabled:opacity-50" disabled={pending}>Cancel</DialogClose>
+      </DialogContent>
+    </Dialog>
   );
 }
