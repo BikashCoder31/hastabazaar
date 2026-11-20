@@ -29,11 +29,11 @@ function outcomeMatches(body:unknown,actorId:string,ref:SavedReference,key:'resu
   &&(ref.action==='report'||result.id===ref.sourceId&&typeof result.revision==='number'&&Number.isSafeInteger(result.revision)&&result.revision>0);
 }
 function reportableItems(portion:PreparationWorkspace['portions'][number]){return portion.items.filter(item=>['confirmed','packing','ready_for_pickup'].includes(item.status)&&!portion.cases.some(c=>c.state!=='resolved'&&['delay','cannot_fulfill'].includes(c.kind)&&c.itemIds.includes(item.id)));}
-export function OrderPreparationWorkspace({workspace}:{workspace:PreparationWorkspace}){
+export function OrderPreparationWorkspace({workspace,problemCaseId}:{workspace:PreparationWorkspace;problemCaseId?:string}){
  const scope=useOwnedFormScope(JSON.stringify([workspace.audience,workspace.actorId,workspace.orderId]));
- return <ScopedOrderPreparationWorkspace key={scope.key} workspace={workspace} isCurrent={scope.isCurrent}/>;
+ return <ScopedOrderPreparationWorkspace key={scope.key} workspace={workspace} isCurrent={scope.isCurrent} problemCaseId={workspace.audience==='staff'?problemCaseId:undefined}/>;
 }
-function ScopedOrderPreparationWorkspace({workspace:w,isCurrent}:{workspace:PreparationWorkspace;isCurrent:()=>boolean}){
+function ScopedOrderPreparationWorkspace({workspace:w,isCurrent,problemCaseId}:{workspace:PreparationWorkspace;isCurrent:()=>boolean;problemCaseId?:string}){
  const router=useRouter(),storageKey='preparation:'+JSON.stringify([w.audience,w.actorId,w.orderId]),legacyKey=`preparation:${w.audience}:${w.actorId}:${w.orderId}`,endpoint=`/api/${w.audience==='staff'?'admin':'seller'}/order-responses`;
  const raw=useSessionReference(storageKey),legacyRaw=useSessionReference(legacyKey),denyParent=useDenyStaffReview();
  const stored=useMemo(()=>{const loading=raw===undefined||legacyRaw===undefined,current=parseReference(raw),legacy=parseReference(legacyRaw);return{loading,reference:current??legacy,blocked:raw!=null&&!current||legacyRaw!=null&&!legacy||current!==null&&legacy!==null&&!sameReference(current,legacy)};},[raw,legacyRaw]);
@@ -71,18 +71,18 @@ function ScopedOrderPreparationWorkspace({workspace:w,isCurrent}:{workspace:Prep
  if(accessDenied)return <section role="alert" className="rounded border p-4"><p>{message}</p><button type="button" disabled={busy} onClick={()=>void recover()}>Check original saved outcome</button><button type="button" onClick={()=>window.location.reload()}>Reload current preparation record</button></section>;
  const editable=w.audience!=='customer';
  const sellerView=w.audience==='seller';
- return <section className={sellerView ? "space-y-5 rounded-xl border bg-card p-4 md:p-5 [&_button]:min-h-11" : "space-y-6 rounded-xl border p-5"} aria-label="Order preparation follow-up">
-  <h2 className={sellerView ? 'font-heading text-2xl' : 'text-xl font-semibold'}>{sellerView ? 'Running late or can’t fulfil?' : 'Preparation and next updates'}</h2>
-  <p>{sellerView ? `Order ${w.orderNumber}. Tell Hastabazaar what changed so we can update the customer.` : `Order ${w.orderNumber}. Starting preparation and marking ready are separate from physical carrier handoff.`}</p>
+ return <section className={problemCaseId ? 'space-y-3 text-sm [&_button]:min-h-11' : sellerView ? "space-y-5 rounded-xl border bg-card p-4 md:p-5 [&_button]:min-h-11" : "space-y-6 rounded-xl border p-5"} aria-label="Order preparation follow-up">
+  {!problemCaseId&&<><h2 className={sellerView ? 'font-heading text-2xl' : 'text-xl font-semibold'}>{sellerView ? 'Running late or can’t fulfil?' : 'Preparation and next updates'}</h2>
+  <p>{sellerView ? `Order ${w.orderNumber}. Tell Hastabazaar what changed so we can update the customer.` : `Order ${w.orderNumber}. Starting preparation and marking ready are separate from physical carrier handoff.`}</p></>}
   {!w.portions.length&&<p>Preparation has not been released to this workspace. Check the current payment, confirmation or company preparation status in the order.</p>}
   {message&&<output className="block">{message}</output>}
   {stored.blocked&&<p role="alert">A browser recovery reference is unavailable or conflicts with retained history. Keep it for an authorized original-outcome check; no new action can be sent.</p>}
   {saved&&editable&&<div className="rounded border p-3"><p>A saved request needs its original receipt checked. Private answers are never stored in browser storage.</p><button type="button" disabled={busy} onClick={()=>void recover()}>Check saved outcome</button>{pending&&<button type="button" disabled={busy||blocked} onClick={()=>void send(pending)}>Retry unchanged action</button>}{rejected&&!unknown&&sameReference(rejected,saved)&&<button type="button" disabled={busy} onClick={()=>{if(isCurrent()){clear(rejected);setMessage('The first request was rejected before a write. Review the current preparation source and correct your retained note.');router.refresh();}}}>Review current preparation and keep my note</button>}</div>}
-  {w.portions.map(portion=><article key={portion.id} className="space-y-4 border-t pt-4">
-   <h3 className="font-semibold">{portion.operatorMode==='company'?'Company preparation':'Seller preparation'}</h3>
+  {w.portions.filter(portion=>!problemCaseId||portion.cases.some(c=>c.id===problemCaseId)).map(portion=><article key={portion.id} className={problemCaseId?'space-y-3':'space-y-4 border-t pt-4'}>
+   {!problemCaseId&&<h3 className="font-semibold">{portion.operatorMode==='company'?'Company preparation':'Seller preparation'}</h3>}
    {w.audience==='staff'&&!portion.canAct&&<p>An independent eligible operator must handle this portion. Your current preparation workspace is read-only.</p>}
-   <ul>{portion.items.map(item=><li key={item.id} className="py-2">{item.name} × {item.quantity} — {item.status.replaceAll('_',' ')}<OrderOfferDetails offer={item.offerSnapshot}/>{editable&&<span className="block text-sm">Released {time(item.releasedAt)}. {item.clock.paused?'Preparation is held for these items.':item.clock.responded?'A preparation response is recorded.':'Preparation response is pending.'}</span>}</li>)}</ul>
-   {editable&&portion.canAct&&reportableItems(portion).length>0&&<form data-form-id={w.audience==='staff'?'staff.order-preparation':'seller.order-preparation'} onSubmit={e=>submit(e,'report',portion.id,null)} className="space-y-3">
+   {!problemCaseId&&<ul>{portion.items.map(item=><li key={item.id} className="py-2">{item.name} × {item.quantity} — {item.status.replaceAll('_',' ')}<OrderOfferDetails offer={item.offerSnapshot}/>{editable&&<span className="block text-sm">Released {time(item.releasedAt)}. {item.clock.paused?'Preparation is held for these items.':item.clock.responded?'A preparation response is recorded.':'Preparation response is pending.'}</span>}</li>)}</ul>}
+   {!problemCaseId&&editable&&portion.canAct&&reportableItems(portion).length>0&&<form data-form-id={w.audience==='staff'?'staff.order-preparation':'seller.order-preparation'} onSubmit={e=>submit(e,'report',portion.id,null)} className="space-y-3">
     <fieldset disabled={busy||blocked||Boolean(saved)} className="space-y-3"><legend className="font-semibold">{sellerView ? 'Select the affected items' : 'Report an actual preparation issue'}</legend>
      {reportableItems(portion).map(item=><label key={item.id} className="block min-h-11 rounded-lg border bg-card p-3"><input type="checkbox" name="itemId" value={item.id}/> {item.name} × {item.quantity}<OrderOfferDetails offer={item.offerSnapshot}/></label>)}
      <label className="block"><span className="block text-sm font-medium">What changed?</span><select name="kind" className="mt-1 min-h-11 w-full rounded-lg border bg-card px-3"><option value="delay">{sellerView ? 'Give a new ready date' : 'Preparation delayed'}</option><option value="cannot_fulfill">{sellerView ? 'I can’t fulfil these items' : 'Unable to fulfill'}</option></select></label>
@@ -91,31 +91,40 @@ function ScopedOrderPreparationWorkspace({workspace:w,isCurrent}:{workspace:Prep
      <p className="text-sm">{sellerView ? 'Hastabazaar reviews the new ready date or cancellation request and contacts the customer.' : 'This proposal requires review. Reporting an issue does not cancel items or promise a delivery time.'}</p><button type="submit" className="min-h-11 rounded-lg bg-[#A8232E] px-4 text-sm font-semibold text-white disabled:opacity-50">Send preparation issue</button>
     </fieldset>
    </form>}
-   {portion.cases.map(c=><section key={c.id} className="space-y-2 rounded border p-3">
-    <h4 className="font-semibold">{c.kind.replaceAll('_',' ')} — {c.state}</h4>
+   {portion.cases.filter(c=>!problemCaseId||c.id===problemCaseId).map(c=><section key={c.id} className={problemCaseId?'space-y-2':'space-y-2 rounded border p-3'}>
+    {!problemCaseId&&<h4 className="font-semibold">{c.kind.replaceAll('_',' ')} — {c.state}</h4>}
     <p>Affected: {portion.items.filter(i=>c.itemIds.includes(i.id)).map(i=>`${i.name} × ${i.quantity}`).join(', ')}</p>
     <p>{c.publicMessage??'Support is reviewing the affected preparation scope.'}</p><p>Next customer update: {time(c.nextUpdateAt)}</p>
     {w.audience==='staff'&&<><p>Original case: {time(c.createdAt)}. First follow-up due: {time(c.firstDueAt)}.</p><p>Private report: {c.privateDetail}</p>{c.proposedReadyAt&&<p>Unapproved ready-time proposal: {time(c.proposedReadyAt)}</p>}{Boolean(c.commitmentMissing)&&c.state!=='resolved'&&<p>Coverage gap: an eligible owner and an actual next update are still required.</p>}</>}
-    {w.audience==='staff'&&c.history.length>0&&<details><summary>Recent protected history</summary><ol>{c.history.map(e=><li key={e.id}>{time(e.createdAt)} · {e.actor??'System'} · {e.note}</li>)}</ol></details>}
-    {w.audience==='staff'&&portion.canAct&&<PreparationFollowupForm c={c} portion={portion} reviewers={w.reviewers} disabled={busy||blocked||Boolean(saved)} submit={submit}/>}
+    {w.audience==='staff'&&c.history.length>0&&<details><summary className={problemCaseId?'min-h-11 cursor-pointer py-2.5 underline underline-offset-4':undefined}>Recent protected history</summary><ol>{c.history.map(e=><li key={e.id}>{time(e.createdAt)} · {e.actor??'System'} · {e.note}</li>)}</ol></details>}
+    {w.audience==='staff'&&portion.canAct&&<PreparationFollowupForm c={c} portion={portion} reviewers={w.reviewers} disabled={busy||blocked||Boolean(saved)} submit={submit} parcelProblem={Boolean(problemCaseId)}/>}
    </section>)}
   </article>)}
  </section>;
 }
 
-function PreparationFollowupForm({c,portion,reviewers,disabled,submit}:{c:PreparationWorkspace['portions'][number]['cases'][number];portion:PreparationWorkspace['portions'][number];reviewers:PreparationWorkspace['reviewers'];disabled:boolean;submit:(event:SubmitEvent<HTMLFormElement>,action:'followup',subject:string,revision:number)=>void}){
+const problemOutcomes = [
+ ['open','Keep reviewing the problem'],
+ ['waiting','Wait for a response'],
+ ['resolved','Mark the preparation issue resolved'],
+] as const;
+const problemField = 'mt-1 block min-h-11 max-w-full w-full rounded-xl border border-[#D3C5AD] bg-white px-3.5 py-2.5';
+
+function PreparationFollowupForm({c,portion,reviewers,disabled,submit,parcelProblem}:{c:PreparationWorkspace['portions'][number]['cases'][number];portion:PreparationWorkspace['portions'][number];reviewers:PreparationWorkspace['reviewers'];disabled:boolean;submit:(event:SubmitEvent<HTMLFormElement>,action:'followup',subject:string,revision:number)=>void;parcelProblem:boolean}){
  const[reviewedRevision,setReviewedRevision]=useState(c.revision),[startedOpen]=useState(c.state!=='resolved');
+ const[choice,setChoice]=useState('');
  if(!startedOpen&&c.state==='resolved')return null;
  const stale=reviewedRevision!==c.revision,closed=c.state==='resolved',eligible=reviewers.filter(r=>portion.operatorMode!=='company'||r.role==='super_admin');
  return <>{closed?<p>The current case is resolved. Your unsent note remains here; no further follow-up can be submitted.</p>:stale&&<div role="alert"><p>This case changed. Review its current history before applying your retained note to revision {c.revision}.</p><button type="button" disabled={disabled} onClick={()=>setReviewedRevision(c.revision)}>Review current case and keep my note</button></div>}
-    <form data-form-id="staff.order-preparation" onSubmit={e=>submit(e,'followup',c.id,reviewedRevision)}><fieldset disabled={disabled||stale||closed} className="space-y-2">
-     <legend className="font-semibold">Record accountable follow-up</legend>
-     <label className="block">Owner <select name="ownerId" required defaultValue={c.ownerId??''}><option value="">Choose eligible owner</option>{eligible.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
-     <label className="block">Backup <select name="backupId" defaultValue={c.backupId??''}><option value="">No backup assigned</option>{eligible.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
-     <label className="block">Next action <select name="state"><option value="open">Continue review</option><option value="waiting">Waiting for a recorded response</option><option value="resolved">Actual preparation issue resolved</option></select></label>
-     <label className="block">Next update within 24 hours (your browser’s local time) <input type="datetime-local" name="nextUpdateAt"/></label>
-     <label className="block">Private follow-up note <textarea name="privateNote" required minLength={10} maxLength={2000} className="block w-full rounded border p-2"/></label>
-     <label className="block">Customer-facing factual update <textarea name="customerMessage" required minLength={10} maxLength={1500} className="block w-full rounded border p-2"/></label>
-     <button type="submit">Save follow-up and customer update</button>
+    <form data-form-id="staff.order-preparation" onSubmit={e=>submit(e,'followup',c.id,reviewedRevision)}><fieldset disabled={disabled||stale||closed} className={parcelProblem?'min-w-0 space-y-3':'space-y-2'}>
+     <legend className={parcelProblem?'mb-2 font-semibold text-[#46536F]':'font-semibold'}>{parcelProblem?'Choose what happens':'Record accountable follow-up'}</legend>
+     {parcelProblem&&problemOutcomes.map(([value,label])=><label key={value} className="flex min-h-11 cursor-pointer items-center rounded-xl border border-[#D3C5AD] px-3.5 py-2 font-semibold has-checked:border-[#14213D] has-checked:bg-[#14213D] has-checked:text-white has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-[#A8232E]"><input type="radio" name="state" value={value} required checked={choice===value} className="sr-only" onChange={()=>setChoice(value)}/>{label}</label>)}
+     <label className="block">Owner <select className={parcelProblem?problemField:undefined} name="ownerId" required defaultValue={c.ownerId??''}><option value="">Choose eligible owner</option>{eligible.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
+     <label className="block">Backup <select className={parcelProblem?problemField:undefined} name="backupId" defaultValue={c.backupId??''}><option value="">No backup assigned</option>{eligible.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
+     {!parcelProblem&&<label className="block">Next action <select name="state"><option value="open">Continue review</option><option value="waiting">Waiting for a recorded response</option><option value="resolved">Actual preparation issue resolved</option></select></label>}
+     {(!parcelProblem||choice!=='resolved')&&<label className="block">Next update within 24 hours (your browser’s local time) <input className={parcelProblem?problemField:undefined} type="datetime-local" name="nextUpdateAt" required={parcelProblem&&Boolean(choice)}/></label>}
+     <label className="block">{parcelProblem?'Note for the record':'Private follow-up note'} <textarea name="privateNote" required minLength={10} maxLength={2000} className={parcelProblem?problemField:'block w-full rounded border p-2'}/></label>
+     <label className="block">Customer-facing factual update <textarea name="customerMessage" required minLength={10} maxLength={1500} className={parcelProblem?problemField:'block w-full rounded border p-2'}/></label>
+     {(!parcelProblem||choice)&&<button type="submit" className={parcelProblem?'min-h-11 rounded-xl bg-[#14213D] px-4 py-2 text-left font-semibold text-white disabled:opacity-50':undefined}>{parcelProblem?'Save follow-up':'Save follow-up and customer update'}</button>}
     </fieldset></form></>;
 }

@@ -434,6 +434,9 @@ export default async function AdminOrderPage({
             {order.orderNumber}
           </span>
         </nav>
+        {returnTo !== '/admin/orders' && !/^\/admin\/orders(?:[?#]|$)/.test(returnTo) ? (
+          <ReviewBackLink returnTo={returnTo} actorId={staff.id} />
+        ) : null}
 
         <header className="flex min-w-0 flex-wrap items-start justify-between gap-x-5 gap-y-3 md:flex-nowrap">
           <div className="min-w-0 [&>.admin-page-title]:flex-wrap">
@@ -722,9 +725,6 @@ export default async function AdminOrderPage({
             ),
             records: (
               <div className="space-y-5">
-                {returnTo !== '/admin/orders' ? (
-                  <ReviewBackLink returnTo={returnTo} actorId={staff.id} />
-                ) : null}
                 <Link
                   href={withAdminReturnTo(
                     `/admin/order-responses/${encodeURIComponent(id)}`,

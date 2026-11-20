@@ -197,7 +197,7 @@ const destinations: readonly {
   { href: '/admin/orders/dispatch', label: 'Dispatch', icon: 'shipping', permission: 'order.manage' },
   {
     href: '/admin/shipping',
-    label: 'Shipping & claims',
+    label: 'Parcel problems',
     icon: 'shipping',
     permission: 'order.manage',
   },

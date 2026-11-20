@@ -18,11 +18,11 @@ registerHooks({resolve(specifier,context,next){
  if(specifier==='@/lib/auth/staff')return{url:'data:text/javascript,export class StaffAuthorizationError extends Error{};export async function requireStaffPage(path,permission){return globalThis.careContextAuthority(permission)};export async function requireStaffApi(permission){return globalThis.careContextAuthority(permission)};export async function getStaffUser(){return globalThis.careContextAuthority()}',shortCircuit:true};
  return next(specifier,context);
 }});
-type NavigationProps={href?:string;returnTo?:string;children?:ReactNode;entries?:Parameters<typeof StaffFormHistoryLinks>[0]['entries']};
+type NavigationProps={href?:string;returnTo?:string;children?:ReactNode;panels?:Record<string,ReactNode>;entries?:Parameters<typeof StaffFormHistoryLinks>[0]['entries']};
 function nodes(value:ReactNode):NavigationProps[]{
  if(Array.isArray(value))return value.flatMap(nodes);if(!isValidElement<NavigationProps>(value))return[];
  const own=value.props,children=typeof value.type==='function'&&['StaffFormHistoryLinks','ReviewBackLink'].includes(value.type.name)?(value.type as (props:NavigationProps)=>ReactNode)(own):own.children;
- return[own,...nodes(children)];
+ return[own,...nodes(children),...Object.values(own.panels??{}).flatMap(nodes)];
 }
 const upstream='/admin?section=care&owner=me&due=overdue#my-work';
 function bind(db:D1Database){globalThis.careContextDb=db;globalThis.careContextAuthority=async(permission='account.self.manage')=>{const proof=await staffMutationGuard(db,'owner',permission as never,Error);return{id:'owner',role:proof.role};};}
@@ -35,7 +35,7 @@ void test('actual return, order and preparation detail handoffs retain safe orig
   assert.ok(returnPage.some(p=>p.href?.startsWith('/admin/staff-form-history?')&&new URL(p.href,'https://fixture.test').searchParams.get('returnTo')?.includes('/admin/cases/returns/')),'staff history lost its exact case destination');
   const orderId=String(f.sqlite.prepare('SELECT order_id FROM order_items WHERE id=?').get(f.itemId)!.order_id),orderHref=withAdminReturnTo('/admin/orders/'+orderId,upstream);
   const orderPage=nodes(await orders.default({params:Promise.resolve({id:orderId}),searchParams:Promise.resolve({returnTo:upstream})}));
-  assert.ok(orderPage.some(p=>p.href===upstream),'order detail lost the original work list');assert.ok(orderPage.some(p=>p.returnTo===orderHref),'parcel Incoming handoff lost the exact current order context');
+  assert.ok(orderPage.some(p=>p.href===upstream),'order detail lost the original work list');assert.ok(orderPage.some(p=>p.returnTo===withAdminReturnTo('/admin/orders/'+orderId+'?tab=parcel-cash',upstream)),'parcel Incoming handoff lost the exact parcel tab context');
   const preparation=nodes(await responses.default({params:Promise.resolve({id:orderId}),searchParams:Promise.resolve({returnTo:orderHref})}));assert.ok(preparation.some(p=>p.href===orderHref),'preparation detail lost its original order caller');
  }finally{await f.dispose();}
 });
