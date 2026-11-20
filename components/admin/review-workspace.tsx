@@ -18,7 +18,7 @@ export function ReviewWorkspace({ record, summary, current, proposed, evidence, 
         <a key={id} className="underline capitalize" href={`#review-${id}`}>{id}</a>)}</nav>
     </header>
     <section id="review-summary" className="scroll-mt-48"><h2 className="font-heading text-xl">Summary and next action</h2>{summary}</section>
-    <section id="review-comparison" className="grid scroll-mt-48 gap-6 lg:grid-cols-2">
+    <section id="review-comparison" className="grid scroll-mt-48 grid-cols-1 gap-6 lg:grid-cols-2">
       <div><h2 className="font-heading text-xl">Current effective values</h2>{current}</div>
       <div><h2 className="font-heading text-xl">Proposed values</h2>{proposed}</div>
     </section>

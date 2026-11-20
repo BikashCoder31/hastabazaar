@@ -41,21 +41,19 @@ export default async function ProductReviewQueuePage({
     <div className="space-y-7">
       <div>
         <AdminPageTitle>
-          <h1 className="font-heading text-4xl tracking-tight">
-            {publishedOnly ? 'Published products' : 'Product review queue'}
+          <h1 className="font-heading text-3xl tracking-tight">
+            {publishedOnly ? 'Published products' : 'Catalog'}
           </h1>
         </AdminPageTitle>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Review product facts and photos before approval. Approved products
-          require a separate publish action.
-        </p>
       </div>
-      <nav className="flex flex-wrap gap-4">
-        <Link href="/admin/products/intakes" className="section-link">Product intake and assistance</Link>
-        <Link href={sellerId?`/admin/products?seller=${encodeURIComponent(sellerId)}`:'/admin/products'} className="section-link">
-          Review queue
+      <nav aria-label="Product listings" className="flex flex-wrap gap-2">
+        <Link href={sellerId?`/admin/products?seller=${encodeURIComponent(sellerId)}`:'/admin/products'} className="inline-flex min-h-11 items-center rounded-full border bg-card px-3 text-sm font-semibold hover:border-[#14213D]">
+          Product review
         </Link>
-        <Link href={`/admin/products?view=published${sellerId?'&seller='+encodeURIComponent(sellerId):''}`} className="section-link">
+        <Link href="/admin/products/intakes" className="inline-flex min-h-11 items-center rounded-full border bg-card px-3 text-sm font-semibold hover:border-[#14213D]">
+          Help requests and first reviews
+        </Link>
+        <Link href={`/admin/products?view=published${sellerId?'&seller='+encodeURIComponent(sellerId):''}`} className="inline-flex min-h-11 items-center rounded-full border bg-card px-3 text-sm font-semibold hover:border-[#14213D]">
           Published products
         </Link>
       </nav>
@@ -116,7 +114,7 @@ export default async function ProductReviewQueuePage({
                   </p>
                   <Link
                     href={`/admin/products/${product.id}`}
-                    className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
+                    className="mt-1 inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-primary hover:underline"
                   >
                     Review listing <ArrowRight className="size-4" />
                   </Link>

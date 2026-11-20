@@ -77,15 +77,15 @@ window.__blockProductStorage=()=>{const descriptor=Object.getOwnPropertyDescript
    });
    await t.test('a current-session denial clears the actual private Product form and requests protected outer-view reauthorization',async()=>{
     const h=await harness(storageSource.caseId,'component');try{
-     await h.page.getByLabel('Outer private Product evidence').fill('PRIVATE-OUTER-SOURCE evidence must disappear offline');await h.page.getByLabel('Decision rationale or correction request').fill('PRIVATE-OLD-SESSION reviewer rationale');globalThis.productScopeActor='delegate';
-     await h.page.getByRole('button',{name:'Request corrections',exact:true}).click();await h.page.getByRole('heading',{name:'Product workspace access changed'}).waitFor();
-     assert.equal(await h.page.getByLabel('Decision rationale or correction request').count(),0);assert.equal(await h.page.getByLabel('Outer private Product evidence').count(),0,'Unavailable refresh left private parent evidence mounted');assert.equal(await h.page.evaluate(()=>window.__currentViewRefreshes),1,'The outer protected Product view was not reauthorized');assert.equal(h.isCommitted(),false);assert.equal(await h.page.evaluate(()=>sessionStorage.length),0,'A definite first denial retained an unsent marker');assert.deepEqual(h.errors,[]);
+     await h.page.getByLabel('Outer private Product evidence').fill('PRIVATE-OUTER-SOURCE evidence must disappear offline');await h.page.getByLabel('Review note').fill('PRIVATE-OLD-SESSION reviewer rationale');globalThis.productScopeActor='delegate';
+     await h.page.getByRole('button',{name:'Ask for changes',exact:true}).click();await h.page.getByRole('heading',{name:'Product workspace access changed'}).waitFor();
+     assert.equal(await h.page.getByLabel('Review note').count(),0);assert.equal(await h.page.getByLabel('Outer private Product evidence').count(),0,'Unavailable refresh left private parent evidence mounted');assert.equal(await h.page.evaluate(()=>window.__currentViewRefreshes),1,'The outer protected Product view was not reauthorized');assert.equal(h.isCommitted(),false);assert.equal(await h.page.evaluate(()=>sessionStorage.length),0,'A definite first denial retained an unsent marker');assert.deepEqual(h.errors,[]);
     }finally{globalThis.productScopeActor='reviewer';h.release();await h.context.close();}
    });
    await t.test('a malformed native403 body still hides current private parent content and retains its opaque uncertain reference',async()=>{
     const h=await harness(storageSource.caseId,'component');try{
-     await h.page.getByLabel('Outer private Product evidence').fill('PRIVATE-HTML-DENIAL outer evidence');await h.page.getByLabel('Decision rationale or correction request').fill('PRIVATE-HTML-DENIAL intended rationale');h.malformDenial();globalThis.productScopeActor='delegate';await h.page.getByRole('button',{name:'Request corrections',exact:true}).click();await assertEventually(()=>h.statuses().includes(403));assert.equal(h.isCommitted(),false);
-     await h.page.getByRole('heading',{name:'Product workspace access changed'}).waitFor({timeout:5000});assert.equal(await h.page.getByLabel('Outer private Product evidence').count(),0);assert.equal(await h.page.getByLabel('Decision rationale or correction request').count(),0);const marker=await h.page.evaluate(()=>Object.values(sessionStorage));assert.equal(marker.length,1,'Malformed denial is not proof that the original action had no effects');assert.doesNotMatch(marker[0],/PRIVATE-HTML-DENIAL|reason|checks/);assert.equal(await h.page.evaluate(()=>window.__currentViewRefreshes),1);assert.deepEqual(h.errors,[]);
+     await h.page.getByLabel('Outer private Product evidence').fill('PRIVATE-HTML-DENIAL outer evidence');await h.page.getByLabel('Review note').fill('PRIVATE-HTML-DENIAL intended rationale');h.malformDenial();globalThis.productScopeActor='delegate';await h.page.getByRole('button',{name:'Ask for changes',exact:true}).click();await assertEventually(()=>h.statuses().includes(403));assert.equal(h.isCommitted(),false);
+     await h.page.getByRole('heading',{name:'Product workspace access changed'}).waitFor({timeout:5000});assert.equal(await h.page.getByLabel('Outer private Product evidence').count(),0);assert.equal(await h.page.getByLabel('Review note').count(),0);const marker=await h.page.evaluate(()=>Object.values(sessionStorage));assert.equal(marker.length,1,'Malformed denial is not proof that the original action had no effects');assert.doesNotMatch(marker[0],/PRIVATE-HTML-DENIAL|reason|checks/);assert.equal(await h.page.evaluate(()=>window.__currentViewRefreshes),1);assert.deepEqual(h.errors,[]);
     }finally{globalThis.productScopeActor='reviewer';h.release();await h.context.close();}
    });
    await t.test('a malformed current-view native403 body immediately retires its private parent without creating an action',async()=>{
@@ -95,22 +95,22 @@ window.__blockProductStorage=()=>{const descriptor=Object.getOwnPropertyDescript
    });
    await t.test('a retired prewrite403 cannot curtain or refresh the new actor and source parent',async()=>{
     const h=await harness(storageSource.caseId,'component',true,false,true);try{
-     await h.page.getByLabel('Decision rationale or correction request').fill('PRIVATE-OLD delayed denied request');globalThis.productScopeActor='delegate';await h.page.getByRole('button',{name:'Request corrections',exact:true}).click();await assertEventually(()=>h.statuses().includes(403));assert.equal(await h.page.evaluate(()=>sessionStorage.length),1);
+     await h.page.getByLabel('Review note').fill('PRIVATE-OLD delayed denied request');globalThis.productScopeActor='delegate';await h.page.getByRole('button',{name:'Ask for changes',exact:true}).click();await assertEventually(()=>h.statuses().includes(403));assert.equal(await h.page.evaluate(()=>sessionStorage.length),1);
      await h.page.evaluate((next:Awaited<ReturnType<typeof boot>>)=>window.__switchProduct(next),await boot(second.caseId,'component','delegate'));await h.page.getByLabel('Outer private Product evidence').fill('PRIVATE-NEW-OWNER evidence remains');h.release();await h.page.waitForFunction(()=>sessionStorage.length===0);
      assert.equal(await h.page.getByLabel('Outer private Product evidence').inputValue(),'PRIVATE-NEW-OWNER evidence remains');assert.equal(await h.page.getByRole('heading',{name:'Product workspace access changed'}).count(),0);assert.equal(await h.page.evaluate(()=>window.__currentViewRefreshes??0),0,'The retired denial refreshed the new protected source');assert.deepEqual(h.errors,[]);
     }finally{globalThis.productScopeActor='reviewer';h.release();await h.context.close();}
    });
    await t.test('actual publication form clears private entries and exact candidate on actor/source prop changes',async()=>{
     const h=await harness(f.sent.caseId,'component');try{
-     const rationale=h.page.getByLabel('Decision rationale or correction request');await rationale.fill('PRIVATE-OLD-ACTOR review reason');
-     await h.page.getByLabel('The facts and offers describe the same identifiable product.').check();
+     const rationale=h.page.getByLabel('Review note');await rationale.fill('PRIVATE-OLD-ACTOR review reason');
+     await h.page.getByLabel('The details and offers describe the same product.').check();
      const switchScope=async(scope:Awaited<ReturnType<typeof boot>>)=>{
       await h.page.evaluate((next:Awaited<ReturnType<typeof boot>>)=>window.__switchProduct(next),scope);
       await h.page.waitForFunction((identity:string)=>document.querySelector('main')?.getAttribute('data-fixture-scope')===identity,JSON.stringify([scope.initial.actorId,scope.caseId]));
      };
      await switchScope(await boot(second.caseId));
      assert.equal(await rationale.inputValue(),'','Private entry followed a different native product source');
-     assert.equal(await h.page.getByLabel('The facts and offers describe the same identifiable product.').isChecked(),false);
+     assert.equal(await h.page.getByLabel('The details and offers describe the same product.').isChecked(),false);
      assert.ok((await h.page.locator('main').textContent())?.includes('Fictional second cup'));
      await rationale.fill('PRIVATE-REVIEWER second-source reason');globalThis.productScopeActor='delegate';
      await switchScope(await boot(second.caseId,'component','delegate'));
@@ -142,7 +142,7 @@ window.__blockProductStorage=()=>{const descriptor=Object.getOwnPropertyDescript
    });
    await t.test('malformed readonly denial after an actual lost commit keeps its original opaque reference and hides private parent',async()=>{
     const h=await harness(storageSource.caseId,'component',false,true);try{
-     await h.page.getByLabel('Outer private Product evidence').fill('PRIVATE-GET-DENIAL evidence');await h.page.getByLabel('Decision rationale or correction request').fill('PRIVATE-GET-DENIAL original native correction');await h.page.getByRole('button',{name:'Request corrections',exact:true}).click();await assertEventually(h.isCommitted);await h.page.getByRole('button',{name:'Check original saved outcome',exact:true}).waitFor();const before=h.posts(),marker=await h.page.evaluate(()=>Object.values(sessionStorage));assert.equal(marker.length,1);h.malformDenial();globalThis.productScopeActor='delegate';await h.page.getByRole('button',{name:'Check original saved outcome',exact:true}).click();await assertEventually(()=>h.statuses().includes(403));await h.page.getByRole('heading',{name:'Product workspace access changed'}).waitFor({timeout:5000});assert.equal(h.posts(),before,'Readonly outcome denial resubmitted the action');assert.deepEqual(await h.page.evaluate(()=>Object.values(sessionStorage)),marker,'Denied outcome lookup cleared an actually committed original reference');assert.equal(await h.page.getByLabel('Outer private Product evidence').count(),0);assert.doesNotMatch(marker[0],/PRIVATE-GET-DENIAL|reason|checks/);assert.deepEqual(h.errors,[]);
+     await h.page.getByLabel('Outer private Product evidence').fill('PRIVATE-GET-DENIAL evidence');await h.page.getByLabel('Review note').fill('PRIVATE-GET-DENIAL original native correction');await h.page.getByRole('button',{name:'Ask for changes',exact:true}).click();await assertEventually(h.isCommitted);await h.page.getByRole('button',{name:'Check original saved outcome',exact:true}).waitFor();const before=h.posts(),marker=await h.page.evaluate(()=>Object.values(sessionStorage));assert.equal(marker.length,1);h.malformDenial();globalThis.productScopeActor='delegate';await h.page.getByRole('button',{name:'Check original saved outcome',exact:true}).click();await assertEventually(()=>h.statuses().includes(403));await h.page.getByRole('heading',{name:'Product workspace access changed'}).waitFor({timeout:5000});assert.equal(h.posts(),before,'Readonly outcome denial resubmitted the action');assert.deepEqual(await h.page.evaluate(()=>Object.values(sessionStorage)),marker,'Denied outcome lookup cleared an actually committed original reference');assert.equal(await h.page.getByLabel('Outer private Product evidence').count(),0);assert.doesNotMatch(marker[0],/PRIVATE-GET-DENIAL|reason|checks/);assert.deepEqual(h.errors,[]);
     }finally{globalThis.productScopeActor='reviewer';h.release();await h.context.close();}
    });
   }finally{await browser.close();}

@@ -1,4 +1,5 @@
 import { AdminPageTitle } from '@/components/admin/page-help';
+import { SellerApplicationQueue } from '@/components/admin/seller-application-queue';
 import {SharedReviewQueue} from '@/components/admin/shared-review-queue';
 import {listReviewTasks} from '@/lib/workflows/review-tasks';
 import {getSellerReadiness} from '@/lib/sellers/readiness';
@@ -37,6 +38,7 @@ import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import {
   getSellerRegistryCounts,
+  listSellerApplicationsForReview,
   listSellerRegistry,
 } from '@/lib/db/repositories/seller-applications';
 
@@ -78,7 +80,10 @@ export default async function SellerRegistryPage({
   const page = Math.min(requestedPage, pageCount);
   const sellers = await listSellerRegistry(database, page, pageSize, filters);
 
-  const reviewTasks=await listReviewTasks(database,staff.id).catch(()=>null);
+  const [reviewTasks, applications] = await Promise.all([
+    listReviewTasks(database,staff.id).catch(()=>null),
+    params.workspace === 'directory' ? [] : listSellerApplicationsForReview(database),
+  ]);
   const readiness=new Map(params.workspace==='directory'?await Promise.all(sellers.map(async seller=>[seller.id,await getSellerReadiness(database,seller.id).catch(()=>null)] as const)):[]);
   const returnTo=directoryHref(queuePageHref('/admin/sellers',filters,page));
   const summaries = [
@@ -98,19 +103,17 @@ export default async function SellerRegistryPage({
     <div className="space-y-7">
       <div>
         <AdminPageTitle>
-          <h1 className="font-heading text-4xl tracking-tight">
-            Seller management
+          <h1 className="font-heading text-3xl tracking-tight">
+            {params.workspace === 'directory' ? 'All sellers' : 'Sellers'}
           </h1>
         </AdminPageTitle>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Review every seller profile, including approved, rejected and
-          suspended accounts. Open a seller to review registration, documents and
-          moderation history. Super Admins can also see the seller’s onboarding checklist.
-        </p>
       </div>
 
       <a className="section-link inline-flex min-h-11 items-center" href={params.workspace==='directory'?'/admin/sellers':'/admin/sellers?workspace=directory#seller-directory'}>{params.workspace==='directory'?'Return to review tasks':'Open the seller directory'} →</a>
-      <SharedReviewQueue tasks={reviewTasks??[]} actorId={staff.id} unavailable={reviewTasks===null} sellerDirectoryAvailable/>
+      <div className={params.workspace === 'directory' ? 'min-w-0' : 'grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(14rem,18rem)_minmax(0,1fr)]'}>
+        {params.workspace !== 'directory' ? <SellerApplicationQueue applications={applications} /> : null}
+        <SharedReviewQueue tasks={reviewTasks??[]} actorId={staff.id} unavailable={reviewTasks===null} sellerDirectoryAvailable/>
+      </div>
       {params.workspace==='directory'?<><Card>
         <CardHeader>
           <CardTitle>Find a seller</CardTitle>

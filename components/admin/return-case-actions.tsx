@@ -4,7 +4,8 @@ import {ACTOR_INTENT_HEADER} from '@/lib/http/actor-intent';
 import { FormGuide } from '@/components/forms/form-guide';
 import {useOwnedFormScope} from '@/components/forms/use-owned-form-scope';
 import { useRouter } from 'next/navigation';
-import { cloneElement, useId, useRef, useState } from 'react';
+import { cloneElement, useEffect, useId, useRef, useState } from 'react';
+import { AlertTriangle, Check } from 'lucide-react';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
@@ -27,7 +28,16 @@ type Props = {
   deliveryEntitlement?:{kind:string;amountPaisa:number|null};
   pricingEntitlement?: ReturnCaseDetail['pricingEntitlement'];
   canApproveStandard?: boolean;
+  variationCheck?: { sellerResponded: boolean };
 };
+
+const variationQuestions = [
+  'Does the listing say it’s handmade?',
+  'Is the colour within what the photos showed?',
+  'Is it safe and does it work as intended?',
+  'Is it still the same product as listed?',
+] as const;
+type DecisionShortcut = 'refund' | 'close' | 'exchange' | 'photo' | 'other';
 
 const builtIns = ['action', 'decision', 'outcome', 'responsibility', 'itemRefundPaisa',
   'deliveryRefundPaisa', 'reference', 'restockQuantity', 'note', 'publicMessageEn',
@@ -52,6 +62,11 @@ function ScopedReturnCaseActions(props:Props&{isCurrent:()=>boolean}){
   const router = useRouter();
   const catalog = usePublishedFormConfig('staff.return-case-action');
   const formRef = useRef<HTMLFormElement>(null);
+  const messageRef = useRef<HTMLTextAreaElement>(null);
+  const decisionFormId = useId();
+  const focusDecision = useRef(false);
+  const [variation, setVariation] = useState<Record<number, 'yes' | 'no'>>({});
+  const [shortcut, setShortcut] = useState<DecisionShortcut | null>(null);
   const [action, setAction] = useState('request_changes');
   const [outcome, setOutcome] = useState('');
   const [responsibility, setResponsibility] = useState('');
@@ -67,6 +82,11 @@ function ScopedReturnCaseActions(props:Props&{isCurrent:()=>boolean}){
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [accessDenied,setAccessDenied]=useState(false);
+  useEffect(() => {
+    if (!shortcut || !focusDecision.current) return;
+    focusDecision.current = false;
+    messageRef.current?.focus();
+  }, [shortcut]);
   const reviewable = props.canApproveStandard && [
     'requested',
     'under_investigation',
@@ -94,6 +114,30 @@ function ScopedReturnCaseActions(props:Props&{isCurrent:()=>boolean}){
     (!requiresSellerConfirmation || correctSellerFulfillment);
   const approvalReady = action !== 'approve' || Boolean(outcome && responsibility && evidenceReady &&
     pricedRefund?.kind !== 'needs_reconciliation');
+  const useVariation = reviewable && props.variationCheck !== undefined;
+  const differentFromListing = variationQuestions.some((_, index) => variation[index] === 'no');
+  const normalVariation = variationQuestions.every((_, index) => variation[index] === 'yes');
+  const cashQuote = props.pricingEntitlement?.kind === 'ready' ? formatPaisaExact(props.pricingEntitlement.cashPaisa) : null;
+
+  function openDecision(next: DecisionShortcut) {
+    if (pending || failedAttemptKey) return;
+    setError('');
+    if (next === 'refund') {
+      setAction('approve');
+      setOutcome('refund');
+      if (next !== shortcut) setResponsibility('');
+    } else {
+      setAction(next === 'close' ? 'reject' : 'request_changes');
+      setOutcome('');
+    }
+    setCorrectSellerFulfillment(false);
+    if (next === shortcut) {
+      messageRef.current?.focus();
+    } else {
+      focusDecision.current = true;
+      setShortcut(next);
+    }
+  }
 
   async function send(endpoint: string, body: Record<string, unknown>) {
     if(!props.isCurrent())return;
@@ -161,8 +205,58 @@ function ScopedReturnCaseActions(props:Props&{isCurrent:()=>boolean}){
       </p>
     );
   return (
-    <form ref={formRef} data-form-id="staff.return-case-action" className="space-y-5"
+    <>
+      {useVariation ? <section aria-labelledby={decisionFormId + '-variation'} className="mb-5 space-y-4">
+        <div>
+          <h2 id={decisionFormId + '-variation'} className="text-lg font-bold">Normal handmade variation?</h2>
+          <p className="mt-1 text-sm text-muted-foreground">It only counts as normal if all four are yes.</p>
+        </div>
+        <div className="divide-y border-t">
+          {variationQuestions.map((question, index) => (
+            <div key={question} className="flex items-center justify-between gap-3 py-3">
+              <span aria-hidden="true" className="text-sm leading-5">{question}</span>
+              <fieldset className="flex shrink-0 divide-x rounded-lg border">
+                <legend className="sr-only">{question}</legend>
+                {(['yes', 'no'] as const).map(answer => (
+                  <button key={answer} type="button" aria-pressed={variation[index] === answer}
+                    className={'min-h-11 min-w-11 rounded-sm px-2 text-sm font-semibold capitalize hover:bg-muted ' +
+                      (variation[index] === answer ? answer === 'yes' ? 'bg-[#E1EEE5] text-[#1F4D35]' : 'bg-[#F8E1DE] text-[#6E1219]' : '')}
+                    onClick={() => setVariation(previous => ({ ...previous, [index]: answer }))}
+                  >{answer}</button>
+                ))}
+              </fieldset>
+            </div>
+          ))}
+        </div>
+        <div aria-live="polite" className={'flex gap-2 rounded-xl p-3 text-sm ' +
+          (differentFromListing ? 'bg-[#F8E1DE] text-[#6E1219]' : normalVariation ? 'bg-[#E1EEE5] text-[#1F4D35]' : 'bg-muted text-muted-foreground')}>
+          {differentFromListing ? <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" /> : normalVariation ? <Check aria-hidden="true" className="mt-0.5 size-4 shrink-0" /> : null}
+          <div>
+            <p className="font-semibold">{differentFromListing ? 'Different from the listing' : normalVariation ? 'Normal handmade variation' : 'Answer all four'}</p>
+            <p className="mt-1">{differentFromListing ? 'Review the original refund and confirm who is responsible.' : normalVariation ? 'Explain why the difference is normal and record the decision.' : 'Review the photos and both accounts to answer the questions.'}</p>
+          </div>
+        </div>
+        <div className="grid gap-2">
+          {differentFromListing || normalVariation ? (
+            <Button type="button" className="min-h-11 whitespace-normal bg-[#A8232E] text-center text-white hover:bg-[#8e1d28]"
+              aria-controls={decisionFormId} disabled={pending || Boolean(failedAttemptKey)}
+              onClick={() => openDecision(differentFromListing ? 'refund' : 'close')}>
+              {differentFromListing ? 'Approve return' + (cashQuote ? ' · ' + cashQuote : '') : 'Explain and close'}
+            </Button>
+          ) : null}
+          {props.variationCheck?.sellerResponded ? <Button type="button" variant="outline" className="min-h-11 whitespace-normal"
+            aria-controls={decisionFormId} disabled={pending || Boolean(failedAttemptKey)}
+            onClick={() => openDecision('exchange')}>Offer the seller’s exchange</Button> : null}
+          <Button type="button" variant="outline" className="min-h-11 whitespace-normal"
+            aria-controls={decisionFormId} disabled={pending || Boolean(failedAttemptKey)}
+            onClick={() => openDecision('photo')}>Ask customer for a daylight photo</Button>
+          {!shortcut ? <button type="button" className="min-h-11 text-left text-sm font-semibold underline underline-offset-4"
+            aria-controls={decisionFormId} onClick={() => openDecision('other')}>Other return decisions</button> : null}
+        </div>
+      </section> : null}
+    <form ref={formRef} id={decisionFormId} hidden={useVariation && !shortcut} data-form-id="staff.return-case-action" className="space-y-5"
       onSubmit={(event) => event.preventDefault()}>
+      {shortcut === 'exchange' ? <p className="text-sm text-muted-foreground">Check the seller’s message for an exchange offer. Describe the offer and ask the customer if they want it.</p> : null}
       <FormGuide formId="staff.return-case-action" />
 
       {reviewable ? (
@@ -239,7 +333,7 @@ function ScopedReturnCaseActions(props:Props&{isCurrent:()=>boolean}){
               ) : pricedRefund?.kind === 'needs_reconciliation' ? (
                 <p role="alert" className="rounded-lg border p-3 text-sm">Reconcile the original buyer refund amounts before approving this refund.</p>
               ) : outcome === 'refund' ? (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-3">
                   <Field label="Item refund (NPR)">
                     <Input
                       type="number"
@@ -328,7 +422,9 @@ function ScopedReturnCaseActions(props:Props&{isCurrent:()=>boolean}){
       </Field>
       <Field label="Customer message">
         <Textarea
+          ref={messageRef}
           value={messageEn}
+          placeholder={shortcut === 'photo' ? 'Please send a daylight photo that shows the item clearly.' : undefined}
           onChange={(event) => setMessageEn(event.target.value)}
           minLength={8}
           maxLength={1000}
@@ -378,7 +474,7 @@ function ScopedReturnCaseActions(props:Props&{isCurrent:()=>boolean}){
           {pending ? 'Saving…' : 'Save decision'}
         </Button>
       ) : highValue ? (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             disabled={
               pending || !catalog.canSubmit || note.trim().length < 8 || messageEn.trim().length < 8
@@ -431,6 +527,7 @@ function ScopedReturnCaseActions(props:Props&{isCurrent:()=>boolean}){
         </Button>
       ) : null}
     </form>
+    </>
   );
 }
 

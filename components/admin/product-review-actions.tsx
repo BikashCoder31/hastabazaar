@@ -30,11 +30,11 @@ const subscribeToAttempt = () => () => undefined;
 
 const definitions = {
   start_review: { label: 'Start review', title: 'Start reviewing this product?', description: 'The listing will move into active review.', variant: 'default', icon: SearchCheck },
-  request_changes: { label: 'Request changes', title: 'Return this listing for changes?', description: 'The seller will see your review note and must correct the listing.', variant: 'outline', icon: FilePenLine },
+  request_changes: { label: 'Ask for changes', title: 'Ask the seller to make changes?', description: 'The seller will receive your note and can resubmit the listing.', variant: 'outline', icon: FilePenLine },
   approve: { label: 'Approve product', title: 'Approve this product?', description: 'Approval confirms the listing meets Hastabazaar’s catalogue requirements. It remains private until published.', variant: 'default', icon: CheckCircle2 },
   publish: { label: 'Publish product', title: 'Publish this product?', description: 'The product will be visible when its seller meets the listing requirements. Ordering remains unavailable until commercial checks are complete.', variant: 'default', icon: Globe2 },
   unpublish: { label: 'Unpublish product', title: 'Unpublish this product?', description: 'The product will leave the storefront and return to review. Existing orders remain unchanged.', variant: 'destructive', icon: XCircle },
-  reject: { label: 'Reject product', title: 'Reject this product?', description: 'The listing will be closed with your reason in its permanent review history.', variant: 'destructive', icon: XCircle },
+  reject: { label: 'Reject…', title: 'Reject this product?', description: 'This closes the listing review and saves your reason.', variant: 'destructive', icon: XCircle },
 } as const;
 
 type Definition = (typeof definitions)[keyof typeof definitions] & { action: ProductReviewAction };
@@ -128,7 +128,7 @@ export function ProductReviewActions({ productId, status, canUnpublish = false, 
         } }}>Start a new attempt</Button> : null}
       {error ? <p role="alert" className="text-sm font-medium text-destructive">{error}</p> : null}
       <div className="flex flex-wrap gap-2">
-        {actions.map((action) => { const definition = definitions[action]; const Icon = definition.icon; return <Button key={action} type="button" variant={definition.variant} disabled={pending || !catalog.canSubmit} onClick={() => prepare(action)}><Icon />{definition.label}</Button>; })}
+        {actions.map((action) => { const definition = definitions[action]; const Icon = definition.icon; return <Button key={action} type="button" variant={definition.variant} className="h-auto min-h-11 max-w-full whitespace-normal" disabled={pending || !catalog.canSubmit} onClick={() => prepare(action)}><Icon />{definition.label}</Button>; })}
       </div>
       <AlertDialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
         <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{selected?.title}</AlertDialogTitle><AlertDialogDescription>{selected?.description}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel><AlertDialogAction variant={selected?.variant === 'destructive' ? 'destructive' : 'default'} disabled={pending || !catalog.canSubmit} onClick={submit}>{pending ? 'Saving…' : selected?.label}</AlertDialogAction></AlertDialogFooter></AlertDialogContent>

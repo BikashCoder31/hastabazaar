@@ -1,4 +1,7 @@
 import { AdminPageTitle } from '@/components/admin/page-help';
+import { SellerApplicationQueue, sellerInitials } from '@/components/admin/seller-application-queue';
+import { sellerDocumentLabel } from '@/components/admin/seller-document-label';
+import { StepLine, type StepLineStep } from '@/components/ui/step-line';
 import {registrationEvidenceKinds} from '@/lib/sellers/document-policy';
 import { AcceptedAgreementSnapshot } from '@/components/admin/accepted-agreement-snapshot';
 import { AccountRecoveryAssistance } from '@/components/admin/account-recovery-assistance';
@@ -30,7 +33,7 @@ import { StatusBadge } from '@/components/admin/status-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
-import { getSellerApplicationForReview } from '@/lib/db/repositories/seller-applications';
+import { getSellerApplicationForReview, listSellerApplicationsForReview } from '@/lib/db/repositories/seller-applications';
 import { getSellerGovernance } from '@/lib/db/repositories/seller-governance';
 import { can } from '@/lib/marketplace/permissions';
 
@@ -126,6 +129,17 @@ export default async function SellerApplicationPage({
   }
   if(evidence.kind==='missing')notFound();
   const {application,publicProfile,bank}=evidence;
+  const applying = ['submitted', 'under_review', 'needs_changes'].includes(application.status);
+  const applications = applying ? await listSellerApplicationsForReview(database) : [];
+  const sellerName = application.tradingName.trim() || application.legalName.trim() || application.applicationReference;
+  const registrationReviewed = readiness?.checks.find(check => check.id === 'application')?.status === 'ready';
+  const identityReviewed = readiness?.checks.find(check => check.id === 'identity')?.status === 'ready';
+  const termsAccepted = readiness?.checks.find(check => check.id === 'terms')?.status === 'ready';
+  const applicationSteps: StepLineStep[] = [
+    { id: 'registration', label: 'Registration', state: registrationReviewed ? 'complete' : 'current', detail: registrationReviewed ? 'Application approved' : 'Check the shop and contact details' },
+    { id: 'documents', label: 'Documents', state: identityReviewed ? 'complete' : registrationReviewed ? 'current' : 'upcoming', detail: application.documentCount ? application.documentCount + ' uploaded' : 'No documents yet' },
+    { id: 'agreement', label: 'Agreement & go live', state: readiness?.newOrders ? 'complete' : registrationReviewed && identityReviewed ? 'current' : 'upcoming', detail: readiness?.newOrders ? 'Can accept new orders' : termsAccepted ? 'Agreement accepted' : 'Check the seller agreement' },
+  ];
   const onboarding = staff.role === 'super_admin' ? await getSellerOnboardingChecklist(database, {
     sellerId: application.id, ownerId: application.userId, stage: application.applicationStage ?? application.status,
     readiness, viewer: { kind: 'admin', actorId: staff.id },
@@ -148,26 +162,138 @@ export default async function SellerApplicationPage({
 
   return (
     <StaffReviewAccessBoundary actorId={staff.id} sourceId={id}><div className="space-y-7">
-      {recoveryTarget ? <AccountRecoveryAssistance actorId={staff.id} targetId={recoveryTarget.id} displayName={recoveryTarget.displayName} email={recoveryTarget.email} targetRole={recoveryTarget.role} /> : null}
-      <StaffFormHistoryLinks returnTo={withAdminReturnTo('/admin/sellers/'+encodeURIComponent(id),backHref)} entries={[{kind:'seller-review-action',subjectId:id,label:'Seller review answers'},
-        ...(staff.role === 'super_admin' ? [{kind:'seller-governance' as const,subjectId:id,label:'Seller governance answers'}] : [])]} />
-      <ReviewBackLink actorId={staff.id} returnTo={backHref}/>
-
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <AdminPageTitle>
-            <h1 className="font-heading text-4xl tracking-tight">
-              {application.tradingName}
-            </h1>
-          </AdminPageTitle>
-          <p className="mt-2 text-sm text-muted-foreground">{application.applicationReference}</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Legal name: {application.legalName}
-          </p>
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <AdminPageTitle><h1 className="font-heading text-3xl tracking-tight">Sellers</h1></AdminPageTitle>
+        <ReviewBackLink actorId={staff.id} returnTo={backHref}/>
+      </header>
+      <div className={applying ? 'grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(13rem,15rem)_minmax(0,1fr)]' : 'min-w-0'}>
+        {applying ? <SellerApplicationQueue applications={applications} selected={id} /> : null}
+        <article className="min-w-0 space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <span aria-hidden="true" className="grid size-14 shrink-0 place-items-center rounded-full bg-[#A8232E] text-lg font-bold text-white">{sellerInitials(sellerName)}</span>
+          <div className="min-w-0">
+            <h2 className="break-words font-heading text-2xl tracking-tight md:text-3xl">{sellerName}</h2>
+            <p className="mt-1 break-words text-sm text-muted-foreground">
+              {application.applicationReference} · Applied {dateTimeFormatter.format(application.createdAt)} · {application.representativeName} · {application.district}
+            </p>
+          </div>
         </div>
         <StatusBadge status={approvedForActivation ? 'approved_for_activation' : application.status} />
       </div>
 
+      {applying ? <StepLine steps={applicationSteps} label="Seller review progress" className="md:max-lg:grid-cols-1" /> : null}
+
+          <Card id="seller-evidence" className="scroll-mt-28">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileCheck2 className="size-5 text-primary" /> Documents
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">Files open in a private viewer. We record every download.</p>
+            </CardHeader>
+            <CardContent>
+              {!application.documents.length ? <p className="text-sm text-muted-foreground">No documents yet.</p> : null}
+              <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+              {application.documents.map((document) => (
+                <div
+                  key={document.id}
+                  className="min-w-0 overflow-hidden rounded-xl border bg-card"
+                >
+                  <a href={`/api/admin/seller-documents/${document.id}`} target="_blank" rel="noreferrer"
+                    aria-label={'Open ' + sellerDocumentLabel(document.kind) + ' in the private viewer'}
+                    className="grid aspect-[8/5] max-h-44 place-items-center bg-[#EEE5D5] bg-[repeating-linear-gradient(135deg,transparent,transparent_8px,rgba(255,255,255,0.32)_8px,rgba(255,255,255,0.32)_16px)] text-[#665747] hover:bg-[#e5d9c6]">
+                    <FileCheck2 aria-hidden="true" className="size-6" />
+                  </a>
+                  <div className="space-y-2 p-3">
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-semibold">
+                      {sellerDocumentLabel(document.kind)}
+                    </p>
+                    <p className="break-words text-xs text-muted-foreground">
+                      {document.originalName} ·{' '}
+                      {formatBytes(document.sizeBytes)}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {document.kind==='bank_verification' ? <a href={`/api/admin/seller-documents/${document.id}?details=payout`} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center text-sm font-semibold text-primary underline">Submitted bank details</a> : null}
+                    <StatusBadge status={document.status} />
+
+                  </div>
+                  {staff.role === 'super_admin' && (registrationEvidenceKinds as readonly string[]).includes(document.kind) ? <Link className="section-link inline-flex min-h-11 items-center" href={`/admin/seller-documents/${document.id}/review`}>Document history</Link> : null}
+                  {staff.role === 'super_admin' && (registrationEvidenceKinds as readonly string[]).includes(document.kind) ? <SellerDocumentReview actorId={staff.id} sellerId={id} documentId={document.id} expectedReviewId={document.reviewId??null} canDecide={document.status==='pending'}/> : null}
+                  </div>
+                </div>
+              ))}
+              </div>
+            </CardContent>
+          </Card>
+      <div className="grid min-w-0 items-start gap-5 lg:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle>Shop details</CardTitle></CardHeader>
+          <CardContent>
+            <dl className="grid gap-3 md:grid-cols-2">
+              <Detail label="Shop name">{application.tradingName}</Detail>
+              <Detail label="Crafts">{application.productCategories}</Detail>
+              <Detail label="Pickup area">{operationalAddresses.results.find(address => address.purpose === 'pickup')?.locality ?? application.locality}</Detail>
+              <Detail label="Contact">{application.supportEmail}</Detail>
+            </dl>
+          </CardContent>
+        </Card>
+          <Card id="seller-history" className="scroll-mt-28">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <History className="size-5 text-primary" /> History
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {application.history.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No staff review action has been recorded yet.
+                </p>
+              ) : (
+                <ol className="space-y-5">
+                  {application.history.map((event) => (
+                    <li
+                      key={event.id}
+                      className="border-l-2 border-primary/25 pl-4"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusBadge status={event.toStatus} />
+                        <span className="text-xs text-muted-foreground">
+                          {dateTimeFormatter.format(new Date(event.createdAt))}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm leading-6">{event.reason}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        By {event.actorName} · {event.actorEmail}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </CardContent>
+          </Card>
+      </div>
+          <Card id="seller-decision" className="scroll-mt-28">
+            <CardHeader>
+              <CardTitle>Application decision</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SellerReviewActions
+                sellerId={application.id}
+                status={application.status}
+                participationRoute={application.participationRoute}
+                applicationStage={application.applicationStage}
+                registrationIntake={registrationIntake}
+              />
+              {application.participationRoute === 'managed_maker' && application.applicationStage === 'approved_for_activation' && managedTerms?.version!==MANAGED_SUPPLIER_AGREEMENT_VERSION ? (
+                <div className="mt-5"><ManagedMakerActivationForm sellerId={application.id} companyAccount={managedTerms?.account} acceptedTerms={acceptedManagedTerms ? { detailId: acceptedManagedTerms.detailId, retentionBps: acceptedManagedTerms.retentionBps, agreementVersion: acceptedManagedTerms.agreementVersion } : null}/></div>
+              ) : null}
+            </CardContent>
+          </Card>
+      {recoveryTarget ? <AccountRecoveryAssistance actorId={staff.id} targetId={recoveryTarget.id} displayName={recoveryTarget.displayName} email={recoveryTarget.email} targetRole={recoveryTarget.role} /> : null}
+      <StaffFormHistoryLinks returnTo={withAdminReturnTo('/admin/sellers/'+encodeURIComponent(id),backHref)} entries={[{kind:'seller-review-action',subjectId:id,label:'Seller review answers'},
+        ...(staff.role === 'super_admin' ? [{kind:'seller-governance' as const,subjectId:id,label:'Seller governance answers'}] : [])]} />
       {onboarding ? <SellerOnboardingChecklist model={onboarding} /> : null}
 
       <nav aria-label="Seller review sections" className="flex flex-wrap gap-2">
@@ -178,7 +304,7 @@ export default async function SellerApplicationPage({
         ? <div id="seller-live-trading" className="scroll-mt-28"><ManagedLiveActivationPanel key={id} actorId={staff.id} sellerId={id}/></div> : null}
       <SharedReviewQueue tasks={reviewTasks??[]} actorId={staff.id} unavailable={reviewTasks===null} sellerDirectoryAvailable/>
 
-      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.4fr)_minmax(20rem,0.6fr)]">
+      <div className="min-w-0">
         <div className="space-y-6">
           {bank?<div id="seller-bank" className="scroll-mt-28"><SellerBankEvidence workspace={bank}/></div>:null}
           {bank?<SellerBankReview actorId={staff.id} sellerId={id} revision={bank.revision} canDecide={application.userId!==staff.id&&bank.change?.status==='open'&&!!bank.proposed}/>:null}
@@ -314,6 +440,7 @@ export default async function SellerApplicationPage({
             </CardHeader>
             <CardContent>
               <dl className="grid gap-5 sm:grid-cols-2">
+                <Detail label="Legal name">{application.legalName}</Detail>
                 <Detail label="Applicant type">{application.applicantType ?? 'Legacy application (not reclassified)'}</Detail>
                 <Detail label="Registration authority">
                   {application.registrationAuthority}
@@ -387,104 +514,10 @@ export default async function SellerApplicationPage({
               <dl className="mt-4 space-y-3">{operationalAddresses.results.map(address=><Detail key={address.purpose} label={address.purpose==='pickup'?'Private pickup address':'Private return address'}>{address.locality}</Detail>)}</dl>
             </CardContent>
           </Card>
-
-          <Card id="seller-evidence" className="scroll-mt-28">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileCheck2 className="size-5 text-primary" /> Evidence
-                documents
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {application.documents.map((document) => (
-                <div
-                  key={document.id}
-                  className="flex flex-col justify-between gap-3 rounded-lg border p-3 sm:flex-row sm:items-center"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold capitalize">
-                      {document.kind.replaceAll('_', ' ')}
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {document.originalName} ·{' '}
-                      {formatBytes(document.sizeBytes)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {document.kind==='bank_verification' ? <a href={`/api/admin/seller-documents/${document.id}?details=payout`} target="_blank" rel="noreferrer" className="text-sm font-semibold text-primary underline">Submitted bank details</a> : null}
-                    <StatusBadge status={document.status} />
-                    <a
-                      href={`/api/admin/seller-documents/${document.id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
-                    >
-                      Open <ExternalLink className="size-4" />
-                    </a>
-                  </div>
-                  {staff.role === 'super_admin' && (registrationEvidenceKinds as readonly string[]).includes(document.kind) ? <Link className="section-link" href={`/admin/seller-documents/${document.id}/review`}>Open evidence and decision history →</Link> : null}
-                  {staff.role === 'super_admin' && (registrationEvidenceKinds as readonly string[]).includes(document.kind) ? <SellerDocumentReview actorId={staff.id} sellerId={id} documentId={document.id} expectedReviewId={document.reviewId??null} canDecide={document.status==='pending'}/> : null}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="space-y-6">
-          <Card id="seller-decision" className="scroll-mt-28">
-            <CardHeader>
-              <CardTitle>Application decision</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <SellerReviewActions
-                sellerId={application.id}
-                status={application.status}
-                participationRoute={application.participationRoute}
-                applicationStage={application.applicationStage}
-                registrationIntake={registrationIntake}
-              />
-              {application.participationRoute === 'managed_maker' && application.applicationStage === 'approved_for_activation' && managedTerms?.version!==MANAGED_SUPPLIER_AGREEMENT_VERSION ? (
-                <div className="mt-5"><ManagedMakerActivationForm sellerId={application.id} companyAccount={managedTerms?.account} acceptedTerms={acceptedManagedTerms ? { detailId: acceptedManagedTerms.detailId, retentionBps: acceptedManagedTerms.retentionBps, agreementVersion: acceptedManagedTerms.agreementVersion } : null}/></div>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          <Card id="seller-history" className="scroll-mt-28">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <History className="size-5 text-primary" /> Moderation history
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {application.history.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No staff review action has been recorded yet.
-                </p>
-              ) : (
-                <ol className="space-y-5">
-                  {application.history.map((event) => (
-                    <li
-                      key={event.id}
-                      className="border-l-2 border-primary/25 pl-4"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <StatusBadge status={event.toStatus} />
-                        <span className="text-xs text-muted-foreground">
-                          {dateTimeFormatter.format(new Date(event.createdAt))}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-sm leading-6">{event.reason}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        By {event.actorName} · {event.actorEmail}
-                      </p>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </CardContent>
-          </Card>
         </div>
       </div>
+      </article>
+    </div>
     </div></StaffReviewAccessBoundary>
   );
 }

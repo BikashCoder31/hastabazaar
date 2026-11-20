@@ -53,14 +53,17 @@ const tabHelp: Readonly<Record<string, HelpCopy>> = {
   },
 };
 
+const returnsHelp: HelpCopy = {
+  title: 'How returns work',
+  sentences: [
+    'Check the order’s return terms and compare the listing photo with the customer’s evidence.',
+    'Use the handmade-variation questions to guide your decision. The seller can add their side and Hastabazaar makes the final decision.',
+  ],
+};
+
 const workflowHelp: Readonly<Record<string, HelpCopy>> = {
-  '/admin/cases/returns': {
-    title: 'How to review a return',
-    sentences: [
-      'Read the return request, the order details and the evidence from both parties.',
-      'Check eligibility under the recorded policy, then record your decision and the next step.',
-    ],
-  },
+  '/admin/cases': returnsHelp,
+  '/admin/cases/returns': returnsHelp,
   '/admin/cases/complaints': {
     title: 'How to review a complaint',
     sentences: [
@@ -118,6 +121,21 @@ const workflowHelp: Readonly<Record<string, HelpCopy>> = {
       'Record your follow-up in this order’s preparation history.',
     ],
   },
+  '/admin/sellers': {
+    title: 'How seller review works',
+    sentences: [
+      'Check the seller’s registration, documents and agreement in the order shown.',
+      'Open submitted documents in the private viewer and explain clearly if the seller needs to make a correction.',
+    ],
+  },
+  '/admin/products': {
+    title: 'How product review works',
+    sentences: [
+      'Check the listing’s photos, price and details before deciding.',
+      'Ask for changes with a note the seller can act on. When Approve & publish is available, it applies both decisions to the checked version.',
+      'Some older listings show approval and publication as separate actions.',
+    ],
+  },
   '/admin/products/publications': {
     title: 'How to publish an approved product',
     sentences: [
@@ -126,7 +144,7 @@ const workflowHelp: Readonly<Record<string, HelpCopy>> = {
     ],
   },
   '/admin/products/intakes': {
-    title: 'How to review product intake',
+    title: 'How product review works',
     sentences: [
       'Check the seller’s request and the version they shared.',
       'Record the next step in the original intake or product review.',
@@ -170,12 +188,14 @@ export function getAdminPageHelp(
   const permitted = adminNavigation(role, permissions);
   const procedureHref = permitted.find(({ href }) => href === '/admin/legal-policies/active')?.href;
 
-  const workflow = Object.keys(workflowHelp).find(route => pathname === route || pathname.startsWith(route + '/'));
-  if (workflow) return { ...workflowHelp[workflow], pathname, procedureHref };
-
   const current = activeAdminSection(adminSections(role, permissions), pathname, searchParams);
   const tabCopy = current?.queryMatch ? tabHelp[current.tab.href] : undefined;
   if (tabCopy) return { ...tabCopy, pathname, procedureHref };
+
+  const workflow = Object.keys(workflowHelp)
+    .filter(route => pathname === route || pathname.startsWith(route + '/'))
+    .sort((left, right) => right.length - left.length)[0];
+  if (workflow) return { ...workflowHelp[workflow], pathname, procedureHref };
   if (pathname === '/admin') return { ...today, pathname, procedureHref };
 
   const tabPath = current?.tab.href.split('?')[0];

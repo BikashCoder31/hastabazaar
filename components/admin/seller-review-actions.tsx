@@ -49,7 +49,7 @@ const definitions: Record<SellerReviewAction, ActionDefinition> = {
   },
   request_changes: {
     action: 'request_changes',
-    label: 'Request changes',
+    label: 'Ask seller to fix details',
     title: 'Send this application back for changes?',
     description:
       'The seller will need to correct the issues in your review note before resubmitting.',
@@ -59,9 +59,9 @@ const definitions: Record<SellerReviewAction, ActionDefinition> = {
   approve_for_activation: {
     action: 'approve_for_activation',
     label: 'Approve for activation',
-    title: 'Approve this maker for activation readiness?',
+    title: 'Approve this maker’s application?',
     description:
-      'This records maker readiness only. It does not enable selling, assign a legal seller or invoice issuer, publish products, or activate an unreviewed commercial model.',
+      'This records application approval. Complete the live trading requirements before the maker can start selling.',
     variant: 'default',
     icon: CheckCircle2,
   },
@@ -76,7 +76,7 @@ const definitions: Record<SellerReviewAction, ActionDefinition> = {
   },
   reject: {
     action: 'reject',
-    label: 'Reject application',
+    label: 'Reject…',
     title: 'Reject this application?',
     description:
       'This closes the current application. The reason is retained in the audit history.',
@@ -275,14 +275,18 @@ export function SellerReviewActions({
         </p>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
-        {available.map((definition) => {
+      <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl bg-[#14213D] p-3 text-white">
+        {[...available].reverse().map((definition) => {
           const Icon = definition.icon;
           return (
             <Button
               key={definition.action}
               type="button"
               variant={definition.variant}
+              className={'h-auto min-h-11 max-w-full whitespace-normal text-left ' +
+                (definition.variant === 'outline' ? 'border-white/35 bg-white text-[#14213D] hover:bg-white/90' :
+                  definition.variant === 'destructive' ? 'border border-white/35 bg-transparent text-white hover:bg-white/15' :
+                    'bg-[#A8232E] text-white hover:bg-[#8e1d28]')}
               disabled={pending || !catalog.canSubmit}
               onClick={() => prepare(definition)}
             >

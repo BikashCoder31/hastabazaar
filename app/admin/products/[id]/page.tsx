@@ -97,23 +97,21 @@ export default async function ProductReviewPage({
   if(retained)return <div className="space-y-5"><AdminPageTitle><h1 className="font-heading text-3xl">{product.nameEn}</h1></AdminPageTitle><p>The owner has a retained private workspace. Review becomes available when they explicitly share a candidate or request help.</p><ReviewBackLink returnTo={backHref} actorId={staff.id}/>{staff.role==='super_admin'&&<ProductAvailabilityPanel key={`${staff.id}:${id}`} actorId={staff.id} productId={id} scope="admin"/>}</div>;
   return (
     <div className="space-y-7">
-      <StaffFormHistoryLinks returnTo={currentHref} entries={[{kind:'product-review',subjectId:id,label:'Product decision answers'},
-        ...(staff.role === 'super_admin' ? [{kind:'homepage-visibility' as const,subjectId:id,label:'Homepage visibility answers'}] : [])]} />
       <ReviewBackLink returnTo={backHref} actorId={staff.id}/>
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
           <AdminPageTitle>
-            <h1 className="font-heading text-4xl tracking-tight">
+            <h1 className="break-words font-heading text-3xl tracking-tight md:text-4xl">
               {product.nameEn}
             </h1>
           </AdminPageTitle>
-          <p className="mt-2 break-all text-sm text-muted-foreground">Platform SKU: {product.sku}</p>
+          <p className="mt-2 break-words text-sm text-muted-foreground">{product.tradingName}{Number.isFinite(product.submittedAt) ? " · " + dateFormatter.format(product.submittedAt) : null}</p>
+          <p className="mt-1 break-all text-sm text-muted-foreground">Platform SKU: {product.sku}</p>
           <p className="mt-1 break-all text-sm text-muted-foreground">Seller SKU: {product.sellerSku || '—'}</p>
         </div>
         <StatusBadge status={product.status} />
       </div>
-      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.4fr)_minmax(20rem,0.6fr)]">
-        <div className="space-y-6">
+      <div className="grid min-w-0 items-start gap-6 xl:grid-cols-2">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -121,7 +119,8 @@ export default async function ProductReviewPage({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-3 sm:grid-cols-2">
+              {!product.media.length ? <p className="text-sm text-muted-foreground">No photos yet.</p> : null}
+              <div className="grid gap-3">
                 {product.media.map((media) => (
                   <figure
                     key={media.id}
@@ -163,7 +162,7 @@ export default async function ProductReviewPage({
                         />
                       )}
                     </div>
-                    <figcaption className="truncate p-2 text-xs text-muted-foreground">
+                    <figcaption className="break-words p-2 text-xs text-muted-foreground">
                       {media.originalName}
                     </figcaption>
                   </figure>
@@ -171,6 +170,39 @@ export default async function ProductReviewPage({
               </div>
             </CardContent>
           </Card>
+        <div className="min-w-0 space-y-4">
+          <Card>
+            <CardContent className="space-y-3">
+              <dl className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+                <div className="flex gap-1"><dt>Price</dt><dd className="font-bold">{money(product.pricePaisa)}</dd></div>
+                <div className="flex gap-1"><dt>Stock</dt><dd className="font-bold">{product.inventoryQuantity}</dd></div>
+                <div className="flex gap-1"><dt>Category</dt><dd className="font-bold">{product.categoryName}</dd></div>
+                <div className="flex gap-1"><dt>Origin</dt><dd className="font-bold">{product.countryOfOrigin || 'Unknown'}</dd></div>
+              </dl>
+              <p className="whitespace-pre-line break-words text-sm leading-6">{product.descriptionEn}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Review decision</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {product.status === 'published' ? <p className="mb-4 rounded-xl border bg-muted p-3 text-sm">
+                {product.publiclyVisible ? 'Visible in the public catalogue.' : 'Not visible in the public catalogue because seller eligibility is incomplete or restricted.'}{' '}
+                {product.purchasable ? 'Commercial eligibility is met; stock and checkout checks still apply.' : 'Customers cannot order until commercial eligibility is met.'}
+              </p> : null}
+              <ProductReviewActions
+                productId={product.id}
+                canUnpublish={staff.role === 'super_admin'}
+                canPublish={can(staff, 'product.publish')}
+                status={product.status}
+              />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.4fr)_minmax(20rem,0.6fr)]">
+        <div className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -178,14 +210,6 @@ export default async function ProductReviewPage({
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div>
-                <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  Description
-                </h2>
-                <p className="mt-2 whitespace-pre-line text-sm leading-7">
-                  {product.descriptionEn}
-                </p>
-              </div>
               <dl className="grid gap-5 sm:grid-cols-2">
                 <Detail label="Category">{product.categoryName}</Detail>
                 <Detail label="Gift occasions">{product.occasionNames}</Detail>
@@ -289,23 +313,6 @@ export default async function ProductReviewPage({
           ) : null}
           <Card>
             <CardHeader>
-              <CardTitle>Review decision</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {product.status === 'published' ? <p className="mb-4 rounded-xl border bg-muted p-3 text-sm">
-                {product.publiclyVisible ? 'Visible in the public catalogue.' : 'Not visible in the public catalogue because seller eligibility is incomplete or restricted.'}{' '}
-                {product.purchasable ? 'Commercial eligibility is met; stock and checkout checks still apply.' : 'Customers cannot order until commercial eligibility is met.'}
-              </p> : null}
-              <ProductReviewActions
-                productId={product.id}
-                canUnpublish={staff.role === 'super_admin'}
-                canPublish={can(staff, 'product.publish')}
-                status={product.status}
-              />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
               <CardTitle>Discovery classification</CardTitle>
             </CardHeader>
             <CardContent>
@@ -358,6 +365,8 @@ export default async function ProductReviewPage({
           </Card>
         </div>
       </div>
+      <StaffFormHistoryLinks returnTo={currentHref} entries={[{kind:'product-review',subjectId:id,label:'Product decision answers'},
+        ...(staff.role === 'super_admin' ? [{kind:'homepage-visibility' as const,subjectId:id,label:'Homepage visibility answers'}] : [])]} />
     </div>
   );
 }

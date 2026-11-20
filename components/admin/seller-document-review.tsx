@@ -87,16 +87,26 @@ function OwnedDecision({actorId,action,sourceId,url,fields,options,canDecide}:Pr
  return <section className="space-y-3 border-t pt-3">
   {canDecide||attempt?<form data-form-id={action==='review'?'staff.seller-document-review':'staff.seller-document-change-permission'} onSubmit={submit} className="space-y-3">
    <fieldset disabled={busy||!!requestId||confirmed} className="space-y-3">
-    <label className="block space-y-2 text-sm">Decision<select name="decision" value={decision} onChange={event=>setDecision(event.target.value)} className="block w-full rounded-lg border bg-background p-3">{options.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
-    <label htmlFor={reasonId} className="block space-y-2 text-sm">Reason shown to the seller<Input id={reasonId} name="reason" value={reason} onChange={event=>setReason(event.target.value)} required minLength={8} maxLength={1000}/></label>
+    {action === 'review' ? (
+      <fieldset className="flex min-w-0 flex-wrap gap-2">
+        <legend className="sr-only">Document decision</legend>
+        {options.map(([value, label]) => (
+          <Button key={value} type="button" aria-pressed={decision === value} variant="outline"
+            className={'min-h-11 max-w-full flex-1 whitespace-normal ' +
+              (decision === value ? value === 'verify' ? 'border-[#236548] bg-[#DFECE4] text-[#236548]' : 'border-[#A8232E] bg-[#F8E1DE] text-[#6E1219]' : '')}
+            onClick={() => setDecision(value)}>{label}</Button>
+        ))}
+      </fieldset>
+    ) : <label className="block space-y-2 text-sm">Decision<select name="decision" value={decision} onChange={event=>setDecision(event.target.value)} className="block min-h-11 w-full rounded-lg border bg-background p-3">{options.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>}
+    <label htmlFor={reasonId} className="block space-y-2 text-sm">Reason shown to the seller<Input id={reasonId} name="reason" value={reason} onChange={event=>setReason(event.target.value)} required minLength={8} maxLength={1000} className="min-h-11"/></label>
    </fieldset>
    {changed&&!requestId?<div className="space-y-2"><p>The evidence or review history changed. Inspect the current version before using your retained note.</p><Button type="button" variant="outline" onClick={()=>{setReviewedRevision(revision);setConfirmed(false);}}>Use reviewed current evidence</Button></div>:null}
-   <Button type="submit" disabled={busy||blocked||!!requestId||changed||confirmed||!canDecide}>{busy?'Saving…':'Record decision'}</Button>
+   <Button type="submit" className="min-h-11" disabled={busy||blocked||!!requestId||changed||confirmed||!canDecide}>{busy?'Saving…':'Record decision'}</Button>
   </form>:null}
   <div className="flex flex-wrap gap-2">
    {attempt?<Button type="button" variant="outline" disabled={busy||blocked} onClick={()=>void send(attempt)}>Retry exact original decision</Button>:null}
    {requestId?<Button type="button" variant="outline" disabled={busy||blocked} onClick={()=>void recover()}>Check original saved outcome</Button>:null}
-   <Button type="button" variant="outline" disabled={busy} onClick={()=>router.refresh()}>Refresh current evidence and keep my note</Button>
+   <Button type="button" variant="outline" className="h-auto min-h-11 whitespace-normal text-left" disabled={busy} onClick={()=>router.refresh()}>Refresh current evidence and keep my note</Button>
   </div>
   {requestId?<p className="text-sm">The original action reference is retained. {attempt?'Retry sends the exact original decision.':'Reloaded private input is never resubmitted; check the original saved outcome.'}</p>:null}
   {blocked&&stored!==undefined?<p role="alert">The original browser reference is unavailable or invalid. No new decision can be sent.</p>:null}
@@ -105,7 +115,7 @@ function OwnedDecision({actorId,action,sourceId,url,fields,options,canDecide}:Pr
 }
 
 export function SellerDocumentReview({actorId,sellerId,documentId,expectedReviewId=null,canDecide=true}:{actorId:string;sellerId:string;documentId:string;expectedReviewId?:string|null;canDecide?:boolean}){
- return <DocumentDecisionForm actorId={actorId} action="review" sourceId={documentId} url={`/api/admin/seller-documents/${encodeURIComponent(documentId)}/review`} fields={{sellerId,expectedReviewId}} canDecide={canDecide} options={[["verify","Verify document"],["request_correction","Request correction"],["reject","Reject document"]]}/>;
+ return <DocumentDecisionForm actorId={actorId} action="review" sourceId={documentId} url={`/api/admin/seller-documents/${encodeURIComponent(documentId)}/review`} fields={{sellerId,expectedReviewId}} canDecide={canDecide} options={[["verify","Matches"],["request_correction","Problem"],["reject","Reject document"]]}/>;
 }
 export function DocumentChangeReview({actorId,requestId,expectedOperationId,canDecide=true}:{actorId:string;requestId:string;expectedOperationId:string|null;canDecide?:boolean}){
  return <DocumentDecisionForm actorId={actorId} action="permission" sourceId={requestId} url={`/api/admin/seller-document-change-requests/${encodeURIComponent(requestId)}`} fields={{expectedOperationId}} canDecide={canDecide} options={[["approve","Permit this document replacement"],["reject","Reject this change request"]]}/>;
