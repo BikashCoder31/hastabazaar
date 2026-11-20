@@ -34,7 +34,8 @@ export function AdminTaskContext({
   const showBreadcrumb = !/^\/admin\/orders\/[^/]+$/.test(pathname)
     && pathname !== '/admin/products/intakes'
     && pathname !== '/admin/products/publications'
-    && pathname !== '/admin/analytics';
+    && pathname !== '/admin/analytics'
+    && pathname !== '/admin/offers';
   return (
     <AdminPageHelpProvider help={help}>
       {guide && showBreadcrumb ? <Breadcrumb className="mb-4" aria-label="Task location">

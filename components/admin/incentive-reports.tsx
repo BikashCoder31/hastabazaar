@@ -381,33 +381,31 @@ function Table({
   children: ReactNode;
 }) {
   return (
-    <section
-      aria-label={label}
-      // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Keyboard users need to focus and scroll the overflowing table region.
-      tabIndex={0}
-      className="overflow-x-auto rounded-xl border focus-visible:outline-2 focus-visible:outline-primary"
-    >
-      <table className="w-full min-w-[850px] border-collapse text-left text-sm">
+    <section aria-label={label} className="min-w-0 rounded-xl border">
+      <table
+        // oxlint-disable-next-line jsx-a11y/no-redundant-roles -- Retain table semantics when CSS reflows rows.
+        role="table"
+        className="block w-full min-w-0 border-collapse text-left text-sm xl:table xl:table-fixed"
+      >
         <caption className="sr-only">{label}</caption>
-        <thead className="bg-secondary/50">
+        <thead className="sr-only bg-secondary/50 xl:not-sr-only xl:table-header-group">
           <tr>
             {headers.map((header) => (
-              <th
-                key={header}
-                scope="col"
-                className="whitespace-nowrap px-4 py-3 font-semibold"
-              >
+              <th key={header} scope="col" className="px-3 py-3 font-semibold wrap-anywhere">
                 {header}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y">{children}</tbody>
+        <tbody className="block divide-y [&_tr]:grid [&_tr]:min-w-0 [&_tr]:grid-cols-2 [&_tr]:gap-3 [&_tr]:p-3 md:[&_tr]:grid-cols-3 xl:table-row-group xl:[&_tr]:table-row xl:[&_tr]:p-0">
+          {children}
+        </tbody>
       </table>
     </section>
   );
 }
-const cell = 'px-4 py-4 align-top';
+const cell =
+  'block min-w-0 align-top wrap-anywhere before:mb-1 before:block before:text-xs before:font-medium before:text-muted-foreground before:content-[attr(data-label)] xl:table-cell xl:px-3 xl:py-4 xl:before:hidden';
 export function PromoActivityReport({ report }: { report: PromoAdminReport }) {
   const path = '/admin/promo-codes';
   return (
@@ -459,9 +457,9 @@ export function PromoActivityReport({ report }: { report: PromoAdminReport }) {
       >
         {report.activity.map((row) => (
           <tr key={row.id}>
-            <td className={cell}>
+            <td data-label="Order / campaign" className={cell + ' col-span-full'}>
               <a
-                className="font-semibold text-primary underline"
+                className="inline-flex min-h-11 items-center font-semibold text-primary underline"
                 href={'/admin/orders/' + encodeURIComponent(row.orderId)}
               >
                 {row.orderNumber}
@@ -471,35 +469,35 @@ export function PromoActivityReport({ report }: { report: PromoAdminReport }) {
                 {row.label} · revision {row.revision}
               </p>
             </td>
-            <td className={cell}>
+            <td data-label="Customer" className={cell}>
               <p>{row.customerName}</p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {row.customerEmail}
               </p>
             </td>
-            <td className={cell + ' whitespace-nowrap tabular-nums'}>
+            <td data-label="Product subtotal" className={cell + ' tabular-nums'}>
               {incentiveMoney(row.subtotalPaisa)}
             </td>
-            <td className={cell + ' whitespace-nowrap tabular-nums'}>
+            <td data-label="Recorded discount" className={cell + ' tabular-nums'}>
               {incentiveMoney(row.discountPaisa)}
             </td>
-            <td className={cell + ' whitespace-nowrap tabular-nums'}>
+            <td data-label="Snapshot commission" className={cell + ' tabular-nums'}>
               {incentiveMoney(row.commissionPaisa)}
             </td>
-            <td className={cell}>
+            <td data-label="Order / payment" className={cell}>
               <p className="font-medium">{row.orderStatus}</p>
               <p className="text-xs text-muted-foreground">
                 {row.paymentStatus}
               </p>
             </td>
-            <td className={cell + ' whitespace-nowrap'}>
+            <td data-label="Used (Nepal time)" className={cell}>
               {incentiveDate(row.createdAt)}
             </td>
           </tr>
         ))}
         {!report.activity.length ? (
           <tr>
-            <td colSpan={7} className="p-8 text-center text-muted-foreground">
+            <td colSpan={7} className="col-span-full p-5 text-center text-muted-foreground">
               No promo uses match these filters.
             </td>
           </tr>
@@ -560,9 +558,9 @@ export function LoyaltyActivityReport({
         >
           {report.activity.map((row) => (
             <tr key={row.kind + row.id}>
-              <td className={cell}>
+              <td data-label="Customer" className={cell + ' col-span-full'}>
                 <a
-                  className="font-semibold text-primary underline"
+                  className="inline-flex min-h-11 items-center font-semibold text-primary underline"
                   href={reportHref(
                     path,
                     report.window,
@@ -576,20 +574,20 @@ export function LoyaltyActivityReport({
                   {row.customerEmail}
                 </p>
               </td>
-              <td className={cell}>
+              <td data-label="Activity" className={cell}>
                 {row.kind === 'daily_claim'
                   ? 'Daily claim'
                   : 'Points redemption'}
               </td>
-              <td className={cell + ' tabular-nums'}>
+              <td data-label="Points" className={cell + ' tabular-nums'}>
                 {row.points > 0 ? '+' : ''}
                 {number(row.points)}
               </td>
-              <td className={cell + ' whitespace-nowrap'}>
+              <td data-label="Wallet credit issued" className={cell}>
                 {row.creditPaisa === 0 ? '—' : incentiveMoney(row.creditPaisa)}
               </td>
-              <td className={cell}>{row.revision}</td>
-              <td className={cell}>
+              <td data-label="Rule revision" className={cell}>{row.revision}</td>
+              <td data-label="Recorded cycle" className={cell}>
                 {row.cycle ? (
                   <RecordedCycle cycle={row.cycle} />
                 ) : row.kind === 'daily_claim' ? (
@@ -598,14 +596,14 @@ export function LoyaltyActivityReport({
                   '—'
                 )}
               </td>
-              <td className={cell + ' whitespace-nowrap'}>
+              <td data-label="Recorded (Nepal time)" className={cell}>
                 {incentiveDate(row.createdAt)}
               </td>
             </tr>
           ))}
           {!report.activity.length ? (
             <tr>
-              <td colSpan={7} className="p-8 text-center text-muted-foreground">
+              <td colSpan={7} className="col-span-full p-5 text-center text-muted-foreground">
                 No reward transactions match these filters.
               </td>
             </tr>
@@ -643,29 +641,29 @@ export function LoyaltyActivityReport({
         >
           {report.customers.map((row) => (
             <tr key={row.id}>
-              <td className={cell}>
+              <td data-label="Customer" className={cell + ' col-span-full'}>
                 <p className="font-semibold">{row.name}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {row.email}
                 </p>
                 <p className="text-xs text-muted-foreground">{row.id}</p>
               </td>
-              <td className={cell + ' tabular-nums'}>
+              <td data-label="Available points" className={cell + ' tabular-nums'}>
                 {number(row.balancePoints)}
               </td>
-              <td className={cell + ' tabular-nums'}>{number(row.claims)}</td>
-              <td className={cell + ' tabular-nums'}>
+              <td data-label="Daily claims" className={cell + ' tabular-nums'}>{number(row.claims)}</td>
+              <td data-label="Points redeemed" className={cell + ' tabular-nums'}>
                 {number(row.redeemedPoints)}
               </td>
-              <td className={cell + ' whitespace-nowrap'}>
+              <td data-label="Wallet balance (all sources)" className={cell}>
                 {incentiveMoney(row.walletBalancePaisa)}
               </td>
-              <td className={cell + ' whitespace-nowrap'}>
+              <td data-label="Latest reward activity" className={cell}>
                 {row.lastActivityAt === null
                   ? 'No activity'
                   : incentiveDate(row.lastActivityAt)}
               </td>
-              <td className={cell}>
+              <td data-label="Latest recorded cycle" className={cell}>
                 {row.recordedCycle ? (
                   <RecordedCycle cycle={row.recordedCycle} />
                 ) : (
@@ -676,7 +674,7 @@ export function LoyaltyActivityReport({
           ))}
           {!report.customers.length ? (
             <tr>
-              <td colSpan={7} className="p-8 text-center text-muted-foreground">
+              <td colSpan={7} className="col-span-full p-5 text-center text-muted-foreground">
                 No reward accounts match this search.
               </td>
             </tr>
@@ -709,7 +707,7 @@ function RecordedCycle({ cycle }: { cycle: LoyaltyRecordedCycle }) {
           ? 'Previous cycle complete'
           : null;
   return (
-    <div className="min-w-40 text-xs leading-5">
+    <div className="min-w-0 text-xs leading-5">
       <p className="font-semibold">
         Day {cycle.day} of 7 · cycle {number(cycle.number)}
       </p>
@@ -769,20 +767,20 @@ export function IncentiveHistoryReport({
       >
         {report.history.map((row) => (
           <tr key={row.id}>
-            <td className={cell + ' whitespace-nowrap'}>
+            <td data-label="When (Nepal time)" className={cell + ' col-span-full'}>
               {incentiveDate(row.createdAt)}
             </td>
-            <td className={cell}>
+            <td data-label="Campaign / action" className={cell}>
               <p className="font-semibold">{row.subjectLabel}</p>
               <p className="mt-1 text-muted-foreground">
                 {actionLabel(row.action)}
               </p>
             </td>
-            <td className={cell}>{row.actorName}</td>
-            <td className={cell}>
+            <td data-label="Changed by" className={cell}>{row.actorName}</td>
+            <td data-label="Reason / changes" className={cell + ' col-span-full'}>
               <p className="max-w-xl break-words">{row.reason}</p>
               <details className="mt-2">
-                <summary className="min-h-9 cursor-pointer font-semibold text-primary">
+                <summary className="min-h-11 cursor-pointer py-2 font-semibold text-primary">
                   View before and after
                 </summary>
                 <dl className="mt-2 space-y-3">
@@ -812,7 +810,7 @@ export function IncentiveHistoryReport({
         ))}
         {!report.history.length ? (
           <tr>
-            <td colSpan={4} className="p-8 text-center text-muted-foreground">
+            <td colSpan={4} className="col-span-full p-5 text-center text-muted-foreground">
               No rule changes in this period. Saved and published changes will
               appear here.
             </td>

@@ -75,6 +75,7 @@ const definitions = [
       routes: ['/admin/financial-notices'], anyPermission: moneyNoticePermissions },
   ] },
   { id: 'growth', label: 'Growth', tabs: [
+    { href: '/admin/offers', label: 'All offers' },
     { href: '/admin/promo-codes', label: 'Promo codes' },
     { href: '/admin/referrals', label: 'Referrals & wallet' },
     { href: '/admin/loyalty', label: 'Loyalty points' },

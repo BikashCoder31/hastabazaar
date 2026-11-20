@@ -18,7 +18,7 @@ const areaRoutes: readonly [AdminArea, readonly string[]][] = [
   ['Products & storefront', ['/admin/products/publications', '/admin/products/intakes', '/admin/products', '/admin/catalog', '/admin/homepage', '/admin/reviews']],
   ['Orders & customer care', ['/admin/orders', '/admin/orders/dispatch', '/admin/shipping', '/admin/cases', '/admin/customers', '/admin/privacy', '/admin/riders', '/admin/feedback', '/admin/delivery-rates']],
   ['Finance & payments', ['/admin/payments', '/admin/payouts', '/admin/payouts/run', '/admin/payments/refunds', '/admin/payments/recoveries', '/admin/accounting']],
-  ['Fees, programs & promotions', ['/admin/fees', '/admin/referrals', '/admin/promo-codes', '/admin/fee-waivers', '/admin/loyalty', '/admin/commission', '/admin/programs', '/admin/gift-cards']],
+  ['Fees, programs & promotions', ['/admin/fees', '/admin/offers', '/admin/referrals', '/admin/promo-codes', '/admin/fee-waivers', '/admin/loyalty', '/admin/commission', '/admin/programs', '/admin/gift-cards']],
   ['Team & business policies', ['/security', '/admin/team', '/admin/business-settings', '/admin/legal-policies', '/admin/legal-policies/active', '/admin/not-in-use']],
   ['System health & records', ['/admin/system-health', '/admin/backup-transfer', '/admin/forms', '/admin/business-emails', '/admin/order-emails', '/admin/activity', '/admin/governance', '/admin/staff-form-history', '/admin/form-submissions']],
 ];
@@ -144,6 +144,7 @@ const destinations: readonly {
     icon: 'payouts',
     permission: 'commercial_policy.manage',
   },
+  { href: '/admin/offers', label: 'All offers', icon: 'catalog', permission: 'commercial_policy.manage', role: 'super_admin' },
   {
     href: '/admin/promo-codes',
     label: 'Promo codes',
@@ -532,6 +533,7 @@ const taskGuides: Readonly<
       'Save with a reason and review the recorded policy.',
     ],
   ],
+  '/admin/offers': ['Review the saved offers and what they have cost this month.', ['Filter to the offer type you want to review.', 'Use the cost preview to prepare a new promo code.', 'Review the native draft before publishing an offer.']],
   '/admin/promo-codes': [
     'Manage discount codes and their eligibility rules.',
     [
@@ -671,6 +673,7 @@ const taskOrder: readonly string[] = [
   '/admin/commission',
   '/admin/fee-waivers',
   '/admin/delivery-rates',
+  '/admin/offers',
   '/admin/promo-codes',
   '/admin/loyalty',
   '/admin/gift-cards',

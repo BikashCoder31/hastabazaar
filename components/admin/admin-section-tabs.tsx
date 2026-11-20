@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { activeAdminSection, adminSections, type AdminStaffAccess } from './admin-sections';
+import { AdminPageHelpProvider, AdminPageTitle } from './page-help';
+import { getAdminPageHelp } from './page-help-copy';
 
 export function AdminSectionTabs({ role, permissions }: AdminStaffAccess) {
   const pathname = usePathname();
@@ -19,9 +21,17 @@ export function AdminSectionTabs({ role, permissions }: AdminStaffAccess) {
     || pathname === '/admin/analytics'
     || (pathname === '/admin/payouts' && !params.has('request'));
 
+  const isOffers = pathname === '/admin/offers';
+
   return (
     <header className="admin-section-header">
-      {pageTitlesSection ? null : <p className="admin-section-title">{section.label}</p>}
+      {isOffers ? (
+        <AdminPageHelpProvider help={getAdminPageHelp(pathname, { role, permissions }, params)}>
+          <div className="px-3 pt-3 md:px-6 lg:px-8">
+            <AdminPageTitle><h1 className="font-heading text-[28px] font-semibold leading-tight">Growth</h1></AdminPageTitle>
+          </div>
+        </AdminPageHelpProvider>
+      ) : pageTitlesSection ? null : <p className="admin-section-title">{section.label}</p>}
       <nav aria-label={section.label + ' pages'} className="admin-section-links">
         {section.tabs.map(tab => (
           <Link key={tab.href} href={tab.href} aria-current={active.href === tab.href ? 'page' : undefined}>
