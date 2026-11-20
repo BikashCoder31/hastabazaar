@@ -216,11 +216,11 @@ void test('admin thumbnails crop in bounded cover frames and operations branding
     assert.match(source, /sizes=\{mediaSizes\.adminThumbnail\}/);
     assert.match(source, /mediaObjectClass\('cover'/);
   }
-  const layout = await readFile(
-    new URL('../app/admin/layout.tsx', import.meta.url),
+  const navigation = await readFile(
+    new URL('../components/admin/admin-navigation.tsx', import.meta.url),
     'utf8',
   );
-  assert.match(layout, /data-media-mode="contain"/);
-  assert.match(layout, /mediaObjectClass\('contain'/);
-  assert.match(layout, /media-shrink/);
+  assert.match(navigation, /data-media-mode="contain"/);
+  assert.match(navigation, /mediaObjectClass\('contain'/);
+  assert.match(navigation, /media-shrink/);
 });

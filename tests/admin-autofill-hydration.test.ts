@@ -25,11 +25,17 @@ const plugin: Plugin = { name: 'admin-autofill-fixtures', setup(bundler) {
   stubFixtureLink(bundler);
   stubFixtureImage(bundler);
   bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'admin-autofill' }));
+  bundler.onResolve({ filter: /^cloudflare:workers$/ }, () => ({ path: 'workers', namespace: 'admin-autofill' }));
+  bundler.onResolve({ filter: /^\.\/workspace\.css$/ }, () => ({ path: 'styles', namespace: 'admin-autofill' }));
   bundler.onResolve({ filter: /^@\/app\/auth$/ }, () => ({ path: 'auth', namespace: 'admin-autofill' }));
   bundler.onResolve({ filter: /^@\/lib\/auth\/staff$/ }, () => ({ path: 'staff', namespace: 'admin-autofill' }));
+  bundler.onResolve({ filter: /^@\/components\/admin\/admin-review-data$/ }, () => ({ path: 'counts', namespace: 'admin-autofill' }));
   bundler.onResolve({ filter: /^@\/components\/forms\/form-config-client$/ }, () => ({ path: 'config', namespace: 'admin-autofill' }));
   const modules: Record<string, string> = {
-    navigation: "export function usePathname(){return '/admin/team'}; export function useRouter(){return {refresh(){}}}",
+    navigation: "export function usePathname(){return '/admin/team'}; export function useRouter(){return {refresh(){}}}; export function useSearchParams(){return new URLSearchParams()}",
+    workers: 'export const env = {}',
+    styles: '',
+    counts: 'export async function readAdminSidebarCounts(){return {}}',
     auth: "export function signOutPath(){return '/api/auth/logout'}",
     staff: "export async function requireStaffPage(){return {id:'reviewer',role:'super_admin',displayName:'Test reviewer',permissions:[]}}",
     config: "export function usePublishedFormConfig(formId){return {config:{formId,version:1,publishedAt:1,fields:[]},status:'ready',canSubmit:true,message:'',refresh(){},handleSubmissionResponse(){}}}",
@@ -91,9 +97,12 @@ void test('staff workspace tolerates autofill DOM changes without hiding real hy
         assert.deepEqual(errors.recoverable, [], 'Chrome autofill must not force the staff workspace to regenerate');
         assert.deepEqual(errors.console, [], 'The workspace must not produce hydration warnings');
         if (mode === 'autofill') assert.equal(await page.locator('shark-icon-container').count(), 1, 'Autofill decoration is retained');
-        await page.getByLabel('Find a task').fill('form');
-        await page.getByRole('link', { name: /^Form Management/ }).waitFor();
-        assert.ok(await page.getByRole('link', { name: /^Form Management/ }).isVisible());
+        await page.getByRole('button', { name: 'Jump to an order, seller, phone or setting…' }).click();
+        const search = page.getByRole('dialog');
+        await search.getByLabel('Find a task').fill('form');
+        await search.getByRole('link', { name: 'Forms', exact: true }).waitFor();
+        assert.ok(await search.getByRole('link', { name: 'Forms', exact: true }).isVisible());
+        await search.getByRole('button', { name: 'Close', exact: true }).click();
         await page.getByLabel('Staff email').fill('colleague@local.hastabazaar.test');
         await page.getByRole('button', { name: 'Review invitation', exact: true }).click();
         await page.getByRole('alertdialog').getByText('Create this staff invitation?', { exact: true }).waitFor();

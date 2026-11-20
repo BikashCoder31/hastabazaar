@@ -12,7 +12,6 @@ void test('the reviewed source inventory includes fixed security controls beside
   const sites = await collectFormSites(root);
   const reviewedSites = [
     { path: 'app/account-access-denied/page.tsx', ordinal: 1, formId: 'identity.logout' },
-    { path: 'app/admin/layout.tsx', ordinal: 1, formId: 'identity.logout' },
     { path: 'app/admin/order-emails/page.tsx', ordinal: 1, formId: 'staff.order-email-filter' },
     { path: 'app/admin/orders/page.tsx', ordinal: 1, formId: 'staff.order-queue-filter' },
     { path: 'app/admin/referrals/page.tsx', ordinal: 1, formId: 'staff.referral-report-filter' },
@@ -24,6 +23,7 @@ void test('the reviewed source inventory includes fixed security controls beside
     { path: 'components/account/rewards-panel.tsx', ordinal: 1, formId: 'account.daily-reward' },
     { path: 'components/account/rewards-panel.tsx', ordinal: 2, formId: 'account.points-redemption' },
     { path: 'components/admin/account-recovery-assistance.tsx', ordinal: 1, formId: 'system.assisted-recovery-request' },
+    { path: 'components/admin/admin-navigation.tsx', ordinal: 1, formId: 'identity.logout' },
     { path: 'components/admin/fee-waiver-manager.tsx', ordinal: 1, formId: 'staff.fee-waivers' },
     { path: 'components/admin/first-cod-confirmation.tsx', ordinal: 1, formId: 'staff.first-cod-confirmation' },
     { path: 'components/admin/loyalty-manager.tsx', ordinal: 1, formId: 'staff.loyalty-settings' },

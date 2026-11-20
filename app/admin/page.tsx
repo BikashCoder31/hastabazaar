@@ -2,6 +2,7 @@ import {SharedReviewQueue} from '@/components/admin/shared-review-queue';
 import {OverviewWorkSummaries} from '@/components/admin/overview-work-summaries';
 import {OverviewHealth} from '@/components/admin/overview-health';
 import {OverviewRecentDecisions} from '@/components/admin/overview-recent-decisions';
+import {readAdminReviewTasks} from '@/components/admin/admin-review-data';
 import {readRecentReviewDecisions} from '@/lib/admin/recent-review-decisions';
 import {readFinanceWorkItems} from '@/lib/admin/finance-work-items';
 import {financeQueueItem,reviewTaskLabels} from '@/lib/admin/review-queue-view';
@@ -9,7 +10,7 @@ import {resolveRuntimeEnvironment} from '@/lib/staging/environment';
 import {formHealthRuntimeScope} from '@/lib/operations/form-health';
 import {readSystemHealthWorkspace} from '@/lib/operations/system-health-workspace';
 import {readEmailHealthRuntimeConfig} from '@/lib/operations/email-delivery-overview';
-import {listReviewTasks,ReviewTaskConflict} from '@/lib/workflows/review-tasks';
+import {ReviewTaskConflict} from '@/lib/workflows/review-tasks';
 import {staffMutationGuard} from '@/lib/db/repositories/staff-mutation-guard';
 import { can } from '@/lib/marketplace/permissions';
 import { adminNavigation } from '@/lib/admin/navigation';
@@ -17,6 +18,7 @@ import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import {
   ArrowRight,
+  ChevronDown,
   ClipboardCheck,
   PackageCheck,
   Store,
@@ -57,7 +59,7 @@ export default async function AdminDashboardPage({ searchParams }: {
     staff.role === 'super_admin' ? getSuperAdminMarketplaceSummary(database, staff.role, now, period).catch(()=>null) : null,
   ]);
   // These source readers execute guard transactions; serialize them on the shared database connection.
-  const reviewTasks=await listReviewTasks(database,staff.id).catch(()=>null);
+  const reviewTasks=await readAdminReviewTasks(database,staff.id);
   const health=can(staff,'system.health.view')?await readSystemHealthWorkspace(database,staff.id,{...scope,expectedSince:email.expectedSince,systemExpectedSince:Number.isSafeInteger(expected)&&expected>0&&expected<=now?expected:null}).catch(()=>null):undefined;
   const finance=financeAllowed?await(async()=>readFinanceWorkItems(database,staff.id,resolveRuntimeEnvironment({runtimeEnvironment:bindings.HASTABAZAAR_RUNTIME_ENV,nodeEnvironment:process.env.NODE_ENV,appOrigin:bindings.APP_ORIGIN}),{returnTo,limit:100}))().catch(()=>null):undefined;
   const reviewDecisions=reviewTasks===null?null:await readRecentReviewDecisions(database,staff.id,reviewTasks,returnTo).catch(()=>null);
@@ -114,6 +116,10 @@ export default async function AdminDashboardPage({ searchParams }: {
   const hasPendingWork = visibleQueues.some(queue => (queue.value??0) > 0);
   // A partial source failure may show Unknown; loss of the page's original reader scope may not return old private summaries.
   await database.batch(reader.statements);
+  const reviewQueue = <SharedReviewQueue tasks={workItems} actorId={staff.id} unavailable={reviewTasks===null&&!workItems.length} observedAt={now} partialSources={partialSources} sellerDirectoryAvailable={can(staff,'seller.application.review')}/>;
+  if (params?.workspace === 'reviews') {
+    return <div className="space-y-5"><h1 className="section-title">Review tasks</h1>{reviewQueue}</div>;
+  }
   return (
     <div className="space-y-8">
       <section className="overflow-hidden rounded-3xl border bg-card p-6 sm:p-8">
@@ -152,9 +158,9 @@ export default async function AdminDashboardPage({ searchParams }: {
       </section>
       <OverviewHealth health={health}/>
       <OverviewWorkSummaries tasks={workItems} observedAt={now} returnTo={returnTo} unavailableCategories={reviewTasks===null?['sellers','products','orders','system']:[]} partialCategories={reviewTasks===null||finance===null||incompleteFinance.length?['finance']:[]}/>
-      <SharedReviewQueue tasks={workItems} actorId={staff.id} unavailable={reviewTasks===null&&!workItems.length} observedAt={now} partialSources={partialSources} sellerDirectoryAvailable={can(staff,'seller.application.review')}/>
+      {reviewQueue}
       <OverviewRecentDecisions decisions={recentDecisions} partial={reviewDecisions===null||financeAllowed}/>
-      <details data-operational-summary="true" className="space-y-5 rounded-2xl border bg-card p-5">
+      <details data-operational-summary="true" open={params?.period === period} className="space-y-5 rounded-2xl border bg-card p-5">
       <summary className="min-h-11 cursor-pointer font-heading text-xl focus-visible:outline-2 focus-visible:outline-primary">Operational summaries and workspace links</summary>
       {staff.role==='super_admin'&&marketplace===null?<output className="block">Marketplace reporting is unavailable. Refresh the source before drawing a reporting conclusion.</output>:null}
       {staff.role === 'super_admin' && marketplace ? (
@@ -166,15 +172,21 @@ export default async function AdminDashboardPage({ searchParams }: {
               Deleted accounts and configured test email domains are excluded.
             </p>
           </div>
-          <nav aria-label="Marketplace summary period" aria-describedby="marketplace-period-description" className="flex flex-wrap gap-2">
-            {marketplaceSummaryPeriods.map(option => (
-              <Link key={option.value} href={(()=>{const query=new URLSearchParams(contextParams);query.set('period',option.value);return '/admin?'+query.toString();})()} aria-current={period === option.value ? 'page' : undefined}
-                scroll={false} prefetch={false}
-                className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${period === option.value ? 'border-primary bg-primary text-primary-foreground' : 'bg-card hover:bg-muted'}`}>
-                {option.label}
-              </Link>
-            ))}
-          </nav>
+          <details className="group w-fit max-w-full" key={period}>
+            <summary className="admin-button cursor-pointer">
+              Date period · {range.label}<ChevronDown aria-hidden="true" className="size-4 shrink-0 group-open:rotate-180" />
+            </summary>
+            <nav aria-label="Marketplace summary period" aria-describedby="marketplace-period-description"
+              className="mt-1 grid min-w-40 rounded-lg border bg-card p-1 text-sm">
+              {marketplaceSummaryPeriods.map(option => {
+                const query = new URLSearchParams(contextParams);
+                query.set('period', option.value);
+                return <Link key={option.value} href={'/admin?' + query.toString()}
+                  aria-current={period === option.value ? 'page' : undefined} scroll={false} prefetch={false}
+                  className="flex min-h-11 items-center rounded px-3 hover:bg-muted aria-[current=page]:bg-secondary aria-[current=page]:font-semibold">{option.label}</Link>;
+              })}
+            </nav>
+          </details>
           <div className="space-y-1 text-sm leading-6 text-muted-foreground">
             <p id="marketplace-period-description">{range.description}</p>
             <p>Approval and review counts show the current status of sellers who signed up in this period.</p>

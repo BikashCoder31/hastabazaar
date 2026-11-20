@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { PackageOpen } from 'lucide-react';
 import { OrderStatusBadge } from '@/components/commerce/order-status-badge';
 import { AdminQueueFields } from '@/components/admin/admin-queue-fields';
+import { SharedReviewQueue } from '@/components/admin/shared-review-queue';
+import { readAdminReviewTasks } from '@/components/admin/admin-review-data';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -31,6 +33,7 @@ import {
   queuePageHref,
 } from '@/lib/admin/queue-filters';
 import { loadQueryPresentationConfig } from '@/lib/catalog/shop-query';
+import { adminNavigation } from '@/lib/admin/navigation';
 export const dynamic = 'force-dynamic';
 const pageSize = 50;
 const money = (paisa: number) =>
@@ -45,11 +48,23 @@ const date = new Intl.DateTimeFormat('en-NP', {
 export default async function AdminOrdersPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ q?: string; status?: string; page?: string }>;
+  searchParams?: Promise<{ q?: string; status?: string; page?: string; workspace?: string }>;
 }) {
-  await requireStaffPage('/admin/orders', 'order.manage');
+  const staff = await requireStaffPage('/admin/orders', 'order.manage');
   const database = requireDatabase(env as unknown as { DB?: D1Database }),
     params = (await searchParams) ?? {};
+  if (params.workspace === 'answers') {
+    const tasks = await readAdminReviewTasks(database, staff.id);
+    const riderHistory = adminNavigation(staff.role, staff.permissions).some(link => link.href === '/admin/riders');
+    return (
+      <div className="space-y-5">
+        <h1 className="section-title">Seller &amp; rider answers</h1>
+        {riderHistory ? <Link href="/admin/riders/form-history?kind=report" className="section-link">Rider form history</Link> : null}
+        <SharedReviewQueue tasks={tasks?.filter(task => task.sourceType === 'order_response') ?? []}
+          actorId={staff.id} unavailable={tasks === null} />
+      </div>
+    );
+  }
   const filters = normalizeQueueFilters(params, orderQueueStatuses);
   const [total, presentation] = await Promise.all([
     countOrdersForOperations(database, filters),
