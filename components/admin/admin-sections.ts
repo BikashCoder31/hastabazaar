@@ -63,6 +63,7 @@ const definitions = [
   { id: 'money', label: 'Money', tabs: [
     { href: '/admin/payments', label: 'Courier cash' },
     { href: '/admin/payouts', label: 'Payouts', routes: ['/admin/payments/payouts'] },
+    { href: '/admin/payouts/run', label: 'Payout run' },
     { href: '/admin/payments/refunds', label: 'Refunds & recoveries', fallback: '/admin/payments/recoveries',
       routes: ['/admin/payments/recoveries'] },
     { href: '/admin/accounting', label: 'Books' },
