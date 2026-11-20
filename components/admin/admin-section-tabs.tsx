@@ -13,6 +13,7 @@ export function AdminSectionTabs({ role, permissions }: AdminStaffAccess) {
   const pageTitlesSection = (pathname === '/admin/orders' && active.href === '/admin/orders')
     || pathname === '/admin/orders/dispatch'
     || pathname === '/admin/shipping'
+    || pathname === '/admin/customers'
     || (pathname === '/admin/payouts' && !params.has('request'));
 
   return (

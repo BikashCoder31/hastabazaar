@@ -34,6 +34,7 @@ const definitions = [
   ] },
   { id: 'care', label: 'Care', tabs: [
     { href: '/admin/cases', label: 'Returns & complaints' },
+    { href: '/admin/customers', label: 'Customers' },
     { href: '/admin/feedback', label: 'Contact & feedback' },
     { href: '/admin/reviews', label: 'Customer reviews' },
     { href: '/admin/privacy', label: 'Privacy requests' },

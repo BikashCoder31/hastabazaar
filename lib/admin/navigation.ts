@@ -16,7 +16,7 @@ const areaRoutes: readonly [AdminArea, readonly string[]][] = [
   ['Overview & work queue', ['/admin', '/admin/notifications', '/admin/progress', '/admin/analytics', '/admin/exceptions']],
   ['Sellers', ['/admin/sellers']],
   ['Products & storefront', ['/admin/products/publications', '/admin/products', '/admin/catalog', '/admin/homepage', '/admin/reviews']],
-  ['Orders & customer care', ['/admin/orders', '/admin/orders/dispatch', '/admin/shipping', '/admin/cases', '/admin/privacy', '/admin/riders', '/admin/feedback', '/admin/delivery-rates']],
+  ['Orders & customer care', ['/admin/orders', '/admin/orders/dispatch', '/admin/shipping', '/admin/cases', '/admin/customers', '/admin/privacy', '/admin/riders', '/admin/feedback', '/admin/delivery-rates']],
   ['Finance & payments', ['/admin/payments', '/admin/payouts', '/admin/payments/refunds', '/admin/payments/recoveries', '/admin/accounting']],
   ['Fees, programs & promotions', ['/admin/fees', '/admin/referrals', '/admin/promo-codes', '/admin/fee-waivers', '/admin/loyalty', '/admin/commission', '/admin/programs', '/admin/gift-cards']],
   ['Team & business policies', ['/security', '/admin/team', '/admin/business-settings', '/admin/legal-policies', '/admin/legal-policies/active', '/admin/not-in-use']],
@@ -207,6 +207,7 @@ const destinations: readonly {
     icon: 'cases',
     permission: 'support.manage',
   },
+  { href: '/admin/customers', label: 'Customers', icon: 'cases', permission: 'audit_log.view' },
   {
     href: '/admin/sellers',
     label: 'Sellers',
@@ -368,6 +369,7 @@ const taskGuides: Readonly<
       'Record fulfillment changes and follow up on exceptions.',
     ],
   ],
+  '/admin/customers': ['Find a customer and review recorded order outcomes.', ['Search by name, phone, email or order number.', 'Open the customer record to review recent orders.', 'Use only recorded courier outcomes to assess cash-order risk.']],
   '/admin/orders/dispatch': ['Book courier pickup for parcels that are ready.', ['Check the seller pickup address.', 'Record the courier, pickup window and reference.', 'Record handoff when the courier collects the parcel.']],
   '/admin/shipping': [
     'Review courier bookings, delivery progress and shipping claims.',
@@ -637,6 +639,7 @@ const taskOrder: readonly string[] = [
   '/admin/orders/dispatch',
   '/admin/shipping',
   '/admin/cases',
+  '/admin/customers',
   '/admin/payments',
   '/admin/payouts',
   '/admin/payments/refunds',
