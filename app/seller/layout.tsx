@@ -6,6 +6,7 @@ import { signOutPath } from '@/app/auth';
 import { BrandWordmark } from '@/components/layout/brand-wordmark';
 import { SellerNavigation } from '@/components/seller/seller-navigation';
 import { NotificationBell } from '@/components/account/notification-bell';
+import { WorkspaceRefresh } from '@/components/ui/workspace-refresh';
 import { requireSellerCenterPage } from '@/lib/auth/seller-center';
 import { getPublicMakerProfile } from '@/lib/db/repositories/customers';
 import { getSellerWorkSummary } from '@/lib/db/repositories/seller-workspace';
@@ -67,7 +68,10 @@ export default async function SellerLayout({
       <SellerNavigation {...navigation} mode="mobile" signOut={signOut}
         brand={<Image src="/brand/hastabazaar-mark-96.png" alt="" width={30} height={30} sizes="30px"
           data-media-mode="contain" className={mediaObjectClass('contain', 'size-[30px] shrink-0 rounded-md')} />}
-        notifications={<NotificationBell workspace="seller" accountId={seller.userId} />}
+        notifications={<>
+          <WorkspaceRefresh key={seller.userId} />
+          <NotificationBell workspace="seller" accountId={seller.userId} />
+        </>}
         desktopBrand={
           <Link href="/seller" className="flex w-fit items-center gap-3 rounded-xl">
             <Image data-media-mode="contain" src="/brand/hastabazaar-mark-96.png" alt=""
