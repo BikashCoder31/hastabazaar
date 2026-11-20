@@ -90,13 +90,13 @@ async function source(db: D1Database, type: SourceType, id: string, now=Date.now
       predicate:"EXISTS(SELECT 1 FROM seller_profiles s LEFT JOIN seller_participation_profiles p ON p.seller_id=s.id WHERE s.id=? AND s.user_id=? AND COALESCE(p.application_stage,s.status)=?)",values:[id,row.ownerId,row.stage]};
   }
   if(type==='seller_document'){
-    const row=await db.prepare(`SELECT d.status,d.uploaded_at AS startedAt,d.reviewed_at AS triagedAt,s.id AS sellerId,(SELECT display_name FROM seller_public_profile_states WHERE seller_id=s.id) AS sellerName,s.user_id AS ownerId,d.review_request_id AS reviewId,
+    const row=await db.prepare(`SELECT d.status,d.kind,d.uploaded_at AS startedAt,d.reviewed_at AS triagedAt,s.id AS sellerId,(SELECT display_name FROM seller_public_profile_states WHERE seller_id=s.id) AS sellerName,s.user_id AS ownerId,d.review_request_id AS reviewId,
       (SELECT action FROM audit_logs WHERE id=d.review_request_id) AS lastAction,
       EXISTS(SELECT 1 FROM seller_documents newer WHERE newer.seller_id=d.seller_id AND newer.kind=d.kind AND (newer.uploaded_at>d.uploaded_at OR newer.uploaded_at=d.uploaded_at AND newer.id>d.id))
       OR d.protected_change_id IS NOT NULL OR EXISTS(SELECT 1 FROM seller_document_change_requests r WHERE r.replacement_document_id=d.id) AS superseded
-      FROM seller_documents d JOIN seller_profiles s ON s.id=d.seller_id WHERE d.id=? AND d.kind IN ('representative_identity','pan_certificate')`).bind(id).first<{sellerId:string;status:string;startedAt:number;triagedAt:number|null;ownerId:string;reviewId:string|null;lastAction:string|null;superseded:number}>();
+      FROM seller_documents d JOIN seller_profiles s ON s.id=d.seller_id WHERE d.id=? AND d.kind IN ('representative_identity','pan_certificate')`).bind(id).first<{sellerId:string;status:string;kind:string;startedAt:number;triagedAt:number|null;ownerId:string;reviewId:string|null;lastAction:string|null;superseded:number}>();
     if(!row)throw new ReviewTaskConflict('Exact document review source is unavailable.');
-    return {...row,status:row.superseded?'superseded':row.status,revision:id,hasDeadline:false,permission:'seller.application.review',reserved:true,needsAction:!row.superseded&&row.status==='pending',nextActor:row.lastAction==='seller.document.correction_requested'?'You':'Hastabazaar',
+    return {...row,recordTitle:row.kind==='pan_certificate'?'PAN document':'Identity document',status:row.superseded?'superseded':row.status,revision:id,hasDeadline:false,permission:'seller.application.review',reserved:true,needsAction:!row.superseded&&row.status==='pending',nextActor:row.lastAction==='seller.document.correction_requested'?'You':'Hastabazaar',
       predicate:"EXISTS(SELECT 1 FROM seller_documents d JOIN seller_profiles s ON s.id=d.seller_id WHERE d.id=? AND d.status=? AND s.user_id=? AND COALESCE(d.review_request_id,'')=COALESCE(?,''))",values:[id,row.status,row.ownerId,row.reviewId]};
   }
   if(type==='public_profile'||type==='public_profile_correction'){

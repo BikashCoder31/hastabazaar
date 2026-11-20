@@ -1554,9 +1554,15 @@ export async function listOrdersForOperations(
   return result.results;
 }
 
-export async function countOrdersForOperations(database:D1Database,filters:AdminQueueFilters={}) {
+export async function countOrdersForOperations(
+ database:D1Database,
+ filters:AdminQueueFilters={},
+ range?:{by:'placedAt'|'deliveredAt';from:number;through:number},
+) {
  const where=orderQueueWhere(filters);
- const row=await database.prepare('SELECT COUNT(*) AS total FROM orders '+(where.sql ? where.sql+' AND ' : 'WHERE ')+'EXISTS(SELECT 1 FROM order_items WHERE order_items.order_id=orders.id)').bind(...where.values).first<{total:number}>();
+ const dateColumn=range?.by==='deliveredAt'?'orders.delivered_at':'orders.placed_at';
+ const dateFilter=range?` AND ${dateColumn} BETWEEN ? AND ?`:'';
+ const row=await database.prepare('SELECT COUNT(*) AS total FROM orders '+(where.sql ? where.sql+' AND ' : 'WHERE ')+'EXISTS(SELECT 1 FROM order_items WHERE order_items.order_id=orders.id)'+dateFilter).bind(...where.values,...range?[range.from,range.through]:[]).first<{total:number}>();
  return Number(row?.total??0);
 }
 

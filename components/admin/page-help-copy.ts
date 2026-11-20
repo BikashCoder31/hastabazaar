@@ -8,7 +8,7 @@ const today: HelpCopy = {
   title: 'How Today works',
   sentences: [
     'Today shows the reviews, follow-ups and approvals you can act on, with overdue work near the top.',
-    'Use Take ownership when it’s available to assign a task to yourself.',
+    'Use Assign to me when it’s available to take ownership of a task.',
     'Opening a notification leaves the task open, and recording the final outcome closes it.',
   ],
 };

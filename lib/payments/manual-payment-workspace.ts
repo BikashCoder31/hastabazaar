@@ -5,6 +5,21 @@ import {ManualPaymentError} from './manual-receipts';
 
 class FinanceAccessError extends ManualPaymentError{constructor(message:string){super(message,403);}}
 export interface IncomingParcelFocus{parcelId:string;remittanceId?:string;}
+
+/** Pending rider reports from the same COD records as the manual workspace. */
+export async function readRiderCashToCount(db:D1Database,actorId:string){
+ const authority=await staffMutationGuard(db,actorId,'payment.receipt.verify',FinanceAccessError,'super_admin');
+ const rows=(await db.prepare(`SELECT c.id,c.shipping_job_id AS jobId,c.rider_user_id AS riderId,
+   c.amount_paisa AS amountPaisa,c.created_at AS createdAt,o.id AS orderId,o.order_number AS orderNumber
+   FROM parcel_cash_records c JOIN shipping_parcels p ON p.shipping_job_id=c.shipping_job_id
+   JOIN shipping_jobs j ON j.id=p.shipping_job_id JOIN orders o ON o.id=j.order_id
+   WHERE c.kind='remittance' AND c.status='pending' AND c.rider_user_id IS NOT NULL
+     AND o.payment_mode='cod' AND p.collected_paisa>0
+   ORDER BY c.created_at,c.id`).all<{id:string;jobId:string;riderId:string;amountPaisa:number;createdAt:number;orderId:string;orderNumber:string}>()).results;
+ await db.batch(authority.statements);
+ return rows;
+}
+
 export async function getManualPaymentWorkspace(db:D1Database,actorId:string,orderFilter:string|null=null,focus?:IncomingParcelFocus){
  const authority=await staffMutationGuard(db,actorId,'payment.receipt.verify',FinanceAccessError);
  const clock=checkoutCommitClock(db),now=Number((await db.prepare(`SELECT ${clock} AS now`).first<{now:number}>())!.now);

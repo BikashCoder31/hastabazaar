@@ -1,5 +1,56 @@
+'use client';
+
 import Link from 'next/link';
 import {reviewCategory,reviewHasAssignment,reviewPriority,reviewTaskOpen,workSummaryCategories,type ReviewQueueTask} from '@/lib/admin/review-queue-view';
+import type { TodayOrders } from './overview-today-data';
+import type { OverviewHealthChecks } from './overview-health-model';
+import { useOverviewHealthChecks } from './overview-health';
+
+const number = new Intl.NumberFormat('en-NP');
+const npr = new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR', maximumFractionDigits: 2, minimumFractionDigits: 0 });
+
+export function TodayWorkSummaries({ orders, riderCash, cases, checks }: {
+  orders: TodayOrders | null | undefined;
+  riderCash: { paisa: number; riders: number } | null | undefined;
+  cases: number | null | undefined;
+  checks: OverviewHealthChecks | null | undefined;
+}) {
+  const health = useOverviewHealthChecks(checks);
+  const observed = health ?? [];
+  const issues = observed.filter(row => row.tone === 'issue').length;
+  const healthText = health === null ? 'Unavailable' : issues ? `${issues} need attention` :
+    observed.some(row => row.text === 'Not checked yet') ? 'Not checked yet' :
+    observed.some(row => row.tone === 'unknown') ? 'Status unknown' : number.format(observed.length) + ' checked';
+  const metrics = [
+    orders === undefined ? null : { label: 'Orders today', value: orders === null ? 'Unavailable' : number.format(orders.count), detail: 'Placed today, Nepal time' },
+    riderCash === undefined ? null : { label: 'Rider cash to count', value: riderCash === null ? 'Unavailable' : npr.format(riderCash.paisa / 100), detail: riderCash ? `From ${number.format(riderCash.riders)} ${riderCash.riders === 1 ? 'rider' : 'riders'}` : 'Pending remittances' },
+    cases === undefined ? null : { label: 'Returns & complaints', value: cases === null ? 'Unavailable' : number.format(cases), detail: 'Open cases' },
+    health === undefined ? null : { label: 'System checks', value: healthText, detail: 'Recorded observations', warning: health === null || observed.some(row => row.tone !== 'good') },
+  ].filter(row => row !== null);
+  if (!metrics.length) return null;
+  return <dl className="today-panel today-metrics" aria-label="Work totals">
+    {metrics.map(row => <div key={row.label}>
+      <dt>{row.label}</dt><dd data-warning={row.warning}>{row.value}</dd><dd className="today-metric-note">{row.detail}</dd>
+    </div>)}
+  </dl>;
+}
+
+export function OverviewOrdersByStage({ orders }: { orders: TodayOrders | null | undefined }) {
+  if (orders === undefined) return null;
+  const max = Math.max(1, ...(orders?.stages.map(stage => stage.count) ?? []));
+  return <section className="today-panel today-side-panel" aria-labelledby="today-order-stages-heading">
+    <div className="today-side-heading"><h2 id="today-order-stages-heading">Orders by stage</h2>
+      <Link className="section-link" href="/admin/orders">All orders</Link>
+    </div>
+    {orders === null ? <output>Order counts are unavailable.</output> : <ul className="today-stages">
+      {orders.stages.map((stage, index) => <li key={stage.label}>
+        <span>{stage.label}</span>
+        <span className="today-stage-track" aria-hidden="true"><span data-stage={index} style={{ width: (stage.count / max) * 100 + '%' }} /></span>
+        <strong>{number.format(stage.count)}</strong>
+      </li>)}
+    </ul>}
+  </section>;
+}
 
 export function OverviewWorkSummaries({tasks,observedAt,unavailableCategories=[],partialCategories=[],returnTo='/admin'}:{tasks:readonly ReviewQueueTask[]|null;observedAt:number;unavailableCategories?:readonly string[];partialCategories?:readonly string[];returnTo?:string}){
  const link=(category:string,view:string)=>{const url=new URL(returnTo,'http://localhost');url.searchParams.set('reviewDepartment',category);url.searchParams.set('reviewView',view);url.searchParams.delete('reviewPage');url.hash='seller-review-queue';return url.pathname+url.search+url.hash;};

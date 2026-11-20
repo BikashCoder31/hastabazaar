@@ -89,12 +89,12 @@ void test('Super Admin sees account totals and a clearly labelled, escaped selle
   assert.equal(fixture.privateReads, 1);
 });
 
-void test('Overview puts truthful health and five work views before the queue and collapses operational reports',async()=>{
+void test('Today puts operational metrics before the task board and keeps the marketplace report reachable',async()=>{
  const {default:Dashboard}=await import('../app/admin/page');fixture.role='super_admin';fixture.topSellers=[];
  const html=renderToStaticMarkup(await Dashboard());
- assert.match(html,/<h1[^>]*>Overview<\/h1>/);assert.match(html,/Last updated/);
- for(const label of ['Seller &amp; document reviews','Product reviews','Order follow-up','Payment &amp; payout reviews','System issues'])assert.ok(html.includes(label),label);
- assert.ok(html.indexOf('work-summary-heading')<html.indexOf('id="seller-review-queue"'));
+ assert.match(html,/<h1[^>]*>Good morning, Local<\/h1>/);assert.match(html,/with no owner yet/);
+ for(const label of ['Orders today','Rider cash to count','Returns &amp; complaints','System checks','Needs action','Refresh checks'])assert.ok(html.includes(label),label);
+ assert.ok(html.indexOf('aria-label="Work totals"')<html.indexOf('id="seller-review-queue"'));
  assert.ok(html.indexOf('id="seller-review-queue"')<html.indexOf('data-operational-summary'));
  assert.match(html,/<details[^>]*data-operational-summary="true"[^>]*>/);
  assert.doesNotMatch(html,/<details[^>]*data-operational-summary="true"[^>]*\sopen(?:=|>)/);
@@ -122,7 +122,7 @@ void test('narrowly scoped staff can enter Overview without private reports or f
   fixture.privateReads = 0;
   fixture.databaseReads = 0;
   const html=renderToStaticMarkup(await Dashboard());
-  assert.match(html,/overview/i);
+  assert.match(html,/Good morning/);
   assert.doesNotMatch(html,/Marketplace summary|Top 5 sellers|href="\/admin\/analytics"|href="\/admin\/activity"/);
   assert.equal(fixture.privateReads, 0);
   assert.equal(fixture.databaseReads, 1);

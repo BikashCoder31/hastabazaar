@@ -17,7 +17,7 @@ export interface FinanceWorkItem{
  origin:{requestId?:string;payoutId?:string;packetId?:string;obligationId?:string;sourceId?:string;sourceKind?:string;model?:PayoutModel};
 }
 export interface FinanceFamilyCoverage{family:FinanceWorkFamily;state:'available'|'partial'|'unavailable';nextCursor?:string;reason?:string;}
-export interface FinanceRecentDecision{id:string;action:string;actorId:string;createdAt:number;family:'refund_obligation'|'payout_packet'|'payout_request';sourceId:string;sourceKind?:string;recordKind?:'live'|'simulation';label?:string;href:string;}
+export interface FinanceRecentDecision{id:string;action:string;actorId:string;createdAt:number;family:'refund_obligation'|'payout_packet'|'payout_request';sourceId:string;sourceKind?:string;recordKind?:'live'|'simulation';label?:string;completed?:boolean;href:string;}
 export interface FinanceWorkSourceKey{family:FinanceWorkFamily;id:string;sourceKind?:string;}
 export interface FinanceWorkSourceState{family:FinanceWorkFamily;id:string;sourceKind:string;status:string;completed:boolean;blocked:boolean;actionRequired:boolean;nextActor:string;href:string;followUpHref?:string;followUp?:FinanceWorkSourceKey;}
 class FinanceScopeError extends Error{status=403;}
@@ -132,7 +132,16 @@ export async function readFinanceWorkItems(db:D1Database,actorId:string,environm
   const events=await db.prepare(`SELECT id,obligation_id sourceId,action,actor_id actorId,created_at createdAt FROM refund_obligation_events WHERE actor_id=? AND action IN('opened','destination_verified','packet_prepared','packet_approved','packet_started','packet_paid','packet_failed','packet_uncertain','packet_voided','customer_refund_reversed','customer_reversal_retained') ORDER BY created_at DESC,id DESC LIMIT ?`).bind(actorId,perFamily+1).all<{id:string;sourceId:string;action:string;actorId:string;createdAt:number}>();
   // This is a bounded feature-scoped feed, not a complete audit log.
   decisionsCoverage='partial';
-  for(const event of events.results.slice(0,perFamily)){try{const source=await refundScope(db,actorId,event.sourceId);guards.push(...source.guards);recentDecisions.push({...event,family:'refund_obligation',sourceKind:source.row.sourceKind,recordKind:'live',href:href('/admin/payments/refunds?obligation='+encodeURIComponent(event.sourceId))});}catch(error){if(!personalDenial(error))decisionsCoverage='partial';}}
+  for(const event of events.results.slice(0,perFamily)){
+   try{
+    const source=await refundScope(db,actorId,event.sourceId);
+    const paid=event.action==='packet_paid'&&source.row.state==='completed';
+    const progress=paid&&source.row.sourceKind==='return_refund'?await readRefundCurrentProgress(db,source.row.sourceId):null;
+    const completed=paid&&!(progress&&(progress.pendingReview||progress.hasUnfinishedRetry||progress.status==='needs_reconciliation'));
+    guards.push(...source.guards);
+    recentDecisions.push({...event,family:'refund_obligation',sourceKind:source.row.sourceKind,recordKind:'live',completed,href:href('/admin/payments/refunds?obligation='+encodeURIComponent(event.sourceId))});
+   }catch(error){if(!personalDenial(error))decisionsCoverage='partial';}
+  }
  }catch{unavailable(['refund_obligation','refund_source'],refundGuards);recentDecisions.splice(0);decisionsCoverage='unavailable';}
  const historyGuards=guards.length,historyStart=recentDecisions.length;
  try{

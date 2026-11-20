@@ -13,7 +13,7 @@ async function configuredReplay(db:D1Database,requestId:string,actorId:string,wo
   throw new ExceptionWorkConflictError('Request reference already used for different form context.');
 }
 const kinds=['failed_delivery','customer_unavailable','incorrect_cash','cancelled_parcel'];
-export interface ExceptionWork {id:string;orderId:string;jobId:string;kind:string;cashRecordId:string|null;status:string;ownerId:string|null;ownerName:string|null;nextAction:string;version:number;updatedAt:number;evidence:string|null;}
+export interface ExceptionWork {id:string;orderId:string;jobId:string;kind:string;cashRecordId:string|null;status:string;ownerId:string|null;ownerName:string|null;nextAction:string;version:number;createdAt:number;updatedAt:number;resolvedAt:number|null;evidence:string|null;}
 function guard(db:D1Database,predicate:string,values:unknown[]){const id=crypto.randomUUID();return [db.prepare('INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN '+predicate+' THEN 1 ELSE 0 END').bind(id,...values),db.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(id)];}
 function text(value:unknown,min=8,max=1000){if(typeof value!=='string'||value.trim().length<min||value.length>max)throw new ExceptionWorkConflictError('Add clear next actions, notes and references within the allowed length.');return value.trim();}
 async function staff(db:D1Database,id:string,finance=false){
@@ -25,9 +25,24 @@ async function staff(db:D1Database,id:string,finance=false){
  if(row.role==='admin')checks.push(...guard(db,row.profile===null?'NOT EXISTS(SELECT 1 FROM staff_permission_profiles WHERE user_id=?)':'EXISTS(SELECT 1 FROM staff_permission_profiles WHERE user_id=? AND permissions_json=?)',row.profile===null?[id]:[id,row.profile]));
  return {...row,checks};
 }
-const select="SELECT w.id,w.order_id AS orderId,w.shipping_job_id AS jobId,w.kind,w.cash_record_id AS cashRecordId,w.status,w.owner_id AS ownerId,u.display_name AS ownerName,w.next_action AS nextAction,w.version,w.updated_at AS updatedAt,w.evidence FROM exception_work_items w LEFT JOIN users u ON u.id=w.owner_id";
-export async function listExceptionWork(db:D1Database,actorId:string,orderId?:string){await staff(db,actorId);const rows=(await db.prepare(select+(orderId?' WHERE w.order_id=?':'')+" ORDER BY CASE w.status WHEN 'open' THEN 0 ELSE 1 END,w.updated_at DESC LIMIT 100").bind(...(orderId?[orderId]:[])).all<ExceptionWork>()).results;
- let finance=true;try{await staff(db,actorId,true);}catch{finance=false;}return rows.filter(row=>finance||row.kind!=='incorrect_cash');}
+const select="SELECT w.id,w.order_id AS orderId,w.shipping_job_id AS jobId,w.kind,w.cash_record_id AS cashRecordId,w.status,w.owner_id AS ownerId,u.display_name AS ownerName,w.next_action AS nextAction,w.version,w.created_at AS createdAt,w.updated_at AS updatedAt,w.resolved_at AS resolvedAt,w.evidence FROM exception_work_items w LEFT JOIN users u ON u.id=w.owner_id";
+export async function readExceptionWorkQueue(db:D1Database,actorId:string,orderId?:string){await staff(db,actorId);const rows=(await db.prepare(select+(orderId?' WHERE w.order_id=?':'')+" ORDER BY CASE w.status WHEN 'open' THEN 0 ELSE 1 END,w.updated_at DESC LIMIT 100").bind(...(orderId?[orderId]:[])).all<ExceptionWork>()).results;
+ let finance=true;try{await staff(db,actorId,true);}catch{finance=false;}return {items:rows.filter(row=>finance||row.kind!=='incorrect_cash'),partial:rows.length===100};}
+export async function listExceptionWork(db:D1Database,actorId:string,orderId?:string){
+ return (await readExceptionWorkQueue(db,actorId,orderId)).items;
+}
+export async function listUnrecordedParcelExceptions(db:D1Database,actorId:string){
+ const access=await staff(db,actorId);
+ const rows=(await db.prepare(`SELECT j.id,j.order_id AS orderId,j.status,o.order_number AS orderNumber,j.updated_at AS reportedAt
+   FROM shipping_jobs j JOIN orders o ON o.id=j.order_id
+   WHERE j.status IN ('delivery_failed','cancelled') AND NOT EXISTS(
+     SELECT 1 FROM exception_work_items w WHERE w.shipping_job_id=j.id
+     AND w.kind=CASE j.status WHEN 'cancelled' THEN 'cancelled_parcel' ELSE 'failed_delivery' END
+   ) ORDER BY j.updated_at DESC LIMIT 100`)
+   .all<{id:string;orderId:string;status:string;orderNumber:string;reportedAt:number}>()).results;
+ await db.batch(access.checks);
+ return rows;
+}
 export async function exceptionOwners(db:D1Database,actorId:string){await staff(db,actorId);const candidates=await db.prepare("SELECT DISTINCT u.id FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.status='active' AND r.role IN ('admin','super_admin')").all<{id:string}>();const result:{id:string;name:string;finance:boolean}[]=[];for(const candidate of candidates.results){try{const member=await staff(db,candidate.id);let finance=true;try{await staff(db,candidate.id,true);}catch{finance=false;}result.push({id:member.id,name:member.name,finance});}catch{}}return result;}
 export async function exceptionHistory(db:D1Database,actorId:string,id:string){const work=await db.prepare(select+' WHERE w.id=?').bind(id).first<ExceptionWork>();if(!work)throw new ExceptionWorkConflictError('Exception follow-up not found.');await staff(db,actorId,work.kind==='incorrect_cash');return (await db.prepare('SELECT e.id,e.action,u.display_name AS actorName,o.display_name AS ownerName,e.next_action AS nextAction,e.note,e.evidence,e.created_at AS createdAt FROM exception_work_events e JOIN users u ON u.id=e.actor_id LEFT JOIN users o ON o.id=e.owner_id WHERE e.work_id=? AND (EXISTS(SELECT 1 FROM users privacy_user JOIN user_roles privacy_role ON privacy_role.user_id=privacy_user.id WHERE privacy_user.id=? AND privacy_user.status=\'active\' AND privacy_role.role=\'super_admin\') OR NOT EXISTS(SELECT 1 FROM exception_work_events private_event WHERE private_event.work_id=e.work_id AND (private_event.action LIKE \'rider_%\' OR json_extract(CASE WHEN json_valid(private_event.payload_json) THEN private_event.payload_json ELSE \'{}\' END,\'$.riderReportId\') IS NOT NULL))) ORDER BY e.created_at DESC,e.id DESC LIMIT 100').bind(id,actorId).all<{id:string;action:string;actorName:string;ownerName:string|null;nextAction:string;note:string;evidence:string|null;createdAt:number}>()).results;}
 async function duplicate(db:D1Database,requestId:string,actorId:string,payload:string){const row=await db.prepare('SELECT work_id AS id,actor_id AS actor,payload_json AS payload FROM exception_work_events WHERE id=?').bind(requestId).first<{id:string;actor:string;payload:string}>();if(row&&(row.actor!==actorId||row.payload!==payload))throw new ExceptionWorkConflictError('Request reference already used for different work.');return row?.id;}

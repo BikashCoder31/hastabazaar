@@ -1,7 +1,10 @@
 import { AdminPageTitle } from '@/components/admin/page-help';
 import {SharedReviewQueue} from '@/components/admin/shared-review-queue';
-import {OverviewWorkSummaries} from '@/components/admin/overview-work-summaries';
-import {OverviewHealth} from '@/components/admin/overview-health';
+import {OverviewOrdersByStage,OverviewWorkSummaries,TodayWorkSummaries} from '@/components/admin/overview-work-summaries';
+import {TodayOverview} from '@/components/admin/overview-today';
+import {readTodaySources,todayDecisionHistory} from '@/components/admin/overview-today-data';
+import {OverviewHealth,OverviewHealthProvider} from '@/components/admin/overview-health';
+import {overviewHealthChecks} from '@/components/admin/overview-health-model';
 import {OverviewRecentDecisions} from '@/components/admin/overview-recent-decisions';
 import {readAdminReviewTasks} from '@/components/admin/admin-review-data';
 import {readRecentReviewDecisions} from '@/lib/admin/recent-review-decisions';
@@ -67,7 +70,12 @@ export default async function AdminDashboardPage({ searchParams }: {
   const workItems=[...(reviewTasks??[]),...(finance?.items??[]).map(financeQueueItem)];
   const incompleteFinance=finance?.coverage.filter(row=>can(staff,row.family.startsWith('payout_')?'payout.prepare':'refund.approve.standard')&&row.state!=='available')??[];
   const partialSources=[...(reviewTasks===null?['Shared review records unavailable']:[]),...(finance===null?['Finance records unavailable']:incompleteFinance.map(row=>`${reviewTaskLabels[row.family]} ${row.state}`))];
-  const recentDecisions=reviewDecisions===null&&!(finance?.recentDecisions.length)?null:[...(reviewDecisions??[]),...(finance?.recentDecisions??[]).map(row=>({id:'finance:'+row.family+':'+row.id,actorId:row.actorId,actorName:null,createdAt:row.createdAt,outcome:row.label??(row.family==='refund_obligation'?'Refund':row.family==='payout_packet'?'Payout transfer':'Payout request')+' '+row.action.replaceAll('_',' ')+' recorded',sourceType:row.family,sourceId:row.sourceId,href:row.href}))].sort((a,b)=>b.createdAt-a.createdAt||a.id.localeCompare(b.id)).slice(0,8);
+  const recentDecisions=todayDecisionHistory(reviewDecisions,finance?.recentDecisions??[]);
+  const legacyReview = ['reviewView','reviewQ','reviewDepartment','reviewType','reviewOwner','reviewPriority','reviewFrom','reviewTo','reviewPage']
+    .some(key => contextParams.has(key));
+  const today = params?.workspace === 'reviews' || legacyReview ? null : await readTodaySources({
+    db: database, actor: staff, now, returnTo, tasks: workItems, financeDecisions: finance?.recentDecisions ?? [],
+  });
   const queues = [
     {
       label: 'Seller applications',
@@ -121,47 +129,7 @@ export default async function AdminDashboardPage({ searchParams }: {
   if (params?.workspace === 'reviews') {
     return <div className="space-y-5"><AdminPageTitle><h1 className="section-title">Review tasks</h1></AdminPageTitle>{reviewQueue}</div>;
   }
-  return (
-    <div className="space-y-8">
-      <section className="overflow-hidden rounded-3xl border bg-card p-6 sm:p-8">
-        <div className="flex flex-wrap items-start justify-between gap-5">
-          <div>
-            <AdminPageTitle>
-              <h1 className="font-heading text-3xl tracking-tight sm:text-4xl">
-                Overview
-              </h1>
-            </AdminPageTitle>
-            <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">
-              Welcome back, {staff.displayName}. Review your next action, owner and current source before recording a decision.
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground">Last updated {new Intl.DateTimeFormat('en-NP',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kathmandu'}).format(new Date(now))} · Nepal time</p>
-          </div>
-          <ShieldCheck className="size-10 text-primary" aria-hidden="true" />
-        </div>
-        <div className="mt-6 flex flex-wrap gap-3">
-          <a href="#review-search" className="inline-flex min-h-11 items-center rounded-full border px-5 text-sm font-semibold hover:bg-muted">Find a record</a>
-          {can(staff, 'order.manage') && <Link
-            href="/admin/orders"
-            className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground"
-          >
-            Manage orders <ArrowRight className="size-4" />
-          </Link>}
-          {can(staff,'audit_log.view') && <Link
-            href="/admin/analytics"
-            className="inline-flex min-h-11 items-center rounded-full border px-5 text-sm font-semibold hover:bg-muted"
-          >
-            View reports
-          </Link>}
-          {can(staff, 'support.manage') ? <Link
-            href="/admin/feedback"
-            className="inline-flex min-h-11 items-center rounded-full border px-5 text-sm font-semibold hover:bg-muted"
-          >Contact and feedback</Link> : null}
-        </div>
-      </section>
-      <OverviewHealth health={health}/>
-      <OverviewWorkSummaries tasks={workItems} observedAt={now} returnTo={returnTo} unavailableCategories={reviewTasks===null?['sellers','products','orders','system']:[]} partialCategories={reviewTasks===null||finance===null||incompleteFinance.length?['finance']:[]}/>
-      {reviewQueue}
-      <OverviewRecentDecisions decisions={recentDecisions} partial={reviewDecisions===null||financeAllowed}/>
+  const reports = (
       <details data-operational-summary="true" open={params?.period === period} className="space-y-5 rounded-2xl border bg-card p-5">
       <summary className="min-h-11 cursor-pointer font-heading text-xl focus-visible:outline-2 focus-visible:outline-primary">Operational summaries and workspace links</summary>
       {staff.role==='super_admin'&&marketplace===null?<output className="block">Marketplace reporting is unavailable. Refresh the source before drawing a reporting conclusion.</output>:null}
@@ -239,6 +207,7 @@ export default async function AdminDashboardPage({ searchParams }: {
           </div>
         </section>
       ) : null}
+      <OverviewWorkSummaries tasks={workItems} observedAt={now} returnTo={returnTo} unavailableCategories={reviewTasks===null?['sellers','products','orders','system']:[]} partialCategories={reviewTasks===null||finance===null||incompleteFinance.length?['finance']:[]}/>
       {stats===null?<output className="block">Operational queue counts are unavailable. The independent review sources above retain their own availability.</output>:null}
       <section aria-labelledby="queue-heading">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
@@ -352,6 +321,24 @@ export default async function AdminDashboardPage({ searchParams }: {
         </CardContent>
       </Card>
       </details>
-    </div>
   );
+  if (!today) {
+    return <div className="space-y-5"><AdminPageTitle><h1 className="section-title">Review tasks</h1></AdminPageTitle>{reviewQueue}{reports}</div>;
+  }
+  const cases = can(staff,'support.manage') ? stats ? stats.returns + stats.complaints : null : undefined;
+  const auditHref = tasks.find(task => task.href === '/admin/activity')?.href;
+  const checks = health ? overviewHealthChecks(health) : health;
+  return <div className="space-y-8">
+    <OverviewHealthProvider key={staff.id} actorId={staff.id} initial={checks}>
+      <TodayOverview actorId={staff.id} firstName={staff.displayName.trim().split(/\s+/)[0]} observedAt={now}
+        returnTo={returnTo} tasks={today.rows} partialSources={[...partialSources, ...today.partial]}
+        metrics={<TodayWorkSummaries orders={today.orders} riderCash={today.riderCash} cases={cases} checks={checks}/>}
+        sidebar={<aside className="today-sidebar" aria-label="Operations updates">
+          <OverviewOrdersByStage orders={today.orders}/>
+          <OverviewHealth checks={checks} returnTo={returnTo}/>
+          <OverviewRecentDecisions decisions={recentDecisions} partial={reviewDecisions===null||financeAllowed} actorId={staff.id} auditHref={auditHref}/>
+        </aside>}/>
+    </OverviewHealthProvider>
+    {reports}
+  </div>;
 }

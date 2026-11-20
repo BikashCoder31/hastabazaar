@@ -1,18 +1,82 @@
-import Link from 'next/link';
-import type {SystemHealthOverview} from '@/lib/operations/system-health-workspace';
-import {withAdminReturnTo} from '@/lib/admin/return-context';
+'use client';
 
-export function OverviewHealth({health}:{health:SystemHealthOverview|null|undefined}){
- if(health===undefined)return null;
- if(health===null)return <section aria-label="Health observations" className="rounded-xl border bg-card p-4"><output className="block">System health is unknown: current observations could not be read.</output><Link href={withAdminReturnTo('/admin/system-health','/admin')} className="section-link inline-flex min-h-11 items-center">Open System health</Link></section>;
- const incidents=health.incidents.filter(item=>['critical','high'].includes(item.severity)),affectedServices=health.services.filter(item=>['degraded','outage','action_needed','unavailable'].includes(item.state)),affectedForms=health.forms.filter(item=>['degraded','action_needed'].includes(item.state)),unknown=health.services.some(item=>item.state==='unknown')||health.forms.some(item=>item.state==='unknown')||health.environment==='unknown';
- if(!incidents.length&&!affectedServices.length&&!affectedForms.length&&!unknown)return null;
- return <section aria-labelledby="urgent-work-heading" className="space-y-3 rounded-xl border bg-card p-4">
-  <h2 id="urgent-work-heading" className="font-semibold">{incidents.length||affectedServices.length||affectedForms.length?'Service issues needing attention':'Health observations'}</h2>
-  {unknown?<output className="block text-sm">Some current health observations are unknown. This does not establish that services are healthy.</output>:null}
-  {incidents.length?<ul className="grid gap-3 md:grid-cols-2">{incidents.slice(0,4).map(item=><li key={item.id} className="min-w-0 space-y-1 rounded border p-3 text-sm [overflow-wrap:anywhere]"><p className="font-semibold">{item.severity} incident · {item.state.replaceAll('_',' ')}</p><p>{item.ownerId?`Owner: ${item.ownerId}`:'Unassigned — technical coverage needed'}</p><p>Next: {item.nextAction??'Open the original incident for current recovery and follow-up.'}</p><Link className="section-link inline-flex min-h-11 items-center" href={withAdminReturnTo('/admin/system-health/incidents?incident='+encodeURIComponent(item.id),'/admin')}>Open issue</Link></li>)}</ul>:null}
-  {affectedServices.length||affectedForms.length?<p className="text-sm">{affectedServices.length} observed service issues · {affectedForms.length} affected form journeys. Automatic recovery and business decisions remain separate.</p>:null}
-  <Link className="section-link inline-flex min-h-11 items-center" href={withAdminReturnTo('/admin/system-health','/admin')}>Open current health and recovery</Link>
- </section>;
+import Link from 'next/link';
+import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { withAdminReturnTo } from '@/lib/admin/return-context';
+import type { OverviewHealthChecks } from './overview-health-model';
+
+type Snapshot = OverviewHealthChecks | null | undefined;
+const HealthContext = createContext<{
+  checks: Snapshot;
+  refreshing: boolean;
+  error: string;
+  refresh: () => Promise<void>;
+} | null>(null);
+
+export function OverviewHealthProvider({ initial, actorId, children }: {
+  initial: Snapshot; actorId: string; children: ReactNode;
+}) {
+  const [updated, setUpdated] = useState<{ initial: Snapshot; checks: Snapshot } | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const request = useRef<AbortController | null>(null);
+  useLayoutEffect(() => () => { request.current?.abort(); request.current = null; }, []);
+
+  async function refresh() {
+    if (request.current) return;
+    const controller = new AbortController();
+    request.current = controller;
+    setRefreshing(true);
+    setError('');
+    try {
+      const response = await fetch('/api/admin/system-health/records?view=today-checks', {
+        headers: { 'X-Hastabazaar-Actor': actorId }, cache: 'no-store', signal: controller.signal,
+      });
+      if (!response.ok) throw new Error('Health observations are unavailable.');
+      const result = await response.json() as { checks: OverviewHealthChecks };
+      if (!controller.signal.aborted) setUpdated({ initial, checks: result.checks });
+    } catch {
+      if (!controller.signal.aborted) {
+        setUpdated({ initial, checks: null });
+        setError('Could not refresh recorded checks.');
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        request.current = null;
+        setRefreshing(false);
+      }
+    }
+  }
+
+  return <HealthContext.Provider value={{ checks: updated?.initial === initial && updated ? updated.checks : initial, refreshing, error, refresh }}>
+    {children}
+  </HealthContext.Provider>;
 }
 
+export function useOverviewHealthChecks(initial: Snapshot) {
+  const context = useContext(HealthContext);
+  return context ? context.checks : initial;
+}
+
+export function OverviewHealth({ checks: initial, returnTo = '/admin' }: {
+  checks: Snapshot; returnTo?: string;
+}) {
+  const context = useContext(HealthContext);
+  const checks = context ? context.checks : initial;
+  if (checks === undefined) return null;
+  return <section className="today-panel today-side-panel" aria-labelledby="today-system-heading">
+    <div className="today-side-heading">
+      <h2 id="today-system-heading">System checks</h2>
+      <button type="button" className="today-button" disabled={!context || context.refreshing}
+        onClick={() => void context?.refresh()}>{context?.refreshing ? 'Refreshing…' : 'Refresh checks'}</button>
+    </div>
+    {context?.error ? <output>{context.error}</output> : null}
+    {checks === null ? <output>System health is unknown. Recorded checks are unavailable.</output> :
+      <dl className="today-system-rows">
+        {checks.map(row => <div key={row.label}>
+          <dt>{row.label}</dt><dd><span className="today-check-status" data-tone={row.tone}>{row.text}</span></dd>
+        </div>)}
+      </dl>}
+    <Link className="section-link" href={withAdminReturnTo('/admin/system-health', returnTo)}>Open System health</Link>
+  </section>;
+}

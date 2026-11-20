@@ -38,6 +38,6 @@ void test('a failed operational count source stays unknown while independent ori
  const f=await completeVersionFixture(Date.now());fixture.db=f.db;try{
   const prepare=f.db.prepare.bind(f.db);let failed=false;
   f.db.prepare=sql=>{if(sql.includes('AS sellers,')&&sql.includes('AS payoutRequests')){failed=true;throw Error('Fictional operational count source outage');}return prepare(sql);};
-  const {default:Overview}=await import('../app/admin/page'),html=renderToStaticMarkup(await Overview());assert.equal(failed,true);assert.match(html,/Operational queue counts are unavailable/);assert.match(html,/Shared review queue/);assert.doesNotMatch(html,/Review queue unavailable/);
+ const {default:Overview}=await import('../app/admin/page'),html=renderToStaticMarkup(await Overview());assert.equal(failed,true);assert.match(html,/Operational queue counts are unavailable/);assert.match(html,/id="today-tasks-heading"/);assert.doesNotMatch(html,/Review queue unavailable/);
  }finally{fixture.db=null;f.dispose();}
 });

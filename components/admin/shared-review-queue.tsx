@@ -6,6 +6,8 @@ import type {ReviewQueueTask,NativeReviewTask} from '@/lib/admin/review-queue-vi
 import {reviewTaskHref as taskHref} from '@/lib/admin/review-task-links';
 import {withAdminReturnTo} from '@/lib/admin/return-context';
 import {RecordedDateRangeFields} from '@/components/admin/recorded-date-range-fields';
+import {postReviewTaskAssignment,type ReviewTaskAssignment} from './review-task-assignment';
+import {reviewTaskCanAssign} from './overview-today-model';
 import {reviewTitle,reviewHasAssignment,reviewHasNextUpdate,filterReviewQueue,readReviewQueueFilters,reviewDepartments,reviewDueAt,reviewPriority,reviewQueueParams,reviewTaskLabels as names,reviewTaskOpen,reviewViews,selectedReviewView,type ReviewQueueFilters} from '@/lib/admin/review-queue-view';
 type Task=ReviewQueueTask;
 const filterChanged='hastabazaar:review-queue-filters';
@@ -15,7 +17,7 @@ const queueTime=new Intl.DateTimeFormat('en-NP',{dateStyle:'medium',timeStyle:'s
 const sellerDate=(value:number)=>queueTime.format(new Date(value));
 function Ownership({task,actorId}:{task:NativeReviewTask;actorId:string}){
  const router=useRouter(),[reason,setReason]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[hasPending,setHasPending]=useState(false);
- const pending=useRef<null|{taskId:string;ownerId:string|null;expectedRevision:string;requestId:string;reason:string}>(null);
+ const pending=useRef<ReviewTaskAssignment|null>(null);
  const mounted=useRef(true),inFlight=useRef(false),uncertain=useRef(false);
  useLayoutEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  async function assign(ownerId:string|null){
@@ -23,7 +25,7 @@ function Ownership({task,actorId}:{task:NativeReviewTask;actorId:string}){
   if(!pending.current)uncertain.current=false;
   const command=pending.current??{taskId:task.id,ownerId,expectedRevision:String(task.revision),requestId:crypto.randomUUID(),reason};
   pending.current=command;setHasPending(true);setBusy(true);setMessage('');
-  try{const response=await fetch('/api/admin/review-tasks',{method:'POST',headers:{'Content-Type':'application/json','X-Hastabazaar-Actor':actorId},body:JSON.stringify(command)});const decoded:unknown=await response.json().catch(()=>null),result=decoded&&typeof decoded==='object'&&!Array.isArray(decoded)?decoded as Record<string,unknown>:null;
+  try{const {result,...response}=await postReviewTaskAssignment(actorId,command);
    if(!mounted.current)return;
    if(response.status===401||response.status===403){if(!uncertain.current){pending.current=null;setHasPending(false);}setReason('');setMessage('Current task access changed. Refreshing the permitted workspace.');router.refresh();return;}
    if(!response.ok){if(response.status>=500)uncertain.current=true;if(!uncertain.current){pending.current=null;setHasPending(false);}throw new Error(typeof result?.error==='string'?result.error:'Assignment could not be confirmed. Retry the same request.');}
@@ -96,7 +98,7 @@ function ReviewQueue({tasks,actorId,unavailable=false,observedAt:providedObserve
      <p className="text-sm">{!reviewHasAssignment(task)?'Responsibility follows the original Finance workflow':task.ownerId===actorId?'Assigned to you':task.ownerId?`Assigned reviewer: ${task.ownerId}`:'Unassigned — ownership needed'}</p>
      <Link data-review-open className="section-link inline-flex min-h-11 items-center" href={taskHref(task,back)} onClick={()=>remember(task)}>Open review →</Link>{' '}
      {!('finance'in task)?<Link className="section-link inline-flex min-h-11 items-center" href={withAdminReturnTo('/admin/review-tasks/'+encodeURIComponent(task.id)+'/history',back)} onClick={()=>remember(task)}>Assignment history</Link>:null}
-     {!('finance'in task)&&reviewTaskOpen(task)&&task.sourceType!=='product_priority'&&!task.assignmentLocked?<Ownership key={`${actorId}:${task.id}`} task={task} actorId={actorId}/>:null}
+     {!('finance'in task)&&reviewTaskCanAssign(task)?<Ownership key={`${actorId}:${task.id}`} task={task} actorId={actorId}/>:null}
     </li>;
    })}</ul>:<div className="space-y-1"><p>No matching tasks in this permitted view.</p>
     {otherMatches>0?<button type="button" className="section-link min-h-11 text-left" onClick={()=>change({view:'all'})}>{`Show ${otherMatches} ${otherMatches===1?'match':'matches'} in All records`}</button>:null}
