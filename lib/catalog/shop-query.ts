@@ -7,6 +7,7 @@ export const QUERY_PRESENTATION_KEYS = {
   'commerce.order-tracking': ['orderNumber', 'email'],
   'seller.product-filter': ['q'],
   'staff.seller-registry-filter': ['q', 'status'],
+  'staff.case-intake-order': ['order'],
   'staff.order-queue-filter': ['q', 'status'],
   'staff.order-email-filter': ['q', 'status'],
   'staff.homepage-filter': ['q', 'visibility'],

@@ -88,37 +88,55 @@ export default async function AdminAnalyticsPage() {
             </div>
           ))}
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[42rem] text-left text-sm">
-            <thead className="text-muted-foreground">
-              <tr>
-                <th className="py-2 pr-3">Account</th>
-                <th className="py-2 pr-3">Roles</th>
-                <th className="py-2 pr-3">Status</th>
-                <th className="py-2">Registered</th>
+        <ul className="divide-y text-sm md:hidden">
+          {audience.directory.map((account) => (
+            <li key={account.id} className="space-y-2 py-3">
+              <div className="wrap-anywhere">
+                <p className="font-medium">{account.displayName}</p>
+                <p className="text-muted-foreground">{account.email}</p>
+              </div>
+              <dl className="grid grid-cols-2 gap-2">
+                <div className="min-w-0 wrap-anywhere">
+                  <dt className="font-medium text-muted-foreground">Roles</dt>
+                  <dd>{account.roles?.split(',').sort().join(', ')}</dd>
+                </div>
+                <div className="min-w-0 wrap-anywhere">
+                  <dt className="font-medium text-muted-foreground">Status</dt>
+                  <dd className="capitalize">{account.status}</dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="font-medium text-muted-foreground">Registered</dt>
+                  <dd>{formatDate(account.createdAt)}</dd>
+                </div>
+              </dl>
+            </li>
+          ))}
+        </ul>
+        <table aria-label="Registered customers" className="hidden w-full table-fixed text-left text-sm md:table">
+          <thead className="text-muted-foreground">
+            <tr>
+              <th scope="col" className="w-[38%] py-2 pr-3">Account</th>
+              <th scope="col" className="w-[22%] py-2 pr-3">Roles</th>
+              <th scope="col" className="w-[15%] py-2 pr-3">Status</th>
+              <th scope="col" className="py-2">Registered</th>
+            </tr>
+          </thead>
+          <tbody>
+            {audience.directory.map((account) => (
+              <tr key={account.id} className="border-t">
+                <td className="wrap-anywhere py-3 pr-3">
+                  <span className="block font-medium">{account.displayName}</span>
+                  <span className="text-muted-foreground">{account.email}</span>
+                </td>
+                <td className="wrap-anywhere py-3 pr-3">
+                  {account.roles?.split(',').sort().join(', ')}
+                </td>
+                <td className="wrap-anywhere py-3 pr-3 capitalize">{account.status}</td>
+                <td className="py-3">{formatDate(account.createdAt)}</td>
               </tr>
-            </thead>
-            <tbody>
-              {audience.directory.map((account) => (
-                <tr key={account.id} className="border-t">
-                  <td className="py-3 pr-3">
-                    <span className="block font-medium">
-                      {account.displayName}
-                    </span>
-                    <span className="text-muted-foreground">
-                      {account.email}
-                    </span>
-                  </td>
-                  <td className="py-3 pr-3">
-                    {account.roles?.split(',').sort().join(', ')}
-                  </td>
-                  <td className="py-3 pr-3 capitalize">{account.status}</td>
-                  <td className="py-3">{formatDate(account.createdAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </section>
       <section className="space-y-4 rounded-2xl border bg-card p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -154,28 +172,43 @@ export default async function AdminAnalyticsPage() {
             ? `Last recorded event: ${formatDate(audience.traffic.lastUpdatedAt)}.`
             : 'No retained traffic events are available.'}
         </p>
-        {audience.topPaths.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[34rem] text-left text-sm">
-              <thead className="text-muted-foreground">
-                <tr>
-                  <th className="py-2 pr-3">Query-free path</th>
-                  <th className="py-2 pr-3">Views</th>
-                  <th className="py-2">Estimated sessions</th>
+        {audience.topPaths.length > 0 && <>
+          <ul className="divide-y text-sm md:hidden">
+            {audience.topPaths.map((row) => (
+              <li key={row.path} className="space-y-2 py-3">
+                <p className="wrap-anywhere font-mono text-xs">{row.path}</p>
+                <dl className="grid grid-cols-2 gap-2">
+                  <div>
+                    <dt className="font-medium text-muted-foreground">Views</dt>
+                    <dd>{row.views}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-muted-foreground">Estimated sessions</dt>
+                    <dd>{row.estimatedSessions}</dd>
+                  </div>
+                </dl>
+              </li>
+            ))}
+          </ul>
+          <table aria-label="Storefront traffic estimates" className="hidden w-full table-fixed text-left text-sm md:table">
+            <thead className="text-muted-foreground">
+              <tr>
+                <th scope="col" className="w-1/2 py-2 pr-3">Query-free path</th>
+                <th scope="col" className="w-1/5 py-2 pr-3">Views</th>
+                <th scope="col" className="py-2">Estimated sessions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {audience.topPaths.map((row) => (
+                <tr key={row.path} className="border-t">
+                  <td className="wrap-anywhere py-3 pr-3 font-mono text-xs">{row.path}</td>
+                  <td className="py-3 pr-3">{row.views}</td>
+                  <td className="py-3">{row.estimatedSessions}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {audience.topPaths.map((row) => (
-                  <tr key={row.path} className="border-t">
-                    <td className="py-3 pr-3 font-mono text-xs">{row.path}</td>
-                    <td className="py-3 pr-3">{row.views}</td>
-                    <td className="py-3">{row.estimatedSessions}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+              ))}
+            </tbody>
+          </table>
+        </>}
       </section>
     </div>
   );

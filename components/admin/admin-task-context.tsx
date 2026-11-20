@@ -39,7 +39,7 @@ export function AdminTaskContext({
           {canViewOverview && guide.href !== '/admin' ? (
             <>
               <BreadcrumbItem>
-                <BreadcrumbLink render={<Link href="/admin" />}>
+                <BreadcrumbLink className="inline-flex min-h-11 items-center underline underline-offset-4" render={<Link href="/admin" />}>
                   Overview
                 </BreadcrumbLink>
               </BreadcrumbItem>
@@ -48,7 +48,7 @@ export function AdminTaskContext({
           ) : null}
           <BreadcrumbItem>
             {isDetail ? (
-              <BreadcrumbLink render={<Link href={guide.href} />}>
+              <BreadcrumbLink className="inline-flex min-h-11 items-center underline underline-offset-4" render={<Link href={guide.href} />}>
                 {guide.label}
               </BreadcrumbLink>
             ) : (

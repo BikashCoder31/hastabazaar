@@ -45,6 +45,15 @@ import {
 } from '@/lib/operations/email-delivery-overview';
 
 export const dynamic = 'force-dynamic';
+const historyColumns = [
+  { key: 'order', title: 'Order', width: 'w-[16%]' },
+  { key: 'update', title: 'Update / queued time', width: 'w-[17%]' },
+  { key: 'status', title: 'Email status', width: 'w-[15%]' },
+  { key: 'attempts', title: 'Attempts', width: 'w-[9%]' },
+  { key: 'outcome', title: 'Outcome / reason', width: 'w-[22%]' },
+  { key: 'next', title: 'Next action (Nepal time)', width: 'w-[21%]' },
+] as const;
+
 const queueObservedAt = () => Date.now();
 const emailTime = (value: number) =>
   new Date(value).toLocaleString('en-NP', {
@@ -124,6 +133,61 @@ export default async function OrderEmails({
     'status',
     { label: 'Email status' },
   );
+  const records = history.jobs.map((job) => ({
+    id: job.id,
+    fields: {
+      order: (
+        <Link
+          className="section-link wrap-anywhere underline"
+          href={`/admin/orders/${encodeURIComponent(job.orderId)}`}
+        >
+          {job.orderNumber}
+        </Link>
+      ),
+      update: (
+        <>
+          <p>{orderProgress(job.orderStatus).label}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {emailTime(job.createdAt)}
+          </p>
+        </>
+      ),
+      status: (
+        <Badge
+          variant="outline"
+          className={
+            'h-auto max-w-full whitespace-normal ' +
+            (job.displayStatus === 'sent'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+              : job.displayStatus === 'skipped'
+                ? 'bg-muted text-muted-foreground'
+                : ['intervention', 'uncertain'].includes(job.displayStatus)
+                  ? 'border-amber-200 bg-amber-50 text-amber-900'
+                  : 'border-primary/20 bg-primary/5 text-primary')
+          }
+        >
+          {statusLabel(job)}
+        </Badge>
+      ),
+      attempts: <span className="tabular-nums">{job.attempts}</span>,
+      outcome: (
+        <>
+          <p>
+            {orderEmailReasonLabel(job.skipReason ?? job.failureCode) ??
+              (job.status === 'sent' ? 'Accepted by mail server' : '—')}
+          </p>
+          {job.skipReason === 'obsolete_order_state' ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Current order: {orderProgress(job.currentStatus).label}
+            </p>
+          ) : null}
+        </>
+      ),
+      next: (
+        <span className="text-muted-foreground">{nextAction(job, now)}</span>
+      ),
+    },
+  }));
   const metrics = [
     {
       label: 'Ready to send',
@@ -160,9 +224,7 @@ export default async function OrderEmails({
     <div className="flex min-w-0 flex-col gap-5">
       <header>
         <AdminPageTitle>
-          <h1 className="font-heading text-4xl tracking-tight">
-            Order emails
-          </h1>
+          <h1 className="font-heading text-4xl tracking-tight">Order emails</h1>
         </AdminPageTitle>
         <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
           Check queued customer updates and their outcomes. Unsent updates
@@ -303,11 +365,19 @@ export default async function OrderEmails({
             </FieldGroup>
             <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
               {history.filters.q || history.filters.status ? (
-                <Link href="/admin/order-emails" className="section-link underline">
+                <Link
+                  href="/admin/order-emails"
+                  className="section-link underline"
+                >
                   Clear filters
                 </Link>
               ) : null}
-              <Button variant="workspace-primary" size="workspace" type="submit" className="flex-1 sm:flex-none">
+              <Button
+                variant="workspace-primary"
+                size="workspace"
+                type="submit"
+                className="flex-1 sm:flex-none"
+              >
                 Apply filters
               </Button>
             </div>
@@ -323,94 +393,68 @@ export default async function OrderEmails({
             of {history.pageCount}
           </p>
         </div>
-        {history.jobs.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[52rem] text-left text-sm">
+        {records.length ? (
+          <>
+            <ul
+              aria-label="Order email records"
+              className="grid gap-3 p-4 text-sm md:grid-cols-2 lg:gap-4 xl:hidden"
+            >
+              {records.map((record) => (
+                <li
+                  key={record.id}
+                  className="min-w-0 rounded-xl border p-4 wrap-anywhere"
+                >
+                  {record.fields.order}
+                  <dl className="grid grid-cols-2 gap-3">
+                    {historyColumns.slice(1).map((column) => (
+                      <div
+                        key={column.key}
+                        className={
+                          column.key === 'outcome' || column.key === 'next'
+                            ? 'col-span-2 min-w-0'
+                            : 'min-w-0'
+                        }
+                      >
+                        <dt className="font-medium text-muted-foreground">
+                          {column.title}
+                        </dt>
+                        <dd>{record.fields[column.key]}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </li>
+              ))}
+            </ul>
+            <table className="hidden w-full table-fixed text-left text-sm xl:table">
               <caption className="sr-only">
                 Order email records and reasons for skipped messages
               </caption>
               <thead className="border-b bg-muted/30 text-muted-foreground">
                 <tr>
-                  {[
-                    'Order',
-                    'Update / queued time',
-                    'Email status',
-                    'Attempts',
-                    'Outcome / reason',
-                    'Next action (Nepal time)',
-                  ].map((heading) => (
+                  {historyColumns.map((column) => (
                     <th
                       scope="col"
-                      className={
-                        heading === 'Attempts' ? 'whitespace-nowrap p-4' : 'p-4'
-                      }
-                      key={heading}
+                      className={'wrap-anywhere p-4 ' + column.width}
+                      key={column.key}
                     >
-                      {heading}
+                      {column.title}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {history.jobs.map((job) => (
-                  <tr key={job.id}>
-                    <td className="p-4 font-semibold">
-                      <Link
-                        className="section-link underline"
-                        href={`/admin/orders/${encodeURIComponent(job.orderId)}`}
-                      >
-                        {job.orderNumber}
-                      </Link>
-                    </td>
-                    <td className="p-4">
-                      <p>{orderProgress(job.orderStatus).label}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {emailTime(job.createdAt)}
-                      </p>
-                    </td>
-                    <td className="p-4">
-                      <Badge
-                        variant="outline"
-                        className={
-                          job.displayStatus === 'sent'
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-                            : job.displayStatus === 'skipped'
-                              ? 'bg-muted text-muted-foreground'
-                              : ['intervention', 'uncertain'].includes(
-                                    job.displayStatus,
-                                  )
-                                ? 'border-amber-200 bg-amber-50 text-amber-900'
-                                : 'border-primary/20 bg-primary/5 text-primary'
-                        }
-                      >
-                        {statusLabel(job)}
-                      </Badge>
-                    </td>
-                    <td className="p-4 tabular-nums">{job.attempts}</td>
-                    <td className="min-w-40 p-4">
-                      <p>
-                        {orderEmailReasonLabel(
-                          job.skipReason ?? job.failureCode,
-                        ) ??
-                          (job.status === 'sent'
-                            ? 'Accepted by mail server'
-                            : '—')}
-                      </p>
-                      {job.skipReason === 'obsolete_order_state' ? (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Current order:{' '}
-                          {orderProgress(job.currentStatus).label}
-                        </p>
-                      ) : null}
-                    </td>
-                    <td className="min-w-44 p-4 text-muted-foreground">
-                      {nextAction(job, now)}
-                    </td>
+                {records.map((record) => (
+                  <tr key={record.id}>
+                    {historyColumns.map((column) => (
+                      <td className="wrap-anywhere p-4" key={column.key}>
+                        {record.fields[column.key]}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </>
         ) : (
           <div className="flex flex-col items-center gap-2 p-8 text-center">
             <Mail aria-hidden="true" className="size-7 text-muted-foreground" />
@@ -433,7 +477,11 @@ export default async function OrderEmails({
           >
             {history.page > 1 ? (
               <Link
-                href={queuePageHref('/admin/order-emails', history.filters, history.page - 1)}
+                href={queuePageHref(
+                  '/admin/order-emails',
+                  history.filters,
+                  history.page - 1,
+                )}
                 className="section-link underline"
               >
                 Previous
@@ -443,7 +491,11 @@ export default async function OrderEmails({
             )}
             {history.page < history.pageCount ? (
               <Link
-                href={queuePageHref('/admin/order-emails', history.filters, history.page + 1)}
+                href={queuePageHref(
+                  '/admin/order-emails',
+                  history.filters,
+                  history.page + 1,
+                )}
                 className="section-link underline"
               >
                 Next

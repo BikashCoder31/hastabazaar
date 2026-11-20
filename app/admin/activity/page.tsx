@@ -15,6 +15,14 @@ import { listBusinessActivity, auditDestination, type BusinessActivity } from '@
 import { getAdminWorkSummary } from '@/lib/db/repositories/admin-workspace';
 import { loadQueryPresentationConfig, queryFieldPresentation } from '@/lib/catalog/shop-query';
 export const dynamic='force-dynamic';
+
+function ActivityRecord({ event }: { event: BusinessActivity }) {
+ const href = auditDestination(event.subjectType, event.subjectId);
+ return href
+  ? <Link className="section-link wrap-anywhere min-w-11 underline" href={href} prefetch={false}>{event.subjectType}: {event.subjectId}</Link>
+  : event.subjectType;
+}
+
 export default async function BusinessActivityPage({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}) {
  const staff=await requireStaffPage('/admin/activity','audit_log.view');if(staff.role!=='super_admin')notFound();
  const db=requireDatabase(env as unknown as {DB?:D1Database});const params=await searchParams;const filters=Object.fromEntries(['action','actor','type','from','to','calendar'].map(k=>[k,typeof params[k]==='string'?params[k]:undefined]));
@@ -36,5 +44,50 @@ export default async function BusinessActivityPage({searchParams}:{searchParams:
   </RecordedDateRangeFields>
   <div className="flex flex-wrap items-center gap-3"><Button variant="workspace-primary" size="workspace" type="submit">Filter recorded actions</Button><Link href="/admin/activity" className="section-link underline">Clear filters</Link></div>
  </form>{presentation.unavailable?<output className="mt-2 block text-sm text-muted-foreground">Filter presentation is unavailable. Standard filters remain available.</output>:null}
- {error?<p role="alert" className="mt-4">{error}</p>:<div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{['Date (AD / BS) · Nepal time','Actor','Recorded action','Record'].map(h=><th className="p-3" key={h}>{h}</th>)}</tr></thead><tbody>{events.map(event=>{const href=auditDestination(event.subjectType,event.subjectId);return <tr className="border-t" key={event.id}><td className="p-3"><RecordedTime timestamp={event.createdAt}/></td><td className="p-3">{event.actorName??'Unattributed'}<span className="block text-xs">{event.actorId??'No actor ID recorded'}</span></td><td className="p-3">{event.action}</td><td className="p-3">{href?<Link className="section-link underline" href={href} prefetch={false}>{event.subjectType}: {event.subjectId}</Link>:event.subjectType}</td></tr>})}</tbody></table>{!events.length?<p className="p-3">No recorded actions match these filters.</p>:null}</div>}</section></div>;
+ {error ? <p role="alert" className="mt-4">{error}</p> : events.length === 0 ? (
+  <p className="mt-4 p-3">No recorded actions match these filters.</p>
+ ) : <>
+  <ul aria-label="Recorded actions" className="mt-4 divide-y border-y text-sm md:hidden">
+   {events.map(event => (
+    <li key={event.id} className="space-y-3 py-3">
+     <p className="wrap-anywhere font-semibold">{event.action}</p>
+     <dl className="grid grid-cols-2 gap-3">
+      <div className="min-w-0">
+       <dt className="font-medium text-muted-foreground">Date</dt>
+       <dd><RecordedTime timestamp={event.createdAt} /></dd>
+      </div>
+      <div className="min-w-0 wrap-anywhere">
+       <dt className="font-medium text-muted-foreground">Actor</dt>
+       <dd>{event.actorName ?? 'Unattributed'}<span className="block text-xs">{event.actorId ?? 'No actor ID recorded'}</span></dd>
+      </div>
+      <div className="col-span-2 min-w-0 wrap-anywhere">
+       <dt className="font-medium text-muted-foreground">Record</dt>
+       <dd><ActivityRecord event={event} /></dd>
+      </div>
+     </dl>
+    </li>
+   ))}
+  </ul>
+  <table aria-label="Recorded actions" className="mt-4 hidden w-full table-fixed text-left text-sm md:table">
+   <thead>
+    <tr>
+     <th scope="col" className="w-[22%] p-3">Date (AD / BS) · Nepal time</th>
+     <th scope="col" className="w-[23%] p-3">Actor</th>
+     <th scope="col" className="w-[25%] p-3">Recorded action</th>
+     <th scope="col" className="p-3">Record</th>
+    </tr>
+   </thead>
+   <tbody>
+    {events.map(event => (
+     <tr className="border-t" key={event.id}>
+      <td className="p-3"><RecordedTime timestamp={event.createdAt} /></td>
+      <td className="wrap-anywhere p-3">{event.actorName ?? 'Unattributed'}<span className="block text-xs">{event.actorId ?? 'No actor ID recorded'}</span></td>
+      <td className="wrap-anywhere p-3">{event.action}</td>
+      <td className="wrap-anywhere p-3"><ActivityRecord event={event} /></td>
+     </tr>
+    ))}
+   </tbody>
+  </table>
+ </>}
+ </section></div>;
 }

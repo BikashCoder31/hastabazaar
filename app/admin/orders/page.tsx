@@ -419,10 +419,10 @@ export default async function AdminOrdersPage({
                     <tr>
                       {[
                         ['Order', 'w-[17%]'],
-                        ['Customer', 'w-[17%]'],
-                        ['Seller', 'w-[13%]'],
-                        ['Stage', 'w-[17%]'],
-                        ['Cash', 'w-[12%]'],
+                        ['Customer', 'w-[16%]'],
+                        ['Seller', 'w-[14%]'],
+                        ['Stage', 'w-[15%]'],
+                        ['Cash', 'w-[14%]'],
                         ['Total', 'w-[13%] text-right'],
                         ['Due', 'w-[11%]'],
                       ].map(([label, style]) => (
@@ -551,7 +551,7 @@ export default async function AdminOrdersPage({
                 }
               />
             </div>
-            <div className="grid gap-2 xl:grid-cols-2">
+            <div className="grid gap-2 2xl:grid-cols-2">
               <div className="min-w-0 rounded-xl border bg-card p-3">
                 <p className="text-xs text-[#675B4E]">Customer</p>
                 <p className="wrap-anywhere text-sm font-semibold">
