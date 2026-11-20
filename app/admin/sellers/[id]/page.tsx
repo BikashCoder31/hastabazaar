@@ -1,5 +1,5 @@
 import { AdminPageTitle } from '@/components/admin/page-help';
-import { SellerApplicationQueue, sellerInitials } from '@/components/admin/seller-application-queue';
+import { SellerApplicationQueue } from '@/components/admin/seller-application-queue';
 import { sellerDocumentLabel } from '@/components/admin/seller-document-label';
 import { StepLine, type StepLineStep } from '@/components/ui/step-line';
 import {registrationEvidenceKinds} from '@/lib/sellers/document-policy';
@@ -28,13 +28,12 @@ import { ManagedMakerActivationForm } from '@/components/admin/managed-maker-act
 import {ManagedLiveActivationPanel} from '@/components/admin/managed-live-activation-panel';
 import { getAcceptedManagedTerms } from '@/lib/managed-commerce/accepted-terms';
 import { ManagedProgramReview } from '@/components/admin/managed-program-review';
-import { SellerGovernanceActions } from '@/components/admin/seller-governance-actions';
 import { StatusBadge } from '@/components/admin/status-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { getSellerApplicationForReview, listSellerApplicationsForReview } from '@/lib/db/repositories/seller-applications';
-import { getSellerGovernance } from '@/lib/db/repositories/seller-governance';
+import { getSellerGovernance, restrictionIsActive } from '@/lib/db/repositories/seller-governance';
 import { can } from '@/lib/marketplace/permissions';
 
 import { isPendingPayoutReference } from '@/lib/sellers/onboarding';
@@ -50,6 +49,17 @@ import {getSellerOnboardingChecklist} from '@/lib/sellers/onboarding-checklist';
 
 import {SharedReviewQueue} from '@/components/admin/shared-review-queue';
 import {listReviewTasks} from '@/lib/workflows/review-tasks';
+import { reviewTaskHref } from '@/lib/admin/review-task-links';
+import { reviewTaskLabels, reviewTaskOpen } from '@/lib/admin/review-queue-view';
+import { getReviewedPublicProfileExtras } from '@/lib/sellers/public-profile-media';
+import { SellerRecord } from './seller-record';
+import {
+  approvalWork, readPaidPayoutHistory, readSellerMoney, readSellerOpenWork, readSellerOrders, readSellerProducts, readSellerStanding,
+  sellerRecordDate, sellerRecordTabs, type RecordListItem, type SellerRecordTab,
+} from './seller-record-data';
+import { SellerBankReview } from '@/components/admin/seller-bank-review';
+import { SellerDocumentReview } from '@/components/admin/seller-document-review';
+import { StaffReviewAccessBoundary } from '@/components/admin/staff-review-access-boundary';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,14 +102,19 @@ function Detail({
 
 /** Capture observation clocks with the authoritative reads, before rendering the view. */
 async function readSellerReviewEvidence(database:D1Database,id:string,staff:{id:string;role:'admin'|'super_admin'}){
-  const observedAt=Date.now(),readiness=await getSellerReadiness(database,id,observedAt).catch(()=>null);
-  const evidence=await getSellerApplicationForReview(database,id,staff.id)
-    .then(application=>({kind:'read' as const,application}))
-    .catch((error:unknown)=>{if(error instanceof ManagedMakerAuthorityError)return{kind:'restricted' as const};throw error;});
+  const observedAt=Date.now();
+  const [readiness,evidence] = await Promise.all([
+    getSellerReadiness(database,id,observedAt).catch(()=>null),
+    getSellerApplicationForReview(database,id,staff.id)
+      .then(application=>({kind:'read' as const,application}))
+      .catch((error:unknown)=>{if(error instanceof ManagedMakerAuthorityError)return{kind:'restricted' as const};throw error;}),
+  ]);
   if(evidence.kind==='restricted')return{kind:'restricted' as const,observedAt,readiness};
   if(!evidence.application)return{kind:'missing' as const,observedAt,readiness};
-  const publicProfile=await getPublicProfileWorkspace(database,id,staff.id,'staff',Date.now());
-  const bank=staff.role==='super_admin'?await privateBankWorkspace(database,id,staff.id,'staff',Date.now()):null;
+  const [publicProfile, bank] = await Promise.all([
+    getPublicProfileWorkspace(database,id,staff.id,'staff',observedAt),
+    staff.role==='super_admin'?privateBankWorkspace(database,id,staff.id,'staff',observedAt):null,
+  ]);
   return{kind:'full' as const,observedAt,readiness,application:evidence.application,publicProfile,bank};
 }
 
@@ -107,7 +122,7 @@ export default async function SellerApplicationPage({
   params,searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams?:Promise<{returnTo?:string}>;
+  searchParams?:Promise<{returnTo?:string;tab?:string;page?:string}>;
 }) {
   const { id } = await params;
   const staff = await requireStaffPage(
@@ -115,11 +130,20 @@ export default async function SellerApplicationPage({
     'seller.application.review',
   );
   const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const returnTarget=(await searchParams)?.returnTo;
-  const backHref=safeAdminReturnTo(returnTarget,'/admin/sellers');
-  const reviewTasks=await listReviewTasks(database,staff.id,id).catch(()=>null);
-
-  const evidence=await readSellerReviewEvidence(database,id,staff);
+  const query = await searchParams;
+  const backHref = safeAdminReturnTo(query?.returnTo, '/admin/sellers');
+  const recordHref = '/admin/sellers/' + encodeURIComponent(id);
+  function hrefFor(tab: SellerRecordTab, page = 1) {
+    const filters = new URLSearchParams();
+    if (tab !== 'work') filters.set('tab', tab);
+    if (page > 1) filters.set('page', String(page));
+    if (query?.returnTo) filters.set('returnTo', backHref);
+    return recordHref + (filters.size ? '?' + filters : '');
+  }
+  const [reviewTasks, evidence] = await Promise.all([
+    listReviewTasks(database,staff.id,id).catch(()=>null),
+    readSellerReviewEvidence(database,id,staff),
+  ]);
   const {observedAt,readiness}=evidence;
   if(evidence.kind==='restricted'){
     const summary=await database.prepare('SELECT p.display_name AS name,s.application_reference AS reference FROM seller_profiles s JOIN seller_public_profile_states p ON p.seller_id=s.id WHERE s.id=?').bind(id).first<{name:string;reference:string|null}>();
@@ -130,8 +154,18 @@ export default async function SellerApplicationPage({
   if(evidence.kind==='missing')notFound();
   const {application,publicProfile,bank}=evidence;
   const applying = ['submitted', 'under_review', 'needs_changes'].includes(application.status);
-  const applications = applying ? await listSellerApplicationsForReview(database) : [];
   const sellerName = application.tradingName.trim() || application.legalName.trim() || application.applicationReference;
+  const independent = application.userId !== staff.id;
+  const allowedOrders = independent && can(staff, 'order.manage');
+  const allowedProducts = independent && can(staff, 'product.review');
+  const allowedFinance = independent && can(staff, 'payout.prepare');
+  const allowedRestrictions = can(staff, 'seller.suspend');
+  const registered = application.participationRoute !== 'managed_maker';
+  const tabs = sellerRecordTabs.filter(([key]) => key === 'orders' ? allowedOrders : key === 'products' ? allowedProducts : true);
+  const tab = tabs.find(([key]) => key === query?.tab)?.[0] ?? 'work';
+  const requestedPage = Number(query?.page);
+  const page = (tab === 'orders' || tab === 'products') && Number.isSafeInteger(requestedPage) && requestedPage > 0 && requestedPage <= 100000
+    ? requestedPage : 1;
   const registrationReviewed = readiness?.checks.find(check => check.id === 'application')?.status === 'ready';
   const identityReviewed = readiness?.checks.find(check => check.id === 'identity')?.status === 'ready';
   const termsAccepted = readiness?.checks.find(check => check.id === 'terms')?.status === 'ready';
@@ -140,47 +174,105 @@ export default async function SellerApplicationPage({
     { id: 'documents', label: 'Documents', state: identityReviewed ? 'complete' : registrationReviewed ? 'current' : 'upcoming', detail: application.documentCount ? application.documentCount + ' uploaded' : 'No documents yet' },
     { id: 'agreement', label: 'Agreement & go live', state: readiness?.newOrders ? 'complete' : registrationReviewed && identityReviewed ? 'current' : 'upcoming', detail: readiness?.newOrders ? 'Can accept new orders' : termsAccepted ? 'Agreement accepted' : 'Check the seller agreement' },
   ];
-  const onboarding = staff.role === 'super_admin' ? await getSellerOnboardingChecklist(database, {
-    sellerId: application.id, ownerId: application.userId, stage: application.applicationStage ?? application.status,
-    readiness, viewer: { kind: 'admin', actorId: staff.id },
-  }) : null;
   const approvedForActivation = application.status === 'under_review' && application.applicationStage === 'approved_for_activation';
-  const registrationIntake = application.status === 'under_review' && Boolean(await database
-    .prepare('SELECT 1 FROM seller_registration_intakes WHERE seller_id=? AND user_id=?')
-    .bind(application.id, application.userId).first());
-  const recoveryTarget = staff.role === 'super_admin' && application.userId !== staff.id
-    ? await database.prepare(`SELECT u.id,u.email,u.display_name AS displayName,CASE WHEN EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='admin') THEN 'admin' ELSE 'seller' END AS role FROM users u WHERE u.id=? AND u.status='active' AND EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role IN ('seller','admin')) AND NOT EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='super_admin')`).bind(application.userId).first<{id:string;email:string;displayName:string;role:'admin'|'seller'}>()
-    : null;
-  const [managedDetails, managedTerms] = application.participationRoute === 'managed_maker'
-    ? await Promise.all([getManagedMakerDetailsForReview(database,id,staff.id),readManagedApplicationTerms(database,id)]) : [null,null];
-  const operationalAddresses=await database.prepare(`SELECT purpose,locality FROM seller_operational_addresses WHERE seller_id=? AND purpose IN ('pickup','returns') ORDER BY purpose`)
-    .bind(id).all<{purpose:string;locality:string}>();
-  const governance = await getSellerGovernance(database, id);
-  const managedProgram = await getManagedProgramWorkspace(database, id);
-  const acceptedManagedTerms = application.participationRoute === 'managed_maker'
-    ? await readAcceptedManagedTerms(database, id) : null;
+  const [
+    onboarding, intake, recoveryTarget, managedDetails, managedTerms,
+    operationalAddresses, governance, managedProgram, acceptedManagedTerms,
+    applications, publicExtras, standing, money, extraWork, tabRows, payoutHistory,
+  ] = await Promise.all([
+    staff.role === 'super_admin' ? getSellerOnboardingChecklist(database, {
+      sellerId: application.id, ownerId: application.userId, stage: application.applicationStage ?? application.status,
+      readiness, viewer: { kind: 'admin', actorId: staff.id },
+    }) : null,
+    application.status === 'under_review' ? database
+      .prepare('SELECT 1 FROM seller_registration_intakes WHERE seller_id=? AND user_id=?')
+      .bind(application.id, application.userId).first() : null,
+    staff.role === 'super_admin' && independent
+      ? database.prepare(`SELECT u.id,u.email,u.display_name AS displayName,CASE WHEN EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='admin') THEN 'admin' ELSE 'seller' END AS role FROM users u WHERE u.id=? AND u.status='active' AND EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role IN ('seller','admin')) AND NOT EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='super_admin')`).bind(application.userId).first<{id:string;email:string;displayName:string;role:'admin'|'seller'}>()
+      : null,
+    registered ? null : getManagedMakerDetailsForReview(database,id,staff.id),
+    registered ? null : readManagedApplicationTerms(database,id),
+    database.prepare(`SELECT purpose,locality FROM seller_operational_addresses WHERE seller_id=? AND purpose IN ('pickup','returns') ORDER BY purpose`)
+      .bind(id).all<{purpose:string;locality:string}>(),
+    getSellerGovernance(database, id),
+    getManagedProgramWorkspace(database, id),
+    registered ? null : readAcceptedManagedTerms(database, id),
+    applying ? listSellerApplicationsForReview(database) : [],
+    getReviewedPublicProfileExtras(database, id, observedAt).catch(() => null),
+    readSellerStanding(database, id, staff, independent),
+    allowedFinance && registered ? readSellerMoney(database, id, observedAt) : null,
+    independent ? readSellerOpenWork(database, id, staff, observedAt) : null,
+    tab === 'orders' ? readSellerOrders(database, id, staff.id, page) : tab === 'products' ? readSellerProducts(database, id, page) : [],
+    tab === 'history' && allowedFinance && registered ? readPaidPayoutHistory(database, id) : [],
+  ]);
+  const registrationIntake = Boolean(intake);
+  const restricted = restrictionIsActive(governance.restriction, observedAt);
+  const since = application.history.reduce<number | null>((approvedAt, event) => event.toStatus === 'approved'
+    ? Math.min(approvedAt ?? event.createdAt, event.createdAt) : approvedAt, null);
+  const publicPhoto = publicExtras?.media.find(media => media.kind === 'profile_image');
+  const summary = [
+    application.productCategories,
+    [application.locality, application.district].filter(Boolean).join(', '),
+    since ? 'Seller since ' + sellerRecordDate.format(since) : application.applicationReference,
+  ].filter((part): part is string => Boolean(part));
+  const status = restricted ? { label: 'New orders paused' }
+    : readiness?.newOrders ? { label: 'Active', good: true }
+    : { label: (approvedForActivation ? 'approved for activation' : application.status.replaceAll('_', ' ')).replace(/^./, letter => letter.toUpperCase()) };
+  const work = [
+    ...(extraWork?.rows ?? []),
+    ...(money?.approvals.map(approval => approvalWork(approval, id, can(staff, 'payout.approve'))) ?? []),
+    ...(reviewTasks ?? []).filter(task => reviewTaskOpen(task) && task.sourceType !== 'order_response' && task.sourceType !== 'return_request')
+      .map((task): RecordListItem => ({
+        id: 'review-' + task.id, at: task.startedAt,
+        title: reviewTaskLabels[task.sourceType] + (task.recordTitle ? ' · ' + task.recordTitle : ''),
+        detail: task.sourceStatus.replaceAll('_', ' ') + ' · ' + sellerRecordDate.format(task.startedAt),
+        status: task.status === 'awaiting_review' ? 'Your turn' : task.status === 'waiting_on_seller' ? 'Seller’s turn' : 'Open',
+        href: reviewTaskHref(task, hrefFor('work')),
+      })),
+  ].sort((a, b) => Number(b.status === 'Late') - Number(a.status === 'Late') || b.at - a.at);
+  const verifiedBank = bank?.current?.details;
+  const bankSummary = bank ? {
+    label: verifiedBank ? `${verifiedBank.bankName}, account ending ${verifiedBank.bankAccountNumber.slice(-4)}` : 'Bank details',
+    status: bank.status, href: '#seller-bank',
+  } : null;
+  const notes = allowedRestrictions ? governance.events.flatMap(event => {
+    const { id, privateReason, createdAt, actorName } = event;
+    return typeof id === 'string' && typeof privateReason === 'string' && privateReason.trim()
+      && typeof createdAt === 'number' && typeof actorName === 'string'
+      ? [{ id, text: privateReason, at: createdAt, actor: actorName }] : [];
+  }).slice(0, 3) : [];
+  const history = tab === 'history' ? application.history.map((event): RecordListItem => ({
+    id: event.id, title: 'Application ' + event.toStatus.replaceAll('_', ' '),
+    detail: [sellerRecordDate.format(event.createdAt), event.actorName].filter(Boolean).join(' · '), status: 'Record',
+    href: '#seller-history', at: event.createdAt,
+  })) : [];
+  if (tab === 'history' && bank?.current?.verifiedAt) history.push({
+    id: bank.current.id, title: 'Bank account verified', detail: sellerRecordDate.format(bank.current.verifiedAt),
+    status: 'Record', href: '#seller-bank', at: bank.current.verifiedAt,
+  });
+  if (tab === 'history') history.push(...payoutHistory);
+  history.sort((a,b) => b.at - a.at);
+  const payoutsHref = allowedFinance ? registered ? withAdminReturnTo('/admin/payouts?sellerId=' + encodeURIComponent(id), hrefFor(tab, page))
+    : '#seller-managed-program' : null;
+  const recoveryHref = allowedFinance && registered ? withAdminReturnTo('/admin/payments/recoveries', hrefFor(tab, page)) : null;
 
   return (
-    <StaffReviewAccessBoundary actorId={staff.id} sourceId={id}><div className="space-y-7">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <AdminPageTitle><h1 className="font-heading text-3xl tracking-tight">Sellers</h1></AdminPageTitle>
-        <ReviewBackLink actorId={staff.id} returnTo={backHref}/>
-      </header>
+    <StaffReviewAccessBoundary actorId={staff.id} sourceId={id}><div className="space-y-5">
+      <ReviewBackLink actorId={staff.id} returnTo={backHref}/>
+      <SellerRecord
+        name={sellerName} avatar={publicPhoto ? '/api/profile-media/' + encodeURIComponent(publicPhoto.id) : undefined}
+        meta={summary} status={status} sellerId={id} phone={application.supportPhone} email={application.supportEmail}
+        restriction={governance.restriction} restricted={restricted} mayManageSeller={allowedRestrictions}
+        tabs={tabs} tab={tab} hrefFor={hrefFor} page={page} workCount={work.length}
+        workLimited={Boolean(extraWork?.limited) || (money?.waitingCount ?? 0) > (money?.approvals.length ?? 0)}
+        workUnavailable={reviewTasks === null}
+        rows={tab === 'work' ? work : tab === 'history' ? history : tabRows}
+        standing={standing} money={money} registered={registered} payoutsHref={payoutsHref} recoveryHref={recoveryHref}
+        documents={application.documents} bank={bankSummary} agreement={application.sellerAgreementAcceptedAt} notes={notes}
+      />
       <div className={applying ? 'grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(13rem,15rem)_minmax(0,1fr)]' : 'min-w-0'}>
         {applying ? <SellerApplicationQueue applications={applications} selected={id} /> : null}
-        <article className="min-w-0 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex min-w-0 items-start gap-3">
-          <span aria-hidden="true" className="grid size-14 shrink-0 place-items-center rounded-full bg-[#A8232E] text-lg font-bold text-white">{sellerInitials(sellerName)}</span>
-          <div className="min-w-0">
-            <h2 className="break-words font-heading text-2xl tracking-tight md:text-3xl">{sellerName}</h2>
-            <p className="mt-1 break-words text-sm text-muted-foreground">
-              {application.applicationReference} · Applied {dateTimeFormatter.format(application.createdAt)} · {application.representativeName} · {application.district}
-            </p>
-          </div>
-        </div>
-        <StatusBadge status={approvedForActivation ? 'approved_for_activation' : application.status} />
-      </div>
+        <article aria-label="Seller application and evidence" className="min-w-0 space-y-6">
 
       {applying ? <StepLine steps={applicationSteps} label="Seller review progress" className="md:max-lg:grid-cols-1" /> : null}
 
@@ -317,7 +409,9 @@ export default async function SellerApplicationPage({
               <div className="sm:col-span-2"><Detail label="Historical accepted terms"><AcceptedAgreementSnapshot json={managedDetails.agreementSnapshotJson} /></Detail></div></dl>
               : <p>Current government ID and Managed Maker agreement acceptance have not been supplied. Request changes before approving activation.</p>}
           </CardContent></Card> : null}
-          <ManagedProgramReview sellerId={application.id} workspace={managedProgram} canReviewPaymentTransfers={can(staff, 'payout.prepare') && application.userId !== staff.id} canReviewPaymentHistory={can(staff, 'payout.approve') && application.userId !== staff.id} />
+          <div id="seller-managed-program" className="scroll-mt-28">
+            <ManagedProgramReview sellerId={application.id} workspace={managedProgram} canReviewPaymentTransfers={allowedFinance} canReviewPaymentHistory={can(staff, 'payout.approve') && independent} />
+          </div>
           <Card>
             <CardHeader>
               <CardTitle>Recorded commercial references (private)</CardTitle>
@@ -357,11 +451,8 @@ export default async function SellerApplicationPage({
                 </Detail>
               </dl>
 
-              {can(staff, 'seller.suspend') ? (
-                <SellerGovernanceActions
-                  sellerId={application.id}
-                  current={governance.restriction}
-                />
+              {allowedRestrictions ? (
+                <a href="#seller-order-controls" className="section-link inline-flex min-h-11 items-center">Open seller restrictions</a>
               ) : (
                 <p className="text-sm text-muted-foreground">
                   Restriction changes and deletion preflights require Super
@@ -421,7 +512,7 @@ export default async function SellerApplicationPage({
                       href={`/api/admin/seller-profile-media/${media.id}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
+                      className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-primary hover:underline"
                     >
                       Open <ExternalLink className="size-4" />
                     </a>
@@ -521,7 +612,4 @@ export default async function SellerApplicationPage({
     </div></StaffReviewAccessBoundary>
   );
 }
-import { SellerBankReview } from '@/components/admin/seller-bank-review';
-import { SellerDocumentReview } from '@/components/admin/seller-document-review';
-import {StaffReviewAccessBoundary} from '@/components/admin/staff-review-access-boundary';
 

@@ -5,6 +5,7 @@ type RelatedLink = { href: string; label: string };
 type TabDefinition = RelatedLink & {
   access?: string;
   routes?: readonly string[];
+  detailRoutes?: readonly string[];
   related?: readonly RelatedLink[];
   fallback?: string;
   superAdmin?: boolean;
@@ -41,7 +42,8 @@ const definitions = [
   ] },
   { id: 'sellers', label: 'Sellers', tabs: [
     { href: '/admin/sellers?reviewType=seller_application', label: 'Applications', access: '/admin/sellers', routes: ['/admin/sellers'] },
-    { href: '/admin/sellers?workspace=directory', label: 'All sellers', access: '/admin/sellers' },
+    { href: '/admin/sellers?workspace=directory', label: 'All sellers', access: '/admin/sellers',
+      detailRoutes: ['/admin/sellers'] },
     { href: '/admin/sellers?reviewType=seller_document', label: 'Documents', access: '/admin/sellers',
       routes: ['/admin/seller-documents'], superAdmin: true },
     { href: '/admin/sellers?reviewType=document_change', label: 'Updated documents', access: '/admin/sellers',
@@ -100,7 +102,11 @@ const definitions = [
 
 export type AdminSectionId = (typeof definitions)[number]['id'];
 export type AdminStaffAccess = { role: 'admin' | 'super_admin'; permissions?: readonly Permission[] };
-type AdminTab = RelatedLink & { routes: readonly string[]; related: readonly RelatedLink[] };
+type AdminTab = RelatedLink & {
+  routes: readonly string[];
+  detailRoutes: readonly string[];
+  related: readonly RelatedLink[];
+};
 type AdminSection = { id: AdminSectionId; label: string; tabs: readonly AdminTab[] };
 
 export function adminSections(role: string, permissions?: readonly Permission[]): AdminSection[] {
@@ -117,6 +123,7 @@ export function adminSections(role: string, permissions?: readonly Permission[])
         href,
         label: href === '/admin/team' && role === 'admin' ? 'My responsibilities' : tab.label,
         routes: tab.routes ?? [],
+        detailRoutes: tab.detailRoutes ?? [],
         related: (tab.related ?? []).filter(link => link.href !== href && allowed.has(link.href)),
       }];
     }),
@@ -132,7 +139,9 @@ export function activeAdminSection(
   const matches = sections.flatMap(section => section.tabs.flatMap(tab => {
     const [path, query] = tab.href.split('?');
     const routes = [...tab.routes, ...tab.related.map(link => link.href), ...(!query ? [path] : [])];
-    const routeMatch = Math.max(0, ...routes.filter(matchesPath).map(route => route.length));
+    const detailRoutes = tab.detailRoutes.filter(route => pathname.startsWith(route + '/'));
+    const routeMatch = Math.max(0, ...routes.filter(matchesPath).map(route => route.length),
+      ...detailRoutes.map(route => route.length + 1));
     const queryMatch = query && pathname === path &&
       [...new URLSearchParams(query)].every(([key, value]) => searchParams.get(key) === value);
     return routeMatch || queryMatch ? [{ section, tab, routeMatch, queryMatch: Boolean(queryMatch) }] : [];
